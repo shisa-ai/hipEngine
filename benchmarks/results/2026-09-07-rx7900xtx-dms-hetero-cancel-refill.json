@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_rx7900xtx_dms_hetero_cancel_refill",
+  "date": "2026-09-07",
+  "host": "7900 XTX (gfx1100), GPU1, PCI 0000:10:00.0",
+  "performance_claim": false,
+  "protocol": "scripts/qwen38_dms_concurrency_probe.py (--heterogeneous, --cancel-after-steps, --refill-cycles), backend hip_gfx1100, XTX manifest sha 9b8dacd9111ddf5b (not train-disjoint)",
+  "heterogeneous_lengths": {
+    "widths": [
+      2048,
+      4096,
+      8192,
+      16384
+    ],
+    "status": "passed",
+    "decode_rows": 14,
+    "per_session_live": [
+      4100,
+      8196,
+      12293
+    ],
+    "per_session_ratio": [
+      1.0,
+      1.0,
+      1.3331
+    ],
+    "note": "one width per session over one shared runner; each session's exact-budget selection and window protection are width-independent (ratio 1.0 at <=8,192 window, 1.3331 at 16,384)",
+    "oversized_attempt": "C4 widths doubling to 32,768 OOM at compact-backend pack-time allocation (same coexistence memory boundary); heterogeneous ladder rescaled to max 16,384"
+  },
+  "cancellation": {
+    "cancelled_session": 0,
+    "after_decode_step": 1,
+    "close_seconds": 0.014,
+    "memory_after_cancel_MiB": 19858.9,
+    "survivor_decode_rows": 6,
+    "survivor_live_counts_exact": true,
+    "note": "closing session 0 mid-flight reclaimed its compact resources (allocated dropped) and the three survivors continued decoding with their own live counts intact; the owner-marker pop is owner-guarded so survivor routing is unaffected"
+  },
+  "pressure_refill": {
+    "cycles": 3,
+    "status": "passed",
+    "per_cycle": [
+      {
+        "cycle": 0,
+        "decode_rows": 8,
+        "after_close_MiB": 0.0,
+        "close_errors": []
+      },
+      {
+        "cycle": 1,
+        "decode_rows": 8,
+        "after_close_MiB": 0.0,
+        "close_errors": []
+      },
+      {
+        "cycle": 2,
+        "decode_rows": 8,
+        "after_close_MiB": 0.0,
+        "close_errors": []
+      }
+    ],
+    "note": "three full open/prefill/decode/close cycles at C2@16,384; allocator returns to exactly 0.0 MiB between cycles \u2014 shared credits fully recover under repeated pressure"
+  },
+  "commands": {
+    "heterogeneous_cancel": "python3 scripts/qwen38_dms_concurrency_probe.py --sessions 4 --prompt-tokens 2048 --heterogeneous --cancel-after-steps 2 --decode-steps 4 --backend hip_gfx1100 ...",
+    "refill": "python3 scripts/qwen38_dms_concurrency_probe.py --sessions 2 --prompt-tokens 16384 --decode-steps 4 --refill-cycles 3 --backend hip_gfx1100 ..."
+  },
+  "limitations": [
+    "diagnostic capacity evidence; no throughput claim",
+    "cancellation exercised as cooperative full-session close mid-decode (no forced teardown/abort path)",
+    "manifest not train-disjoint (campaign-wide caveat)"
+  ]
+}

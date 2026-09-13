@@ -955,10 +955,10 @@ sha256sum \
 
 # Focused existing contract tests before live work.
 python3 -m pytest -q \
-  tests/test_agentic_coding_quality.py \
-  tests/test_agentic_coding_quality_oracle.py \
-  tests/test_agentic_server_conformance.py \
-  tests/test_agentic_harness_traces.py
+  tests/test_integration_agentic_coding_quality.py \
+  tests/test_integration_agentic_coding_quality_oracle.py \
+  tests/test_integration_agentic_server_conformance.py \
+  tests/test_integration_agentic_harness_traces.py
 
 # Existing v2 collector, after one separately started clean server.
 python3 scripts/agentic_coding_quality.py \
@@ -1088,7 +1088,7 @@ A no-go decision is a valid AQ8–AQ13 path.
 | `benchmarks/schemas/agentic-quality2-*.schema.json` | Expanded source/suite/oracle contracts. |
 | `benchmarks/schemas/agentic-coding-quality-*.schema.json` | Live records/summary contracts. |
 | `tests/test_agentic_coding_quality*.py` | Loader/oracle/classifier/artifact RED gates. |
-| `tests/test_agentic_server_conformance.py` | Public compatibility and fail-safe contract. |
+| `tests/test_integration_agentic_server_conformance.py` | Public compatibility and fail-safe contract. |
 | `tests/fixtures/agentic_traces/` | Deterministic envelope/replay fixtures. |
 | `hipengine/server/` | Only AQ8-admitted parser/constraint/repair behavior; avoid broad `api.py` edits. |
 | `hipengine/generation/sampling.py` | Only if the admitted mechanism is processor-owned. |

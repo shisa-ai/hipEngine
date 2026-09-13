@@ -343,6 +343,12 @@ hipEngine exposes exactly three execution profiles:
   slots, neighbors, batch widths, admission order, cancellation, and
   compaction. Its first implementation may reuse strict variants.
 
+An omitted profile resolves to `production` for a model, backend, and
+quantization combination with a certified production plan, and keeps the
+pre-profile migration path otherwise. `strict` stays the exact oracle and is
+always selectable. See [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) §2.1 for
+the registered combinations and the default decision.
+
 Execution profile is orthogonal to model weights, quant, KV storage, sampling,
 and speculative policy. Weight/KV representation changes and approximate
 routing, acceptance, or sampling remain explicit product/experiment choices.
@@ -469,11 +475,26 @@ routes remain available, and Qwen3.6 policies are unchanged. The follow-up
 requires native physical C1 on the Generation-2 provider/frontier/transaction
 path, not a legacy singleton verifier substitution, plus measured complete-cycle
 reductions and width-specific numerical/lifecycle/performance qualification.
-The follow-up must fix the K4 hang and implement depth-generic K1-K7 execution
-at C1-C8; diagnosis alone is not completion. Deeper public execution remains
-safety-gated during implementation, and automatic depth selection is qualified
-separately from functional support. Existing kernel improvements remain enabled
-in their qualified scopes. Source audit and rejected alternatives remain in
+The follow-up implements K1-K7 capacity and records a 56-cell diagnostic sweep,
+but is not complete. The 2026-09-07 review found that C1 preparation installed
+a legacy target verifier: those C1 measurements do not qualify the repaired
+packed target, and its public evidence is withdrawn. The repaired C1/K3 target
+passes a ten-prompt exact diagnostic at N=1/2/8. Packed C1 target ownership
+is now an explicit serving-evidence/static-eligibility field (default false),
+not inferred from resident capacity. Explicit C1 ownership can coexist with a
+wider static request bound: N2/N8 engine-boundary D8/D24 survivor diagnostics
+pass all ten prompts without replacing the packed target with a legacy verifier.
+This uses separately resolved, runtime-only C1/C2 diagnostic evidence and does
+not qualify HTTP lifecycle or usage. The repaired N1 target now passes three
+bit-identical fixed-teacher captures at every K1-K7 depth over 18 prompts and
+450 rows per capture. K5/K7 pass the normative 99% overall/97% scoped top-1
+and KL gates but fail the separately reported conservative scoped screen.
+This is target-only numerical evidence, not full provider/task/service
+qualification. No public C1 row is added; wider-capacity isolation, lifecycle,
+task/context and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
+qualified kernel improvements stay enabled; automatic Qwen3.8 remains K0.
+Deeper public execution and automatic depth selection remain separately gated.
+Source audit and rejected alternatives remain in
 [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
@@ -529,8 +550,11 @@ executing every model transition through an explicit physical-c1 serial
 fallback. Shifted token/logit/state/KV exactness, varied-prompt server parity,
 zero persistent BF16 bytes, staggered cancellation/survivor continuation, and
 zero final ownership pass on RX 7900 XTX. This is not native c>N and carries no
-throughput claim. `IKV-C2` row-batched direct INT8 attention is next; BF16 stays
-supported/default.
+throughput claim. `IKV-C2` row-batched direct INT8 attention is complete and
+promoted to physical c4 on the gfx1100 Qwen3.8-27B artifact (2026-09-11): the
+primitive gate is bit-exact against the CPU reference and independent c1 at
+c1/c2/c4/c8, and a retire/admit transition gate holds a 4 -> 2 -> 4 lane
+schedule exact per row at every step. BF16 stays supported/default.
 
 #### Qwen3.8-27B capacity on the 24 GB RX 7900 XTX
 
@@ -544,18 +568,35 @@ context ceilings or a regression against unmatched historical configurations.
 Priorities are optional MTP loading, bounded shared workspaces, smaller weights
 and compact KV. FastDMS targets roughly half of eligible history, not half of
 model VRAM; protected windows, prefill peaks and pool reuse determine realized
-savings. XTX sidecar/quality/lifecycle qualification and DMS+INT8/MTP composition
-remain required. Coordinate native INT8, native C1/K4-K7 MTP and DMS integration
-with their existing campaigns; do not create another scheduler.
+savings. The bounded XTX closeout confirms offline DMS INT8 C1 at 65,536 prompt
+tokens plus eight decode appends, exact independent replay, and interleaved C2
+cancellation/drain. Compact payload/scales and resident integration are
+implemented; this is observed execution fit, not a maximum or general-serving
+qualification. Production-profile/task certification, packed/larger-C DMS INT8
+and full-session DMS+MTP rollback remain deferred. Coordinate native INT8,
+native C1/K4-K7 MTP and DMS integration with their existing campaigns; do not
+create another scheduler. See the capacity document's bounded closeout.
 
 #### Current status
+
+September 12, 2026 gfx1151 dense-Q4_K_M correction: the current public
+production profile uses FP32 recurrent state and AR-only MTP admission;
+historical FP16-production MTP rows below are not current-profile certificates.
+The final public packed D128 gate is exact over 8,716 rows, and greedy
+blocking/SSE cancellation/refill gates pass. Strict C1/K3 natural25 remains
+available with capacity1/4 and context1-67, measured at 20.985 versus 11.150
+same-protocol AR tok/s over three category-suite runs. Current production
+512/128 is 404.487 prefill / 12.226 decode tok/s. This is bounded model
+qualification, not full-repository release signoff.
+[Current serving scope](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
+and [headline measurements](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 
 | Question | Answer |
 |---|---|
 | Can current hipEngine run real c=8 PARO decode? | Yes on gfx1151 for W4/BF16-KV greedy contexts covered by the retained profile. Direct physical c2/c4/c8 are independent-c1 exact at p512/d128, use 40/40 selected-batch layers, and never stack c2 groups. G5 attaches those widths to the shared resident OpenAI loop and makes them the gfx1151 package default: blocking F1 c1/c2/c4/c8 is 47.124/51.962/60.323/61.253 aggregate tok/s, all 68 rows exact, and the complementary SSE/native-plus-serial packet keeps all 100 rows exact. gfx1100 remains retained only at direct c2; sampled-native, context >=1024, other-KV, capture/replay, and gfx1100 owner c4/c8 remain open. |
 | Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; F3/F3B's clean gfx1151 direct c1/c2/c4/c8 is 50.335/78.552/108.050/133.852 aggregate tok/s, with c8 at 2.659x c1 and 748 packed-native / zero row-local/copy dispatches. The exact singleton-indexed GDN default improves c2/c4/c8 by 8.71%/5.25%/4.04% while leaving c1 structurally unchanged; F3B then adds an exact physical-C8-only 128-thread qkv+gate pair rowtile for another +0.452%, with 30 expected pair-rowtile launches and lower widths/gfx1100 unchanged. gfx1100 keeps segmented GDN pending independent transfer. Both targets retain honest arbitrary-C/C>8 lowering as multiple declared groups. The shared owner uses dense ephemeral execution rows so live occupancy selects c1/c2/c4/c8 without moving stable scheduler slots, state, or KV; gfx1151 clean F2 server retention preserves all p512/d128 and live-transition outputs with occupancy-one at 95.625% of same-process direct c1. The current optimized corrected-window server path adds true physical C8, resident packed graphs, bounded fair-prefill bursts, resident telemetry reuse, and terminal-state discard: blocking C1/C2/C4/C8 is 44.321/59.783/75.580/86.185 tok/s, exact SSE is 42.147/59.102/73.971/84.196, delayed C8 is 67.788, and all 117 rows are exact; F3B's separate clean C1/C8 packet remains mixed within server noise and makes no additional server-speed claim. gfx1100 transfer remains separate. Neither target claims native c9/c13. gfx1151 additionally retains explicit uniform `int8_per_token_head` c1/c2/c4/c8 continuous serving through rounded context 8192 with bounded BF16 attention mirrors: corrected-window exact SSE is 42.759/55.128/71.284/81.140 tok/s, blocking is 44.225/60.598/74.631/83.408, delayed C8 is 65.034, and all 117 server rows plus the 11-prompt/99-position KL/top-1 gate pass. gfx1100 now independently qualifies the same short mirrored lifecycle at 512/24 through staggered c1->c4 SSE (4/4 exact, occupancy `0->1->4->3->2->1->0`, admitted/reclaimed `4/4`, zero final ownership). The exact gfx1100 Qwen3.8 artifact additionally qualifies compact no-mirror logical c2/c4 through a physical-c1 serial fallback: p512/d24 is independent-c1 exact, shifted logits/state/KV are byte-exact, persistent BF16 bytes are zero, and staggered cancellation drains cleanly. Neither mirrored route is default or memory-saving; row-batched direct INT8 attention, longer compact c>N INT8, and broader quant/sampling remain open. |
 | What does the merged UD-Q3_K_M branch add? | A separately gated gfx1100 GPU1 direct path: exact fully-bulk Q3 prefill, native C=2/4/8 decode with exact IDs/full logits and no c>N serial fallback, and a transactional blk.40 NextN diagnostic. The direct C8 rows reach 207.780/211.177 aggregate tok/s at 512/4K; the exact NextN route is economically rejected and remains disabled. |
-| Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx11 GGUF OpenAI paths and for gfx1151 PARO W4/BF16-KV greedy c2/c4/c8. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, streams row-owned tokens through bounded queues, cancels or retires rows, and drains through runner close. The GGUF owner densifies only execution rows and selects c1/c2/c4/c8 from occupancy while request/session/KV identity stays stable; both gfx11 owners are retained for BF16, and gfx1100 additionally has a measured short mirrored-INT8 staggered c1->c4 lifecycle. PARO uses a fixed-capacity stable-slot session, profile-partitions c3/c5/c6/c7 into certified widths, and defaults native c2/c4/c8 on gfx1151. gfx1100 PARO owner symmetry and broader sampling/KV/context remain open. Explicit short mirrored-INT8 requests preserve policy identity, exact outputs, reclaim, and fail-closed unsupported layouts, but do not broaden the default or prove compact INT8. Direct no-mirror c2/c4 residency now has the `IKV-C1` physical-c1 serial correctness anchor; native row-batched attention and full promotion remain the separate `IKV-C2`-`IKV-C7` work. |
+| Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx11 GGUF OpenAI paths and for gfx1151 PARO W4/BF16-KV greedy c2/c4/c8. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, streams row-owned tokens through bounded queues, cancels or retires rows, and drains through runner close. The GGUF owner densifies only execution rows and selects c1/c2/c4/c8 from occupancy while request/session/KV identity stays stable; both gfx11 owners are retained for BF16, and gfx1100 additionally has a measured short mirrored-INT8 staggered c1->c4 lifecycle. PARO uses a fixed-capacity stable-slot session, profile-partitions c3/c5/c6/c7 into certified widths, and defaults native c2/c4/c8 on gfx1151. gfx1100 PARO owner symmetry and broader sampling/KV/context remain open. Explicit short mirrored-INT8 requests preserve policy identity, exact outputs, reclaim, and fail-closed unsupported layouts, but do not broaden the default or prove compact INT8. Direct no-mirror c2/c4 residency now has the `IKV-C1` physical-c1 serial correctness anchor; native row-batched attention is complete and promoted to physical c4 (2026-09-11), leaving the separate `IKV-C3`-`IKV-C7` work. |
 | Is exact Qwen3.8 Q4_K_M public MTP wired into generation? | Yes. [`QWEN38-Q4KM-MTP-SERVING.md`](QWEN38-Q4KM-MTP-SERVING.md) and the completed [`Dynamic Admission campaign`](CONCURRENCY2-GFX1151-MTP-DYNAMIC-ADMISSION.md) remain the serving foundation. Strict/BF16 C1/K3/context1-67 natural25 remains automatic at **18.191 vs 11.062 tok/s (1.6445x)**. The reviewed current-head all-ten explicit K3 matrix is C1-C8 **15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 tok/s** versus own AR **11.112/18.090/23.879/30.150/35.778/40.343/43.974/47.194**; all 80 generated-ID/route/budget cells pass. AR leads every external engine C3-C8 and explicit K3 leads MTP C3-C4. NextN draft depth is serial but batch-shaped; C2-C4 and qualified explicit C8 target verification use one flattened packed forward, active C1 uses the request-local transactional verifier, production C5-C7 stays on AR, and qualified C8 uses one physical proposal group with one R32 target group. A reviewed full-width K1 diagnostic finds real row-bucket candidates at C6/R12 (**35.383, +7.85% vs split K3**) and C8/R16 (**39.260, +10.83%**), but both remain below own AR and are not admitted by the profile policy. Exact prompt streaming, proposal-head reuse, and Q4/Q5/Q6 owners remain scoped; width-4 prompt streaming changes acceptance and therefore remains explicit T3 rather than automatic. The retained active-C1 target at `b58a70c82` keeps the wide physical provider but selects the request-local transactional verifier when exactly one request is active: capacity-3 C1 is **19.428 tok/s versus 11.518 AR (1.6868x)** with 10/10 AR equality, while C3 stays packed at **32.919 tok/s** with unchanged acceptance and equality. The profile-owned production policy preserves C1-C4/K1-K3 and admits explicit C8/K3 while C5-C7 stay K0; the current ten-prompt C8 rerun is 52.103 versus 52.025 true-AR tok/s (1.0015x), and its cancellation/refill lifecycle is exact and fully drained. Unqualified context, horizon, and sampling axes remain K0, and strict fallback remains registered. The closed [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md), [C1 retention](../benchmarks/results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json), and [external survey](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md) own the current evidence and remaining C=N/prefill work. |
 | Is current SpecDec wired into generation? | Yes. Generation-2 owns proposal, target frontier, transaction, accept/commit, output, cancellation, and K0 policy. On gfx1100, dense C1 K1-K3 remains 1.272x/1.407x/1.439x AR and packed PARO C1 is exact; physical C2 target repair plus the exact R6 projection route reaches 22.393 tok/s (0.7156x AR) at 74.28% acceptance, so physical capability remains false. On gfx1151 Q4_K_S, the fixed capacity-1 production C1/K2 path reaches 1.4087x AR, but normal capacity-4 serving executes zero speculative cycles; best physical C2/C4 remains 0.6975x/0.5843x AR. The generic gfx1100/gfx1151 campaign automatic policies stay K0. The exact Q4_K_M public-serving scope is tracked separately above. The next premises are a materially cheaper physical target dataflow and true singleton staged engagement under a normal wider server owner, not more acceptance tuning. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
@@ -608,8 +649,9 @@ Current blockers that keep project-wide c>N incomplete:
   continuous ownership at c1/c2/c4/c8 with exact API/quality/reclaim evidence.
   gfx1100 independently passes staggered short mirrored c1->c4 admission/reclaim
   with exact outputs and zero final ownership. Both remain memory-negative;
-  longer c>N INT8, tail4, direct/no-mirror INT8 attention, and artifact/backend
-  capability admission are the independent `IKV-C0`-`IKV-C7` gates.
+  longer c>N INT8, tail4, and artifact/backend capability admission are the
+  independent `IKV-C3`-`IKV-C7` gates; direct/no-mirror INT8 attention
+  (`IKV-C2`) is complete and promoted to physical c4.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
@@ -1572,7 +1614,7 @@ hipengine/
 │   ├── test_moe_correctness.py
 │   ├── test_quantization.py
 │   ├── test_prefix_cache.py
-│   └── test_kernel_registry.py  # All (backend, layer, quant) keys resolve
+│   └── test_unit_kernel_registry.py  # All (backend, layer, quant) keys resolve
 ├── scripts/
 │   ├── install_rocm.sh
 │   ├── audit_kernels.sh         # rocprofv3 wrapper
@@ -4257,6 +4299,15 @@ These are deliberately deferred. Each has a `rocprofv3` or benchmarking prerequi
 | DMS scheduler interaction with RadixCache prefix overlays | FastDMS disables prefix caching entirely; can we do per-sequence eviction overlays on shared prefix blocks? | Phase 4+ |
 
 ## Evidence Policy
+
+Native C1 context support is distinct from public serving admission. On
+gfx1100, dense H5120 Q4_K_M with BF16 KV and FP32 recurrent state uses actual
+cache capacity rather than the historical 95-position workaround. Native
+verification preserves initial Conv/GDN snapshots on scalarized long-context
+rows; graph admission checks actual capacity and topology, independently of
+bulk-prefill metadata thresholds. Exact target checks cover 4K, 8K and 16K on
+RX 7900 XTX. These measured points are regression coverage, not numeric
+ceilings; unrelated model/quant/state dispatch and serving keys are unchanged.
 
 Every performance claim in hipEngine must include:
 - **Model**: exact checkpoint name, immutable revision, and content fingerprint

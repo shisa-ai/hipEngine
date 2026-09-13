@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_rx7900xtx_dms_concurrency_ladder",
+  "date": "2026-09-07",
+  "host": "7900 XTX (gfx1100), GPU1, PCI 0000:10:00.0",
+  "performance_claim": false,
+  "fix": {
+    "change": "per-step DMS decode-owner routing: Qwen35GGUFResidentSession.step()/step_async_top1() now claim (DMS session) or clear (dense session) the shared runner's _dms_decode_owner marker at each decode entry; previously the marker was set once at prefill finalize so the last-prefilled session permanently owned decode routing",
+    "red_evidence": "pre-fix C2@16384: both prefills pass, first decode step of either session raises 'DMS direct append device/host live-count mismatch' (0 decode rows survive); repro preserved in scripts/qwen38_dms_concurrency_probe.py",
+    "tests": "tests/test_qwen38_dms_decode_owner_routing.py (6 unit cases, marker semantics); focused bundle 124 passed incl. test_kvcache_dms.py",
+    "regression": "post-fix single-session 768-token quality suite: status passed, per-category max KL/top-1 identical to the pre-fix run (code 0.0059 / general_en 0.00048 / general_ja 0.000949 / mixed 0.000243, top-1 1.0)"
+  },
+  "protocol": "scripts/qwen38_dms_concurrency_probe.py: N simultaneous trained-DMS resident sessions on one shared Qwen35GGUFFullStackRunner, disjoint validation-stream prompt slices, sequential prefills, round-robin interleaved decode, backend hip_gfx1100, XTX manifest sha 9b8dacd9111ddf5b (not train-disjoint)",
+  "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions {N} --prompt-tokens {W} --decode-steps 4 --backend hip_gfx1100",
+  "passes": [
+    {
+      "case": "C2@16384-post-fix",
+      "sessions": 2,
+      "prompt_tokens_each": 16384,
+      "status": "passed",
+      "decode_rows": 8,
+      "finite_logits": true,
+      "per_session_live": [
+        12293,
+        12293
+      ],
+      "post_prefill_all_MiB": 19553.4,
+      "after_close_MiB": 0.0,
+      "close_errors": []
+    },
+    {
+      "case": "C4@16384-post-fix",
+      "sessions": 4,
+      "prompt_tokens_each": 16384,
+      "status": "passed",
+      "decode_rows": 16,
+      "finite_logits": true,
+      "per_session_live": [
+        12293,
+        12293,
+        12293,
+        12293
+      ],
+      "post_prefill_all_MiB": 21788.4,
+      "after_close_MiB": 0.0,
+      "close_errors": []
+    },
+    {
+      "case": "C8@4096-post-fix",
+      "sessions": 8,
+      "prompt_tokens_each": 4096,
+      "status": "passed",
+      "decode_rows": 32,
+      "finite_logits": true,
+      "per_session_live": [
+        4100,
+        4100,
+        4100,
+        4100,
+        4100,
+        4100,
+        4100,
+        4100
+      ],
+      "post_prefill_all_MiB": 21938.3,
+      "after_close_MiB": 0.0,
+      "close_errors": []
+    }
+  ],
+  "failures": [
+    {
+      "case": "C8@16384",
+      "result": "HIP error 2 out of memory",
+      "stage": "compact backend allocation (create_dms_bf16_backend) during the 8th prefill finalize: 7 live compact payloads + dense prefill owner exceed the 24 GB card",
+      "classification": "memory boundary (pack-time coexistence, same mechanism as the C1 ladder), not a routing blocker"
+    },
+    {
+      "case": "C8@8192",
+      "result": "HIP error 2 out of memory",
+      "stage": "compact backend device slot allocation (dms_device.py:287) during a later prefill finalize",
+      "classification": "memory boundary (pack-time coexistence)"
+    },
+    {
+      "case": "C8@4096",
+      "result": "passes (21,938 MiB post-prefill-all)",
+      "classification": "routing proven to scale to C8; width bound by card memory"
+    }
+  ],
+  "boundary_summary": "routing fix proven at C2 and C4 (16,384 tokens/session) and C8 (4,096 tokens/session); concurrent width is bounded by pack-time dense-owner + compact-payload coexistence, not by routing",
+  "limitations": [
+    "diagnostic capacity evidence; no throughput claim (decode step seconds recorded in raw JSONs)",
+    "eviction above-window at 16,384/session (ratio 1.3331 per session); 4,096 and 8,192 sessions are window-protected (no eviction)",
+    "manifest not train-disjoint (same caveat as all XTX DMS runs this campaign)",
+    "step_async_top1/packed and MTP-combination paths are out of scope; DMS+MTP remains a separate recorded blocker"
+  ]
+}

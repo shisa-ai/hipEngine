@@ -7,7 +7,7 @@ BF16 owner on actual Qwen3.8 weights at the production row counts. The dp4a
 arm includes the q8_1 quantize launch. Arms differ in arithmetic (integer
 dp4a decode vs BF16 decode); outputs are compared informationally (mismatch,
 KL), not gated on exactness. Kernel-level oracle/floor/determinism contracts
-live in tests/test_gguf_q6_k_t16_planar_q8_1_grouped_gemv.py.
+live in tests/test_gpu_gguf_q6_k_t16_planar_q8_1_grouped_gemv.py.
 """
 from __future__ import annotations
 
@@ -252,7 +252,7 @@ def main() -> int:
         "dp4a_wins": dp4a_wins,
         "results": results,
         "timing": "HIP events, counterbalanced bursts; dp4a arm includes the q8_1 quantize launch",
-        "note": "changed-arithmetic screen (informational KL, no exactness gate); kernel-level oracle/floor/determinism contracts in tests/test_gguf_q6_k_t16_planar_q8_1_grouped_gemv.py",
+        "note": "changed-arithmetic screen (informational KL, no exactness gate); kernel-level oracle/floor/determinism contracts in tests/test_gpu_gguf_q6_k_t16_planar_q8_1_grouped_gemv.py",
     }
     with open(args.output, "w") as handle:
         json.dump(payload, handle, indent=1)

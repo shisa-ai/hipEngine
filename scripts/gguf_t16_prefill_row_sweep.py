@@ -84,7 +84,7 @@ def _tile16_payload(out_features: int, in_features: int, seed: int) -> np.ndarra
     measured ~18 GB/s that way), so every arm consumes
     ``repack_gguf_q4_k_tile16`` output over a valid Q4_K block image. Bit
     exactness against the raw-Q4_K CPU dequantization stays covered by
-    ``tests/test_gguf_q4_k_wmma_prefill.py``.
+    ``tests/test_gpu_gguf_q4_k_wmma_prefill.py``.
     """
 
     from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16

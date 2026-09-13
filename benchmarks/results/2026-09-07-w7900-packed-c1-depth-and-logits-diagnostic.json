@@ -1,0 +1,755 @@
+{
+  "schema": 1,
+  "kind": "packed_c1_depth_and_conditional_logits_diagnostic",
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "base_commit": "ad029b422",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "scope": "Native packed C1 K1/K2 at N1/2/8; canonical ten-prompt suite with pre-existing heldout partitions; D24 greedy, 1024 sequence limit, 20ms batch window; legacy target forbidden",
+  "depth_diagnostics": [
+    {
+      "capacity": 1,
+      "budget": 1,
+      "prompts_passed": 10,
+      "packed_calls": 115,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 1 --budget 1 --output /tmp/packed-c1-n1-k1.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        }
+      ]
+    },
+    {
+      "capacity": 1,
+      "budget": 2,
+      "prompts_passed": 10,
+      "packed_calls": 83,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 1 --budget 2 --output /tmp/packed-c1-n1-k2.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        }
+      ]
+    },
+    {
+      "capacity": 2,
+      "budget": 1,
+      "prompts_passed": 10,
+      "packed_calls": 115,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 2 --budget 1 --output /tmp/packed-c1-n2-k1.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        }
+      ]
+    },
+    {
+      "capacity": 2,
+      "budget": 2,
+      "prompts_passed": 10,
+      "packed_calls": 83,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 2 --budget 2 --output /tmp/packed-c1-n2-k2.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        }
+      ]
+    },
+    {
+      "capacity": 8,
+      "budget": 1,
+      "prompts_passed": 10,
+      "packed_calls": 115,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 8 --budget 1 --output /tmp/packed-c1-n8-k1.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        }
+      ]
+    },
+    {
+      "capacity": 8,
+      "budget": 2,
+      "prompts_passed": 10,
+      "packed_calls": 83,
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 8 --budget 2 --output /tmp/packed-c1-n8-k2.json",
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        }
+      ]
+    }
+  ],
+  "conditional_logit_diagnostic": {
+    "status": "passed_diagnostic_only",
+    "commands": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-logits-n1k3 --capacity 1 --budget 3",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py reference --directory /tmp/packed-c1-logits-n1k3 --output /tmp/packed-c1-conditional-numerics.json"
+    ],
+    "raw_directory": "/tmp/packed-c1-logits-n1k3",
+    "raw_comparison": "/tmp/packed-c1-conditional-numerics.json",
+    "cycles": 70,
+    "active_rows": 267,
+    "logical_and_padded_rows": [
+      [
+        2,
+        6
+      ],
+      [
+        3,
+        6
+      ],
+      [
+        4,
+        6
+      ]
+    ],
+    "head_paths": [
+      "q6_rowtile_f32_logits"
+    ],
+    "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+    "candidate_manifests": [
+      "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+    ],
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02
+    },
+    "scopes": {
+      "all": {
+        "rows": 267,
+        "mean_kl": 4.560545613692239e-05,
+        "p95_kl": 0.0002225346989433428,
+        "p99_kl": 0.0008435224997504938,
+        "max_kl": 0.0016013557709642578,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 2.0083346366882324,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "category:code": {
+        "rows": 103,
+        "mean_kl": 8.156687887959635e-05,
+        "p95_kl": 0.0005874104839675963,
+        "p99_kl": 0.0011813096721157094,
+        "max_kl": 0.0016013557709642578,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 2.0083346366882324,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:code_merge_intervals": {
+        "rows": 26,
+        "mean_kl": 8.936233699559961e-05,
+        "p95_kl": 0.0006695708479997226,
+        "p99_kl": 0.0009135861421546473,
+        "max_kl": 0.0009563078753279091,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.572509765625,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:code_topological_sort": {
+        "rows": 28,
+        "mean_kl": 7.156441362187924e-05,
+        "p95_kl": 0.0002938752645194875,
+        "p99_kl": 0.0009641684850947706,
+        "max_kl": 0.001185901545519541,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.50157630443573,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:code_lru_cache": {
+        "rows": 26,
+        "mean_kl": 7.783389379414312e-05,
+        "p95_kl": 0.0001491210707362816,
+        "p99_kl": 0.0012433775005621125,
+        "max_kl": 0.0016013557709642578,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.6143569946289062,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:code_markdown_table": {
+        "rows": 23,
+        "mean_kl": 8.915143228923888e-05,
+        "p95_kl": 0.0005874104839675974,
+        "p99_kl": 0.0006871685293667947,
+        "max_kl": 0.0007111651736197069,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 2.0083346366882324,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "category:general_en": {
+        "rows": 51,
+        "mean_kl": 2.479022486166714e-05,
+        "p95_kl": 0.00010648042932231058,
+        "p99_kl": 0.00018870810279575376,
+        "max_kl": 0.00024267570348641658,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.4506359100341797,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:general_en_plan": {
+        "rows": 24,
+        "mean_kl": 9.446783258961963e-06,
+        "p95_kl": 5.510540839427757e-05,
+        "p99_kl": 6.523880100751051e-05,
+        "max_kl": 6.693497219871404e-05,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.4506359100341797,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:general_en_explain": {
+        "rows": 27,
+        "mean_kl": 3.842883961962731e-05,
+        "p95_kl": 0.00012765606737581532,
+        "p99_kl": 0.00021461255112727173,
+        "max_kl": 0.00024267570348641658,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.3960265517234802,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "category:general_ja": {
+        "rows": 61,
+        "mean_kl": 2.8517256540586265e-05,
+        "p95_kl": 9.227424418975653e-05,
+        "p99_kl": 0.0003969304996756019,
+        "max_kl": 0.0006508824045977583,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.34306764602661133,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:general_ja_plan": {
+        "rows": 30,
+        "mean_kl": 4.4257365522664416e-05,
+        "p95_kl": 0.00021998743355126514,
+        "p99_kl": 0.0005281389838853834,
+        "max_kl": 0.0006508824045977583,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.34306764602661133,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:general_ja_explain": {
+        "rows": 31,
+        "mean_kl": 1.3284893009542905e-05,
+        "p95_kl": 5.5366850799235315e-05,
+        "p99_kl": 8.369384303592986e-05,
+        "max_kl": 9.227424418975653e-05,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.24790525436401367,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "category:mixed_ja_en": {
+        "rows": 52,
+        "mean_kl": 1.4834887443058991e-05,
+        "p95_kl": 8.904043467958546e-05,
+        "p99_kl": 0.00019253596314569127,
+        "max_kl": 0.00023960836048863613,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.4689464569091797,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:mixed_ja_en_translate": {
+        "rows": 26,
+        "mean_kl": 1.0800473118624053e-05,
+        "p95_kl": 5.9343635976579475e-05,
+        "p99_kl": 0.00012870159292379413,
+        "max_kl": 0.00014730954216913604,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.4689464569091797,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      },
+      "prompt:mixed_ja_en_review": {
+        "rows": 26,
+        "mean_kl": 1.8869301767493926e-05,
+        "p95_kl": 9.851263039430735e-05,
+        "p99_kl": 0.00020630780207228763,
+        "max_kl": 0.00023960836048863613,
+        "top1": 1.0,
+        "review_rows": [],
+        "review_details": [],
+        "max_abs_logit_delta": 0.45417022705078125,
+        "numerical_envelope_passed": true,
+        "full_profile_qualification": false
+      }
+    },
+    "numerical_envelope_passed": true,
+    "full_profile_qualification": false,
+    "limitations": [
+      "Actual candidate trajectories, not strict-teacher-driven schedule",
+      "Only N1 K3; no deterministic repeats in this unit",
+      "Not component-state, lifecycle, task or BF16-relative qualification"
+    ],
+    "repair": "Initial reference failed on scalar API logits shaped (1,vocab); added RED then normalized only singleton row dimension. Reused successful capture; reran reference only."
+  },
+  "decision": "No public admission; automatic K0. Independent state, deterministic repeat, lifecycle, task and deeper-depth qualification remain open.",
+  "validation": {
+    "focused_command": ".venv/bin/python -m pytest -o addopts=\"\" -q tests/test_qwen38_packed_c1_logits.py",
+    "focused_result": "20 passed",
+    "related_route_file": "33 passed before final reference-shape-only repair",
+    "red": "Absent capture module; absent strict-replay helper; real scalar logit shape RED 1 failed,1 passed",
+    "source": "ad029b422 plus new diagnostic harness/tests committed with this artifact; no production/kernel changes"
+  }
+}

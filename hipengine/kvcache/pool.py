@@ -406,6 +406,8 @@ class DeviceKVPoolStats:
     prefix_reused_pages: int
     cow_fork_events: int
     cow_forked_pages: int
+    retired_pages: int = 0
+    retired_bytes: int = 0
 
     def to_json_dict(self) -> dict[str, int]:
         return {
@@ -423,6 +425,8 @@ class DeviceKVPoolStats:
             "prefix_reused_pages": self.prefix_reused_pages,
             "cow_fork_events": self.cow_fork_events,
             "cow_forked_pages": self.cow_forked_pages,
+            "retired_pages": self.retired_pages,
+            "retired_bytes": self.retired_bytes,
         }
 
 
@@ -492,6 +496,7 @@ class DeviceChunkedKVPool:
         self._grow_events = 0
         self._grow_failures = 0
         self._shrink_events = 0
+        self._retired_pages = 0
         self._prefix_reuse_events = 0
         self._prefix_reused_pages = 0
         self._cow_fork_events = 0
@@ -526,6 +531,8 @@ class DeviceChunkedKVPool:
             prefix_reused_pages=self._prefix_reused_pages,
             cow_fork_events=self._cow_fork_events,
             cow_forked_pages=self._cow_forked_pages,
+            retired_pages=self._retired_pages,
+            retired_bytes=self._retired_pages * self.page_bytes,
         )
 
     @property
@@ -782,6 +789,8 @@ class DeviceChunkedKVPool:
                 self._pin_counts.pop(block_id, None)
             freed_pages += tail.descriptor.pages
             self._shrink_events += 1
+        if freed_pages:
+            self._retired_pages += freed_pages
         return freed_pages
 
     def close(self) -> None:
@@ -794,6 +803,7 @@ class DeviceChunkedKVPool:
         while self._chunks:
             chunk = self._chunks.pop()
             self._free_chunk(chunk.backing)
+            self._retired_pages += chunk.descriptor.pages
         self._refcounts.clear()
         self._retained_refcounts.clear()
         self._pin_counts.clear()

@@ -1,0 +1,71 @@
+{
+  "kind": "prefill_route_parity",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_length": 4096,
+  "prompt_kind": "deterministic_varied_rng20260909",
+  "max_sequence_length": 16384,
+  "kv_storage": "int8_per_token_head",
+  "kv_scale_dtype": "fp32",
+  "use_wmma_prefill": true,
+  "use_gemv_decode": true,
+  "decode_tokens": 8,
+  "env": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": null,
+    "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": null,
+    "HIPENGINE_GGUF_PACKED_LAYER_OUTER": "1"
+  },
+  "arms": {
+    "scalar_bulk": {
+      "kv_attention_source": "int8_direct",
+      "lifetime_mode": "layer_outer_shared_oracle",
+      "executor_mode": "scalar_bulk",
+      "prefill_wall_seconds": 5.584,
+      "prefill_tok_s": 733.53,
+      "generated_ids": [
+        198,
+        197,
+        197,
+        92,
+        198,
+        197,
+        197,
+        92
+      ],
+      "tracked_peak_gib": 17.4986,
+      "logits_sha_head": 0.8592388033866882
+    },
+    "packed_slot_local": {
+      "kv_attention_source": "int8_direct",
+      "lifetime_mode": "layer_outer_shared_oracle",
+      "executor_mode": "layer_outer_packed",
+      "prefill_wall_seconds": 5.651,
+      "prefill_tok_s": 724.86,
+      "generated_ids": [
+        198,
+        197,
+        197,
+        92,
+        198,
+        197,
+        197,
+        92
+      ],
+      "tracked_peak_gib": 17.9533,
+      "logits_sha_head": 0.8592388033866882
+    }
+  },
+  "parity": {
+    "logit_max_abs_diff": 0.0,
+    "logit_mean_abs_diff": 0.0,
+    "bitwise_identical_logits": true,
+    "top1_match": true,
+    "generated_ids_match": true
+  },
+  "speed_ratio_scalar_over_packed": 1.012,
+  "entry_agreement_gate": {
+    "requested": true,
+    "generated_ids_match": true,
+    "top1_match": true,
+    "logit_max_abs_diff": 0.0
+  }
+}

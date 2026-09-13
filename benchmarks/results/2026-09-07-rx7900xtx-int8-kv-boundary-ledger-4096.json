@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "kind": "qwen38_xtx_allocation_ledger",
+  "created_at": "2026-09-06T21:08:38Z",
+  "performance_claim": false,
+  "diagnostic": true,
+  "config": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "kv_scale_granularity": "per_token_head",
+    "context_tokens": 4096,
+    "max_active_requests": 1,
+    "max_tokens": 16,
+    "run_request": true,
+    "speculative_mtp_serving": "off"
+  },
+  "device": {
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1"
+  },
+  "planned_weight_census": {
+    "logical_tensor_count": 851,
+    "alias_count": 0,
+    "source_nbytes": 16806250496,
+    "resident_nbytes": 17170958336,
+    "alternate_layout_nbytes": 0,
+    "issues": [],
+    "gguf_nextn_tensor_count": 4,
+    "gguf_nextn_source_nbytes": 55767040,
+    "gguf_file_bytes": 17106773984
+  },
+  "snapshots": {
+    "after_load": {
+      "pool_contract": "global_generation2",
+      "storage_view": {
+        "layout_key": "global-arbitrary-pages:g2",
+        "generation": 2,
+        "plane_count": 64,
+        "metadata_descriptor_bytes": 256
+      },
+      "dynamic_pool": {
+        "current_pages": 32,
+        "current_bytes": 272629760,
+        "high_water_observed_pages": 16,
+        "high_water_observed_bytes": 136314880,
+        "free_pages": 16,
+        "refcounted_pages": 16,
+        "pinned_pages": 16,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0
+      },
+      "packed_workspace_backing": null,
+      "packed_workspace_lease_pages": 16,
+      "tracked_allocator": {
+        "current_allocated_bytes": 18812570292,
+        "peak_allocated_bytes": 18812570292,
+        "total_allocated_bytes": 19083932652,
+        "total_freed_bytes": 271362360,
+        "active_allocations": 1213,
+        "peak_allocations": 1213
+      },
+      "hip_used_current_bytes": 19352518656,
+      "hip_used_peak_sampled_bytes": 19352518656,
+      "graph_invalidation_count": 0,
+      "large_allocations": {
+        "allocation_count": 35,
+        "total_bytes": 4220751872,
+        "largest_bytes": 1042944000,
+        "top_sizes": [
+          [
+            73113600,
+            32
+          ],
+          [
+            1042944000,
+            1
+          ],
+          [
+            715161600,
+            1
+          ],
+          [
+            123011072,
+            1
+          ]
+        ]
+      }
+    },
+    "after_load_sysfs_used_bytes": 19492569088,
+    "after_mtp_warmup": null,
+    "after_mtp_warmup_sysfs_used_bytes": null,
+    "after_request": {
+      "pool_contract": "global_generation2",
+      "storage_view": {
+        "layout_key": "global-arbitrary-pages:g2",
+        "generation": 2,
+        "plane_count": 64,
+        "metadata_descriptor_bytes": 256
+      },
+      "dynamic_pool": {
+        "current_pages": 32,
+        "current_bytes": 272629760,
+        "high_water_observed_pages": 31,
+        "high_water_observed_bytes": 264110080,
+        "free_pages": 16,
+        "refcounted_pages": 16,
+        "pinned_pages": 16,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0
+      },
+      "packed_workspace_backing": "pool_lease",
+      "packed_workspace_lease_pages": 16,
+      "tracked_allocator": {
+        "current_allocated_bytes": 19838018472,
+        "peak_allocated_bytes": 19871638440,
+        "total_allocated_bytes": 23203181604,
+        "total_freed_bytes": 3365163132,
+        "active_allocations": 1397,
+        "peak_allocations": 1400
+      },
+      "hip_used_current_bytes": 20461912064,
+      "hip_used_peak_sampled_bytes": 20461912064,
+      "graph_invalidation_count": 0,
+      "large_allocations": {
+        "allocation_count": 37,
+        "total_bytes": 4363358208,
+        "largest_bytes": 1042944000,
+        "top_sizes": [
+          [
+            73113600,
+            32
+          ],
+          [
+            1042944000,
+            1
+          ],
+          [
+            715161600,
+            1
+          ],
+          [
+            71303168,
+            2
+          ],
+          [
+            123011072,
+            1
+          ]
+        ]
+      }
+    },
+    "after_request_sysfs_used_bytes": 20575444992,
+    "request_sysfs_peak_bytes": 20607668224,
+    "kv_layout_audits": [
+      {
+        "pool_contract": "legacy_single_backing",
+        "pool_storage_layout": null,
+        "storage_dtype": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "int8_direct",
+        "request_pages": 0,
+        "request_capacity_tokens": 0,
+        "request_block_ids": [],
+        "one_backing_chunk": false,
+        "contiguous_in_backing": false,
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 0
+      }
+    ]
+  },
+  "mtp_warmup": null,
+  "request": {
+    "prompt_tokens": 3573,
+    "elapsed_s": 12.833,
+    "output_chars": 78,
+    "peak_live_large_allocations": {
+      "total_bytes": 4363358208,
+      "allocation_count": 37,
+      "largest_bytes": 1042944000,
+      "top_sizes": [
+        [
+          73113600,
+          32
+        ],
+        [
+          1042944000,
+          1
+        ],
+        [
+          715161600,
+          1
+        ],
+        [
+          71303168,
+          2
+        ],
+        [
+          123011072,
+          1
+        ]
+      ]
+    }
+  },
+  "metric_note": "tracked_allocator counts hipengine malloc/free bookkeeping; dynamic_pool is the shared KV pool's own accounting; sysfs is whole-card committed VRAM, which includes driver/runtime overhead the tracked allocator cannot see."
+}

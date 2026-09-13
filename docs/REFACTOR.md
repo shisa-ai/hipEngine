@@ -1,5 +1,80 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Dense Qwen35 execution-profile module names (architecture-scope rename)
+
+- Three profile modules are named after models but register architecture-scoped
+  plans: `hipengine/generation/qwen36_gguf_gfx1100_profiles.py` registers the
+  gfx1100 dense-qwen35 plan, `hipengine/generation/qwen38_gguf_profiles.py`
+  registers the gfx1151 dense-qwen35 plan, and
+  `hipengine/generation/qwen36_gguf_profiles.py` registers the gfx1151
+  MoE-qwen35 plan. Qwen3.6-27B and Qwen3.8-27B share
+  `QWEN35_DENSE_H5120_GEOMETRY` and the profile key
+  `(qwen3_5_gguf, backend, gguf_q4_k_m)`, so there is one dense plan per backend
+  and not one per model. The file names have already been re-reported once as a
+  cross-model defect.
+- Rename to `qwen35_dense_gfx1100_profiles.py`,
+  `qwen35_dense_gfx1151_profiles.py`, and `qwen35_moe_gfx1151_profiles.py`, and
+  drop the model-name constants from their docstrings. The rename is safe
+  whenever it is done; it must not change any `RuntimeProfileKey`, any
+  `VariantSelection`, or any binder env name, and it must not split the key per
+  model name.
+- See `docs/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
+  identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
+  composition each backend keeps.
+
+## `HIPENGINE_GGUF_PACKED_LAYER_OUTER` (promoted to default ON 2026-09-11)
+
+- The layer-outer packed AR prefill executor became the default after its packet
+  gates closed and the same-host promotion A/B passed: wall parity within a 1.5%
+  noise floor at 1,024/2,048/4,096/8,192 rows with identical generated IDs, and
+  0.438 GiB less tracked peak at every multi-chunk length. The server route
+  engages the resumable layer-outer prefill with zero fallbacks. Artifacts:
+  `benchmarks/results/2026-09-11-w7900-p3-promotion-ab-{chunkouter,layerouter}-{1024,2048,4096,8192}.json`
+  and `benchmarks/results/2026-09-11-w7900-p3-promotion-server-c1-{off,on}.json`.
+- `=0` selects the corrected chunk-outer executor. Removal condition: once the
+  chunk-outer executor has no remaining rollback or bisection value, delete the
+  flag, the `_gguf_packed_layer_outer_enabled` helper, and the chunk-outer
+  dispatch branch together, and keep the chunk-outer tests only as the decline
+  coverage the layer-outer path needs.
+
+## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
+
+- Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
+  of assumed unusable. The graph itself was never missing: it was gated by
+  `_resolve_decode_graph_min_replay_steps` (BF16 storage only) and by
+  `_decode_graph_kv_layout_admitted` (INT8 admitted only for
+  `tail4_hadamard_group32`), so the IKV-C2 production layout
+  (`int8_per_token_head` + uniform + `per_token_head` FP32 scales) always decoded
+  eagerly.
+- Measured on the W7900, 27B `Q4_K_M`, full 10-prompt mtp-bench category suite,
+  128 decode tokens: numerically exact (10/10 prompts, all 129 generated tokens
+  sha256-identical to eager) and non-regressive but small, -0.53% decode wall
+  with capture cost included and -2.48% replay-only. Artifacts:
+  `benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-{eager,replay}.json`.
+- Removal condition: the INT8 admission is kept behind this flag because its sign
+  depends on the decode horizon, and the shared eligibility floor does not encode
+  that. Measured on the full 10-prompt mtp-bench suite, 10/10 byte-identical every
+  time: at 128 decode tokens (the `pm4` transport) the graph is a real win - five
+  pairs, mean -0.73%, range -1.36% to -0.49%, 0.05 pp spread across the three
+  forward pairs, and a reversed-order control gives -1.08% graph-first versus
+  -0.50% graph-second, so the win is not an order artifact. At 64 tokens
+  (`hipgraph`) it is +0.81% / +0.68%, and at 32 tokens +1.36% / +1.40% - also
+  repeatable. The mechanism is transport economics, not replay overhead: capture
+  is ~82 ms per request under `pm4` and ~18 ms under `hipgraph`, while the replay
+  saves ~2.5% under `pm4` and is neutral under `hipgraph`. So the win exists
+  exactly where `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` already selects `pm4`
+  (>=128 replay steps for this geometry at one row).
+  To promote: add an INT8-specific capture-aware floor near 128 steps, or admit
+  the graph only when the resolved submission transport is `pm4`. The design
+  constraint is that the decode horizon is unknown at admission time, so a fixed
+  floor is the available lever. Then re-measure at 128 steps and promote to
+  default, keeping `=0` as rollback. If no floor mechanism is wanted, delete the
+  flag and the INT8 admission with it, since a default-on graph at a floor of 24
+  would regress every 24-127-step generation.
+  Note also that the earlier claim of a scalar-vs-packed floor inconsistency was
+  wrong and was corrected in
+  `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
+
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
 - Exact dequantized row-major sidecar with unchanged coltile8/row4
@@ -432,6 +507,52 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-08 Native C1 Context Admission
+
+- Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround
+  after the scratch lifetime and scalarized initial-state snapshot repairs. A provisional
+  geometry-scoped 256 cap was tested but is not retained: untested context
+  lengths are not presumed broken.
+- The backend cache-capacity policy is geometry/quant keyed and applies to BF16
+  KV with FP32 recurrent state. Other routes keep their existing dispatch:
+  the MoE control already fails strict full-logit equality at p8 under the old
+  policy. Resolve that model-route discrepancy separately before consolidating
+  the generic cap and cache-capacity policy.
+- Native graph admission owns allocated capacity, supported rows, kernel-family
+  transitions and split-workspace boundaries. Its private metadata producer is
+  independent of the bulk-prefill device-metadata threshold.
+- `strict_long_rows` in the native verifier currently scalarizes attention and
+  dense FFN beyond the split-K crossover to preserve exact scalar arithmetic.
+  This is an explicit execution path, not a disabled-context policy. Replace it
+  only when a faster row-batched path passes its declared exact/profile gates.
+- Public serving evidence still independently owns request/context/horizon
+  admission. Do not equate removal of a backend workaround with new automatic
+  serving keys. Keep eager/serial verification for legitimate unsupported
+  graph configurations and as the correctness oracle.
+
+## 2026-09-07 DMS codec evaluation bootstrap — open
+
+- `create_dms_int8_evaluation_backend` permits offline model measurement without
+  inventing a qualification record. Snapshots explicitly report
+  `codec_evaluation_only`; default resident/serving construction stays BF16.
+- `Qwen35GGUFResidentSession.dms_backend_factory` injects a codec factory without
+  codec-specific dispatch branches. The quality tools expose
+  `--codec int8_evaluation`, never a serving promotion switch.
+- Keep the evaluation factory only while it is needed to qualify new artifacts
+  or codecs. Consolidate it into a shared evaluator capability when one exists;
+  never replace its explicit unqualified status with fabricated passing scores.
+  Production INT8 construction continues to require artifact qualification.
+
+## 2026-09-07 DMS INT8 device correctness path — open
+
+- `dms_compact_int8.hip` uses ordered row-by-row pack and append compaction
+  with exact INT8 byte/scale moves. It is a correctness implementation, not
+  a tuned serving path; no model quality or speed claim follows from it.
+- Replace serialized row movement with a race-free tiled implementation after
+  the same codec, overflow, above-window, snapshot, and model gates pass.
+  Keep the CPU-reference oracle and BF16 fallback. Do not re-quantize moved
+  payloads or detach their scales from token positions.
+
 ## 2026-09-06 GGUF file-type stamp switches — open
 ## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
 
@@ -457,7 +578,7 @@ should be removed or collapsed.
   loss vs the production columnwarps `<4, 4>` owner at every shape >= 64 rows
   (+1.6% to +6.8%, bit-exact parity; rows=16 within noise) and stays a
   registered non-default strict variant with its exact-parity RED tests
-  (`tests/test_qwen4_exp_gdn_w32_prefill.py`). It is never selected by
+  (`tests/test_gpu_qwen4_exp_gdn_w32_prefill.py`). It is never selected by
   dispatch; the default remains columnwarps `<4, 4>`.
 - Remove the variant registration, the `<32, 4>` instantiation, the host
   wrapper, and the test file if a later campaign wants the registry back —
@@ -523,7 +644,7 @@ should be removed or collapsed.
   (expert, out_col) pair, weight row read once, consuming the existing
   `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
   restores the strict per-expert selected gemv. The bit-parity contract is
-  pinned by `tests/test_qwen4exp_pf1_forkb_selected_down.py`.
+  pinned by `tests/test_gpu_qwen4exp_pf1_forkb_selected_down.py`.
 - Promotion review resolved (2026-09-04): a committed one-process,
   one-residency ABBA gate measured the combined PF-1/PF-3 package at
   **+3.13%/+3.09%/+2.51% prefill** for p512/p1024/p4096, with all 12 cases
@@ -740,6 +861,18 @@ should be removed or collapsed.
 
 ## 2026-08-26 speculative-MTP default capability migration
 
+- September 12 gfx1151 dense Q4_K_M correction: the named production binder
+  now forces FP32 recurrent state after C1/packed D128 max-KL failures.
+  FP16 kernels and legacy Q4_K_S policy remain separate. Remove or replace
+  the unbounded FP16 experiment only after a geometry/profile/horizon-owned
+  storage plan passes the full long-horizon numerical and serving gates.
+  Do not re-enable it by copying the historical D24 verifier manifest.
+- Planar-Q6 integer-MMQ now requires explicit target-verifier workspace
+  admission. The historical `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` name is
+  misleading: it no longer authorizes ordinary AR prefill. Rename it with
+  compatibility handling when the verifier configuration is consolidated;
+  widen AR admission only after independent long-prefill/stateful gates.
+
 - The initial audit found two gfx1151 switches that choose behavior from the header
   (`general.file_type`) instead of the file's actual per-tensor format mix:
   `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
@@ -764,6 +897,22 @@ should be removed or collapsed.
   cold-path shared planner/capability interface supplies the report.
 - Analysis and the wider campaign this sits inside:
   [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
+
+## 2026-09-07 W7900 packed C1 target qualification — open
+
+- The physical-provider C1 route previously installed a legacy singleton
+  target during preparation. Review prevents that substitution; its old C1
+  rates are not packed-target evidence. Public C1 rows are withdrawn.
+- Keep the repaired route diagnostic-only until packed C1 K1-K7, native N=1,
+  N=2/8 slots/transitions, numerical/task, lifecycle and repeated-economics
+  gates pass. Then register exact evidence keys; do not restore old rows by
+  copying their legacy-target measurements.
+- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` remains a test-only admission aid,
+  not public safety evidence. Remove it and the runtime row-injection probe
+  after the matrix is qualified or the campaign is explicitly stopped.
+- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache
+  fields after lifecycle coverage proves the cleanup. Shared capacity is not
+  permission to widen Qwen3.6/gfx1151 public evidence.
 
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
@@ -1084,7 +1233,7 @@ fallback, active test oracle, or current research campaign consumes it.
 | RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |
 | RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
 | RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
-| RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_generation_batch_scheduler.py` is 28K lines; `test_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
+| RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
 
 ### Verified deletion queue
 
@@ -1447,11 +1596,17 @@ fallback count is not a success metric.
   and preserves the pre-profile package selection. That compatibility behavior
   is not a fourth named profile. `HIPENGINE_EXECUTION_PROFILE` is the sole
   environment adapter; explicit API/CLI values win.
-- Removal trigger: after P4 re-certifies or replaces every current non-exact
-  default, P7 passes the public-default SLO/c1 guard, API/server docs name the
-  default, and one release window confirms strict fallback and
-  batch-invariant behavior. Then remove omitted-profile legacy selection and
-  any duplicate env-to-profile adapter. Keep registered strict fallbacks.
+- 2026-09-12 (v0.5.0): an omitted profile now resolves to `production` for
+  every combination with a registered strict+production plan (seven at this
+  writing; the list is in `EXECUTION-PROFILES.md` §2.1). The named default, the
+  strict fallback, and the batch-invariant fallback are all reachable, and the
+  API/server docs name the default.
+- Removal trigger for the remaining legacy path: after P4 re-certifies or
+  replaces every current non-exact default so that every shipped
+  model/backend/quant has a registered plan, and one release window confirms
+  strict fallback and batch-invariant behavior. Then remove omitted-profile
+  legacy selection and any duplicate env-to-profile adapter. Keep registered
+  strict fallbacks.
 
 ## Generation-2 GGUF width-selection hardcoding
 
@@ -3161,7 +3316,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF dense Q8 dp4a sidecar | `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR` materialization sidecar plus `HIPENGINE_GGUF_DENSE_Q8_DP4A` / `--verify-dense-q8-dp4a` and `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL` / `--verify-dense-q8-dp4a-all`, routed by `_try_launch_dense_q8_pair_dp4a`, `_try_launch_dense_q8_single_dp4a`, and `_try_launch_dense_q8_triple_dp4a` for rows>1 verifier blocks. | Default-off. Added for the llama.cpp replication lane. The original route paid a q8_1 quantize launch plus two singleton dense Q8 GEMV launches and lost on B2 smoke; the rowtile-pair retry improved smoke/all-sync verifier timing but full-suite regressed **60.36 -> 59.42 tok/s**, cycle **16.587 -> 16.852 ms/output**, acceptance **0.583 -> 0.559**, target rows/output **1.250 -> 1.322**, and verifier drain **13.023 -> 13.093 ms/output**. The broader all-sidecar route adds raw singleton and Q/K/V triple wrappers and cuts the block profile dense-Q8 bucket **11.420 -> 8.902 ms/block** / kernel **26.053 -> 23.427 ms/block**; full-suite improves speed **60.36 -> 60.89 tok/s** and verifier drain **13.023 -> 12.742 ms/output**, but acceptance regresses **0.583 -> 0.567** and draft acceptance **0.700 -> 0.655**. Later retained lanes add Q8 shared dual, X8 draft lm-head, and F32 `ssm_out` on top of this all-sidecar base. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-{smoke,full}.json`, and earlier denseq8 rowtile-pair artifacts, WORKLOG 2026-07-01. | Keep only as part of the named accuracy-traded llama-compat route while parity work is active. Remove loose env/bench/suite variants after the current llama-compat audit unless a true llama-style Q8 layout/scheduler beats the active compat lane on the full suite, or unless the compat acceptance contract is explicitly changed. |
 | GGUF verifier F32 dense-Q8 dp4a diagnostic | `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` / `--verify-dense-q8-dp4a-f32` plus suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm{,-allsync}` route rows>1 direct-state F32 `ssm_out` through F32 q8_1 quantization plus the raw-Q8 dp4a singleton body. | Default-off globally; retained only for the accuracy-traded llama-compat lane. Isolated block profile moved host **32.470 -> 30.936 ms/block** and kernel **23.893 -> 22.881 ms/block**; same-session smoke moved **70.74 -> 71.43 tok/s** with identical acceptance; full-suite B2 moved **61.31 -> 63.63 tok/s**, cycle **16.331 -> 15.735 ms/output**, verifier drain **12.662 -> 12.158 ms/output**, acc/output **0.567 -> 0.578**, and target rows/output **1.299 -> 1.266**. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-f32ssm.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-{control-smoke,smoke,full}.json`, WORKLOG 2026-07-01. | Keep only as part of the named compat route while the safe verifier transaction gap is audited. Do not promote to exact default unless an exact/non-regressive replacement exists. Collapse this flag behind the final named compat route or remove it during post-compat cleanup if a later verifier rewrite supersedes direct F32 q8_1/raw-Q8 dp4a. |
 | GGUF verifier shared-Q8 dp4a diagnostic | `HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED` / `--verify-dense-q8-dp4a-shared` plus suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8{,-allsync}` route verifier shared-expert `ffn_gate_shexp`/`ffn_up_shexp`/`ffn_down_shexp` through the raw-Q8 q8_1/dp4a helpers. | Default-off and rejected on the then-active llama-compat B2 lane. Isolated block profile moved kernel time **23.893 -> 23.648 ms/block** and smoke improved **70.64 -> 71.66 tok/s**, cycle **14.181 -> 13.978 ms/output**, verifier drain **11.377 -> 11.183 ms/output** with identical smoke acceptance. Full-suite rejected it: then-active `denseq8all-x8top1` **61.31 tok/s**, cycle **16.331 ms/output**, acc/output **0.567**, target rows/output **1.299**, verifier **12.662 ms/output**; sharedq8 **59.63 tok/s**, cycle **16.793 ms/output**, acc/output **0.556**, target rows/output **1.333**, verifier **13.038 ms/output**. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-{refresh,sharedq8}.json` and `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-{control-smoke,smoke,full}.json`. | Remove the env/bench/suite route during post-compat flag cleanup unless a later fused shared-expert body or launch-collapsed shared route beats the active compat lane on the full suite with unchanged acceptance/economy. Do not promote this per-projection q8_1/dp4a shared path. |
-| GGUF resident MTP draft Q8 shared dual | `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` opt-out around the default-on raw-Q8 dual F32/F32 GEMV for resident draft shared gate/up projections. | Default-on. Added 2026-07-01 for the llama-compat lane and exact resident draft path. It is bit-exact vs two single `gguf_q8_0_gemv_f32_f32_out` launches (`tests/test_gguf_k_gemv.py::test_q8_0_dual_f32_matches_two_single_gemvs`). Draft rocprof A/B reduced `gguf_k_prefill_out` from 16 -> 12 calls/cycle and added `gguf_k_dual_prefill_out` 2 calls/cycle; same-session smoke improved **69.44 -> 70.20 tok/s** with identical acceptance, and full-suite llama-compat improved **60.96 -> 61.19 tok/s** with unchanged acceptance/economy. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-{control,dual}.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json`, WORKLOG 2026-07-01. | Remove the opt-out branch and make the dual call unconditional after the next full-suite default exact and semantic-safe llama-compat parity reruns stay non-regressive, unless a later draft rewrite supersedes the shared-expert path. |
+| GGUF resident MTP draft Q8 shared dual | `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` opt-out around the default-on raw-Q8 dual F32/F32 GEMV for resident draft shared gate/up projections. | Default-on. Added 2026-07-01 for the llama-compat lane and exact resident draft path. It is bit-exact vs two single `gguf_q8_0_gemv_f32_f32_out` launches (`tests/test_gpu_gguf_k_gemv.py::test_q8_0_dual_f32_matches_two_single_gemvs`). Draft rocprof A/B reduced `gguf_k_prefill_out` from 16 -> 12 calls/cycle and added `gguf_k_dual_prefill_out` 2 calls/cycle; same-session smoke improved **69.44 -> 70.20 tok/s** with identical acceptance, and full-suite llama-compat improved **60.96 -> 61.19 tok/s** with unchanged acceptance/economy. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-{control,dual}.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json`, WORKLOG 2026-07-01. | Remove the opt-out branch and make the dual call unconditional after the next full-suite default exact and semantic-safe llama-compat parity reruns stay non-regressive, unless a later draft rewrite supersedes the shared-expert path. |
 | GGUF resident MTP draft dense-Q8 dp4a stage selector | `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` plus `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES` / `--resident-mtp-draft-dense-q8-dp4a-stages` route resident draft F32 dense projections through F32->q8_1 plus raw-Q8 dp4a float-output wrappers by stage. | Default-off globally and retained only in the accuracy-traded llama-compat lane with `stages=draft`. The legacy all-stage route, including initial KV seeding stages, regressed full-suite B2 **64.41 -> 64.14 tok/s** with worse acc/output and target rows/output. The draft-only selector preserved row economy and moved the then-active unsafe direct-state compat row **74.39 -> 75.15 tok/s**, cycle **13.463 -> 13.325 ms/output**, and `draft_initial` **2.204 -> 2.066 ms/output** with unchanged acc/output **0.621**, draft acceptance **0.820**, and target rows/output **1.136**. That performance row is now superseded as an exact-state claim. The current llama-style directcommit replication row is **60.56 tok/s**, cycle **16.534 ms/output**, verifier drain **14.071 ms/output**, replay/commit **0.043 ms/output**, target rows/output **1.172**, and zero replay rows; the serial-state exact control remains **51.85 tok/s** / **19.308 ms/output**. Artifacts `benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-full.json`, `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`, `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-draftdenseq8-draftonly-gpuevents.json`, WORKLOG 2026-07-02. | Keep only as part of the named compat route while the llama-replication lane is under parity audit. Do not treat the unsafe 75.15 row as a cleanup/promote trigger. Collapse/remove the selector after the final compat route is settled or a verifier/draft rewrite supersedes this route. |
 | GGUF resident MTP draft Q6 top-1 X8 sidecar | `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8` / `--resident-mtp-draft-q6-top1-stage1-shape x8` plus suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1{,-allsync}` for an X8-packed Q6_K draft lm-head top-1 sidecar. | Default-off globally; retained only for the accuracy-traded llama-compat lane. It materializes `output.weight[:vocab]` into contiguous groups of eight GGUF Q6_K rows and routes the q8_1/dp4a top-1 stage1 through `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`. Correctness passes against the q8_1/Q6_K oracle. Same-session smoke improved **71.53 -> 71.76 tok/s** with identical acceptance; draft rocprof moved stage1 **3.603 -> 3.558 ms/cycle**; full-suite compat moved **61.19 -> 61.31 tok/s**, cycle **16.364 -> 16.331 ms/output**, and `draft_initial` **3.378 -> 3.352 ms/output** with unchanged acceptance/economy. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-{control-smoke,smoke,full}.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1.json`, WORKLOG 2026-07-01. | Keep only as part of the named llama-replication route while the safe verifier transaction gap remains under analysis. Remove/demote the X8 sidecar and route variants if a later fused draft lm-head/sampler or different Q6_K body/layout supersedes it, or if parity closure decides the accuracy-traded llama-compat lane should not retain separate draft lm-head sidecars. Do not promote to exact default without exactness/full-suite correctness evidence. |
 | GGUF selected-down X8 repack | `HIPENGINE_GGUF_SELECTED_X8_REPACK` materialization gate plus bench flag `--selected-down-x8-repack {off,q5,q6,both}` for Q5_K/Q6_K selected-down X8 q8_1/dp4a replacement layouts. | Default-off globally. Retained only for the accuracy-traded llama-compat B2 lane with `q6`; first-class suite route is `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`. Full suite **59.63 -> 60.36 tok/s**, `cycle_wall_ms_per_output` **16.793 -> 16.587**, and `target_block_verify_total` **13.178 -> 13.023 ms/output**. q5/both remains rejected for that route (`64.81 tok/s` smoke vs q6-only `69.03 tok/s`), so Q5_K selected-down stays on T16. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json`, `...x8q6-allsync-smoke.json`, route smoke `...x8q6-route-smoke.json`, and `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`. | Remove/demote q5/both materialization from performance paths unless a future full-suite route beats q6-only with unchanged acceptance. Do not promote to exact default without exactness/full-suite correctness evidence. Once the compat lane is final, consider collapsing the env gate behind the named route and leaving raw env use to tests/microbenches. |
@@ -5849,7 +6004,7 @@ gate is "does a win in two of six projections move the engine", not "can grouped
 > `resolve_gguf_linear_dispatch(weight, rows)` ignores every route preference - env and session session
 > flags alike - and picks purely by quant layout and row count: dense T16 uses `gemv_rowtile_n16` at
 > rows==1 and `t16_wmma_prefill_bf16_bf16_out` for every rows>1 (proven by
-> `tests/test_gguf_gemv_decode_dispatch.py::test_gguf_row_decode_preferences_do_not_override_the_t16_rowtile`,
+> `tests/test_unit_gguf_gemv_decode_dispatch.py::test_gguf_row_decode_preferences_do_not_override_the_t16_rowtile`,
 > which passes for all three env combinations). The Q4_K_T16 1536x1536 rows=1 probe arm therefore ran
 > `gemv_rowtile` on both sides: `--route packed-grouped` only swaps qkv/gate_up, and `gemv-prefill` only
 > differs at rows==1. A "full-GEMV prefill" arm is unreachable through the resolver; it needs the session
@@ -5930,7 +6085,7 @@ invalidate profile comparisons other lanes may be mid-run on.
 Status update (later 2026-08-30). Four of the eight now resolve: `gguf_mtp_verifier_rocprof.py` via
 8c59be6d8, and `gguf_continuous_owner_rocprof.py` / `gguf_decode_rocprof.py` / `gguf_packed_ar_rocprof.py`
 by this unit, each carrying an inline candidate list over `{sys.prefix, sys.base_prefix} x
-{_rocm_sdk_core, _rocm_sdk_devel}` plus `/opt/rocm`. `tests/test_scripts_roctx_sdk_discovery.py` pins
+{_rocm_sdk_core, _rocm_sdk_devel}` plus `/opt/rocm`. `tests/test_unit_scripts_roctx_sdk_discovery.py` pins
 all four against the installed SDK, so a regression to a prefix-only list fails a test rather than a
 profiling arm. This touched only discovery, not what any wrapper measures, and lanes that pass
 `--roctx-sdk` explicitly are unaffected - so no profile comparison is invalidated. One correction to
@@ -5957,7 +6112,7 @@ other means and were not touched.
   unregister therefore still propagates after ngram, batch-accept workspace, and target scratch cleanup;
   a runtime without `host_unregister` still drops every arena reference. The page-locked 4 MiB arena no
   longer leaks per adapter. CPU lifecycle coverage lives in
-  `tests/test_qwen35_gguf_mtp2_accept_staging.py` (registration failure, sticky-off, single registration,
+  `tests/test_unit_qwen35_gguf_mtp2_accept_staging.py` (registration failure, sticky-off, single registration,
   unregister-on-close, failure-safe remaining cleanup, missing-unregister release, no re-registration). Both runner call
   sites are teardown-only, so the latch cannot disable staging for a live session. Still neutral: this is
   lifecycle hygiene, not a rate win.
@@ -6143,6 +6298,157 @@ run justifies each:
   messages into one user block. Merge when multi-tool transcripts show
   degraded behavior.
 
+## 2026-09-06 HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS — screening-only env
+
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets `Qwen35GGUFMTP2Adapter`
+admit width/depth cells outside the backend's listed
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS` policy so the Qwen3.8 gfx1100
+better-MTP campaign (Packet 0) can measure explicitly unqualified cells.
+It is scoped to groups whose every request carries static eligibility with
+`automatic_eligible=false`, so automatic policy cannot widen and qualified
+Qwen3.6/gfx1151 routes are untouched; admission is recorded in
+`physical_width_contract()["last_screening_cell"]`. Remove this env, the
+`_physical_width_depth_admitted_for_group` screening branch, and its tests
+when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
+either has a qualified serving-evidence row or stays explicitly rejected.
+
+## 2026-09-07 Dual C1 target-route dispatch — singleton vs packed frontier
+
+`Qwen35GGUFMTP2Adapter` dispatches one-request C1 cycles to the legacy
+singleton target verifier (graph-captured, device-side acceptance,
+`_ensure_active_singleton_target_verifier`) and everything else (C2-C8 and
+packed-C1) to `_execute_target_frontier_batch` (eager, host accept sync).
+The 2026-09-07 stage-timing diagnostic
+(`benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json`)
+showed the packed C1 cycle costs ~88 ms versus the legacy graph replay's
+~48 ms for the identical 4-row frontier, entirely from eager launch overhead
+plus the ~57 ms/cycle host accept readback. The packed route can at best
+reach parity at C1 (same verify work; no batching advantage with one
+request), so the legacy singleton route is the correct C1 default and stays.
+When (and only when) the packed frontier path is graph-captured with
+device-side acceptance and re-measured at parity-or-better on the C1
+balanced-pair protocol, delete the singleton verifier dispatch branch and
+its graph-bucket preparation so one target route serves C1-C8. Until then
+this is a documented duplicate dispatch route, not dead code.
+
+## 2026-09-09 INT8 layer_outer hidden-plane alias — route-scoped gate pending promotion
+
+`HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` aliases the two full-capacity
+BF16 prefill hidden planes into one physical plane on the non-DMS
+pure-INT8 route whose lifetime plan resolved to
+`layer_outer_shared_oracle` (the direct-resident capacity route from the
+2026-09-08 engine comparison; two planes are 2.69 GB at 128K there).
+Promoted to default-ON 2026-09-09 with the route's own GPU evidence
+(synthetic 73,728 A/B: one-plane peak reduction with identical decode
+rate and tokens; real-prompt 8,192-token same-session A/B: byte-identical
+greedy IDs; capacity ladder 139,264/147,456/155,648 pass, 163,840 OOM).
+Env "0" is the explicit rollback. Fold this gate into the DMS
+`HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` decision (or remove whichever env
+becomes redundant) once both routes have carried their adopted evidence
+through a same-suite release cycle without a rollback invocation.
+
+
+## 2026-09-09 GGUF direct-INT8 prefill attention — speed fixed, numerics rejected, opt-in capacity lever
+
+`HIPENGINE_GGUF_INT8_PREFILL_DIRECT` ports the PARO route's
+`streaming_direct` structure to the GGUF resident INT8 layers: prefill
+attention reads the retained INT8 store directly (BF16-output kernel
+family), the BF16 oracle pair is never allocated, and the lifetime plan
+resolves to `chunk_outer_direct_int8` with chunk-sized hidden planes.
+
+Follow-ups to the original screen (which was speed-blocked at 164.2 tok/s
+and mis-baselined: the 761.6 oracle control requires the
+`--public-ar-profile` WMMA projection path):
+
+- **Speed**: the sequential kernel is superseded by the GQA-grouped flash
+  kernel `qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans`
+  (one block per (kv head, query row), one warp per q head of the
+  six-head group, 32-token K/V tiles cooperatively staged into LDS with
+  16-byte vector loads, online softmax in registers; no score workspace
+  or split-K partials at any context length; 24/4/256 geometry).
+  `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` selects flash (default) or
+  sequential. Harness A/B at 8,192 tokens: oracle 767.4 / direct+flash
+  552.5 tok/s (72%); the remaining 1.39x needs a WMMA score GEMM
+  (bf16 fragments are exact for int8 K and the already-BF16-rounded Q).
+- **Numerics**: the campaign REJECTED the route for default-on. Against
+  the BF16 reference at 4,096 tokens (no-mirror configuration): the
+  oracle route measures 0.003 mean row-KL; the direct route measures
+  0.215 (max 6.4, top-1 to 0.71) — 70x the smoke ceiling — identically
+  for the flash and sequential kernels, so the drift is the INT8-read
+  prefill arithmetic itself, not the kernel. The BF16 oracle pair is
+  what preserves prefill quality on the pure-INT8 route. The gate stays
+  default OFF permanently unless the read precision changes.
+- **Capacity**: the route remains an opt-in capacity lever with the
+  quality cost measured above; the flash kernel makes the ladder
+  practical (163,840 tokens completes; see the gate artifact).
+
+Related latent bug found and documented: the pre-existing
+`direct_hadamard_int8` GGUF branch is dead code whose fp16 output dtype
+also mismatches the BF16 `full_gated` consumer - it shares the fixed out
+type but remains unexercised; do not enable it without its own e2e gate.
+A second latent route bug fixed alongside: dense H5120 Q4_K_M auto
+full-attention chunks (4,096 rows below the 52K threshold) overflowed
+the 1,024-row scratch cap (positions-buffer copy error at 8K/16K
+prompts); both chunk resolutions now clamp to the row cap.
+
+## Slot-local INT8 oracle prefill AOTriton admission flag
+
+- Added 2026-09-09. `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` (default
+  OFF) admits AOTriton on slot-local full-attention prefill layers that own a
+  transient BF16 oracle. Before the flag, the `int8_direct` route hard-disabled
+  AOTriton for those layers (`allow_aotriton=not transient_direct_oracle`, added
+  by the compact-serial-c4 qualification `c2ca58171` with no recorded rationale),
+  leaving every server INT8 request above the 8,192-position mirror threshold on
+  the native split-K paged kernel at 16 query rows per batch. Measured on the
+  W7900 at 8,192 tokens: 44.31 -> 121.44 tok/s (2.74x), peak -24 MiB, generated
+  IDs unchanged. Default OFF is bit-identical to the pre-flag tree.
+- Removal trigger: run the production-profile numerics gate with strict = flag
+  off and candidate = flag on over the full mtp-bench category suite. On a pass,
+  make admission unconditional, delete the flag and the
+  `_gguf_slot_local_prefill_allow_aotriton` helper, and fold its tests into the
+  route's parity coverage. On a fail, keep the flag OFF and record the binding
+  threshold here.
+
+## Packed execution workspace doubles the declared-context page budget
+
+- Recorded 2026-09-09. `configure_engine_loop`
+  (`hipengine/generation/qwen35_gguf.py:5560-5592`) sizes the eager packed
+  workspace lease as `capacity * max(max_pages_per_request, 1024//256)`, so the
+  global KV arena is allocated at exactly **2x** the declared context: request
+  pages plus an equal pinned lease. Measured on the retained XTX audit
+  (`2026-09-07-rx7900xtx-int8-repair-capacity-audit.json`): pool pages are
+  126/256/384/424 for 63/128/192/212 request pages at 16,128/32,768/49,152/54,272
+  declared context, at 33,280 B/token, i.e. 32.5 KiB/token of duplicate budget on
+  INT8 and 64 KiB/token on BF16. The 4-point server peak fit is 99.4 KiB/token
+  against the direct engine's 33.6.
+- The lease is **not** simply over-reserved: although the packed verifier is
+  guarded to context < 1024 (`runtime/qwen35_gguf_runner.py:19907`) and slot-local
+  prefill never writes the packed KV planes (`copy_kv=not slot_local_full_prefill`),
+  `_sync_packed_decode_initial_state` (`runtime/qwen35_gguf_runner.py:25702-25713`)
+  copies the entire KV history into those planes on the prefill->decode
+  transition. Shrinking the lease alone converts a silent over-reservation into a
+  `RuntimeError` at long context.
+- Removal trigger: the CONCURRENCY2 task-5 follow-up already recorded in
+  `worklog/entries/20260818T121922.772662Z-lhl-concurrency2-task5-layout-rebind-c9eadd.md`
+  ("packed slots borrow the row's own lease pages; flush scatters only
+  conv/recurrent state"). Land that, then size the lease to
+  `capacity * (_PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)` and re-measure the server
+  single-request context ceiling, which is stale at 54,272 independently of this.
+
+## `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` — promoted, remove after soak
+
+- Promoted to default ON 2026-09-10 (see the capacity campaign doc and
+  `benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json`):
+  the slot-local transient-oracle AOTriton admission now matches the engine-wide
+  AOTriton default that the direct arm already runs. `=0` is the explicit
+  rollback to the native split-K paged kernel.
+- Removal trigger: once the parity roadmap P1/P2 follow-ups (server-faithful
+  allocation probe, R0-R4 matched walls) confirm the route with the default on
+  and no rollback demand is recorded, delete the flag and the
+  `transient_direct_oracle` gate term so slot-local admission is unconditional,
+  keeping the native kernel only as the sub-512-row crossover and the
+  AOTriton-wrap failure fallback.
+
 - [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.
 ## PF-1d MMQ tile template (2026-09-02)
 
@@ -6152,7 +6458,7 @@ run justifies each:
   Remove the template parameters (fold back to constants) if no second tile
   variant is admitted by the end of PF-1e. Measured losers m64x64 (0.89x) and
   m32n128 (0.35x) were removed after rejection; the cross-variant bit-parity
-  gate in `tests/test_qwen4exp_pf1_dense_parity.py` is the readmission path.
+  gate in `tests/test_gpu_qwen4exp_pf1_dense_parity.py` is the readmission path.
 
 ## Q8 MMQ `policy.planes` is variant-scoped (2026-09-03)
 
@@ -6188,7 +6494,7 @@ run justifies each:
   one-residency protocol.
 - The fused kernel and its registry entry
   (`KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", <quant>, "out")`)
-  stay bit-exact and pinned by `tests/test_qwen4_exp_pf4_lever2_fused_combine.py`.
+  stay bit-exact and pinned by `tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py`.
 - **Removal trigger:** repeat the whole-model comparison in one process and
   one model residency. Promote only if that run is exact and non-regressive;
   otherwise delete the fused kernel, its wrapper/registry entry, the
@@ -6313,3 +6619,111 @@ separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
 contract of record (see docs/MODEL-TIMESFM3.md).
+
+## 2026-09-12 PARO paged-attention backend pin - removal rejected
+
+`hipengine/runtime/qwen35_paro.py` sets
+`_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"` and passes it to
+`resolve_paged_kv_write`, `resolve_paged_attn_decode`, and
+`resolve_paged_attn_prefill`. The class docstring on
+`Qwen35ParoDecodeState` states the assumption explicitly ("Kernel selection
+still flows through the registry/wrappers added in the gfx1100 backend tree"),
+and PARO is a live gfx1151 lane.
+
+Consequence on gfx1151: PARO gets the gfx1100 body for every key it resolves.
+For `paged_attn_decode / w4_paro / bf16_context_batch_c1_exact_spans` that is
+visible, because `hipengine/kernels/hip_gfx1151/__init__.py` deliberately
+overrides that key to `..._fixed256_spans` ("Keep gfx1151 on the generic
+reduction, but pin its geometry to the c4/c8-proven 256-thread shape"). PARO
+therefore runs the c1-exact kernel on gfx1151 while every other gfx1151
+paged-attention caller runs the pinned generic reduction. The later same-host
+PARO comparison showed that this difference is load-bearing: resolving against
+gfx1151 diverged from independent c1 at decode token 25 of 137, twice, while
+the current pin and the per-row control both matched all 137 tokens. The
+generic override's GGUF qualification does not establish its correctness for
+this PARO route.
+
+Do not remove the pin as cleanup. Any replacement requires a separately
+qualified PARO route preserving its declared profile and ownership contracts.
+The open follow-up is to understand and separate the PARO and GGUF semantics
+sharing this registry key, not to substitute the session backend unconditionally.
+See the [upstream decision and reproduction protocol](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md).
+
+## 2026-09-12 GGUF automatic context sizing knobs
+
+`hipengine/generation/qwen35_gguf.py` added `HIPENGINE_GGUF_AUTO_CONTEXT`
+(default on), `HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`,
+`HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`,
+`HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB`, and
+`HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` for the automatic resident context
+selection.
+
+`HIPENGINE_GGUF_AUTO_CONTEXT` is the rollback for the behavior change and is
+kept until the automatic selection has a full benchmark cycle on the supported
+target models. Removal condition is that no bisection case remains where the
+fixed 256-token context is wanted. It also disables the allocation backoff, so
+the rollback restores the historical behavior completely rather than half of it.
+
+The other four are calibration overrides. `HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`
+and `HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` front measured values (the packed
+slot-local prefill route's live oracle and hidden owners, and its
+context-independent execution workspace, measured 2026-09-11 and documented at
+`_GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT`).
+`HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB` fronts a measured value too: the
+whole-card minus hipEngine-tracked difference on the W7900, 2.66 GiB, which is
+HIP context, JIT kernel modules, AOTriton, and pool pointer tables — all
+allocated after the free-memory reading the model prices against. Removal
+condition for these three: once the reserve and transient terms are expressed as
+named model terms rather than an override, delete the overrides and keep the
+calibrated constants. `HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` stays until the
+backoff has production mileage.
+
+An open accuracy item recorded in the `gguf-auto-context-sizing` worklog entries:
+the transient term is priced at a full-context worst case (4.22 GiB at the 27B's
+auto-selected context) against 0.30 GiB measured with a 43,011-token prompt, so
+the model is roughly 3.9 GiB conservative there. That conservatism is currently
+load-bearing — it is what kept the pre-fix 512 MiB reserve from turning into an
+OOM — so any attempt to tighten the transient term must re-derive the reserve at
+the same time.
+
+The `_auto_resolved_max_sequence_length` / `_auto_resolved_max_sequence_lengths` /
+`_auto_context_estimate` fields on `Qwen35GGUFBringupGenerator` exist only to feed
+the server's KVCache summary and `/ready` payload. If the reporting path ever
+reads the estimate from the session alone, drop the generator-side copies.
+
+## 2026-09-12 GGUF serving defaults: INT8 KV, fp32 scales, one slot
+
+The dense GGUF serving defaults changed so that a zero-flag `hipengine serve`
+reaches the context the INT8 KV work makes available. Three coupled defaults:
+`--kv-storage` is `int8_per_token_head` (was `auto`, which resolved to BF16),
+`--kv-scale-dtype` is `fp32` (was `fp16`), and
+`_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY` is `1` (was `4`).
+
+`HIPENGINE_KV_STORAGE`, `HIPENGINE_KV_SCALE_DTYPE`, and `--max-active-requests`
+are the rollbacks and are documented in `docs/API.md`; they are the supported
+tuning surface, not temporary flags, so no removal condition applies to them.
+
+The `scale_dtype` coupling is the one that needs watching. Qualification is keyed
+on the exact artifact SHA-256, size, backend, target, weight quant, layout, and
+scale dtype, so `fp16` scales build a key that matches no retained contract and
+INT8 fails closed to BF16 **without an error**: the server reports the requested
+storage while the estimator and the pool allocate BF16. That failure mode is
+silent by construction, because a fallback is a normal outcome. Two guards now
+exist: `test_server_defaults_match_the_qualified_int8_contract` asserts the CLI
+defaults key a registered `qualified` contract, and the KVCache summary line
+reports the effective storage. If a future artifact's evidence is keyed on a
+different scale dtype, that test fails rather than the context silently shrinking.
+
+`admission_gated_int8` in `hipengine/kvcache/policy.py` remains unused. It was
+the intended mechanism for "`auto` means INT8 when qualified", but the INT8
+capability gate lives only in `qwen35_gguf.py`, so routing `auto` through it would
+give the PARO route unqualified INT8 — the PARO call sites have no gate. The
+server therefore reaches INT8 through an explicit storage request instead. Either
+remove `admission_gated_int8` or give PARO a gate and use it; leaving it defined
+and unwired invites someone to wire it and silently break PARO.
+
+The KV policy comparison in `hipengine/server/api.py` now resolves the
+*effective* storage from the engine's capability provenance rather than
+re-resolving `config.kv_storage`. Before that, an artifact that failed closed to
+BF16 would reject an explicit BF16 request, because the comparison still believed
+the server was on INT8.

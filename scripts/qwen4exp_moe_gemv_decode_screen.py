@@ -41,7 +41,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
 )
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
 
 
 def hip_available() -> bool:

@@ -241,8 +241,8 @@ Once the standalone wrapper/test is green, integrate with Qwen3.5/PARO loading a
 hipengine/loading/qwen35_paro.py
 hipengine/runtime/qwen35_paro.py
 hipengine/runtime/qwen35_paro_runner.py
-tests/test_qwen35_paro_layout.py
-tests/test_qwen35_decode_state.py
+tests/test_unit_qwen35_paro_layout.py
+tests/test_unit_qwen35_decode_state.py
 ```
 
 Likely loading work:
@@ -377,7 +377,7 @@ hipEngine already has the pack8/fusedw4 side of the story:
 
 - `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip`
 - `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py`
-- `tests/test_paro_awq_gemv_plan.py`
+- `tests/test_unit_paro_awq_gemv_plan.py`
 - `hipengine/runtime/qwen35_paro.py` imports and calls pack8/fusedw4 wrappers.
 
 The Marlin-K port should fit beside these, not replace them wholesale. The parent retained route is a **hybrid**:

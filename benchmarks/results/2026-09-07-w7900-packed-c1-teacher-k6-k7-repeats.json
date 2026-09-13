@@ -1,0 +1,81 @@
+{
+  "kind": "packed_c1_fixed_teacher_repeat_diagnostic",
+  "host": "epyc",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "gpu_unique_id": "0xe282895b62c2b295",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "quant": "Q4_K_M",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "candidate_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+  "teacher_runtime_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+  "teacher_manifest_sha256": "1f2f6c18a94bcb46a952f64a4f299480e7649d803d15f88152731fe548e113cf",
+  "capacity": 1,
+  "decode_steps": 24,
+  "repeats_per_depth": 3,
+  "prompts": 18,
+  "decode_rows_per_repeat": 432,
+  "prefill_rows_per_repeat": 18,
+  "full_profile_qualification": false,
+  "performance_claim": false,
+  "automatic_selection": "K0",
+  "capture_command_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_teacher_run.py --teacher /tmp/packed-c1-strict-teacher-provenance-d24 --budget ${k} --directory /tmp/packed-c1-teacher-n1k${k}-repeat${r}",
+  "command_parameters": {"k": [6, 7], "r": [1, 2, 3]},
+  "audit_command_template": ".venv/bin/python scripts/qwen38_packed_c1_teacher_repeat.py --teacher /tmp/packed-c1-strict-teacher-provenance-d24 --capture /tmp/packed-c1-teacher-n1k${k}-repeat1 --capture /tmp/packed-c1-teacher-n1k${k}-repeat2 --capture /tmp/packed-c1-teacher-n1k${k}-repeat3 --output /tmp/packed-c1-k${k}-final-audit.json",
+  "depths": [
+    {
+      "budget": 6,
+      "bit_identical": true,
+      "window_rows_per_prompt": [7, 7, 7, 3],
+      "numerical_envelope_passed": true,
+      "calibrated_numerical_envelope_passed": true,
+      "calibrated_scopes_passed": {"decode": 15, "prefill": 15},
+      "decode": {
+        "mean_kl": 0.00005398182585967127,
+        "p95_kl": 0.00025643458079480536,
+        "p99_kl": 0.000780370321251721,
+        "max_kl": 0.0020432054703951696,
+        "top1": 1.0,
+        "review_rows": []
+      },
+      "capture_manifest_sha256": [
+        "f9a44237bbe7ff8392649b9395c22490d9690ddea94e107bd9d6bf1e062a95f9",
+        "642d603436368c969b16a94756670ae54af9c0b026ee7061b74b57ad6d57cdf5",
+        "71e1587e8481d733bc1f803211d35fdceb096378398b3bca8f430197d792a798"
+      ],
+      "audit_exit_code": 0,
+      "audit_sha256": "efee65ead91338c096dfdc2a68eb3d86f3f3a9e774998653cf96a1a200127e55"
+    },
+    {
+      "budget": 7,
+      "bit_identical": true,
+      "window_rows_per_prompt": [8, 8, 8],
+      "numerical_envelope_passed": false,
+      "calibrated_numerical_envelope_passed": true,
+      "calibrated_scopes_passed": {"decode": 15, "prefill": 15},
+      "decode": {
+        "mean_kl": 0.00005994959788959028,
+        "p95_kl": 0.00034824716056890343,
+        "p99_kl": 0.0010956058452060813,
+        "max_kl": 0.0016013557709642578,
+        "top1": 0.9976851851851852,
+        "review_rows": [],
+        "mixed_top1_equal_rows": [95, 96],
+        "heldout_mixed_top1_equal_rows": [47, 48]
+      },
+      "capture_manifest_sha256": [
+        "c4db58aae8e9169a4a00358dad6294db5cd6e7787ebf67f0fed8b9c041c21917",
+        "9dbde7c3d808b8f66b3dbabeace5ab1aa802eb3f7032f988bdea736a42113e17",
+        "0c24ddeaae82e1e1135e06860ffe2d83a149c82944affba771d227d3169bc142"
+      ],
+      "audit_exit_code": 1,
+      "audit_sha256": "b0487567cbd7eb0db951297e5bf5a2d0d15e88bcb085834f7900e7807c8eb31f"
+    }
+  ],
+  "limitations": [
+    "Target-only teacher windows with host-selected commits; no provider, lifecycle, task or service qualification.",
+    "K7 fails the conservative 99%-everywhere screen, not the normative 99% overall/97% per-scope production envelope.",
+    "Captures span reporting-only revisions a1064501f and 156b329fc; runtime code and variant manifests are unchanged. No clean-source performance claim."
+  ]
+}

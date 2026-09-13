@@ -756,7 +756,7 @@ Current status:
 Acceptance:
 
 - Existing AR-block-exclusion coverage is **extended**, not added:
-  `tests/test_qwen35_gguf_mtp_mapping.py` already proves AR tensor validation
+  `tests/test_live_qwen35_gguf_mtp_mapping.py` already proves AR tensor validation
   ignores MTP-only tensors. Scope new work to the missing/mis-shaped `nextn`
   validation path.
 - New tests prove MTP tensor validation fails on missing/mis-shaped **required**
@@ -1242,7 +1242,7 @@ is now answered by the M1 required/optional table.)
       `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
 - [x] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
       fallback table.
-- [x] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
+- [x] Extend `tests/test_live_qwen35_gguf_mtp_mapping.py` for MTP-block validation
       (missing/mis-shaped required, tolerated optional).
 - [x] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
       GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).

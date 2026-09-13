@@ -1,0 +1,433 @@
+"""PF-1 fork (b) RED gates: grouped selected Q8_0 down prefill candidate.
+
+Campaign context: docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.3
+fork (b) — a bit-exact (T0) faster dense kernel for the coltile/selected-served
+shapes. The declared candidate (worklog entry
+``20260903T234843.026834Z-lhl-pf-1-forkb-declaration-a7057c``) is a grouped
+selected down that serves every lane of one ``(expert, out_col)`` pair in a
+single block (weight row read once per pair instead of once per lane) while
+keeping, per output, the exact incumbent arithmetic:
+
+- per-thread ``k = tid; k += blockDim.x`` strided ordered-``fmaf`` accumulation
+- the wave32 ``__shfl_down`` reduce of ``reduce_block_sum``
+- the serial ``wave_sums[0..waves-1]`` publication by thread 0
+
+The registered strict fallback is ``selected_gemv_bf16_bf16_out``
+(``gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>``,
+block-per-output). Any candidate must be bit-identical to it on every tested
+shape before a runner wiring or whole-model A/B is admitted.
+"""
+
+from __future__ import annotations
+
+import ctypes
+
+import numpy as np
+import pytest
+
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    build_gguf_k_gemv,
+    gguf_q8_0_selected_gemv_bf16_bf16_out,
+)
+from hipengine.core.hip import get_hip_runtime
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+def _f32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    f32 = np.ascontiguousarray(values, dtype=np.float32)
+    bits = f32.view(np.uint32)
+    # Round-to-nearest-even BF16, matching scalar_to_float/round_to_bf16_float
+    # round trips used by the production chain fixtures.
+    rounded = ((bits + 0x7FFF + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
+    return rounded.astype(np.uint16)
+
+
+def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
+    return (np.ascontiguousarray(bits, dtype=np.uint16).astype(np.uint32) << 16).view(
+        np.float32
+    )
+
+
+def make_q8_0_weight_large(out_features: int, in_features: int) -> np.ndarray:
+    """Vectorized Q8_0 weight fixture for large ``out_features``."""
+    block = 32
+    blocks = in_features // block
+    rng = np.random.default_rng(2026_09_04 + out_features)
+    scales = (rng.random((out_features, blocks)).astype(np.float32) * 0.05 + 0.01).astype(
+        np.float16
+    )
+    qs = rng.integers(-128, 128, size=(out_features, blocks, block), dtype=np.int8)
+    scales_u16 = scales.view(np.uint16)
+    scale_bytes = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)
+    layout = np.zeros((out_features, blocks, 34), dtype=np.uint8)
+    layout[:, :, 0] = scale_bytes[:, :, 0]
+    layout[:, :, 1] = scale_bytes[:, :, 1]
+    layout[:, :, 2:34] = qs.view(np.uint8)
+    return np.ascontiguousarray(layout.reshape(out_features, blocks * 34))
+
+
+def _build_group_map(
+    selected: np.ndarray, num_experts: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Host-side per-expert group map: exclusive starts + sorted lane->row."""
+    counts = np.bincount(selected, minlength=num_experts)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    np.cumsum(counts, out=starts[1:])
+    order = np.argsort(selected, kind="stable").astype(np.int64)
+    return starts, order
+
+
+def test_q8_grouped_row4_registry():
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv
+    register_gfx1151_kernels(replace=True)
+    assert resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
+                   variant="selected_grouped_row4_gemv_bf16_bf16_out") is (
+        gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)
+    assert resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
+                   variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out") is (
+        gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("threads", [64, 128, 256])
+@pytest.mark.parametrize("bundle", [False, True])
+def test_q8_row4_compact_tails_and_cpu_reference(threads, bundle):
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv
+    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+    from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _upload, _download
+    counts = np.array([0, 1, 3, 9, 4], dtype=np.int64)
+    starts = np.concatenate(([0], counts.cumsum()))
+    rows, experts, k, n = 17, 5, 640, 7
+    x = _f32_to_bf16_bits(np.random.default_rng(9921).normal(0, .2, (rows, k)))
+    weights = make_q8_0_weight_large(experts * n, k)
+    runtime = get_hip_runtime()
+    allocations = []
+    try:
+        dx, ds, dw = [_upload(v, runtime, allocations) for v in (x, starts, weights)]
+        outputs = [_alloc((rows, n), np.uint16, runtime, allocations) for _ in range(2)]
+        candidate = (gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out
+                     if bundle else gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)
+        for i, fn in enumerate((gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,candidate)):
+            fn(dx.ptr, ds.ptr, None, dw.ptr, outputs[i].ptr, rows, rows, experts, k, n,
+               runtime=runtime, threads=threads)
+        actual = [_download(o, (rows, n), np.uint16, runtime) for o in outputs]
+        np.testing.assert_array_equal(*actual)
+        dense = dequantize_gguf_data(weights, GGMLQuantizationType.Q8_0).reshape(experts, n, k)
+        expected = np.concatenate([
+            _bf16_bits_to_f32(x[starts[e]:starts[e+1]]) @ dense[e].T
+            for e in range(experts)])
+        got = _bf16_bits_to_f32(actual[1])
+        np.testing.assert_allclose(got, expected, rtol=.01, atol=.01)
+        def logsoftmax(a):
+            a = a.astype(np.float64)
+            a -= a.max(axis=-1, keepdims=True)
+            return a - np.log(np.exp(a).sum(axis=-1, keepdims=True))
+        lp, lq = logsoftmax(expected), logsoftmax(got)
+        assert np.max(np.sum(np.exp(lp) * (lp - lq), axis=-1)) <= .05
+        assert np.mean(expected.argmax(-1) == got.argmax(-1)) >= .9
+    finally:
+        for buf in reversed(allocations):
+            free(buf, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_pf1_forkb_grouped_selected_down_imports() -> None:
+    """RED on the unmodified path: the candidate wrapper does not exist yet."""
+
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv_module
+
+    wrapper = getattr(gemv_module, "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out")
+    assert callable(wrapper)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("row_batch", [1, 4, "bundle"])
+@pytest.mark.parametrize(
+    "x_rows,top_k,num_experts,in_features,out_features",
+    [
+        (8, 10, 16, 512, 1024),  # PF-1b selected-fixture shape
+        (64, 10, 512, 640, 2560),  # production down shape (ffn->hidden, top-10)
+    ],
+)
+def test_pf1_forkb_grouped_selected_down_bit_parity(
+    x_rows: int, top_k: int, num_experts: int, in_features: int, out_features: int,
+    row_batch: int,
+) -> None:
+    """The grouped candidate is bit-identical to the block-per-output owner."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+    )
+    if row_batch == 4:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+            gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out as
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+        )
+    elif row_batch == "bundle":
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+            gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out as
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+        )
+
+    rows = x_rows * top_k
+    rng = np.random.default_rng(2026_09_04)
+    qweight = np.ascontiguousarray(
+        make_q8_0_weight_large(num_experts * out_features, in_features),
+        dtype=np.uint8,
+    )
+    x_float = (rng.standard_normal((x_rows, in_features)) * 0.5).astype(np.float32)
+    x_bf16 = _f32_to_bf16_bits(x_float)
+    selected = rng.integers(0, num_experts, size=rows).astype(np.int64)
+    # Guarantee every expert in range is exercised unevenly (boundary case):
+    # force the first num_experts lanes to cover all experts exactly once.
+    selected[:num_experts] = np.arange(num_experts, dtype=np.int64)
+    expert_start, lane_to_row = _build_group_map(selected, num_experts)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    bufs: list = []
+
+    def alloc(nbytes: int):
+        buf = malloc(nbytes, runtime=runtime)
+        bufs.append(buf)
+        return buf
+
+    try:
+        x_dev = alloc(x_bf16.nbytes)
+        selected_dev = alloc(selected.nbytes)
+        starts_dev = alloc(expert_start.nbytes)
+        lane_to_row_dev = alloc(lane_to_row.nbytes)
+        weight_dev = alloc(qweight.nbytes)
+        out_owner_dev = alloc(rows * out_features * 2)
+        out_grouped_dev = alloc(rows * out_features * 2)
+        copy_host_to_device(x_dev, host_array_ptr(x_bf16), runtime=runtime)
+        copy_host_to_device(selected_dev, host_array_ptr(selected), runtime=runtime)
+        copy_host_to_device(starts_dev, host_array_ptr(expert_start), runtime=runtime)
+        copy_host_to_device(
+            lane_to_row_dev, host_array_ptr(lane_to_row), runtime=runtime
+        )
+        copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
+
+        def run_owner() -> np.ndarray:
+            gguf_q8_0_selected_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                selected_dev.ptr,
+                weight_dev.ptr,
+                out_owner_dev.ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(out), out_owner_dev, runtime=runtime)
+            return out
+
+        def run_grouped() -> np.ndarray:
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                starts_dev.ptr,
+                lane_to_row_dev.ptr,
+                weight_dev.ptr,
+                out_grouped_dev.ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(out), out_grouped_dev, runtime=runtime)
+            return out
+
+        owner = run_owner()
+        grouped_first = run_grouped()
+        grouped_second = run_grouped()
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(
+        grouped_first, grouped_second, err_msg="grouped run-to-run determinism"
+    )
+    np.testing.assert_array_equal(
+        grouped_first, owner, err_msg="grouped vs block-per-output owner bits"
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
+    """Runner wiring gate: the fork-b grouped down default is bit-identical to
+    the incumbent strict selected gemv (flag off) at the whole-MoE level.
+
+    The fork-b kernel is bit-exact per output and everything downstream of
+    ``expert_down`` in ``run_qwen4_exp_moe`` is deterministic given the same
+    input bits, so the full MoE output bits must match exactly between the
+    default (fork-b) and ``HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=0`` runs.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from tests._gguf_synthetic_weights import make_q4_k_weight, make_q8_0_weight
+    from tests.test_gpu_qwen4_exp_runner_moe import (
+        _dense_f32_weight,
+        _download,
+        _q4_weight,
+        _q8_0_weight,
+        _upload,
+    )
+    from hipengine.core.memory import free
+    from hipengine.runtime.qwen4_exp_runner import (
+        Qwen4ExpMoEScratch,
+        run_qwen4_exp_moe,
+    )
+    from hipengine.kernels.hip_gfx1100.moe.router import register_qwen35_router_kernels
+
+    register_qwen35_router_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
+    runtime = get_hip_runtime()
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
+
+    rng = np.random.default_rng(2026_09_04)
+    hidden, ffn, experts, top_k = 256, 256, 4, 2
+    rows = 16
+    mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
+    router = rng.normal(0.0, 0.1, size=(experts, hidden)).astype(np.float32)
+    gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    up_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    down_raw = np.stack([make_q8_0_weight(hidden, ffn) for _ in range(experts)])
+    shared_gate = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_up = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
+    shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
+
+    def run(flag_value: str) -> tuple[np.ndarray, np.ndarray]:
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", flag_value)
+        allocations = []
+        scratch = None
+        try:
+            d_mixed = _upload(mixed, runtime, allocations)
+            weights = {
+                "router": _dense_f32_weight("router", router, runtime, allocations),
+                "expert_gate": _q4_weight("expert_gate", gate_raw, runtime, allocations),
+                "expert_up": _q4_weight("expert_up", up_raw, runtime, allocations),
+                "expert_down": _q8_0_weight("expert_down", down_raw, runtime, allocations),
+                "shared_gate": _dense_f32_weight("shared_gate", shared_gate, runtime, allocations),
+                "shared_up": _dense_f32_weight("shared_up", shared_up, runtime, allocations),
+                "shared_down": _dense_f32_weight("shared_down", shared_down, runtime, allocations),
+                "shared_gate_weight": _dense_f32_weight(
+                    "shared_gate_weight", shared_scalar.reshape(1, hidden), runtime, allocations,
+                ),
+            }
+            scratch = Qwen4ExpMoEScratch.allocate(
+                rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+                runtime=runtime,
+            )
+            result = run_qwen4_exp_moe(
+                d_mixed.ptr,
+                weights,
+                scratch=scratch,
+                rows=rows,
+                hidden=hidden,
+                ffn=ffn,
+                experts=experts,
+                top_k=top_k,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            output = _download(result.output, (rows, hidden), np.uint16, runtime)
+            down = _download(
+                scratch.expert_down, (rows * top_k, hidden), np.uint16, runtime
+            )
+            return output, down
+        finally:
+            if scratch is not None:
+                scratch.close()
+            for allocation in reversed(allocations):
+                free(allocation, runtime=runtime)
+
+    default_bits, default_down = run("1")
+    strict_bits, strict_down = run("0")
+    # NOTE: expert_down buffers are NOT compared across the two runs: the
+    # group scatter uses atomicAdd, so the within-expert lane order (and thus
+    # the down row layout) varies run to run even for identical math. The
+    # combine re-syncs through the same scatter state, so the final MoE output
+    # is deterministic and bit-identical, which is the binding gate here.
+    np.testing.assert_array_equal(
+        default_bits,
+        strict_bits,
+        err_msg="fork-b default MoE output bits vs FORKB_GROUPED_DOWN=0 strict",
+    )
+    # Value gate vs the CPU oracle for the fork-b default path (catches wrong
+    # row/expert pairing that a bit-comparison against a scattered run cannot).
+    from hipengine.kernels.cpu_reference.qwen4_exp import (
+        Qwen4ExpMoEWeights,
+        qwen4_exp_moe,
+    )
+    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+
+    def dequant(raw, ggml_type):
+        return np.stack([dequantize_gguf_data(v, ggml_type) for v in raw])
+
+    expected = qwen4_exp_moe(
+        mixed,
+        Qwen4ExpMoEWeights(
+            router=router,
+            expert_gate=dequant(gate_raw, GGMLQuantizationType.Q4_K),
+            expert_up=dequant(up_raw, GGMLQuantizationType.Q4_K),
+            expert_down=dequant(down_raw, GGMLQuantizationType.Q8_0),
+            shared_gate=shared_gate,
+            shared_up=shared_up,
+            shared_down=shared_down,
+            shared_gate_weight=shared_scalar,
+            experts_used=top_k,
+        ),
+    )
+    got = (default_bits.astype(np.uint32) << 16).view(np.float32)
+    got_strict = (strict_bits.astype(np.uint32) << 16).view(np.float32)
+    # The strict incumbent itself deviates from the float64 oracle through bf16
+    # MoE accumulation and output rounding (identical bit pattern to fork-b).
+    # Gate: fork-b may not deviate from the oracle more than the incumbent
+    # strict path does on the same fixture.
+    dev_forkb = np.abs(got - expected.output)
+    dev_strict = np.abs(got_strict - expected.output)
+    np.testing.assert_array_less(
+        dev_forkb,
+        dev_strict + 1e-3 + 1e-3 * np.abs(expected.output),
+        err_msg="fork-b default MoE oracle deviation vs incumbent strict deviation",
+    )
+    # Run-to-run determinism of the fork-b default final output.
+    default_bits_again, _ = run("1")
+    np.testing.assert_array_equal(
+        default_bits,
+        default_bits_again,
+        err_msg="fork-b default MoE output run-to-run determinism",
+    )
+    # The down buffers must at least be finite and fully written (the
+    # historical P1 regression left expert_down unwritten).
+    assert np.all(np.isfinite((strict_down.astype(np.uint32) << 16).view(np.float32)))

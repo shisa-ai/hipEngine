@@ -1,0 +1,53 @@
+{
+  "kind": "dense_vs_dms_speed_probe",
+  "date": "2026-09-08",
+  "status": "diagnostic_not_a_benchmark",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900 (gfx1100), GPU0",
+    "host": "epyc",
+    "isolation": "HIP_VISIBLE_DEVICES=0; GPU1 (RX 7900 XTX) untouched"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "workload": {
+    "prompt_tokens": 16384,
+    "prompt_sha256": "902b76b46c6df6108893cd632956a145ee9408aa871544baa42847fdb77d2de6",
+    "decode_steps": 16,
+    "prompt_source": "DMS data-manifest validation stream (identical token slice across arms)",
+    "route_shape": "one resident C1 session per arm, bulk prefill, greedy per-step decode"
+  },
+  "result": [
+    {
+      "arm": "dense",
+      "prefill_tok_s": 631.7,
+      "decode_step_ms_median": 45.55
+    },
+    {
+      "arm": "dms-bf16",
+      "prefill_tok_s": 626.5,
+      "decode_step_ms_median": 37.92
+    },
+    {
+      "arm": "dms-int8",
+      "prefill_tok_s": 622.5,
+      "decode_step_ms_median": 38.29
+    }
+  ],
+  "finding": "After the DMS speed campaign, both DMS codecs decode faster than the dense route at 16K context on the W7900: dense BF16 45.55 ms/step, DMS BF16 37.92 (-16.7%), DMS INT8 38.29 (-15.9%) - with DMS's capacity advantage intact (the compact payload). Cumulative: BF16 55.39 -> 37.92 (1.46x) and INT8 91.79 -> 38.29 (2.40x). The wins: wave-group6 split-K producer enabled on gfx1100 (bf16), chunked keep-scan append (int8), wave-grouped GQA int8 producer, staging-upload hoist, in-place finalize. Attention kernels now run near their bandwidth rooflines (bf16 0.344 -> 0.079 ms, int8 0.723 -> 0.077 ms at live 8192). Greedy tokens identical to the pre-campaign baselines per codec throughout.",
+  "optimization_ledger": [
+    "1e706099d: hoist per-layer staging uploads (bf16 55.39 -> 54.39)",
+    "b8a864116: in-place finalize mirror update (54.39 -> 53.96)",
+    "f33078ed6: wave-group6 producer on gfx1100 (53.96 -> 38.09)",
+    "a524f307e: chunked keep-scan int8 append (int8 91.79 -> 61.30)",
+    "d1737d8dc: wave-grouped GQA int8 producer (61.30 -> 38.03)"
+  ],
+  "caveats": [
+    "Single session, one prompt, one process per arm; diagnostics only - not a retained benchmark and no production performance claim.",
+    "Cross-GPU comparisons (e.g. against the XTX lane) require a same-host protocol measuring both.",
+    "DMS numerics differ from dense by design (eviction + int8 codec); quality gates are the capacity campaign's scope, not this probe's."
+  ],
+  "raw": "/tmp/he-bettermtp-raw/dense-vs-dms-gpu0-final.json"
+}

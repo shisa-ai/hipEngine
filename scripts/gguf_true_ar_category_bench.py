@@ -13,6 +13,7 @@ claim an MTP win by itself.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -144,6 +145,25 @@ def build_true_ar_artifact(
     }
 
 
+def resolve_kv_selection(
+    policy_name: str,
+) -> tuple[Any, str | None, str | None]:
+    """Return ``(kv_policy, scale_dtype, scale_granularity)`` for ``--kv-policy``.
+
+    BF16 is the harness's historical default and needs no policy object, so it
+    maps to all-``None`` and the session keeps its own BF16 default. The INT8
+    entry is the IKV-C2 production layout, which the session cannot express
+    without an explicit policy and FP32 per-token-head scales.
+    """
+
+    if str(policy_name) == "bf16":
+        return None, None, None
+    from hipengine.kvcache import resolve_kv_policy
+
+    resolved = resolve_kv_policy(str(policy_name), scale_dtype="fp32")
+    return resolved.create_policy(), "fp32", resolved.scale_granularity
+
+
 def run_prompt_true_ar(
     *,
     session: Any,
@@ -217,6 +237,9 @@ def run_prompt_true_ar(
             generated.append(next_token)
     decode_ms = 1000.0 * (time.perf_counter() - decode_start)
     finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
+    generated_sha256 = hashlib.sha256(
+        ",".join(str(int(token)) for token in generated).encode("ascii")
+    ).hexdigest()
 
     return {
         "id": str(prompt_row["id"]),
@@ -238,8 +261,8 @@ def run_prompt_true_ar(
         "graph_capture_ms_excluded": 0.0,
         "finite_final_logits": finite_logits,
         "final_token_id": None if final is None else int(final.token_id),
-        "generated_preview_token_ids": generated[:16],
-        "generated_tail_token_ids": generated[-16:],
+        "generated_sha256": generated_sha256,
+        "generated_token_ids": [int(token) for token in generated],
     }
 
 
@@ -263,6 +286,17 @@ def main() -> int:
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--kv-policy",
+        choices=("bf16", "int8_per_token_head"),
+        default="bf16",
+        help=(
+            "KV storage policy. The default is BF16, which is what this "
+            "harness has always measured; int8_per_token_head is the IKV-C2 "
+            "production layout with FP32 per-token-head scales, and is "
+            "required to baseline that route at all"
+        ),
+    )
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--attn-aotriton-min-tokens", type=int, default=512)
@@ -355,6 +389,9 @@ def main() -> int:
         use_bulk_prefill = None
 
     prefill_config = PrefillConfig(attn_aotriton_min_tokens=int(args.attn_aotriton_min_tokens))
+    kv_policy, kv_scale_dtype, kv_scale_granularity = resolve_kv_selection(
+        str(args.kv_policy)
+    )
     session = Qwen35GGUFResidentSession(
         args.model,
         compiler_version=compiler_version,
@@ -363,11 +400,23 @@ def main() -> int:
         use_wmma_prefill=bool(args.use_wmma_prefill),
         use_gemv_decode=bool(args.use_gemv_decode),
         prefill_config=prefill_config,
+        kv_policy=kv_policy,
+        kv_scale_dtype=kv_scale_dtype,
+        kv_scale_granularity=kv_scale_granularity,
     )
     session_timing_protocol = {
         "effective_decode_repack": bool(args.decode_repack),
         "effective_use_wmma_prefill": bool(session.use_wmma_prefill),
         "effective_use_gemv_decode": bool(session.use_gemv_decode),
+        "effective_kv_storage_dtype": str(session.kv_storage_dtype),
+        "effective_kv_storage_layout": str(session.kv_storage_layout),
+        "effective_kv_scale_granularity": str(session.kv_scale_granularity),
+        "effective_decode_graph_min_replay_steps": (
+            session.decode_graph_min_replay_steps()
+        ),
+        "int8_kv_decode_graph_env": os.environ.get(
+            "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH"
+        ),
         "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
     }
     prompt_metrics: list[dict[str, Any]] = []

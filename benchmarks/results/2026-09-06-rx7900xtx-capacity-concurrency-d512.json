@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "rx7900xtx_qwen38_concurrency_d512_boundary",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "packet": "Packet 5 D-budget concurrency arm",
+  "performance_claim": false,
+  "diagnostic": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1"
+  },
+  "device": {
+    "gpu_index_requested": 1,
+    "pci_id": "0000:10:00.0",
+    "drm_card": "card0",
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "hip_visible_devices": "1",
+    "selection_note": "card resolved by pci_id through hipengine.util.amdgpu_vram; server-reported ordinal cross-checked against the request"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 512,
+    "context_tokens": 1280,
+    "note": "page-aligned 5-page context; the first attempt at context 1024 was rejected by the server (prompt+max_tokens+1=1025 > 1024) and is not a memory point"
+  },
+  "points": {
+    "n3": {
+      "status": "ok",
+      "startup_peak_gib": 22.609,
+      "request_peak_gib": 22.692,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "reason": "server started and completed one validated request",
+      "source_commit": "8b4c175e3b95521948579471d127471ad1882b3c",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 3 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n4": {
+      "status": "not_idle",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "reason": "baseline 159 MiB exceeds the 128 MiB idle gate",
+      "source_commit": "8b4c175e3b95521948579471d127471ad1882b3c",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 4 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n5": {
+      "status": "oom_startup",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "reason": "out-of-memory evidence during startup:  ERROR: STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=1279: HIP error 2: out of memory. Try a lower --max-context-",
+      "source_commit": "8b4c175e3b95521948579471d127471ad1882b3c",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 5 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n6": {
+      "status": "oom_startup",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "reason": "out-of-memory evidence during startup:  ERROR: STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=1279: HIP error 2: out of memory. Try a lower --max-context-",
+      "source_commit": "8b4c175e3b95521948579471d127471ad1882b3c",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 6 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n7": {
+      "status": "oom_startup",
+      "startup_peak_gib": 0.0,
+      "request_peak_gib": 0.0,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "finish_reason": null,
+      "reason": "out-of-memory evidence during startup:  ERROR: STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=1279: HIP error 2: out of memory. Try a lower --max-context-",
+      "source_commit": "8b4c175e3b95521948579471d127471ad1882b3c",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 7 --speculative-mtp-serving off --prefix-cache off"
+    },
+    "n4_first_attempt": {
+      "status": "not_idle",
+      "reason": "baseline 159 MiB exceeds the 128 MiB idle gate",
+      "command": "python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --max-context-tokens 1280 --max-active-requests 4 --speculative-mtp-serving off --prefix-cache off",
+      "note": "served the full 512-token horizon across 4 rows but post-request reclaim left 159 MiB above baseline at the 128 MiB idle gate"
+    }
+  },
+  "boundaries": {
+    "last_solid_pass_max_active_requests": 3,
+    "marginal": {
+      "n": 4,
+      "evidence": "one run served the horizon but failed the 128 MiB idle-reclaim gate (159 MiB above baseline); a repeat run failed eager warmup OOM at 23.947 GiB \u2014 N=4 sits at the card edge"
+    },
+    "first_clear_failure_max_active_requests": 5,
+    "note": "at the 512/128 budget the last pass was N=6; raising the output horizon to 512 tokens drops the solid boundary to N=3 because per-session prefill scratch scales with max_positions"
+  }
+}

@@ -177,6 +177,19 @@ def memory_stats() -> dict[str, int]:
     return _MEMORY_STATS.snapshot()
 
 
+def live_allocation_histogram(*, min_bytes: int = 0) -> dict[str, int]:
+    """Summarize currently live tracked allocations at or above ``min_bytes``.
+
+    Returns the allocation count, their total bytes, and the largest single
+    allocation. Capacity campaigns use this to attribute a whole-card peak to
+    concrete resident buffers instead of inferring from counters alone.
+    """
+
+    if min_bytes < 0:
+        raise ValueError("min_bytes must be non-negative")
+    return _MEMORY_STATS.live_histogram(min_bytes=min_bytes)
+
+
 def reset_memory_stats() -> None:
     """Reset counters while preserving currently live tracked allocations."""
 
@@ -248,6 +261,20 @@ class _MemoryStatsTracker:
     def snapshot(self) -> dict[str, int]:
         with self._lock:
             return dict(self._stats.__dict__)
+
+    def live_histogram(self, *, min_bytes: int) -> dict[str, int | list[list[int]]]:
+        with self._lock:
+            sizes = [nbytes for nbytes in self._live.values() if nbytes >= min_bytes]
+        counts: dict[int, int] = {}
+        for nbytes in sizes:
+            counts[nbytes] = counts.get(nbytes, 0) + 1
+        top = sorted(counts.items(), key=lambda item: (-item[0] * item[1]))[:12]
+        return {
+            "allocation_count": len(sizes),
+            "total_bytes": sum(sizes),
+            "largest_bytes": max(sizes, default=0),
+            "top_sizes": [[nbytes, count] for nbytes, count in top],
+        }
 
 
 _MEMORY_STATS = _MemoryStatsTracker()

@@ -1,0 +1,14 @@
+{
+  "kind": "gguf_capacity_probe",
+  "protocol_tier": 1,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "max_sequence_length": 229376,
+  "kv_storage": "int8_per_token_head",
+  "prompt_length": 2048,
+  "decode_tokens": 4,
+  "status": "pass",
+  "finite_logits": true,
+  "first_token": 9707,
+  "tracked_peak_gib": 23.768546,
+  "scratch_max_positions": 229376
+}

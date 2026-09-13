@@ -614,7 +614,7 @@ No speculative optimization precedes its strict fallback.
 
 Dependencies: none; CPU-only.
 Files: `scripts/gguf_quant_route_audit.py`,
-`tests/test_scripts_gguf_quant_route_audit.py`;
+`tests/test_unit_scripts_gguf_quant_route_audit.py`;
 loader scanner/model-map modules are references, not automatic edits.
 
 - [ ] Pin upstream model revision, payload checksum, file size and header identity
@@ -632,7 +632,7 @@ loader scanner/model-map modules are references, not automatic edits.
   API over an expanding regex mirror; no backend import for metadata audit.
 - [ ] Reproduce this snapshot and version the repaired report schema.
 
-Run: `.venv/bin/python -m pytest tests/test_scripts_gguf_quant_route_audit.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_unit_scripts_gguf_quant_route_audit.py -q`.
 Exit: real planner accounting without device use, clearly distinct from consumer
 qualification. Current five tests are insufficient.
 

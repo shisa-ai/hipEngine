@@ -284,13 +284,13 @@ python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
 rocminfo | grep -E 'Name:|gfx'
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
   uv run --python 3.12 --extra dev pytest -q \
-  tests/test_cpu_reference_moonshine.py \
-  tests/test_moonshine_hip_attention.py \
-  tests/test_moonshine_hip_glue.py \
-  tests/test_moonshine_hip_layernorm.py \
-  tests/test_moonshine_hip_mlp.py \
-  tests/test_moonshine_hip_projection.py \
-  tests/test_moonshine_runtime.py
+  tests/test_unit_cpu_reference_moonshine.py \
+  tests/test_gpu_moonshine_hip_attention.py \
+  tests/test_gpu_moonshine_hip_glue.py \
+  tests/test_gpu_moonshine_hip_layernorm.py \
+  tests/test_gpu_moonshine_hip_mlp.py \
+  tests/test_gpu_moonshine_hip_projection.py \
+  tests/test_gpu_moonshine_runtime.py
 ```
 
 Prebuild and fixture gate pattern:

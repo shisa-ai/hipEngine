@@ -84,8 +84,8 @@ Current main provides:
 - checked-in local-agent and pi configurations.
 
 The current-main deterministic contract gate is **130/130 tests passed** across
-`tests/test_agentic_server_conformance.py`,
-`tests/test_agentic_harness_traces.py`, and `tests/test_local_agent_config.py`.
+`tests/test_integration_agentic_server_conformance.py`,
+`tests/test_integration_agentic_harness_traces.py`, and `tests/test_integration_local_agent_config.py`.
 The golden-trace fixture contains **56 traces** covering tool loops, reasoning,
 strict failures, structured results, sessions/continuations, finish phases,
 sampling metadata, and HTTP/SSE errors. These tests prove API behavior and
@@ -586,7 +586,7 @@ A0 is implemented by:
   latency/goodput/cache/backend rollups;
 - `scripts/agentic_coding_bench.py`: model-free normalized-record to artifact
   CLI;
-- `tests/test_agentic_coding_benchmark.py`: RED/GREEN contract and failure
+- `tests/test_unit_agentic_coding_benchmark.py`: RED/GREEN contract and failure
   matrix.
 
 The normalized A0 command is:
@@ -743,15 +743,15 @@ python3 scripts/agentic_coding_quality.py \
 RED/GREEN validation:
 
 ```bash
-python3 -m pytest -q tests/test_agentic_coding_quality.py
+python3 -m pytest -q tests/test_integration_agentic_coding_quality.py
 # RED: ModuleNotFoundError: hipengine.benchmark.agentic_quality
 # GREEN: 5 passed
-python3 -m pytest -q tests/test_agentic_coding_quality.py \
-  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+python3 -m pytest -q tests/test_integration_agentic_coding_quality.py \
+  tests/test_integration_agentic_coding_live.py tests/test_unit_agentic_coding_benchmark.py
 # 17 passed
 ruff check hipengine/benchmark/agentic_quality.py \
   hipengine/benchmark/__init__.py scripts/agentic_coding_live.py \
-  scripts/agentic_coding_quality.py tests/test_agentic_coding_quality.py
+  scripts/agentic_coding_quality.py tests/test_integration_agentic_coding_quality.py
 # All checks passed
 ```
 
@@ -791,16 +791,16 @@ RED/GREEN and validation:
 
 ```bash
 python3 -m pytest -q \
-  tests/test_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
-  tests/test_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
-  tests/test_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
+  tests/test_integration_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
+  tests/test_integration_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
+  tests/test_integration_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
 # RED: 3 failed
 # GREEN: 3 passed
-python3 -m pytest -q tests/test_server_api.py
+python3 -m pytest -q tests/test_integration_server_api.py
 # 503 passed
-python3 -m pytest -q tests/test_generation_registry.py \
-  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
-  tests/test_generation_qwen35_gguf_sampling.py
+python3 -m pytest -q tests/test_integration_generation_registry.py \
+  tests/test_integration_agentic_coding_live.py tests/test_unit_agentic_coding_benchmark.py \
+  tests/test_live_generation_qwen35_gguf_sampling.py
 # 99 passed
 ```
 

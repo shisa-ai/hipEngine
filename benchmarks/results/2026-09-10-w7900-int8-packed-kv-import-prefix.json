@@ -1,0 +1,260 @@
+{
+  "kind": "packed_slot_local_kv_import_profile",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "max_sequence_length": 16384,
+  "kv_storage": "int8_per_token_head",
+  "kv_scale_dtype": "fp32",
+  "prompt_kind": "deterministic_varied_rng20260910",
+  "decode_tokens": 8,
+  "env": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "GPU_MAX_HW_QUEUES": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+  },
+  "configs": [
+    {
+      "rows": 1024,
+      "chunk_count": 1,
+      "chunk_rows": [
+        1024
+      ],
+      "kv_attention_source": "int8_direct",
+      "prefill_wall_seconds": 1.852,
+      "prefill_tok_s": 552.8,
+      "tracked_peak_gib": 17.5738,
+      "logits_sha256": "f9e312a1deb7b584949528904b16d909cb6fa80a4159dc5d16de8064a0f0a1ad",
+      "generated_ids": [
+        198,
+        248044,
+        2,
+        198,
+        2,
+        198,
+        2,
+        198
+      ],
+      "prefill_counters": {
+        "kv_import": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 1,
+        "fused_linear_copies": 2,
+        "sync_other_memcpys": 193
+      },
+      "decode_counters": {
+        "kv_import": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 0,
+        "fused_linear_copies": 0,
+        "sync_other_memcpys": 0
+      },
+      "cpu_submission_seconds": 1.826,
+      "cpu_submission_chunk_count": 1
+    },
+    {
+      "rows": 2048,
+      "chunk_count": 2,
+      "chunk_rows": [
+        1024,
+        1024
+      ],
+      "kv_attention_source": "int8_direct",
+      "prefill_wall_seconds": 4.547,
+      "prefill_tok_s": 450.42,
+      "tracked_peak_gib": 18.5432,
+      "logits_sha256": "af1cde6f5479293b541d68a621f59d920d22b825c9b0d1a53349f8c3e09c99d8",
+      "generated_ids": [
+        1356,
+        290,
+        198,
+        248046,
+        198,
+        248045,
+        198,
+        248046
+      ],
+      "prefill_counters": {
+        "kv_import": {
+          "calls": 16,
+          "rows": 16384,
+          "memcpys": 256,
+          "bytes": 34078720
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 2,
+        "fused_linear_copies": 4,
+        "sync_other_memcpys": 385
+      },
+      "decode_counters": {
+        "kv_import": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 0,
+        "fused_linear_copies": 0,
+        "sync_other_memcpys": 0
+      },
+      "cpu_submission_seconds": 4.531,
+      "cpu_submission_chunk_count": 2
+    },
+    {
+      "rows": 4096,
+      "chunk_count": 4,
+      "chunk_rows": [
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "kv_attention_source": "int8_direct",
+      "prefill_wall_seconds": 18.033,
+      "prefill_tok_s": 227.14,
+      "tracked_peak_gib": 18.6069,
+      "logits_sha256": "fb4f962c71a383c1c953b5570e3579415ab45d91babd9099dfc3a3e11f2190cf",
+      "generated_ids": [
+        220,
+        248068,
+        198,
+        760,
+        1156,
+        682,
+        3766,
+        264
+      ],
+      "prefill_counters": {
+        "kv_import": {
+          "calls": 48,
+          "rows": 98304,
+          "memcpys": 1536,
+          "bytes": 204472320
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 4,
+        "fused_linear_copies": 8,
+        "sync_other_memcpys": 769
+      },
+      "decode_counters": {
+        "kv_import": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 0,
+        "fused_linear_copies": 0,
+        "sync_other_memcpys": 0
+      },
+      "cpu_submission_seconds": 23.845,
+      "cpu_submission_chunk_count": 4
+    },
+    {
+      "rows": 8192,
+      "chunk_count": 8,
+      "chunk_rows": [
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "kv_attention_source": "int8_direct",
+      "prefill_wall_seconds": 121.77,
+      "prefill_tok_s": 67.27,
+      "tracked_peak_gib": 18.7342,
+      "logits_sha256": "32904c371733799b7900fc0424e3707980b406d8219c73bab75017028881d5fc",
+      "generated_ids": [
+        399,
+        278,
+        317,
+        197,
+        197,
+        27,
+        317,
+        197
+      ],
+      "prefill_counters": {
+        "kv_import": {
+          "calls": 112,
+          "rows": 458752,
+          "memcpys": 7168,
+          "bytes": 954204160
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 8,
+        "fused_linear_copies": 16,
+        "sync_other_memcpys": 1537
+      },
+      "decode_counters": {
+        "kv_import": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "kv_scatter": {
+          "calls": 0,
+          "rows": 0,
+          "memcpys": 0,
+          "bytes": 0
+        },
+        "sync_calls": 0,
+        "fused_linear_copies": 0,
+        "sync_other_memcpys": 0
+      },
+      "cpu_submission_seconds": 132.63,
+      "cpu_submission_chunk_count": 8
+    }
+  ]
+}

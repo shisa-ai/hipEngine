@@ -46,6 +46,10 @@ from hipengine.benchmark.provenance import (  # noqa: E402
 )
 from hipengine.core.memory import memory_stats  # noqa: E402
 from hipengine.generation.registry import GenerationRequest  # noqa: E402
+from hipengine.speculative.serving import (  # noqa: E402
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
+)
 from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
@@ -604,13 +608,59 @@ def _telemetry_payload(output: Any) -> dict[str, Any]:
     }
 
 
-def _request(prompt: str, max_tokens: int) -> GenerationRequest:
+def _diagnostic_static_eligibility(budget: int, *, max_realized_group_rows: int = 8) -> SpeculativeMTPStaticEligibility:
+    """Screening-only eligibility mirroring the c1c8 bench diagnostic.
+
+    Explicitly unqualified (never automatic), bounded to the requested
+    candidate budget and the diagnostic max width. This is the only mechanism
+    the better-MTP campaign uses to measure sub-capacity cells (C3/K3, C5/K3)
+    through the bridge; it is not production admission.
+    """
+
+    key = {
+        "candidate_budget": int(budget),
+        "max_realized_group_rows": int(max_realized_group_rows),
+    }
+    digest = hashlib.sha256(
+        json.dumps(key, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="diagnostic_physical_gguf_mtp",
+        max_candidate_count=int(budget),
+        max_realized_group_rows=int(max_realized_group_rows),
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key=f"gguf-c1-c{max_realized_group_rows}-generation2-diagnostic",
+        evidence_fingerprint=f"sha256:{digest}",
+    )
+
+
+def _diag_eligibility_for(
+    args: argparse.Namespace, budget: int, concurrency: int
+) -> SpeculativeMTPStaticEligibility | None:
+    """Screening eligibility for one cell; concurrency 1 certifies C1 rows."""
+
+    if not args.diagnostic_plan:
+        return None
+    return _diagnostic_static_eligibility(
+        int(budget),
+        max_realized_group_rows=(1 if int(concurrency) == 1 else 8),
+    )
+
+
+def _request(
+    prompt: str,
+    max_tokens: int,
+    eligibility: SpeculativeMTPStaticEligibility | None = None,
+) -> GenerationRequest:
     return GenerationRequest(
         prompts=(str(prompt),),
         max_tokens=int(max_tokens),
         temperature=0.0,
         top_p=1.0,
         ignore_eos=False,
+        speculative_mtp_static_eligibility=eligibility,
     )
 
 
@@ -1064,6 +1114,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--roctx-markers", action="store_true")
     parser.add_argument("--profile-child", action="store_true")
+    parser.add_argument(
+        "--diagnostic-plan",
+        action="store_true",
+        help=(
+            "Install the fail-closed diagnostic serving-plan resolver (same "
+            "semantics as gguf_mtp_c1c8_server_bench --generation2-diagnostic) "
+            "so explicitly unqualified sub-capacity screening cells can be "
+            "profiled. Screening-only; never production admission."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
     return parser
@@ -1312,11 +1372,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         warm_prompt = _render_prompt_suite_messages(
                             [{"role": "user", "content": "Write one short greeting."}]
                         )
-                        warm_request = _request(
-                            warm_prompt,
-                            min(int(args.max_tokens), 5),
-                        )
                         for concurrency in args.concurrency:
+                            warm_request = _request(
+                                warm_prompt,
+                                min(int(args.max_tokens), 5),
+                                _diag_eligibility_for(args, int(budget), int(concurrency)),
+                            )
                             for arm in ARMS:
                                 warm = _run_arm(
                                     arm=arm,
@@ -1360,10 +1421,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
                     for run_index in range(int(args.runs)):
                         for prompt_index, prompt in enumerate(prompts):
-                            request = _request(
-                                str(prompt["rendered_prompt"]),
-                                int(args.max_tokens),
-                            )
                             prompt_tokens = tuple(
                                 int(token)
                                 for token in service.tokenize(
@@ -1390,6 +1447,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                     "exact": False,
                                 }
                                 payload["cells"].append(cell)
+                                request = _request(
+                                    str(prompt["rendered_prompt"]),
+                                    int(args.max_tokens),
+                                    _diag_eligibility_for(
+                                        args, int(budget), int(concurrency)
+                                    ),
+                                )
                                 for arm in cell["execution_order"]:
                                     result = _run_arm(
                                         arm=str(arm),

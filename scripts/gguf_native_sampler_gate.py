@@ -567,7 +567,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "test_gguf_native_sampler_workspace_batches_supported_rows_and_fails_closed"
                 ),
                 "runtime_tests": (
-                    "uv run pytest -q tests/test_generation_qwen35_gguf_sampling.py "
+                    "uv run pytest -q tests/test_live_generation_qwen35_gguf_sampling.py "
                     "tests/test_gpu_sampler_kernel.py"
                 ),
             },

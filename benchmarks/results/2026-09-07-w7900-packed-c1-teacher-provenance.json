@@ -1,0 +1,52 @@
+{
+  "kind": "packed_c1_strict_teacher_runtime_provenance",
+  "full_profile_qualification": false,
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "host": "epyc",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "quant": "Q4_K_M",
+  "kv": "BF16",
+  "prompts": 18,
+  "decode_rows": 432,
+  "prefill_rows": 18,
+  "runtime_manifest": {
+    "kind": "hipengine_execution_profile_manifest",
+    "schema_version": 1,
+    "execution_profile": "strict",
+    "backend": "hip_gfx1100",
+    "model": "qwen3_5_gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_policy": "paged_bf16",
+    "graph_policy": "specdec2_eager_c1",
+    "selections": [
+      {
+        "layer": "linear_attn_chain_conv_decode",
+        "scope": "specdec2_mtp2_c1",
+        "selected_variant": "bf16_c1_exact_state_rows_tloop",
+        "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+        "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+        "registry_quant": "gguf_qwen35"
+      },
+      {
+        "layer": "linear_pair_silu",
+        "scope": "specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+        "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+        "strict_fallback_variant": "dense_dual_rowtile_bf16_bf16_out",
+        "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+        "registry_quant": "gguf_q4_k_t16_v1"
+      }
+    ]
+  },
+  "runtime_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+  "capture": "/tmp/packed-c1-strict-teacher-provenance-d24/teacher.json",
+  "capture_sha256": "1f2f6c18a94bcb46a952f64a4f299480e7649d803d15f88152731fe548e113cf",
+  "prior_capture": "/tmp/packed-c1-strict-teacher-d24/teacher.json",
+  "prior_capture_sha256": "b8f26bb5bac953553721d1b18e402de57e64ccc5a38e5dfd94338291d027ec2e",
+  "actual_arrays_bit_identical": true,
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_teacher.py --directory /tmp/packed-c1-strict-teacher-provenance-d24",
+  "limitations": [
+    "Two strict captures, not three-repeat certification",
+    "No retrospective runtime metadata assigned to prior capture",
+    "Candidate/provider/task/serving qualification remains separate"
+  ]
+}

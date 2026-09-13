@@ -56,4 +56,4 @@ BATCHED_POSITION/PLE_WARM mid-process with the contract-correct flow is
 bit-exact. Production never enters the broken regime (the generator's compact
 path pairs `capture_logits=False` prefill with resident steps; the controlled
 path pairs `capture_logits=True` with host round-trips). The batched-position
-promotion is unaffected. See worklog 20260910T…-digest-mismatch-repro.
+promotion is unaffected. See worklog 20260910T094500.000000Z-lhl-qwen4exp-digest-mismatch-repro-af418a.md.

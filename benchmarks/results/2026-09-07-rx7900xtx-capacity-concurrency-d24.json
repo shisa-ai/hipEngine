@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-09-07",
+  "kind": "rx7900xtx-capacity-concurrency-d24",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "packet": 5,
+  "performance_claim": false,
+  "diagnostic": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984
+  },
+  "device": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx": "gfx1100",
+    "pci_id": "0000:10:00.0",
+    "hip_visible_devices": "1",
+    "vram_total_gib": 23.984375
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 24,
+    "declared_context_tokens": 768,
+    "kv_storage": "bf16",
+    "mtp": "off",
+    "note": "page-aligned 3-page declared context, matching the 512/128 arm's declared budget; one cold server per point, exact request accounting, clean post-request ownership required"
+  },
+  "protocol": "scripts/gguf_context_ceiling_probe.py per point (schema 2: server starts cold on the verified card and completes one request whose prompt and output tokens match exact server accounting at the intended horizon), 20 ms sysfs sampling, source commit 00f8659896f9b59388d8081c07d85ea4630a1b47",
+  "points": [
+    {"n": 1, "status": "ok", "request_peak_gib": 18.748, "startup_peak_gib": 18.712},
+    {"n": 2, "status": "ok", "request_peak_gib": 20.859, "startup_peak_gib": 20.824},
+    {"n": 3, "status": "ok", "request_peak_gib": 21.381, "startup_peak_gib": 21.345},
+    {"n": 4, "status": "ok", "request_peak_gib": 22.822, "startup_peak_gib": 22.787},
+    {"n": 5, "status": "ok", "request_peak_gib": 23.358, "startup_peak_gib": 23.322},
+    {"n": 6, "status": "ok", "request_peak_gib": 23.676, "startup_peak_gib": 23.64},
+    {"n": 7, "status": "oom_startup", "sampled_failure_peak_gib": 23.972, "reason": "STARTUP_SCRATCH_PROBE OOM during eager warmup"},
+    {"n": 8, "status": "oom_startup", "sampled_failure_peak_gib": 23.961, "reason": "STARTUP_SCRATCH_PROBE OOM during eager warmup"}
+  ],
+  "boundaries": {
+    "last_solid_pass_max_active_requests": 6,
+    "first_clear_failure_max_active_requests": 7,
+    "per_request_slope_gib": 0.986,
+    "note": "D=24 boundary matches the 512/128 arm exactly (last pass N=6, first failure N=7, slope ~0.99 GiB/request): at this declared budget the per-request peak is startup-scratch + pool dominated and the 104-token output-horizon difference is below sampling resolution. The D=512 arm (declared 1,280) is strictly tighter (last solid N=4 post-scratch-cap) because its 2 extra pages of per-request KV push the warmup probe over the edge one row earlier."
+  },
+  "per_budget_comparison": {
+    "d24_declared_768": {"last_pass": 6, "first_failure": 7},
+    "d128_declared_768": {"last_pass": 6, "first_failure": 7},
+    "d512_declared_1280": {"last_pass": 4, "marginal": 5, "first_failure": 6}
+  },
+  "artifacts_cross_reference": [
+    "results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json",
+    "results/2026-09-06-rx7900xtx-capacity-concurrency-d512.json"
+  ]
+}

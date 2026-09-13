@@ -69,6 +69,28 @@ regression—not because an individual win is deemed too small. A pre-existing
 product/SLO failure shared by control and candidate is tracked separately and
 does not erase a candidate improvement.
 
+**Default decision (2026-09-12, v0.5.0).** An omitted profile now resolves to
+`production` for any `(model, backend, quant)` combination that has both a
+registered strict plan and a certified production plan. A combination with no
+registered plan keeps the migration path, which remains tracked for removal in
+[`REFACTOR.md`](REFACTOR.md). The registered combinations are
+`qwen3_5_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
+`qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
+`qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
+`qwen3_5_moe_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
+`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`,
+`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_q4_k_m`, and
+`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_ud_q4_k_xl`. Each one is covered by a
+decision section below and keeps a registered strict fallback, so
+`execution_profile="strict"` still selects exact arithmetic, and
+`batch_invariant` still falls back per scope wherever its composition gate has
+not passed.
+
+The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
+in both the migration arm and the production arm, so under the shared-failure
+rule above it stays tracked as a product/scheduler blocker and does not block
+this arithmetic default.
+
 ### 2.2 First ZBook c1/cN default decision
 
 The 2026-08-16 Qwen3.6 GGUF package-level campaign retains the incumbent
@@ -82,9 +104,11 @@ clean drain. Seven paired graph runs retain small c4/c8 wins.
 The complete production-server packet nevertheless fails soak completion:
 87/120 requests complete exactly and 33 are rejected under sustained offered
 load. That shared serving failure remains a product/scheduler blocker, but win
-magnitude is not. Omitted-profile package behavior stays unchanged only because
-no route is certified through a named runtime profile and the task/BF16/control
-schema debt remains open.
+magnitude is not. Omitted-profile package behavior stayed unchanged at the time
+only because no route was certified through a named runtime profile and the
+task/BF16/control schema debt remained open; the named plan is now registered
+and §2.1's default decision applies, while the soak failure stays tracked as
+the shared product/scheduler blocker it is.
 The compact evidence and raw hashes are in
 [`2026-08-16-zbook-qwen36-production-profile-cn-blocked.json`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
@@ -111,6 +135,25 @@ Evidence:
 and [`retained opt-in packet`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json).
 
 ### 2.4 Qwen3.8 Q4_K_M production C2/K3 decision
+
+**September 12, 2026 correction:** the unbounded gfx1151 production binder
+now allocates FP32 recurrent state. The actual omitted-profile C1 D128
+FP16 composition fails max KL at 0.07664; packed D128 fails at 0.22994.
+Neither short verifier evidence nor the different Q4_K_S artifact authorizes
+unbounded FP16 allocation. The FP32 replacement manifest
+`c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc`
+passes the 18-prompt C1 D128 numerical gate (2,322 rows, max KL 0.003451,
+99.914% top-1, three deterministic repeats). Q4 rowtile selections and
+strict fallbacks stay registered. The historical FP16 verifier cells below
+retain their own manifest identity; they are not certificates for this
+replacement. The final public C2/C4/C8 D128 packet passes 8,716 rows at
+KL0/top1 100%, and the declared greedy blocking/SSE/cancellation/refill gates
+pass. Production remains AR-only for automatic and explicit MTP requests;
+strict C1/K3 uses its original qualified natural25 scope.
+See [serving closure](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
+and [headline evidence](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
+Evidence: [FP16 default rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-named-fp16-default-d128-rejected.json),
+[FP32 C1 gate](../benchmarks/results/2026-09-12-gfx1151-qwen38-fp32-default-c1-qualified.json).
 
 The 2026-08-28 gfx1151 Qwen3.8 `Q4_K_M` production manifest qualifies one
 bounded T1+T2 serving cell: FP16 recurrent state plus standard-Q4 singleton and
@@ -212,6 +255,15 @@ sampling. Every miss remains K0. The production/strict manifest hashes are
 Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
 ### 2.8 Qwen3.8 gfx1151 production planar-Q6 integer-MMQ decision
+
+**September 12 correction:** integer-MMQ workspace admission is target-verifier
+only. Ordinary scalar and packed AR prefill use the registered BF16 owners.
+The public FP32-state long-C8/p512/D128 gate exposed max KL 0.10617 when AR
+prefill inherited this verifier association. Disabling only MMQ restores
+exact strict logits over all 1,032 long-C8 rows and three repeats; disabling
+F16 staging does not repair the failure. F16 staging and the bounded
+verifier kernel remain available. See the
+[phase-scope diagnosis](../benchmarks/results/2026-09-12-gfx1151-qwen38-ar-mmq-scope-rejected.json).
 
 The 2026-09-03 gfx1151 Qwen3.8 `Q4_K_M` production profile qualifies one
 shape- and row-bounded T2 association: BF16→Q8_1 activation packing plus the

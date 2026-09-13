@@ -499,7 +499,7 @@ def main() -> None:
             "correctness": (
                 "BF16 bit equality to retained exact T16 for gate and up; "
                 "focused CPU-source primitive gate is in "
-                "tests/test_gguf_x8_selected_gemv.py"
+                "tests/test_gpu_gguf_x8_selected_gemv.py"
             ),
             "promotion_gate": (
                 "all shapes exact and candidate/T16 <= 1.02"

@@ -231,7 +231,7 @@ and per-request generation rejects the same way at `:229`.
 
 Meanwhile `Qwen4ExpGGUFModel.native_context_length = 262144`
 (`models/qwen4_exp.py:22`) was declared and read by **nothing** except
-`tests/test_qwen4_exp_model.py:31`. The server's auto path sized from
+`tests/test_unit_qwen4_exp_model.py:31`. The server's auto path sized from
 `_prepared_context_tokens` / model metadata rather than from this plugin field,
 which is why startup asked for more than 2051 and then failed at the scratch
 probe until `--max-context-tokens 2051` was passed by hand. (It is now the
@@ -503,12 +503,12 @@ on the full context.
 Tests asserting the **model constant** — these must keep passing unchanged, and
 their continuing to pass is the guard against conflating the two meanings:
 
-- `tests/test_qwen4_exp_model.py:30` — plugin `qsa_dense_equivalent_max_tokens == 2051`
-- `tests/test_qwen4_exp_gguf_config.py:117` — config `== 2_051`
-- `tests/test_qwen4_exp_qsa_sparse_hip.py:115` — `selected_count = 2_051`
-- `tests/test_qwen4_exp_qsa_hip.py:378` — positions `[2051, 2998, 4095]`
-- `tests/test_qwen4exp_qsa_h256_wave.py:120` — `(4, 2051, False, 1)`
-- `tests/test_qwen4exp_context_decode_profile.py:117` — boundary probe defaults `[2051, 2052, 4097]`
+- `tests/test_unit_qwen4_exp_model.py:30` — plugin `qsa_dense_equivalent_max_tokens == 2051`
+- `tests/test_live_qwen4_exp_gguf_config.py:117` — config `== 2_051`
+- `tests/test_gpu_qwen4_exp_qsa_sparse_hip.py:115` — `selected_count = 2_051`
+- `tests/test_gpu_qwen4_exp_qsa_hip.py:378` — positions `[2051, 2998, 4095]`
+- `tests/test_gpu_qwen4exp_qsa_h256_wave.py:120` — `(4, 2051, False, 1)`
+- `tests/test_unit_qwen4exp_context_decode_profile.py:117` — boundary probe defaults `[2051, 2052, 4097]`
 
 Encode a **capacity** assumption; reviewed 2026-09-06 and intentionally left at
 2051, because each one wants the dense-equivalent regime to stay comparable
@@ -517,7 +517,7 @@ flag to take any of them above the boundary:
 
 - `scripts/qwen4exp_layer2_profile_gate.py:735` — `--max-sequence-length` default 2051
 - `scripts/qwen4_exp_compare_suite.py:83`, `scripts/qwen4_exp_compare_logits.py:132` — `--context` default 2051
-- `tests/test_qwen4exp_perf_gap_report.py:26` — `"2051"` keyed row
+- `tests/test_unit_qwen4exp_perf_gap_report.py:26` — `"2051"` keyed row
 - Any server test that asserts startup succeeds without `--max-context-tokens`
   now exercises the admission path instead of the fixed cap.
 

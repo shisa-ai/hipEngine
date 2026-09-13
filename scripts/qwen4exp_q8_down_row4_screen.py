@@ -20,7 +20,7 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture, _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 from scripts.qwen4exp_routing_capture import select_routing, validate_replay_identity
-from tests.test_qwen4_exp_pf3_moe_schedules import _alloc, _upload, _download, _make_activation
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _upload, _download, _make_activation
 
 
 def main():

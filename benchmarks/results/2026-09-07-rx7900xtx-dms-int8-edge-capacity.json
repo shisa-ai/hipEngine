@@ -1,0 +1,862 @@
+{
+  "boundary": {
+    "attempt_order_prompt_tokens": [
+      83968,
+      82944,
+      81920,
+      77824,
+      65536,
+      72704,
+      72960
+    ],
+    "highest_observed_passing_prompt_tokens": 72960,
+    "logical_context_after_decode": 72968,
+    "proven_maximum": false,
+    "requested_peak_gib": 23.9,
+    "requested_peak_reached_exactly": false,
+    "sampled_headroom_bytes": 98021376,
+    "sampled_headroom_mib": 93.48046875,
+    "sampled_whole_card_peak_bytes": 25655005184,
+    "sampled_whole_card_peak_gib": 23.893085479736328,
+    "shortfall_to_requested_peak_mib": 7.080468749998545,
+    "smallest_observed_oom_prompt_tokens": 77824,
+    "stop_reason": "72960 tokens pass at approximately 23.9 GiB; stop with the literal threshold shortfall reported rather than another full prefill for about 7 MiB",
+    "tracked_peak_bytes": 24830645644,
+    "tracked_peak_gib": 23.125340830534697
+  },
+  "comparison_scope": "new measured context coverage on the same model/card, not a kernel optimization or proven maximum increase",
+  "data_manifest": {
+    "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+    "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+  },
+  "date": "2026-09-07",
+  "date_timezone": "UTC",
+  "existing_evidence": [
+    "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json",
+    "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-bounded-merge-gate.json"
+  ],
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "RX 7900 XTX",
+    "host": "epyc",
+    "other_workloads": "independent GPU0 workload; no throughput comparison",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "limitations": [
+    "Sampled whole-card peaks are lower bounds on instantaneous peaks; headroom is not an operational reserve.",
+    "The failed-point peak is memory observed before allocation failure, not the memory needed to complete it.",
+    "No new exact replay or dense-teacher numerical gate at the near-limit point; eight finite transitions and clean teardown are the new gates.",
+    "Replay harness seeds decode with the last prompt token; not a natural-response task test.",
+    "Fresh-process OOM/backoff only; same-process allocation-failure recovery is not qualified.",
+    "DMS INT8 stays explicit offline evaluation; no production-serving promotion, throughput claim or change to dense boundaries."
+  ],
+  "memory_domain_control": {
+    "difference_bytes": 900320424,
+    "interpretation": "whole-card accounting includes memory outside the tracked allocator; not an attribution to a particular component",
+    "logit_hashes_match_prior_exact_replay": true,
+    "prompt_tokens": 65536,
+    "sampled_whole_card_peak_bytes": 25101197312,
+    "tracked_peak_bytes": 24200876888
+  },
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "monitor": {
+    "purpose": "reproducible wrapper using in-tree VramSampler and existing C1 probe; no runtime code change",
+    "sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6",
+    "source": "/tmp/xtx-capacity/run_dms_edge.py",
+    "source_text": "import hashlib\nimport json\nimport os\nimport re\nimport shlex\nimport signal\nimport subprocess\nimport sys\nimport time\nfrom pathlib import Path\n\nROOT = Path(\"/home/lhl/gfx1100-24gb-capacity\")\nsys.path.insert(0, str(ROOT))\nfrom hipengine.util.amdgpu_vram import VramSampler, select_card\n\ntokens = int(sys.argv[1])\nassert tokens > 0 and tokens % 256 == 0\nbase = Path(f\"/tmp/xtx-capacity/dms-int8-edge-{tokens}\")\noutput = base.with_suffix(\".json\")\nmonitor = base.with_suffix(\".monitor.json\")\nlog = base.with_suffix(\".log\")\nassert not any(p.exists() for p in (output, monitor, log)), \"preserve prior attempts\"\ncard = select_card(pci_id=\"0000:10:00.0\")\nunique_id = (card.sysfs_path / \"unique_id\").read_text().strip()\nassert unique_id.removeprefix(\"0x\") == \"cc4d02090dc9c3ff\"\nbaseline = int(card.vram_used_path.read_text())\nassert baseline < 128 * 2**20, f\"GPU1 not idle: {baseline} bytes\"\ncommand = [\n    str(ROOT / \".venv/bin/python\"), \"scripts/qwen38_dms_concurrency_probe.py\",\n    \"--model\", \"/models/gguf/Qwen3.8-27B-Q4_K_M.gguf\",\n    \"--metadata\", \"/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json\",\n    \"--data-manifest\", \"/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json\",\n    \"--sessions\", \"1\", \"--prompt-tokens\", str(tokens), \"--decode-steps\", \"8\",\n    \"--refill-cycles\", \"1\", \"--codec\", \"int8_evaluation\",\n    \"--backend\", \"hip_gfx1100\", \"--output\", str(output),\n]\nenv = dict(os.environ, HIP_VISIBLE_DEVICES=\"1\", GPU_MAX_HW_QUEUES=\"1\",\n           OPENBLAS_NUM_THREADS=\"1\", PYTHONUNBUFFERED=\"1\")\nstarted = time.monotonic()\ntimed_out = False\nsampler = VramSampler(card, interval_ms=20, keep_samples=True)\nwith log.open(\"w\") as stream, sampler:\n    process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stream,\n                               stderr=subprocess.STDOUT, start_new_session=True)\n    try:\n        code = process.wait(timeout=600)\n    except subprocess.TimeoutExpired:\n        timed_out = True\n        os.killpg(process.pid, signal.SIGTERM)\n        try:\n            code = process.wait(timeout=15)\n        except subprocess.TimeoutExpired:\n            os.killpg(process.pid, signal.SIGKILL)\n            code = process.wait()\n    for _ in range(50):\n        if int(card.vram_used_path.read_text()) <= baseline + 16 * 2**20:\n            break\n        time.sleep(0.1)\ntext = log.read_text()\nraw = json.loads(output.read_text()) if output.exists() else None\noom = bool(re.search(r\"\\bHIP error 2\\b|hipErrorOutOfMemory|out of memory\", text, re.I))\nstatus = \"timeout\" if timed_out else \"oom\" if code and oom else \"failed\"\nif code == 0 and raw is not None:\n    cycle = raw[\"cycles\"][0]\n    assert raw[\"status\"] == \"passed\" and not raw[\"cycle_errors\"]\n    assert len(cycle[\"decode\"]) == 8\n    assert all(r[\"finite_logits\"] for r in cycle[\"decode\"])\n    assert cycle[\"memory\"][\"after_close\"][\"active_allocations\"] == 0\n    assert cycle[\"memory\"][\"after_close\"][\"current_allocated_bytes\"] == 0\n    status = \"execution_fit\"\nsamples = sampler.result()\ncompact_samples = samples.to_dict()\ncompact_samples[\"max_sample_gap_seconds\"] = max(\n    b[0] - a[0] for a, b in zip(samples.samples, samples.samples[1:])\n)\nreport = {\n    \"status\": status, \"exit_code\": code, \"timeout_seconds\": 600,\n    \"prompt_tokens\": tokens, \"decode_steps\": 8,\n    \"source_commit\": subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"], cwd=ROOT, text=True).strip(),\n    \"working_tree_clean\": not bool(subprocess.check_output([\"git\", \"status\", \"--porcelain\"], cwd=ROOT, text=True).strip()),\n    \"command\": \"HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 \" + shlex.join(command),\n    \"wrapper_command\": f\".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py {tokens}\",\n    \"wrapper_sha256\": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),\n    \"unique_id\": unique_id, \"cwd\": str(ROOT),\n    \"whole_card_vram\": compact_samples,\n    \"sampled_headroom_bytes\": card.vram_total_bytes - samples.peak_bytes,\n    \"returns_to_baseline\": samples.final_bytes <= baseline + 16 * 2**20,\n    \"raw_output\": str(output) if raw else None,\n    \"raw_sha256\": hashlib.sha256(output.read_bytes()).hexdigest() if raw else None,\n    \"log\": str(log), \"log_sha256\": hashlib.sha256(log.read_bytes()).hexdigest(),\n    \"failure_tail\": text[-5000:] if code else None,\n    \"elapsed_seconds\": time.monotonic() - started,\n    \"tracked_peak_bytes\": raw[\"cycles\"][0][\"memory\"][\"after_close\"][\"peak_allocated_bytes\"] if raw else None,\n    \"scope\": \"capacity/finiteness/ownership only; no new numerical or throughput qualification\",\n}\nmonitor.write_text(json.dumps(report, indent=2, sort_keys=True) + \"\\n\")\nprint(json.dumps(report, indent=2), flush=True)\nif status not in {\"execution_fit\", \"oom\"} or not report[\"returns_to_baseline\"]:\n    raise SystemExit(1)\n"
+  },
+  "observed_prompt_coverage_increase_percent": 11.328125,
+  "points": [
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 83968 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-83968.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "decode_steps": 8,
+      "elapsed_seconds": 312.47560068406165,
+      "exit_code": 1,
+      "failure_tail": "Traceback (most recent call last):\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 418, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 398, in main\n    result = run(args)\n             ^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 137, in run\n    _run_cycle(\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 235, in _run_cycle\n    session.prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 18330, in prefill\n    self._finalize_external_dms_prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 15257, in _finalize_external_dms_prefill\n    backend = backend_factory(\n              ^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 2257, in create_dms_int8_evaluation_backend\n    return DMSCompactBackend(\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 1143, in __init__\n    self._device_store = DMSDevicePayloadStore(\n                         ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 299, in __init__\n    self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 337, in _alloc\n    buf = malloc(nbytes)\n          ^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/memory.py\", line 112, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 69, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 362, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory\n",
+      "log": "/tmp/xtx-capacity/dms-int8-edge-83968.log",
+      "log_sha256": "d8477b05a30b16e5640957f15dac1250c9394cc0157165fb4848ec438fbc8527",
+      "monitor_sha256": "d811d5c9d7a7f7000173390a2e99baf9b14d9b17e9eaf22ecb9ae13ad0d3e7e9",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-83968.monitor.json",
+      "prompt_tokens": 83968,
+      "raw_output": null,
+      "raw_sha256": null,
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 47222784,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "oom",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": null,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 312.4141218587756,
+        "final_bytes": 28033024,
+        "final_gib": 0.0261077880859375,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.021281374618411064,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25705803776,
+        "peak_delta_bytes": 25677803520,
+        "peak_delta_gib": 23.914318084716797,
+        "peak_gib": 23.94039535522461,
+        "samples_count": 15623
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 83968",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 82944 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-82944.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "decode_steps": 8,
+      "elapsed_seconds": 305.3496854696423,
+      "exit_code": 1,
+      "failure_tail": "Traceback (most recent call last):\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 418, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 398, in main\n    result = run(args)\n             ^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 137, in run\n    _run_cycle(\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 235, in _run_cycle\n    session.prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 18330, in prefill\n    self._finalize_external_dms_prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 15257, in _finalize_external_dms_prefill\n    backend = backend_factory(\n              ^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 2257, in create_dms_int8_evaluation_backend\n    return DMSCompactBackend(\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 1143, in __init__\n    self._device_store = DMSDevicePayloadStore(\n                         ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 299, in __init__\n    self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 337, in _alloc\n    buf = malloc(nbytes)\n          ^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/memory.py\", line 112, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 69, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 362, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory\n",
+      "log": "/tmp/xtx-capacity/dms-int8-edge-82944.log",
+      "log_sha256": "d8477b05a30b16e5640957f15dac1250c9394cc0157165fb4848ec438fbc8527",
+      "monitor_sha256": "c01410b721bd90cf0ed67f3dba10b339f42a73653b92e523edf5775dafd7ecdd",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-82944.monitor.json",
+      "prompt_tokens": 82944,
+      "raw_output": null,
+      "raw_sha256": null,
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 18325504,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "oom",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": null,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28033024,
+        "baseline_gib": 0.0261077880859375,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 305.330982667394,
+        "final_bytes": 28033024,
+        "final_gib": 0.0261077880859375,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.020982760936021805,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25734701056,
+        "peak_delta_bytes": 25706668032,
+        "peak_delta_gib": 23.941200256347656,
+        "peak_gib": 23.967308044433594,
+        "samples_count": 15269
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 82944",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 81920 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-81920.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "decode_steps": 8,
+      "elapsed_seconds": 307.0875088693574,
+      "exit_code": 1,
+      "failure_tail": "Traceback (most recent call last):\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 418, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 398, in main\n    result = run(args)\n             ^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 137, in run\n    _run_cycle(\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 235, in _run_cycle\n    session.prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 18330, in prefill\n    self._finalize_external_dms_prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 15257, in _finalize_external_dms_prefill\n    backend = backend_factory(\n              ^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 2257, in create_dms_int8_evaluation_backend\n    return DMSCompactBackend(\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 1143, in __init__\n    self._device_store = DMSDevicePayloadStore(\n                         ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 299, in __init__\n    self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 337, in _alloc\n    buf = malloc(nbytes)\n          ^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/memory.py\", line 112, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 69, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 362, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory\n",
+      "log": "/tmp/xtx-capacity/dms-int8-edge-81920.log",
+      "log_sha256": "d8477b05a30b16e5640957f15dac1250c9394cc0157165fb4848ec438fbc8527",
+      "monitor_sha256": "eaa0380dbc4fecaf93970e78883746a57b1a86ee798d0f31185cabcf4d9c0a38",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-81920.monitor.json",
+      "prompt_tokens": 81920,
+      "raw_output": null,
+      "raw_sha256": null,
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 41385984,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "oom",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": null,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28033024,
+        "baseline_gib": 0.0261077880859375,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 307.06825484428555,
+        "final_bytes": 28000256,
+        "final_gib": 0.0260772705078125,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.02128852065652609,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25711640576,
+        "peak_delta_bytes": 25683607552,
+        "peak_delta_gib": 23.919723510742188,
+        "peak_gib": 23.945831298828125,
+        "samples_count": 15356
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 81920",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 77824 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-77824.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "decode_steps": 8,
+      "elapsed_seconds": 279.78106546774507,
+      "exit_code": 1,
+      "failure_tail": "Traceback (most recent call last):\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 418, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 398, in main\n    result = run(args)\n             ^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 137, in run\n    _run_cycle(\n  File \"/home/lhl/gfx1100-24gb-capacity/scripts/qwen38_dms_concurrency_probe.py\", line 235, in _run_cycle\n    session.prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 18330, in prefill\n    self._finalize_external_dms_prefill(\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py\", line 15257, in _finalize_external_dms_prefill\n    backend = backend_factory(\n              ^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 2257, in create_dms_int8_evaluation_backend\n    return DMSCompactBackend(\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms.py\", line 1143, in __init__\n    self._device_store = DMSDevicePayloadStore(\n                         ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 299, in __init__\n    self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/kvcache/dms_device.py\", line 337, in _alloc\n    buf = malloc(nbytes)\n          ^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/memory.py\", line 112, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 69, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/gfx1100-24gb-capacity/hipengine/core/hip.py\", line 362, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory\n",
+      "log": "/tmp/xtx-capacity/dms-int8-edge-77824.log",
+      "log_sha256": "d8477b05a30b16e5640957f15dac1250c9394cc0157165fb4848ec438fbc8527",
+      "monitor_sha256": "ba825b9586d3741b9fe2cc779add7085bb053581c964f35cd47774de4ed8650e",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-77824.monitor.json",
+      "prompt_tokens": 77824,
+      "raw_output": null,
+      "raw_sha256": null,
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 35110912,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "oom",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": null,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28033024,
+        "baseline_gib": 0.0261077880859375,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 279.7449098434299,
+        "final_bytes": 28000256,
+        "final_gib": 0.0260772705078125,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.0210189213976264,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25717915648,
+        "peak_delta_bytes": 25689882624,
+        "peak_delta_gib": 23.925567626953125,
+        "peak_gib": 23.951675415039062,
+        "samples_count": 13990
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 77824",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 65536 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-65536.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode": [
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "a5ab62482693f571d677f26830335ccac021358523d9a2ba6706f8fd33b0bd5c",
+          "output_token": 4526,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "e522ebfc34aaef4fa9ee346d59f4c9ac75d6065a27f28054ee1ed627bcb78634",
+          "output_token": 318,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "a23322def6d98a3da18abe7a1f8a41a2f4ad40712703fe07b4aca8501390be2a",
+          "output_token": 16,
+          "session": 0,
+          "step": 2
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "4864f781d42b3c1c2073b4c79e3a80eb10f78bb0a875417dd7ec9b5a16b8b7a9",
+          "output_token": 24,
+          "session": 0,
+          "step": 3
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "4c4ef0f5e6ba6184c8a3134ecd47379a4f3b840dcbe634131ce4689e8d7793e7",
+          "output_token": 15,
+          "session": 0,
+          "step": 4
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "ba9c8575310da2b6a303e1735b6de83ffa4c5dea9b2a4482b41c790bbe42e6eb",
+          "output_token": 22,
+          "session": 0,
+          "step": 5
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "256f41d7dd0a1a502baab0f3b383bc466e7ec18ecb1aae9ee56927b93958f904",
+          "output_token": 8,
+          "session": 0,
+          "step": 6
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "0feff6bd6f3729e9d90f4bfa3ad2d2fa0db3334837c6388d0951d610ffd42849",
+          "output_token": 539,
+          "session": 0,
+          "step": 7
+        }
+      ],
+      "decode_steps": 8,
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.7775608168578634,
+            "device_resident_bytes": 1259405456,
+            "live_token_rows": 2359872,
+            "logical_token_rows": 4194816,
+            "max_live_count": 36873,
+            "payload_bytes": 1208254464,
+            "scale_bytes": 18878976,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 2359936,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "elapsed_seconds": 242.155940849334,
+      "exit_code": 0,
+      "failure_tail": null,
+      "log": "/tmp/xtx-capacity/dms-int8-edge-65536.log",
+      "log_sha256": "55b6360343d909763655887a84264eabe234363644266fddd5f8f13fb0a7e880",
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24204468248,
+          "total_freed_bytes": 24204468248
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 1250,
+          "current_allocated_bytes": 19871096728,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24204468248,
+          "total_freed_bytes": 4333371520
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 1247,
+          "current_allocated_bytes": 19867505368,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24200876888,
+          "total_freed_bytes": 4333371520
+        }
+      },
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "monitor_sha256": "11946860fe34b3101529d9b6650379485955aa8498080177bdf032d91e5a631c",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-65536.monitor.json",
+      "prompt_tokens": 65536,
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "997d89781b287aa47a6d54d18b7030f0b3260d476b62fedc139ee0978c123d40"
+      },
+      "raw_output": "/tmp/xtx-capacity/dms-int8-edge-65536.json",
+      "raw_sha256": "0c9a7a34a9695c85934433ea8f169bf0350de447f6d40f9f462c5e47a6f4b4a4",
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 651829248,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "execution_fit",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": 24200876888,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 242.13793112989515,
+        "final_bytes": 28000256,
+        "final_gib": 0.0260772705078125,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.020970789715647697,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25101197312,
+        "peak_delta_bytes": 25073197056,
+        "peak_delta_gib": 23.351234436035156,
+        "peak_gib": 23.37731170654297,
+        "samples_count": 12109
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 65536",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 72704 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-72704.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode": [
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "e70572f083c54064eed3c6bdab789189cf57e63a0e9aba564d6486b68427baa5",
+          "output_token": 97771,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "ed627981b185ba05c102e1651fbdadd43f14db89fc673e54ae986b73590282ef",
+          "output_token": 15303,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "d47283a3121f307513638ef6aa068c8eb4b405fa89847e5c89a9122d70a2476a",
+          "output_token": 96275,
+          "session": 0,
+          "step": 2
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "5738e75f01a62f23ae449bf7150b1edb7c714447081a2169c5aeb44bd706d4b8",
+          "output_token": 96380,
+          "session": 0,
+          "step": 3
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "3cadc71706fb14cf28786e8e120227f403dc85659f5028a395c15f2db3f6d513",
+          "output_token": 27279,
+          "session": 0,
+          "step": 4
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "bb9e6bc434f6c417737491a722071f6d369d31b8890c3fd7eea7d8a166131340",
+          "output_token": 95988,
+          "session": 0,
+          "step": 5
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "0a8e472a053f14666ea03dba1f1da7571b56122070208b7569b22304fb220660",
+          "output_token": 100292,
+          "session": 0,
+          "step": 6
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "25f23c7731863ed95f074551e652f627a162e1270fc8be90fdf580c91cb8e647",
+          "output_token": 95938,
+          "session": 0,
+          "step": 7
+        }
+      ],
+      "decode_steps": 8,
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.797266233284722,
+            "device_resident_bytes": 1380174608,
+            "live_token_rows": 2589248,
+            "logical_token_rows": 4653568,
+            "max_live_count": 40457,
+            "payload_bytes": 1325694976,
+            "scale_bytes": 20713984,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 2589312,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "elapsed_seconds": 261.53533744160086,
+      "exit_code": 0,
+      "failure_tail": null,
+      "log": "/tmp/xtx-capacity/dms-int8-edge-72704.log",
+      "log_sha256": "49f3fbf8962dd5b5e87e04790364185b83874e0efd7b85b2f6c675838b484bd3",
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24808929480,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24812867592,
+          "total_freed_bytes": 24812867592
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 1250,
+          "current_allocated_bytes": 20007440264,
+          "peak_allocated_bytes": 24808929480,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24812867592,
+          "total_freed_bytes": 4805427328
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 1247,
+          "current_allocated_bytes": 20003502152,
+          "peak_allocated_bytes": 24808929480,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24808929480,
+          "total_freed_bytes": 4805427328
+        }
+      },
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "monitor_sha256": "b062383237f1029549f04054e8d5742181ecda2540f0da701cde2be35ad59e30",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-72704.monitor.json",
+      "prompt_tokens": 72704,
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "9e786d79d82bccdf771524d8320d7684213369a1a02f2de6f4d9b121b8e01bf9"
+      },
+      "raw_output": "/tmp/xtx-capacity/dms-int8-edge-72704.json",
+      "raw_sha256": "a1b1b2b4970ee5eaf552c9a6799e31d41ccb9fbf3835869c7223b214b6cdd425",
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 98189312,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "execution_fit",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": 24808929480,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 261.5181082421914,
+        "final_bytes": 28958720,
+        "final_gib": 0.02696990966796875,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.020934180356562138,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25654837248,
+        "peak_delta_bytes": 25626836992,
+        "peak_delta_gib": 23.866851806640625,
+        "peak_gib": 23.892929077148438,
+        "samples_count": 13078
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 72704",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 72960 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-edge-72960.json",
+      "cwd": "/home/lhl/gfx1100-24gb-capacity",
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode": [
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "a0c76e98d4ab3532cbb28b7e5ddb807d3753cfd39dcdd5bdcf5c07a15eb435bc",
+          "output_token": 148638,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "1749a9501267d4d30320e67377893ceb140dd087b4fb99134b33b3e58f5752a4",
+          "output_token": 18602,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "bcb291a72a4c3f05907d9aae4716c472797fab7869c884afa270ca4b2df9f4a6",
+          "output_token": 181571,
+          "session": 0,
+          "step": 2
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "ded0fb6f9d950f6c90a2a177e7f6b689d1c1526497b9c808473c9d4e1920f7ca",
+          "output_token": 155273,
+          "session": 0,
+          "step": 3
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "aaaf45f7bb5d5edc1711e11fb832e73e8c597eb587303c8c31b76f23abccd2ee",
+          "output_token": 247022,
+          "session": 0,
+          "step": 4
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "9591e1fdd0e7aab0d7a898ffd1cc2dff90ff975ed43301e06b112ad7e8e2f213",
+          "output_token": 95960,
+          "session": 0,
+          "step": 5
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "83c282e8a2891921543142e1a939e393affa46df4a9c62ecd64ef1692d503f1a",
+          "output_token": 155109,
+          "session": 0,
+          "step": 6
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "64cf74e17eab9a025c63f06a00be3b2f45f98eede2c9e916c67d43d595d19fde",
+          "output_token": 27279,
+          "session": 0,
+          "step": 7
+        }
+      ],
+      "decode_steps": 8,
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.7979056301589258,
+            "device_resident_bytes": 1384475408,
+            "live_token_rows": 2597440,
+            "logical_token_rows": 4669952,
+            "max_live_count": 40585,
+            "payload_bytes": 1329889280,
+            "scale_bytes": 20779520,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 2597504,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "elapsed_seconds": 306.3549000239,
+      "exit_code": 0,
+      "failure_tail": null,
+      "log": "/tmp/xtx-capacity/dms-int8-edge-72960.log",
+      "log_sha256": "c475104f148f625876b9d538115f789f070d4e6a92575f17b28064ad80e64109",
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24830645644,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24834583756,
+          "total_freed_bytes": 24834583756
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 1250,
+          "current_allocated_bytes": 20012297292,
+          "peak_allocated_bytes": 24830645644,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24834583756,
+          "total_freed_bytes": 4822286464
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 1247,
+          "current_allocated_bytes": 20008359180,
+          "peak_allocated_bytes": 24830645644,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24830645644,
+          "total_freed_bytes": 4822286464
+        }
+      },
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "monitor_sha256": "003ce1f41017953303f9d55e5619ae6532e03393411aa84f107ecea6ca6884a4",
+      "monitor_source": "/tmp/xtx-capacity/dms-int8-edge-72960.monitor.json",
+      "prompt_tokens": 72960,
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "c0186748ad0d96cbdb625db9c4c56d1a69847fb71452c3b1da3b81541c4060d1"
+      },
+      "raw_output": "/tmp/xtx-capacity/dms-int8-edge-72960.json",
+      "raw_sha256": "0915c19aa73480c105c5dc608aaf8a9e9970bf424af36f1c92ba113886e36597",
+      "returns_to_baseline": true,
+      "sampled_headroom_bytes": 98021376,
+      "scope": "capacity/finiteness/ownership only; no new numerical or throughput qualification",
+      "source_commit": "bc7d7c7de0338f7fb498aec3720fb64d9931008c",
+      "status": "execution_fit",
+      "timeout_seconds": 600,
+      "tracked_peak_bytes": 24830645644,
+      "unique_id": "cc4d02090dc9c3ff",
+      "whole_card_vram": {
+        "baseline_bytes": 28000256,
+        "baseline_gib": 0.0260772705078125,
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "elapsed_seconds": 306.33760662097484,
+        "final_bytes": 29126656,
+        "final_gib": 0.027126312255859375,
+        "interval_seconds": 0.02,
+        "max_sample_gap_seconds": 0.02109376434236765,
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "peak_bytes": 25655005184,
+        "peak_delta_bytes": 25627004928,
+        "peak_delta_gib": 23.867008209228516,
+        "peak_gib": 23.893085479736328,
+        "samples_count": 15319
+      },
+      "working_tree_clean": true,
+      "wrapper_command": ".venv/bin/python /tmp/xtx-capacity/run_dms_edge.py 72960",
+      "wrapper_sha256": "41d834679e9aa52820992a499d8db4b677db0573b1ce43a56e67504da8107ea6"
+    }
+  ],
+  "prior_observed_prompt_tokens": 65536,
+  "protocol": {
+    "coarse_backoff_tokens": 4096,
+    "correctness_basis": "new-point finiteness and ownership/drain; reuse post-fix CPU/numerical and 64K byte-exact replay evidence",
+    "decode_steps": 8,
+    "final_selection": "measured whole-card interpolation, then one 256-token increment from the 72704-token pass",
+    "fresh_process_per_point": true,
+    "initial_backoff_tokens": 1024,
+    "sampling_interval_ms": 20,
+    "timeout_seconds_per_point": 600,
+    "verify_c1": false,
+    "whole_card_control_tokens": 65536
+  },
+  "quant": "Q4_K_M",
+  "route": "offline eager C1, compact DMS INT8 K/V, FP32 per-token/head scales, W8192, MTP/prefix reuse off",
+  "schema": "hipengine_dms_int8_edge_capacity_v1",
+  "serving_qualification": false,
+  "status": "near_limit_execution_fit_passed",
+  "throughput_claim": false
+}

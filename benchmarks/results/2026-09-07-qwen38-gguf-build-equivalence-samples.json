@@ -1,0 +1,90 @@
+{
+ "samples": [
+  {
+   "tensor": "output.weight",
+   "offset": 0,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "output.weight",
+   "offset": 1048576,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.0.attn_qkv.weight",
+   "offset": 1775841280,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.0.attn_qkv.weight",
+   "offset": 1776889856,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.15.ffn_gate.weight",
+   "offset": 5492857344,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.15.ffn_gate.weight",
+   "offset": 5493905920,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.31.ffn_down.weight",
+   "offset": 9108784128,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.31.ffn_down.weight",
+   "offset": 9109832704,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.47.attn_q.weight",
+   "offset": 12758133248,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.47.attn_q.weight",
+   "offset": 12759181824,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.64.nextn.eh_proj.weight",
+   "offset": 17039990784,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "blk.64.nextn.eh_proj.weight",
+   "offset": 17041039360,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "token_embd.weight",
+   "offset": 1042964480,
+   "match": true,
+   "remote_len": 262144
+  },
+  {
+   "tensor": "token_embd.weight",
+   "offset": 1044013056,
+   "match": true,
+   "remote_len": 262144
+  }
+ ],
+ "data_start_local": 10995680,
+ "data_start_remote": 10996704
+}

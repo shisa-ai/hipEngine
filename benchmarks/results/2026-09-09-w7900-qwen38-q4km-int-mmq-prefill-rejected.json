@@ -1,0 +1,362 @@
+{
+ "schema": 1,
+ "kind": "qwen38_q4km_dense_q4_k_int_mmq_prefill_leaf",
+ "created_utc": "2026-09-09T08:02:07.278628+00:00",
+ "device": "AMD Radeon Pro W7900",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "arms": {
+  "t16_prod": "gguf_q4_k_t16_wmma_prefill (dense 256-row parent) per matrix \u2014 the retained float projection owner; the pair case runs it twice (gate + up)",
+  "t16_dual_silu": "gguf_q4_k_t16_dense_dual_wmma_prefill_silu (fused dual+SiLU 256-row parent, SwiGLU product output) \u2014 the production gate/up dispatch; informational timing for the pair case",
+  "pack": "gguf_q8_1_mmq_ds4_pack_bf16 (BF16 activations to llama.cpp DS4 block_q8_1_mmq, one residual pass)",
+  "mmq32_ctl": "raw-Q4_K staged-dp4a 32x32-tile MMQ, unamortized metadata",
+  "mmq32_vdr": "mmq32 with efa4e8641-family load reuse: block header and subblock scale/min products hoisted once per 256-K block",
+  "wmma32_ctl": "raw-Q4_K direct-global iu8-WMMA 32x16-tile MMQ, unamortized",
+  "wmma32_vdr": "wmma32 with the block header read once per 256-K block"
+ },
+ "donor_source": "nasone32/llama.cpp-RDNA3-7900xtx-opt 7dc2f0cb28326816f67f6b979008383344e2038b bulk-prefill arithmetic class (raw-Q4_K x Q8_1 integer MMQ, efa4e8641 load-reuse family)",
+ "prior_boundary": "2026-08-12 T16-payload integer MMQ rejections (Q4 2.1x slower; Q5 +3.0-4.4%) bar the T16-payload dataflow; this screen consumes raw Q4_K bytes instead",
+ "rows": [
+  512,
+  1024,
+  4096
+ ],
+ "samples": 7,
+ "burst": 8,
+ "warmups": 4,
+ "wins": {
+  "t16_prod": 9,
+  "mmq32_ctl": 0,
+  "mmq32_vdr": 0,
+  "wmma32_ctl": 0,
+  "wmma32_vdr": 0
+ },
+ "results": [
+  {
+   "role": "ffn_gate_up_pair",
+   "tensors": [
+    "blk.8.ffn_gate.weight",
+    "blk.8.ffn_up.weight"
+   ],
+   "rows": 512,
+   "in_features": 5120,
+   "out_features_total": 34816,
+   "n_consume": 2,
+   "t16_prod_ms": 5.030928134918213,
+   "pack_ms": 0.029115375131368637,
+   "mmq32_ctl_ms": 11.952615737915039,
+   "mmq32_vdr_ms": 11.643265724182129,
+   "wmma32_ctl_ms": 16.34117889404297,
+   "wmma32_vdr_ms": 16.710519790649414,
+   "totals_with_pack": {
+    "mmq32_ctl": 23.934346850961447,
+    "mmq32_vdr": 23.315646823495626,
+    "wmma32_ctl": 32.711473163217306,
+    "wmma32_vdr": 33.4501549564302
+   },
+   "t16_vs_best_mmq": 0.21577476160122866,
+   "mmq32_vdr_vs_ctl": 0.974118634739372,
+   "wmma32_vdr_vs_ctl": 1.0226018513720014,
+   "t16_vs_mmq32_vdr_mismatch": 15376894,
+   "t16_vs_wmma32_vdr_mismatch": 15376894,
+   "kl_t16_vs_mmq32_vdr": 0.0005153269919151043,
+   "kl_t16_vs_wmma32_vdr": 0.0005153269919151043,
+   "t16_dual_silu_ms": 4.20363712310791,
+   "finite": true
+  },
+  {
+   "role": "ffn_gate_up_pair",
+   "tensors": [
+    "blk.8.ffn_gate.weight",
+    "blk.8.ffn_up.weight"
+   ],
+   "rows": 1024,
+   "in_features": 5120,
+   "out_features_total": 34816,
+   "n_consume": 2,
+   "t16_prod_ms": 9.753562927246094,
+   "pack_ms": 0.05630074813961983,
+   "mmq32_ctl_ms": 23.7152156829834,
+   "mmq32_vdr_ms": 23.56878089904785,
+   "wmma32_ctl_ms": 33.763641357421875,
+   "wmma32_vdr_ms": 29.714599609375,
+   "totals_with_pack": {
+    "mmq32_ctl": 47.48673211410642,
+    "mmq32_vdr": 47.19386254623532,
+    "wmma32_ctl": 67.58358346298337,
+    "wmma32_vdr": 59.48549996688962
+   },
+   "t16_vs_best_mmq": 0.2066701558426296,
+   "mmq32_vdr_vs_ctl": 0.993825281376605,
+   "wmma32_vdr_vs_ctl": 0.8800768641870194,
+   "t16_vs_mmq32_vdr_mismatch": 30501289,
+   "t16_vs_wmma32_vdr_mismatch": 30501289,
+   "kl_t16_vs_mmq32_vdr": 0.0010300121999969687,
+   "kl_t16_vs_wmma32_vdr": 0.0010300121999969687,
+   "t16_dual_silu_ms": 7.699491024017334,
+   "finite": true
+  },
+  {
+   "role": "ffn_gate_up_pair",
+   "tensors": [
+    "blk.8.ffn_gate.weight",
+    "blk.8.ffn_up.weight"
+   ],
+   "rows": 4096,
+   "in_features": 5120,
+   "out_features_total": 34816,
+   "n_consume": 2,
+   "t16_prod_ms": 39.21892166137695,
+   "pack_ms": 0.21661686897277832,
+   "mmq32_ctl_ms": 96.4725570678711,
+   "mmq32_vdr_ms": 95.484130859375,
+   "wmma32_ctl_ms": 128.49830627441406,
+   "wmma32_vdr_ms": 125.40876770019531,
+   "totals_with_pack": {
+    "mmq32_ctl": 193.16173100471497,
+    "mmq32_vdr": 191.18487858772278,
+    "wmma32_ctl": 257.2132294178009,
+    "wmma32_vdr": 251.0341522693634
+   },
+   "t16_vs_best_mmq": 0.20513610674173607,
+   "mmq32_vdr_vs_ctl": 0.9897543276706068,
+   "wmma32_vdr_vs_ctl": 0.9759565813449642,
+   "t16_vs_mmq32_vdr_mismatch": 122907270,
+   "t16_vs_wmma32_vdr_mismatch": 122907270,
+   "kl_t16_vs_mmq32_vdr": 0.004118173222575591,
+   "kl_t16_vs_wmma32_vdr": 0.004118173222575591,
+   "t16_dual_silu_ms": 30.213260650634766,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "tensors": [
+    "blk.8.ffn_down.weight"
+   ],
+   "rows": 512,
+   "in_features": 17408,
+   "out_features_total": 5120,
+   "n_consume": 1,
+   "t16_prod_ms": 3.4010770320892334,
+   "pack_ms": 0.09346137195825577,
+   "mmq32_ctl_ms": 6.176933765411377,
+   "mmq32_vdr_ms": 6.23268985748291,
+   "wmma32_ctl_ms": 6.854770183563232,
+   "wmma32_vdr_ms": 7.548744201660156,
+   "totals_with_pack": {
+    "mmq32_ctl": 6.270395137369633,
+    "mmq32_vdr": 6.326151229441166,
+    "wmma32_ctl": 6.948231555521488,
+    "wmma32_vdr": 7.642205573618412
+   },
+   "t16_vs_best_mmq": 0.5424023458776716,
+   "mmq32_vdr_vs_ctl": 1.009026499909024,
+   "wmma32_vdr_vs_ctl": 1.1012395747068189,
+   "t16_vs_mmq32_vdr_mismatch": 2284571,
+   "t16_vs_wmma32_vdr_mismatch": 2284571,
+   "kl_t16_vs_mmq32_vdr": 0.0008720007072711374,
+   "kl_t16_vs_wmma32_vdr": 0.0008720007072711374,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "tensors": [
+    "blk.8.ffn_down.weight"
+   ],
+   "rows": 1024,
+   "in_features": 17408,
+   "out_features_total": 5120,
+   "n_consume": 1,
+   "t16_prod_ms": 5.397390842437744,
+   "pack_ms": 0.17107263207435608,
+   "mmq32_ctl_ms": 12.483256340026855,
+   "mmq32_vdr_ms": 12.197738647460938,
+   "wmma32_ctl_ms": 16.137815475463867,
+   "wmma32_vdr_ms": 17.906574249267578,
+   "totals_with_pack": {
+    "mmq32_ctl": 12.654328972101212,
+    "mmq32_vdr": 12.368811279535294,
+    "wmma32_ctl": 16.308888107538223,
+    "wmma32_vdr": 18.077646881341934
+   },
+   "t16_vs_best_mmq": 0.4363710238968517,
+   "mmq32_vdr_vs_ctl": 0.9771279476453254,
+   "wmma32_vdr_vs_ctl": 1.1096033584280942,
+   "t16_vs_mmq32_vdr_mismatch": 4526945,
+   "t16_vs_wmma32_vdr_mismatch": 4526945,
+   "kl_t16_vs_mmq32_vdr": 0.001743340752794809,
+   "kl_t16_vs_wmma32_vdr": 0.001743340752794809,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "tensors": [
+    "blk.8.ffn_down.weight"
+   ],
+   "rows": 4096,
+   "in_features": 17408,
+   "out_features_total": 5120,
+   "n_consume": 1,
+   "t16_prod_ms": 20.351167678833008,
+   "pack_ms": 0.8164801001548767,
+   "mmq32_ctl_ms": 50.865013122558594,
+   "mmq32_vdr_ms": 49.833133697509766,
+   "wmma32_ctl_ms": 70.76712799072266,
+   "wmma32_vdr_ms": 65.9985122680664,
+   "totals_with_pack": {
+    "mmq32_ctl": 51.68149322271347,
+    "mmq32_vdr": 50.64961379766464,
+    "wmma32_ctl": 71.58360809087753,
+    "wmma32_vdr": 66.81499236822128
+   },
+   "t16_vs_best_mmq": 0.4018030178893755,
+   "mmq32_vdr_vs_ctl": 0.9797133754283612,
+   "wmma32_vdr_vs_ctl": 0.9326153843168342,
+   "t16_vs_mmq32_vdr_mismatch": 18043393,
+   "t16_vs_wmma32_vdr_mismatch": 18043393,
+   "kl_t16_vs_mmq32_vdr": 0.00697196177235768,
+   "kl_t16_vs_wmma32_vdr": 0.00697196177235768,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensors": [
+    "blk.11.attn_q.weight"
+   ],
+   "rows": 512,
+   "in_features": 5120,
+   "out_features_total": 12288,
+   "n_consume": 1,
+   "t16_prod_ms": 2.185938596725464,
+   "pack_ms": 0.032925501465797424,
+   "mmq32_ctl_ms": 4.5090742111206055,
+   "mmq32_vdr_ms": 4.5547099113464355,
+   "wmma32_ctl_ms": 4.786703586578369,
+   "wmma32_vdr_ms": 4.890820026397705,
+   "totals_with_pack": {
+    "mmq32_ctl": 4.541999712586403,
+    "mmq32_vdr": 4.587635412812233,
+    "wmma32_ctl": 4.819629088044167,
+    "wmma32_vdr": 4.9237455278635025
+   },
+   "t16_vs_best_mmq": 0.4812722886503002,
+   "mmq32_vdr_vs_ctl": 1.0101208580939476,
+   "wmma32_vdr_vs_ctl": 1.0217511775977255,
+   "t16_vs_mmq32_vdr_mismatch": 5463238,
+   "t16_vs_wmma32_vdr_mismatch": 5463238,
+   "kl_t16_vs_mmq32_vdr": 0.0006141753819888681,
+   "kl_t16_vs_wmma32_vdr": 0.0006141753819888681,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensors": [
+    "blk.11.attn_q.weight"
+   ],
+   "rows": 1024,
+   "in_features": 5120,
+   "out_features_total": 12288,
+   "n_consume": 1,
+   "t16_prod_ms": 4.192854404449463,
+   "pack_ms": 0.05826599895954132,
+   "mmq32_ctl_ms": 9.06490421295166,
+   "mmq32_vdr_ms": 9.145015716552734,
+   "wmma32_ctl_ms": 10.05371379852295,
+   "wmma32_vdr_ms": 11.369235038757324,
+   "totals_with_pack": {
+    "mmq32_ctl": 9.123170211911201,
+    "mmq32_vdr": 9.203281715512276,
+    "wmma32_ctl": 10.11197979748249,
+    "wmma32_vdr": 11.427501037716866
+   },
+   "t16_vs_best_mmq": 0.4595830514019432,
+   "mmq32_vdr_vs_ctl": 1.0088375455183094,
+   "wmma32_vdr_vs_ctl": 1.1308492828220003,
+   "t16_vs_mmq32_vdr_mismatch": 10863863,
+   "t16_vs_wmma32_vdr_mismatch": 10863863,
+   "kl_t16_vs_mmq32_vdr": 0.0012190375998106615,
+   "kl_t16_vs_wmma32_vdr": 0.0012190375998106615,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensors": [
+    "blk.11.attn_q.weight"
+   ],
+   "rows": 4096,
+   "in_features": 5120,
+   "out_features_total": 12288,
+   "n_consume": 1,
+   "t16_prod_ms": 14.432062149047852,
+   "pack_ms": 0.22811849415302277,
+   "mmq32_ctl_ms": 38.46381759643555,
+   "mmq32_vdr_ms": 37.03743362426758,
+   "wmma32_ctl_ms": 47.99344253540039,
+   "wmma32_vdr_ms": 42.5977783203125,
+   "totals_with_pack": {
+    "mmq32_ctl": 38.69193609058857,
+    "mmq32_vdr": 37.2655521184206,
+    "wmma32_ctl": 48.22156102955341,
+    "wmma32_vdr": 42.82589681446552
+   },
+   "t16_vs_best_mmq": 0.3872762196890675,
+   "mmq32_vdr_vs_ctl": 0.9629162142163405,
+   "wmma32_vdr_vs_ctl": 0.8875749700366253,
+   "t16_vs_mmq32_vdr_mismatch": 43458415,
+   "t16_vs_wmma32_vdr_mismatch": 43458415,
+   "kl_t16_vs_mmq32_vdr": 0.004878519203551162,
+   "kl_t16_vs_wmma32_vdr": 0.004878519203551162,
+   "t16_dual_silu_ms": null,
+   "finite": true
+  }
+ ],
+ "verdict": "REJECTED as a gfx1100 dense bulk-prefill replacement: the retained float Q4T16 WMMA owners win 9/9 case-rows. Best integer-MMQ totals (DS4 pack + consumes) reach only 0.205-0.216x the per-matrix T16 owner time on the ffn gate/up pair, 0.402-0.542x on ffn_down and 0.387-0.481x on attention_q; ratios are flat or worsening with rows (512/1024/4096). The efa4e8641-family load-reuse deltas are within +-3% (not load-bound), matching the C8 campaign's raw-MMQ32 MLP-limited finding. Pack cost is negligible (0.029-0.816 ms); the consumer kernels are the blocker, consistent with the 2026-08-12 T16-payload integer rejections and the 2026-06-16 selected-shape raw ds4 measurements. This closes the last nasone32 projection donor hypothesis for the PP8192 gap: combined with the 2026-09-09 VDR decode screen, the fork's raw-Q4_K x Q8_1 arithmetic class loses to the T16 float owners on both decode GEMV and bulk prefill on this stack. The kernels, bit-exact ctl/vdr harness and DS4 CPU oracle are retained as leaf evidence for future integer prefill routes.",
+ "rocprof_smoke": {
+  "tool": "rocprofv3 --kernel-trace (cached-only child, compiler-version file)",
+  "child": "scripts/q4_k_mmq_rocprof_child.py",
+  "fixture": "rows=32, in=512, out=256",
+  "kernels": [
+   {
+    "name": "gguf_q8_1_mmq_ds4_pack_bf16_kernel<1>",
+    "duration_us": 4.4,
+    "vgpr": 16,
+    "lds": 512,
+    "workgroup": 128
+   },
+   {
+    "name": "q4_k_q8_1_mmq32_dense_kernel<float, false>",
+    "duration_us": 36.2,
+    "vgpr": 176,
+    "lds": 14848,
+    "workgroup": 128
+   },
+   {
+    "name": "q4_k_q8_1_mmq32_dense_kernel<float, true>",
+    "duration_us": 26.0,
+    "vgpr": 176,
+    "lds": 14848,
+    "workgroup": 128
+   },
+   {
+    "name": "q4_k_q8_1_wmma32_dense_kernel<float, false>",
+    "duration_us": 21.0,
+    "vgpr": 64,
+    "lds": 0,
+    "workgroup": 64
+   },
+   {
+    "name": "q4_k_q8_1_wmma32_dense_kernel<float, true>",
+    "duration_us": 20.4,
+    "vgpr": 72,
+    "lds": 0,
+    "workgroup": 64
+   }
+  ],
+  "note": "no spills; grid/launch geometry as designed; ctl/vdr bit-identical in-child"
+ },
+ "tests": "tests/test_gguf_q4_k_q8_1_mmq_prefill.py: 11 nodes green on GPU0 (bit-exact ctl/vdr per class, DS4 CPU oracle rtol, KL<=0.05/top-1>=0.90 outer floor, determinism, registry, shape guards); neighbors test_gguf_q4_k_q8_1_dp4a_vdr_gemv.py + test_gguf_x8_selected_gemv.py green (20 nodes)"
+}

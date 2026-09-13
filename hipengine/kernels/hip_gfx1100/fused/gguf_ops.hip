@@ -1086,7 +1086,7 @@ extern "C" int hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight(
     int64_t threads,
     hipStream_t stream) {
   if (residual == nullptr || add == nullptr || weight == nullptr ||
-      norm_out == nullptr || residual_out == nullptr || rows < 2 || rows > 4 ||
+      norm_out == nullptr || residual_out == nullptr || rows < 2 || rows > 8 ||
       hidden_size <= 0 || threads != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }

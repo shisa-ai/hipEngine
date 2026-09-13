@@ -1436,12 +1436,12 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
 HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
   python3 -m pytest \
-    tests/test_gguf_t16_repack.py \
-    tests/test_gguf_q8_0_t16_gemv_decode.py \
-    tests/test_gguf_t16_selected_gemv_decode.py \
-    tests/test_gguf_q6_k_t16_gemv_decode.py \
-    tests/test_gguf_gemv_decode_dispatch.py \
-    tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q
+    tests/test_unit_gguf_t16_repack.py \
+    tests/test_gpu_gguf_q8_0_t16_gemv_decode.py \
+    tests/test_gpu_gguf_t16_selected_gemv_decode.py \
+    tests/test_gpu_gguf_q6_k_t16_gemv_decode.py \
+    tests/test_unit_gguf_gemv_decode_dispatch.py \
+    tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py -q
 ```
 
 ### Profile capture and summary

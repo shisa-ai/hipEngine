@@ -979,7 +979,7 @@ and verdict.
 - [x] Fill every field in the candidate declaration template (below).
 - [x] Predeclare scope, numerical class, controls, task/BF16 rows, performance
       ceiling, strict fallback, and retention/removal rules (below).
-- [x] Add and observe RED before implementation: `tests/test_pn3_laq_gemv_red.py`
+- [x] Add and observe RED before implementation: `tests/test_benchmark_pn3_laq_gemv_red.py`
       (4 tests). Bit-exact guard (local32 T16 == pack8 control) GREEN; three
       leaf perf ceilings RED on the current kernel: attn_qkv 0.0328 > 0.026 ms,
       attn_gate 0.018 > 0.0145 ms, pair 0.0472 > 0.042 ms/layer (gfx1151).
@@ -1041,7 +1041,7 @@ without headroom: two bit-exact T0 variants of the local32 owner
 
 Neither flips the Q4 leaf ceilings; the leaf is at ~350 GB/s effective for the
 byte-scattered Q4_T16 layout. The Q4 LAQ1 RED test stays as an xfailed
-failure fixture (`tests/test_pn3_laq_gemv_red.py`: bit-exact guard live, three
+failure fixture (`tests/test_benchmark_pn3_laq_gemv_red.py`: bit-exact guard live, three
 leaf ceilings xfail with the rejection reason).
 
 **Rejection disposition (plan 4.4):** candidate implementation removed
@@ -1171,7 +1171,7 @@ per-call host timing during eager decode:
 > bit-exact guard for all retained T0 variants (wordload/occ/ILP) PASSED (all
 > equal the owner and the CPU reference), but no T0 variant flips the leaf
 > timing ceiling, so the PN4 correctness rows below are N/A for a rejected
-> candidate. Fixture: `tests/test_pn4_laq1b_red.py` (bit-exact guard GREEN,
+> candidate. Fixture: `tests/test_benchmark_pn4_laq1b_red.py` (bit-exact guard GREEN,
 > leaf timing xfail with rejection reason).
 
 - [x] N/A (rejected at RED) — leaf oracle/edge/sentinel.
@@ -1219,7 +1219,7 @@ per-call host timing during eager decode:
       justified diagnostic (all candidate kernels reverted; host/recurrence/
       next-owner A/B probes retained as explicit diagnostics).
 - [x] Run focused tests and applicable milestone suite
-      (`tests/test_pn4_laq1b_red.py`: bit-exact guard PASS, leaf timing xfail;
+      (`tests/test_benchmark_pn4_laq1b_red.py`: bit-exact guard PASS, leaf timing xfail;
       broader suite not rerun for a docs-only closure per the focused-repair
       rule).
 - [x] Stage explicit files, inspect staged diff, and commit immediately.

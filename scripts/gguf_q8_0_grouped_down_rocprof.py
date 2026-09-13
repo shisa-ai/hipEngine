@@ -37,7 +37,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     build_gguf_q8_0_prefill,
     gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
 )
-from tests.test_gguf_k_gemv import make_q8_0_weight
+from tests.test_gpu_gguf_k_gemv import make_q8_0_weight
 
 Q8_0_BLOCK_BYTES = 34
 

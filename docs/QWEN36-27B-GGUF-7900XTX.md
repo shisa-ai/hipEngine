@@ -577,7 +577,7 @@ atomic commit.
   small shared wrapper) so base and each MTP server process record baseline,
   phase peak, process peak, delta, sample count, interval, card identity, and
   startup/teardown scope. Fake-sysfs/subprocess coverage lives in
-  `tests/test_llamacpp_mtp_bench_metrics.py`; real-run evidence is attached by
+  `tests/test_integration_llamacpp_mtp_bench_metrics.py`; real-run evidence is attached by
   P0.5.
 - [x] **P0.5 Run the complete llama.cpp XTX baseline.** Standardized five-sample
   AR, context-matched 128-transition AR, and natural B1-B5 completed for both

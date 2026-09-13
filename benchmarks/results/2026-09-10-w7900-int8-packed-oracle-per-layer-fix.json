@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "kind": "w7900_int8_packed_oracle_per_layer_correctness_fix",
+  "date": "2026-09-10",
+  "status": "correctness_fix_retained",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "question": "Does keying the BF16 prefill oracle per INT8 layer for multi-chunk packed calls restore agreement with the scalar-bulk parent, and what does it cost?",
+  "answer": "Yes. Generated IDs match the parent exactly at 2 and 8 chunks. Speed is neutral (449.16 -> 451.71 tok/s at 2 chunks; 67.2 -> 67.31 at 8). Cost is a transient peak increase of ~0.94 GiB at 16,384 declared positions, scaling with declared context.",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "physical_gpu_index": 0
+  },
+  "change": "_int8_prefill_oracle_cache_for_layer keys the oracle per layer when the session's _int8_prefill_oracle_per_layer flag is set. _prefill_batch_native_impl sets it once per call, before the first slab, when len(chunks) > 1; prefill_batch_native's finally clears it with the oracle release. The scalar bulk (layer-outer) executor is untouched and keeps the shared pair.",
+  "protocol": {
+    "harness": "scripts/gguf_prefill_route_ab.py --assert-entry-agreement",
+    "prompt": "deterministic varied prompt, numpy default_rng(20260909), token IDs in [1000, 32000)",
+    "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 (route int8_direct, no mirror)",
+    "selectors": "use_wmma_prefill=True, use_gemv_decode=True (shipping)",
+    "env": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+    },
+    "control": "pre-fix arm measured by restoring the file to HEAD in the same session and rerunning"
+  },
+  "evidence": {
+    "scalar_bulk_parent_ids_deterministic": {
+      "2048_rows": [198, 197, 197, 1],
+      "8192_rows": [82, 8, 198, 197, 197, 92, 198, 197],
+      "note": "8192-row scalar IDs identical across the pre-fix and post-fix runs, so ID matching is a sound oracle here"
+    },
+    "1024_rows_1_chunk": {
+      "agreement_gate_exit": 0,
+      "note": "unaffected; single-chunk calls keep the shared pair"
+    },
+    "2048_rows_2_chunks": {
+      "packed_ids_before": [14, 198, 248046, 198],
+      "packed_ids_after": [198, 197, 197, 1],
+      "matches_parent_after": true,
+      "packed_tok_s_before": 449.16,
+      "packed_tok_s_after": 451.71,
+      "packed_peak_gib_before": 17.6057,
+      "packed_peak_gib_after": 18.5432,
+      "scalar_peak_gib_unchanged": 17.2525,
+      "agreement_gate_exit_before": 1,
+      "agreement_gate_exit_after": 0
+    },
+    "8192_rows_8_chunks": {
+      "packed_ids_before": [13, 198, 248046, 198, 248045, 74455, 198, 248068],
+      "packed_ids_after": [82, 8, 198, 197, 197, 92, 198, 197],
+      "matches_parent_after": true,
+      "packed_tok_s_before": 67.2,
+      "packed_tok_s_after": 67.31,
+      "packed_peak_gib_after": 18.7342,
+      "logit_max_abs_diff_after": 0.07015,
+      "note": "residual logit delta with identical IDs is fp reassociation between the two executors"
+    }
+  },
+  "cost": {
+    "transient_peak_gib_at_16384_declared": 0.94,
+    "mechanism": "15 additional BF16 oracle pairs; each pair is _int8_prefill_oracle_capacity_positions * head_count_kv * key_length * 2 * 2 bytes",
+    "scaling_caveat": "the oracle is sized by max(max_positions, backing_pages * block_size) - the whole pool - not the request's prompt length, so this cost grows with declared context and will lower long-context ceilings. Reclaiming it needs either the layer-outer packed executor or a logically-indexed oracle."
+  },
+  "not_a_perf_claim": "The 8-chunk packed rate (67 tok/s vs the scalar parent's 692) is a pre-existing chunk-count-driven slowdown, unchanged by this fix (67.2 before, 67.31 after). It is the per-slab whole-history import recorded as an open review finding, not attributable to this change.",
+  "tests": "tests/test_qwen35_gguf_int8_kv_policy.py, test_qwen35_prefill_long_context_plan.py, test_qwen35_gguf_chunked_prefill.py, test_gguf_packed_verify_layout.py, test_gguf_packed_workspace_stability.py, test_gguf_device_kv_binding.py, test_qwen35_gguf_slot_local_aotriton_admission.py, test_dms_layerwise_kv_release.py - 146 passed, 5 skipped",
+  "created_utc": "2026-09-10T01:40:00+00:00"
+}

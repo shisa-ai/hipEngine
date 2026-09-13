@@ -337,6 +337,7 @@ def plan_speculative_requests(
             target_row_decomposition=_physical_groups(len(semantics), ar_target_widths),
             context_bucket_size=context_bucket,
             execution_route="ar",
+            requested_candidate_counts=desired,
         )
 
     route = _execution_route(
@@ -445,6 +446,7 @@ def plan_speculative_requests(
             target_row_decomposition=_physical_groups(len(semantics), ar_target_widths),
             context_bucket_size=context_bucket,
             execution_route="ar",
+            requested_candidate_counts=desired,
         )
 
     speculative_requests = sum(1 for count in counts if count > 0)
@@ -468,6 +470,7 @@ def plan_speculative_requests(
         capability_key=capability.capability_key,
         provider_key=capability.provider_key,
         target_transaction_mode=capability.target_transaction_mode,
+        requested_candidate_counts=desired,
         provider_transaction_mode=capability.provider_transaction_mode,
         proposal_widths=_physical_groups(
             speculative_requests, capability.proposal_widths

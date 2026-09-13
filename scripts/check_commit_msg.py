@@ -28,6 +28,11 @@ BANNED: list[tuple[str, str, int]] = [
         0,
     ),
     (
+        "Assisted-By trailer (no bylines, AGENTS.md)",
+        r"(?im)^Assisted-By\s*:",
+        0,
+    ),
+    (
         "Anthropic noreply attribution address",
         r"(?i)noreply@anthropic\.com",
         0,
@@ -43,8 +48,8 @@ BANNED: list[tuple[str, str, int]] = [
         0,
     ),
     (
-        "generated-by footer (no generated-by footers, AGENTS.md)",
-        r"(?i)(?:\U0001f916\s*)?generated[ -]with\s+claude",
+        "generated-with footer (no generated-by footers, AGENTS.md)",
+        r"(?im)^(?:[^\S\n]*\U0001f916\s*)?generated[ -]with\s+\S",
         0,
     ),
     (

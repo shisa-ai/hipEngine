@@ -2273,7 +2273,7 @@ surround (≈24 launches/layer → ≈8), in the priority order the budget impli
    both the largest *kernel* bucket (6.58 ms) and a launch source. **Blocked by
    argmax fragility, not by kernel numerics (2026-06-08).** A bit-exact multi-row
    Marlin-K GEMV now exists (`gemv_paro_marlin_k_fma_multi_row_fp16`,
-   `tests/test_qwen35_paro_marlin_k_multi_row.py`: each row is byte-identical to
+   `tests/test_gpu_qwen35_paro_marlin_k_multi_row.py`: each row is byte-identical to
    single-row Marlin-K, which is what AR uses at rows==1 for these sites). Even
    so, historical routing of `single_full_v` / `single_linear_out` through it
    flipped top-1 on the fragile `translation` / `summarize` prompts at 64 tokens,

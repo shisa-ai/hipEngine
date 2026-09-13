@@ -30,6 +30,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     command, rest = args[0], args[1:]
     if command == "serve":
         return _serve(rest)
+    if command == "chat":
+        return _chat(rest)
     if command == "bench":
         return _bench(rest)
 
@@ -47,6 +49,12 @@ def _serve(argv: Sequence[str]) -> int:
         return int(server_main(argv) or 0)
     finally:
         sys.argv = old_argv
+
+
+def _chat(argv: Sequence[str]) -> int:
+    from hipengine.chat_cli import main as chat_main
+
+    return int(chat_main(argv) or 0)
 
 
 def _bench(argv: Sequence[str]) -> int:
@@ -95,6 +103,7 @@ def _print_help(*, file=None) -> None:
         "usage: hipengine <command> [args]\n\n"
         "Commands:\n"
         "  serve        Run the OpenAI-compatible server\n"
+        "  chat         Chat with a running local server\n"
         "  bench        Run or list benchmark helpers\n"
         "  version      Print the installed hipEngine version\n\n"
         "Examples:\n"

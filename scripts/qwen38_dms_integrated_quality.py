@@ -123,6 +123,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-category")
     parser.add_argument("--decode-steps", type=int, default=8)
     parser.add_argument("--modes", default="no_evict,sidecar")
+    parser.add_argument("--codec", choices=("bf16", "int8_evaluation"), default="bf16",
+                        help="Offline candidate codec; INT8 evaluation does not qualify serving.")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--max-kl", type=float, default=0.05)
     parser.add_argument("--min-top1", type=float, default=0.9)
@@ -134,6 +136,10 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     if int(args.prompt_tokens) <= 0 or int(args.decode_steps) <= 0:
         raise ValueError("prompt-tokens and decode-steps must be positive")
+    from hipengine.kvcache.dms import create_dms_bf16_backend, create_dms_int8_evaluation_backend
+    codec = getattr(args, "codec", "bf16")
+    backend_factory = {"bf16": create_dms_bf16_backend,
+                       "int8_evaluation": create_dms_int8_evaluation_backend}[codec]
     modes = tuple(part.strip() for part in str(args.modes).split(",") if part.strip())
     if not modes or any(mode not in {"no_evict", "sidecar"} for mode in modes):
         raise ValueError("modes must be a comma-separated subset of no_evict,sidecar")
@@ -196,6 +202,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 dms_metadata_path=args.metadata,
                 dms_max_new_tokens=int(args.decode_steps),
                 dms_decision_mode=mode,
+                dms_backend_factory=backend_factory,
                 use_wmma_prefill=True,
                 use_gemv_decode=True,
             ) as candidate:
@@ -222,6 +229,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                     rows.append(comparison)
                 snapshot = candidate._dms_backend.observability_snapshot()
+                if candidate._dms_dense_prefill_pool is not None:
+                    raise AssertionError("DMS candidate retained dense prefill pool")
+                if not snapshot["backend"]["device_payloads"]:
+                    raise AssertionError("DMS quality requires device payloads")
                 candidate_memory = memory_stats()
             candidates[mode] = {
                 "decision_mode": mode,
@@ -263,6 +274,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "trajectory": "strict dense-teacher input tokens for every candidate step",
             "candidate_owner": "integrated compact device route with dense KV released after prefill",
             "modes": list(modes),
+            "codec": codec,
+            "serving_qualification": False,
             "decode_steps": int(args.decode_steps),
         },
         "teacher": {

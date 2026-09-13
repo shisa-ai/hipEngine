@@ -44,7 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q8_0_selected_gemv_bf16_bf16_out,
 )
-from tests.test_gguf_k_gemv import make_q8_0_weight
+from tests.test_gpu_gguf_k_gemv import make_q8_0_weight
 
 
 def _f32_to_bf16_bits(arr: np.ndarray) -> np.ndarray:

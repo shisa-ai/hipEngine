@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4exp_qsa_h256_wave import Fixture
+from tests.test_gpu_qwen4exp_qsa_h256_wave import Fixture
 
 
 def main():
@@ -77,11 +77,11 @@ def main():
                     start = time.perf_counter()
                     if args.head_pair:
                         if args.head_quad:
-                            from tests.test_qwen4exp_qsa_head_pair import run_pair
-                            from tests.test_qwen4exp_qsa_head_quad import run_quad
+                            from tests.test_gpu_qwen4exp_qsa_head_pair import run_pair
+                            from tests.test_gpu_qwen4exp_qsa_head_quad import run_quad
                             (run_quad if candidate else run_pair)(f)
                         elif candidate:
-                            from tests.test_qwen4exp_qsa_head_pair import run_pair
+                            from tests.test_gpu_qwen4exp_qsa_head_pair import run_pair
                             run_pair(f)
                         else:
                             f.run(True)

@@ -53,10 +53,17 @@ group caps used by the explicit `gguf_*` routes.
 
 By default the server eagerly loads the model, loads resident weights, estimates
 remaining HIP memory for KV cache plus persistent context metadata, then
-preallocates `min(model max context, estimated allocatable context)`. Pass
+preallocates `min(model max context, estimated allocatable context)`. This
+automatic context selection applies to both resident routes (PARO and GGUF). Pass
 `--max-context-tokens` (or `HIPENGINE_MAX_CONTEXT_TOKENS`) to force a lower cap.
-Startup fails with a clear error if the requested cap cannot be allocated; lower
-`--max-context-tokens` or use `--kv-storage int8_per_token_head`. Disable eager
+When a context cannot be allocated — automatic or explicitly requested — the
+resident route re-prices against current free memory and retries at a smaller
+block-aligned context before giving up, logging `GGUF context request: requested
+N tokens failed to allocate ... retrying at M tokens` so a substitution is never
+silent. Startup fails only when the retries are exhausted. Set
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` for the full rollback: it turns off both the
+automatic sizing and the backoff, restoring the fixed 256-token resident context
+on the GGUF route and a hard failure on an unsatisfiable request. Disable eager
 startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
 token count are configurable via `--eager-load-prompt` and
 `--eager-load-max-tokens`. Eager startup logs `LOAD_TIMING` rows for resident
@@ -66,9 +73,44 @@ visible in ordinary server logs.
 The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 `int8_per_token_head`), `--kv-scale-dtype`, and `--kv-scale-granularity` at
 startup. Requests that ask for a different KV policy are rejected instead of
-rebuilding the resident model. Startup logs include a compact KVCache summary
+rebuilding the resident model.
+
+The defaults are `--kv-storage int8_per_token_head`, `--kv-scale-dtype fp32`,
+`--kv-scale-granularity per_token_head`, and four resident request slots. On the supported
+dense GGUF artifact this selects **176,128 tokens** of resident context on a
+48 GiB W7900 at the configured KV memory budget. Context length, request
+concurrency, and KV-pool memory are independent settings.
+
+INT8 KV is used only when the loaded artifact is qualified for it. Qualification
+is keyed on the exact artifact SHA-256, size, backend, target architecture,
+weight quant, storage layout, **and scale dtype** — the retained evidence for the
+supported dense artifacts is keyed on `fp32` scales, so `--kv-scale-dtype fp16`
+matches no contract and the server falls back to BF16. An unqualified or unknown
+artifact also falls back to BF16; the reason is recorded in `/ready` and the
+KVCache summary rather than raised. Pass `--kv-storage bf16` to force the
+previous behavior outright.
+
+Set `--max-active-requests` to change the maximum number of requests processed
+in flight. Requests beyond that limit remain queued. The shared KV pool starts
+at its configured floor, grows in page chunks up to the memory budget, and
+reclaims unreferenced prefix-cache pages under pressure; concurrency no longer
+reserves one full-context KV plane per request. The independent context ceiling
+is `--max-context-tokens`.
+
+Set `--kv-pool-memory-budget-mib` or
+`HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB` to provide an explicit KV-pool budget.
+When unset, dense GGUF derives the budget from live free HIP memory after its
+startup reserve.
+
+`/ready` reports `context.effective_max_context_tokens`,
+`queue.max_active_requests`, and `kv_capacity.pool` fields separately, including
+the pool's current pages, high-water usage, and memory budget.
+
+Startup logs include a compact KVCache summary
 from current HIP free memory and warn when even INT8 KV is below the model's
-advertised max context. Chat requests that omit `max_tokens` use
+advertised max context. The KVCache summary is emitted for both eager and lazy
+startup once the resident session is prepared, and it reports the context that
+was actually selected. Chat requests that omit `max_tokens` use
 `--chat-default-max-tokens` (default `4096`) clamped to the remaining admitted
 context. Pass `--chat-default-max-tokens auto` to restore the previous behavior
 of using the full remaining context (`max_context_tokens - prompt_tokens - 1`).

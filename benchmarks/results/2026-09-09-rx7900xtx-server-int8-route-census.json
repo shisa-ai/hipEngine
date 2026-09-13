@@ -1,0 +1,61 @@
+{
+  "kind": "rx7900xtx_server_int8_kv_route_census",
+  "date": "2026-09-09",
+  "question": "Why does the server INT8 KV route stop at 54,272 tokens (23.97 GiB peak) while the direct engine holds 155,648? What does one server request cost in time and memory at 32,768 declared context?",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX (GPU1)",
+    "arch": "gfx1100",
+    "vram": "24 GB"
+  },
+  "protocol": {
+    "server_command": "HIP_VISIBLE_DEVICES=1 python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --max-context-tokens 32768 --max-active-requests 1 --speculative-mtp-serving off --prefix-cache off --metrics prometheus",
+    "request": "one /v1/completions POST, ~32,122-token prompt (repeated-paragraph corpus), 16 greedy outputs",
+    "census": "/metrics scraped before and after the request (hipengine_resident_kv_*, hipengine_kv_pool_*, hipengine_resident_packed_workspace_*)",
+    "direct_control": "scripts/gguf_capacity_probe.py --max-sequence-length 32768 on GPU0, tracked peak 17.99 GiB"
+  },
+  "findings": {
+    "request_wall_seconds": 1567.2,
+    "prompt_tokens": 32122,
+    "effective_prefill_tok_s": 20.5,
+    "direct_engine_prefill_tok_s_at_32k": 566.0,
+    "speed_ratio_vs_direct": 27.6,
+    "route": "kv_attention_source == 'int8_direct' (the default for int8_per_token_head sessions above the 8,192-token mirror threshold); prefill hit the fallback counter hipengine_resident_fallback_total{reason='int8_direct_full_prompt_prefill'}",
+    "fallback_mechanism": "resident scheduler chunked prefill cannot hold the transient BF16 oracle across chunks, so the whole prompt executes once through the shifted block-table-aware single-row route (qwen35_gguf.py _prefill_native_chunk -> _disable_incremental_prefill); CPU-bound (single thread ~100%, GPU ~1% during the request)",
+    "kv_census": {
+      "resident_kv_bf16_mirror_bytes": 0,
+      "resident_kv_int8_payload_bytes_after_request": 0,
+      "note": "request-owned KV lives in the page pool, not the resident persistent counters, on this route",
+      "pool_current_bytes": 2181038080,
+      "pool_pages": 256,
+      "pool_page_tokens": 256,
+      "kv_pinned_pages_at_startup": 128,
+      "pool_high_water_bytes_during_request": 2163998720,
+      "packed_workspace_current_bytes": 1016972652,
+      "derived_kv_page_bytes_approx": 9094261,
+      "derived_kv_per_token_kib": 32.5,
+      "direct_engine_per_token_kib": 33.6,
+      "workspace_note": "CORRECTED 2026-09-10: packed_workspace_current_bytes (owner-side allocation, ~1.017 GiB at 32,768 declared) is NOT the pool lease. The lease is the pinned plane pages the workspace holds in the page pool (pool_pinned_pages * page bytes; 64 pages = 0.5 GiB at 16,384 declared, 128 pages = 1.0 GiB at 32,768 - see the 2026-09-10 server allocation probe artifacts). The two must not be summed or compared as one slope component. The original text follows: the eager packed-execution workspace lease mirrors the full declared request context (capacity slots x max(1024, context) tokens), costing a second ~34 KiB/token of page budget on top of the KV itself",
+      "derived_kv_per_token_kib_original": 34.7,
+      "derived_kv_per_token_kib_note": "corrected 2026-09-10: the pool-page approximation (9,094,261 B / 256 tokens = 34.7 KiB) charges non-KV page bytes to the KV slope. The canonical INT8-payload + FP32-scale geometry is 2 * 16 layers * 4 KV heads * (256 int8 + 4 B fp32 scale) = 33,280 bytes = 32.5 KiB/token (docs/SERVER-DIRECT-PARITY-ROADMAP.md section 'Memory model'). The original 34.7 figure is preserved as derived_kv_per_token_kib_original."
+    },
+    "tokenizer_measurement": {
+      "encode_124kib_prompt_seconds": 0.03,
+      "throughput_mib_s": 5.0,
+      "encode_batch_x8_aggregate_mib_s": 18.9,
+      "conclusion": "tokenization is not the request-path bottleneck; the HF Rust encoder handles the 124 KiB prompt in 0.03 s"
+    },
+    "audit_slope_cross_check": {
+      "server_audit_slope_kib_per_token": 99.2,
+      "components_identified": "corrected 2026-09-10: KV pages 32.5 KiB/token (canonical INT8+FP32 geometry, not the 34.7 pool-page approximation); the packed workspace contributes owner-side allocation bytes (deduplicated across sessions in the 2026-09-10 telemetry fix) plus a separate pool-plane lease (0.5 GiB per 16,384 declared context) - allocation bytes are not lease bytes and the two slopes must not be conflated. The previously 'unattributed' remainder is measured per-domain by the 2026-09-10 server allocation probe: full-position prefill hidden planes, the transient BF16 oracle owners (2.0 GiB / 16 owners at 16,384 declared under the chunk-outer executor; 0.125 GiB / 1 owner under the layer-outer executor), and the request-owned KV pages themselves.",
+      "server_fixed_overhead_gib_at_16128_context": 3.0,
+      "components_identified_original": "KV pages ~34.7 + packed workspace ~34 (both scale with declared context); remainder ~31 KiB/token unattributed - needs a per-component allocation census at request time (transient BF16 oracle, logits/sampler buffers)"
+    },
+    "timing_qualification": "CORRECTED 2026-09-10: the 20.5 tok/s / 27.6x request timing was measured on the corrupted route - the packed slot-local prefill shared one BF16 oracle pair across all INT8 layers under the chunk-outer executor, so any prompt spanning more than one prefill chunk computed wrong output. This timing cannot qualify correct inference performance and no causal or capacity conclusion may be drawn from it. The repaired route (commit 18ebfabd8, 2026-09-10) measures 677 tok/s at 8,192-row prompts on the same card (10.1x improvement, 30/30 AR-ID parity); see benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json. The original wall-clock observation (1,567.2 s for 32,122 tokens) is preserved as measured."
+  },
+  "conclusion": "PRESERVED 2026-09-10: the per-token INT8 KV payload cost on the server route matches the direct engine's geometry (32.5 KiB/token; no BF16 mirror above the 8,192-token threshold). WITHDRAWN: (1) the 27.6x slowdown attribution and any inference-performance conclusion drawn from the corrupted-route timing (see findings.timing_qualification); (2) the capacity-gap decomposition into 'workspace lease + 3 GiB fixed + ~31 KiB/token unattributed' - allocation bytes were conflated with pool lease bytes and the unattributed slope is now measured per-domain by the 2026-09-10 server allocation probe (transient oracle owners, full-position hidden planes, pool-plane lease). The 'persistent oracle planes' restructuring this census proposed was superseded: the per-layer oracle keying fix (18ebfabd8) and the layer-outer executor (a58cc4169) restore correctness and collapse the oracle transient to one shared pair per session without persistent planes. A fresh capacity ceiling must be measured with the repaired route before any server INT8 capacity number is quoted.",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "conclusion_original": "The server INT8 KV route's per-token KV cost already matches the direct engine (no BF16 mirror above 8,192 tokens); the capacity gap comes from (1) the packed workspace leasing a second context-sized page budget, (2) ~3 GiB fixed request-time overhead, and (3) an unattributed ~31 KiB/token slope component. Independently, the route is 27.6x slower than the direct engine on long prompts because the full prompt runs through the single-row block-table prefill with one transient BF16 oracle instead of the direct engine's bulk prefill + persistent hidden plane. Closing task #11 means restructuring that prefill path (persistent oracle planes like the direct route) before the capacity headroom matters.",
+  "corrections_applied": "2026-09-10 parity roadmap coordination (task #11)"
+}

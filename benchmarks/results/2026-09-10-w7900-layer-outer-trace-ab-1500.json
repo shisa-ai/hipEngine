@@ -1,0 +1,30 @@
+{
+  "kind": "prefill_route_parity",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_length": 1500,
+  "prompt_kind": "deterministic_varied_rng20260909",
+  "max_sequence_length": 16384,
+  "kv_storage": "int8_per_token_head",
+  "kv_scale_dtype": "fp32",
+  "use_wmma_prefill": true,
+  "use_gemv_decode": true,
+  "decode_tokens": 1,
+  "env": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": null,
+    "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": null
+  },
+  "arms": {
+    "packed_slot_local": {
+      "kv_attention_source": "int8_direct",
+      "lifetime_mode": "layer_outer_shared_oracle",
+      "executor_mode": "layer_outer_packed",
+      "prefill_wall_seconds": 2.58,
+      "prefill_tok_s": 581.4,
+      "generated_ids": [
+        198
+      ],
+      "tracked_peak_gib": 17.8589,
+      "logits_sha_head": 1.251595139503479
+    }
+  }
+}

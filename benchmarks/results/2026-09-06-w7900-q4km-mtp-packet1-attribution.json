@@ -1,0 +1,1185 @@
+{
+ "kind": "mtp-packet1-attribution",
+ "created": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "host": "epyc",
+ "model": "Qwen3.8-27B Q4_K_M GGUF (D24 outputs, greedy)",
+ "protocol": "ROCm staged-cycle MTP (verify_chain) vs no-MTP true AR arm, same prompt, 12 output tokens, runs=1, per-arm warmup; rocprofv3 kernel+marker+hip-runtime+copy+allocation traces on the final-leaf bridge child; stage walls are marker-range sums inside the last (measured) arm-complete window",
+ "commands": [
+  "bash campaign-artifacts/packet1/run_p1_baselines.sh",
+  "bash campaign-artifacts/packet1/run_p1_profiles.sh",
+  "bash campaign-artifacts/packet1/run_p1_stage3_retry.sh",
+  ".venv/bin/python campaign-artifacts/packet1/analyze_p1_attribution.py"
+ ],
+ "raw_traces": "/tmp/he-bettermtp-raw/packet1 (outside repo)",
+ "cells": [
+  {
+   "cell": "c8k3",
+   "meta": {
+    "concurrency": 8,
+    "capacity": 8,
+    "budget": 3,
+    "route": "product"
+   },
+   "profiled_status": "complete",
+   "unprofiled_arm_walls": {
+    "legacy_native": null,
+    "specdec2": 1.239982908591628,
+    "true_ar": 1.2421975322067738
+   },
+   "arms": {
+    "true_ar": {
+     "window_s": 1.272844,
+     "complete_wall_seconds": 1.2728730635717511,
+     "decode_only_seconds": 0.6945222327485681,
+     "stages": {
+      "true_ar_ar_decode": 0.694593305,
+      "true_ar_graph_close": 0.001982678,
+      "true_ar_resident_owner_transition": 0.0020227790000000006,
+      "true_ar_target_prefill": 0.539630751,
+      "true_ar_terminal_reclaim": 0.027455046999999996
+     },
+     "kernels": {
+      "kernel_count": 12108,
+      "kernel_busy_s": 1.093077,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.188448
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 704,
+        "busy_s": 0.158666
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 1760,
+        "busy_s": 0.1271
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 704,
+        "busy_s": 0.113067
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.091263
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 4, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.070112
+       },
+       "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 528,
+        "busy_s": 0.050394
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.039819
+       },
+       "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 0, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)": {
+        "count": 528,
+        "busy_s": 0.035982
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 12,
+        "busy_s": 0.030543
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.030144
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.029695
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.023656
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 1152,
+        "busy_s": 0.021694
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 3,
+        "busy_s": 0.01292
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 768,
+        "busy_s": 0.011538
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 2048,
+       "hipGetLastError": 2048,
+       "hipMemset": 769,
+       "hipMemcpyAsync": 520,
+       "hipMemcpy": 61,
+       "hipMemGetInfo": 29,
+       "hipStreamSynchronize": 12,
+       "hipGraphLaunch": 11,
+       "hipMalloc": 8,
+       "hipFree": 3,
+       "hipDeviceSynchronize": 2,
+       "hipStreamCreateWithFlags": 1
+      },
+      "memcpy_count": 581,
+      "memcpy_bytes": 0
+     }
+    },
+    "specdec2": {
+     "window_s": 1.258209,
+     "complete_wall_seconds": 1.2582279406487942,
+     "decode_only_seconds": 0.6004547225311399,
+     "stages": {
+      "specdec2_ar_decode": 0.21723925500000002,
+      "specdec2_cycle_total": 0.38324001799999996,
+      "specdec2_graph_close": 0.002205401,
+      "specdec2_nextn_prompt_prime": 0.263752389,
+      "specdec2_proposal": 0.029964664,
+      "specdec2_provider_k0_attach": 0.022368343,
+      "specdec2_provider_open": 3.7762e-05,
+      "specdec2_provider_streaming_open": 0.000317475,
+      "specdec2_resident_owner_transition": 0.002287353,
+      "specdec2_target_accept_commit_provider": 0.352944148,
+      "specdec2_target_prefill": 0.586272255,
+      "specdec2_terminal_reclaim": 0.029969192000000002
+     },
+     "kernels": {
+      "kernel_count": 13062,
+      "kernel_busy_s": 1.062562,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.189455
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 160,
+        "busy_s": 0.146341
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.091913
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 4, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.070394
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 128,
+        "busy_s": 0.061873
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 320,
+        "busy_s": 0.05945
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 18,
+        "busy_s": 0.042053
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 192,
+        "busy_s": 0.041824
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.039865
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 480,
+        "busy_s": 0.03343
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.030257
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 192,
+        "busy_s": 0.029401
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.023752
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 19,
+        "busy_s": 0.021459
+       },
+       "void (anonymous namespace)::gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kernel<unsigned short, false, 32>((anonymous namespace)::q8_1_d4s4_f32_block const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 96,
+        "busy_s": 0.018386
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 576,
+        "busy_s": 0.015947
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 8088,
+       "hipGetLastError": 8088,
+       "hipMemcpyAsync": 2032,
+       "hipMemset": 777,
+       "hipMemcpy": 423,
+       "hipMalloc": 28,
+       "hipDeviceSynchronize": 28,
+       "hipMemGetInfo": 23,
+       "hipFree": 19,
+       "hipStreamSynchronize": 4,
+       "hipGraphLaunch": 3,
+       "hipStreamCreateWithFlags": 1
+      },
+      "memcpy_count": 2455,
+      "memcpy_bytes": 0
+     },
+     "cycle_kernels": {
+      "cycle_count": 2,
+      "cycle_span_s": 0.38324,
+      "kernel_count": 3808,
+      "kernel_busy_s": 0.347971,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 128,
+        "busy_s": 0.116423
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 128,
+        "busy_s": 0.061873
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 320,
+        "busy_s": 0.05945
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 14,
+        "busy_s": 0.032748
+       },
+       "void (anonymous namespace)::gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kernel<unsigned short, false, 32>((anonymous namespace)::q8_1_d4s4_f32_block const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 96,
+        "busy_s": 0.018386
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 96,
+        "busy_s": 0.015521
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 16,
+        "busy_s": 0.008588
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 20,
+        "busy_s": 0.008386
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 192,
+        "busy_s": 0.004222
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 14,
+        "busy_s": 0.003712
+       },
+       "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 14,
+        "busy_s": 0.003496
+       },
+       "__amd_rocclr_copyBuffer": {
+        "count": 1496,
+        "busy_s": 0.003141
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 134,
+        "busy_s": 0.001861
+       },
+       "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_rows_kernel(float const*, float const*, float*, float const*, float*, int const*, long const*, long, long, long)": {
+        "count": 96,
+        "busy_s": 0.001813
+       },
+       "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 8,
+        "busy_s": 0.001655
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 160,
+        "busy_s": 0.001649
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "cell": "c2k2",
+   "meta": {
+    "concurrency": 2,
+    "capacity": 2,
+    "budget": 2,
+    "route": "product"
+   },
+   "profiled_status": "complete",
+   "unprofiled_arm_walls": {
+    "legacy_native": null,
+    "specdec2": 0.6686793211847544,
+    "true_ar": 0.6393567910417914
+   },
+   "arms": {
+    "true_ar": {
+     "window_s": 0.662406,
+     "complete_wall_seconds": 0.6624293066561222,
+     "decode_only_seconds": 0.41410792991518974,
+     "stages": {
+      "true_ar_ar_decode": 0.41414109199999993,
+      "true_ar_graph_close": 2.95e-06,
+      "true_ar_resident_owner_transition": 2.0470999999999998e-05,
+      "true_ar_target_prefill": 0.239978741,
+      "true_ar_terminal_reclaim": 0.004281312000000001
+     },
+     "kernels": {
+      "kernel_count": 10434,
+      "kernel_busy_s": 0.58157,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 704,
+        "busy_s": 0.11199
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.061715
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 2, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.056173
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)": {
+        "count": 352,
+        "busy_s": 0.046154
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 1144,
+        "busy_s": 0.043532
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 1, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.03907
+       },
+       "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 528,
+        "busy_s": 0.033563
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)": {
+        "count": 352,
+        "busy_s": 0.02769
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 352,
+        "busy_s": 0.022585
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 12,
+        "busy_s": 0.018171
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.018069
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.015525
+       },
+       "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 0, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)": {
+        "count": 528,
+        "busy_s": 0.011997
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.010888
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 768,
+        "busy_s": 0.010646
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 780,
+        "busy_s": 0.00877
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 10042,
+       "hipGetLastError": 10042,
+       "hipMemset": 192,
+       "hipMemcpyAsync": 152,
+       "hipMemcpy": 48,
+       "hipDeviceSynchronize": 24,
+       "hipMemGetInfo": 17
+      },
+      "memcpy_count": 200,
+      "memcpy_bytes": 0
+     }
+    },
+    "specdec2": {
+     "window_s": 0.692374,
+     "complete_wall_seconds": 0.6923903282731771,
+     "decode_only_seconds": 0.42408754769712687,
+     "stages": {
+      "specdec2_ar_decode": 0.074804579,
+      "specdec2_cycle_total": 0.349307569,
+      "specdec2_graph_close": 3.04e-06,
+      "specdec2_nextn_prompt_prime": 0.063513236,
+      "specdec2_proposal": 0.013654666999999999,
+      "specdec2_provider_k0_attach": 0.00481696,
+      "specdec2_provider_open": 5.5342e-05,
+      "specdec2_provider_streaming_open": 0.000180843,
+      "specdec2_resident_owner_transition": 3.5130000000000004e-05,
+      "specdec2_target_accept_commit_provider": 0.33520595599999997,
+      "specdec2_target_prefill": 0.25239751,
+      "specdec2_terminal_reclaim": 0.00484347
+     },
+     "kernels": {
+      "kernel_count": 7923,
+      "kernel_busy_s": 0.618957,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 224,
+        "busy_s": 0.166649
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.061957
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 864,
+        "busy_s": 0.058412
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.05746
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 2, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.056377
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 1, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.039173
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 128,
+        "busy_s": 0.020331
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.01816
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.010975
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 9,
+        "busy_s": 0.009323
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 21,
+        "busy_s": 0.008745
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)": {
+        "count": 64,
+        "busy_s": 0.008013
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 208,
+        "busy_s": 0.00786
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.007466
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.007242
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_tail_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.007143
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 6977,
+       "hipGetLastError": 6977,
+       "hipMemcpyAsync": 614,
+       "hipMemset": 194,
+       "hipMemcpy": 138,
+       "hipMalloc": 13,
+       "hipDeviceSynchronize": 13,
+       "hipMemGetInfo": 11,
+       "hipFree": 4
+      },
+      "memcpy_count": 752,
+      "memcpy_bytes": 0
+     },
+     "cycle_kernels": {
+      "cycle_count": 3,
+      "cycle_span_s": 0.349308,
+      "kernel_count": 3783,
+      "kernel_busy_s": 0.316143,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 192,
+        "busy_s": 0.151114
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 864,
+        "busy_s": 0.058412
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.05746
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 21,
+        "busy_s": 0.008745
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.007242
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 6, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 3,
+        "busy_s": 0.005448
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 6,
+        "busy_s": 0.004798
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 15,
+        "busy_s": 0.004038
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 6,
+        "busy_s": 0.003072
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 198,
+        "busy_s": 0.00256
+       },
+       "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 2>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 15,
+        "busy_s": 0.002367
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 228,
+        "busy_s": 0.00231
+       },
+       "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)": {
+        "count": 9,
+        "busy_s": 0.001599
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 288,
+        "busy_s": 0.001466
+       },
+       "__amd_rocclr_copyBuffer": {
+        "count": 495,
+        "busy_s": 0.001073
+       },
+       "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_rows_kernel(float const*, float const*, float*, float const*, float*, int const*, long const*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.000875
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "cell": "c5k3",
+   "meta": {
+    "concurrency": 5,
+    "capacity": 8,
+    "budget": 3,
+    "route": "screening"
+   },
+   "profiled_status": "complete",
+   "unprofiled_arm_walls": {
+    "legacy_native": null,
+    "specdec2": 0.997801954858005,
+    "true_ar": 0.9018337167799473
+   },
+   "arms": {
+    "true_ar": {
+     "window_s": 0.934862,
+     "complete_wall_seconds": 0.9348984183743596,
+     "decode_only_seconds": 0.5563469771295786,
+     "stages": {
+      "true_ar_ar_decode": 0.556391277,
+      "true_ar_graph_close": 0.002289073,
+      "true_ar_resident_owner_transition": 0.0023300339999999995,
+      "true_ar_target_prefill": 0.350913142,
+      "true_ar_terminal_reclaim": 0.019640792
+     },
+     "kernels": {
+      "kernel_count": 11612,
+      "kernel_busy_s": 0.776772,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 5>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 704,
+        "busy_s": 0.124275
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.10269
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 5>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 1760,
+        "busy_s": 0.096211
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 5, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 704,
+        "busy_s": 0.088063
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.07178
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 4, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.052553
+       },
+       "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 5, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 528,
+        "busy_s": 0.041272
+       },
+       "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 0, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)": {
+        "count": 528,
+        "busy_s": 0.024066
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.023434
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 5, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 12,
+        "busy_s": 0.022681
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.021271
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.021059
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.012963
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 768,
+        "busy_s": 0.010809
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 1152,
+        "busy_s": 0.010549
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 780,
+        "busy_s": 0.008531
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 2042,
+       "hipGetLastError": 2042,
+       "hipMemset": 481,
+       "hipMemcpyAsync": 325,
+       "hipMemcpy": 54,
+       "hipMemGetInfo": 23,
+       "hipStreamSynchronize": 12,
+       "hipGraphLaunch": 11,
+       "hipMalloc": 3,
+       "hipFree": 3,
+       "hipDeviceSynchronize": 2,
+       "hipStreamCreateWithFlags": 1
+      },
+      "memcpy_count": 379,
+      "memcpy_bytes": 0
+     }
+    },
+    "specdec2": {
+     "window_s": 1.031443,
+     "complete_wall_seconds": 1.0314765376970172,
+     "decode_only_seconds": 0.5603046761825681,
+     "stages": {
+      "specdec2_ar_decode": 0.000747331,
+      "specdec2_cycle_total": 0.559572555,
+      "specdec2_nextn_prompt_prime": 0.086513786,
+      "specdec2_proposal": 0.032840622,
+      "specdec2_provider_k0_attach": 0.086632497,
+      "specdec2_provider_open": 4.7631e-05,
+      "specdec2_provider_streaming_open": 1.6131e-05,
+      "specdec2_resident_owner_transition": 4.628999999999999e-05,
+      "specdec2_target_accept_commit_provider": 0.5262892349999999,
+      "specdec2_target_prefill": 0.35571764,
+      "specdec2_terminal_reclaim": 0.017542413
+     },
+     "kernels": {
+      "kernel_count": 8899,
+      "kernel_busy_s": 0.891306,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 224,
+        "busy_s": 0.196135
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 576,
+        "busy_s": 0.128589
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.103466
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.072087
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.064862
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 4, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.052802
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 288,
+        "busy_s": 0.044969
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 63,
+        "busy_s": 0.023932
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.023482
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.021235
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.019536
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 8,
+        "busy_s": 0.018838
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 17,
+        "busy_s": 0.013462
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.013048
+       },
+       "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)": {
+        "count": 47,
+        "busy_s": 0.012242
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 55,
+        "busy_s": 0.011893
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 5465,
+       "hipGetLastError": 5465,
+       "hipMemcpyAsync": 2290,
+       "hipMemcpy": 701,
+       "hipMemset": 480,
+       "hipDeviceSynchronize": 41,
+       "hipFree": 36,
+       "hipMalloc": 36,
+       "hipMemGetInfo": 15
+      },
+      "memcpy_count": 2991,
+      "memcpy_bytes": 0
+     },
+     "cycle_kernels": {
+      "cycle_count": 3,
+      "cycle_span_s": 0.559573,
+      "kernel_count": 4844,
+      "kernel_busy_s": 0.51288,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 192,
+        "busy_s": 0.17474
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 576,
+        "busy_s": 0.128589
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.064862
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 288,
+        "busy_s": 0.044969
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.019536
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 8,
+        "busy_s": 0.018838
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 27,
+        "busy_s": 0.010975
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 15,
+        "busy_s": 0.007986
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 5, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 8,
+        "busy_s": 0.007354
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 19,
+        "busy_s": 0.005044
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 288,
+        "busy_s": 0.004604
+       },
+       "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 5>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 19,
+        "busy_s": 0.003799
+       },
+       "__amd_rocclr_copyBuffer": {
+        "count": 1342,
+        "busy_s": 0.00364
+       },
+       "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)": {
+        "count": 11,
+        "busy_s": 0.003191
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 200,
+        "busy_s": 0.002793
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 236,
+        "busy_s": 0.002454
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "cell": "c3k3",
+   "meta": {
+    "concurrency": 3,
+    "capacity": 8,
+    "budget": 3,
+    "route": "screening"
+   },
+   "profiled_status": "complete",
+   "unprofiled_arm_walls": {
+    "legacy_native": null,
+    "specdec2": 0.7479559984058142,
+    "true_ar": 0.7305896794423461
+   },
+   "arms": {
+    "true_ar": {
+     "window_s": 0.762934,
+     "complete_wall_seconds": 0.762953782454133,
+     "decode_only_seconds": 0.48665714263916016,
+     "stages": {
+      "true_ar_ar_decode": 0.48672119399999997,
+      "true_ar_graph_close": 0.002302743,
+      "true_ar_resident_owner_transition": 0.002336114,
+      "true_ar_target_prefill": 0.256176991,
+      "true_ar_terminal_reclaim": 0.013050257000000001
+     },
+     "kernels": {
+      "kernel_count": 10571,
+      "kernel_busy_s": 0.616827,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 704,
+        "busy_s": 0.115587
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.06328
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 2, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.059008
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)": {
+        "count": 352,
+        "busy_s": 0.049429
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 1144,
+        "busy_s": 0.045087
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 1, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.04033
+       },
+       "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 528,
+        "busy_s": 0.035208
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)": {
+        "count": 352,
+        "busy_s": 0.02882
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 352,
+        "busy_s": 0.023789
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 3, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 12,
+        "busy_s": 0.019529
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.018856
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.016671
+       },
+       "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 0, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)": {
+        "count": 528,
+        "busy_s": 0.015973
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.01216
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.011267
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 768,
+        "busy_s": 0.010498
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 1975,
+       "hipGetLastError": 1975,
+       "hipMemset": 289,
+       "hipMemcpyAsync": 195,
+       "hipMemcpy": 42,
+       "hipMemGetInfo": 19,
+       "hipStreamSynchronize": 12,
+       "hipGraphLaunch": 11,
+       "hipMalloc": 3,
+       "hipFree": 3,
+       "hipDeviceSynchronize": 2,
+       "hipStreamCreateWithFlags": 1
+      },
+      "memcpy_count": 237,
+      "memcpy_bytes": 0
+     }
+    },
+    "specdec2": {
+     "window_s": 0.770629,
+     "complete_wall_seconds": 0.7706504417583346,
+     "decode_only_seconds": 0.42238163854926825,
+     "stages": {
+      "specdec2_ar_decode": 0.000495787,
+      "specdec2_cycle_total": 0.42190555100000005,
+      "specdec2_nextn_prompt_prime": 0.068149989,
+      "specdec2_proposal": 0.022503043,
+      "specdec2_provider_k0_attach": 0.068257581,
+      "specdec2_provider_open": 5.561e-05,
+      "specdec2_provider_streaming_open": 2.153e-05,
+      "specdec2_resident_owner_transition": 3.359e-05,
+      "specdec2_target_accept_commit_provider": 0.39887658000000004,
+      "specdec2_target_prefill": 0.261607949,
+      "specdec2_terminal_reclaim": 0.010188537000000001
+     },
+     "kernels": {
+      "kernel_count": 7135,
+      "kernel_busy_s": 0.66231,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 224,
+        "busy_s": 0.171849
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 864,
+        "busy_s": 0.098167
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 112,
+        "busy_s": 0.064057
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 2, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 64,
+        "busy_s": 0.059935
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.05911
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 1, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 32,
+        "busy_s": 0.041208
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 63,
+        "busy_s": 0.023889
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.019146
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": {
+        "count": 48,
+        "busy_s": 0.012294
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 55,
+        "busy_s": 0.011898
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.011726
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.0114
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 3, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 9,
+        "busy_s": 0.008363
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 11,
+        "busy_s": 0.008041
+       },
+       "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)": {
+        "count": 47,
+        "busy_s": 0.007601
+       },
+       "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_tail_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long, long)": {
+        "count": 24,
+        "busy_s": 0.007308
+       }
+      }
+     },
+     "hip_api": {
+      "hip_api_calls_top": {
+       "hipLaunchKernel": 5259,
+       "hipGetLastError": 5259,
+       "hipMemcpyAsync": 1382,
+       "hipMemset": 288,
+       "hipMemcpy": 243,
+       "hipDeviceSynchronize": 41,
+       "hipMalloc": 25,
+       "hipFree": 24,
+       "hipMemGetInfo": 11
+      },
+      "memcpy_count": 1625,
+      "memcpy_bytes": 0
+     },
+     "cycle_kernels": {
+      "cycle_count": 3,
+      "cycle_span_s": 0.421906,
+      "kernel_count": 4180,
+      "kernel_busy_s": 0.38241,
+      "kernels_top_by_busy": {
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 192,
+        "busy_s": 0.154917
+       },
+       "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+        "count": 864,
+        "busy_s": 0.098167
+       },
+       "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.05911
+       },
+       "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, float*, int const*, long const*, float, long, long, long, long, long)": {
+        "count": 144,
+        "busy_s": 0.011726
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4, 3, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 27,
+        "busy_s": 0.01098
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 3, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 8,
+        "busy_s": 0.006765
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 3,
+        "busy_s": 0.006369
+       },
+       "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+        "count": 19,
+        "busy_s": 0.00504
+       },
+       "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+        "count": 3,
+        "busy_s": 0.004757
+       },
+       "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)": {
+        "count": 9,
+        "busy_s": 0.004707
+       },
+       "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 3>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": {
+        "count": 19,
+        "busy_s": 0.0034
+       },
+       "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+        "count": 200,
+        "busy_s": 0.002727
+       },
+       "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+        "count": 236,
+        "busy_s": 0.002409
+       },
+       "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)": {
+        "count": 11,
+        "busy_s": 0.002137
+       },
+       "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)": {
+        "count": 288,
+        "busy_s": 0.001991
+       },
+       "__amd_rocclr_copyBuffer": {
+        "count": 772,
+        "busy_s": 0.001629
+       }
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "sustained_horizon_boundary_probe",
+  "date": "2026-09-07",
+  "status": "diagnostic_not_a_benchmark",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100), GPU0",
+  "model": "Qwen3.8-27B GGUF Q4_K_M, production profile, K3, 20 ms window",
+  "method": "scripts/gguf_mtp_c1c8_server_bench.py, width 1, resident-capacity 8, explicit mode, candidate-budget 3, max-tokens 128 (5x the retained protocol horizon), ar_exact contract, full canonical 10-prompt suite, GPU_MAX_HW_QUEUES=1",
+  "result": "engaged 0/10: every cell correctly refused the speculative route and ran AR (all 10 cells ar_self_exact/mtp_self_exact/ar_mtp_equal, budget conformed). Every registered Qwen3.8 gfx1100 evidence row bounds max_output_horizon_tokens=24, so a D128 request is outside the qualified horizon and fails closed to AR by design. The AR baseline at D128 measured ~27.5 tok/s.",
+  "conclusion": "The sustained-horizon gate is bounded by the evidence rows' qualified horizon (24 tokens). Longer horizons require a new qualification campaign (evidence rows with measured D128 windows); the current routes do not silently exceed their qualified envelope.",
+  "log": "/tmp/he-bettermtp-raw/sustained-c1-k3-d128.log"
+}

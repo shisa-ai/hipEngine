@@ -2,6 +2,12 @@
 
 This document is the durable catalog of kernel families implemented in hipEngine and the stable mechanics for adding or porting one. It is intentionally **not** an experiment log.
 
+Dense gfx1151 Q4T16 gate/up prefill selects the existing fused row48 owner
+at rows33-48 (`GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS=48`), row64/row128
+above that band, and the registered unfused chain as fallback. The
+Qwen3.8-27B Q4_K_M qualification is in
+`benchmarks/results/2026-09-12-gfx1151-qwen38-row48-prefill-retained.json`.
+
 Keep here:
 
 - what kernel and oracle families exist;
@@ -146,18 +152,54 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | SiLU/rotation primitives | `fused/paro_silu.{hip,py}` | `silu_mul_dual`, `silu_mul_separate`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` | Primitive and fused activation/down-rotation boundaries coexist; separate BF16 SiLU permits exact in-place replacement of its gate plane. |
 | MoE combine/tail | `fused/paro_combine.{hip,py}` | `weighted_lanes_sum`, `weighted_sum`, `shared_gate_combine`, residual/RMSNorm composites | BF16/FP16/F32 values with FP32 route weights/gates; explicit primitive fallbacks are registered. Qwen4Exp prefill uses exact token-local BF16 batch siblings for compact top-10 weighted sum and shared-gate combine (gfx1151 reduced three-row traces: 1,963/1,403 ns); c1 primitives remain unchanged. |
 | Paged KV write/copy | `attention/paged_kv_write.{hip,py}` | `paged_kv_write`, `paged_kv_copy` (`bf16`, PARO/GGUF, INT8 layouts) | All attention-visible writes consume complete `KVLiveSpans`; includes BF16 and supported INT8 storage formats. The FP32→BF16 family includes shared-cache prompt rows with one explicit logical position/table per row for Qwen4Exp prefill; a reversed-page gfx1151 fixture traces at 8,376 ns. |
-| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. Per-token/head INT8 includes a row-batched 24Q/4KV/D256 split-K producer plus explicitly strided BF16 gated reducer; the c1 leaf remains registered as its numerical fallback. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641. The private-c1 exact leaf is the fixed256 body at 256 threads (strict exact default) with a parameterized `fixed256_threads_spans` probe at runtime block width; gfx1151 promotes 1024 threads (T2 non-exact, execution-profile gate-passed) via `GGUF_SHORT_C1_BATCH_ATTN_THREADS`. Dense H5120/L64/24Q/4KV/D256 selects the BF16 grouped-GQA split producer from context 4096; shorter contexts and unsupported shapes/backends retain the generic producer. |
+| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. Per-token/head INT8 includes a row-batched 24Q/4KV/D256 split-K producer plus explicitly strided BF16 gated reducer; the c1 leaf remains registered as its numerical fallback, and the gfx1100 Qwen3.8-27B artifact qualifies the batch variant to physical c4 with the c1 leaf as the registered fallback above that width. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641. The private-c1 exact leaf is the fixed256 body at 256 threads (strict exact default) with a parameterized `fixed256_threads_spans` probe at runtime block width; gfx1151 promotes 1024 threads (T2 non-exact, execution-profile gate-passed) via `GGUF_SHORT_C1_BATCH_ATTN_THREADS`. Dense H5120/L64/24Q/4KV/D256 selects the BF16 grouped-GQA split producer from context 4096; shorter contexts and unsupported shapes/backends retain the generic producer. | Native BF16-gated prefill uses owned global score scratch when its context-sized shared allocation would exceed 64 KiB; bounded query batches reuse the split partial-output arena without changing the parent reduction order. The explicit `causal_gqa_gate_bf16_global_scores` variant also permits parent-parity checks at short contexts. INT8 per-token/head includes a row-batched 24Q/4KV/D256 split-K producer with an explicitly strided BF16 gated reducer; the c1 leaf remains its registered numerical fallback. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
 | Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state; segmented, chain/tree, snapshot, and decode-order writers cover prefill, verifier, and multi-request selected commit, with optional FP32 state-row journals, direct BF16 handoffs, and an exact FP32 output tap. FP16-state (FP32 accumulation) and gfx1151 cluster/chunked compact-peer variants are explicit opt-ins or capability selections that always retain an FP32 fallback. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
-**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
+**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The split-K family includes the `dms_compact_attn_splitk_group6_wave_producer_kernel` for the Qwen3.8 24Q/4KV/D256 geometry (one compact token scored per wave, Q shared across the GQA group), compiled for gfx1151 and gfx1100; the grouped and scalar split-K producers remain registered fallbacks. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
+
+The explicit gfx1100 `attention/dms_compact_int8.{hip,py}` family adds compact
+INT8 pack/append and bounded split-K attention with FP32 per-token/head scales:
+the append path is the chunked keep-scan (`dms_int8_append_kernel`, one launch per
+chunk rather than a serial per-token loop), and the attention path registers the
+wave-grouped GQA producer `dms_int8_attn_split_wave_kernel` (in-register int8
+loads with scale dequant, Q shared across the GQA group) with the generic
+`dms_int8_attn_split_kernel` as fallback. Device fixtures cover exact codec
+bytes/scales and ownership, above-window retention, fail-closed overflow,
+attention numerics, and snapshot restoration. BF16 kernels remain unchanged
+fallbacks; model-serving INT8 DMS qualification is separate and is not
+established by these device fixtures. Speed and correctness evidence for the
+wave6 producer, chunked keep-scan, and wave-grouped INT8 producer lives in
+`benchmarks/results/2026-09-08-w7900-dense-vs-dms-speed-probe-final.json` and
+the capacity lane's XTX verification
+(`benchmarks/results/2026-09-08-rx7900xtx-dms-int8-merged-lane-capacity.json`).
 
 ### GGUF / Qwen / Laguna path
 
 GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layouts, exact expanded planes, and source-F16 Laguna tensors have distinct storage and registry keys.
+
+#### Qwen3.8-27B dense GGUF route map
+
+Qwen3.8-27B dense is served by the shared Qwen3.5/3.6/3.8 dense plugin; there is no separate Qwen3.8 model plugin. The chain from `LLM(...)` to a launch is:
+
+| Stage | Module | Key |
+| --- | --- | --- |
+| Model plugin | `models/qwen35.py` (`QWEN35_GGUF`) | `name="qwen3_5_gguf"`, `architectures=("qwen35",)`, `default_quant="gguf_q4_k_m"` |
+| Backend admission | `kernels/backends.py` `select_backend` | explicit arg → `HIPENGINE_BACKEND` → detected arch → `cpu_reference` |
+| Generator factory | `generation/registry.py` `resolve_text_generator` | `(model, backend, quant, mode="greedy_one_token")`, exact match |
+| Execution profile | `execution_profiles.py` `resolve_runtime_profile` | `(model, backend, quant, profile)`; an omitted profile selects a certified production plan where registered, and the migration route otherwise |
+| Materialize / quant | `loading/qwen35_gguf_materialize.py` | file quant `gguf_q4_k_m` → layout/registry quant `gguf_q4_k_t16_v1`; GDN family uses `gguf_qwen35` |
+| Dense linear dispatch | `runtime/gguf_linear.py` `resolve_gguf_linear_dispatch` | `(layout, activation, output)` template, backend from the resolved weight |
+| Kernel resolution | `kernels/registry.py` `resolve` | exact → no-variant → `fp16` → `cpu_reference`; no cross-HIP-backend fallback |
+
+Default route: bulk WMMA prefill (`use_bulk_prefill`, `bulk_prefill_attention_mode=bulk`, `use_wmma_prefill` default True) and GEMV decode (`use_gemv_decode=True`). `HIPENGINE_GGUF_DECODE_GRAPH` is enabled by default; graph replay additionally requires an admitted layout and the backend's published replay horizon. Decode remains eager when those conditions are not met. An unset sweep graph option now follows engine admission rather than forcing eager execution.
+
+Backend-specific knobs are read through `backend_package_capability(backend, NAME, default)` against module-level constants in `kernels/<backend>/`. Process-start HIP defaults live in `HIP_BACKEND_PROCESS_ENV_DEFAULTS` (gfx1100 `HSA_SCRATCH_SINGLE_LIMIT=8388608`; gfx1151 `GPU_MAX_HW_QUEUES=2`) and never overwrite explicit user values.
+
+`runtime/qwen35_gguf_runner.py` declares 80 module-level `KernelKey("hip_gfx1100", layer, quant, variant)` constants (46 on the dense `gguf_qwen35` GDN/linear-attention families, 34 on the MoE path). **These are nominal source markers, not backend pins:** every consumer discards `key.backend` and substitutes the active backend, for example through a local `_resolve` closure calling `resolve(backend=backend, layer=key.layer, quant=key.quant, variant=key.variant)`. Resolving the dense GDN keys on gfx1151 returns the gfx1151 bodies (`qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16` and its `_fp16state` sibling), not the gfx1100 ones. Grep hits on that literal in this file are not gfx1100-only surfaces. The live pin of this class is PARO's `_PAGED_KV_REGISTRY_BACKEND` in `runtime/qwen35_paro.py`; see `docs/REFACTOR.md`.
 
 #### GGUF projection and quant families
 
@@ -179,8 +221,11 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs; gfx1151 qualifies Qwen3.8 recurrent K5120/N10240+N6144 and full-attention K/V K5120/N1024+N1024 while primitive projections remain fallbacks. |
 | Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1100 planar row8 uses the exact DPP reduction (VGPR136→112, bpermute320→0), admitted on all 55 actual-operation rows and retained by a 1.634% complete-owner wall win; rows1-7 keep the generic reduction. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Rows<512, narrow V, root, shape misses, and peer backends retain exact one-wave/16x16 primitives. |
 | Dense planar-Q6 integer MMQ | `quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}` | `activation_quant`, `linear` | gfx1151 production-profile T2 composite for rows17-48 on sole-resident planar K17408/N5120 down and K5120/N1024 narrow-V: session-owned BF16-to-Q8_1 packing feeding the integer `mmq64x64` consumer; exact A owners remain registered for strict/profile fallback. |
+| Dense Q4 q8_1-dp4a VDR screen | `quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.{hip,py}` | `linear` (leaf screen, not dispatched) | nasone32 k-quant load-reuse port (efa4e8641): subblock-hoisted metadata with activation packs reused across 8 columns, plus an unamortized control with identical thread mapping and f32 order (bit-exact RED contract). 2026-09-09 four-arm leaf on both gfx1100 cards: -50..-76% vs the control inside the dp4a class, but 1.11-1.44x slower than the retained T16 rows=1 owners at every production shape (T16 sits at the DRAM floor), so rejected as a decode replacement; retained as evidence for future integer decode routes. |
+| Dense Q4 int-MMQ prefill screen | `quant/gguf_q4_k_q8_1_mmq_prefill.{hip,py}` | `linear` (leaf screen, not dispatched) | Raw-Q4_K x DS4-Q8_1 bulk-prefill integer MMQ (PP8192-attribution candidate): staged-dp4a 32x32-tile and direct-global iu8-WMMA 32x16-tile consumers, each with bit-exact ctl/vdr siblings (block-header/subblock-metadata hoisting) and a DS4 CPU oracle. 2026-09-09 W7900 six-arm leaf on real Qwen3.8-27B Q4_K_M weights, rows 512/1024/4096: best integer totals (pack + consumes) reach only 0.205-0.542x the retained float T16 prefill owners (9/9 case-rows), load-reuse deltas within +-3%, pack negligible — rejected as a bulk-prefill replacement; retained as leaf evidence for future integer prefill routes. |
+
 | IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. IQ3 tile4 remains scoped to the retained gfx1100 explicit-DFlash route; gfx1151 excludes it after a complete-route rejection and keeps tile1. |
-| Q8_0 grouped down (P1) | `quant/gguf_q8_0_prefill.{hip,py}` | `moe_linear` | P1 device-driven grouped Q8_0 down owner (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) for the layer-2/4/30/46/47 Q8_0 expert-down family. Reads `expert_start` on device and iterates experts via a fixed worker grid, replacing the `group_expert_start` D2H copy + Python loop over 512 experts. BF16-exact to `gguf_q8_0_gemv` per grouped row (RED test `test_qwen4_exp_q8_0_grouped_down.py`). Strict per-expert selected gemv remains default; `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects it. **Perf-negative as of 2026-08-30** (microbench 20260830T202256): grouped owner ~3-12x slower than strict `selected_gemv` on layer-2 shape due to a 1.31M-block grid with OUT_BATCH=1 and no weight reuse; not promoted. |
+| Q8_0 grouped down (P1) | `quant/gguf_q8_0_prefill.{hip,py}` | `moe_linear` | P1 device-driven grouped Q8_0 down owner (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) for the layer-2/4/30/46/47 Q8_0 expert-down family. Reads `expert_start` on device and iterates experts via a fixed worker grid, replacing the `group_expert_start` D2H copy + Python loop over 512 experts. BF16-exact to `gguf_q8_0_gemv` per grouped row (RED test `test_gpu_qwen4_exp_q8_0_grouped_down.py`). Strict per-expert selected gemv remains default; `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects it. **Perf-negative as of 2026-08-30** (microbench 20260830T202256): grouped owner ~3-12x slower than strict `selected_gemv` on layer-2 shape due to a 1.31M-block grid with OUT_BATCH=1 and no weight reuse; not promoted. |
 | Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. A Qwen4Exp one-layout replacement profile is rejected and removed: optimized p512 is neutral (213.52 vs 211.76 tok/s), paired decode regresses 5.925→3.615 tok/s, and mean/p95 KL fail at 0.003010/0.008338. gfx1151 Qwen3.8 standard-Q4 physical rows6/8/12/16 use the exact single-wave WMMA parent for K/N 5120/6144, 5120/10240, 5120/12288, and 6144/5120; narrow V, wide-K down, and misses retain shared-B. gfx1100 Qwen3.6 physical rows6 instead uses the C1-equivalent rowtile for K/N 5120/1024, 5120/6144, 5120/10240, 5120/12288, and 17408/5120, plus the exact single-wave parent for 5120/17408; all other rows/shapes keep explicitly registered shared-B. The same gfx1151 model's Q5 K6144/N5120, K17408/N5120, and K5120/N10240 rows2-8 use the exact col8 rowtile; registered parents remain strict fallbacks. |
 | IQ selected prefill | `quant/gguf_iq_selected_prefill.{hip,py}` | `moe_linear` | Grouped/expert-major, active-expert, rowbatch, and output-ownership variants. |
 | Raw-K activation MMQ | `quant/gguf_k_mmq_prefill.{hip,py}` | `activation_quant`, `linear` | Q8_1 producer layouts plus Q5/Q6 MMQ consumers; retained diagnostics may not be runtime defaults. The gfx1100 C8 Q5 owner choice between K-major source MMQ and raw MMQ is capability/env data (`HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ`, `HIPENGINE_GGUF_C8_Q5_RAW_MMQ`) in the backend package. |
@@ -277,7 +322,7 @@ per-model record is `docs/MODEL-TIMESFM3.md`.
 | DFlash2 native kernels | `speculative/dflash2.{hip,py}` | `dflash2_grouped_conv`, `dflash2_top16_rows`, `dflash2_selector` (`bf16`/`fp32`) | Native grouped dynamic conv (strided side views over the 1280-wide projection), top-16 logits, and the low-rank bilinear candidate-selector greedy walk. Strict RED vs `cpu_reference/dflash2.py` (BF16 round-trip modeled); registered for `hip_gfx1100` + `hip_gfx1151`. D2a. |
 | DFlash acceptance | `speculative/dflash_accept.{hip,py}` | `dflash_accept_chain`, `speculative_accept_commit` | GGUF/PARO acceptance and bounded commit summaries. |
 | DFlash commit/state | `speculative/dflash_commit.{hip,py}` | `dflash_commit_chain`, `linear_state_pair_*` | Transactional selected-state and cursor commit helpers. gfx1100 target verification reads initial Conv/GDN state from a resident multi-slot slab with the strict chunked pointer-table import as rollback; gfx1151 keeps the packed-state route, and a per-layer HIP D2D chain remains a lower strict fallback on gfx1100. |
-| MTP core | `speculative/mtp.{hip,py}` | MTP norm/fuse/router/top-k/gate/finalize/route accumulation | Provider-neutral proposal/acceptance primitives. |
+| MTP core | `speculative/mtp.{hip,py}` | MTP norm/fuse/router/top-k/gate/finalize/route accumulation | Provider-neutral proposal/acceptance primitives. Dense H5120 Q4_K_M gfx1100 native C1 verification uses allocated cache capacity (BF16 KV/FP32 state); scalarized rows snapshot initial Conv/GDN state before mutation. Native graph metadata is independent of bulk-prefill metadata thresholds; topology transitions may select eager native execution. |
 | MTP NextN | `speculative/mtp_nextn.{hip,py}` | `mtp_nextn_*`, quant GEMVs, shared head | GGUF NextN layer, attention, MoE, and projection helpers. The exact K/V-only full-attention branch owns prompt priming and accepted-tail repair by default; `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` restores the complete NextN block. |
 
 Detailed provider/runtime status belongs in `MTP.md`, `DFLASH.md`, worklogs, and benchmark artifacts.
@@ -375,6 +420,7 @@ hipengine/kernels/hip_gfx1100/
 │   ├── gguf_q4_k_moe_ffn_fused.hip
 │   ├── gguf_q4_k_pack8_gemv.hip
 │   ├── gguf_q4_k_prefill.hip
+│   ├── gguf_q4_k_q8_1_mmq_prefill.hip
 │   ├── gguf_q4_k_q8_1_selected_prefill.hip
 │   ├── gguf_q4_k_selected_pack8_gemv.hip
 │   ├── gguf_q4_k_selected_prefill.hip
@@ -499,7 +545,7 @@ plus the raw values of all four override vars - not compiler alone (f70c7b75d,
 prefix-memoized public-API resolution refined in bb0c78afa after a bytes-key
 `_data` fast path silently missed str keys). Fixes order-dependent stale
 resolution where a compiler-only key reused the first version after environment
-changes and selected the wrong build artifact (tests/test_build.py 11/12 ->
+changes and selected the wrong build artifact (tests/test_unit_build.py 11/12 ->
 12/12, order-dependent state leakage). Corrected cache resolves in 1.32us
 (~7x cheaper than uncached; 0.03us with the original fix), order-independent.
 No measurable TG effect: the earlier -1.9 ms/token claim was measured with the

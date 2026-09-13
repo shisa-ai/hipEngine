@@ -1,0 +1,134 @@
+{
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "scope": "C1 N1 K3, ten canonical prompts, D24 greedy, BF16 KV, max sequence1024, 20ms batch window",
+  "schema": 1,
+  "kind": "packed_c1_page_aware_kv_commit",
+  "base_commit": "0074e3395b8961cc76b6217c8fd13f784bd7a008",
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "cycles": 70,
+  "per_prompt": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 6
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 6
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 8
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 8
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    }
+  ],
+  "accepted_count_histogram": {
+    "3": 39,
+    "2": 13,
+    "1": 15,
+    "0": 3
+  },
+  "checks": {
+    "pre_accept_state_isolation": {
+      "all_pass": true,
+      "buffers_per_call": [
+        131
+      ]
+    },
+    "selected_commit": {
+      "all_pass": true,
+      "buffers_per_call": [
+        97
+      ]
+    },
+    "aux_commit": {
+      "all_pass": true,
+      "buffers_per_call": [
+        3
+      ]
+    },
+    "kv_commit": {
+      "all_pass": true,
+      "buffers_per_call": [
+        32
+      ]
+    }
+  },
+  "capture_sha256": "1ea2e29ae2b3f1e29b1e422e2127bcd91116fb5ce3d7e4ca3d1713226600e335",
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-n1k3-kv-commit-v2 --capacity 1 --budget 3 --check-commit",
+  "validation": "84 focused CPU tests passed; after repairing host/device result-field mismatch, 30 affected CPU tests passed. Initial GPU attempt aborted before commit; replacement completed all prompts.",
+  "limitation": "Exact page-aware BF16 accepted-prefix KV copies and preservation of earlier live KV. No independent numerical teacher-state, host cursor lifecycle, full provider repair, EOS/cancel/slot reuse, width transitions or full-profile qualification. Synthetic CPU tests cover arbitrary page boundaries; this GPU scope is N1/K3/D24."
+}

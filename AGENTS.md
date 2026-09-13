@@ -11,6 +11,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
 - **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page and `WORKLOG-LEGACY.md` is frozen pre-cutoff history. Use `python3 scripts/worklog.py new/check/render`.
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details. Execution-profile contracts are normative in `docs/EXECUTION-PROFILES.md`: control/ownership is exact in every profile; arithmetic equality, deterministic repeatability, and batch-composition invariance are separate gates.
+- **Test naming and scope:** new/migrated modules use `test_<tier>_<subject>.py`; follow `docs/TESTING.md` "Test Naming and Discovery". Default pytest discovers the reviewed unit tier only. Use explicit file/node targets or `--suite <tier>` for other work; a full milestone run requires `--suite all`. Never classify cost by product-name substrings or introduce manual filename exclusion lists.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + physical host identity + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`). Two machines with the same backend/GPU architecture are independent lanes: never report their absolute rates as an old→new comparison unless one declared same-host protocol measured both.
 - **No benchmark gaming.** Tuning a metric to the specific inputs being measured is an INVALID benchmark, not a win. Concretely: never hardcode token IDs / candidate-id reranks / prompt-conditioned branches that lift acceptance, top-1, or speed on the fixed prompt(s) under test. Optimize the model/kernels, not the score. Acceptance/speed/quality for speculative or sampling paths must be validated on the **full multi-prompt mtp-bench category suite** (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all of `code`/`general_en`/`general_ja`/`mixed_ja_en`) plus category-heldouts, never a single fixed prompt. MTP speedup claims require a true no-MTP autoregressive baseline from the same benchmark protocol; verifier-derived `off`/`B0` rows are diagnostic only. Single-prompt-overfit numbers are not retainable and any prior rows derived from them are marked INVALID. See `docs/BENCHMARK.md` "Anti-gaming".
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
@@ -54,6 +55,7 @@ Do not drift these casually. They define what hipEngine is.
 | `worklog/entries/` | Immutable per-unit current decisions, results, blockers, and handoffs. |
 | `worklog/README.md` / `scripts/worklog.py` | Worklog schema, commands, validator, renderer, and optional pre-commit hook. |
 | `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
+| `benchmarks/HARNESSES.md` | Harness catalog **and the two-tier capacity-testing protocol** - never run full-prompt ladder points to answer a does-it-fit question; use `scripts/gguf_capacity_probe.py` first. |
 | `benchmarks/HISTORY.md` | Archived experiment rollup, superseded diagnostics, source-lineage targets, and external baselines. |
 | `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
 | `benchmarks/results/` | Compact JSON artifacts for accepted/blocked/rejected benchmark attempts. |
@@ -106,7 +108,8 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
 | New or ported kernel | Strict exact/parent-parity or production-profile numerical RED gate + CPU-reference outer gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/EXECUTION-PROFILES.md`). |
 | Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in the unit's worklog entry. |
-| Milestone closure | One full `uv run pytest -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
+| Capacity / does-it-fit | Tier-1 allocation probe (`scripts/gguf_capacity_probe.py`, ~3 min) at the target context; escalate to a full-prompt harness point ONLY to confirm a found bound or to certify completion at depth. See `benchmarks/HARNESSES.md` "Capacity testing". Never bracket bounds with full prompts. |
+| Milestone closure | One full `uv run pytest --suite all -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
 
 ## Git Discipline
 
@@ -116,7 +119,7 @@ Explicit, auto-commit-after-validation. Many small, atomic, working-state commit
 
 - **Commit immediately** after a logical unit is complete and validation passes. Do not ask, do not wait to be asked, and do not start the next logical task until the previous validated unit is committed.
 - Include related handoff docs in the same unit (a change that needed a worklog entry or a `docs/PLAN.md` update commits them together).
-- Always commit the new `worklog/entries/<unique-entry>.md` path with the logical unit that required it. Run `python3 scripts/worklog.py check` before staging/committing; never edit, rename, or delete a committed entry.
+- Always commit the new `worklog/entries/<unique-entry>.md` path with the logical unit that required it. Stage it, then run `python3 scripts/worklog.py check` (it validates staged and tracked content only, so another worker's unstaged entry cannot block your commit); never edit, rename, or delete a committed entry.
 - Do not commit mid-task while exploring, debugging, or in a broken state.
 - Docs, plans, repo-setup, and dependency additions are first-class logical units.
 

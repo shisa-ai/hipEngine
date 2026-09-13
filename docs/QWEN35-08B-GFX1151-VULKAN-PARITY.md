@@ -1504,7 +1504,7 @@ Registered as `dense_gemv/prefill_wmma_out` behind the gfx1151 capability
 `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback. The backend default is limited
 to the two complete-model-gated p512 dense-BF16 shapes; K not divisible by 32,
 every row/shape policy miss, and peer backends keep the exact fallback. Fixtures
-live in `tests/test_dense_prefill_wmma.py`.
+live in `tests/test_gpu_dense_prefill_wmma.py`.
 
 Binding gates: five counter-rotated env-pair exact-core blocks on Q4_K_M give
 prefill **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)** and public **+24.63%

@@ -33,10 +33,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import (
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import (
     _upload, _alloc, _download,
 )
-from tests.test_qwen4exp_mmq_prepack import pack_reference
+from tests.test_gpu_qwen4exp_mmq_prepack import pack_reference
 
 MMQ_VARIANT = "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
 VEC4_VARIANT = "gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"

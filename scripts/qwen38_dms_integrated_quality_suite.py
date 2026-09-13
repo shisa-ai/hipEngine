@@ -59,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--categories", default=",".join(_REQUIRED_CATEGORIES))
     parser.add_argument("--decode-steps", type=int, default=8)
     parser.add_argument("--modes", default="no_evict,sidecar")
+    parser.add_argument("--codec", choices=("bf16", "int8_evaluation"), default="bf16",
+                        help="Offline candidate codec; INT8 evaluation does not qualify serving.")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--max-kl", type=float, default=0.05)
     parser.add_argument("--min-top1", type=float, default=0.9)
@@ -72,6 +74,10 @@ def _parse_csv(value: str) -> tuple[str, ...]:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    from hipengine.kvcache.dms import create_dms_bf16_backend, create_dms_int8_evaluation_backend
+    codec = getattr(args, "codec", "bf16")
+    backend_factory = {"bf16": create_dms_bf16_backend,
+                       "int8_evaluation": create_dms_int8_evaluation_backend}[codec]
     prompt_tokens = int(args.prompt_tokens)
     decode_steps = int(args.decode_steps)
     if prompt_tokens <= 0 or decode_steps <= 0:
@@ -159,6 +165,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     dms_metadata_path=args.metadata,
                     dms_max_new_tokens=decode_steps,
                     dms_decision_mode=mode,
+                    dms_backend_factory=backend_factory,
                     use_wmma_prefill=True,
                     use_gemv_decode=True,
                 ) as candidate:
@@ -186,6 +193,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                         rows.append(comparison)
                     snapshot = candidate._dms_backend.observability_snapshot()
+                    if candidate._dms_dense_prefill_pool is not None:
+                        raise AssertionError("DMS candidate retained dense prefill pool")
+                    if not snapshot["backend"]["device_payloads"]:
+                        raise AssertionError("DMS quality requires device payloads")
                     candidate_memory = memory_stats()
                 candidates[mode] = {
                     "prefill_comparison": prefill_comparison,
@@ -254,6 +265,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "decode_steps": decode_steps,
             "categories": list(categories),
             "modes": list(modes),
+            "codec": codec,
+            "serving_qualification": False,
             "thresholds": {
                 "max_kl": float(args.max_kl),
                 "min_top1_agreement": float(args.min_top1),

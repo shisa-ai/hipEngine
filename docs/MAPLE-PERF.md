@@ -257,7 +257,7 @@ decode step (24-layer loop + final norm + affine4 lm_head + argmax) as one graph
 and self-validates bit-exact on first capture (argmax parity vs a fresh eager
 reference, with the output cleared so a no-op graph is rejected). The capture is
 bit-exact across 120 tokens over a growing KVLiveSpans cache
-(`tests/test_maple_graph_capture.py`). A post-correction counterbalanced review
+(`tests/test_live_maple_graph_capture.py`). A post-correction counterbalanced review
 (three independent eager and three graph processes, 4 warmup + 128 measured)
 measures eager **7.0661 ms** versus graph **7.0329 ms** median-of-medians:
 **1.0047x**, only 0.033 ms. IDs and top-logit hashes match, every graph reports
@@ -270,7 +270,7 @@ kernel chain and does **not** reuse this c1 graph. Evidence:
 
 The repo already proved this pattern in `hipengine/runtime/moe_graph.py`: a
 **stateless** per-layer unit is safe to capture and replay across arbitrarily
-many relaunches (bit-exact in `tests/test_hip_graph_capture_replay.py`). Maple
+many relaunches (bit-exact in `tests/test_gpu_hip_graph_capture_replay.py`). Maple
 decode is stateless per token: every layer recomputes from fresh
 `hidden`/`qkv` buffers through fixed session-resident scratch pointers. The only
 stateful memory is the KV cache, but the KV-write/attention kernels read and

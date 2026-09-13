@@ -80,7 +80,42 @@ def dms_streaming_pack_reference(
     return packed_k, packed_v, packed_positions
 
 
+def dms_int8_streaming_pack_reference(k, v, eviction, *, current_position, window_size):
+    """Unfused retention followed by symmetric per-token/head encoding."""
+    keys, values, positions = dms_streaming_pack_reference(
+        k, v, eviction, current_position=current_position, window_size=window_size,
+    )
+    def encode(layers):
+        return [[encode_dms_payload(head, codec="int8_per_token_head")
+                 for head in layer] for layer in layers]
+    return encode(keys), encode(values), positions
+
+
+def dms_int8_append_reference(k, v, positions, eviction, k_new, v_new,
+                              eviction_new, *, position, window_size, capacity):
+    """Unfused keep/append/encode oracle; raises before returning on overflow."""
+    positions = np.asarray(positions, dtype=np.int32)
+    eviction = np.asarray(eviction, dtype=np.bool_)
+    keep = (~eviction) | (int(position) - positions <= int(window_size))
+    if int(np.count_nonzero(keep)) + 1 > int(capacity):
+        raise MemoryError("DMS INT8 append exceeds extent capacity")
+    keys = np.concatenate([np.asarray(k)[keep], np.asarray(k_new)[None]])
+    values = np.concatenate([np.asarray(v)[keep], np.asarray(v_new)[None]])
+    return (encode_dms_payload(keys, codec="int8_per_token_head"),
+            encode_dms_payload(values, codec="int8_per_token_head"),
+            np.append(positions[keep], np.int32(position)),
+            np.append(eviction[keep], bool(eviction_new)))
+
+
 def register_dms_cpu_reference_kernels(*, replace: bool = True) -> None:
+    for layer, variant, function in (
+        ("dms_streaming_pack", "count_rank_scatter", dms_int8_streaming_pack_reference),
+        ("dms_append_decode", "compact_append_evict", dms_int8_append_reference),
+        ("dms_compact_attn_decode", "grouped_gqa_splitk", compact_attention_reference),
+    ):
+        register(KernelKey("cpu_reference", layer, "int8_per_token_head", variant),
+                 function, replace=replace)
+
     register(
         KernelKey(
             "cpu_reference",

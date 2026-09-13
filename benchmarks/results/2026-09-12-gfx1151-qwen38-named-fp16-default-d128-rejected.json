@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_named_default_long_horizon_rejection",
+  "status": "rejected_numerical_envelope",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "bf16",
+  "hardware": {
+    "host": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_version": "7.15.26333"
+  },
+  "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+  "candidate_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+  "requested_candidate_profile": null,
+  "resolved_candidate_profile": "production",
+  "actual_candidate_fp16_recurrent_state": true,
+  "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt .venv/bin/python scripts/qwen38_production_ar_gate.py --decode-steps 128 --repeat-runs 3 --output /tmp/qwen38-release-20260913/named-default-ar-d128.json",
+  "protocol": {
+    "canonical_prompts": 10,
+    "category_heldouts": 8,
+    "teacher_rows": 2322,
+    "decode_steps": 128,
+    "candidate_repeats": 3,
+    "physical_width": 1,
+    "decode_mode": "eager",
+    "teacher_forcing": "named strict token trajectory for every candidate repeat",
+    "state_gate": "finite, position/layout stable, byte-repeatable candidate state"
+  },
+  "quality": {
+    "kl_mean": 0.00021876336693180362,
+    "kl_p95": 0.0005292027070901684,
+    "kl_p99": 0.001636472078318034,
+    "kl_max": 0.07663816100839238,
+    "top1_agreement": 0.9982773471145564,
+    "top1_matches": 2318,
+    "hard_gate_passed": false,
+    "state_repeat_gate_passed": true,
+    "max_kl_ceiling": 0.05
+  },
+  "ceiling_failures": [
+    {"prompt": "mixed_ja_en_translate", "teacher_step": 91, "kl": 0.07663816100839238},
+    {"prompt": "mixed_ja_en_translate", "teacher_step": 94, "kl": 0.053717256013691844},
+    {"prompt": "mixed_ja_en_review", "teacher_step": 51, "kl": 0.0520500411752776},
+    {"prompt": "heldout_mixed_review", "teacher_step": 52, "kl": 0.05108182758278128}
+  ],
+  "raw_evidence": {
+    "path": "/tmp/qwen38-release-20260913/named-default-ar-d128.json",
+    "sha256": "9b6e323c73d15b02b85284c822a7aaae9ef5a8b2de3135fdeea866b19dd199a2"
+  },
+  "decision": "The actual omitted-profile C1 composition fails the binding production ceiling, independently of the packed-state rejection. Test FP32 recurrent state while retaining other production selections, then recertify its distinct manifest. Do not widen numerical thresholds or special-case failing prompts."
+}

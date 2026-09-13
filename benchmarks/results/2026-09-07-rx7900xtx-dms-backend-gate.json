@@ -1,0 +1,3792 @@
+{
+  "schema": 1,
+  "kind": "hipengine_dms_backend_gate",
+  "created_at": "2026-09-07T01:55:03.199317+00:00",
+  "status": "accepted_host_backend",
+  "passed": true,
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "codec": "bf16",
+  "metadata": {
+    "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "model_family": "qwen35_dense_hybrid",
+    "num_layers": 16,
+    "num_q_heads": 24,
+    "num_kv_heads": 4,
+    "head_dim": 256,
+    "window_size": 8192,
+    "target_compression_ratio": 2,
+    "alpha_scale": 1.0,
+    "alpha_offset": 0.012540675699710846,
+    "borrowed_query_channel": null,
+    "corrected_mask": false,
+    "trained_checkpoint": true,
+    "evidence_source": "policy_derivation.json",
+    "source_path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "source_kind": "explicit_metadata",
+    "schema_version": 2,
+    "decision_source": "external_linear_sidecar_v1",
+    "physical_layer_ids": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39,
+      43,
+      47,
+      51,
+      55,
+      59,
+      63
+    ],
+    "hidden_size": 5120,
+    "input_stage": "post_attn_rmsnorm_pre_q_projection",
+    "zero_borrowed_query_channel": false,
+    "sidecar": {
+      "path": "qwen38-27b-q4km-dms-sidecar.safetensors",
+      "format": "safetensors",
+      "dtype": "bfloat16",
+      "weight_shape": [
+        16,
+        4,
+        5120
+      ],
+      "bias_shape": [
+        16,
+        4
+      ],
+      "sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+      "weight_tensor": "weight",
+      "bias_tensor": "bias",
+      "resolved_path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/qwen38-27b-q4km-dms-sidecar.safetensors"
+    },
+    "training": {
+      "method": "future_attention_distillation_v1",
+      "data_manifest_sha256": "e0c3ba238ff0adbd55e18998fc23ad2a7c84c8649dcce5523be79daa13ee2ff9",
+      "trainer_commit": "7ab49ae722409ed22b3da536ac98daca2be18651",
+      "fastdms_reference_commit": "c602b0ec3266da7f74d6a658b3dafcddb443fddd",
+      "seed": 0
+    },
+    "prefill_selection_mode": "exact_budget"
+  },
+  "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+  "widths": [
+    {
+      "width": 1,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 1024,
+          "live_token_rows": 1024,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 1048576,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 1,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 64256,
+          "largest_free_extent": 4016,
+          "owner_count": 1,
+          "allocation_failures": 0,
+          "high_water_slots": 1280,
+          "free_ranges_by_layer": [
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ],
+            [
+              [
+                80,
+                4016
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 1280,
+              "free": 64256,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 1280
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 64,
+              "used": 64,
+              "free": 0,
+              "high_water": 64,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 64
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 1280,
+              "free": 64256,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 1280
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 1280,
+              "free": 64256,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 1280
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 1,
+              "used": 1,
+              "free": 0,
+              "high_water": 1,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 1
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 1280,
+              "free": 64256,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 1280
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 1,
+          "stats": {
+            "commits": 1,
+            "provisional_reserves": 1
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 2,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 1280,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 64,
+              "used": 0,
+              "free": 64,
+              "high_water": 64,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 1,
+              "used": 0,
+              "free": 1,
+              "high_water": 1,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 1280,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 2,
+            "provisional_reserves": 2,
+            "releases": 2
+          },
+          "blocking_counts": {}
+        }
+      }
+    },
+    {
+      "width": 2,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 2048,
+          "live_token_rows": 2048,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 2097152,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 2,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 62976,
+          "largest_free_extent": 3936,
+          "owner_count": 2,
+          "allocation_failures": 0,
+          "high_water_slots": 2560,
+          "free_ranges_by_layer": [
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ],
+            [
+              [
+                160,
+                3936
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 2560,
+              "free": 62976,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 2560
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 128,
+              "used": 128,
+              "free": 0,
+              "high_water": 128,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 128
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 2560,
+              "free": 62976,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 2560
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 2560,
+              "free": 62976,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 2560
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 2,
+              "used": 2,
+              "free": 0,
+              "high_water": 2,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 2
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 2560,
+              "free": 62976,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 2560
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:1": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 2,
+          "stats": {
+            "commits": 2,
+            "provisional_reserves": 2
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 3,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 2560,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 128,
+              "used": 0,
+              "free": 128,
+              "high_water": 128,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 2,
+              "used": 0,
+              "free": 2,
+              "high_water": 2,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 2560,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 3,
+            "provisional_reserves": 3,
+            "releases": 3
+          },
+          "blocking_counts": {}
+        }
+      }
+    },
+    {
+      "width": 4,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 4096,
+          "live_token_rows": 4096,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 4194304,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 4,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 60416,
+          "largest_free_extent": 3776,
+          "owner_count": 4,
+          "allocation_failures": 0,
+          "high_water_slots": 5120,
+          "free_ranges_by_layer": [
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ],
+            [
+              [
+                320,
+                3776
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 5120,
+              "free": 60416,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 5120
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 256,
+              "used": 256,
+              "free": 0,
+              "high_water": 256,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 256
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 5120,
+              "free": 60416,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 5120
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 5120,
+              "free": 60416,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 5120
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 4,
+              "used": 4,
+              "free": 0,
+              "high_water": 4,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 4
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 5120,
+              "free": 60416,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 5120
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:1": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:2": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:3": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 4,
+          "stats": {
+            "commits": 4,
+            "provisional_reserves": 4
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 6,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 5120,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 256,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 4,
+              "used": 0,
+              "free": 4,
+              "high_water": 4,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 5120,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 6,
+            "provisional_reserves": 6,
+            "releases": 6
+          },
+          "blocking_counts": {}
+        }
+      }
+    },
+    {
+      "width": 8,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 8192,
+          "live_token_rows": 8192,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 8388608,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 8,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 55296,
+          "largest_free_extent": 3456,
+          "owner_count": 8,
+          "allocation_failures": 0,
+          "high_water_slots": 10240,
+          "free_ranges_by_layer": [
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ],
+            [
+              [
+                640,
+                3456
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 10240,
+              "free": 55296,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 10240
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 512,
+              "used": 512,
+              "free": 0,
+              "high_water": 512,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 512
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 10240,
+              "free": 55296,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 10240
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 10240,
+              "free": 55296,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 10240
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 8,
+              "used": 8,
+              "free": 0,
+              "high_water": 8,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 8
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 10240,
+              "free": 55296,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 10240
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:1": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:2": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:3": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:4": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:5": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:6": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:7": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 8,
+          "stats": {
+            "commits": 8,
+            "provisional_reserves": 8
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 12,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 10240,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 512,
+              "used": 0,
+              "free": 512,
+              "high_water": 512,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 8,
+              "used": 0,
+              "free": 8,
+              "high_water": 8,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 10240,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 12,
+            "provisional_reserves": 12,
+            "releases": 12
+          },
+          "blocking_counts": {}
+        }
+      }
+    },
+    {
+      "width": 16,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 16384,
+          "live_token_rows": 16384,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 16777216,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 16,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 45056,
+          "largest_free_extent": 2816,
+          "owner_count": 16,
+          "allocation_failures": 0,
+          "high_water_slots": 20480,
+          "free_ranges_by_layer": [
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ],
+            [
+              [
+                1280,
+                2816
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 20480,
+              "free": 45056,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 20480
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 1024,
+              "used": 1024,
+              "free": 0,
+              "high_water": 1024,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 1024
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 20480,
+              "free": 45056,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 20480
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 20480,
+              "free": 45056,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 20480
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 16,
+              "used": 16,
+              "free": 0,
+              "high_water": 16,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 16
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 20480,
+              "free": 45056,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 20480
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:1": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:10": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:11": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:12": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:13": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:14": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:15": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:2": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:3": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:4": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:5": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:6": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:7": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:8": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:9": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 16,
+          "stats": {
+            "commits": 16,
+            "provisional_reserves": 16
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 24,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 20480,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 1024,
+              "used": 0,
+              "free": 1024,
+              "high_water": 1024,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 16,
+              "used": 0,
+              "free": 16,
+              "high_water": 16,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 20480,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 24,
+            "provisional_reserves": 24,
+            "releases": 24
+          },
+          "blocking_counts": {}
+        }
+      }
+    },
+    {
+      "width": 32,
+      "passed": true,
+      "active": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 32768,
+          "live_token_rows": 32768,
+          "actual_compression_ratio": 1.0,
+          "target_compression_ratio": 2,
+          "max_live_count": 16,
+          "payload_bytes": 33554432,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 32,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 24576,
+          "largest_free_extent": 1536,
+          "owner_count": 32,
+          "allocation_failures": 0,
+          "high_water_slots": 40960,
+          "free_ranges_by_layer": [
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ],
+            [
+              [
+                2560,
+                1536
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 40960,
+              "free": 24576,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {
+                "lease": 40960
+              }
+            },
+            "dms.extent_descriptors": {
+              "capacity": 2048,
+              "used": 2048,
+              "free": 0,
+              "high_water": 2048,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {
+                "lease": 2048
+              }
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 40960,
+              "free": 24576,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {
+                "lease": 40960
+              }
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 40960,
+              "free": 24576,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {
+                "lease": 40960
+              }
+            },
+            "dms.request_rows": {
+              "capacity": 32,
+              "used": 32,
+              "free": 0,
+              "high_water": 32,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {
+                "lease": 32
+              }
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 40960,
+              "free": 24576,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {
+                "lease": 40960
+              }
+            }
+          },
+          "owners": {
+            "dms-lease:0": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:1": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:10": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:11": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:12": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:13": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:14": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:15": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:16": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:17": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:18": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:19": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:2": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:20": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:21": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:22": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:23": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:24": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:25": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:26": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:27": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:28": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:29": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:3": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:30": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:31": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:4": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:5": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:6": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:7": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:8": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            },
+            "dms-lease:9": {
+              "dms.k_slots": 1280,
+              "dms.v_slots": 1280,
+              "dms.position_slots": 1280,
+              "dms.evict_slots": 1280,
+              "dms.extent_descriptors": 64,
+              "dms.request_rows": 1
+            }
+          },
+          "provisional_reservations": 0,
+          "active_reservations": 32,
+          "stats": {
+            "commits": 32,
+            "provisional_reserves": 32
+          },
+          "blocking_counts": {}
+        }
+      },
+      "final": {
+        "backend": {
+          "topology": "dms_compact",
+          "codec": "bf16",
+          "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+          "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+          "decision_source": "external_linear_sidecar_v1",
+          "physical_layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39,
+            43,
+            47,
+            51,
+            55,
+            59,
+            63
+          ],
+          "prefix_mode": "off",
+          "no_dense_shadow": true,
+          "device_payloads": false,
+          "device_backend": "hip_gfx1100",
+          "physical_widths": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "capacity": {
+          "logical_token_rows": 0,
+          "live_token_rows": 0,
+          "actual_compression_ratio": null,
+          "target_compression_ratio": 2,
+          "max_live_count": 0,
+          "payload_bytes": 0,
+          "scale_bytes": 0
+        },
+        "operations": {
+          "streaming_pack_calls": 48,
+          "decode_appends": 0,
+          "evicted_tokens": 0,
+          "released_provisional_slots": 0
+        },
+        "extent_pool": {
+          "num_layers": 16,
+          "slots_per_layer": 4096,
+          "capacity_slots": 65536,
+          "free_slots": 65536,
+          "largest_free_extent": 4096,
+          "owner_count": 0,
+          "allocation_failures": 0,
+          "high_water_slots": 40960,
+          "free_ranges_by_layer": [
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ],
+            [
+              [
+                0,
+                4096
+              ]
+            ]
+          ]
+        },
+        "ledger": {
+          "backend_fingerprint": "76a28f2e1e4938c348fa40d7135f1ab015b961306ea0d33ba14aa614faba3178",
+          "generation": 1,
+          "pools": {
+            "dms.evict_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "evict_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.extent_descriptors": {
+              "capacity": 2048,
+              "used": 0,
+              "free": 2048,
+              "high_water": 2048,
+              "unit": "descriptors",
+              "plane_role": "extent_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.k_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "k_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.pack_workspace_rows": {
+              "capacity": 256,
+              "used": 0,
+              "free": 256,
+              "high_water": 0,
+              "unit": "rows",
+              "plane_role": "streaming_workspace",
+              "used_by_lifetime": {}
+            },
+            "dms.position_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "position_slots",
+              "used_by_lifetime": {}
+            },
+            "dms.request_rows": {
+              "capacity": 32,
+              "used": 0,
+              "free": 32,
+              "high_water": 32,
+              "unit": "rows",
+              "plane_role": "row_metadata",
+              "used_by_lifetime": {}
+            },
+            "dms.v_slots": {
+              "capacity": 65536,
+              "used": 0,
+              "free": 65536,
+              "high_water": 40960,
+              "unit": "token_slots",
+              "plane_role": "v_slots",
+              "used_by_lifetime": {}
+            }
+          },
+          "owners": {},
+          "provisional_reservations": 0,
+          "active_reservations": 0,
+          "stats": {
+            "commits": 48,
+            "provisional_reserves": 48,
+            "releases": 48
+          },
+          "blocking_counts": {}
+        }
+      }
+    }
+  ],
+  "pressure": {
+    "passed": true,
+    "retryable_rejection_observed": true,
+    "final": {
+      "backend": {
+        "topology": "dms_compact",
+        "codec": "bf16",
+        "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+        "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+        "decision_source": "external_linear_sidecar_v1",
+        "physical_layer_ids": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39,
+          43,
+          47,
+          51,
+          55,
+          59,
+          63
+        ],
+        "prefix_mode": "off",
+        "no_dense_shadow": true,
+        "device_payloads": false,
+        "device_backend": "hip_gfx1100",
+        "physical_widths": [
+          1,
+          2,
+          4,
+          8
+        ]
+      },
+      "capacity": {
+        "logical_token_rows": 0,
+        "live_token_rows": 0,
+        "actual_compression_ratio": null,
+        "target_compression_ratio": 2,
+        "max_live_count": 0,
+        "payload_bytes": 0,
+        "scale_bytes": 0
+      },
+      "operations": {
+        "streaming_pack_calls": 0,
+        "decode_appends": 0,
+        "evicted_tokens": 0,
+        "released_provisional_slots": 0
+      },
+      "extent_pool": {
+        "num_layers": 16,
+        "slots_per_layer": 80,
+        "capacity_slots": 1280,
+        "free_slots": 1280,
+        "largest_free_extent": 80,
+        "owner_count": 0,
+        "allocation_failures": 0,
+        "high_water_slots": 1280,
+        "free_ranges_by_layer": [
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ],
+          [
+            [
+              0,
+              80
+            ]
+          ]
+        ]
+      },
+      "ledger": {
+        "backend_fingerprint": "ff5635faaf28783884095dceb1ab2ca9d043d11fe9216c9a6ace18d10fa1df4e",
+        "generation": 1,
+        "pools": {
+          "dms.evict_slots": {
+            "capacity": 1280,
+            "used": 0,
+            "free": 1280,
+            "high_water": 1280,
+            "unit": "token_slots",
+            "plane_role": "evict_slots",
+            "used_by_lifetime": {}
+          },
+          "dms.extent_descriptors": {
+            "capacity": 128,
+            "used": 0,
+            "free": 128,
+            "high_water": 64,
+            "unit": "descriptors",
+            "plane_role": "extent_metadata",
+            "used_by_lifetime": {}
+          },
+          "dms.k_slots": {
+            "capacity": 1280,
+            "used": 0,
+            "free": 1280,
+            "high_water": 1280,
+            "unit": "token_slots",
+            "plane_role": "k_slots",
+            "used_by_lifetime": {}
+          },
+          "dms.pack_workspace_rows": {
+            "capacity": 256,
+            "used": 0,
+            "free": 256,
+            "high_water": 0,
+            "unit": "rows",
+            "plane_role": "streaming_workspace",
+            "used_by_lifetime": {}
+          },
+          "dms.position_slots": {
+            "capacity": 1280,
+            "used": 0,
+            "free": 1280,
+            "high_water": 1280,
+            "unit": "token_slots",
+            "plane_role": "position_slots",
+            "used_by_lifetime": {}
+          },
+          "dms.request_rows": {
+            "capacity": 2,
+            "used": 0,
+            "free": 2,
+            "high_water": 1,
+            "unit": "rows",
+            "plane_role": "row_metadata",
+            "used_by_lifetime": {}
+          },
+          "dms.v_slots": {
+            "capacity": 1280,
+            "used": 0,
+            "free": 1280,
+            "high_water": 1280,
+            "unit": "token_slots",
+            "plane_role": "v_slots",
+            "used_by_lifetime": {}
+          }
+        },
+        "owners": {},
+        "provisional_reservations": 0,
+        "active_reservations": 0,
+        "stats": {
+          "commits": 1,
+          "provisional_reserves": 1,
+          "rejections": 1,
+          "releases": 1
+        },
+        "blocking_counts": {
+          "dms.evict_slots": 1,
+          "dms.k_slots": 1,
+          "dms.position_slots": 1,
+          "dms.v_slots": 1
+        }
+      }
+    }
+  },
+  "prefix_mode": "off",
+  "no_dense_shadow": true,
+  "blocker": null,
+  "limitations": [
+    "This is a torch-free CPU/reference and host-lifecycle gate.",
+    "HIP streaming-pack and compact-attention promotion requires a fresh stable GPU generation.",
+    "Quality is scoped to the exact metadata and optional codec qualification artifacts."
+  ]
+}

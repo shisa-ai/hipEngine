@@ -469,7 +469,7 @@ before it enters here.
   reason in the unit worklog entry.
 
   `scripts/qwen38_z3_candidate_gate.py` is the class-aware fail-closed evidence
-  gate, with host-only coverage in `tests/test_qwen38_z3_candidate_gate.py`.
+  gate, with host-only coverage in `tests/test_unit_qwen38_z3_candidate_gate.py`.
   The committed [`z3-red-baseline`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z3-red-baseline.json)
   fails all four candidates as expected. P1/M1 cannot pass without their full
   production numerical packets; M2 additionally requires explicit-experiment

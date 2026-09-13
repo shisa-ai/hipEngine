@@ -21,7 +21,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -249,6 +249,33 @@ def _gguf_layout_audit(
     }
 
 
+def _diagnostic_capability_mapping() -> dict[str, Any]:
+    """Build an explicit diagnostic no-mirror INT8 capability mapping.
+
+    Mirrors exactly what `_qualified_no_mirror_int8_capability` accepts so the
+    candidate session takes the real compact route for artifacts that have no
+    retained plugin evidence yet. The payload records that this injection was
+    used; such runs are diagnostic evidence, not promotions.
+    """
+
+    return {
+        "status": "qualified",
+        "runtime_action": "admit",
+        "promotion_eligible": True,
+        "effective_kv_storage": "int8_per_token_head",
+        "requested": {
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+        },
+        "evidence": {
+            "persistent_bf16_mirror": False,
+            "max_direct_rows": 1,
+            "max_serial_resident_rows": 4,
+            "decision": "diagnostic_injection",
+        },
+    }
+
+
 def _run_gguf_policy(
     *,
     runner: Qwen35GGUFFullStackRunner,
@@ -262,9 +289,13 @@ def _run_gguf_policy(
     expected_bf16_layers: Sequence[int] | None = None,
     expected_int8_layers: Sequence[int] | None = None,
     require_no_bf16_mirror: bool = False,
+    diagnostic_kv_capability: Mapping[str, Any] | None = None,
 ) -> PolicyRun:
     prompts: dict[str, PromptRun] = {}
     started = time.perf_counter()
+    session_kwargs: dict[str, Any] = {}
+    if diagnostic_kv_capability is not None:
+        session_kwargs["kv_capability"] = diagnostic_kv_capability
     with Qwen35GGUFResidentSession(
         runner.model_path,
         runtime=runner.runtime,
@@ -278,6 +309,7 @@ def _run_gguf_policy(
         kv_policy=policy.create_policy(),
         kv_scale_dtype=policy.scale_dtype,
         kv_scale_granularity=policy.scale_granularity,
+        **session_kwargs,
     ) as session:
         for case_index, case in enumerate(cases, 1):
             print(
@@ -632,6 +664,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 expected_bf16_layers=expected_bf16_layers,
                 expected_int8_layers=expected_int8_layers,
                 require_no_bf16_mirror=args.require_no_bf16_mirror,
+                diagnostic_kv_capability=(
+                    _diagnostic_capability_mapping()
+                    if args.diagnostic_kv_capability else None
+                ),
             )
             engines["gguf"] = _engine_summary(
                 engine="gguf",
@@ -718,6 +754,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "all_prompts_must_pass": True,
         },
         "engines": engines,
+        "diagnostic_kv_capability_injection": bool(args.diagnostic_kv_capability),
         "elapsed_seconds": time.perf_counter() - started,
         "notes": [
             "Candidate decode consumes BF16 reference tokens; every logit comparison has matched token history.",
@@ -763,6 +800,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--require-no-bf16-mirror",
         action="store_true",
         help="Fail the candidate layout audit if persistent BF16 mirror bytes remain.",
+    )
+    parser.add_argument(
+        "--diagnostic-kv-capability",
+        action="store_true",
+        help=(
+            "Inject an explicit diagnostic no-mirror INT8 capability so an "
+            "artifact without retained plugin evidence still exercises the "
+            "real compact route. Diagnostic evidence only, never a promotion; "
+            "recorded in the payload."
+        ),
     )
     parser.add_argument(
         "--expected-bf16-full-layers",

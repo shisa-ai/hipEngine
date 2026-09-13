@@ -1,0 +1,50 @@
+=== date ===
+Sun Sep  6 09:07:33 AM UTC 2026
+=== hostname ===
+epyc
+=== gpu identity ===
+Agent 2                  
+*******                  
+  Name:                    gfx1100                            
+  Uuid:                    GPU-e282895b62c2b295               
+  Marketing Name:          AMD Radeon Pro W7900               
+  Vendor Name:             AMD                                
+  Feature:                 KERNEL_DISPATCH                    
+  Profile:                 BASE_PROFILE                       
+  Float Round Mode:        NEAR                               
+--
+  ISA Info:                
+    ISA 1                    
+      Name:                    amdgcn-amd-amdhsa--gfx1100         
+      Machine Models:          HSA_MACHINE_MODEL_LARGE            
+      Profiles:                HSA_PROFILE_BASE                   
+      Default Rounding Mode:   NEAR                               
+      Default Rounding Mode:   NEAR                               
+      Fast f16:                TRUE                               
+      Workgroup Max Size:      1024(0x400)                        
+--
+Agent 3                  
+*******                  
+  Name:                    gfx1100                            
+  Uuid:                    GPU-cc4d02090dc9c3ff               
+  Marketing Name:          AMD Radeon RX 7900 XTX             
+  Vendor Name:             AMD                                
+  Feature:                 KERNEL_DISPATCH                    
+  Profile:                 BASE_PROFILE                       
+  Float Round Mode:        NEAR                               
+--
+=== GPU UUID/PCI ===
+=== rocm version ===
+7.2.4
+Thread model: posix
+InstalledDir: /opt/rocm/lib/llvm/bin
+=== model hash (sha256) ===
+7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b  /models/gguf/Qwen3.8-27B-Q4_K_M.gguf
+=== model size ===
+17106773984
+=== source revision ===
+da407f89ec7992d3c61879d16fc255d26c3ef764
+## campaign/gfx1100-concurrency2-better-mtp
+?? campaign-artifacts/
+=== python ===
+Python 3.12.9

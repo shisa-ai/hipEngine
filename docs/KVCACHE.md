@@ -1472,15 +1472,34 @@ These are deliberately after dense INT8 and DMS:
     finer-group K with higher-precision V—across multiple fixed mixed/natural
     prompts before implementing another native storage contract.
 14. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
-    capacity work; do not confuse this with a fidelity fix.
+    capacity work; do not confuse this with a fidelity fix. Substantially
+    advanced by `IKV-C3` (`117ca5cab`, `7444dd705`): the oracle is now one shared
+    pair per session, rebound per INT8 layer and reused across chunks, instead
+    of one pair per round, worth 0.438 GiB of tracked peak at every multi-chunk
+    length. Full removal is
+    still open; note the repair also means the withdrawn 54,272 server ceiling
+    was measured on the cheaper pre-repair route.
 15. [x] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
     fail-closed artifact/backend/target/quant/layout/scale capability identity.
-16. [ ] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
-    fallback with shifted block-table prefill and zero BF16 shadow.
-17. [ ] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8
-    split-K attention plus row-batched gated reduction.
+16. [x] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
+    fallback with shifted block-table prefill and zero BF16 shadow. Qualified
+    and admitted on 2026-08-16 (`max_serial_resident_rows` 4,
+    `persistent_bf16_mirror` false).
+17. [x] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8
+    split-K attention plus row-batched gated reduction. Completed and promoted
+    to physical c4 on the W7900 gfx1100 Qwen3.8-27B artifact on 2026-09-11; the
+    committed `rocprofv3` ownership trace shows one batch producer plus one
+    strided reducer launch for all four rows.
 18. [ ] Complete `IKV-C3/C4`: shared prefill ownership and complete admission
     accounting for KV, scales, mirrors, workspace, oracle, graphs, and reserve.
+    The `IKV-C3` half landed and was promoted to the default path on 2026-09-11:
+    `117ca5cab` gave the packed INT8 prefill one shared BF16 oracle pair per
+    session (global row space, per-layer rebind, fails closed on non-slot-stable
+    rounds and non-shared plans), and `7444dd705` promoted the layer-outer
+    executor after same-host A/B at 1K/2K/4K/8K showed wall parity within a 1.5%
+    noise floor, identical generated IDs, and 0.438 GiB lower tracked peak at
+    every multi-chunk length. `IKV-C3`'s c2/c4 memory-positive gate and all of
+    `IKV-C4` remain open.
 19. [ ] Complete `IKV-C5/C6`: cancellation, compaction, grow/shrink,
     overload/recovery, explicit direct-vs-mirror telemetry, and artifact-scoped
     quality/capacity matrices.

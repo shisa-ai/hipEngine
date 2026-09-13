@@ -38,6 +38,11 @@ class GlobalDeviceKVPool:
         pointer_table_pointers: Mapping[str, int],
         metadata_descriptor_pointer: int,
         close_storage: Callable[[], None],
+        grow_storage: Callable[[int, int], tuple[Mapping[str, Sequence[int]], Mapping[str, int]]] | None = None,
+        before_grow: Callable[[], None] | None = None,
+        max_pages: int | None = None,
+        growth_chunk_pages: int | None = None,
+        on_pressure: Callable[[int], None] | None = None,
     ) -> None:
         if int(page_bytes) <= 0:
             raise ValueError("page_bytes must be positive")
@@ -59,11 +64,30 @@ class GlobalDeviceKVPool:
         )
         self.page_bytes = int(page_bytes)
         self.low_water_pages = self.global_pool.page_capacity
-        self.high_water_pages = self.global_pool.page_capacity
-        self.chunk_pages = self.global_pool.page_capacity
+        self.high_water_pages = (
+            self.global_pool.page_capacity
+            if max_pages is None
+            else int(max_pages)
+        )
+        self.chunk_pages = (
+            self.global_pool.page_capacity
+            if growth_chunk_pages is None
+            else max(1, int(growth_chunk_pages))
+        )
         self.idle_grace_seconds = 0.0
         self._backing = backing
         self._close_storage = close_storage
+        self._grow_storage = grow_storage
+        self._before_grow = before_grow
+        self._max_pages = None if max_pages is None else int(max_pages)
+        if self._max_pages is not None and self._max_pages < self.global_pool.page_capacity:
+            raise ValueError("max_pages cannot be below the initial pool capacity")
+        self._growth_chunk_pages = (
+            max(1, int(growth_chunk_pages))
+            if growth_chunk_pages is not None
+            else 1
+        )
+        self._on_pressure = on_pressure
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._workspace_leases: dict[str, tuple[int, ...]] = {}
@@ -75,6 +99,7 @@ class GlobalDeviceKVPool:
         self._cow_fork_events = 0
         self._cow_forked_pages = 0
         self._allocation_failures = 0
+        self._grow_events = 0
         self._closed = False
         self._lock = threading.RLock()
 
@@ -85,6 +110,14 @@ class GlobalDeviceKVPool:
     @property
     def current_pages(self) -> int:
         return self.global_pool.page_capacity
+
+    @property
+    def max_pages(self) -> int | None:
+        return self._max_pages
+
+    @property
+    def budget_bytes(self) -> int | None:
+        return None if self._max_pages is None else self._max_pages * self.page_bytes
 
     @property
     def allocations(self) -> dict[int, DeviceKVPoolAllocation]:
@@ -111,7 +144,7 @@ class GlobalDeviceKVPool:
                     for record in records
                 ),
                 pinned_pages=sum(record.session_pins > 0 for record in records),
-                grow_events=0,
+                grow_events=self._grow_events,
                 grow_failures=self._allocation_failures,
                 shrink_events=0,
                 prefix_reuse_events=self._prefix_reuse_events,
@@ -172,6 +205,7 @@ class GlobalDeviceKVPool:
             self._require_open()
             if lease_id in self._workspace_leases:
                 raise ValueError(f"workspace lease {name!r} already exists")
+            self._ensure_free_pages(count, now_seconds=now_seconds)
             try:
                 lease = self.global_pool.allocate(
                     lease_id,
@@ -223,15 +257,17 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            try:
-                lease = self.global_pool.allocate(
-                    self._lease_id(rid),
-                    private_pages=count,
-                    growth_credit_pages=0,
-                )
-            except MemoryError:
-                self._allocation_failures += 1
-                raise
+            lease_id = self._lease_id(rid)
+            while True:
+                try:
+                    lease = self.global_pool.allocate(
+                        lease_id,
+                        private_pages=count,
+                        growth_credit_pages=0,
+                    )
+                    break
+                except MemoryError:
+                    self._ensure_free_pages(count, now_seconds=now_seconds)
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)
@@ -257,6 +293,7 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
+            self._ensure_free_pages(private, now_seconds=now_seconds)
             try:
                 lease = self.global_pool.allocate(
                     self._lease_id(rid),
@@ -274,6 +311,29 @@ class GlobalDeviceKVPool:
             self._prefix_reused_pages += len(shared)
             self._observe_high_water()
             return allocation
+
+    def _ensure_free_pages(self, pages: int, *, now_seconds: float = 0.0) -> None:
+        """Make enough unowned pages available within the configured budget."""
+
+        needed = int(pages)
+        if needed <= 0 or self.global_pool.free_pages >= needed:
+            return
+        if callable(self._on_pressure):
+            self._on_pressure(needed - self.global_pool.free_pages)
+        missing = needed - self.global_pool.free_pages
+        if missing <= 0:
+            return
+        target = self.global_pool.page_capacity + max(
+            self._growth_chunk_pages, missing
+        )
+        if self._max_pages is not None:
+            target = min(target, self._max_pages)
+        if target <= self.global_pool.page_capacity:
+            self._allocation_failures += 1
+            raise MemoryError(
+                f"cannot allocate {needed} KV pages within the pool budget"
+            )
+        self.grow(target - self.global_pool.page_capacity, now_seconds=now_seconds)
 
     def fork_copy_on_write(
         self,
@@ -357,6 +417,38 @@ class GlobalDeviceKVPool:
     def shrink_idle(self, *, now_seconds: float) -> int:
         del now_seconds
         return 0
+
+    def grow(
+        self,
+        pages: int,
+        *,
+        now_seconds: float = 0.0,
+    ) -> int:
+        """Append device-backed pages through the runtime growth callback."""
+
+        count = int(pages)
+        if count <= 0:
+            raise ValueError("pages must be positive")
+        grow_storage = getattr(self, "_grow_storage", None)
+        if not callable(grow_storage):
+            self._allocation_failures += 1
+            raise MemoryError(
+                "cannot allocate KV pages: global device KV pool has no growth provider"
+            )
+        with self._lock:
+            self._require_open()
+            try:
+                if callable(self._before_grow):
+                    self._before_grow()
+                appended = grow_storage(count, int(self.global_pool.page_capacity))
+                plane_pointers, pointer_tables = appended
+                self.global_pool.append_pages(plane_pointers, pointer_tables)
+            except MemoryError:
+                self._allocation_failures += 1
+                raise
+            self._last_active_seconds = float(now_seconds)
+            self._grow_events += 1
+            return count
 
     def close(self) -> None:
         with self._lock:

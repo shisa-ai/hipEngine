@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "w7900_int8_packed_shared_oracle_multichunk_defect",
+  "date": "2026-09-10",
+  "status": "defect_reproduced",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "severity": "P1_correctness_shipping_default",
+  "question": "Is the packed slot-local INT8 prefill route numerically correct for prompts that span more than one prefill chunk?",
+  "answer": "No. The shared BF16 oracle pair is reused across layers while the packed executor iterates chunk-outer/layer-inner, so from the second chunk onward every layer attends over another layer's preceding K/V. Single-chunk prompts are unaffected.",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "physical_gpu_index": 0,
+    "note": "GPU0 exclusive for this session"
+  },
+  "mechanism": {
+    "oracle_keying": "hipengine/runtime/qwen35_gguf_runner.py _int8_prefill_oracle_cache_for_layer uses cache_key -1 (one shared pair) when the lifetime plan mode is layer_outer_shared_oracle, else one pair per layer",
+    "documented_invariant": "That function's own docstring: 'Chunk-outer bulk prefill revisits each layer once per prompt chunk, so it keeps one full-length pair per INT8 layer. A memory-positive layer-outer plan instead owns the full hidden plane and safely reuses one pair after each layer completes.'",
+    "violation": "_prefill_batch_native_impl chunks the prompt by _bulk_prefill_scratch.rows and _prefill_batch_native_single_slab iterates layers inside each chunk, i.e. chunk-outer/layer-inner, while the plan still selects layer_outer_shared_oracle purely from a memory comparison (use_shared = projected_delta < 0). Plan and executor disagree.",
+    "blast_radius": "The int8_direct route is forced onto this entry unconditionally by _gguf_single_row_block_table_prefill_required, so every server INT8 KV request with a prompt above the 1,024-row chunk cap is affected."
+  },
+  "protocol": {
+    "harness": "scripts/gguf_prefill_route_ab.py, one process per point, fresh identical sessions per arm",
+    "prompt": "deterministic varied prompt, numpy default_rng(20260909), token IDs in [1000, 32000)",
+    "kv": "int8_per_token_head, FP32 per-token/head scales, max_sequence_length 16384 (no BF16 mirror, route int8_direct)",
+    "selectors": "use_wmma_prefill=True, use_gemv_decode=True - matching the shipping serving owner",
+    "env": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none"
+    },
+    "chunk_cap": "1024 rows (GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES, dense H5120 Q4_K_M)",
+    "oracle_variant": "per-layer arm forced by a local one-line patch (use_shared = False); no such env exists"
+  },
+  "evidence": [
+    {
+      "prompt_rows": 1024,
+      "chunks": 1,
+      "oracle": "shared (shipped default)",
+      "scalar_bulk_ids": [62, 198, 197, 197],
+      "packed_slot_local_ids": [62, 198, 197, 197],
+      "agree": true,
+      "scalar_prefill_tok_s": 663.91,
+      "packed_prefill_tok_s": 561.79
+    },
+    {
+      "prompt_rows": 2048,
+      "chunks": 2,
+      "oracle": "shared (shipped default)",
+      "scalar_bulk_ids": [198, 197, 197, 1],
+      "packed_slot_local_ids": [14, 198, 248046, 198],
+      "agree": false,
+      "scalar_prefill_tok_s": 742.28,
+      "packed_prefill_tok_s": 449.16
+    },
+    {
+      "prompt_rows": 2048,
+      "chunks": 2,
+      "oracle": "per-layer (patched control)",
+      "scalar_bulk_ids": [198, 197, 197, 1],
+      "packed_slot_local_ids": [198, 197, 197, 1],
+      "agree": true,
+      "scalar_prefill_tok_s": 749.29,
+      "packed_prefill_tok_s": 449.16,
+      "note": "packed rate is identical to the shared-oracle arm, so correcting the lifetime is speed-neutral at this shape; it costs memory (one oracle pair per INT8 layer instead of one shared pair)"
+    }
+  ],
+  "corrections_to_prior_conclusions": {
+    "gdn_attribution": "The packed-vs-scalar divergence was previously attributed to 'different GDN state-capture arithmetic' on the strength of the comment at hipengine/generation/qwen35_gguf.py:7406-7408. That is wrong as an explanation of the observed divergence: with per-layer oracles the two entry points produce identical generated IDs.",
+    "oracle_route_speed": "Earlier absolute rates from this harness (scalar 129 tok/s, packed 44 tok/s at 8,192) omitted use_wmma_prefill/use_gemv_decode, which every shipping call site sets. With them the scalar oracle route reaches 742-749 tok/s at 2,048, consistent with the retained XTX oracle-route control of 761.58 tok/s at 8,192 (results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-blocked.json). The BF16 oracle is therefore close to free, and the prior claim that a residual ~6x was the oracle's double-write/cast is withdrawn."
+  },
+  "fix_options": {
+    "a_layer_outer_executor": "Make the packed path layer-outer so the shared pair's invariant holds. Preserves the memory win; largest change.",
+    "b_per_layer_oracles_when_chunk_outer": "Have the plan pick per-layer oracles whenever the executor will be chunk-outer. Correct and speed-neutral as measured, but raises the oracle cost from ~4 KiB/token to ~64 KiB/token on this geometry.",
+    "c_rebuild_oracle_per_chunk": "Repopulate the shared oracle's preceding history for the current layer from the retained INT8 store at each chunk boundary. Reintroduces a dequantized read, so it needs its own numerics gate."
+  },
+  "not_done": "No fix applied. No task-level quality measurement of the defect's impact. The 8,192-row shape and real (non-synthetic) prompts were not re-run under the corrected control.",
+  "created_utc": "2026-09-10T00:55:00+00:00"
+}

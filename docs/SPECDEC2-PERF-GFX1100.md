@@ -420,11 +420,13 @@ first use remains P4. No product cell promotes; both automatic policies remain K
       qualified streaming capability; keep it only as the documented oracle fallback.
 - [x] Prove O(hidden), not O(prompt×hidden), transient ownership: every retained
       request carries one 10,240-byte row.
-- [ ] Run p128/p512/p4K/p16K activation and full category bridge exactness,
-      state/KV/following generation, wall, and drain gates.  W7900 native target
-      graph/arithmetic is now fail-closed above 95 live tokens after deterministic p128
-      NaN/sentinel; streaming activation continues through eager/serial fallback
-      while p4K/p16K stay pre-mutation K0 above the 1023 capability cap.
+- [ ] Complete streaming activation and full category bridge exactness,
+      state/KV/following generation, wall, and drain gates. The historical
+      W7900 p128 NaN/sentinel no longer reproduces on the repaired dense
+      Q4_K_M route on RX 7900 XTX. Native target execution now uses allocated
+      cache capacity rather than the p95 workaround; exact target-state,
+      rollback and full-logit checks pass at 4K/8K/16K. Public streaming
+      activation remains a separate provider gate, not a native context limit.
 
 ### Packed PARO
 
@@ -686,9 +688,9 @@ bucket decision:
 | `hipengine/speculative/mtp_native.py` | PARO provider/device descriptors without borrowed-pointer ownership drift. |
 | `hipengine/runtime/qwen35_paro_runner.py` | PARO physical target and selected-state ownership. |
 | `hipengine/kernels/hip_gfx1100/` | Only P5-admitted in-tree primitives. |
-| `tests/test_specdec2_perf_gfx1100_bridge.py` | Schema/counterbalance/provenance/timing RED tests. |
-| `tests/test_qwen35_gguf_mtp2_seam.py` | Dense integration and lifecycle RED gates. |
-| `tests/test_qwen35_paro_mtp2_seam.py` | Packed integration and lifecycle RED gates. |
+| `tests/test_unit_specdec2_perf_gfx1100_bridge.py` | Schema/counterbalance/provenance/timing RED tests. |
+| `tests/test_unit_qwen35_gguf_mtp2_seam.py` | Dense integration and lifecycle RED gates. |
+| `tests/test_unit_qwen35_paro_mtp2_seam.py` | Packed integration and lifecycle RED gates. |
 | `benchmarks/results/` | Compact retained/rejected/no-go artifacts. |
 
 Kernel work first runs `scripts/check_lineage.py`, updates `KERNELS.md` when

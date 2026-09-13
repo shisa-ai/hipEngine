@@ -57,7 +57,7 @@ jobs:
         run: uv pip install -e '.[dev]' build twine
 
       - name: Run release validation
-        run: uv run --no-sync pytest -q
+        run: uv run --no-sync pytest --suite all -q
 
       - name: Remove stale build artifacts
         run: rm -rf dist/

@@ -389,6 +389,27 @@ _NATIVE_TARGET_SHORT_CONTEXT_LIMIT = 1023
 _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES = 8
 
 
+def native_target_context_limit(backend: str, target: Any, *, default: int, graph: bool = False) -> int:
+    """Use cache capacity for repaired routes; preserve other model policies."""
+
+    name = (
+        "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT"
+        if graph else "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT"
+    )
+    fallback = int(backend_package_capability(backend, name, int(default)))
+    policies = backend_package_capability(backend, "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES", ())
+    if not policies or target is None:
+        return fallback
+    if getattr(target, "kv_storage_dtype", DType.BF16) != DType.BF16:
+        return fallback
+    if _native_target_execution_identity(target)[1] != "fp32":
+        return fallback
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_policy_identity
+
+    identity = _gguf_policy_identity(getattr(getattr(target, "runner", None), "weights", None))
+    return int(default) if identity is not None and identity in policies else fallback
+
+
 def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None:
     """Select the immutable target-graph context bucket for one live cycle."""
 
@@ -403,15 +424,12 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
         return _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
     if rows <= 0 or end > capacity:
         return None
-    graph_context_limit = int(
-        backend_package_capability(
-            str(getattr(session, "backend", "")),
-            "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
-            capacity,
-        )
+    graph_context_limit = native_target_context_limit(
+        str(getattr(session, "backend", "")), session, graph=True, default=capacity,
     )
     if end > graph_context_limit:
         return None
+    capacity = min(capacity, graph_context_limit)
     if end < 1024:
         return min(_NATIVE_TARGET_SHORT_CONTEXT_LIMIT, capacity)
     start = int(getattr(session, "position", 0))
@@ -453,11 +471,6 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
         if context_limit < end:
             return None
 
-    if not runner_module._gguf_prefill_device_metadata_enabled(
-        backend=str(getattr(session, "backend", "")),
-        prompt_tokens=context_limit,
-    ):
-        return None
     return context_limit
 
 
@@ -778,6 +791,7 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
         "_prefill_hidden_a",
         "_prefill_hidden_b",
         "_verify_lm_out_indices_i32",
+        "_verify_conv_out_f32",
         "_lm_out_index",
     ):
         add(getattr(session, name, None))
@@ -830,7 +844,6 @@ def _validate_capture_admission(
     sync_stage_timings: bool,
 ) -> None:
     from hipengine.runtime.qwen35_gguf_runner import (
-        _gguf_prefill_device_metadata_enabled,
         _gguf_verify_f32_residual_enabled,
         _gguf_verify_f32_token_embedding_enabled,
     )
@@ -903,13 +916,8 @@ def _validate_capture_admission(
         raise NativeSpecTargetGraphUnsupportedError(
             "long-context native target graphs require split-K native attention"
         )
-    if not _gguf_prefill_device_metadata_enabled(
-        backend=str(session.backend),
-        prompt_tokens=context_limit,
-    ):
-        raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 requires stream-ordered device metadata preparation"
-        )
+    # Graphs own their fixed row metadata and unpack it on the capture stream;
+    # bulk-prefill metadata thresholds do not apply to this producer.
     if _gguf_verify_f32_residual_enabled() and _gguf_verify_f32_token_embedding_enabled():
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 cannot capture host F32 token-embedding staging"
@@ -1479,9 +1487,17 @@ class Qwen35GGUFNativeB2TargetGraph:
             "_native_spec_b1_target_graph",
             "_native_spec_b2_target_graph",
             "_native_spec_b3_target_graph",
+            "_native_spec_b4_target_graph",
+            "_native_spec_b5_target_graph",
+            "_native_spec_b6_target_graph",
+            "_native_spec_b7_target_graph",
             "_native_spec_b1_target_graph_n2",
             "_native_spec_b2_target_graph_n2",
             "_native_spec_b3_target_graph_n2",
+            "_native_spec_b4_target_graph_n2",
+            "_native_spec_b5_target_graph_n2",
+            "_native_spec_b6_target_graph_n2",
+            "_native_spec_b7_target_graph_n2",
         ):
             if getattr(self.session, cache_name, None) is self:
                 setattr(self.session, cache_name, None)
@@ -2419,9 +2435,16 @@ def verify_qwen35_gguf_native_b2_target(
     cache_suffix = "_n2" if device_accept_commit else ""
     cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
     cache_key = (rows - 1, bool(device_accept_commit), int(context_limit))
+    short_alias_limit = _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
+    backend = getattr(session, "backend", None)
+    if backend is not None:
+        short_alias_limit = min(
+            short_alias_limit,
+            native_target_context_limit(str(backend), session, graph=True, default=short_alias_limit),
+        )
     cache = _native_target_graph_cache(session)
     graph = cache.get(cache_key)
-    if graph is None and int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+    if graph is None and int(context_limit) == short_alias_limit:
         graph = getattr(session, cache_name, None)
     if graph is not None and not graph.compatible_with(
         session,
@@ -2459,7 +2482,7 @@ def verify_qwen35_gguf_native_b2_target(
                 device_accept_commit=device_accept_commit,
             )
             _cache_native_target_graph(session, cache_key, graph)
-            if int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+            if int(context_limit) == short_alias_limit:
                 setattr(session, cache_name, graph)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)
@@ -2587,6 +2610,7 @@ __all__ = [
     "Qwen35GGUFNativeCompleteCycleResult",
     "build_native_b2_target_batch",
     "capture_qwen35_gguf_native_b2_target_graph",
+    "native_target_context_limit",
     "run_qwen35_gguf_native_mtp_cycle",
     "verify_qwen35_gguf_native_b2_target",
     "verify_qwen35_gguf_native_target_from_device_proposal",

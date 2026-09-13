@@ -24,7 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32, dequantize_gguf_data
-from tests.test_gguf_k_gemv import make_q6_k_weight
+from tests.test_gpu_gguf_k_gemv import make_q6_k_weight
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 DEFAULT_Q8_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q8_0.gguf")

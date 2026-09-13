@@ -203,10 +203,10 @@ Run the narrowest tier that covers the change. Escalate at milestone boundaries.
 Examples:
 
 ```bash
-python3 -m pytest tests/test_cpu_reference.py -q
-python3 -m pytest tests/test_kernel_registry.py tests/test_fusion_spike.py -q
-python3 -m pytest tests/test_build.py tests/test_smoke_add_plan.py -q
-python3 -m pytest tests/test_benchmark_matrix.py tests/test_exact_token_benchmark.py -q
+python3 -m pytest tests/test_unit_cpu_reference.py -q
+python3 -m pytest tests/test_unit_kernel_registry.py tests/test_unit_fusion_spike.py -q
+python3 -m pytest tests/test_unit_build.py tests/test_unit_smoke_add_plan.py -q
+python3 -m pytest tests/test_unit_benchmark_matrix.py tests/test_unit_exact_token_benchmark.py -q
 ```
 
 For matrix changes, also build and validate the committed diagnostic manifest.
@@ -314,6 +314,32 @@ rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEME
 
 The torch audit may show docstrings/comments, but executable hot-path imports/usages are blockers.
 
+### 2.1 Two ROCm stacks cannot share a process
+
+`hipengine` loads the process HIP runtime with `ctypes.CDLL("libamdhip64.so")`,
+which resolves to the system ROCm install. When the optional `torch` extra ships
+its own ROCm SDK, torch's `rocm_sdk.initialize_process()` then preloads a second
+`libamdhip64.so.7` from `_rocm_sdk_core` and fails with
+`undefined symbol: hsa_amd_vmem_export_fabric_handle, version ROCR_1`, because the
+already-loaded system ROCR lacks that symbol. Only one ROCm stack can be loaded
+per process, and whichever loads first wins.
+
+A test module that needs torch must therefore skip rather than error. Note that
+`pytest.importorskip("torch")` is **not** sufficient: the failure is an `OSError`
+from `dlopen`, not an `ImportError`, so it escapes the guard and errors the whole
+collection. Use the shared helper instead:
+
+```python
+from tests._rocm_guard import torch_or_skip
+
+torch = torch_or_skip(__name__, module_level=True)   # module import
+# ... or inside a test body:
+torch = torch_or_skip(__name__)
+```
+
+It probes the HIP runtime and catches both `ImportError` and `OSError`, skipping
+with the underlying diagnostic. `tests/test_gpu_rocm_guard.py` pins the behaviour.
+
 ### 3. GPU smoke bundle
 
 Run only when the GPU is explicitly clear. The default-off prefill flight
@@ -325,7 +351,7 @@ also requires a cached `rocprofv3 --kernel-trace` smoke under the name
 
 ```bash
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
-  tests/test_prefill_flight_recorder.py tests/test_hip_runtime.py -q
+  tests/test_gpu_prefill_flight_recorder.py tests/test_gpu_hip_runtime.py -q
 ```
 
 ```bash
@@ -415,9 +441,9 @@ throughput improvement.
 Required correctness commands:
 
 ```bash
-python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
-  tests/test_qwen35_kv_e2e_fixture_gate.py \
-  tests/test_qwen35_bench_memory_audit.py -q
+python3 -m pytest tests/test_unit_qwen35_resident_batch_layout.py \
+  tests/test_unit_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_unit_qwen35_bench_memory_audit.py -q
 python3 scripts/check_fixtures.py
 python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
@@ -553,7 +579,7 @@ The 2026-05-18 K1 artifacts are the current reference rows:
 At milestone boundaries:
 
 ```bash
-python3 -m pytest -q
+python3 -m pytest --suite all -q
 python3 scripts/check_fixtures.py
 # plus the phase's named GPU/perf target once available
 ```
@@ -593,3 +619,59 @@ Prefer truth-scoped wording:
 - Good: "`rmsnorm` CPU-reference fixture `rmsnorm_basic` passes at max_abs=0 under `python3 scripts/check_fixtures.py`."
 - Good: "W7900/gfx1100 smoke_add n=1024 passed max_abs=0.0; rocprof trace is currently blocked by profiler hang."
 - Bad: "kernel is correct" without oracle/shape/command.
+
+## Test Naming and Discovery
+
+New and migrated test modules MUST use `test_<tier>_<subject>.py`.
+The tier describes what the test executes, not the product being tested.
+No filename substring heuristics, per-file filter lists, or exceptions.
+
+| Tier | Execution contract |
+| --- | --- |
+| `unit` | Bounded CPU logic with synthetic inputs or small committed fixtures; no GPU, JIT/compiler, live model/service, or network dependency. Review and time before admission. |
+| `integration` | Process, service, or concurrency boundaries, including fake executable integration. |
+| `gpu` | Actual device execution or device-code compilation with explicit availability guards. |
+| `benchmark` | Actual timing/profiling protocols, not merely parsing benchmark artifacts. |
+| `live` | Real model weights, live services, or external data dependencies. |
+| `slow` | Exhaustive matrices, soak, or long-context validation whose cost is deliberate. |
+
+For example, a pure benchmark-result parser is
+`test_unit_benchmark_metrics.py`, not a benchmark-tier test. A CPU planner
+for a HIP kernel is a unit test, not a GPU test. Split mixed modules by
+execution contract; keep shared fixture builders in non-test helper modules.
+When contracts overlap, choose the more demanding tier (`slow`, `live`,
+`benchmark`, `gpu`, `integration`, then `unit`) and document dependencies.
+Do not trim numerical matrices or broaden mutable fixture scope solely to
+admit a test into the unit tier.
+
+`uv run pytest` discovers only `test_unit_*.py` and prints duration rankings.
+Use `uv run pytest --suite gpu` (or another tier) for opt-in discovery.
+Explicit file/node arguments still run that target regardless of its tier.
+The complete historical suite requires `uv run pytest --suite all`.
+Use `--suite all --collect-only` to check migration coverage without executing it.
+Milestone instructions elsewhere that call for a *full* pytest run require
+`--suite all`; ordinary development must not implicitly launch that run.
+
+All test modules now use tier-prefixed filenames. The default is the
+CPU source-screened unit tier, not the full correctness suite. Whole-module
+tiers are conservative when a file mixes CPU and device/live cases; split
+those modules before moving their CPU cases into the default tier.
+Source classification is not a duration guarantee. Use measured per-test
+durations to identify expensive CPU cases and move deliberate exhaustive
+work to `slow`, preserving the assertions and validation matrix.
+
+Run `python3 scripts/check_test_tiers.py` to check filenames and direct
+unit-to-non-unit test imports without importing tests. The unit tier includes
+a repository-wide check, so a new untiered file cannot silently evade the
+naming rule. The checker does not prove that an imported helper is CPU-only;
+review transitive dependencies and fixture side effects as well.
+
+The migration record and remaining issues live in
+[`testing/TEST-MIGRATION.md`](testing/TEST-MIGRATION.md).
+The JSON inventory is audit evidence only, never a pytest filter or routing
+table. The release workflow explicitly selects `--suite all`; that opt-in
+release gate is not part of routine development.
+
+Agents must follow this naming contract when adding tests, update active
+imports/commands when moving tests, preserve immutable historical worklogs,
+and verify both targeted execution and collection after a move.

@@ -1,0 +1,79 @@
+{
+  "schema": "hipengine.benchmark-artifact/v1",
+  "date": "2026-09-07",
+  "kind": "diagnostic",
+  "campaign": "qwen38-27b-gfx1100-24gb-capacity",
+  "packet": 3,
+  "performance_claim": "Same-session matched comparison on the RX 7900 XTX at 512/128 (Qwen3.8-27B Dense, BF16 KV, persistent session, graph-replay decode, 3 measured runs each): Q4_K_S ties Q4_K_M on decode (34.02 vs 33.99 tok/s shipping AR route; 34.11 vs 34.00 default route) but prefills 38.4% slower on the shipping AR route (602.50 vs 978.70 tok/s; default route 320.15 vs 963.25), while parking more device memory (bytes artifact: resident +0.176 GiB, request peak +2.061 GiB pre-scratch-cap from its dense-BF16 ffn_down/attn_qkv/attn_v tensors). MTP NextN tensor availability is identical: both files carry the same 4 blk.64.nextn tensors.",
+  "diagnostic": true,
+  "model": {
+    "q4_k_m": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773984,
+      "gguf_tensors": 866,
+      "nextn_tensor_names": [
+        "blk.64.nextn.eh_proj.weight",
+        "blk.64.nextn.enorm.weight",
+        "blk.64.nextn.hnorm.weight",
+        "blk.64.nextn.shared_head_norm.weight"
+      ]
+    },
+    "q4_k_s": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "size_bytes": 16121359328,
+      "gguf_tensors": 866,
+      "nextn_tensor_names": [
+        "blk.64.nextn.eh_proj.weight",
+        "blk.64.nextn.enorm.weight",
+        "blk.64.nextn.hnorm.weight",
+        "blk.64.nextn.shared_head_norm.weight"
+      ]
+    }
+  },
+  "device": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx": "gfx1100",
+    "pci_id": "0000:10:00.0",
+    "hip_visible_devices": "1",
+    "env": ["HIP_VISIBLE_DEVICES=1", "HIPENGINE_HIP_ARCH=gfx1100", "GPU_MAX_HW_QUEUES=1"]
+  },
+  "protocol": {
+    "tool": "scripts/qwen35_gguf_bench.py",
+    "shape": "prompt 512 / decode 128, max-sequence 768, warmup 1 + measured 3, persistent session, graph-replay decode, compiler cache required",
+    "command_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model {model} --quant {quant} --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode [--public-ar-profile] --compiler-version-file /tmp/he-hipcc.txt --require-cached-build --json {json}",
+    "comparison_basis": "back-to-back same-session pairs on an idle card (card0 used 26 MiB at baseline); both members of each pair run the same build and route flag; numbers are not comparable to older topline rows measured on earlier builds",
+    "runs": [
+      {"quant": "q4_k_s", "route": "default", "prefill_tok_s": 320.149, "decode_tok_s": 34.112, "shipping_ar_route_mismatch": true, "json": "/tmp/xtx-capacity/q4ks-throughput-512x128.json"},
+      {"quant": "q4_k_m", "route": "default", "prefill_tok_s": 963.254, "decode_tok_s": 33.996, "shipping_ar_route_mismatch": true, "json": "/tmp/xtx-capacity/q4km-throughput-512x128.json"},
+      {"quant": "q4_k_s", "route": "shipping_ar", "prefill_tok_s": 602.499, "decode_tok_s": 34.022, "shipping_ar_route_mismatch": false, "json": "/tmp/xtx-capacity/q4ks-throughput-512x128-ar.json"},
+      {"quant": "q4_k_m", "route": "shipping_ar", "prefill_tok_s": 978.698, "decode_tok_s": 33.985, "shipping_ar_route_mismatch": false, "json": "/tmp/xtx-capacity/q4km-throughput-512x128-ar.json"}
+    ]
+  },
+  "throughput_pairs": {
+    "shipping_ar_route": {
+      "q4_k_m": {"prefill_tok_s": 978.698, "decode_tok_s": 33.985},
+      "q4_k_s": {"prefill_tok_s": 602.499, "decode_tok_s": 34.022},
+      "delta_ks_minus_km": {"prefill_pct": -38.4, "decode_pct": 0.1}
+    },
+    "default_route": {
+      "q4_k_m": {"prefill_tok_s": 963.254, "decode_tok_s": 33.996},
+      "q4_k_s": {"prefill_tok_s": 320.149, "decode_tok_s": 34.112},
+      "delta_ks_minus_km": {"prefill_pct": -66.8, "decode_pct": 0.3}
+    }
+  },
+  "memory_context": {
+    "source": "results/2026-09-06-rx7900xtx-capacity-q4ks-vs-q4km-bytes.json",
+    "note": "Q4_K_S stores 8 ffn_down, 3 attn_qkv and 1 attn_v as dense BF16 (1.631 GiB) where Q4_K_M stores Q6_K_T16 layouts; that both raises resident bytes (+0.176 GiB) and routes those tensors through slower prefill dispatch on this build. Request peaks in the bytes artifact predate the 1024-row prefill-scratch cap (2026-09-06), which is geometry-keyed and applies to both quants.",
+    "q4_k_s_request_peak_sysfs_gib_at_3072_precap": 23.059,
+    "q4_k_m_request_peak_sysfs_gib_at_3072_precap": 20.998
+  },
+  "quality": {
+    "status": "deferred",
+    "reason": "per-quant quality gates are owned by the teacher-gating item (each quant's INT8 vs its same-weight BF16 teacher; no reuse of Q4_K_M/gfx1151 evidence for Q4_K_S/XTX); a KL campaign for Q4_K_S on the XTX is Packet 6 scope, not this comparison"
+  },
+  "mtp_availability": {
+    "verdict": "identical",
+    "detail": "both GGUFs carry exactly the 4 NextN tensors (0.052 GiB source bytes); the MTP-capable route is available for either quant without file changes"
+  },
+  "note": "Decode parity with a large prefill penalty and higher parked memory means Q4_K_S is not a capacity win on this engine/build: it saves 0.9 GiB of file bytes but costs +0.176 GiB resident, +2.06 GiB pre-cap request peak, and 38.4% prefill on the shipping route. Q4_K_M remains the default."
+}

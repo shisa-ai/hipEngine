@@ -645,11 +645,31 @@ server.
 - Done: include startup checks and memory snapshots in `/ready`.
 - Open: reject unsupported c>N/int8 request shapes before closing/reallocating
   the current resident session.
+  Partly addressed 2026-09-13 audit: the KV-policy half is now pre-flight —
+  `_validate_generation_request` (api.py:11607) runs at the top of the batch path
+  (api.py:5335) and raises 400 `unsupported_kv_policy` before any session
+  acquire/close. The c>N half no longer looks like a rejection path at all:
+  `n > 1` is handled as a supported shape with per-choice request IDs
+  (api.py:6915, 7354), and no test covers an n=2/int8 refusal, so the original
+  n=2 teardown symptom is unverified rather than proven fixed.
 - Open: ensure cancellation interrupts long backend decode promptly.
 - Open: auto-reduce context when KV-only auto-selection passes but scratch probe
   fails.
+  Still open as of 2026-09-13: a probe failure records
+  `startup_checks["scratch_probe"]["status"] = "failed"` and logs a remediation
+  hint (api.py:4995) but does not lower the context. GGUF auto-context sizing
+  reduces how often the probe can fail, because the calibrated model reserves
+  the prompt-scaled transient, but the auto-reduce path itself is not
+  implemented.
 
 ### P1: build an exact memory ledger
+
+**Not built.** This is why the reserve stayed a 512 MiB guess for three months:
+without a per-owner ledger the under-accounted items below were documented but
+never quantified, and the GGUF route's 2.66 GiB of untracked device memory went
+unnoticed until a whole-card minus tracked-allocation subtraction surfaced it in
+September. The subtraction method works and needs no new instrumentation; a
+ledger would make it routine rather than a manual audit.
 
 - Add a debug endpoint or script that dumps all resident device buffers by owner,
   shape, dtype, and bytes.
@@ -674,7 +694,21 @@ server.
 - Further reduce chunked linear-attention transient footprint so 262k on 24GB has
   more than the current `~0.61 GiB` live-peak margin.
 - Tune default auto-context reserve by measured scratch high-water, not a fixed
-  512 MiB guess.
+  512 MiB guess. **Partly done (2026-09-12):** the dense GGUF route now sizes its
+  resident context from free HIP memory with a reserve calibrated to whole-card
+  measurement — 2.66 GiB of untracked device memory on the W7900 (HIP context,
+  JIT kernel modules, AOTriton, KV pool pointer tables), against 40.25 GiB of
+  hipEngine-tracked allocations at 42.91 GiB whole-card use. The old 512 MiB
+  default left a 24 GB card selecting a context whose true peak was 26.23 GiB
+  against 23.98 GiB of VRAM. The GGUF reserve is now 3072 MiB via
+  `HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`; see
+  `worklog/entries/20260912T152128.835655Z-lhl-gguf-auto-context-calibration-efcd6d.md`.
+  **Still open:** the PARO route at `qwen35_paro_runner.py:8181` still reads
+  `HIPENGINE_KV_CAPACITY_RESERVE_MIB` with a 512 MiB default, so the same
+  under-accounting applies there. The GGUF number must not simply be copied over
+  — PARO runs a different KV storage class, a different context regime, and
+  carries about 1.01 GiB of resident prefill metadata that GGUF does not. It
+  needs its own whole-card measurement.
 
 ## Useful reproduction commands
 

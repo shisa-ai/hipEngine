@@ -9,7 +9,7 @@ weights. Both arms share the SAME plain q8_1 activation producer
 kernel. Arms differ in arithmetic (integer dp4a decode vs BF16 decode);
 outputs are compared informationally (mismatch, KL), not gated on
 exactness. Kernel-level oracle/floor/determinism contracts live in
-tests/test_gguf_q4_k_qmicro_dp4a_grouped_gemv.py.
+tests/test_gpu_gguf_q4_k_qmicro_dp4a_grouped_gemv.py.
 """
 from __future__ import annotations
 

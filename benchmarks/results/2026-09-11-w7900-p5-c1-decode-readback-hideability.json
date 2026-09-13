@@ -1,0 +1,82 @@
+{
+ "schema": 1,
+ "kind": "w7900_p5_c1_decode_readback_hideability",
+ "timestamp": "2026-09-11T18:20:59.468894+00:00",
+ "performance_claim": false,
+ "host": {
+  "observed_device": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocprofv3_version": "1.3.2"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv": "int8_per_token_head + fp32 scales"
+ },
+ "question": "Can the blocking 16-20 ms/step D2H readback at _read_sample be deferred or overlapped to recover decode-step wall time?",
+ "answer": "No. The readback waits on GPU work that must happen anyway, so the time is GPU-busy rather than GPU-idle, and the dependency (sampled token -> next step's embedding gather) is strict.",
+ "method": {
+  "phase_split_source": "child-only run, no profiler: each measured step wall is split into the blocking readback inside _read_sample and host time outside it, attributed by wrapping runtime.memcpy and snapshotting per-call-site totals around each step",
+  "overlap_source": "the committed P5 attribution artifact's api_while_gpu_idle_ns, which bounds how much of ANY HIP API time can be GPU-idle time",
+  "why_two_sources": "the phase split alone cannot say whether the blocked host time is wasted; pairing it with the traced GPU-idle split is what decides the question"
+ },
+ "phase_split": {
+  "measured_steps": 62,
+  "step_wall_ms": {
+   "median": 35.079,
+   "mean": 35.116
+  },
+  "readback_ms": {
+   "median": 20.186,
+   "mean": 19.988,
+   "pct_of_wall": 57.54
+  },
+  "host_outside_readback_ms": {
+   "median": 14.951,
+   "mean": 15.129,
+   "pct_of_wall": 42.62
+  },
+  "call_sites": [
+   {
+    "site": "qwen35_gguf_runner.py:29235 _read_sample",
+    "calls": 62,
+    "total_ns": 1239239771,
+    "median_us": 19987.74
+   },
+   {
+    "site": "qwen35_gguf_runner.py:18515 _copy_token_embeddings_to_device",
+    "calls": 62,
+    "total_ns": 1946305,
+    "median_us": 31.39
+   }
+  ]
+ },
+ "gpu_idle_bound": {
+  "source_artifact": "benchmarks/results/2026-09-11-w7900-p5-c1-decode-attribution.json",
+  "window_ms_per_step": 36.605,
+  "device_union_ms_per_step": 17.347,
+  "gpu_idle_ms_per_step": 19.257,
+  "gpu_idle_pct_of_window": 52.61,
+  "api_while_gpu_idle_ms_per_step": 5.178,
+  "readback_ms_per_step_in_that_run": 16.296,
+  "readback_that_must_overlap_gpu_busy_ms": 11.118,
+  "derivation": "at most api_while_gpu_idle_ms_per_step of ALL HIP API time in a step can be GPU-idle, and the readback is one HIP API call, so at least (readback - api_while_gpu_idle) of the readback overlaps GPU-busy time"
+ },
+ "conclusion": {
+  "readback_is_not_recoverable_idle_time": true,
+  "strict_dependency": "the sampled token index is read back to the host, which then builds the next step's input embedding (_copy_token_embeddings_to_device); the host cannot enqueue the next step without it",
+  "real_bottleneck": "host-side launch and Python work: the GPU is idle about 19.3 ms/step while the host enqueues ~793 kernel launches/step and spends ~14.95 ms/step outside the readback",
+  "redirect": "reduce launch count or amortize it (graph capture already exists on the c8 packed route with one replay per logical transition), rather than deferring the readback"
+ },
+ "limits": [
+  "The phase split is from a child-only run and is not itself profiled, so it does not independently confirm that the GPU is busy during the readback; that rests on the committed trace's api_while_gpu_idle_ns, which bounds all HIP API time rather than the readback alone.",
+  "The two runs differ: the phase split measured a 35.079 ms median step and a 20.186 ms median readback, while the committed attribution measured 36.605 ms and 16.296 ms. The overlap conclusion holds in both, but the absolute split is not identical across runs.",
+  "The 14.95 ms/step of host-outside-readback time is not decomposed into launch overhead versus Python bookkeeping; naming that split is the next measurement.",
+  "No optimization was attempted, so this is a negative result about the readback hypothesis, not a measurement of any launch-reduction alternative."
+ ],
+ "notes": [
+  "performance_claim is false and no scoreboard row changed: this redirects an optimization target rather than reporting a speedup.",
+  "Follow-up task #23 asked for exactly this fork: either a gated win or a recorded negative result naming the dependency that makes the time unhideable."
+ ]
+}

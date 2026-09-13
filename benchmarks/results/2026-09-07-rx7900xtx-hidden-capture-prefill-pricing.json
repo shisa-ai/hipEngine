@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "qwen38_hidden_capture_prefill_pricing",
+  "created_at": "2026-09-06T21:37:39Z",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984
+  },
+  "workload": {
+    "prompt_tokens": 4096,
+    "repeats": 3,
+    "max_sequence_length": 4224
+  },
+  "results": {
+    "layer_count": 64,
+    "capture_bytes_per_prefill_fp32": 1310720,
+    "plain": {
+      "wall_seconds": [
+        25.236975035630167,
+        25.34712497983128,
+        25.41703643463552
+      ],
+      "median_wall_seconds": 25.34712497983128,
+      "final_token": 220,
+      "captured_layers": 0
+    },
+    "captured": {
+      "wall_seconds": [
+        25.45886431261897,
+        25.480068039149046,
+        25.492945229634643
+      ],
+      "median_wall_seconds": 25.480068039149046,
+      "final_token": 220,
+      "captured_layers": 64
+    },
+    "overhead": {
+      "median_overhead_seconds": 0.13294305931776762,
+      "median_overhead_pct": 0.5244896982342198
+    }
+  },
+  "note": "capture copies every layer's output hidden (fp32) for MTP/DFlash draft consumption; pricing captures the prefill-phase cost only, decode-step capture is priced separately by the MTP campaign",
+  "elapsed_seconds": 222.2
+}

@@ -1,0 +1,108 @@
+{
+  "arithmetic_equality": {
+    "c1_73728": "all 8 decode rows token- and logits-sha-exact across baseline/target2/target3/target3b/target1",
+    "c2_control": "32 decode rows token- and logits-sha-exact versus the pre-change probe at identical args (sessions=2, 8192 tokens, 2 refill cycles)",
+    "dms_snapshots": "device_resident_bytes > 0 and scale_bytes > 0 post-pack in every run",
+    "verify_c1_exact_replay": "sessions=1, 4096 tokens: 8/8 rows byte-exact versus independent single-session replays, clean drain"
+  },
+  "changes": {
+    "hipengine/kvcache/dms_device.py": "per-layer payload planes allocated lazily via _ensure_layer on first touch at every per-layer accessor; rollback of partial layer allocation on failure",
+    "hipengine/runtime/qwen35_gguf_runner.py": "Qwen35GGUFKVChunkBacking.release_full_attention_layer; _finalize_external_dms_prefill packs layerwise with per-layer synchronize + dense release and exception-path backend cleanup; _release_dense_prefill_layer refreshes scratch plane references",
+    "tests": [
+      "tests/test_dms_layerwise_kv_release.py (3 cases, RED-first)",
+      "tests/test_dms_int8_device_payloads.py resident-bytes comparison now touches the layer on both codecs first"
+    ]
+  },
+  "date": "2026-09-07",
+  "date_timezone": "UTC",
+  "evidence_files": {
+    "c2_target1_code": "/tmp/xtx-capacity-target3-c2/c2-target1.json",
+    "monitors": [
+      "/tmp/xtx-capacity/dms-int8-baseline-73728.monitor.json",
+      "/tmp/xtx-capacity/dms-int8-target2-73728.monitor.json",
+      "/tmp/xtx-capacity/dms-int8-target3-73728.monitor.json",
+      "/tmp/xtx-capacity/dms-int8-target3b-73728.monitor.json",
+      "/tmp/xtx-capacity/dms-int8-target1-73728.monitor.json"
+    ],
+    "verify_c1": "/tmp/xtx-capacity-target3-c2/verify-c1-target1.json"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "RX 7900 XTX",
+    "host": "epyc",
+    "other_workloads": "GPU0 not used; GPU1 idle baseline verified per run",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "limitations": [
+    "Evaluation-only DMS INT8 probe route; no serving, throughput or quality claim.",
+    "Whole-card peaks are 20 ms samples; savings are differences of sampled peaks.",
+    "The capacity boundary is unchanged in this unit; the ladder re-measurement follows.",
+    "The layerwise release touches only the external-DMS finalization path; ordinary chunk backings keep whole-backing lifetimes.",
+    "Per-layer synchronization adds sixteen stream syncs per prefill finalization (measured wall unchanged at 73,728: 264.2 -> 263.8 s)."
+  ],
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "provenance": "c85aaeeb3f23e9f9f404a2c5450d08df3bca3cdc",
+  "purpose": "Memory review target 1: the DMS compact pack is layerwise against the dense BF16 pool. The compact destination store allocates each layer's payload planes lazily on first touch, and after each layer's pack retires the dense source planes for that physical layer are freed (Qwen35GGUFKVChunkBacking.release_full_attention_layer), so the compact/dense overlap shrinks from the whole compact store to one layer. Partial compact-store construction now also closes the backend on failure (review target 6c exception cleanup).",
+  "route": "offline eager C1, compact DMS INT8 K/V, FP32 per-token/head scales, W8192, MTP/prefix reuse off",
+  "schema": "hipengine_dms_int8_layerwise_pack_v1",
+  "serving_qualification": false,
+  "status": "measured_improvement",
+  "steps_at_73728": {
+    "baseline": {
+      "elapsed_seconds": 268.5,
+      "monitor_sha256": "e767795849a2766cbbef3901e20ba2bffe3ec612244dd55a4a6eca070836650c",
+      "sampled_headroom_mib": 9.648,
+      "tracked_peak_gib": 23.186015,
+      "whole_card_peak_delta_gib": 23.948845
+    },
+    "target1": {
+      "elapsed_seconds": 263.8,
+      "monitor_sha256": "f8e1a472eb26a11560f60d5246d9d26f627122e778ce9bb4ac9a1b24b05bf409",
+      "sampled_headroom_mib": 2550.996,
+      "tracked_delta_vs_previous_mib": 1183.0,
+      "tracked_peak_gib": 21.122832,
+      "whole_card_peak_delta_gib": 21.467091
+    },
+    "target2": {
+      "elapsed_seconds": 265.9,
+      "monitor_sha256": "9a754533fb1cfbd6f9ae7035617a9057b8372a3d7e896bbd463b9242e34a0b14",
+      "sampled_headroom_mib": 1052.934,
+      "tracked_delta_vs_previous_mib": 681.42,
+      "tracked_peak_gib": 22.52057,
+      "whole_card_peak_delta_gib": 22.930042
+    },
+    "target3": {
+      "elapsed_seconds": 264.7,
+      "monitor_sha256": "f1aa2dafb25a7563c95119e0b42b16687a69e30ee39ceda033ba20a9cadebf41",
+      "sampled_headroom_mib": 1156.957,
+      "tracked_delta_vs_previous_mib": 102.4,
+      "tracked_peak_gib": 22.420574,
+      "whole_card_peak_delta_gib": 22.828457
+    },
+    "target3b": {
+      "elapsed_seconds": 264.2,
+      "monitor_sha256": "3e804013263358517cd661a1a87a0bd46b7d82aae74546695d0b8736b223af95",
+      "sampled_headroom_mib": 1304.965,
+      "tracked_delta_vs_previous_mib": 145.88,
+      "tracked_peak_gib": 22.278109,
+      "whole_card_peak_delta_gib": 22.683918
+    }
+  },
+  "throughput_claim": false,
+  "totals_vs_same_day_baseline": {
+    "target1_only_tracked_mib": 1183.0,
+    "tracked_peak_mib": 2112.7,
+    "whole_card_peak_mib": 2541.32
+  }
+}

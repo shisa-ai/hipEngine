@@ -833,7 +833,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD"),
         },
         build_profile="qwen36_dense_gguf_ar_mtp_suite",
-        timing_protocol="natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+        timing_protocol=(
+            f"natural{int(args.max_new_tokens)} first-output-from-prefill; "
+            f"{timed_transition_count(args.max_new_tokens)} transition-normalized decode steps"
+        ),
         warmups=1 if bool(args.warmup) else 0,
         repetitions=int(args.runs),
         profiler={"enabled": bool(args.roctx_markers), "kind": "roctx marker leaf"},

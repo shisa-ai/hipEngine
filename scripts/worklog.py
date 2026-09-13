@@ -29,6 +29,11 @@ LEGACY_PATH = ROOT / "WORKLOG-LEGACY.md"
 LEGACY_MANIFEST_PATH = ROOT / "worklog" / "legacy-manifest.json"
 TRACKED_NAVIGATION_PATH = ROOT / "WORKLOG.md"
 DEFAULT_OUTPUT = ROOT / ".worklog" / "WORKLOG.md"
+ENTRY_DIR_REL = str(ENTRY_DIR.relative_to(ROOT))
+LEGACY_REL = str(LEGACY_PATH.relative_to(ROOT))
+LEGACY_MANIFEST_REL = str(LEGACY_MANIFEST_PATH.relative_to(ROOT))
+# Every path whose tracked content is immutable and whose index state is gated.
+WORKLOG_PATHS = (ENTRY_DIR_REL, LEGACY_REL, LEGACY_MANIFEST_REL)
 SCHEMA_VERSION = "1"
 REQUIRED_FIELDS = (
     "schema",
@@ -84,6 +89,70 @@ def run_git(*args: str, check: bool = True) -> str:
         detail = result.stderr.strip() or result.stdout.strip()
         raise WorklogError(f"git {' '.join(args)} failed: {detail}")
     return result.stdout.strip()
+
+
+def run_git_raw(args: list[str], *, stdin: bytes | None = None) -> bytes:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        check=False,
+        input=stdin,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise WorklogError(f"git {' '.join(args)} failed: {detail}")
+    return result.stdout
+
+
+def index_listing(*, unmerged_only: bool = False) -> list[str]:
+    """Worklog paths the Git index tracks (stage 0 unless only unmerged paths are asked for)."""
+    args = ["ls-files", "-z"]
+    if unmerged_only:
+        args.append("-u")
+    args.extend(["--", *WORKLOG_PATHS])
+    paths: list[str] = []
+    for record in run_git_raw(args).decode("utf-8").split("\0"):
+        if not record:
+            continue
+        # `-u`/`-s` records are "<mode> <sha> <stage>\t<path>"; plain listings are bare paths.
+        paths.append(record.split("\t", 1)[1] if "\t" in record else record)
+    return paths
+
+
+def unstaged_entry_paths() -> list[str]:
+    """Entry files that exist only in the working tree (someone's unfinished work)."""
+    payload = run_git_raw(
+        ["ls-files", "--others", "--exclude-standard", "-z", "--", ENTRY_DIR_REL]
+    )
+    return sorted(
+        path for path in payload.decode("utf-8").split("\0") if path.endswith(".md")
+    )
+
+
+def read_index_blobs(paths: list[str]) -> dict[str, bytes]:
+    """Read staged content for `paths` through one `git cat-file --batch` process."""
+    if not paths:
+        return {}
+    payload = "".join(f":{path}\n" for path in paths).encode("utf-8")
+    output = run_git_raw(["cat-file", "--batch"], stdin=payload)
+    blobs: dict[str, bytes] = {}
+    cursor = 0
+    for path in paths:
+        newline = output.find(b"\n", cursor)
+        if newline < 0:
+            raise WorklogError("git cat-file --batch returned truncated output")
+        header = output[cursor:newline].decode("utf-8", "replace").split()
+        cursor = newline + 1
+        if len(header) == 2 and header[1] == "missing":
+            raise WorklogError(f"{path}: path is not present in the Git index")
+        if len(header) != 3 or header[1] != "blob":
+            raise WorklogError(f"{path}: unexpected git cat-file --batch header: {header!r}")
+        size = int(header[2])
+        blobs[path] = output[cursor : cursor + size]
+        cursor += size + 1
+    return blobs
 
 
 def slugify(value: str, *, fallback: str) -> str:
@@ -229,8 +298,7 @@ def _markdown_heading_positions(body: str) -> tuple[list[int], dict[str, list[in
     return title_positions, section_positions
 
 
-def parse_entry(path: Path) -> tuple[dict[str, str], str]:
-    text = path.read_text(encoding="utf-8")
+def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
     lines = text.splitlines()
     if not lines or lines[0] != "---":
         raise WorklogError("missing opening frontmatter delimiter")
@@ -314,53 +382,94 @@ def parse_entry(path: Path) -> tuple[dict[str, str], str]:
     return fields, text.rstrip() + "\n"
 
 
-def entry_paths() -> list[Path]:
-    if not ENTRY_DIR.exists():
-        return []
-    return sorted(path for path in ENTRY_DIR.glob("*.md") if path.is_file())
+def parse_worktree_entry(relpath: str) -> tuple[dict[str, str], str]:
+    return parse_entry_text((ROOT / relpath).read_text(encoding="utf-8"))
 
 
-def entry_directory_errors() -> list[str]:
-    if not ENTRY_DIR.exists():
-        return []
+def filename_errors(relpath: str, fields: dict[str, str]) -> list[str]:
+    """Reasons the entry filename does not match the entry's own metadata."""
+    parsed_timestamp = datetime.fromisoformat(fields["timestamp"].replace("Z", "+00:00"))
+    expected_stamp = parsed_timestamp.strftime("%Y%m%dT%H%M%S.%fZ")
+    expected_worker = slugify(fields["worker"], fallback="worker")
+    expected_prefix = f"{expected_stamp}-{expected_worker}-{fields['topic']}-"
+    if not Path(relpath).name.startswith(expected_prefix):
+        return ["filename does not match entry metadata"]
+    return []
+
+
+def validate_records(
+    records: list[tuple[str, str]],
+) -> tuple[list[tuple[Path, dict[str, str], str]], list[str]]:
+    """Validate (path, text) pairs; return the parsed entries plus every error found."""
+    parsed: list[tuple[Path, dict[str, str], str]] = []
     errors: list[str] = []
-    for path in sorted(ENTRY_DIR.iterdir()):
-        if not path.is_file() or path.suffix != ".md":
-            errors.append(f"unexpected path under worklog entries: {path.relative_to(ROOT)}")
+    for relpath, text in records:
+        if not FILENAME_RE.fullmatch(Path(relpath).name):
+            errors.append(f"{relpath}: invalid filename")
+            continue
+        try:
+            fields, body = parse_entry_text(text)
+        except (UnicodeError, WorklogError) as exc:
+            errors.append(f"{relpath}: {exc}")
+            continue
+        mismatch = filename_errors(relpath, fields)
+        if mismatch:
+            errors.extend(f"{relpath}: {reason}" for reason in mismatch)
+            continue
+        parsed.append((ROOT / relpath, fields, body))
+    return parsed, errors
+
+
+def entry_directory_errors(index_paths: list[str]) -> list[str]:
+    """Tracked paths under `worklog/entries` must be plain `*.md` files directly inside it."""
+    errors: list[str] = []
+    for path in index_paths:
+        if "/" in path[len(ENTRY_DIR_REL) + 1 :] or not path.endswith(".md"):
+            errors.append(f"unexpected path under worklog entries: {path}")
     return errors
 
 
-def append_only_errors() -> list[str]:
-    if run_git("rev-parse", "--verify", "HEAD", check=False) == "":
-        return []
+def immutability_errors(unmerged_paths: set[str]) -> list[str]:
+    """Reject tracked worklog changes in the index and in-place edits of tracked files.
 
+    Untracked files are deliberately out of scope: in a shared working tree an
+    unfinished entry belonging to another worker is not part of this commit and
+    must not block it. Unmerged paths are reported by their own error.
+    """
     errors: list[str] = []
-    entry_dir = str(ENTRY_DIR.relative_to(ROOT))
-    output = run_git("diff", "--name-status", "HEAD", "--", entry_dir)
-    for line in output.splitlines():
-        if not line:
-            continue
-        status, *paths = line.split("\t")
-        if status != "A":
-            rendered_paths = " -> ".join(paths)
-            errors.append(f"tracked worklog entries are immutable: {status} {rendered_paths}")
-
-    for path in run_git("diff", "--name-only", "--", entry_dir).splitlines():
-        if path:
-            errors.append(f"worklog entry differs from its staged content: {path}")
-
-    frozen_paths = [
-        str(LEGACY_PATH.relative_to(ROOT)),
-        str(LEGACY_MANIFEST_PATH.relative_to(ROOT)),
-    ]
-    frozen_output = run_git("diff", "--name-status", "HEAD", "--", *frozen_paths)
-    for line in frozen_output.splitlines():
-        if not line:
-            continue
-        status, *paths = line.split("\t")
-        if status != "A":
+    staged_additions: set[str] = set()
+    if run_git("rev-parse", "--verify", "HEAD", check=False) == "":
+        staged_additions.update(index_listing())
+    else:
+        output = run_git("diff", "--cached", "--name-status", "HEAD", "--", *WORKLOG_PATHS)
+        for line in output.splitlines():
+            if not line:
+                continue
+            status, *paths = line.split("\t")
+            if any(path in unmerged_paths for path in paths):
+                continue
+            if status == "A":
+                staged_additions.update(paths)
+                continue
             errors.append(
-                f"frozen legacy worklog state is immutable: {status} {' -> '.join(paths)}"
+                f"tracked worklog content is immutable: {status} {' -> '.join(paths)}"
+            )
+
+    for line in run_git("diff", "--name-status", "--", *WORKLOG_PATHS).splitlines():
+        if not line:
+            continue
+        status, *paths = line.split("\t")
+        if any(path in unmerged_paths for path in paths):
+            continue
+        if len(paths) == 1 and paths[0] in staged_additions:
+            errors.append(
+                f"{paths[0]}: working-tree copy differs from its staged content; "
+                "re-run `git add` to commit the final content"
+            )
+        else:
+            errors.append(
+                f"tracked worklog content is immutable: {status} {' -> '.join(paths)} "
+                "(restore the working-tree file; correct a committed entry with a new entry)"
             )
     return errors
 
@@ -453,32 +562,36 @@ def legacy_errors() -> list[str]:
 
 
 def validate_entries(*, enforce_append_only: bool = True) -> list[tuple[Path, dict[str, str], str]]:
-    errors = entry_directory_errors()
-    parsed: list[tuple[Path, dict[str, str], str]] = []
+    """Validate the worklog content of the commit tree: HEAD plus the Git index.
 
-    for path in entry_paths():
-        if not FILENAME_RE.fullmatch(path.name):
-            errors.append(f"{path.relative_to(ROOT)}: invalid filename")
-            continue
+    Only tracked and staged content is validated. An untracked working-tree file
+    is somebody's unfinished entry rather than part of this commit, so it never
+    fails the gate; `check_entries` and `render` report those files separately.
+    """
+    errors: list[str] = []
+    unmerged_paths = set(index_listing(unmerged_only=True))
+    for path in sorted(unmerged_paths):
+        errors.append(f"{path}: unresolved merge conflict in the Git index")
+
+    entry_index_paths = [
+        path
+        for path in index_listing()
+        if path.startswith(f"{ENTRY_DIR_REL}/") and path not in unmerged_paths
+    ]
+    errors.extend(entry_directory_errors(entry_index_paths))
+
+    records: list[tuple[str, str]] = []
+    for path, payload in read_index_blobs(entry_index_paths).items():
         try:
-            fields, text = parse_entry(path)
-        except (OSError, UnicodeError, WorklogError) as exc:
-            errors.append(f"{path.relative_to(ROOT)}: {exc}")
-            continue
-        parsed_timestamp = datetime.fromisoformat(
-            fields["timestamp"].replace("Z", "+00:00")
-        )
-        expected_stamp = parsed_timestamp.strftime("%Y%m%dT%H%M%S.%fZ")
-        expected_worker = slugify(fields["worker"], fallback="worker")
-        expected_prefix = f"{expected_stamp}-{expected_worker}-{fields['topic']}-"
-        if not path.name.startswith(expected_prefix):
-            errors.append(f"{path.relative_to(ROOT)}: filename does not match entry metadata")
-            continue
-        parsed.append((path, fields, text))
+            records.append((path, payload.decode("utf-8")))
+        except UnicodeError as exc:
+            errors.append(f"{path}: {exc}")
+    parsed, record_errors = validate_records(records)
+    errors.extend(record_errors)
 
     errors.extend(legacy_errors())
     if enforce_append_only:
-        errors.extend(append_only_errors())
+        errors.extend(immutability_errors(unmerged_paths))
     if errors:
         raise WorklogError("\n".join(errors))
 
@@ -486,9 +599,50 @@ def validate_entries(*, enforce_append_only: bool = True) -> list[tuple[Path, di
     return parsed
 
 
+def validate_unstaged_entries() -> list[tuple[Path, dict[str, str], str]]:
+    """Strictly validate entry files that exist only in the working tree."""
+    records: list[tuple[str, str]] = []
+    errors: list[str] = []
+    for path in unstaged_entry_paths():
+        try:
+            records.append((path, (ROOT / path).read_text(encoding="utf-8")))
+        except (OSError, UnicodeError) as exc:
+            errors.append(f"{path}: {exc}")
+    parsed, record_errors = validate_records(records)
+    errors.extend(record_errors)
+    if errors:
+        raise WorklogError("\n".join(errors))
+    return parsed
+
+
+def report_unstaged_entries() -> None:
+    """Name the working-tree entries this commit does not include, without failing."""
+    for path in unstaged_entry_paths():
+        try:
+            fields, _body = parse_worktree_entry(path)
+            mismatch = filename_errors(path, fields)
+            if mismatch:
+                raise WorklogError("; ".join(mismatch))
+        except (OSError, UnicodeError, WorklogError) as exc:
+            print(
+                "note: unstaged entry is not part of this commit and is not valid yet: "
+                f"{path}: {exc}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"note: unstaged entry is not part of this commit: {path}", file=sys.stderr)
+
+
 def check_entries(args: argparse.Namespace) -> int:
     parsed = validate_entries(enforce_append_only=not args.allow_modified)
+    if args.include_unstaged:
+        parsed = sorted(
+            [*parsed, *validate_unstaged_entries()],
+            key=lambda item: (item[1]["timestamp"], item[0].name),
+        )
     print(f"worklog: {len(parsed)} valid entr{'y' if len(parsed) == 1 else 'ies'}")
+    if not args.include_unstaged:
+        report_unstaged_entries()
     return 0
 
 
@@ -545,8 +699,29 @@ def atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def unstaged_entry_records() -> list[tuple[Path, dict[str, str], str]]:
+    """Parse unstaged working-tree entries for the local rendered view, skipping invalid ones."""
+    records: list[tuple[Path, dict[str, str], str]] = []
+    for path in unstaged_entry_paths():
+        try:
+            text = (ROOT / path).read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            print(f"note: unstaged entry not rendered: {path}: {exc}", file=sys.stderr)
+            continue
+        parsed, errors = validate_records([(path, text)])
+        if errors:
+            for error in errors:
+                print(f"note: unstaged entry not rendered: {error}", file=sys.stderr)
+            continue
+        records.extend(parsed)
+    return records
+
+
 def render(args: argparse.Namespace) -> int:
-    parsed = validate_entries(enforce_append_only=False)
+    parsed = sorted(
+        [*validate_entries(enforce_append_only=False), *unstaged_entry_records()],
+        key=lambda item: (item[1]["timestamp"], item[0].name),
+    )
     output = Path(args.output)
     if not output.is_absolute():
         output = ROOT / output
@@ -612,11 +787,18 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--status", choices=sorted(ALLOWED_STATUSES), default="completed")
     new_parser.set_defaults(func=create_entry)
 
-    check_parser = subparsers.add_parser("check", help="validate entries and immutable history")
+    check_parser = subparsers.add_parser(
+        "check", help="validate the staged commit tree and immutable history"
+    )
     check_parser.add_argument(
         "--allow-modified",
         action="store_true",
         help="validate entry/legacy format without rejecting tracked modifications",
+    )
+    check_parser.add_argument(
+        "--include-unstaged",
+        action="store_true",
+        help="also validate entries that exist only in the working tree",
     )
     check_parser.set_defaults(func=check_entries)
 

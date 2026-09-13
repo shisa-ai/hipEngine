@@ -1,0 +1,118 @@
+{
+  "kind": "p5_kernel_family_attribution",
+  "date": "2026-09-10",
+  "workload": "1,500-row packed layer-outer prefill (1,024-row AOTriton round + 476-row native tail round), 27B Q4_K_M, int8 KV + fp32 scales, rocprofv3 kernel trace (cache-only recipe)",
+  "total_kernel_time_s": 2.3744,
+  "total_launches": 3724,
+  "kernel_busy_vs_wall": "2.374 s kernel time vs 2.58 s wall (~92%) - GPU-bound",
+  "families_by_time": [
+    {
+      "family": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+      "launches": 128,
+      "time_ms": 644.04,
+      "share_pct": 27.12
+    },
+    {
+      "family": "qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel",
+      "launches": 16,
+      "time_ms": 426.26,
+      "share_pct": 17.95
+    },
+    {
+      "family": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+      "launches": 224,
+      "time_ms": 409.15,
+      "share_pct": 17.23
+    },
+    {
+      "family": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+      "launches": 96,
+      "time_ms": 282.93,
+      "share_pct": 11.92
+    },
+    {
+      "family": "gguf_q5_t16_dense_wmma_prefill_bf16_kernel",
+      "launches": 96,
+      "time_ms": 172.56,
+      "share_pct": 7.27
+    },
+    {
+      "family": "qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel",
+      "launches": 96,
+      "time_ms": 93.79,
+      "share_pct": 3.95
+    },
+    {
+      "family": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+      "launches": 32,
+      "time_ms": 92.21,
+      "share_pct": 3.88
+    },
+    {
+      "family": "gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel",
+      "launches": 48,
+      "time_ms": 79.62,
+      "share_pct": 3.35
+    },
+    {
+      "family": "dense_gemv_bf16_f32w_bf16_out_kernel",
+      "launches": 192,
+      "time_ms": 39.62,
+      "share_pct": 1.67
+    },
+    {
+      "family": "gguf_q4_t16_dense_wmma_prefill_shared_b_tail_bf16_kernel",
+      "launches": 48,
+      "time_ms": 34.98,
+      "share_pct": 1.47
+    },
+    {
+      "family": "attn_fwd",
+      "launches": 16,
+      "time_ms": 22.71,
+      "share_pct": 0.96
+    },
+    {
+      "family": "qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel",
+      "launches": 96,
+      "time_ms": 15.42,
+      "share_pct": 0.65
+    },
+    {
+      "family": "qwen35_linear_attn_conv_prefill_no_state_rows_kernel",
+      "launches": 96,
+      "time_ms": 11.12,
+      "share_pct": 0.47
+    },
+    {
+      "family": "__amd_rocclr_copyBuffer",
+      "launches": 1428,
+      "time_ms": 10.87,
+      "share_pct": 0.46
+    },
+    {
+      "family": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel",
+      "launches": 96,
+      "time_ms": 8.93,
+      "share_pct": 0.38
+    },
+    {
+      "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+      "launches": 128,
+      "time_ms": 5.91,
+      "share_pct": 0.25
+    }
+  ],
+  "family_groups_pct": {
+    "ffn_dense_wmma (q4/q5/q6/tails)": 72.24,
+    "attention_native_paged_tail": 17.95,
+    "attention_aotriton_1024row_round": 0.96,
+    "gdn_linear": 5.46,
+    "rocclr_copies": 0.46
+  },
+  "findings": [
+    "The quantized FFN/WMMA families dominate (~72%) - the prefill is GEMM-bound, matching the direct route.",
+    "The <512-row tail round still pays native paged attention: 426.26 ms for 476 rows (18.0% of the prefill) vs AOTriton attn_fwd 22.71 ms for 1,024 rows (1.0%) - an ~18x per-row gap. Admitting AOTriton below the 512-row threshold on the packed route is the top remaining attention optimization.",
+    "1,428 rocclr copyBuffer launches total only 10.87 ms (0.5%) - the layer-outer executor's per-(layer, round) host work does not create a material copy burden."
+  ]
+}

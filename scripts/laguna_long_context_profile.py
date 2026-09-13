@@ -1636,11 +1636,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "control_candidate_generated_ids_match": mode_generated_ids_match,
             "tracked_returned_to_baseline": recovered,
             "boundary_fixture_evidence": [
-                "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
-                "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
-                "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
-                "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
-                "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+                "tests/test_unit_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+                "tests/test_unit_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
+                "tests/test_unit_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+                "tests/test_gpu_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+                "tests/test_gpu_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
             ],
         },
         "memory": {

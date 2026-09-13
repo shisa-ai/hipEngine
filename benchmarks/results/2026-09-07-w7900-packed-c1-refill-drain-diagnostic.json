@@ -1,0 +1,660 @@
+{
+  "schema": 1,
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "kv": "bf16",
+  "candidate_budget": 3,
+  "boundary": "EngineService.submit_speculative_children",
+  "kind": "packed_c1_engine_refill_drain_diagnostic",
+  "base_commit": "da813daae",
+  "horizons": [
+    8,
+    24,
+    8
+  ],
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "http_usage_qualified": false,
+  "runs": [
+    {
+      "capacity": 8,
+      "source": "/tmp/packed-c1-refill-lifecycle-n8.json",
+      "sha256": "cce2087347aa4076705fa4b6d15ef0ea5725ad7b27e0b6b8f79fe8b84432814e",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 6,
+            "refill_request_id": 4
+          },
+          "refill": {
+            "initial_request_ids": [
+              2,
+              3
+            ],
+            "refill_request_id": 4
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "1eed0d6aa7e202dc03415c81c9a534b6bb727a8e001bf7e1ed702bf3f4ae3214",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 5,
+          "reclaimed_total": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 8,
+            "resident_slot": 7,
+            "refill_request_id": 9
+          },
+          "refill": {
+            "initial_request_ids": [
+              7,
+              8
+            ],
+            "refill_request_id": 9
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "89b097a93b99ed30eb3320b54e0865ed455c1579e9edb58e1b71e67710bfdd7e",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 10,
+          "reclaimed_total": 10
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 13,
+            "resident_slot": 6,
+            "refill_request_id": 14
+          },
+          "refill": {
+            "initial_request_ids": [
+              12,
+              13
+            ],
+            "refill_request_id": 14
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "578662aad6722183db8542bbe30fde4d734e1aab8634c92460ae6c3fb7b27b3b",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 15,
+          "reclaimed_total": 15
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 18,
+            "resident_slot": 6,
+            "refill_request_id": 19
+          },
+          "refill": {
+            "initial_request_ids": [
+              17,
+              18
+            ],
+            "refill_request_id": 19
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "ed8413eccc5701b2461baf4fd624345fd622513424c26834bba15c66c925a36d",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 20,
+          "reclaimed_total": 20
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 6,
+            "refill_request_id": 24
+          },
+          "refill": {
+            "initial_request_ids": [
+              22,
+              23
+            ],
+            "refill_request_id": 24
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "ea6000a636112eeedb757a5d5516ad14b6189c80f315f1da5225707500a7d59d",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 1,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 25,
+          "reclaimed_total": 25
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 28,
+            "resident_slot": 7,
+            "refill_request_id": 29
+          },
+          "refill": {
+            "initial_request_ids": [
+              27,
+              28
+            ],
+            "refill_request_id": 29
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "9b026f05f9ac62e3367b3de2c0ab49e13e9058200eda8b61066ed6910d8f7acf",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 30,
+          "reclaimed_total": 30
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 33,
+            "resident_slot": 6,
+            "refill_request_id": 34
+          },
+          "refill": {
+            "initial_request_ids": [
+              32,
+              33
+            ],
+            "refill_request_id": 34
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "d068c9775b0ebde40509ab2891638d29a20ba9df7f3889579d778e678cbd0528",
+          "initial_pair_cycles": 3,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 35,
+          "reclaimed_total": 35
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 38,
+            "resident_slot": 6,
+            "refill_request_id": 39
+          },
+          "refill": {
+            "initial_request_ids": [
+              37,
+              38
+            ],
+            "refill_request_id": 39
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "5e59635dbb4709eea728b5edc749902ca45933eddef557996aad787c35b9900e",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 40,
+          "reclaimed_total": 40
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 43,
+            "resident_slot": 7,
+            "refill_request_id": 44
+          },
+          "refill": {
+            "initial_request_ids": [
+              42,
+              43
+            ],
+            "refill_request_id": 44
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "312690a5b6d73d51de80c8b4f4068566240ef6ccb8971fb3bc0c2e42787006f0",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 1,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 45,
+          "reclaimed_total": 45
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 48,
+            "resident_slot": 6,
+            "refill_request_id": 49
+          },
+          "refill": {
+            "initial_request_ids": [
+              47,
+              48
+            ],
+            "refill_request_id": 49
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "b3ba4c9c314af62555d2725b373fb286b1cdaf2484df1a622a4398587aa05ef1",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 8,
+          "admitted_total": 50,
+          "reclaimed_total": 50
+        }
+      ],
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --refill-peer --capacity 8 --output /tmp/packed-c1-refill-lifecycle-n8.json"
+    },
+    {
+      "capacity": 2,
+      "source": "/tmp/packed-c1-refill-lifecycle-n2.json",
+      "sha256": "7f8f9a826fcd3759855d9861c89cf333335818a1a0aaac332634ccfd041016c3",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 0,
+            "refill_request_id": 4
+          },
+          "refill": {
+            "initial_request_ids": [
+              2,
+              3
+            ],
+            "refill_request_id": 4
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "1eed0d6aa7e202dc03415c81c9a534b6bb727a8e001bf7e1ed702bf3f4ae3214",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 5,
+          "reclaimed_total": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 8,
+            "resident_slot": 1,
+            "refill_request_id": 9
+          },
+          "refill": {
+            "initial_request_ids": [
+              7,
+              8
+            ],
+            "refill_request_id": 9
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "89b097a93b99ed30eb3320b54e0865ed455c1579e9edb58e1b71e67710bfdd7e",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 10,
+          "reclaimed_total": 10
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 13,
+            "resident_slot": 0,
+            "refill_request_id": 14
+          },
+          "refill": {
+            "initial_request_ids": [
+              12,
+              13
+            ],
+            "refill_request_id": 14
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "578662aad6722183db8542bbe30fde4d734e1aab8634c92460ae6c3fb7b27b3b",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 15,
+          "reclaimed_total": 15
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 18,
+            "resident_slot": 0,
+            "refill_request_id": 19
+          },
+          "refill": {
+            "initial_request_ids": [
+              17,
+              18
+            ],
+            "refill_request_id": 19
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "ed8413eccc5701b2461baf4fd624345fd622513424c26834bba15c66c925a36d",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 1,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 20,
+          "reclaimed_total": 20
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 1,
+            "refill_request_id": 24
+          },
+          "refill": {
+            "initial_request_ids": [
+              22,
+              23
+            ],
+            "refill_request_id": 24
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "ea6000a636112eeedb757a5d5516ad14b6189c80f315f1da5225707500a7d59d",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 1,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 25,
+          "reclaimed_total": 25
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 28,
+            "resident_slot": 0,
+            "refill_request_id": 29
+          },
+          "refill": {
+            "initial_request_ids": [
+              27,
+              28
+            ],
+            "refill_request_id": 29
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "9b026f05f9ac62e3367b3de2c0ab49e13e9058200eda8b61066ed6910d8f7acf",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 30,
+          "reclaimed_total": 30
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 33,
+            "resident_slot": 1,
+            "refill_request_id": 34
+          },
+          "refill": {
+            "initial_request_ids": [
+              32,
+              33
+            ],
+            "refill_request_id": 34
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "d068c9775b0ebde40509ab2891638d29a20ba9df7f3889579d778e678cbd0528",
+          "initial_pair_cycles": 3,
+          "survivor_cycles": 2,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 35,
+          "reclaimed_total": 35
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 38,
+            "resident_slot": 1,
+            "refill_request_id": 39
+          },
+          "refill": {
+            "initial_request_ids": [
+              37,
+              38
+            ],
+            "refill_request_id": 39
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "5e59635dbb4709eea728b5edc749902ca45933eddef557996aad787c35b9900e",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 40,
+          "reclaimed_total": 40
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 43,
+            "resident_slot": 0,
+            "refill_request_id": 44
+          },
+          "refill": {
+            "initial_request_ids": [
+              42,
+              43
+            ],
+            "refill_request_id": 44
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "312690a5b6d73d51de80c8b4f4068566240ef6ccb8971fb3bc0c2e42787006f0",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 1,
+          "refilled_pair_cycles": 3,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 45,
+          "reclaimed_total": 45
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 48,
+            "resident_slot": 1,
+            "refill_request_id": 49
+          },
+          "refill": {
+            "initial_request_ids": [
+              47,
+              48
+            ],
+            "refill_request_id": 49
+          },
+          "exact_three_outputs": true,
+          "output_lengths": [
+            8,
+            24,
+            8
+          ],
+          "output_ids_sha256": "b3ba4c9c314af62555d2725b373fb286b1cdaf2484df1a622a4398587aa05ef1",
+          "initial_pair_cycles": 2,
+          "survivor_cycles": 3,
+          "refilled_pair_cycles": 2,
+          "drained": true,
+          "available_sessions": 2,
+          "admitted_total": 50,
+          "reclaimed_total": 50
+        }
+      ],
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --refill-peer --capacity 2 --output /tmp/packed-c1-refill-lifecycle-n2.json"
+    }
+  ],
+  "validation": [
+    "Final uniqueness-aware trace validator replayed over both saved captures.",
+    "Independently inspected three exact AR outputs, ordered real IDs/slots, and same survivor storage.",
+    "No active/pending/buffered requests or occupied slots; null slot tables; all resident leases returned; admitted totals equal reclaimed totals."
+  ],
+  "limitations": [
+    "Engine diagnostic admission only; no public or automatic-policy promotion.",
+    "Request ownership drain is not a KV-page reference or GPU allocation release audit.",
+    "No C8-to-C1-to-C8, HTTP usage, EOS, rollback, full numerical, or performance qualification."
+  ]
+}

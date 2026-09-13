@@ -1,0 +1,2908 @@
+{
+  "aggregate": {
+    "no_evict": {
+      "all_categories_passed": true,
+      "finite_logits": true,
+      "max_kl": 0.0003723433357883275,
+      "mean_kl": 5.144078965190029e-05,
+      "p95_kl": 0.0001658079888267324,
+      "p99_kl": 0.0003094704777642319,
+      "passed": true,
+      "rows": 32,
+      "thresholds": {
+        "max_kl": 0.05,
+        "min_top1_agreement": 0.9
+      },
+      "top1_agreement": 1.0
+    },
+    "sidecar": {
+      "all_categories_passed": true,
+      "finite_logits": true,
+      "max_kl": 0.008396404655415211,
+      "mean_kl": 0.0008060372059453008,
+      "p95_kl": 0.0033900812549901103,
+      "p99_kl": 0.006869820260810223,
+      "passed": true,
+      "rows": 32,
+      "thresholds": {
+        "max_kl": 0.05,
+        "min_top1_agreement": 0.9
+      },
+      "top1_agreement": 1.0
+    }
+  },
+  "backend": "hip_gfx1100",
+  "categories": {
+    "code": {
+      "candidates": {
+        "no_evict": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 198,
+              "candidate_top1": 198,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 1590,
+              "kl": 1.960144918495328e-07,
+              "seconds": 0.07996773533523083,
+              "step": 0,
+              "teacher_output_token": 198,
+              "teacher_top1": 198,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 285,
+              "candidate_top1": 285,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 198,
+              "kl": 9.441628751870471e-09,
+              "seconds": 0.07051382400095463,
+              "step": 1,
+              "teacher_output_token": 285,
+              "teacher_top1": 285,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 9032,
+              "candidate_top1": 9032,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 285,
+              "kl": 7.693242210934137e-06,
+              "seconds": 0.06090881209820509,
+              "step": 2,
+              "teacher_output_token": 9032,
+              "teacher_top1": 9032,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 19277,
+              "candidate_top1": 19277,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 9032,
+              "kl": 1.4494707251081714e-09,
+              "seconds": 0.07295738533139229,
+              "step": 3,
+              "teacher_output_token": 19277,
+              "teacher_top1": 19277,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 4692,
+              "candidate_top1": 4692,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 19277,
+              "kl": 3.534718455496352e-08,
+              "seconds": 0.05749261844903231,
+              "step": 4,
+              "teacher_output_token": 4692,
+              "teacher_top1": 4692,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 2251,
+              "candidate_top1": 2251,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 4692,
+              "kl": 1.0323015665108777e-09,
+              "seconds": 0.07114743161946535,
+              "step": 5,
+              "teacher_output_token": 2251,
+              "teacher_top1": 2251,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 3676,
+              "candidate_top1": 3676,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 2251,
+              "kl": 1.0606905039242066e-09,
+              "seconds": 0.060382784344255924,
+              "step": 6,
+              "teacher_output_token": 3676,
+              "teacher_top1": 3676,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 701,
+              "candidate_top1": 701,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 3676,
+              "kl": 7.525860773722245e-08,
+              "seconds": 0.061198145151138306,
+              "step": 7,
+              "teacher_output_token": 701,
+              "teacher_top1": 701,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.0,
+              "live_token_rows": 1049088,
+              "logical_token_rows": 1049088,
+              "max_live_count": 16392,
+              "payload_bytes": 1074266112,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 1049088,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 1049088,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 65568
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "7eef65a1ec18bb2b37aa50df7cd68bcf88c368e2b9a471837a39467b0294a8c0",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 1049088,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 1049088,
+                  "dms.position_slots": 1049088,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 1049088
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1216,
+            "current_allocated_bytes": 19602209176,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1246,
+            "total_allocated_bytes": 22128966864,
+            "total_freed_bytes": 2526757688
+          },
+          "prefill_comparison": {
+            "candidate_top1": 1590,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 1590,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 7.693242210934137e-06,
+            "mean_kl": 1.0016058233279086e-06,
+            "p95_kl": 5.0692125092545224e-06,
+            "p99_kl": 7.168436270598213e-06,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 33.30304973013699
+        },
+        "sidecar": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 198,
+              "candidate_top1": 198,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 1590,
+              "kl": 6.255395973198001e-06,
+              "seconds": 0.05350969731807709,
+              "step": 0,
+              "teacher_output_token": 198,
+              "teacher_top1": 198,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 285,
+              "candidate_top1": 285,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 198,
+              "kl": 5.877251436324869e-08,
+              "seconds": 0.051687211729586124,
+              "step": 1,
+              "teacher_output_token": 285,
+              "teacher_top1": 285,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 9032,
+              "candidate_top1": 9032,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 285,
+              "kl": 0.0001361892154301355,
+              "seconds": 0.052755096927285194,
+              "step": 2,
+              "teacher_output_token": 9032,
+              "teacher_top1": 9032,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 19277,
+              "candidate_top1": 19277,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 9032,
+              "kl": 5.2208516401753655e-08,
+              "seconds": 0.05512780696153641,
+              "step": 3,
+              "teacher_output_token": 19277,
+              "teacher_top1": 19277,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 4692,
+              "candidate_top1": 4692,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 19277,
+              "kl": 1.7340870579096315e-07,
+              "seconds": 0.05201299674808979,
+              "step": 4,
+              "teacher_output_token": 4692,
+              "teacher_top1": 4692,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 2251,
+              "candidate_top1": 2251,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 4692,
+              "kl": 6.609828066017916e-08,
+              "seconds": 0.05134591832756996,
+              "step": 5,
+              "teacher_output_token": 2251,
+              "teacher_top1": 2251,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 3676,
+              "candidate_top1": 3676,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 2251,
+              "kl": 7.468887666864372e-08,
+              "seconds": 0.051497479900717735,
+              "step": 6,
+              "teacher_output_token": 3676,
+              "teacher_top1": 3676,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 701,
+              "candidate_top1": 701,
+              "category": "code",
+              "finite_candidate_logits": true,
+              "input_token": 3676,
+              "kl": 1.5516142400411675e-05,
+              "seconds": 0.051525840535759926,
+              "step": 7,
+              "teacher_output_token": 701,
+              "teacher_top1": 701,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.333008050744084,
+              "live_token_rows": 787008,
+              "logical_token_rows": 1049088,
+              "max_live_count": 12297,
+              "payload_bytes": 805896192,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 787008,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 787008,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 49188
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "5e0f4cd7588ce3ccc23af3ddbc35e0dace3ec0df4d55e1a9fe60d1e735a601a6",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 787008,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 787008,
+                  "dms.position_slots": 787008,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 787008
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1218,
+            "current_allocated_bytes": 19332788056,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 24398603432,
+            "total_freed_bytes": 5065815376
+          },
+          "prefill_comparison": {
+            "candidate_top1": 1590,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 1590,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.0001361892154301355,
+            "mean_kl": 1.9798241337203744e-05,
+            "p95_kl": 9.39536398697321e-05,
+            "p99_kl": 0.0001277421003180548,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 33.471124302595854
+        }
+      },
+      "prompt": {
+        "sequence_ids": [
+          "xtx-validation-code-32768"
+        ],
+        "token_ids_sha256": "902b76b46c6df6108893cd632956a145ee9408aa871544baa42847fdb77d2de6",
+        "tokens": 16384
+      },
+      "teacher": {
+        "decode_rows": [
+          {
+            "input_token": 1590,
+            "output_token": 198,
+            "seconds": 0.04493673611432314,
+            "step": 0
+          },
+          {
+            "input_token": 198,
+            "output_token": 285,
+            "seconds": 0.03783016465604305,
+            "step": 1
+          },
+          {
+            "input_token": 285,
+            "output_token": 9032,
+            "seconds": 0.03855379577726126,
+            "step": 2
+          },
+          {
+            "input_token": 9032,
+            "output_token": 19277,
+            "seconds": 0.03874502703547478,
+            "step": 3
+          },
+          {
+            "input_token": 19277,
+            "output_token": 4692,
+            "seconds": 0.03879188746213913,
+            "step": 4
+          },
+          {
+            "input_token": 4692,
+            "output_token": 2251,
+            "seconds": 0.0388251980766654,
+            "step": 5
+          },
+          {
+            "input_token": 2251,
+            "output_token": 3676,
+            "seconds": 0.038647936657071114,
+            "step": 6
+          },
+          {
+            "input_token": 3676,
+            "output_token": 701,
+            "seconds": 0.03858674503862858,
+            "step": 7
+          }
+        ],
+        "memory_before_close": {
+          "active_allocations": 1116,
+          "current_allocated_bytes": 19594758968,
+          "peak_allocated_bytes": 19594758968,
+          "peak_allocations": 1116,
+          "total_allocated_bytes": 19594758968,
+          "total_freed_bytes": 0
+        },
+        "timing_seconds": 24.017791461199522
+      }
+    },
+    "general_en": {
+      "candidates": {
+        "no_evict": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 8252,
+              "candidate_top1": 8252,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 279,
+              "kl": 0.00011762711165205127,
+              "seconds": 0.06051700562238693,
+              "step": 0,
+              "teacher_output_token": 8252,
+              "teacher_top1": 8252,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 22480,
+              "candidate_top1": 22480,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 8252,
+              "kl": 5.5198080532686885e-06,
+              "seconds": 0.05756332818418741,
+              "step": 1,
+              "teacher_output_token": 22480,
+              "teacher_top1": 22480,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 173171,
+              "candidate_top1": 173171,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 22480,
+              "kl": 1.3403374090169154e-05,
+              "seconds": 0.0568036874756217,
+              "step": 2,
+              "teacher_output_token": 173171,
+              "teacher_top1": 173171,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 19825,
+              "candidate_top1": 19825,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 173171,
+              "kl": 0.00016276461762263053,
+              "seconds": 0.056974160484969616,
+              "step": 3,
+              "teacher_output_token": 19825,
+              "teacher_top1": 19825,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 13,
+              "candidate_top1": 13,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 19825,
+              "kl": 2.1044038549594578e-05,
+              "seconds": 0.0582206966355443,
+              "step": 4,
+              "teacher_output_token": 13,
+              "teacher_top1": 13,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 561,
+              "candidate_top1": 561,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 13,
+              "kl": 4.353363663571281e-05,
+              "seconds": 0.05714223254472017,
+              "step": 5,
+              "teacher_output_token": 561,
+              "teacher_top1": 561,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 26005,
+              "candidate_top1": 26005,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 561,
+              "kl": 0.00016952766474285694,
+              "seconds": 0.059293209575116634,
+              "step": 6,
+              "teacher_output_token": 26005,
+              "teacher_top1": 26005,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 339,
+              "candidate_top1": 339,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 26005,
+              "kl": 7.908063408701821e-07,
+              "seconds": 0.06060329731553793,
+              "step": 7,
+              "teacher_output_token": 339,
+              "teacher_top1": 339,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.0,
+              "live_token_rows": 1049088,
+              "logical_token_rows": 1049088,
+              "max_live_count": 16392,
+              "payload_bytes": 1074266112,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 1049088,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 1049088,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 65568
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "7eef65a1ec18bb2b37aa50df7cd68bcf88c368e2b9a471837a39467b0294a8c0",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 1049088,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 1049088,
+                  "dms.position_slots": 1049088,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 1049088
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1216,
+            "current_allocated_bytes": 19602209176,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 28368001400,
+            "total_freed_bytes": 8765792224
+          },
+          "prefill_comparison": {
+            "candidate_top1": 279,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 279,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.00016952766474285694,
+            "mean_kl": 6.677638221089427e-05,
+            "p95_kl": 0.00016716059825077768,
+            "p99_kl": 0.00016905425144444109,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 33.61292626708746
+        },
+        "sidecar": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 8252,
+              "candidate_top1": 8252,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 279,
+              "kl": 0.0033231068456818754,
+              "seconds": 0.05168545339256525,
+              "step": 0,
+              "teacher_output_token": 8252,
+              "teacher_top1": 8252,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 22480,
+              "candidate_top1": 22480,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 8252,
+              "kl": 8.393580465175946e-05,
+              "seconds": 0.0509953536093235,
+              "step": 1,
+              "teacher_output_token": 22480,
+              "teacher_top1": 22480,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 173171,
+              "candidate_top1": 173171,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 22480,
+              "kl": 1.1608641715850788e-05,
+              "seconds": 0.05083069112151861,
+              "step": 2,
+              "teacher_output_token": 173171,
+              "teacher_top1": 173171,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 19825,
+              "candidate_top1": 19825,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 173171,
+              "kl": 0.001313536734692745,
+              "seconds": 0.051232785917818546,
+              "step": 3,
+              "teacher_output_token": 19825,
+              "teacher_top1": 19825,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 13,
+              "candidate_top1": 13,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 19825,
+              "kl": 0.00024524646542652075,
+              "seconds": 0.05096763279289007,
+              "step": 4,
+              "teacher_output_token": 13,
+              "teacher_top1": 13,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 561,
+              "candidate_top1": 561,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 13,
+              "kl": 0.0005340240744187225,
+              "seconds": 0.05112132430076599,
+              "step": 5,
+              "teacher_output_token": 561,
+              "teacher_top1": 561,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 26005,
+              "candidate_top1": 26005,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 561,
+              "kl": 0.0008112058052926617,
+              "seconds": 0.05149605963379145,
+              "step": 6,
+              "teacher_output_token": 26005,
+              "teacher_top1": 26005,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 339,
+              "candidate_top1": 339,
+              "category": "general_en",
+              "finite_candidate_logits": true,
+              "input_token": 26005,
+              "kl": 2.0477016695756643e-06,
+              "seconds": 0.0511457659304142,
+              "step": 7,
+              "teacher_output_token": 339,
+              "teacher_top1": 339,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.333008050744084,
+              "live_token_rows": 787008,
+              "logical_token_rows": 1049088,
+              "max_live_count": 12297,
+              "payload_bytes": 805896192,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 787008,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 787008,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 49188
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "5e0f4cd7588ce3ccc23af3ddbc35e0dace3ec0df4d55e1a9fe60d1e735a601a6",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 787008,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 787008,
+                  "dms.position_slots": 787008,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 787008
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1218,
+            "current_allocated_bytes": 19332788056,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 30637637968,
+            "total_freed_bytes": 11304849912
+          },
+          "prefill_comparison": {
+            "candidate_top1": 279,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 279,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.0033231068456818754,
+            "mean_kl": 0.0007905890091937139,
+            "p95_kl": 0.0026197573068356787,
+            "p99_kl": 0.003182436937912636,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 33.137053036130965
+        }
+      },
+      "prompt": {
+        "sequence_ids": [
+          "xtx-validation-general_en-32768"
+        ],
+        "token_ids_sha256": "c01a525d56008fe1e9e3b460c0cbd2843b33fe5cbbc6ca7449da80503a9d64da",
+        "tokens": 16384
+      },
+      "teacher": {
+        "decode_rows": [
+          {
+            "input_token": 279,
+            "output_token": 8252,
+            "seconds": 0.03838516212999821,
+            "step": 0
+          },
+          {
+            "input_token": 8252,
+            "output_token": 22480,
+            "seconds": 0.0388098880648613,
+            "step": 1
+          },
+          {
+            "input_token": 22480,
+            "output_token": 173171,
+            "seconds": 0.03907219134271145,
+            "step": 2
+          },
+          {
+            "input_token": 173171,
+            "output_token": 19825,
+            "seconds": 0.039054401218891144,
+            "step": 3
+          },
+          {
+            "input_token": 19825,
+            "output_token": 13,
+            "seconds": 0.039111001417040825,
+            "step": 4
+          },
+          {
+            "input_token": 13,
+            "output_token": 561,
+            "seconds": 0.038867478258907795,
+            "step": 5
+          },
+          {
+            "input_token": 561,
+            "output_token": 26005,
+            "seconds": 0.03876128699630499,
+            "step": 6
+          },
+          {
+            "input_token": 26005,
+            "output_token": 339,
+            "seconds": 0.03940465580672026,
+            "step": 7
+          }
+        ],
+        "memory_before_close": {
+          "active_allocations": 1116,
+          "current_allocated_bytes": 19594758968,
+          "peak_allocated_bytes": 20692166872,
+          "peak_allocations": 1251,
+          "total_allocated_bytes": 25833793504,
+          "total_freed_bytes": 6239034536
+        },
+        "timing_seconds": 24.066614187322557
+      }
+    },
+    "general_ja": {
+      "candidates": {
+        "no_evict": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 16,
+              "candidate_top1": 16,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 95901,
+              "kl": 1.580933688225444e-05,
+              "seconds": 0.05808514077216387,
+              "step": 0,
+              "teacher_output_token": 16,
+              "teacher_top1": 16,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 195259,
+              "candidate_top1": 195259,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 16,
+              "kl": 8.762533677256516e-06,
+              "seconds": 0.056816198863089085,
+              "step": 1,
+              "teacher_output_token": 195259,
+              "teacher_top1": 195259,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 7313,
+              "candidate_top1": 7313,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 195259,
+              "kl": 1.1445251269284269e-05,
+              "seconds": 0.05698572099208832,
+              "step": 2,
+              "teacher_output_token": 7313,
+              "teacher_top1": 7313,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 471,
+              "candidate_top1": 471,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 7313,
+              "kl": 1.177267155828215e-05,
+              "seconds": 0.05657387524843216,
+              "step": 3,
+              "teacher_output_token": 471,
+              "teacher_top1": 471,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 220,
+              "candidate_top1": 220,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 471,
+              "kl": 0.0001087651760457943,
+              "seconds": 0.057123813778162,
+              "step": 4,
+              "teacher_output_token": 220,
+              "teacher_top1": 220,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 150134,
+              "candidate_top1": 150134,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 220,
+              "kl": 0.00012075203199327696,
+              "seconds": 0.056924390606582165,
+              "step": 5,
+              "teacher_output_token": 150134,
+              "teacher_top1": 150134,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 98766,
+              "candidate_top1": 98766,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 150134,
+              "kl": 4.901639104869465e-05,
+              "seconds": 0.05722729489207268,
+              "step": 6,
+              "teacher_output_token": 98766,
+              "teacher_top1": 98766,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 9616,
+              "candidate_top1": 9616,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 98766,
+              "kl": 5.7040111759568786e-05,
+              "seconds": 0.05717815551906824,
+              "step": 7,
+              "teacher_output_token": 9616,
+              "teacher_top1": 9616,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.0,
+              "live_token_rows": 1049088,
+              "logical_token_rows": 1049088,
+              "max_live_count": 16392,
+              "payload_bytes": 1074266112,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 1049088,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 1049088,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 65568
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "7eef65a1ec18bb2b37aa50df7cd68bcf88c368e2b9a471837a39467b0294a8c0",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 1049088,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 1049088,
+                  "dms.position_slots": 1049088,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 1049088
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1216,
+            "current_allocated_bytes": 19602209176,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 34607035936,
+            "total_freed_bytes": 15004826760
+          },
+          "prefill_comparison": {
+            "candidate_top1": 95901,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 95901,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.00012075203199327696,
+            "mean_kl": 4.792043802930151e-05,
+            "p95_kl": 0.00011655663241165802,
+            "p99_kl": 0.00011991295207695318,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 32.866257440298796
+        },
+        "sidecar": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 16,
+              "candidate_top1": 16,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 95901,
+              "kl": 9.6591254516099e-05,
+              "seconds": 0.052442959509789944,
+              "step": 0,
+              "teacher_output_token": 16,
+              "teacher_top1": 16,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 195259,
+              "candidate_top1": 195259,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 16,
+              "kl": 0.0016876099914505081,
+              "seconds": 0.05135840177536011,
+              "step": 1,
+              "teacher_output_token": 195259,
+              "teacher_top1": 195259,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 7313,
+              "candidate_top1": 7313,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 195259,
+              "kl": 0.00011812183980488541,
+              "seconds": 0.051547685638070107,
+              "step": 2,
+              "teacher_output_token": 7313,
+              "teacher_top1": 7313,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 471,
+              "candidate_top1": 471,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 7313,
+              "kl": 0.00014726281732419877,
+              "seconds": 0.0517766484990716,
+              "step": 3,
+              "teacher_output_token": 471,
+              "teacher_top1": 471,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 220,
+              "candidate_top1": 220,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 471,
+              "kl": 0.0003923972452381857,
+              "seconds": 0.051751029677689075,
+              "step": 4,
+              "teacher_output_token": 220,
+              "teacher_top1": 220,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 150134,
+              "candidate_top1": 150134,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 220,
+              "kl": 0.008396404655415211,
+              "seconds": 0.05131709109991789,
+              "step": 5,
+              "teacher_output_token": 150134,
+              "teacher_top1": 150134,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 98766,
+              "candidate_top1": 98766,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 150134,
+              "kl": 0.000114000000670494,
+              "seconds": 0.05132538080215454,
+              "step": 6,
+              "teacher_output_token": 98766,
+              "teacher_top1": 98766,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 9616,
+              "candidate_top1": 9616,
+              "category": "general_ja",
+              "finite_candidate_logits": true,
+              "input_token": 98766,
+              "kl": 0.0034719388663668424,
+              "seconds": 0.051743618212640285,
+              "step": 7,
+              "teacher_output_token": 9616,
+              "teacher_top1": 9616,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.333008050744084,
+              "live_token_rows": 787008,
+              "logical_token_rows": 1049088,
+              "max_live_count": 12297,
+              "payload_bytes": 805896192,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 787008,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 787008,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 49188
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "5e0f4cd7588ce3ccc23af3ddbc35e0dace3ec0df4d55e1a9fe60d1e735a601a6",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 787008,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 787008,
+                  "dms.position_slots": 787008,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 787008
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1218,
+            "current_allocated_bytes": 19332788056,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 36876672504,
+            "total_freed_bytes": 17543884448
+          },
+          "prefill_comparison": {
+            "candidate_top1": 95901,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 95901,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.008396404655415211,
+            "mean_kl": 0.0018030408338483032,
+            "p95_kl": 0.006672841629248279,
+            "p99_kl": 0.008051692050181825,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 32.93523639719933
+        }
+      },
+      "prompt": {
+        "sequence_ids": [
+          "xtx-validation-general_ja-32768"
+        ],
+        "token_ids_sha256": "495deddb799f4b4c339a9058ef75706de3506aaa417643dd9033621c868a7ce5",
+        "tokens": 16384
+      },
+      "teacher": {
+        "decode_rows": [
+          {
+            "input_token": 95901,
+            "output_token": 16,
+            "seconds": 0.03846891317516565,
+            "step": 0
+          },
+          {
+            "input_token": 16,
+            "output_token": 195259,
+            "seconds": 0.03877232689410448,
+            "step": 1
+          },
+          {
+            "input_token": 195259,
+            "output_token": 7313,
+            "seconds": 0.038754465989768505,
+            "step": 2
+          },
+          {
+            "input_token": 7313,
+            "output_token": 471,
+            "seconds": 0.038768176920711994,
+            "step": 3
+          },
+          {
+            "input_token": 471,
+            "output_token": 220,
+            "seconds": 0.038669065572321415,
+            "step": 4
+          },
+          {
+            "input_token": 220,
+            "output_token": 150134,
+            "seconds": 0.03877002652734518,
+            "step": 5
+          },
+          {
+            "input_token": 150134,
+            "output_token": 98766,
+            "seconds": 0.038814387284219265,
+            "step": 6
+          },
+          {
+            "input_token": 98766,
+            "output_token": 9616,
+            "seconds": 0.03880069870501757,
+            "step": 7
+          }
+        ],
+        "memory_before_close": {
+          "active_allocations": 1116,
+          "current_allocated_bytes": 19594758968,
+          "peak_allocated_bytes": 20692166872,
+          "peak_allocations": 1251,
+          "total_allocated_bytes": 32072828040,
+          "total_freed_bytes": 12478069072
+        },
+        "timing_seconds": 24.073953801766038
+      }
+    },
+    "mixed_ja_en": {
+      "candidates": {
+        "no_evict": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 149113,
+              "candidate_top1": 149113,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 171323,
+              "kl": 0.0001272275206510693,
+              "seconds": 0.05782110895961523,
+              "step": 0,
+              "teacher_output_token": 149113,
+              "teacher_top1": 149113,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 160854,
+              "candidate_top1": 160854,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 149113,
+              "kl": 1.892159807019507e-06,
+              "seconds": 0.056348444893956184,
+              "step": 1,
+              "teacher_output_token": 160854,
+              "teacher_top1": 160854,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 159846,
+              "candidate_top1": 159846,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 160854,
+              "kl": 0.0003723433357883275,
+              "seconds": 0.05703809577971697,
+              "step": 2,
+              "teacher_output_token": 159846,
+              "teacher_top1": 159846,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 1710,
+              "candidate_top1": 1710,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 159846,
+              "kl": 9.20971565533074e-05,
+              "seconds": 0.05642415676265955,
+              "step": 3,
+              "teacher_output_token": 1710,
+              "teacher_top1": 1710,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 198,
+              "candidate_top1": 198,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 1710,
+              "kl": 6.591424457810628e-05,
+              "seconds": 0.05710215866565704,
+              "step": 4,
+              "teacher_output_token": 198,
+              "teacher_top1": 198,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 185859,
+              "candidate_top1": 185859,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 198,
+              "kl": 5.8967097564560644e-05,
+              "seconds": 0.057066465727984905,
+              "step": 5,
+              "teacher_output_token": 185859,
+              "teacher_top1": 185859,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 28310,
+              "candidate_top1": 28310,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 185859,
+              "kl": 4.3339034960088135e-07,
+              "seconds": 0.05766984727233648,
+              "step": 6,
+              "teacher_output_token": 28310,
+              "teacher_top1": 28310,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 96482,
+              "candidate_top1": 96482,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 28310,
+              "kl": 1.6429550606280675e-06,
+              "seconds": 0.05675105098634958,
+              "step": 7,
+              "teacher_output_token": 96482,
+              "teacher_top1": 96482,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.0,
+              "live_token_rows": 1049088,
+              "logical_token_rows": 1049088,
+              "max_live_count": 16392,
+              "payload_bytes": 1074266112,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 1049088,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 1049088,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 65568
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "7eef65a1ec18bb2b37aa50df7cd68bcf88c368e2b9a471837a39467b0294a8c0",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 1049088,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 1049088,
+                  "dms.position_slots": 1049088,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 1049088
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 1049088,
+                  "free": 0,
+                  "high_water": 1049088,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 1049088,
+                  "used_by_lifetime": {
+                    "lease": 1049088
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1216,
+            "current_allocated_bytes": 19602209176,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 40846070472,
+            "total_freed_bytes": 21243861296
+          },
+          "prefill_comparison": {
+            "candidate_top1": 171323,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 171323,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.0003723433357883275,
+            "mean_kl": 9.006473254407745e-05,
+            "p95_kl": 0.000286552800490287,
+            "p99_kl": 0.00035518522872871934,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 32.92926503531635
+        },
+        "sidecar": {
+          "decode_rows": [
+            {
+              "candidate_output_token": 149113,
+              "candidate_top1": 149113,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 171323,
+              "kl": 0.0006461703397243109,
+              "seconds": 0.0516996867954731,
+              "step": 0,
+              "teacher_output_token": 149113,
+              "teacher_top1": 149113,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 160854,
+              "candidate_top1": 160854,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 149113,
+              "kl": 2.0997535812881506e-05,
+              "seconds": 0.050844413228332996,
+              "step": 1,
+              "teacher_output_token": 160854,
+              "teacher_top1": 160854,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 159846,
+              "candidate_top1": 159846,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 160854,
+              "kl": 0.0007506732220202341,
+              "seconds": 0.05121221952140331,
+              "step": 2,
+              "teacher_output_token": 159846,
+              "teacher_top1": 159846,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 1710,
+              "candidate_top1": 1710,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 159846,
+              "kl": 0.001244555479935825,
+              "seconds": 0.05098302662372589,
+              "step": 3,
+              "teacher_output_token": 1710,
+              "teacher_top1": 1710,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 198,
+              "candidate_top1": 198,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 1710,
+              "kl": 0.0006244545313173769,
+              "seconds": 0.051018125377595425,
+              "step": 4,
+              "teacher_output_token": 198,
+              "teacher_top1": 198,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 185859,
+              "candidate_top1": 185859,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 198,
+              "kl": 0.0012210154264551067,
+              "seconds": 0.05126540921628475,
+              "step": 5,
+              "teacher_output_token": 185859,
+              "teacher_top1": 185859,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 28310,
+              "candidate_top1": 28310,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 185859,
+              "kl": 4.975393033040329e-05,
+              "seconds": 0.05121970921754837,
+              "step": 6,
+              "teacher_output_token": 28310,
+              "teacher_top1": 28310,
+              "top1_agrees": true
+            },
+            {
+              "candidate_output_token": 96482,
+              "candidate_top1": 96482,
+              "category": "mixed_ja_en",
+              "finite_candidate_logits": true,
+              "input_token": 28310,
+              "kl": 0.000328145449619718,
+              "seconds": 0.051348211243748665,
+              "step": 7,
+              "teacher_output_token": 96482,
+              "teacher_top1": 96482,
+              "top1_agrees": true
+            }
+          ],
+          "dms": {
+            "backend": {
+              "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+              "codec": "bf16",
+              "decision_source": "external_linear_sidecar_v1",
+              "device_backend": "hip_gfx1100",
+              "device_payloads": true,
+              "no_dense_shadow": true,
+              "physical_layer_ids": [
+                3,
+                7,
+                11,
+                15,
+                19,
+                23,
+                27,
+                31,
+                35,
+                39,
+                43,
+                47,
+                51,
+                55,
+                59,
+                63
+              ],
+              "physical_widths": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "prefix_mode": "off",
+              "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+              "topology": "dms_compact"
+            },
+            "capacity": {
+              "actual_compression_ratio": 1.333008050744084,
+              "live_token_rows": 787008,
+              "logical_token_rows": 1049088,
+              "max_live_count": 12297,
+              "payload_bytes": 805896192,
+              "scale_bytes": 0,
+              "target_compression_ratio": 2
+            },
+            "extent_pool": {
+              "allocation_failures": 0,
+              "capacity_slots": 787008,
+              "free_ranges_by_layer": [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+              ],
+              "free_slots": 0,
+              "high_water_slots": 787008,
+              "largest_free_extent": 0,
+              "num_layers": 16,
+              "owner_count": 1,
+              "slots_per_layer": 49188
+            },
+            "ledger": {
+              "active_reservations": 1,
+              "backend_fingerprint": "5e0f4cd7588ce3ccc23af3ddbc35e0dace3ec0df4d55e1a9fe60d1e735a601a6",
+              "blocking_counts": {},
+              "generation": 1,
+              "owners": {
+                "dms-lease:0": {
+                  "dms.evict_slots": 787008,
+                  "dms.extent_descriptors": 64,
+                  "dms.k_slots": 787008,
+                  "dms.position_slots": 787008,
+                  "dms.request_rows": 1,
+                  "dms.v_slots": 787008
+                }
+              },
+              "pools": {
+                "dms.evict_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "evict_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.extent_descriptors": {
+                  "capacity": 64,
+                  "free": 0,
+                  "high_water": 64,
+                  "plane_role": "extent_metadata",
+                  "unit": "descriptors",
+                  "used": 64,
+                  "used_by_lifetime": {
+                    "lease": 64
+                  }
+                },
+                "dms.k_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "k_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.pack_workspace_rows": {
+                  "capacity": 4096,
+                  "free": 4096,
+                  "high_water": 0,
+                  "plane_role": "streaming_workspace",
+                  "unit": "rows",
+                  "used": 0,
+                  "used_by_lifetime": {}
+                },
+                "dms.position_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "position_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                },
+                "dms.request_rows": {
+                  "capacity": 1,
+                  "free": 0,
+                  "high_water": 1,
+                  "plane_role": "row_metadata",
+                  "unit": "rows",
+                  "used": 1,
+                  "used_by_lifetime": {
+                    "lease": 1
+                  }
+                },
+                "dms.v_slots": {
+                  "capacity": 787008,
+                  "free": 0,
+                  "high_water": 787008,
+                  "plane_role": "v_slots",
+                  "unit": "token_slots",
+                  "used": 787008,
+                  "used_by_lifetime": {
+                    "lease": 787008
+                  }
+                }
+              },
+              "provisional_reservations": 0,
+              "stats": {
+                "commits": 1,
+                "provisional_reserves": 1
+              }
+            },
+            "operations": {
+              "decode_appends": 8,
+              "evicted_tokens": 0,
+              "released_provisional_slots": 0,
+              "streaming_pack_calls": 1
+            }
+          },
+          "memory_before_close": {
+            "active_allocations": 1218,
+            "current_allocated_bytes": 19332788056,
+            "peak_allocated_bytes": 20692166872,
+            "peak_allocations": 1251,
+            "total_allocated_bytes": 43115707040,
+            "total_freed_bytes": 23782918984
+          },
+          "prefill_comparison": {
+            "candidate_top1": 171323,
+            "finite_candidate_logits": true,
+            "kl": 0.0,
+            "teacher_top1": 171323,
+            "top1_agrees": true
+          },
+          "summary": {
+            "finite_logits": true,
+            "max_kl": 0.001244555479935825,
+            "mean_kl": 0.0006107207394019821,
+            "p95_kl": 0.0012363164612175736,
+            "p99_kl": 0.0012429076761921749,
+            "passed": true,
+            "rows": 8,
+            "thresholds": {
+              "max_kl": 0.05,
+              "min_top1_agreement": 0.9
+            },
+            "top1_agreement": 1.0
+          },
+          "timing_seconds": 32.88965675421059
+        }
+      },
+      "prompt": {
+        "sequence_ids": [
+          "xtx-validation-mixed_ja_en-32768"
+        ],
+        "token_ids_sha256": "8f64bb378d8e14a6591d7c60ff7467b6b8bc75d21846ac91ab57ad280def6d2c",
+        "tokens": 16384
+      },
+      "teacher": {
+        "decode_rows": [
+          {
+            "input_token": 171323,
+            "output_token": 149113,
+            "seconds": 0.03796206787228584,
+            "step": 0
+          },
+          {
+            "input_token": 149113,
+            "output_token": 160854,
+            "seconds": 0.038697460666298866,
+            "step": 1
+          },
+          {
+            "input_token": 160854,
+            "output_token": 159846,
+            "seconds": 0.038897852413356304,
+            "step": 2
+          },
+          {
+            "input_token": 159846,
+            "output_token": 1710,
+            "seconds": 0.0388765437528491,
+            "step": 3
+          },
+          {
+            "input_token": 1710,
+            "output_token": 198,
+            "seconds": 0.039133316837251186,
+            "step": 4
+          },
+          {
+            "input_token": 198,
+            "output_token": 185859,
+            "seconds": 0.0388939343392849,
+            "step": 5
+          },
+          {
+            "input_token": 185859,
+            "output_token": 28310,
+            "seconds": 0.03900820575654507,
+            "step": 6
+          },
+          {
+            "input_token": 28310,
+            "output_token": 96482,
+            "seconds": 0.039021325297653675,
+            "step": 7
+          }
+        ],
+        "memory_before_close": {
+          "active_allocations": 1116,
+          "current_allocated_bytes": 19594758968,
+          "peak_allocated_bytes": 20692166872,
+          "peak_allocations": 1251,
+          "total_allocated_bytes": 38311862576,
+          "total_freed_bytes": 18717103608
+        },
+        "timing_seconds": 24.098338779062033
+      }
+    }
+  },
+  "data_manifest": {
+    "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+    "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc",
+    "split": "validation"
+  },
+  "host": "epyc",
+  "kind": "hipengine_qwen38_integrated_dms_dense_teacher_quality_suite",
+  "memory_after_close": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 20692166872,
+    "peak_allocations": 1251,
+    "total_allocated_bytes": 43115707040,
+    "total_freed_bytes": 43115707040
+  },
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "candidate_owner": "integrated compact device route; dense KV released after prefill",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "decode_steps": 8,
+    "modes": [
+      "no_evict",
+      "sidecar"
+    ],
+    "prompt_tokens": 16384,
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "thresholds": {
+      "max_kl": 0.05,
+      "min_top1_agreement": 0.9
+    },
+    "trajectory": "strict dense-teacher input tokens"
+  },
+  "provenance": {
+    "commit": "6757e0ca7f6876d61e24f907b06660173210c157",
+    "working_tree_clean": false
+  },
+  "schema_version": 1,
+  "status": "passed",
+  "timing": {
+    "load_seconds": 72.71650549117476,
+    "total_seconds": 434.20069579128176
+  }
+}

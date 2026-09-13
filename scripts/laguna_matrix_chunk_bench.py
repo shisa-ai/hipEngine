@@ -1076,7 +1076,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "all_hidden_boundary_gate_rows": full_state["length"],
             "routing_occupancy_rows": list(matrix_rows),
             "boundary_gate": (
-                "tests/test_laguna_kv_attention.py::"
+                "tests/test_gpu_laguna_kv_attention.py::"
                 "test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap"
             ),
         },

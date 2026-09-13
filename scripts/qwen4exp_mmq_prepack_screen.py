@@ -17,8 +17,8 @@ from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_mmq_prefill as mmq
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
-from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
-from tests.test_qwen4exp_mmq_prepack import PARENT, CANDIDATE, VECTOR, RAW_VECTOR, pack_reference
+from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
+from tests.test_gpu_qwen4exp_mmq_prepack import PARENT, CANDIDATE, VECTOR, RAW_VECTOR, pack_reference
 
 
 def main():
@@ -60,7 +60,7 @@ def main():
                       resident_storage="Raw weights only; no packed bank allocated",
                       pack_mode="none")
     if a.token64:
-        from tests.test_qwen4exp_mmq_token64 import CANDIDATE as TOKEN64
+        from tests.test_gpu_qwen4exp_mmq_token64 import CANDIDATE as TOKEN64
         parent_name,candidate_name=RAW_VECTOR,TOKEN64
     report["parent_variant"] = parent_name
     report["candidate_variant"] = candidate_name

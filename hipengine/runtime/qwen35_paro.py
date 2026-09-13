@@ -210,12 +210,33 @@ def _reset_shared_rotate_fuse_barrier_state() -> None:
     """Clear process-local keyed barrier counters for a new resident session."""
 
     _SHARED_ROTATE_FUSE_BARRIER_STATE.clear()
+
+
+# Paged-KV write, paged-attention prefill, and paged-attention decode are the
+# only kernels this runtime resolves through the registry rather than by direct
+# import, so they are the only place a backend key changes the body that runs.
+# The pin to gfx1100 is deliberate and load-bearing, not a stale default.
+#
+# Measured 2026-09-12 on the physical gfx1151 host (Ryzen AI MAX+ 395 / Radeon
+# 8060S) with Qwen3.6-35B-A3B PARO, c=2, prompt 512, 128 decode tokens: the
+# batch-context decode key (paged_attn_decode, w4_paro,
+# bf16_context_batch_c1_exact_spans) is repointed by the gfx1151 package at
+# qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans. Resolving it
+# against hip_gfx1151 instead of this pin breaks the retained
+# native_batch-vs-independent-c1 equality contract deterministically: row 0
+# diverges at decode token 25 of 137 (25/137 equal), reproducing bit-identically
+# across two runs, while the pre-fix pin and the per_row control both reach
+# 137/137. The gfx1151 override is therefore correct for the GGUF route that
+# registers it, and wrong for this PARO path, which keeps its own equality
+# contract on the gfx1100 c1-exact body. Do not "clean this up" without
+# re-running that gate. Guarded by
+# tests/test_unit_qwen35_decode_state.py::test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100.
 _PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
 
 # C3.0c: row counts for which the output-column-tiled pack8 GEMV is instantiated
 # (templated C in the kernel). Other c>1 row counts fall back to the per-row
 # strided GEMV. Byte-exact equivalence is gated in
-# tests/test_paro_awq_output_tiled_gemv.py.
+# tests/test_gpu_paro_awq_output_tiled_gemv.py.
 _PACK8_OUTPUT_TILED_ROWS = (
     frozenset()
     if os.environ.get("HIPENGINE_DISABLE_PACK8_OUTPUT_TILED")
@@ -721,7 +742,7 @@ class Qwen35ParoDecodeState:
                 raise ValueError(f"{prefix}.qweight must have at least one dimension")
             # C3.0c: output-column-tiled GEMV amortizes the weight load across all
             # c active columns for c in {2,4,8}; byte-exact vs the per-row strided
-            # kernel (tests/test_paro_awq_output_tiled_gemv.py).
+            # kernel (tests/test_gpu_paro_awq_output_tiled_gemv.py).
             pack8_fn = (
                 gemv_awq_pack8_output_tiled_bf16
                 if rows in _PACK8_OUTPUT_TILED_ROWS
@@ -11218,7 +11239,7 @@ def _w4_output_tiled_prefill_enabled() -> bool:
     ``awq_fusedw4_prefill_*`` small-batch kernel.
 
     The output-tiled GEMV is bit-identical to the per-row strided/transposed
-    pack8 GEMV (``tests/test_paro_awq_output_tiled_gemv.py``) -- i.e. byte-exact
+    pack8 GEMV (``tests/test_gpu_paro_awq_output_tiled_gemv.py``) -- i.e. byte-exact
     to AR's rows==1 projection -- so exact-AR cannot regress; only throughput is
     at stake.  The WMMA prefill kernel starves at tokens=4 (the B+1 verifier
     shape), so the amortized GEMV is the M16.4 lever.
@@ -11415,7 +11436,7 @@ def _fused_rmsnorm_rotate_enabled() -> bool:
 
     The fused kernel is bit-identical to ``input_rmsnorm_fp16`` followed by
     ``rotate_linear_attention_inputs_fp16`` (see
-    ``tests/test_paro_rmsnorm_rotate2.py``), so exact-AR cannot regress; it just
+    ``tests/test_gpu_paro_rmsnorm_rotate2.py``), so exact-AR cannot regress; it just
     removes one launch + one HBM round-trip per linear layer.  Default-off
     pending the verifier economics; opt in with
     ``HIPENGINE_FUSED_RMSNORM_ROTATE=1``.
@@ -11484,7 +11505,7 @@ def _w4_multi_row_small_batch_enabled() -> bool:
     from HBM exactly once and accumulates all ``B+1`` verifier rows, vs the
     per-row ``gemv_awq_pack8_transposed_fp16`` whose ``grid=(out_pack, row)``
     re-streams the tile for every row.  The decode variant is *bit-identical* to
-    the per-row kernel (``tests/test_paro_awq_gemv_multi_row_decode.py``), so
+    the per-row kernel (``tests/test_gpu_paro_awq_gemv_multi_row_decode.py``), so
     exact-AR cannot regress; only throughput is at stake.
 
     Default-on (2026-06-08): W7900 B=3 verifier rocprof shows the
