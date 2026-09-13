@@ -57,6 +57,64 @@ variant of the `strix-llama.cpp` HIP build and is not marked.
 | strix-llama.cpp Vulkan | +1.09% | +1.95% | +4.37% | +5.17% | +6.93% | +4.38% |
 | strix-llama.cpp HIP, HIP_LAUNCH_BLOCKING=1 | +9.35% | — | +12.57% | +0.60% | — | -4.09% |
 
+## Where the `strix-llama.cpp` HIP prefill lead comes from
+
+Upstream llama.cpp was rebuilt at `002a12ad2` with exactly one file swapped for
+the `strix-llama.cpp` version — `ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh`, the
+RDNA3.5 (`gfx1151`) MMQ tile-configuration table — and nothing else. That one
+file carries about half the prefill lead.
+
+| Build | 512/128 | 1K/128 | 4K/128 |
+| --- | ---: | ---: | ---: |
+| llama.cpp HIP (`002a12ad2`) | 386.342 | 389.939 | 382.918 |
+| llama.cpp HIP + fork MMQ config only | 413.539 | 416.313 | 409.464 |
+| `strix-llama.cpp` HIP (`6548035`) | 436.867 | 440.554 | 432.427 |
+| config-only gain over upstream | +7.04% | +6.76% | +6.93% |
+| config share of the full fork gain | 54% | 52% | 54% |
+
+llama-bench means, `-r 5`, prefill-only processes, same flags as the main
+comparison.
+
+The change is confined to the tile table. For `Q4_K`, `Q5_K`, `Q6_K` and `Q8_0`
+at the 128-wide token tile with a batch of 48 or more tokens, `gfx1151` now uses
+a 64-row SRAM tile with 128 threads per block instead of a 128-row tile with 256
+threads. The kernel itself is untouched: same template instantiation, same 4608
+dispatches in a 4K prefill, same 240 VGPR and 128 SGPR per thread. Only the
+block shape changes — for the 17,408-row FFN projections, 136x4 blocks of 256
+threads become 272x4 blocks of 128 threads.
+
+Kernel time by group (`rocprofv3 --kernel-trace`, one warmup plus one measured
+4K prefill, so two 4096-token passes):
+
+| group | calls | llama.cpp HIP | +config | strix-llama.cpp HIP | delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q4_K MMQ | 4608 | 12.095 | 10.763 | 10.827 | -1.268 |
+| Q5_K MMQ | 768 | 0.938 | 0.874 | 0.883 | -0.054 |
+| Gated DeltaNet + concat + ssm_conv | 2304 | 1.880 | 1.890 | 0.938 | -0.942 |
+| Q8_1 quantization for MMQ | 5376 | 0.438 | 0.440 | 0.324 | -0.115 |
+| Flash attention | 256 | 0.525 | 0.525 | 0.446 | -0.080 |
+| Norm | 4880 | 0.327 | 0.328 | 0.287 | -0.040 |
+| Convert / unary / elementwise | 11776 | 1.922 | 1.919 | 1.877 | -0.045 |
+| hipBLASLt GEMM | 2560 | 2.877 | 2.877 | 2.914 | +0.037 |
+| everything else | 4570 | 0.112 | 0.111 | 0.116 | +0.004 |
+| **total kernel time** | 37098 | **21.115** | **19.726** | **18.612** | **-2.503** |
+
+The config change reproduces the entire Q4_K/Q5_K MMQ delta (10.763 s against
+the fork's 10.827 s) and leaves every other group within 0.01 s, so 1.389 s of
+the 2.503 s is the tile table. The remaining 1.18 s is the fork's other HIP
+work: the tiled Gated DeltaNet kernel
+(`gated_delta_net_tiled_cuda<128, 8, 8, 16, false>`, 1.171 s to 0.565 s) with
+its transposed concat replacing `concat_non_cont` (0.541 s to 0.195 s), the Q8_1
+activation quantizer, flash attention, and the norm/convert fusions.
+
+Greedy decoding is unaffected: all three builds returned the same 48 token ids
+for one fixed prompt. That is a smoke check on a single prompt, not a numerical
+equivalence proof.
+
+Reproduce with `ablation/run_ablation.sh`. The tables above, the per-kernel
+comparison and the launch-geometry dump are in `ablation/attribution.txt`; the
+prefill artifacts are `ablation/*-prefill.json`.
+
 ## Host and model
 
 | Item | Value |
@@ -171,6 +229,11 @@ sits one commit behind the Vulkan binary. That commit deletes two lines from
   difference; the `strix-llama.cpp` HIP prefill lead is much larger than it.
 - All arms ran sequentially in one session, not counterbalanced pairs, so
   thermal drift is not controlled.
+- The ablation isolates the MMQ tile table by rebuilding it. The other 47% of
+  the `strix-llama.cpp` prefill lead is attributed from kernel-level time deltas,
+  not by rebuilding the fork's remaining HIP changes one at a time.
+- The ablation ran on the HIP backend only. The Vulkan rows are unchanged and
+  were not attributed.
 
 ## Files
 
@@ -184,3 +247,11 @@ sits one commit behind the Vulkan binary. That commit deletes two lines from
 | `raw/halobox-hip.json`, `raw/halobox-vulkan.json` | `strix-llama.cpp` HIP and Vulkan |
 | `raw/halobox-hip-launch-blocking.json` | `strix-llama.cpp` HIP with `HIP_LAUNCH_BLOCKING=1` |
 | `raw/run_comparison.log` | Full console log of the recorded run |
+| `ablation/run_ablation.sh` | Rebuilds upstream with the fork's MMQ tile table, measures prefill, kernel-traces all three binaries |
+| `ablation/attribution.txt` | Prefill-lead attribution: end-to-end table, kernel groups, launch geometry |
+| `ablation/launcher-args.txt` | Launcher arguments proving only the tile height and thread count changed |
+| `ablation/mmq-config-rdna3-5.patch` | The tile-table change on its own, against `002a12ad2` |
+| `ablation/output-check.txt` | Greedy-output smoke check across the three builds |
+| `ablation/*-prefill.json` | Prefill artifacts for upstream, upstream+config and `strix-llama.cpp` |
+| `ablation/compare_kernel_traces.py`, `ablation/group_breakdown.py`, `ablation/launch_geometry.py` | Trace analysis used by `attribution.txt` |
+| `ablation/compare_outputs.sh` | Runs the three `llama-server` builds and diffs their greedy token ids |

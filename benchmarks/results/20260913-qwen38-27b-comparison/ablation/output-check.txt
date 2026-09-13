@@ -1,0 +1,14 @@
+Greedy-output check across the three builds
+===========================================
+llama-server, one prompt, temperature 0, top_k 1, seed 0, n_predict 48, return_tokens=true:
+
+  prompt: "The capital of France is"
+  upstream / upstream+config / strix-llama.cpp all returned the identical token ids:
+  [11751, 13, 198, 760, 6511, 314, 9564, 369, 19241, 13, 198, 760, 6511, 314, 14898, 369, 21047,
+   13, 198, 760, 6511, 314, 17163, 369, 23327, 13, 198, 760, 6511, 314, 32208, 369, 77916, 13,
+   198, 760, 6511, 314, 23655, 369, 44299, 13, 198, 760, 6511, 314, 279, 3516]
+  text: " Paris.\nThe capital of Germany is Berlin.\nThe capital of Italy is Rome. ..."
+
+This is a smoke check on one prompt, not a numerical-equivalence proof: it shows the RDNA3.5 MMQ
+tile-config change (and the rest of the fork's HIP deltas) does not perturb greedy decoding on this
+model. Reproduce with compare_outputs.sh.

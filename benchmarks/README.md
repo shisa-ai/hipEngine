@@ -795,6 +795,13 @@ Vulkan, and hipEngine on that same file at 512/128, 1K/128 and 4K/128.
 Vulkan builds lead text generation by **+4.4% to +6.9%**; upstream llama.cpp
 HIP is 3.7% behind hipEngine at 512/128, level at 1K/128, and 3.0% ahead at
 4K/128. The hipEngine row reproduces the published **404.5/12.2** to +0.13%.
+An ablation of the HIP prefill lead shows that about half of it is one compile-time
+table: replacing only `ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh` in upstream
+llama.cpp `002a12ad2` with the fork's version lifts 4K/128 prefill from 382.9 to
+409.5 tok/s (**+6.9%**, 54% of the fork's gain) and reproduces the entire
+Q4_K/Q5_K MMQ kernel-time delta with every other kernel group unchanged. The
+rest is the fork's tiled Gated DeltaNet kernel with transposed concat, the Q8_1
+MMQ activation quantizer, flash attention and norm/convert fusions.
 [`same-GGUF five-engine comparison`](results/20260913-qwen38-27b-comparison/README.md).
 
 Two dense Q4T16 rowtile variants that this backend previously inherited from
