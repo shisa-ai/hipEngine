@@ -610,7 +610,7 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
 
-Fresh combined-default Framework `gfx1151` baseline, UD-Q4_K_XL/BF16 KV,
+September 5 Framework `gfx1151` screen, UD-Q4_K_XL/BF16 KV,
 four categories, p512/p1024/p4096 + tg128:
 
 | Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
@@ -623,6 +623,40 @@ Weighted tok/s,36 samples per engine, all outputs repeat, clean teardown.
 All lanes exceed2% per-case CV somewhere; these are sequential screening
 comparisons, not statistical parity.
 [Frozen baseline evidence](results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+
+September 13 UTC post-overlap refresh, same UD-Q4_K_XL/BF16 KV,
+four categories, one warmup and three repetitions:
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine production | 297.114 / 20.396 | 316.907 / 19.711 | 294.071 / 19.166 |
+| halo-box HEAD Vulkan | 423.376 / 27.477 | 475.121 / 27.104 | 506.261 / 25.721 |
+| halo-box HEAD HIP, launch blocking | 427.063 / 15.441 | 571.258 / 15.347 | Unverified |
+
+Weighted tok/s; all measured IDs repeat. hipEngine uses 1024-token chunks;
+Vulkan uses ubatch4096, HIP ubatch1024, and both external lanes use the
+on-disk n-gram reader. HIP's full-matrix attempt failed at 4K before overlap
+clearance; its fresh subset does not certify that depth. These are sequential
+screens, not paired kernel-speedup claims or a fresh full numerical/task gate.
+
+September 13, same target plus the existing Q8_0 draft, BF16 KV, all ten
+category prompts, B2, 16 output tokens, one warmup and three repetitions:
+
+| Engine | AR request tok/s | MTP request tok/s | MTP / AR | Result |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production | 14.949 | 11.197 | 0.749x | 30/30 AR-exact and repeatable; every category slower |
+| halo-box HEAD Vulkan | 16.031 | 16.894 | 1.054x | 30/30 AR-exact and repeatable; Japanese 0.976x AR |
+| halo-box HEAD HIP | — | — | — | AR completes; first MTP warmup faults in a gather kernel |
+
+Request throughput includes prefill. These are sequential-arm diagnostic
+measurements, not decode-only rates or a promotion verdict. The HIP and
+Vulkan rows use the same September 12 external source snapshot and were restarted
+after reported process overlap; the interrupted HIP pair is excluded.
+Earlier September 13 timing screens are provisional because the overlap
+interval is unknown; hipEngine was also remeasured after the overlap.
+The Vulkan Japanese result does not pass the every-category non-regression requirement.
+[Comparison evidence](results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json)
+and [campaign plan](../docs/QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md).
 
 ## Current Qwen3.6-35B quantization quality
 
