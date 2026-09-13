@@ -1,42 +1,32 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-13**
+Last updated: **2026-09-14**
 
-Surya OCR 2 on Strix Halo gfx1151, hipEngine HIP lane vs transformers fp32 on
-the same host iGPU, over 12 pages covering layout-JSON and markup output,
-Japanese and mixed script, dense small text, a ruled table, a blank page, a
-degraded scan, and long block-heavy pages: decode 54.6-57.0 tok/s vs
-24.6-28.1, a median 2.19x faster (2.03x-2.23x across every page), and
-end-to-end 0.20-8.85 s vs 0.29-14.38 s. Every row passes its declared gate and
-each decode stage repeats identically. A lane is reported PASS only when a
-reference is present, the output matches it, it terminated the way the
-reference did, the isolated decode repeats agree, the timed decode stage and the
-end-to-end run agree on both ids and termination, and the declared output format
-holds; `gate_failures` names every condition that did not. Eleven pages gate on
-the full greedy id chain. The degraded scan gates on the layout skeleton — box
-count, labels, reading order and per-box `count` — because under this suite's
-ad-hoc prompt both lanes free-run into the same rigid 10-box template whose bbox
-digits track neither the page nor each other: the drawn line widths are 470-554
-of 1000, torch reports 474-566, and hipEngine a flat 564, so the drift is
-recorded as `bbox_max_delta` (90 of 1000) rather than gated. Every lane times
-the same region — page image plus prompt in, greedy token ids out — with
-checkpoint load and runner construction reported separately as `init_s`. Decode
-is weight-bandwidth-bound: one token streams 2342 MB of fp32 weights at 136-143
-GB/s, and 88% of decode kernel time is the projection GEMMs.
-[Suite run](results/2026-09-13-gfx1151-surya-suite-recut.json),
-[rect re-qualification](results/2026-09-12-gfx1151-surya-rect-reference.json),
-[phase-attributed profile](results/2026-09-12-gfx1151-surya-phase-attributed-profile.json).
-Each lane is measured in its own process and the two runs merged: running both
-lanes in one process is not reliable on this suite — the same 12 cases measured
-hipEngine-only pass every gate, while a combined run returns the last three
-hipEngine rows degenerate from the first token with every stage time unchanged.
-An earlier run of this suite recorded the torch lane 13-26% lower on every page;
-that artifact is superseded and the 2.25x ratio it implied is not comparable
-with this one.
-Earlier Surya rows here reported decode trailing torch at 55.5 vs 68.2 tok/s;
-that comparison came from a harness defect in which the torch prefill stage was
-timed before its synchronization and decode was derived by subtracting two
-differently-measured runs. Decode is now timed directly.
+Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
+12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
+blank and degraded pages, and longer layouts. Both lanes explicitly execute
+preprocessing, vision, prefill, and a manual greedy loop; loading is excluded.
+Three measured repetitions follow a discarded warmup, in separate lane processes.
+
+| Metric across 12 pages | hipEngine HIP fp32 | transformers torch HIP fp32 |
+| --- | ---: | ---: |
+| Decode rate | 55.4–57.0 tok/s | 25.1–30.2 tok/s |
+| Complete request | 0.199–8.874 s | 0.273–13.732 s |
+
+Median per-page speedup: **2.16x decode, 1.65x end to end**. hipEngine wins
+end to end on 11/12 pages; blank is 0.438 s versus torch's 0.401 s.
+All 24 rows pass reference, termination, repeatability, and output-format gates.
+Eleven pages require exact generated IDs; the degraded scan gates its layout
+structure and records bbox drift (90/1000) under the benchmark's ad-hoc prompt.
+Full-page text accuracy is qualified separately with the real training prompt.
+The final runtime passes 415 Surya tests with zero skips. Removing redundant
+upload synchronization is near-flat in the paired run: decode rate +0.18%,
+request latency +0.22%; no end-to-end speedup is claimed for that cleanup.
+[Final per-page results](results/2026-09-14-gfx1151-surya-final-lanes.json),
+[cleanup A/B](results/2026-09-14-gfx1151-surya-upload-cleanup-ab.json),
+[protocol and environment](../docs/MODEL-SURYA.md#final-lane-comparison-2026-09-14).
+Separate processes follow the established protocol; combined-process qualification
+is tracked in `docs/REFACTOR.md`.
 
 Full-page transcription is gated against the text drawn on each page, not only
 against a captured oracle. Using the checkpoint's real full-page HTML prompt,
@@ -47,21 +37,22 @@ error rate 0.0000, and zero reading-order violations; the ruled table reads as
 4x8 with 32/32 cells and a matching header, and a deliberately starved budget
 is reported as truncation with omissions rather than passing a prefix. The A4
 page is the page-scale case at 2480x3508 (220x156 patch grid, 8580 image
-tokens): 2108 tokens to a natural EOS, vision 47.7 s, prefill 8.0 s, decode
-58.4 s (27.7 ms/token, 36.1 tok/s), 114.3 s end to end; its ground truth is
+tokens): 2108 tokens to a natural EOS, vision 43.297 s, prefill 7.860 s, decode
+40.504 s (52.04 tok/s), 91.891 s end to end (one request); its ground truth is
 paragraph-level because its body is wrapped prose. One caveat is recorded: on
 the degraded scan the HIP lane differs from torch fp32 on 21 of 616 ids, all
 bbox coordinate digits, with identical labels and text and a worst coordinate
 delta of 4 of 1000 — and torch bf16 differs from torch fp32 on 15 ids there and
 changes the decoded text, so the drift is a property of that page's coordinates
 rather than of the HIP route.
-[Transcription acceptance](results/2026-09-12-gfx1151-surya-transcription-acceptance.json).
+[Final transcription acceptance](results/2026-09-14-gfx1151-surya-final-transcription.json).
 
 Surya OCR 2 is also reachable through hipEngine's OpenAI-compatible server.
 `scripts/surya_http_e2e.py` serves the A4 page over `/v1/chat/completions` and
-asserts equality with the direct-call row above: 2108 completion tokens, 8701
+verified output equality with a direct call on 2026-09-12: 2108 completion tokens, 8701
 prompt tokens (121 text plus 8580 image), 13 blocks, 12/12 units, CER 0.0000,
-32/32 table cells, `stop`, 119.9 s wall against 114.3 s direct. Vision bounds
+32/32 table cells, `stop`. Its historical 119.9 s HTTP timing is not a final
+latency measurement. Vision bounds
 and media form are engine declarations, so a page-scale model is admitted
 without editing the server.
 [HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
