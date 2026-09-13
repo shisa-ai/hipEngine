@@ -1,10 +1,36 @@
 # MODEL-SURYA.md — Surya OCR 2 on hipEngine
 
-Status: **implemented — CPU reference and gfx1151 HIP lane** (2026-09-11). The
+Status: **implemented — CPU reference and gfx1151 HIP lane** (2026-09-14). The
 per-model architecture and bring-up plan below is followed by an
 implementation-status section. Torch-free preprocessing, vision tower, text
 decoder, and the public OCR API run end to end; the HIP lane executes the
 vision tower and text decoder on gfx1151.
+
+### Installation and acceptance
+
+Install image preprocessing support with `pip install 'hipengine[surya]'`.
+For a source checkout, run the complete acceptance gate with the local Surya
+checkpoint and a supported HIP device:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run --extra surya --extra dev python scripts/surya_acceptance.py
+```
+
+The 2026-09-14 gfx1151 qualification passed **415 tests with zero skips**.
+This command discovers every `test_surya*.py` file and fails on skipped tests or modules,
+including missing checkpoint, hardware, or image dependencies. Ordinary pytest
+retains its availability skips for CPU-only CI. The `surya` extra supplies Pillow;
+the production runtime does not require torch.
+
+Request-time uploads retain their contiguous host source through synchronous
+H2D and do not issue an extra device-wide synchronization. Regression tests
+cover strided input conversion, source lifetime, recycled mutable state, and
+request isolation. The shared poison probe snapshots output arrays, collects
+after warmup, and rejects empty coverage or exhausted traversal limits. Allocator
+address reuse is a diagnostic; correctness does not require a specific malloc
+reuse policy. The CPU vision reference also keeps position embeddings and GELU
+activations in fp32; implicit float64 promotion is covered by dtype assertions
+and the unchanged torch-oracle tolerances.
 
 ### Implementation status (2026-09-11)
 

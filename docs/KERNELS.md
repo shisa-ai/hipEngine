@@ -1295,20 +1295,15 @@ runners:
   of allocation.** Any per-call buffer whose unread region is assumed to be
   zero is a latent full-suite failure. Poison it with `0xFF` in a test and
   require the result to be bit-identical. Re-zero it **where it is used, not
-  where it is allocated**: a `memset` in the buffer-cache or `__init__` helper
-  that allocates the block only covers the first call, and the block comes back
-  from the allocator holding whatever its previous owner wrote. Two runners had
-  exactly that shape and both passed every test until the poison probe ran:
-  TimesFM 2.5's V cache (the batched attention GEMMs sweep the not-yet-written
-  AR slots with a zero weight, and `0 * garbage` is 0 only while the garbage is
-  finite -- poisoning the V caches alone made 20480 of 40960 output values
-  non-finite) and TimesFM 3.0's `q_offset` (a constant-zero input that is never
-  uploaded per call; poisoning it moved the decode by 5.8e+02). The fix in both
-  is a per-call `memset` of the affected buffers, not a per-call
-  scale-by-zero. `tests/test_timesfm_gpu_decode.py`,
-  `tests/test_timesfm3_gpu_decode.py`, and
-  `tests/test_laguna_moe_gpu.py` pin their paths with
-  `tests/_poison_probe.py`.
+  where it is allocated** when the buffer is mutable request state. TimesFM
+  2.5's full-capacity attention can read masked V slots left nonfinite by an
+  earlier request; clearing the cache at use prevents `0 * NaN` contamination.
+  TimesFM 3.0's `q_offset` is instead an initialized, read-only zero constant:
+  poisoning it does not establish a read-before-write defect. Exclude initialized
+  constants and weights from scratch probes. `tests/_poison_probe.py` snapshots
+  reference output arrays, collects after warmup, rejects empty coverage, and
+  raises when traversal limits prevent complete collection. Callers must still
+  identify the expected mutable buffer families explicitly.
 - **Bind the source of an H2D copy to a local, because the pointer is a bare
   address.** ``copy_host_to_device`` takes an ``int``, so the array has to
   outlive the call on its own. ``copy_host_to_device(buf,
@@ -1329,10 +1324,11 @@ runners:
   ``copy_host_to_device`` returns leaves the destination untouched at 1, 16, 64,
   and 128 MiB on gfx1151, so an unpinned source does not have to outlive the
   call and a per-call ``device_synchronize()`` buys nothing for source lifetime.
-  The runner helpers that keep one are load-time or cache-miss paths where the
-  cost is irrelevant and a future async copy variant would otherwise be silently
-  unsafe; do not add one to a decode loop, where it stalls the whole device
-  queue. `tests/test_device_memory_hygiene.py`
+  Surya's upload helper uses that synchronous contract during loading, prefill,
+  and decode and does not add a device-wide synchronization. An async upload
+  must explicitly retain its source until stream completion; changing the copy
+  API to async requires updating its callers. Do not add a defensive device-wide
+  drain to a synchronous upload. `tests/test_device_memory_hygiene.py`
   enforces the always-allocating forms (`np.zeros*`, `np.ones*`, `np.full*`,
   `np.array`, `np.asarray`, `np.tile`, `.astype(...)`, `.copy()`, `.flatten()`)
   by AST scan over `hipengine/`, `tests/`, `scripts/`, and `benchmarks/`.

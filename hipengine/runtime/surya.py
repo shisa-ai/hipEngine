@@ -739,27 +739,15 @@ class SuryaGpuRunner:
     # -- low-level helpers --------------------------------------------------------
 
     def _upload(self, buf: DeviceBuffer, arr: np.ndarray, dtype=np.float32) -> None:
-        """H2D copy that keeps its host source alive for the whole call.
+        """Synchronous upload with an owned, contiguous source.
 
-        ``copy_host_to_device`` takes a bare integer address, so the array has
-        to outlive the call by itself.  ``copy(buf, host_array_ptr(np.zeros(..)))``
-        does not: CPython drops the temporary's last reference when
-        ``host_array_ptr`` returns, so the source is already freed and reusable
-        *before* the copy is entered -- the freed block is handed straight back
-        to the next allocation of that size, and the copy then reads whatever
-        that allocation wrote (observed as stale-heap garbage at the
-        destination).  Binding the source to a local is the fix.
-
-        The ``device_synchronize`` is not what makes this safe: overwriting the
-        source in place immediately after ``copy_host_to_device`` returns has no
-        effect on the destination at 1/16/64/128 MiB, so the transfer is
-        complete on return.  It is kept because this helper runs at load time,
-        where the cost is irrelevant and a future async variant of the copy
-        would otherwise be silently unsafe.
+        Used for weights and request-time inputs, including each decode token.
+        Retain the source through the copy; a bare pointer to an inline
+        temporary can already be dangling when the copy is entered. The
+        synchronous H2D API does not require a device-wide drain afterward.
         """
         src = np.ascontiguousarray(arr, dtype=dtype)
         copy_host_to_device(buf, host_array_ptr(src), src.nbytes)
-        self.runtime.device_synchronize()
 
     def _k(self, symbol: str, argtypes: list) -> ctypes._FuncPtr:
         fn = getattr(self.library, symbol, None)
