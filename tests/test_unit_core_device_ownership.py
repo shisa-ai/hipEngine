@@ -6,6 +6,8 @@ peer-access and copy behavior is covered by the guarded GPU tests.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from hipengine.core.device import Device, scoped_current_device
@@ -196,3 +198,70 @@ def test_device_arena_tags_owner_and_views() -> None:
 def test_device_buffer_rejects_non_hip_device() -> None:
     with pytest.raises(ValueError):
         DeviceBuffer(ptr=1, nbytes=8, device=Device("cuda", 0))
+
+
+# -- Packet 1 ownership audit fence -----------------------------------------
+
+
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def test_kernel_launch_surface_stays_visible_to_the_audit() -> None:
+    """Kernel launches carry no device argument, so the audit counts matter.
+
+    Every HIP kernel host wrapper takes an explicit stream and no device, which
+    means the thread's current device decides where the launch lands. This test
+    keeps the size of that surface visible so a rank-bound runner cannot quietly
+    grow new launch paths that no device binding covers.
+    """
+
+    root = _repository_root()
+    kernel_root = root / "hipengine" / "kernels"
+    launch_modules = set()
+    check_definitions = 0
+    check_calls = 0
+    for path in kernel_root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "getattr(library, symbol)" in text or "fn(*arguments)" in text:
+            launch_modules.add(path)
+        check_definitions += text.count("def _check_launch(")
+        check_calls += text.count("_check_launch(") - text.count("def _check_launch(")
+
+    # Recorded Packet 1 audit numbers. They may grow; they must not silently
+    # change, and the fence exists so Packet 3 sees the growth.
+    assert len(launch_modules) == 51, sorted(str(p.relative_to(root)) for p in launch_modules)
+    assert check_definitions == 31
+    assert check_calls == 452
+
+    # The wrappers themselves take a stream and no device, which is the reason
+    # the thread's current device is the only thing that decides placement.
+    source = (kernel_root / "hip_gfx1100" / "attention" / "laguna_kv_attention.hip").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "hipLaunchKernelGGL(" in source
+    assert "<<<" in source
+    wrapper = source.split("hipengine_laguna_global_head_rmsnorm_rope_write_kv_f32_bf16_spans(", 1)[1]
+    signature = wrapper.split(") {", 1)[0]
+    assert "hipStream_t stream" in signature
+    assert "hipDevice_t" not in signature
+    assert "int device" not in signature
+
+
+def test_distributed_package_binds_devices_through_one_mechanism() -> None:
+    """Rank binding must go through ``scoped_current_device`` and nothing else."""
+
+    root = _repository_root()
+    package = root / "hipengine" / "distributed"
+    binders = set()
+    for path in sorted(package.rglob("*.py")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "scoped_current_device(" in text:
+            binders.add(path.name)
+        for banned in ("hipSetDevice(", "set_device("):
+            assert banned not in text, f"{path.name} selects a device directly with {banned}"
+
+    # ``context.py`` binds a rank through ``RankRuntime.activate``; ``rccl.py``
+    # selects the rank's device around communicator calls. Both are the same
+    # primitive, which is the point: there is one mechanism, not three.
+    assert binders == {"context.py", "rccl.py"}
