@@ -1,0 +1,80 @@
+{
+ "date": "2026-09-13",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T02:05:07Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_vision_tiling_cost.py --pages page_a4.png --blocks 4096,8192 --reps 2 --out /tmp/a4_ceiling_pair.json",
+  "git_revision": "563dda057234ad154230670eed57fc9ae2e9aaa7",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": "one runner per shape; one discarded warm-up vision_forward; median of --reps wall-clock timings around vision_forward only (preprocessing and scratch allocation excluded)",
+ "boundary": "None disables the tile budget and runs one dense tile; a byte budget selects the largest query block whose vision_num_heads * n * block * 4 tile fits; --blocks names the block directly and solves the budget backwards so the shapes can be swept without the budget's rounding",
+ "shape_envelope": "byte-budget rows are the production plan (envelope and wavefront rounding respected); --blocks rows lift both so shapes the planner would not choose are still measured",
+ "note": "Grids that cannot run densely have no dense baseline: the dense score matrix is 56.5 GB at 34320 patches and 206 GB at 65536, which is why the tiling exists. These rows are the grids that run both ways.",
+ "reps": 2,
+ "passes": 1,
+ "pass_check": "no second pass: run with --passes 2 to detect a steady disturbance from a concurrent GPU job, which a row's own spread cannot see",
+ "results": [
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 6747586560,
+   "query_block": 4096,
+   "tiles": 9,
+   "tail_rows": 1552,
+   "even": false,
+   "scratch_bytes": 6747586560,
+   "scratch_mib": 6435.0,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 40076.23,
+   "min_ms": 40046.98,
+   "max_ms": 40105.49,
+   "samples_ms": [
+    40046.98,
+    40105.49
+   ],
+   "envelope_lifted": true,
+   "vs_best_shape": 1.0
+  },
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 13495173120,
+   "query_block": 8192,
+   "tiles": 5,
+   "tail_rows": 1552,
+   "even": false,
+   "scratch_bytes": 13495173120,
+   "scratch_mib": 12870.0,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 40448.65,
+   "min_ms": 40424.58,
+   "max_ms": 40472.72,
+   "samples_ms": [
+    40424.58,
+    40472.72
+   ],
+   "envelope_lifted": true,
+   "vs_best_shape": 0.991
+  }
+ ]
+}
