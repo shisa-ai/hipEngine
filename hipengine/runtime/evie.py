@@ -347,12 +347,14 @@ class EvieRunner:
         one call never alias.  The cache key is the whole content, so a hit is
         already correct and does not need a second upload.
 
-        The upload keeps its host source alive across the transfer and
-        synchronizes before releasing it: on this stack the DMA of an unpinned
-        source reads the host buffer *after* ``hipMemcpy`` returns, so a source
-        that goes out of scope with the call can be recycled first and the
-        device array ends up holding stale heap bytes
-        (``docs/KERNELS.md`` "Device-memory hygiene").
+        The upload binds its host source to a local because
+        ``copy_host_to_device`` takes a bare address: an inline temporary is
+        freed when ``host_array_ptr`` returns, before the copy is entered
+        (``docs/KERNELS.md`` "Device-memory hygiene").  The
+        ``device_synchronize`` is defensive only -- the transfer is complete
+        when the copy returns, and this path runs once per distinct pointer
+        list -- but it keeps a future async copy variant from silently reading
+        a recycled block.
         """
 
         if not hasattr(self, "_ptr_array_bufs"):

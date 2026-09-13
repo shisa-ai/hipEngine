@@ -24766,8 +24766,8 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
             self._verify_linear_state_layer_count = n_entries
             self._buffers = (*self._buffers, *new_buffers)
-            # The host source must outlive the unpinned H2D copy: an inline
-            # temporary can be freed before the DMA reads it.
+            # The host source must outlive the copy: copy_host_to_device takes
+            # a bare address, so an inline temporary is freed before it is read.
             commit_row_zero = np.asarray([0], dtype=np.int32)
             copy_host_to_device(
                 self._verify_linear_state_commit_row_i32_buf,
