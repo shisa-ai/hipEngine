@@ -4723,6 +4723,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if not callable(preparer):
             return effective_max_context_tokens(engine)
         prepare_started = time.perf_counter()
+        prepare_memory_start = _device_memory_snapshot()
+        model_size = None
+        try:
+            model_size = Path(config.model).stat().st_size
+        except OSError:
+            pass
         prepare_task: asyncio.Task | None = None
         previous_sigint = None
         try:
@@ -4749,19 +4755,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     await asyncio.wait_for(asyncio.shield(prepare_task), timeout=10.0)
                 except asyncio.TimeoutError:
                     live_memory = _device_memory_snapshot()
-                    memory_suffix = (
-                        ""
-                        if live_memory is None
-                        else (
-                            f" gpu_used={_format_bytes(int(live_memory['used_bytes']))}"
-                            f"/{_format_bytes(int(live_memory['total_bytes']))}"
-                        )
-                    )
-                    _LOGGER.info(
-                        "MODEL_LOAD: still preparing phase=%s elapsed=%.1fs%s",
-                        phase,
-                        time.perf_counter() - prepare_started,
-                        memory_suffix,
+                    _show_model_load_progress(
+                        config.model,
+                        model_size=model_size,
+                        start_memory=prepare_memory_start,
+                        live_memory=live_memory,
+                        interactive=sys.stderr.isatty() and "NO_COLOR" not in os.environ,
                     )
             prepared_result = await prepare_task
         except asyncio.CancelledError:
@@ -4792,6 +4791,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         finally:
             if previous_sigint is not None:
                 signal.signal(signal.SIGINT, previous_sigint)
+            if prepare_memory_start is not None and sys.stderr.isatty():
+                print(file=sys.stderr)
         if prepared_result is not None:
             app.state.hipengine_effective_max_context_tokens = max(1, int(prepared_result))
         else:
@@ -10957,6 +10958,43 @@ def _log_pretty_startup_summary(
         "  Ready for requests",
         reset,
     )
+
+
+def _show_model_load_progress(
+    model: str,
+    *,
+    model_size: int | None,
+    start_memory: Mapping[str, Any] | None,
+    live_memory: Mapping[str, Any] | None,
+    interactive: bool,
+) -> None:
+    """Show an approximate VRAM-backed model-load progress indicator."""
+
+    if live_memory is None:
+        _LOGGER.info("MODEL_LOAD: preparing model=%s (GPU usage unavailable)", model)
+        return
+    used = int(live_memory.get("used_bytes", 0) or 0)
+    start_used = 0 if start_memory is None else int(start_memory.get("used_bytes", 0) or 0)
+    delta = max(0, used - start_used)
+    total = int(live_memory.get("total_bytes", 0) or 0)
+    if model_size and model_size > 0:
+        ratio = min(1.0, delta / model_size)
+        filled = int(ratio * 28)
+        bar = "#" * filled + "-" * (28 - filled)
+        text = (
+            f"MODEL_LOAD: [{bar}] {ratio * 100:5.1f}% "
+            f"approx {_format_bytes(delta)}/{_format_bytes(model_size)} "
+            f"VRAM {_format_bytes(used)}/{_format_bytes(total)}"
+        )
+    else:
+        text = (
+            f"MODEL_LOAD: preparing model={model} "
+            f"VRAM {_format_bytes(used)}/{_format_bytes(total)}"
+        )
+    if interactive:
+        print(f"\r{text}", end="", file=sys.stderr, flush=True)
+    else:
+        _LOGGER.info("%s", text)
 
 
 def _startup_free_memory_guard(
