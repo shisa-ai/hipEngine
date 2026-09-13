@@ -15,6 +15,7 @@ compact result. No item is closed by source review alone.
 | J2 prefill/decode/PLE/routing census | Pending | Cached-only owner capture, interval-safe gaps, actual profile/source identity |
 | J3 PLE sorted/deduplicated mmap | Screen in progress | Initial sorted-unique wins canonical rows but loses all-unique controls; test copy elision separately |
 | J3 bounded pread / persistent workers / staging | Pending | Separate independent arms and lifetime gates |
+| J3 mapping-only random advice | Adopted | Exact72-sample cold/warm matrices, neutral five-pair warm replication; cold PP3.095/2.198/1.287x |
 | J4 GDN ISA / DPP / multi-column | Pending | Prefix/suffix engagement and numerical gates; no blind all-layer widening |
 | J5 chunks / mixed-quant matrix owners / routing | Pending | Allocation probes, real expert populations, complete-owner comparisons |
 | J6 HC/BF16/conv/gather fusions | Pending | Last-reader census and operation-complete gates |

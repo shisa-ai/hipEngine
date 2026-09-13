@@ -72,3 +72,24 @@ def test_missing_mapping_capability_is_a_safe_fallback():
     )
     assert table.configure_mapping_access("random") is False
     np.testing.assert_array_equal(table.gather_rows([0]), np.full((1, 160), -127., np.float32))
+
+
+def test_production_binder_selects_random_with_strict_and_explicit_rollback(monkeypatch):
+    from hipengine.generation.qwen4_exp_profiles import _bind
+    import os
+
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", raising=False)
+    calls = []
+    table = SimpleNamespace(configure_mapping_access=lambda mode: calls.append(mode))
+    generator = SimpleNamespace(_resident=SimpleNamespace(ple_table=table))
+    profile = SimpleNamespace(manifest_sha256="test", manifest={"quant": "gguf_ud_q4_k_xl"})
+    _bind(generator, profile, production=True)
+    _bind(generator, profile, production=False)
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
+    _bind(generator, profile, production=True)
+    assert calls == ["random", "normal", "normal"]
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS")
+    profile.manifest["quant"] = "gguf_q4_k_m"
+    _bind(generator, profile, production=True)
+    assert calls[-1] == "normal"

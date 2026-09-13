@@ -474,6 +474,17 @@ def _bind_default_chunk(generator: Any, *, production: bool) -> None:
 
 def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
     _bind_default_chunk(generator,production=production)
+    table = getattr(getattr(generator, "_resident", None), "ple_table", None)
+    if table is not None:
+        # Sparse PLE mmap reads must not trigger sequential readahead. The
+        # mapping owns the hint across remaps; explicit full-table warming
+        # temporarily restores sequential access.
+        qualified = production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+        mode = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS",
+            "random" if qualified else "normal",
+        )
+        table.configure_mapping_access(mode)
     os.environ[PRODUCTION_MOE_PREFILL_ENV] = "1" if production else "0"
     # Freeze neighboring experiments and select only the complete certified
     # WMMA-MoE27 prefill + Q8-MMQ dense + DP4A-decode + peer-GDN composition.

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-13 UTC**
+Last updated: **2026-09-14 JST (2026-09-13 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -609,6 +609,16 @@ p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
 also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
+
+Mapping-only random advice for sparse PLE reads is now the gfx1151 production
+default. In the matched file-scoped cold-cache protocol, all-category
+512/1K/4K prefill improves **84.161/134.330/225.864 ->
+260.484/295.260/290.598 tok/s**; decode improves
+**13.388/13.053/13.544 -> 19.560/18.659/18.643 tok/s**.
+Warm throughput is approximately neutral. Both72-sample matrices preserve
+generated IDs, final logits/state and zero teardown; this is not a new
+strict-teacher numerical certificate.
+[Cold/warm evidence and commands](results/2026-09-14-journey-ple/README.md).
 
 September 14 JST numerical refresh: the current production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
