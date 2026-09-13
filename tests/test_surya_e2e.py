@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +41,22 @@ def model_dir() -> Path:
 @pytest.fixture(scope="module")
 def tokenizer(model_dir: Path) -> SuryaTokenizer:
     return SuryaTokenizer(model_dir)
+
+
+@pytest.fixture(scope="module")
+def registered_generators() -> None:
+    """Populate the generation registry this file's end-to-end test resolves.
+
+    ``(surya_ocr2, cpu_reference, fp32, greedy_one_token)`` is registered as an
+    import-time side effect of ``hipengine.generation.surya``, so a test must not
+    depend on another test module having imported it. ``run_surya_ocr`` also
+    registers the builtins itself; this fixture keeps the dependency explicit at
+    the call site as well.
+    """
+
+    from hipengine.generation import register_builtin_generators
+
+    register_builtin_generators()
 
 
 def _oracle(name: str) -> dict[str, np.ndarray]:
@@ -117,7 +135,9 @@ def test_mrope_positions_match_oracle() -> None:
     assert list(pos[0, span[-1] + 1 : span[-1] + 4]) == [15, 16, 17]
 
 
-def test_end_to_end_greedy_matches_torch_reference(model_dir: Path) -> None:
+def test_end_to_end_greedy_matches_torch_reference(
+    model_dir: Path, registered_generators: None
+) -> None:
     ref_path = FIXTURES / "oracle_greedy.json"
     if not ref_path.exists():
         pytest.skip("oracle_greedy.json not present; capture with transformers")
@@ -133,6 +153,44 @@ def test_end_to_end_greedy_matches_torch_reference(model_dir: Path) -> None:
         "torch-free greedy decode diverged from the torch fp32 reference"
     )
     assert res.text == ref["text"]
+
+
+def test_run_surya_ocr_registers_its_generator_from_a_fresh_process() -> None:
+    """The public entry point must not need another module's import.
+
+    ``run_surya_ocr`` resolves ``(surya_ocr2, cpu_reference, fp32,
+    greedy_one_token)`` from the four-axis generation registry, whose entry is
+    an import-time side effect of ``hipengine.generation.surya``. A fresh
+    process that imported only ``hipengine.loading.surya`` used to raise
+    ``MissingGeneratorError``, and the full suite hid that because another test
+    module imported the registration module during collection.
+
+    Run the isolated case in a subprocess, where no other test has run, and
+    require the key to be registered after the call. The call itself then fails
+    on the bogus model path, which is fine: registration happens before
+    resolution.
+    """
+
+    script = (
+        "from pathlib import Path\n"
+        "from hipengine.generation.registry import registered_text_generators\n"
+        "from hipengine.loading.surya import run_surya_ocr\n"
+        "try:\n"
+        "    run_surya_ocr(Path('/nonexistent-surya-model'), 'page.png', max_new_tokens=1)\n"
+        "except Exception:\n"
+        "    pass\n"
+        "print(sorted(\n"
+        "    (k.model, k.backend, k.quant, k.mode) for k in registered_text_generators()\n"
+        "))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "'surya_ocr2', 'cpu_reference', 'fp32', 'greedy_one_token'" in proc.stdout, (
+        "run_surya_ocr did not register its generator in a fresh process: "
+        f"registry was {proc.stdout.strip() or '<empty>'}"
+    )
 
 
 def test_rect_case_preprocess_matches_oracle(tokenizer: SuryaTokenizer) -> None:

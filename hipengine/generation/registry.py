@@ -1075,6 +1075,19 @@ def registered_text_generators() -> tuple[GenerationKey, ...]:
 
 
 def clear_generation_registry_for_tests() -> None:
+    """Empty the generation registry.
+
+    Warning: most built-in registrations are import-time side effects of their
+    module, so clearing this registry in a long-lived process cannot be undone by
+    calling :func:`hipengine.generation.register_builtin_generators` again -- the
+    modules are already in ``sys.modules`` and will not re-execute, and the
+    builtins flag stays set, so the registry would stay empty and every later
+    resolution would raise :class:`MissingGeneratorError`. A test that clears it
+    must re-register explicitly with ``register_text_generator``, or the suite
+    must snapshot and restore ``_FACTORIES`` the way ``tests/conftest.py`` does
+    for the kernel registry. Nothing in the tree calls this today.
+    """
+
     _FACTORIES.clear()
 
 

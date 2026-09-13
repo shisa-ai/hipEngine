@@ -7504,3 +7504,20 @@ edges of that boundary are unowned.
   generator boundary when the Surya generators are wired into a server, and
   decide the free-memory check separately — that one is genuinely a
   server-state fault rather than a bad request.
+
+## 2026-09-13 Generation-registry clears cannot be replayed — open
+
+`clear_generation_registry_for_tests()` empties `_FACTORIES`, and nothing can
+repopulate it afterwards: the built-in registrations are module-scope
+`register_text_generator(...)` calls, so once those modules are in `sys.modules`
+a later `register_builtin_generators()` does not re-execute them, and
+`_BUILTINS_REGISTERED` stays `True` so it does not even try. A test that called
+the clear would empty the registry for the rest of the process. Nothing calls it
+today and its docstring now says this.
+
+Give each generation module a callable `register_*()` and call it from
+`register_builtin_generators()` — the pattern the runtime-profile registries in
+that same function already use. The clear then becomes safe, and the generation
+registry can join the collection-time baseline restore in `tests/conftest.py`
+that already makes the kernel registry order-independent under
+`clear_registry_for_tests()`.
