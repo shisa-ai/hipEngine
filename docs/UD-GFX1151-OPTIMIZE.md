@@ -721,13 +721,37 @@ Likely investigation order:
   col8 sweep could not. Two tilings and two instruction-level changes failed on
   this shape before the wave-shape change; a further attempt on the residual
   gap needs hardware counters.
-- [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
+- [x] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
   25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
   verification-specific drift: the rows 2-4 t16 rowtile owners are not
   bit-identical to the rows 1 t16 decode owners, so the AR route and the
   verifier still disagree on those tensors after the IQ family is aligned.
   Split-K, which is the measured next lever for the Q5_K rowtile, changes this
   order again and therefore owes the full production profile gate.
+  **Closed 2026-09-13: the drift is real, and it is already measured inside a
+  passing production-profile gate that compares precisely these two routes.**
+  `benchmarks/results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json`
+  names its teacher as the "production single-row AR route (session.step,
+  return_logits)" — the rows 1 t16 decode owners — and its candidate as the
+  "production native target block (device accept/commit, bulk_attention_mode
+  native, remaining_decode budget)" — the multi-row verifier path, which is
+  where the rows 2-4 t16 rowtile owners run. So the measurement is exactly the
+  AR-versus-verifier comparison this item describes, over all four arms
+  (`ud_q4_k_m_short`, `ud_q4_k_s_short`, `ud_q4_k_m_512`, `ud_q4_k_s_512`), both
+  UD records at prompt points 64 and 512, and all four categories. Verdict:
+  `all_arms_passed: true`, worst KL mean **4.23e-05** against the 1e-03 envelope
+  (**23.6x margin**), worst KL max 4.34e-04 against 5e-02, `min_top1_agreement`
+  **1.0**, `all_deterministic: true`.
+  That is the correct resolution rather than bit-identity. The two orders differ
+  by reassociation, and `docs/EXECUTION-PROFILES.md` makes free-running
+  generated-ID equality recorded-but-not-the-denominator while section 4.1 lists
+  "logits and generated IDs at near ties" as permitted production drift. The
+  binding requirement is the numerical envelope, and it is met with more than an
+  order of magnitude of headroom, so making the rowtile owners bit-identical to
+  the decode owners is not required and would cost the rowtile's rows>1
+  throughput. The split-K caveat is subsumed rather than dropped: any split-K
+  change to the Q5_K rowtile alters this order again and therefore owes the same
+  full production profile gate, which is the gate above.
 
 Two further scoped candidates were measured and rejected on 2026-09-12 and are
 recorded so they are not retried:
