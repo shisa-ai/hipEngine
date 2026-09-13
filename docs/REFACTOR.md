@@ -507,6 +507,38 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-13 Surya decode split chunk keyed to `max_seq` — open
+
+- `plan_surya_decode_splits` derives the decode split chunk from the runner's
+  `max_seq` (`chunk = round_up(ceil(max_seq / 64), 32)`, `num_splits =
+  ceil(max_seq / chunk)`) and `SuryaGpuRunner._alloc_span_state` builds one
+  immutable `KVLiveSpans` view per runner, so a runner configured for a long
+  context runs short requests with fewer, longer producer blocks. At a *fixed*
+  live context that costs decode time, measured on gfx1151: 1024 live tokens
+  decode in 18.31 / 18.36 / 18.88 / 18.96 / 19.55 ms per token at `max_seq`
+  8192 / 12288 / 16384 / 20480 / 32768 (chunk 128 / 192 / 256 / 320 / 512), and
+  8580 live tokens in 19.07 / 19.22 / 19.38 / 20.00 ms from 12288 up — 3% from
+  8192 to 16384 and 4% more to 32768, against a per-row spread of 1.1-2.4%
+  (`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json`).
+- Fix: derive the chunk from the live count instead of `max_seq`.
+  `surya_full_attn_decode_f32_spans` already resolves the plan inside the
+  wrapper from `spans.max_live_count` and already accepts a `chunk_size`
+  override, so the change is a host-only
+  `plan_surya_decode_splits(live_count)` call in `_attention_decode_spans` — no
+  kernel change. The one allocation that must move with it is the split-K
+  partial triple, sized today from the construction plan's `num_splits`: a
+  live-derived plan can exceed it (at `max_seq` 5000 the construction plan is 53
+  splits while a 4096-token request derives 64), so size those buffers for
+  `SURYA_TARGET_SPLITS` — 512 KiB for the output partials at Surya's 8 q heads
+  and head_dim 256.
+- This changes decode arithmetic (different split boundaries reassociate the
+  online-softmax partials), so promotion needs the production-profile numerical
+  gate plus the registered rocBLAS strict fallback. Note the default path's
+  decode arithmetic already depends on the configured `max_seq` for the same
+  reason, so this does not introduce a new variability class — it removes one.
+- Removal trigger: when the live-derived plan lands and the decode rows above
+  converge across `max_seq`, delete the `max_seq`-derived chunk and this entry.
+
 ## 2026-09-08 Native C1 Context Admission
 
 - Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround
