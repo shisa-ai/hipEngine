@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 JST (2026-09-13 UTC)**: Correct the September 13 dense-prefill
+  evidence: target-specific register ceilings, unread-logit flags, fail-closed
+  Q6 gates, col16 geometry/provenance and logical-byte limitations. Original
+  samples and published throughput are unchanged. The older col16 entry's
+  doubled-decode-time explanation, ordering-bias bound and end-to-end
+  impossibility claim are withdrawn; see the corrected
+  [col16 artifact](results/2026-09-13-q4-dual-prefill-col16-arm-ab-rejected/README.md)
+  and [tile screen](results/2026-09-13-q4-dual-prefill-tile-knob-screen/README.md).
+
 - **2026-09-13 UTC**: Post-overlap Framework Flash-Next `UD-Q4_K_XL`/BF16 refresh: hipEngine p512/p1024/p4096 PP **297.114/316.907/294.071**, TG **20.396/19.711/19.166**; current halo-box HEAD Vulkan **423.376/475.121/506.261** PP and **27.477/27.104/25.721** TG; launch-blocked HIP short PP **427.063/571.258**, TG **15.441/15.347**, 4K not recertified. Three repetitions with repeatable IDs. Fresh HE B2 request throughput AR **14.949 -> MTP 11.197 (-25.10%)**, every category slower. Earlier overlapped/provisional rows are not an old->new optimization denominator (delta n/a). [`Evidence`](results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json).
 
 - **2026-09-13 UTC**: Framework Flash-Next `UD-Q4_K_XL`/BF16 journey baseline and current halo-box HIP/Vulkan comparison: fresh Vulkan B2/d16 complete-request throughput AR **16.031 -> MTP 16.894 tok/s (+5.38%)**, but Japanese **0.976x** fails category non-regression; 30/30 own-AR exact and repeatable. Fresh HIP AR completes, then MTP faults in `k_get_rows_float`. No default change or old-source optimization delta; pre-interruption timing screens are provisional after reported process overlap. Source: [`journey baselines`](results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json).

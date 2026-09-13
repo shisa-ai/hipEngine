@@ -110,6 +110,18 @@ def _parse_lengths(values: Sequence[str]) -> tuple[int, ...]:
 # child: run the workload, optionally inside one ROCTx region per measured pass
 # --------------------------------------------------------------------------- #
 
+def validate_profile_logits(session, token_id: int) -> bool:
+    """Read the already-computed logits after timing, without another forward."""
+    import numpy as np
+
+    sample = session._read_sample(return_logits=True)
+    logits = np.asarray(sample.logits)
+    if not logits.size or not np.isfinite(logits).all():
+        raise FloatingPointError("profile requires nonempty finite logits")
+    if int(sample.token_id) != int(token_id):
+        raise ValueError("profile sample identity changed before logits validation")
+    return True
+
 
 def _child_run(args: argparse.Namespace) -> dict[str, Any]:
     from scripts.qwen35_gguf_bench import _RoctxProfilerControl, _reset_existing_session
@@ -144,13 +156,15 @@ def _child_run(args: argparse.Namespace) -> dict[str, Any]:
                     tokens, use_bulk=True, bulk_attention_mode="bulk",
                     return_logits=False, record_gpu_stage_timings=True)
             measured_seconds = time.perf_counter() - started
+            logits_finite = validate_profile_logits(session, int(result.token_id))
             row = {
                 "prompt_length": length,
                 "warmup_prefill_seconds": warmup_seconds,
                 "measured_prefill_seconds": measured_seconds,
                 "measured_prefill_tok_s": length / measured_seconds if measured_seconds else None,
                 "first_token_id": int(result.token_id),
-                "logits_finite": bool(result.logits is not None and result.logits.all()),
+                "logits_finite": logits_finite,
+                "logits_checked_after_timing": True,
                 "gpu_stage_timings_ms": dict(session.last_prefill_gpu_stage_timings_ms),
             }
             results.append(row)

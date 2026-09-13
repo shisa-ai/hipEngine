@@ -292,21 +292,93 @@
   }
  },
  "mechanism": {
-  "kind": "measured_and_analytic",
-  "finding": "The 16-column block halves per-block compute but not per-block decode time. The decode needs threads/4 >= 2 matrices x (columns/2) pairs, exactly saturated at 32 columns with 128 threads; at 16 columns only 64 of 128 threads decode, each doing the same 32 k-values per sub-block, so a block's decode takes as long as the parent's while its WMMA work halves. Blocks double for the same output, so total decode time doubles and total WMMA time is unchanged.",
-  "prediction": "With the decode at about 40% of the parent's issue stream (source-level instruction count in the tile-knob screen), doubling it predicts about 1.4x the parent's time. Measured: 1.40-1.65x at the 512/1024/4096-row shapes.",
-  "corrects": "The tile-knob screen's first-ranked candidate assumed that halving columns halves the per-block decode for the same compute. It does not, which is why the screen's own sibling measurement (16 columns 1.7x slower) was right and its instruction-stream ranking was wrong."
+  "kind": "unverified_hypothesis",
+  "finding": "At 16 columns only 64 of 128 threads participate in weight decode. This does not determine block duration or total issue cost. At 512+ rows col16_row256 doubles block count, but col16_row512 has the same block count and output elements per full block as the parent. The cause of the measured slowdown is not isolated.",
+  "prediction": "Withdrawn: source-level operation counts are not measured issue time and cannot predict a 1.4x slowdown.",
+  "corrects": "The tile-knob screen's first-ranked candidate assumed that halving columns improves runtime. Neither the original ranking nor the later doubled-decode-time explanation is established by the available measurements."
+ },
+ "launch_geometry": {
+  "256": {
+   "parent": {
+    "blocks": 544,
+    "outputs_per_full_block": 8192
+   },
+   "col16_row256": {
+    "blocks": 1088,
+    "outputs_per_full_block": 4096
+   },
+   "col16_row512": {
+    "blocks": 1088,
+    "outputs_per_full_block": 8192
+   }
+  },
+  "512": {
+   "parent": {
+    "blocks": 1088,
+    "outputs_per_full_block": 8192
+   },
+   "col16_row256": {
+    "blocks": 2176,
+    "outputs_per_full_block": 4096
+   },
+   "col16_row512": {
+    "blocks": 1088,
+    "outputs_per_full_block": 8192
+   }
+  },
+  "1024": {
+   "parent": {
+    "blocks": 2176,
+    "outputs_per_full_block": 8192
+   },
+   "col16_row256": {
+    "blocks": 4352,
+    "outputs_per_full_block": 4096
+   },
+   "col16_row512": {
+    "blocks": 2176,
+    "outputs_per_full_block": 8192
+   }
+  },
+  "2048": {
+   "parent": {
+    "blocks": 4352,
+    "outputs_per_full_block": 8192
+   },
+   "col16_row256": {
+    "blocks": 8704,
+    "outputs_per_full_block": 4096
+   },
+   "col16_row512": {
+    "blocks": 4352,
+    "outputs_per_full_block": 8192
+   }
+  },
+  "4096": {
+   "parent": {
+    "blocks": 8704,
+    "outputs_per_full_block": 8192
+   },
+   "col16_row256": {
+    "blocks": 17408,
+    "outputs_per_full_block": 4096
+   },
+   "col16_row512": {
+    "blocks": 8704,
+    "outputs_per_full_block": 8192
+   }
+  }
  },
  "decision": {
   "verdict": "rejected_and_removed",
-  "rule": "retain only if exact and non-regressive at every prefill shape",
+  "rule": "retain only if production-correct and non-regressive in the declared scope",
   "result": "bit-exact at every cell, regressive by 29-59% at every shape and both arms, so both arms, their exports, wrappers, registry entries, tests, and the out_tiles_per_block template parameter they were built on were removed in the same unit",
-  "end_to_end_note": "No resident-session 512/128, 1K/128, 4K/128 run was spent on the candidate. The owner carries 33-36% of prefill kernel time (companion kernel profile) and the control column here reproduces the in-situ profiled owner within 0.1%, so a 1.40-1.65x slower owner adds roughly 13-23% prefill wall by arithmetic; no end-to-end result could be non-regressive. The candidate also has no dispatch path, so an end-to-end arm would have required a new temporary selector for a losing kernel.",
+  "end_to_end_note": "No resident-session 512/128, 1K/128, 4K/128 run was spent on the candidate. The owner carries 33-36% of prefill kernel time (companion kernel profile) and the control column here reproduces the prior microbenchmark within 0.1%. Under unchanged owner share, no overlap changes and transferable microbenchmark ratios, a 1.40-1.65x slower owner projects roughly 13-23% extra wall. This is conditional, not proof of an end-to-end loss. The candidate also has no dispatch path, so an end-to-end arm would have required a new temporary selector for a losing kernel.",
   "next_directions": [
    {
     "id": "decode_lane_remap",
-    "why": "the decode is the only part rows per block amortize and about 40% of the issue stream",
-    "prerequisite": "none beyond the exact-decode gate; unchanged geometry keeps the resources fixed"
+    "why": "investigate actual decode loads, reuse and instruction stalls",
+    "prerequisite": "ISA/resource audit and production numerical gate; unchanged geometry does not guarantee unchanged resources"
    },
    {
     "id": "wider_column_tile_48",
@@ -316,20 +388,26 @@
    {
     "id": "rows_512_at_32_columns",
     "why": "doubles the rows the saturated decode is amortized over, at the measured-good column width",
-    "prerequisite": "the epilogue union becomes 64 KiB of LDS (1 workgroup per CU), or the 256-thread register-local-SiLU epilogue rewrite"
+    "prerequisite": "the epilogue union becomes 64 KiB of LDS; measure mode-specific residency, or test a register-local-SiLU epilogue"
    }
   ]
  },
  "provenance": {
   "rejected_commit": "4620b9cf5712f99c1e03dee9cbf92ab26e8e8cc8",
-  "revert_target": "88e0e6b3840e6f4a6e404b38446388870e463ce4",
+  "revert_target": "88e0e6b38",
   "revert_note": "the four reverted paths are byte-identical to this commit; the removal itself lands as a later commit",
   "git_head_at_measurement": "4620b9cf5712f99c1e03dee9cbf92ab26e8e8cc8",
-  "harness_run_dir": "/home/lhl/hipEngine/benchmarks/results/2026-09-13-q4-dual-prefill-col16-arm-ab-rejected"
+  "model_hash_source": "recorded_measurement",
+  "harness_run_dir": "benchmarks/results/2026-09-13-q4-dual-prefill-col16-arm-ab-rejected",
+  "input_sha256": {
+   "run1.json": "09ccb936a6e80fb30c5517f344b1563167ae838e5a45848e7f7d040fdbb1ade0",
+   "run2.json": "60209f6be40a2fb5d29021bdc5f07be93fe10548718933c0b31c7885380bb0e5",
+   "run3.json": "99cb044e8537b5e3d0e25e2aa27c603ba437a6c821ab3d0dfbbe330ad213e2fb"
+  }
  },
  "limitations": [
   "Single host, single model, single quant, one session per invocation.",
-  "Arm order inside an invocation is fixed, so a position or thermal effect is not counterbalanced; the 3-invocation spread bounds it at 3.9% against a 29-59% effect.",
-  "Prefill owner only: no resident-session wall, no decode column, and no multi-prompt category suite was run, because the candidate has no dispatch path and the owner-level result is decisive by arithmetic."
+  "Arm order inside an invocation is fixed, so a position or thermal effect is not counterbalanced. The 3-invocation spread measures repeatability, not a bound on systematic ordering bias.",
+  "Prefill owner only: no resident-session wall, no decode column, and no multi-prompt category suite was run, because the candidate has no dispatch path and the owner-level loss did not warrant further validation."
  ]
 }

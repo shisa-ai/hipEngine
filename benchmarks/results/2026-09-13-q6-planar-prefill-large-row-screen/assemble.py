@@ -65,6 +65,13 @@ def load(name: str) -> dict:
 
 def gate_summary(data: dict) -> dict:
     gate = data["graph_eager_gate"]
+    if len(gate) != 18 or len({e["prompt_id"] for e in gate}) != 18:
+        raise ValueError("gate must contain 18 distinct recorded prompts")
+    for entry in gate:
+        if any(entry[key] is not True for key in (
+            "passed", "ids_exact", "state_exact", "final_logits_exact",
+        )):
+            raise ValueError("graph/eager gate failed")
     by_category: dict[str, dict[str, int]] = {}
     for entry in gate:
         bucket = by_category.setdefault(entry["category"], {"prompts": 0, "passed": 0})
@@ -197,15 +204,34 @@ def memory_arm(name: str) -> dict:
     return out
 
 
-def main() -> None:
+def validate_screen(screen: dict) -> None:
+    if not screen["cases"] or not screen["geometries"]:
+        raise ValueError("empty screen")
+    for case in screen["cases"]:
+        if not case["rows"]:
+            raise ValueError("empty screen rows")
+        for row in case["rows"]:
+            for owner in screen["geometries"]:
+                if owner == "plain":
+                    continue
+                if (row[f"{owner}_bit_equal"] is not True
+                        or row[f"{owner}_max_abs"] != 0.0):
+                    raise ValueError(f"screen parity failed: {case['role']} {row['rows']} {owner}")
+
+
+def build() -> dict:
     bands = load("screen-bands.json")
     ffn_only = load("screen-ffn-down.json")
+    validate_screen(bands)
+    validate_screen(ffn_only)
     baseline = arm("prefill-baseline-b984176-16decode.json")
     after16 = arm("prefill-after-fca92ac-16decode.json")
     after128 = arm("prefill-after-fca92ac-128decode.json")
     clean_tree = arm("prefill-after-a14f9de01-cleantree-128decode.json")
     live_mem = memory_arm("memory-ab-live.json")
     export_mem = memory_arm("memory-ab-export.json")
+    if after128["graph_eager_gate"]["state_sha256"] != baseline["graph_eager_gate"]["state_sha256"]:
+        raise ValueError("gate state hashes differ from baseline")
     retiled_arms = (after128, live_mem, clean_tree)
     reproduction = {
         "kind": "three_retiled_arms_one_command",
@@ -508,7 +534,11 @@ def main() -> None:
         ),
     }
 
-    (HERE / "artifact.json").write_text(json.dumps(artifact, indent=1) + "\n")
+    return artifact
+
+
+def main() -> None:
+    (HERE / "artifact.json").write_text(json.dumps(build(), indent=1) + "\n")
     print(f"wrote {HERE / 'artifact.json'}")
 
 

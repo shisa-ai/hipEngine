@@ -27,38 +27,35 @@ faster.
 | 4,096 | 52.146 ms | 85.978 ms | **0.607** | 78.163 ms | **0.667** |
 
 - Worst per-cell spread across the three invocations: **3.9%** against a 29-59%
-  effect, so the loss is outside the noise floor.
+  throughput effect. This measures repeatability, not systematic ordering bias.
 - Output is **bit-identical to the control in all 30 cells** (3 invocations x 5
   shapes x 2 arms); `assemble.py` fails closed if any cell is not.
 - The control column reproduces the in-situ profiled owner within **0.1%**
   (6.622 ms here against 6.629 ms in the tile-knob screen at 512 rows) and the
   prior screen's own profiled check (6.637 ms), which is what makes this a
-  same-host comparison.
+  consistency check. Physical host identity establishes the same-host comparison.
 
 ## Why the arms lose
 
-The weight decode needs `threads/4 >= 2 matrices x (columns/2)` decode pairs,
-which is exactly saturated at 32 columns with 128 threads. At 16 columns only 64
-of the 128 threads decode, each doing the same 32 k-values per sub-block, so a
-block's decode takes as long as the parent's while its WMMA work halves. Blocks
-double for the same output, so total decode time doubles and total WMMA time is
-unchanged. With the decode at roughly 40% of the parent's issue stream
-(source-level count in the tile-knob screen), that predicts about 1.4x the
-parent's time; the measurement gives 1.40-1.65x.
+The mechanism is not isolated. At 16 columns only 64 of 128 threads participate
+in weight decode, but that observation does not determine block latency or
+total issue cost. At 512+ token rows, col16_row256 doubles block count while
+col16_row512 keeps the parent's block count and output elements per full block.
+At 512 tokens both parent and col16_row512 launch 1088 blocks.
 
-The tile-knob screen's first-ranked candidate assumed halving columns halves the
-per-block decode for the same compute. It does not, which is why that screen's
-own sibling measurement (16 columns 1.7x slower) was right and its
-instruction-stream ranking was wrong.
+The original instruction-count ranking and the later universal
+"doubled decode time" explanation are withdrawn. The measured losses still
+justify rejecting these two variants; they do not settle every geometry.
 
 ## No resident-session arm was spent
 
 The candidate has no dispatch path, so an end-to-end 512/128, 1K/128, 4K/128 arm
 would have required a new temporary selector for a kernel that this owner-level
 measurement already shows is 1.40-1.65x slower. With the owner at 33-36% of
-prefill kernel time, that is roughly 13-23% of prefill wall by arithmetic, so no
-end-to-end result could have been non-regressive. This is recorded as an
-inference from the measured owner share, not as a measurement.
+prefill kernel time, an unchanged owner share, unchanged overlaps and
+transferable microbenchmark ratios would project roughly 13-23% extra wall.
+These assumptions were not tested. Skipping further work on losing candidates
+was reasonable, but no end-to-end result was proved.
 
 ## Files
 
@@ -91,6 +88,6 @@ from commit `4620b9cf5`, which this unit reverts.
 
 Single host, single model, one quant, one session per invocation. Arm order
 inside an invocation is fixed, so a position or thermal effect is not
-counterbalanced; the three-invocation spread bounds it at 3.9%. Prefill owner
+counterbalanced or bounded by the three-invocation spread. Prefill owner
 only: no resident-session wall, no decode column, and no multi-prompt category
 suite, for the reason above.
