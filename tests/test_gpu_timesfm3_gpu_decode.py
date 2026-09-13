@@ -114,6 +114,32 @@ def test_gpu_decode_deterministic(precision, fixture_path) -> None:
     np.testing.assert_array_equal(out1, out2)
 
 
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+def test_cached_runner_isolates_request_history(precision) -> None:
+    """Reuse real buffers without modifying the persistent zero-offset constant."""
+    from hipengine.loading.timesfm3 import load_timesfm3_model
+    from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder
+
+    with np.load(FIXTURES[2]) as fixture:
+        target = fixture["target"]
+        horizon = int(fixture["horizon"])
+        kwargs = _fixture_kwargs(fixture)
+    local = load_timesfm3_model(str(_snapshot()))
+    try:
+        decoder = TimesFM3GPUDecoder(local, precision=precision)
+        try:
+            expected = decoder.decode(target, horizon, **kwargs)
+            assert np.isfinite(expected).all()
+            for history in (target[..., ::-1].copy(), np.full_like(target, np.nan)):
+                decoder.decode(history, horizon, **kwargs)
+                actual = decoder.decode(target, horizon, **kwargs)
+                np.testing.assert_array_equal(actual, expected)
+        finally:
+            decoder.close()
+    finally:
+        local.free()
+
+
 def test_gpu_decode_rejects_unknown_precision() -> None:
     from hipengine.loading.timesfm3 import load_timesfm3_model
     from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder
@@ -122,5 +148,80 @@ def test_gpu_decode_rejects_unknown_precision() -> None:
     try:
         with pytest.raises(ValueError, match="precision"):
             TimesFM3GPUDecoder(local, precision="bf16")
+    finally:
+        local.free()
+
+
+def test_gpu_decode_is_invariant_to_poisoned_device_memory() -> None:
+    """A decode must not depend on recycled device memory being zero.
+
+    TimesFM 3.0 writes its single scratch cache pair once and then reads it, so
+    this path has no unwritten-slot sweep.  The probe still runs because the
+    class of defect is "any per-call buffer whose unread region is assumed to be
+    zero" (``docs/KERNELS.md`` "Device-memory hygiene"), and the sibling 2.5
+    decoder turned out to have exactly that in its V cache: the batched
+    attention GEMMs sweep the not-yet-written AR slots and rely on
+    ``0 * garbage == 0``, which is false for a NaN.
+
+    Poison every per-call buffer with ``0xFF`` and require the next decode to be
+    bit-identical.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.loading.timesfm3 import load_timesfm3_model
+    from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder
+
+    from _poison_probe import (
+        assert_poison_invariant,
+        collect_device_buffers,
+        group_by_prefix,
+    )
+
+    fixture = np.load(FIXTURES[0])
+    target, horizon = fixture["target"], int(fixture["horizon"])
+    kwargs = _fixture_kwargs(fixture)
+    local = load_timesfm3_model(str(_snapshot()))
+    try:
+        holder: dict[str, object] = {}
+
+        def reset() -> None:
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+            decoder = TimesFM3GPUDecoder(local, precision="fp16")
+            holder["decoder"] = decoder
+            decoder.decode(target, horizon, **kwargs)
+
+        def run():
+            return holder["decoder"].decode(target, horizon, **kwargs)
+
+        def collect() -> dict[str, list]:
+            # q_offset is initialized once and is never written by decode.
+            # Treat it like weights; poisoning it changes the model inputs.
+            found = collect_device_buffers(holder["decoder"])
+            constants = [(path, buf) for path, buf in found if path.endswith(".q_offset")]
+            assert len(constants) == 1, [path for path, _ in found]
+            from hipengine.core.memory import copy_device_to_host, host_array_ptr
+            offset = np.empty(constants[0][1].nbytes // 4, dtype=np.int32)
+            copy_device_to_host(host_array_ptr(offset), constants[0][1], offset.nbytes)
+            np.testing.assert_array_equal(offset, np.zeros_like(offset))
+            found = [(path, buf) for path, buf in found if not path.endswith(".q_offset")]
+            assert found, "no device buffers reachable from the decoder"
+            return group_by_prefix(found)
+
+        reset()
+        try:
+            report = assert_poison_invariant(
+                get_hip_runtime(),
+                collect,
+                run,
+                label="TimesFM 3.0 fp16 decode",
+                reset=reset,
+            )
+        finally:
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+        assert report["buffers"] >= 10, report
     finally:
         local.free()

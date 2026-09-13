@@ -48,6 +48,7 @@ from hipengine.generation.deadline import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     generation_deadline_expired,
+    generation_deadline_remaining,
     raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
@@ -142,6 +143,8 @@ def register_builtin_generators() -> None:
         from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
         from hipengine.generation import qwen4_exp_gguf as _qwen4_exp_gguf  # noqa: F401
         from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
+        from hipengine.generation import surya as _surya  # noqa: F401
+        from hipengine.generation import surya_gpu as _surya_gpu  # noqa: F401
 
         _BUILTINS_REGISTERED = True
 
@@ -255,6 +258,7 @@ __all__ = [
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
     "generation_deadline_expired",
+    "generation_deadline_remaining",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
     "plan_execution_groups",

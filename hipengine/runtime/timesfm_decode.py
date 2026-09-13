@@ -22,6 +22,7 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -265,12 +266,6 @@ class TimesFMGPUDecoder:
         f16 = lambda n: malloc(n * itemsize)  # noqa: E731
         caches_k = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
         caches_v = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
-        # The batched attention GEMMs sweep the whole cache including the
-        # not-yet-written AR slots; masked weights are zero but 0 * garbage
-        # is NaN when the allocator hands back dirty pages, so zero-init.
-        runtime = get_hip_runtime()
-        for cache in (*caches_k, *caches_v):
-            runtime.memset(cache.ptr, 0, cache.nbytes)
         buffers = _Buffers(
             tok_in=f16(batch * patches * self.spec.tokenizer_input_dims),
             hidden=f16(batch * patches * h),
@@ -338,12 +333,12 @@ class TimesFMGPUDecoder:
         patch_stride = self.spec.qkv_size
         dt = "f16" if self.precision == "fp16" else "f32"
 
-        copy_host_to_device(bufs.num_masked, host_array_ptr(np.ascontiguousarray(num_masked_host.astype(np.int32))))
-        copy_host_to_device(bufs.q_offset, host_array_ptr(np.ascontiguousarray(next_index_host.astype(np.int32))))
+        copy_host_array_to_device(bufs.num_masked, np.ascontiguousarray(num_masked_host.astype(np.int32)))
+        copy_host_array_to_device(bufs.q_offset, np.ascontiguousarray(next_index_host.astype(np.int32)))
         pos_host = (
             np.arange(n, dtype=np.float32)[None, :] + next_index_host[:, None] - num_masked_host[:, None]
         ).astype(np.float32)
-        copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+        copy_host_array_to_device(bufs.pos, np.ascontiguousarray(pos_host))
 
         # Tokenizer ResidualBlock (biased).
         self._gemm(bufs.tok_in.ptr, self._w["tokenizer_hidden"], bufs.hidden.ptr, rows, self.spec.tokenizer_input_dims, h)
@@ -471,6 +466,13 @@ class TimesFMGPUDecoder:
         # Scratch is sized for the prefill segment (the largest); AR steps
         # reuse the same buffers with smaller row counts.
         bufs = self._buffers_for(batch, num_input_patches, cache_size)
+        # A prior non-finite forecast can leave NaNs in future AR slots.
+        # Attention reads full cache capacity, including masked V slots, so
+        # allocation-time initialization is insufficient on reuse (0 * NaN).
+        # Queue byte-zeroing on the same default stream as the forward passes.
+        runtime = get_hip_runtime()
+        for cache in (*bufs.caches_k, *bufs.caches_v):
+            runtime.memset_async(cache.ptr, 0, cache.nbytes, 0)
 
         patched_inputs = inputs.reshape(batch, -1, p)
         patched_masks = masks.reshape(batch, -1, p)

@@ -2222,3 +2222,123 @@ def test_laguna_iq3_wave10_signbit_runtime_selection_is_removed_but_primitive_re
             "hip_gfx1100",
             "wave10_signbit_fused",
         )
+
+
+@pytest.mark.parametrize("mode", ["c1", "rows"])
+def test_laguna_moe_is_invariant_to_poisoned_scratch_memory(mode: str) -> None:
+    """A second MoE run must not depend on what the first left in scratch.
+
+    ``allocate_laguna_moe_scratch`` zeroes exactly one buffer (the
+    ``selected_down_completion`` counter) and leaves the rest as the allocator
+    handed them back.  That is only safe while every other scratch buffer is
+    written before it is read -- the "correct only by accident of allocation"
+    rule in ``docs/KERNELS.md``.  Poison the whole scratch block with ``0xFF``
+    between two runs of the same input and require a bit-identical result; the
+    workload is a pure function of ``hidden`` and the resident weights, so any
+    difference is leftover scratch being read.
+    """
+
+    from _poison_probe import (
+        assert_poison_invariant,
+        collect_device_buffers,
+        group_by_prefix,
+    )
+
+    config = replace(
+        laguna_gguf_config_from_metadata(make_laguna_info()),
+        expert_count=11,
+        expert_used_count=10,
+    )
+    plan = resolve_laguna_moe_plan(config, backend="hip_gfx1151")
+    h, e, k, f = plan.hidden_size, plan.expert_count, plan.top_k, plan.expert_ffn_size
+
+    q4_base = make_q4_k_weight(f, h)
+    down_base = make_q4_k_weight(h, f)
+    payloads = {
+        "ffn_gate_inp": (np.zeros((e, h), dtype=np.float32), GGMLQuantizationType.F32, (e, h)),
+        "exp_probs_b": (
+            np.linspace(1.0, 0.1, e, dtype=np.float32),
+            GGMLQuantizationType.F32,
+            (e,),
+        ),
+        "ffn_gate_exps": (
+            np.stack([np.roll(q4_base, 7 * expert, axis=0) for expert in range(e)], axis=0),
+            GGMLQuantizationType.Q4_K,
+            (e, f, h),
+        ),
+        "ffn_up_exps": (
+            np.stack([np.roll(q4_base, 11 * expert + 3, axis=0) for expert in range(e)], axis=0),
+            GGMLQuantizationType.Q4_K,
+            (e, f, h),
+        ),
+        "ffn_down_exps": (
+            np.stack([np.roll(down_base, 13 * expert + 5, axis=0) for expert in range(e)], axis=0),
+            GGMLQuantizationType.Q4_K,
+            (e, h, f),
+        ),
+        "ffn_gate_shexp": (np.roll(q4_base, 17, axis=0).copy(), GGMLQuantizationType.Q4_K, (f, h)),
+        "ffn_up_shexp": (np.roll(q4_base, 29, axis=0).copy(), GGMLQuantizationType.Q4_K, (f, h)),
+        "ffn_down_shexp": (np.roll(down_base, 31, axis=0).copy(), GGMLQuantizationType.Q4_K, (h, f)),
+    }
+
+    resident: dict = {}
+    hidden_buffer = None
+    holder: dict = {}
+    try:
+        for slot, (array, qtype, shape) in payloads.items():
+            source = tensor_info(f"synthetic.{slot}", shape, qtype)
+            resident[slot] = _materialize_spec(
+                _spec_for_tensor(f"layers.1.{slot}", source),
+                _ArrayReader(source.name, array),
+                device=None,
+                runtime=_runtime(),
+                backend="hip_gfx1151",
+            )
+        layer = LagunaGGUFResidentLayerWeights(
+            layer_id=1,
+            attention_type=SLIDING_ATTENTION,
+            mlp_type=SPARSE_MOE,
+            weights=MappingProxyType(resident),
+        )
+        validate_laguna_moe_layer(layer, plan)
+
+        rows = 1 if mode == "c1" else 3
+        rng = np.random.default_rng(1138)
+        hidden_bits = _f32_to_bf16_u16(
+            rng.normal(0.0, 2.0e-4, size=(rows, h)).astype(np.float32)
+        )
+        hidden_buffer = malloc(hidden_bits.nbytes)
+        copy_host_to_device(hidden_buffer, host_array_ptr(hidden_bits), hidden_bits.nbytes)
+
+        def reset() -> None:
+            existing = holder.pop("scratch", None)
+            if existing is not None:
+                for buffer in existing.buffers:
+                    free(buffer)
+            holder["scratch"] = allocate_laguna_moe_scratch(plan, max_rows=rows)
+
+        def run() -> np.ndarray:
+            scratch = holder["scratch"]
+            if mode == "c1":
+                run_laguna_moe_c1(hidden_buffer.ptr, layer, scratch)
+            else:
+                run_laguna_moe_rows(hidden_buffer.ptr, layer, scratch, rows=rows)
+            return _read_bf16(scratch.output, (rows, h))
+
+        def collect() -> dict:
+            found = collect_device_buffers(holder["scratch"])
+            assert found, "no device buffers reachable from the MoE scratch"
+            return group_by_prefix(found, depth=1)
+
+        reset()
+        report = assert_poison_invariant(
+            _runtime(), collect, run, label=f"Laguna MoE {mode}", reset=reset
+        )
+        assert report["buffers"] >= 20, report
+    finally:
+        existing = holder.pop("scratch", None)
+        if existing is not None:
+            for buffer in existing.buffers:
+                free(buffer)
+        if hidden_buffer is not None:
+            free(hidden_buffer)

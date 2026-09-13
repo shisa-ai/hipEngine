@@ -314,6 +314,40 @@ Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
 `runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
 per-model record is `docs/MODEL-TIMESFM3.md`.
 
+### Surya OCR path
+
+Surya OCR 2 (`datalab-to/surya-ocr-2`, Qwen3.5-family tower with a Qwen3-VL-style
+vision encoder) runs torch-free on the fp32 CPU reference and, for gfx11, on a
+HIP lane that reuses the proven EVIE / Qwen3.5 linear-attention kernels plus a
+small Surya-specific op set. These families are direct-launched through their
+Python wrappers with no four-axis registry entries; the runtime-level strict
+fallback is the contract of record (see `docs/REFACTOR.md`).
+
+The KV write and decode kernels read the complete
+`(base_offsets, live_counts, token_positions, evict_mask)` span ABI over the
+same head-major fp32 `(nk, max_seq, hd)` planes the prefill path addresses. The
+dense policy fills every field uniformly (identity page table, `arange`
+positions, empty eviction mask) rather than leaving them null, so the default
+path exercises the metadata it claims to honour.
+
+| Functional family | Source / wrapper | Principal entry points | Notes |
+| --- | --- | --- | --- |
+| Split q / gate | `surya/surya_ops.{hip,py}` | `surya_split_qgate_f32` | Separates the fused q+gate projection into query and gate planes for the GDN output gate. |
+| GDN q/k L2 norm | `surya/surya_ops.{hip,py}` | `surya_gdn_l2norm_f32` | Strided-source, plain-output per-head L2 normalization of the recurrent q/k; the repeat variant in the shared GDN family writes a doubled per-head layout Surya does not use. |
+| Plain-weight RMSNorm | `surya/surya_ops.{hip,py}` | `surya_rmsnorm_f32` | Plain `w` convention. Surya's GDN `RMSNormGated` uses plain weights, unlike the standalone Qwen `(1+w)` norm. |
+| Dense KV scatter | `surya/surya_ops.{hip,py}` | `surya_scatter_kv_f32_spans` | Spans-aware strided scatter into the contiguous `(nk, max_seq, hd)` cache: the logical token index is mapped through the page table and skipped when it is outside `live_counts`, has a negative `token_positions` entry, or is marked in `evict_mask`. The pre-spans `surya_scatter_kv_f32(tokens, token_offset)` parent stays registered as the bisection oracle. |
+| Decode attention | `surya/surya_ops.{hip,py}` | `surya_full_attn_decode_f32_spans`, `..._split_k_reduce_f32` | Fused fp32 GQA-4 split-K decode attention over complete `KVLiveSpans`: one producer block per `(kv_head, context chunk)` computes all four query heads of that KV head, so each K/V plane is read once per KV head instead of once per query head, and no `(nq, max_seq)` score row is materialized. Replaces the batched-SGEMM scores + scale + row-softmax + AV chain; `attention_decode_rocblas_f32` in `runtime/surya.py` is the registered strict fallback for head_dim != 256 or GQA repeat != 4. |
+| Causal mask + scale | `surya/surya_ops.{hip,py}` | `surya_causal_mask_scale_f32` | Builds the scaled causal score mask for the packed full-attention layers. Takes the tile's first query as a `query_offset`, because a query-row tile's mask is relative to the absolute query position, not the tile-local row index. |
+| Vision tower | `hip_gfx1100/evie/evie_ops.{hip,py}` | `build_evie_ops` symbol set | Reused EVIE JIT library: patch embed, learned position add, bidirectional attention, LayerNorm, GELU, merger GEMMs. Surya vision has biases where EVIE does not. |
+| Linear attention | `hip_gfx1100/linear_attn/conv.{hip,py}`, `gdn.{hip,py}` | `qwen35_linear_attn_conv_*`, `qwen35_gdn_prefill_recurrent_*` | Reused Qwen3.5 GDN prefill/decode kernels; Surya has 12 GDN and 12 full-attention layers. |
+| GEMM | rocBLAS (`hipengine/core/rocblas.py`) | strided-batched / plain GEMM | fp32 throughout; all projections and the tied LM head. |
+
+Model contract, loader, CPU oracle, GPU runtime, and generators live in
+`models/surya.py`, `loading/surya.py`, `kernels/cpu_reference/surya.py`,
+`runtime/surya.py`, and `generation/surya{,_gpu}.py`. The per-model record is
+`docs/MODEL-SURYA.md`; the lane comparison is
+`scripts/surya_perf_compare.py`.
+
 ### Speculative decoding path
 
 | Functional family | Source / wrapper | Principal registry layers/quants | Notes |
@@ -371,14 +405,18 @@ hipengine/kernels/hip_gfx1100/
 │   ├── moonshine_attention.hip
 │   ├── paged_attn_decode.hip
 │   ├── paged_kv_write.hip
+│   ├── qwen4_exp_qsa_flash.hip
 │   └── qwen4_exp_qsa.hip
 ├── convert/
 │   ├── cast.hip
 │   └── gather.hip
 ├── dispatch/
 │   └── moe_c1_dispatch.hip
+├── evie/
+│   └── evie_ops.hip
 ├── fused/
 │   ├── gguf_ops.hip
+│   ├── gguf_q6_q4_pair.hip
 │   ├── laguna_attention.hip
 │   ├── moonshine_glue.hip
 │   ├── moonshine_mlp.hip
@@ -424,10 +462,14 @@ hipengine/kernels/hip_gfx1100/
 │   ├── gguf_q4_k_prefill.hip
 │   ├── gguf_q4_k_q8_1_mmq_prefill.hip
 │   ├── gguf_q4_k_q8_1_selected_prefill.hip
+│   ├── gguf_q4_k_qmicro_dp4a_grouped.hip
 │   ├── gguf_q4_k_selected_pack8_gemv.hip
 │   ├── gguf_q4_k_selected_prefill.hip
 │   ├── gguf_q4_k_t16_selected_prefill.hip
 │   ├── gguf_q5_k_f32_rocblas_prefill.hip
+│   ├── gguf_q5_1_mmq_selected_prefill.hip
+│   ├── gguf_q5_k_q8_1_selected_prefill.hip
+│   ├── gguf_q5_k_qmicro_planar_gemv.hip
 │   ├── gguf_q6_k_embedding.hip
 │   ├── gguf_q6_k_f16_rocblas_prefill.hip
 │   ├── gguf_q6_k_pack8_gemv.hip
@@ -463,6 +505,14 @@ hipengine/kernels/hip_gfx1100/
 │   ├── dflash_drafter.hip
 │   ├── mtp.hip
 │   └── mtp_nextn.hip
+├── surya/
+│   └── surya_ops.hip
+├── timesfm/
+│   └── timesfm.hip
+├── timesfm3/
+│   └── timesfm3.hip
+├── vision/
+│   └── qwen4_exp_vision.hip
 └── wmma/
     └── paro_awq_wmma.hip
 
@@ -1119,6 +1169,22 @@ Stable porting rules:
 
 `hipengine.core.build` calls `hipcc` or `nvcc`, links a shared object, loads it with `ctypes.CDLL`, and caches by source/flags/compiler/target metadata under `~/.cache/hipengine/build/`. It does not use `torch.utils.cpp_extension`.
 
+### Host uploads and reusable device state
+
+Use `hipengine.core.memory.copy_host_array_to_device` for synchronous uploads
+of temporary NumPy arrays. It retains the source through the copy, requires
+C-contiguous storage, and checks both source and destination bounds. Passing
+`host_array_ptr(np.asarray(...))` to the pointer-only copy API erases the owner
+before the copy starts. A named local held through a synchronous copy is also
+valid; no additional device-wide synchronization is required. Async uploads
+need ownership through stream completion and are outside this helper's contract.
+
+Reset mutable scratch at its use boundary when a kernel reads unwritten slots,
+including masked slots in full-capacity GEMMs. Use stream-ordered byte clears
+for zero initialization: multiplication by zero preserves NaNs. Do not poison
+weights or initialized, read-only constants when testing scratch hygiene; test
+request history separately from deliberate scratch corruption.
+
 ### HIP build profiles
 
 | Profile | Important flags | Wavefront | Typical use |
@@ -1200,6 +1266,72 @@ the child, including lazy libraries that do not expose per-call cache flags.
 Check expected kernel identity, plausible duration, workgroup/grid, VGPR, LDS, and scratch. `Scratch_Size > 0` on a hot path is a review trigger. Some profiler versions expose start/end timestamps instead of `DurationNs`; subtract them. Raw profiler dumps stay outside Git.
 
 For MTP, profile the final child (`scripts/mtp_verifier_rocprof.py` or the final smoke), not the parent economics/prompt-suite harness that launches nested Python processes. Wrapper defaults, flag syntax, padding, compiler-probe, and PMC-counter traps for `rocprofv3` on this toolchain are cataloged in [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md), section 4.9.
+
+## Device-memory hygiene
+
+`hipMalloc` returns zeroed pages for a fresh allocation, but a *recycled* block
+keeps its previous contents at small sizes (measured on gfx1151: a 1 MiB block
+comes back holding what was written to it, 4 MiB and above come back zeroed).
+Three rules follow, and the first two were violated by the Surya and Evie
+runners:
+
+- **Re-zero device state with a memset, never with a scale-by-zero kernel.**
+  `x * 0.0` is a no-op for a NaN or an Inf (`NaN * 0 == NaN`), so a recurrent
+  state "cleared" that way keeps whatever the previous owner of the block left
+  in it and turns every later output into NaN. `runtime.memset(ptr, 0, nbytes)`
+  is the correct re-zero. That form is free in a hot loop: `hipMemset` acts on
+  the NULL stream, which is the stream the runners launch their kernels on, and
+  it only enqueues (measured on gfx1151: a 1 MiB memset behind 2.47 ms of
+  queued work returns in 28 us, against 15 us for `hipMemsetAsync`), so a
+  per-layer re-zero costs one enqueue and no host synchronization. This is why
+  the Surya text decoder returned all-NaN
+  logits after a long test suite and finite logits in isolation, and why the
+  failure looked like device-state poisoning:
+  `tests/test_live_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan` and
+  `tests/test_evie_gpu_runtime.py::test_state_rezero_clears_recycled_nan` pin
+  it by poisoning the state buffers with `0xFF` and requiring an unchanged
+  result.
+- **A kernel that reads a buffer before writing it is correct only by accident
+  of allocation.** Any per-call buffer whose unread region is assumed to be
+  zero is a latent full-suite failure. Poison it with `0xFF` in a test and
+  require the result to be bit-identical. Re-zero it **where it is used, not
+  where it is allocated** when the buffer is mutable request state. TimesFM
+  2.5's full-capacity attention can read masked V slots left nonfinite by an
+  earlier request; clearing the cache at use prevents `0 * NaN` contamination.
+  TimesFM 3.0's `q_offset` is instead an initialized, read-only zero constant:
+  poisoning it does not establish a read-before-write defect. Exclude initialized
+  constants and weights from scratch probes. `tests/_poison_probe.py` snapshots
+  reference output arrays, collects after warmup, rejects empty coverage, and
+  raises when traversal limits prevent complete collection. Callers must still
+  identify the expected mutable buffer families explicitly.
+- **Bind the source of an H2D copy to a local, because the pointer is a bare
+  address.** ``copy_host_to_device`` takes an ``int``, so the array has to
+  outlive the call on its own. ``copy_host_to_device(buf,
+  host_array_ptr(np.zeros_like(x)))`` does not: CPython drops the temporary's
+  last reference when ``host_array_ptr`` returns, so the array is already freed
+  and reusable *before* the copy is entered -- measured on gfx1151, the freed
+  block is handed straight back to the next same-size allocation (same address),
+  and the copy then reads whatever that allocation wrote. ``SuryaGpuRunner._upload``
+  states the contract; hoist the temporary into a local. This made
+  `tests/test_gpu_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
+  pass or fail depending on which Surya test ran before it -- 4 denormal
+  values in the slots the scatter never writes. Hoisting is not optional and is
+  not a style question: the same statement can pass alone and fail in a suite,
+  because whether the freed block is recycled before the copy runs depends on
+  what the *next* allocation does.
+- **The transfer itself is complete when the copy returns, so a named local
+  needs no synchronization.** Overwriting the source in place immediately after
+  ``copy_host_to_device`` returns leaves the destination untouched at 1, 16, 64,
+  and 128 MiB on gfx1151, so an unpinned source does not have to outlive the
+  call and a per-call ``device_synchronize()`` buys nothing for source lifetime.
+  Surya's upload helper uses that synchronous contract during loading, prefill,
+  and decode and does not add a device-wide synchronization. An async upload
+  must explicitly retain its source until stream completion; changing the copy
+  API to async requires updating its callers. Do not add a defensive device-wide
+  drain to a synchronous upload. `tests/test_gpu_device_memory_hygiene.py`
+  enforces the always-allocating forms (`np.zeros*`, `np.ones*`, `np.full*`,
+  `np.array`, `np.asarray`, `np.tile`, `.astype(...)`, `.copy()`, `.flatten()`)
+  by AST scan over `hipengine/`, `tests/`, `scripts/`, and `benchmarks/`.
 
 ## Registering a kernel
 

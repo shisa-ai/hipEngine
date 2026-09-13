@@ -75,6 +75,37 @@
   wrong and was corrected in
   `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
 
+## H2D uploads should retain the source instead of taking a bare address
+
+- `copy_host_to_device(buffer, host_ptr, nbytes)` takes an `int`, so every call
+  site has to keep its own array alive. That is the whole defect class: the
+  inline form (`copy(buf, host_array_ptr(np.zeros_like(x)))`) frees the array
+  before the copy is entered, and no amount of care at the call site makes the
+  next author safe. The durable fix is an upload API that owns the reference,
+  e.g. `upload_host_array(buffer, array, nbytes=None)` doing the
+  `np.ascontiguousarray` + `host_array_ptr` + `memcpy` internally, with
+  `copy_host_to_device` kept only for callers that genuinely hold a raw address.
+  Measured mechanism and the tests that pin it: `tests/test_gpu_h2d_source_lifetime.py`.
+- Two residues are outside the AST guard in `tests/test_gpu_device_memory_hygiene.py`
+  (which is documented as partial, with its gaps pinned by
+  `test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned`):
+  - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
+    so the temporary is the only reference and is freed before the copy is
+    entered. On a contiguous `x` it is a no-op and safe, which is why the guard
+    does not flag it; the ~100 existing call sites are safe as written, so this
+    is only worth closing with the upload API above.
+  - an allocation reached through a factory or a view, e.g.
+    `host_array_ptr(_fresh())` or `host_array_ptr(np.zeros(8).reshape(2, -1))`,
+    which a source-level lint cannot see. The first form is demonstrated in
+    `tests/test_gpu_h2d_source_lifetime.py`.
+- `_copy_array_to_tensor`-style helpers (e.g.
+  `hipengine/runtime/gguf_native_spec_cycle.py`) do bind the source to a local,
+  which is sufficient on its own -- the transfer is complete when the copy
+  returns (`tests/test_gpu_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
+  Their per-call `device_synchronize()` is defensive only and is the part worth
+  removing; a persistent pinned staging buffer is the alternative if a future
+  async copy path needs one.
+
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
 - Exact dequantized row-major sidecar with unchanged coltile8/row4
@@ -506,6 +537,38 @@ should be removed or collapsed.
 - Do not remove registered strict unfused fallbacks required by `AGENTS.md` and
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
+
+## 2026-09-13 Surya decode split chunk keyed to `max_seq` — open
+
+- `plan_surya_decode_splits` derives the decode split chunk from the runner's
+  `max_seq` (`chunk = round_up(ceil(max_seq / 64), 32)`, `num_splits =
+  ceil(max_seq / chunk)`) and `SuryaGpuRunner._alloc_span_state` builds one
+  immutable `KVLiveSpans` view per runner, so a runner configured for a long
+  context runs short requests with fewer, longer producer blocks. At a *fixed*
+  live context that costs decode time, measured on gfx1151: 1024 live tokens
+  decode in 18.31 / 18.36 / 18.88 / 18.96 / 19.55 ms per token at `max_seq`
+  8192 / 12288 / 16384 / 20480 / 32768 (chunk 128 / 192 / 256 / 320 / 512), and
+  8580 live tokens in 19.07 / 19.22 / 19.38 / 20.00 ms from 12288 up — 3% from
+  8192 to 16384 and 4% more to 32768, against a per-row spread of 1.1-2.4%
+  (`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json`).
+- Fix: derive the chunk from the live count instead of `max_seq`.
+  `surya_full_attn_decode_f32_spans` already resolves the plan inside the
+  wrapper from `spans.max_live_count` and already accepts a `chunk_size`
+  override, so the change is a host-only
+  `plan_surya_decode_splits(live_count)` call in `_attention_decode_spans` — no
+  kernel change. The one allocation that must move with it is the split-K
+  partial triple, sized today from the construction plan's `num_splits`: a
+  live-derived plan can exceed it (at `max_seq` 5000 the construction plan is 53
+  splits while a 4096-token request derives 64), so size those buffers for
+  `SURYA_TARGET_SPLITS` — 512 KiB for the output partials at Surya's 8 q heads
+  and head_dim 256.
+- This changes decode arithmetic (different split boundaries reassociate the
+  online-softmax partials), so promotion needs the production-profile numerical
+  gate plus the registered rocBLAS strict fallback. Note the default path's
+  decode arithmetic already depends on the configured `max_seq` for the same
+  reason, so this does not introduce a new variability class — it removes one.
+- Removal trigger: when the live-derived plan lands and the decode rows above
+  converge across `max_seq`, delete the `max_seq`-derived chunk and this entry.
 
 ## 2026-09-08 Native C1 Context Admission
 
@@ -7180,3 +7243,358 @@ byte-neutral and correct, so it is cheap to keep as a tested primitive; the
 reason to remove it is that dead code in the quant layer reads as a live
 option. If it is removed and the item is ever re-opened, the test file is the
 specification to restore it from.
+
+## 2026-09-11 Surya HIP runtime: direct backend imports — open
+
+`hipengine/runtime/surya.py` imports its JIT libraries directly from
+`hipengine.kernels.hip_gfx1100` (`evie_ops`, `linear_attn.conv`,
+`linear_attn.gdn`, `surya.surya_ops`) and resolves kernels by symbol name from
+the built `.so`. This is the same pattern the committed EVIE runtime
+(`hipengine/runtime/evie.py`) already uses, so the deviation is repo-wide, not
+Surya-specific: the four-axis registry currently governs engine/dispatch
+kernels, while hand-written runtime runners own their JIT libraries. Migrate
+EVIE and Surya together onto a backend-keyed kernel-library resolver when the
+runtime runners become a second consumer of shared linear-attention kernels;
+until then the direct import is the contract of record.
+
+## 2026-09-11 Surya KV write and decode: dense offset scheme — closed 2026-09-13
+
+`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` wrote
+into a contiguous `(nk, max_seq, hd)` plane from a host-supplied
+`(tokens, token_offset)` pair, and `_attention_decode` built per-head cache
+pointer arrays from `max_seq * hd` strides. Both read no span metadata, which
+the architectural invariant forbids.
+
+Closed by two spans-aware kernels in `surya/surya_ops.{hip,py}` plus the runtime
+wiring: `surya_scatter_kv_f32_spans` resolves each logical token index through
+`base_offsets` and skips tokens outside `live_counts` with a negative
+`token_positions` entry or an `evict_mask` mark, and
+`surya_full_attn_decode_f32_spans` is a fused fp32 head_dim-256 GQA-4 split-K
+producer plus `..._split_k_reduce_f32`. The producer runs one block per
+`(kv_head, context chunk)` so all four query heads of a KV head share one K/V
+read, and the split count comes from `plan_surya_decode_splits`, which targets a
+constant split count rather than a constant chunk because the launch has to stay
+wide enough to fill the machine at every context length. The dense policy fills
+all four span fields uniformly (identity page table, `arange` positions, empty
+eviction mask), so the default path exercises the ABI.
+
+Retained as explicit fallbacks/bisection oracles, not dead code:
+`attention_decode_rocblas_f32` (the four-dispatch parent) is the strict
+fallback for head_dim != 256 or GQA repeat != 4 and is what
+`tests/test_gpu_surya_kv_spans.py` measures parent parity against;
+`surya_scatter_kv_f32` (the pre-spans scatter) is used by
+`scripts/surya_gpu_debug_attn.py`. Remove both when the fp32 spans decode kernel
+is shared with the Qwen3.5 decode path or when the debug script no longer needs
+the parent, whichever comes first.
+
+The fused producer still passes `chunk_size` as the score GEMM's `m`, so its
+QK^T work is `q_per_kv * head_dim * chunk_size` regardless of how many tokens in
+the chunk are invisible; a chunk whose tokens are mostly evicted or empty does
+the same dot products as a full one. Bounding each chunk's keys to its last
+visible token would cut that, but the dense policy has no invisible tokens, so
+there is nothing to measure yet.
+
+## 2026-09-11 Surya vision attention: quadratic score scratch — closed
+
+`hipengine/runtime/surya.py` `_vis_scores` materialized the full vision
+attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches.
+`vision_num_heads` is 12 and patches are 16 px (`SURYA_RESIZE_FACTOR` 32 is
+patch size times spatial merge), and attention runs *before* the merger, so `n`
+is the full patch grid `h * w` — four times the merged vision token count.
+Scratch was therefore quadratic in page area: 805 MB for the 1024x1024 fixture
+(64x64, 4096), 12.88 GB for 2048x2048 (128x128, 16384), **56.5 GB for a
+300-DPI A4 page (220x156, 34320 patches)** and **206 GB at the checkpoint's
+`SURYA_MAX_PIXELS` ceiling** (256x256, 65536).
+
+Closed by query-row tiling: `plan_vision_attention` derives a query block from
+`max_vision_scratch_bytes` (512 MiB default) and `_vision_attention_packed`
+walks the score matrix one tile at a time. Each tile still holds the full key
+range, so the softmax rows are exactly the rows the dense path computed and
+the result is unchanged; only `heads * n * block * 4` bytes are live. The A4
+grid now needs 535 MB (106x smaller) and the ceiling 535 MB (386x smaller), and
+admission no longer rejects a routine document. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json`,
+`tests/test_live_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
+
+The "result is unchanged" claim is now measured, not inferred: under a 12 MiB
+budget (4-10 tiles per page, partial tiles included) the tiled and dense paths
+are bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99/
+max KL `0.000e+00`, top-1 `100%`. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-numerical-gate.json`.
+
+## 2026-09-12 Surya bench-suite pages clip their own text — closed 2026-09-13
+
+Four of the seven pages in `scripts/surya_bench_pages.py` drew text past the
+canvas, so the text the suite claimed to measure was not the text in the image:
+`ja` body lines 576-663 px wide on a 512 px page (480 px usable), `mixed` Latin
+lines 503/506 px against 480, `scan` ~531 px against 476, and `page_long` six
+224 px blocks from y=168 so blocks 5 and 6 fell off a 1024 px canvas. Scoring
+against the intended text read correct model output as error, which is how the
+earlier `line.` -> `literature` "hallucination" arose: the model completed a
+clipped word.
+
+The four pages are re-cut onto canvases the fit assertion accepts (1024x1024
+for `ja`/`mixed`/`scan`, 1024x1600 for `long`) and every text page now draws
+through `_draw_text_fit`, which raises rather than clipping. The re-cut bytes
+are exactly the former `page_<name>_fit.png` bytes, which is why the captured
+full-page-protocol oracle only needed its `page` field renamed: the images did
+not change. `FIT_PAGES`, `write_fit_pages`, `acceptance_page` and the `--fit`
+flag are gone; `page_filename` returns `page_<name>.png` for every page, and
+`tests/test_unit_surya_transcription_fixtures.py` asserts each generator still
+rejects the old clipping geometry so the pages cannot silently clip again.
+
+`oracle_bench.json` was re-captured (torch fp32, 7 pages) and the lane
+comparison re-run, both recorded in
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json`. The vision grids
+grew with the canvas (`ja`/`mixed`/`scan` 32x32 -> 64x64, `long` 64x64 ->
+100x64), so the absolute rates are not comparable with the superseded
+2026-09-11 baseline.
+
+## 2026-09-12 Surya text prefill: quadratic causal score scratch — closed
+
+`SuryaGpuRunner._attention_packed` materialized the full causal score matrix
+for the text prefill, `num_attention_heads * tokens^2 * 4` bytes
+(`num_attention_heads` 8). Measured on gfx1151 with
+`scripts/surya_attention_memory.py`: at `max_seq` 16384 the score matrix was
+2.36 GB of a 7.03 GB peak for the 8580 image tokens of a 300-DPI A4 page, and
+8.59 GB of a 14.71 GB peak at a full 16384-token prompt; the remaining scratch
+was linear at 180.8 KiB/token.
+
+Closed by the same query-row tiling the vision tower uses: `plan_score_tiles`
+(one implementation, shared by both paths; `plan_vision_attention` is now the
+vision-shaped name for it) derives a query block from
+`max_prefill_scratch_bytes` (512 MiB default) and `_attention_packed` walks the
+score matrix one tile at a time. Each tile still holds the full key range, so
+the softmax rows are exactly the rows the dense path computed, and the mask
+stays absolute through a new `query_offset` argument on
+`surya_causal_mask_scale_f32` (the causal condition is relative to the tile's
+first query, not the tile-local row index). The measured prefill peak falls
+7.03 -> 5.21 GB for the page and 14.71 -> 6.66 GB at a full prompt for 0.8%
+wall-clock at 16384 tokens, and `block >= tokens` reproduces the dense calls
+exactly, so the dense plan remains the strict fallback. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json`,
+`tests/test_live_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
+`tests/test_live_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
+
+## 2026-09-13 Surya lane comparison is measured one process per lane — open
+
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json` is built from
+one `surya_perf_compare.py` run per lane merged with `--merge`, because both
+lanes in one process return the last three hipEngine rows (`full`, `columns`,
+`list`) degenerate from the first generated token with every stage time
+unchanged. Measuring hipEngine alone over the same 12 cases passes every gate,
+so the corruption rides on shared-process device state left by the torch lane
+rather than on the pages or the harness. This is task #80's bug.
+
+When #80 is fixed, re-run the suite as a single combined invocation
+(`--split all --runs 3 --lanes hipengine_gpu,torch_cuda`), confirm all 24 rows
+pass, and drop the `lane_isolation` protocol note and the per-lane caveat from
+`benchmarks/README.md`. `--merge` itself stays: merging per-lane artifacts is a
+legitimate way to keep a comparison honest when one lane perturbs the other.
+
+## 2026-09-13 Surya tile shape: grid divisibility was tested and rejected
+
+Grid divisibility was the other candidate shape rule and it was tested: the
+sweep records `even` (full last tile) per row, and even division wins at 256 and
+6400 patches and loses at 1024 and 4096, so it does not predict the curve. The
+rule uses the wavefront multiple instead, which does separate on the A4 page
+(where no measured block divides the grid, so the separation is not a tail
+effect). If a future rule wants to use divisibility, the data to re-check is
+already in the artifacts.
+
+## 2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism — open
+
+The 4096-patch shape curve is reproducibly non-monotone, confirmed by four
+independent measurements (two full sweeps, a one-runner probe with a mutated
+budget, and a fresh-runner probe; all on a quiet GPU, all with the block
+asserted):
+
+| rows | 16 | 32 | 64 | 96 | 128 | 160 | 192 | 256 | 341 | 512 | 1024 | 2048 | 2730 | 4096 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ms | 1575 | 1089 | 939 | 894 | 881 | 909 | 1102 | 1168 | 1175 | 1667 | 1327 | 1137 | 1118 | 1040 |
+
+192/256/341/512/1024 rows are 24-89% slower than 128, and 512 -- a multiple of
+32 -- is the worst shape on the grid, 1.6x the dense tile. Nothing measured
+explains where the spikes fall; rocBLAS kernel selection at particular
+`(M, N, K)` triples is the leading candidate, and a `rocprofv3 --kernel-trace`
+over one fast shape (128) and one slow shape (512) at 4096 patches would settle
+whether the score-scale or softmax kernel changes or a GEMM switches tiles.
+Worth doing before anyone adds another shape rule: the envelope's floor of 128
+happens to land on a spike-free value here, which is luck, not design.
+
+Two related consequences, both already applied:
+
+- Rounding down to a multiple of 32 is a memory-neutral tie-break justified by
+the A4 page's clean separation, not a guarantee. 512 rows at 4096 patches is a
+multiple of 32 and the slowest shape measured on that grid.
+- A shape probe that varies the block from outside
+  `scripts/surya_vision_tiling_cost.py` must lift `SHAPE_TILE_ROWS` /
+  `SHAPE_TILE_DIVISOR` / `SHAPE_TILE_MULTIPLE`, or the production cap overrides
+  the requested block and the probe reports one block for every shape. That
+  happened here and produced a flat, plausible curve that looked like evidence
+  the sweep was wrong. The vision envelope applies whenever it is narrower than
+  the tile the byte budget admits, so on any grid where the budget's own tile is
+  wider a probe must lift all three constants; lifting unconditionally stays the
+  rule.
+
+## 2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly — open
+
+`plan_score_tiles` takes a per-path shape policy. The vision tower consults the
+envelope `max(128, ceil(rows / 32))` rows, rounded down to a multiple of 32
+(`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`, `SHAPE_TILE_MULTIPLE` in
+`hipengine/runtime/surya.py`) whenever it is narrower than the tile the byte
+budget admits; the text prefill passes `shape_envelope=False` and keeps the
+budget's width, because its own sweeps show that is its optimum at every
+measured length (`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`,
+`2026-09-13-gfx1151-surya-text-prefill-small-prompts.json`). A conditional
+envelope — applying it only while the budget alone left one or two tiles —
+fixed the text prefill but regressed narrow vision budgets: at 4096 patches a
+64 MiB budget picked 320 rows (1081.07 ms) and a 128 MiB budget 672 rows
+(1378.13 ms), against 882.39 ms at the envelope's 128 rows, because the
+4096-patch curve has a spike band between roughly 256 and 1344 rows
+(`2026-09-13-gfx1151-surya-vision-narrow-budget-check.json`). What stays open:
+
+- **The 6400-patch anomaly.** The envelope picks 192 rows (2130.11 ms across 34
+tiles) where 96 rows is 1938.40 ms, 9% faster, and 6400 remains the only
+measured grid that wants *more* tiles than `rows / 32` while the surrounding
+points do not separate on the wavefront multiple the way the A4 page does
+(64 rows is 2057.20 ms, 96 is 1938.40, 128 is 2112.64). Reaching 96 rows needs
+the divisor near 64 *and* the floor below 128, which costs 2.7% at 1024 patches
+(96 rows 139.65 ms against 136.00 ms at 128). Revisit when a sweep over more
+mid-size grids shows what makes this one different; special-casing one grid
+would be overfitting.
+- **Open: the reported time ceiling.** The estimate has small non-monotone steps
+at the 32-row wavefront boundaries: 14 descending steps in 1..20000 patches,
+the largest -1.8% at 5089 (1435.97 -> 1409.67 ms), as the envelope's
+`ceil(rows / 32)` jumps a row and the block rounds back down to the multiple.
+`vision_patch_ceiling` bisects that estimate, so in principle a time budget
+inside a step can report a count short of the true maximum; it matches a
+brute-force scan at every budget tried from 0.5 s to 200 s, including the 120 s
+default (56856 patches). It is sound — the reported count's own estimate fits —
+and admission uses `check_vision_capacity` on the requested grid rather than the
+ceiling, so nothing is admitted unsafely. A monotone bound would remove the
+caveat if the reported ceiling ever needs to be exact.
+- **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
+3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
+budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
+admits 1073 rows at 34320 patches. Raise `max_vision_scratch_bytes` rather than
+loosen the cap. 4096 rows (6435.0 MiB, 40076.23 ms) is the measured minimum and
+8192 rows is 0.93% slower in the same run, so the return from fewer tiles
+saturates around 9 tiles; `rows / 8` would be 4290 rows here and is not a
+candidate rule (see the envelope's other grids).
+
+Also found while sweeping, and now refuted: a user-raised
+`max_vision_scratch_bytes` above ~6 GB on an A4 grid was recorded as making the
+vision attention fail with
+`hipErrorInvalidConfiguration` (error 9) from the `vision score scale` check
+instead of erroring cleanly. **That does not reproduce**: 4096 rows (6435.0 MiB)
+and 8192 rows (12870.0 MiB) both ran cleanly, twice each, in four separate
+processes, at 40076-40449 ms
+(`2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json`). The original sweep's
+logs are not retained, so its cause is unknown and no memory ceiling should be
+taken from it. The 512 MiB default derives 320 rows and never approaches that
+scratch. What is still untested is the dense tile itself — 56.5 GB of score
+matrix at 34320 patches, which is inside the host's 124 GiB GTT aperture but is
+a ~10-15 minute forward and a 56.5 GB allocation on a shared machine, so the A4
+evidence remains shape-to-shape rather than shape-to-dense. If a launch-config
+guard on `_vision_attention_packed` is still wanted, the first question is
+whether the dense tile runs at all.
+
+## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
+
+The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every
+tile passes `m=tokens` (the full key range) to the score GEMM and then masks the
+keys beyond its last query, so the tiled prefill does the same ~`nq * tokens^2`
+multiply-adds the dense path did, of which only the lower triangle survives.
+Bounding each tile's keys to `start + bq` would halve the QK^T FLOPs
+(`sum_t bq * (start + bq) ~ tokens^2 / 2`), at the cost of a per-tile `keys`
+argument in `surya_causal_mask_scale_f32` and a per-tile `head_stride` in the
+tile layout (`evie_softmax_rows_f32` already takes `cols` and `tokens`
+separately, so it needs no new argument). Do it when the prefill's score-GEMM
+share is measured to matter; it is a separate change from the memory fix, which
+neither added nor removed QK^T work.
+
+## 2026-09-12 Surya A4 page has no torch fp32 reference — open
+
+The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
+(`QUALITY_CASES` in `tests/test_live_surya_transcription.py`) but not in the
+implementation-parity gates, because those compare against a captured torch fp32
+greedy chain and no such capture exists for this page. So the page's *quality* is
+gated and its *parity with the reference implementation* is not.
+
+Capture it when a page-scale parity claim is wanted: add the case to
+`scripts/surya_oracle_greedy.py --case protocol` and to
+`tests/fixtures/surya/oracle_fullpage_protocol.json`, then move `a4` from
+`QUALITY_ONLY_CASES` into `CASES`/`EXACT_ID_CASES` (or `COORDINATE_CASES` if its
+bbox digits turn out to be as fragile as the degraded scan's). The capture is a
+torch fp32 CPU run of 2108 tokens; nothing else about the page needs to change.
+
+## 2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` — open
+
+The server prefers a generator-reported `prompt_tokens` and falls back to
+`engine.count_tokens(prompt)` when none is reported. Only the Surya generators
+set it, because only they build a prompt whose length a tokenizer cannot
+recover (text plus image tokens). Every text-only generator still takes the
+fallback path.
+
+Set it in the text-only generators when the fallback is wanted gone: it removes
+a `count_tokens` call per request and one branch in `chat_completions`. There is
+no correctness reason to hurry, since for a text-only prompt the tokenizer count
+is already exact.
+
+## 2026-09-13 Surya vision admission is GPU-only and reports runner errors — open
+
+`SuryaGpuRunner.check_vision_capacity` enforces three budgets before any device
+work: the score-tile bytes, the vision wall clock, and free device memory. Two
+edges of that boundary are unowned.
+
+- The CPU-reference generator (`SuryaOCRGenerator`) has no capacity check at
+  all, so a page-scale grid runs a pure-numpy vision tower for as long as it
+  takes. Give it the same estimate (`vision_forward_seconds` is fitted to
+  device rates, so a CPU lane needs its own constants) or declare a patch
+  ceiling; neither generator is wired into a server yet, so nothing reaches
+  this today.
+- An over-budget page reaches a generator's caller as the runner's
+  `SuryaGpuRuntimeError`, which is a request-level fault: the server maps
+  `SuryaRequestError` to a 400 and anything else to a 500. Convert at the
+  generator boundary when the Surya generators are wired into a server, and
+  decide the free-memory check separately — that one is genuinely a
+  server-state fault rather than a bad request.
+
+## 2026-09-13 Generation-registry clears cannot be replayed — open
+
+`clear_generation_registry_for_tests()` empties `_FACTORIES`, and nothing can
+repopulate it afterwards: the built-in registrations are module-scope
+`register_text_generator(...)` calls, so once those modules are in `sys.modules`
+a later `register_builtin_generators()` does not re-execute them, and
+`_BUILTINS_REGISTERED` stays `True` so it does not even try. A test that called
+the clear would empty the registry for the rest of the process. Nothing calls it
+today and its docstring now says this.
+
+Give each generation module a callable `register_*()` and call it from
+`register_builtin_generators()` — the pattern the runtime-profile registries in
+that same function already use. The clear then becomes safe, and the generation
+registry can join the collection-time baseline restore in `tests/conftest.py`
+that already makes the kernel registry order-independent under
+`clear_registry_for_tests()`.
+
+## Compact scoreboard: 2-line headroom at 498/500
+
+- `benchmarks/README.md` was returned to its documented shape on 2026-09-13
+  (1962 -> 494 lines). The Qwen4Exp/Framework optimization journal, the
+  Qwen3.8-Flash-Next implementation-first status, the Surya planner/kernel
+  internals, the harness catalog that duplicates `benchmarks/HARNESSES.md`, and
+  the per-campaign delta prose moved verbatim to `benchmarks/HISTORY.md`; no
+  line was dropped and every current row stayed.
+- What remains is current by construction (Surya topline, root-README export
+  block, the `## Current ...` sections, evidence status, reading, maintenance).
+  Two lines of headroom absorbs nothing; the next unit must move a section.
+- When the next substantial lane lands, either raise the line budget in
+  `tests/test_benchmark_readme_sync.py` under the 2026-09-06 rationale
+  ("guardrails against worklog-style prose, not a content budget"), or move the
+  next-least-current section to `HISTORY.md`. The closest calls this time were
+  the harness catalog (already duplicated in `HARNESSES.md`) and the
+  Maple-Preview retained backend comparison (Maple still has concurrency rows
+  in the scoreboard).
+- Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
+  failure mode was silent drift, not a single large addition.

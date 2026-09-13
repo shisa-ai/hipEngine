@@ -1,0 +1,60 @@
+{
+ "date": "2026-09-13",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T07:17:46Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_vision_tiling_cost.py --pages page_a4.png --budgets 512 --reps 2 --passes 2 --out benchmarks/results/2026-09-13-gfx1151-surya-vision-a4-postfix.json",
+  "git_revision": "b55470ae64c0b8854890c18e73a147b80edb7059",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": "one runner per shape; one discarded warm-up vision_forward; median of --reps wall-clock timings around vision_forward only (preprocessing and scratch allocation excluded)",
+ "boundary": "None disables the tile budget and runs one dense tile; a byte budget selects the largest query block whose vision_num_heads * n * block * 4 tile fits; --blocks names the block directly and solves the budget backwards so the shapes can be swept without the budget's rounding",
+ "shape_envelope": "byte-budget rows are the production plan (envelope and wavefront rounding respected); --blocks rows lift both so shapes the planner would not choose are still measured",
+ "note": "Grids that cannot run densely have no dense baseline: the dense score matrix is 56.5 GB at 34320 patches and 206 GB at 65536, which is why the tiling exists. These rows are the grids that run both ways.",
+ "reps": 2,
+ "passes": 2,
+ "pass_check": "second pass in reverse order; 1/1 rows agree with pass 1 within max(10%, 2 ms), pass_ratio = pass1/pass2 per row",
+ "results": [
+  {
+   "page": "page_a4.png",
+   "grid": [
+    1,
+    220,
+    156
+   ],
+   "patches": 34320,
+   "budget_bytes": 536870912,
+   "query_block": 320,
+   "tiles": 108,
+   "tail_rows": 80,
+   "even": false,
+   "scratch_bytes": 527155200,
+   "scratch_mib": 502.7,
+   "dense_score_bytes": 56537395200,
+   "median_ms": 43355.6,
+   "min_ms": 43333.04,
+   "max_ms": 43378.15,
+   "samples_ms": [
+    43378.15,
+    43333.04
+   ],
+   "envelope_lifted": false,
+   "median_ms_pass2": 43487.84,
+   "samples_ms_pass2": [
+    43459.39,
+    43516.29
+   ],
+   "pass_ratio": 0.997,
+   "vs_best_shape": 1.0
+  }
+ ]
+}

@@ -36,6 +36,7 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
     malloc,
 )
@@ -344,7 +345,7 @@ class EvieRunner:
         """Upload a host pointer list for rocBLAS batched GEMMs (device arrays).
 
         Buffers are cached per unique pointer list, so the A/B/C arrays of
-        one call never alias.
+        one call never alias. A cache hit already contains the complete list.
         """
 
         if not hasattr(self, "_ptr_array_bufs"):
@@ -354,9 +355,9 @@ class EvieRunner:
         buf = self._ptr_array_bufs.get(key)
         if buf is None:
             buf = _malloc_committed(nbytes + _GEMM_PAD_BYTES)
+            host = np.array(ptrs, dtype=np.uint64)
+            copy_host_to_device(buf, host_array_ptr(host), nbytes)
             self._ptr_array_bufs[key] = buf
-        host = np.array(ptrs, dtype=np.uint64)
-        copy_host_to_device(buf, host_array_ptr(host), nbytes)
         return buf.ptr
 
     def _evict_caches(self, keep: tuple) -> None:
@@ -1105,13 +1106,11 @@ class EvieRunner:
             self._zero_conv_state = _malloc_committed(self.GDN_QKV_DIM * 4 * 4)
             self._misc_buffers.append(self._zero_conv_state)
         # the prefill conv kernel chains segments through conv_state, so it
-        # must be re-zeroed before every layer invocation (GPU-side scale
-        # by 0.0 — an H2D upload here cost a host alloc + copy per layer)
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(self._zero_conv_state.ptr), _P(self._zero_conv_state.ptr),
-            _F(0.0), _I(self.GDN_QKV_DIM * 4), _S(0),
+        # must be re-zeroed before every layer invocation. Clear bytes on
+        # the consuming stream: multiplication by zero preserves NaNs.
+        self.runtime.memset_async(
+            self._zero_conv_state.ptr, 0, self.GDN_QKV_DIM * 4 * 4, 0,
         )
-        self._check(err, "zero conv state")
         if seg is None:
             qwen35_linear_attn_conv_prefill_f32(
                 qkv_ptr,
@@ -1132,11 +1131,7 @@ class EvieRunner:
             # re-zeroed before every layer (otherwise layer N reads layer
             # N-1's final state as its boundary history).
             n_conv_state = seg.segments * self.GDN_QKV_DIM * 4
-            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-                _P(seg.conv_state_slab.ptr), _P(seg.conv_state_slab.ptr),
-                _F(0.0), _I(n_conv_state), _S(0),
-            )
-            self._check(err, "zero conv state slab")
+            self.runtime.memset_async(seg.conv_state_slab.ptr, 0, n_conv_state * 4, 0)
             qwen35_linear_attn_conv_prefill_segments_f32(
                 qkv_ptr,
                 seg.conv_state_slab.ptr,
@@ -1204,12 +1199,8 @@ class EvieRunner:
         else:
             state_slab = seg.gdn_state_slab
             n_state_total = n_state * seg.segments
-        # GPU-side re-zero (x * 0.0) avoids the 2 MB host upload per layer
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(state_slab.ptr), _P(state_slab.ptr),
-            _F(0.0), _I(n_state_total), _S(0),
-        )
-        self._check(err, "zero gdn state")
+        # Clear bytes rather than scaling stale state, which may contain NaNs.
+        self.runtime.memset_async(state_slab.ptr, 0, n_state_total * 4, 0)
         if seg is None:
             self._gdn_recurrence(
                 q_ptr,
@@ -1450,7 +1441,7 @@ class EvieRunner:
 
         # segment metadata buffers (uploaded once per call)
         cu_buf = _malloc_committed(cu.nbytes)
-        copy_host_to_device(cu_buf, host_array_ptr(np.ascontiguousarray(cu)), cu.nbytes)
+        copy_host_array_to_device(cu_buf, np.ascontiguousarray(cu), cu.nbytes)
         state_idx = np.arange(len(seqs), dtype=np.int64)
         si_buf = _malloc_committed(state_idx.nbytes)
         copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
@@ -1590,7 +1581,7 @@ class EvieRunner:
         ranges = [(int(cu[i]), int(cu[i + 1])) for i in range(len(seqs))]
 
         cu_buf = _malloc_committed(cu.nbytes)
-        copy_host_to_device(cu_buf, host_array_ptr(np.ascontiguousarray(cu)), cu.nbytes)
+        copy_host_array_to_device(cu_buf, np.ascontiguousarray(cu), cu.nbytes)
         state_idx = np.arange(len(seqs), dtype=np.int64)
         si_buf = _malloc_committed(state_idx.nbytes)
         copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
