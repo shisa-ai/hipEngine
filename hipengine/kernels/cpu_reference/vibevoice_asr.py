@@ -89,16 +89,18 @@ def vibevoice_causal_conv1d(
     out = np.zeros((batch, out_channels, out_length), dtype=np.float32)
     out_per_group = out_channels // groups
     for g in range(groups):
-        # im2col: per-group window taps stacked channel-first
+        # im2col: per-group taps at rows ci*K + k to match nn.Conv1d weight
+        # layout [out, in, kernel] reshaped to (out_per_group, in*K)
         cols = np.empty((batch, in_per_group * kernel, out_length), dtype=np.float32)
         ch_lo, ch_hi = g * in_per_group, (g + 1) * in_per_group
+        row_index = np.arange(in_per_group) * kernel
         for k in range(kernel):
             seg = padded[:, ch_lo:ch_hi, k * dilation : k * dilation + stride * out_length]
             if stride > 1:
                 seg = seg[:, :, ::stride]
             if seg.shape[2] != out_length:
                 raise AssertionError("window extraction mismatch")
-            cols[:, k * in_per_group : (k + 1) * in_per_group, :] = seg
+            cols[:, row_index + k, :] = seg
         w_g = w[g * out_per_group : (g + 1) * out_per_group].reshape(out_per_group, -1)
         out[:, g * out_per_group : (g + 1) * out_per_group] = np.einsum("ok,bkl->bol", w_g, cols)
     if b is not None:
