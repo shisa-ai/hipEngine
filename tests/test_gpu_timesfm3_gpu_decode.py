@@ -196,7 +196,16 @@ def test_gpu_decode_is_invariant_to_poisoned_device_memory() -> None:
             return holder["decoder"].decode(target, horizon, **kwargs)
 
         def collect() -> dict[str, list]:
+            # q_offset is initialized once and is never written by decode.
+            # Treat it like weights; poisoning it changes the model inputs.
             found = collect_device_buffers(holder["decoder"])
+            constants = [(path, buf) for path, buf in found if path.endswith(".q_offset")]
+            assert len(constants) == 1, [path for path, _ in found]
+            from hipengine.core.memory import copy_device_to_host, host_array_ptr
+            offset = np.empty(constants[0][1].nbytes // 4, dtype=np.int32)
+            copy_device_to_host(host_array_ptr(offset), constants[0][1], offset.nbytes)
+            np.testing.assert_array_equal(offset, np.zeros_like(offset))
+            found = [(path, buf) for path, buf in found if not path.endswith(".q_offset")]
             assert found, "no device buffers reachable from the decoder"
             return group_by_prefix(found)
 

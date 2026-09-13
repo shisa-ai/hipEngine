@@ -85,8 +85,8 @@
   e.g. `upload_host_array(buffer, array, nbytes=None)` doing the
   `np.ascontiguousarray` + `host_array_ptr` + `memcpy` internally, with
   `copy_host_to_device` kept only for callers that genuinely hold a raw address.
-  Measured mechanism and the tests that pin it: `tests/test_h2d_source_lifetime.py`.
-- Two residues are outside the AST guard in `tests/test_device_memory_hygiene.py`
+  Measured mechanism and the tests that pin it: `tests/test_gpu_h2d_source_lifetime.py`.
+- Two residues are outside the AST guard in `tests/test_gpu_device_memory_hygiene.py`
   (which is documented as partial, with its gaps pinned by
   `test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned`):
   - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
@@ -97,11 +97,11 @@
   - an allocation reached through a factory or a view, e.g.
     `host_array_ptr(_fresh())` or `host_array_ptr(np.zeros(8).reshape(2, -1))`,
     which a source-level lint cannot see. The first form is demonstrated in
-    `tests/test_h2d_source_lifetime.py`.
+    `tests/test_gpu_h2d_source_lifetime.py`.
 - `_copy_array_to_tensor`-style helpers (e.g.
   `hipengine/runtime/gguf_native_spec_cycle.py`) do bind the source to a local,
   which is sufficient on its own -- the transfer is complete when the copy
-  returns (`tests/test_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
+  returns (`tests/test_gpu_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
   Their per-call `device_synchronize()` is defensive only and is the part worth
   removing; a persistent pinned staging buffer is the alternative if a future
   async copy path needs one.
@@ -7281,7 +7281,7 @@ eviction mask), so the default path exercises the ABI.
 Retained as explicit fallbacks/bisection oracles, not dead code:
 `attention_decode_rocblas_f32` (the four-dispatch parent) is the strict
 fallback for head_dim != 256 or GQA repeat != 4 and is what
-`tests/test_surya_kv_spans.py` measures parent parity against;
+`tests/test_gpu_surya_kv_spans.py` measures parent parity against;
 `surya_scatter_kv_f32` (the pre-spans scatter) is used by
 `scripts/surya_gpu_debug_attn.py`. Remove both when the fp32 spans decode kernel
 is shared with the Qwen3.5 decode path or when the debug script no longer needs
@@ -7314,7 +7314,7 @@ the result is unchanged; only `heads * n * block * 4` bytes are live. The A4
 grid now needs 535 MB (106x smaller) and the ceiling 535 MB (386x smaller), and
 admission no longer rejects a routine document. Evidence:
 `benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json`,
-`tests/test_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
+`tests/test_live_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
 
 The "result is unchanged" claim is now measured, not inferred: under a 12 MiB
 budget (4-10 tiles per page, partial tiles included) the tiled and dense paths
@@ -7340,7 +7340,7 @@ are exactly the former `page_<name>_fit.png` bytes, which is why the captured
 full-page-protocol oracle only needed its `page` field renamed: the images did
 not change. `FIT_PAGES`, `write_fit_pages`, `acceptance_page` and the `--fit`
 flag are gone; `page_filename` returns `page_<name>.png` for every page, and
-`tests/test_surya_transcription_fixtures.py` asserts each generator still
+`tests/test_unit_surya_transcription_fixtures.py` asserts each generator still
 rejects the old clipping geometry so the pages cannot silently clip again.
 
 `oracle_bench.json` was re-captured (torch fp32, 7 pages) and the lane
@@ -7373,8 +7373,8 @@ first query, not the tile-local row index). The measured prefill peak falls
 wall-clock at 16384 tokens, and `block >= tokens` reproduces the dense calls
 exactly, so the dense plan remains the strict fallback. Evidence:
 `benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json`,
-`tests/test_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
-`tests/test_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
+`tests/test_live_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
+`tests/test_live_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
 
 ## 2026-09-13 Surya lane comparison is measured one process per lane — open
 
@@ -7517,7 +7517,7 @@ neither added nor removed QK^T work.
 ## 2026-09-12 Surya A4 page has no torch fp32 reference — open
 
 The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
-(`QUALITY_CASES` in `tests/test_surya_transcription.py`) but not in the
+(`QUALITY_CASES` in `tests/test_live_surya_transcription.py`) but not in the
 implementation-parity gates, because those compare against a captured torch fp32
 greedy chain and no such capture exists for this page. So the page's *quality* is
 gated and its *parity with the reference implementation* is not.

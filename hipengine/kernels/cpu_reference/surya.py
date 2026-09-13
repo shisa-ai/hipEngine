@@ -4,7 +4,7 @@ NumPy/fp32 implementation of the Surya text stack — a causal Qwen3.5
 hybrid decoder (18 gated-DeltaNet + 6 full-attention layers, interleaved
 partial mRoPE, tied LM head) — used as the strict reference for hipEngine
 GPU work. Fixture-generator parity target: ``tests/fixtures/surya/``
-(torch fp32 oracle) via ``tests/test_surya_text_decoder.py``.
+(torch fp32 oracle) via ``tests/test_live_surya_text_decoder.py``.
 
 Shared family math (rope tables, RMSNorm, activations, half-split rope
 application) is imported from the EVIE CPU reference, which is

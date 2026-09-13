@@ -15,7 +15,7 @@ head, so it moves ``q_per_kv`` times less KV traffic; it also never
 materializes the score row.  The parent route ignores span metadata by
 construction, so parity is only checked on the identity dense fill (page table
 ``b -> b``, ``token_positions = arange``, empty eviction mask) where the two
-agree; the span-honouring behaviour is gated by ``tests/test_surya_kv_spans.py``.
+agree; the span-honouring behaviour is gated by ``tests/test_gpu_surya_kv_spans.py``.
 
 Usage:
     python3 scripts/surya_kv_spans_bench.py --max-seq 8580 --max-seq 16384

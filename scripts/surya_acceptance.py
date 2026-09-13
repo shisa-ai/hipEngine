@@ -40,7 +40,7 @@ def main(argv=None):
     parser.add_argument("--junitxml", type=Path)
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[1]
-    tests = sorted((root / "tests").glob("test_surya*.py"))
+    tests = sorted((root / "tests").glob("test_*_surya*.py"))
     if not tests:
         parser.error("no Surya test files found")
     options = ["-ra", *(str(path) for path in tests)]

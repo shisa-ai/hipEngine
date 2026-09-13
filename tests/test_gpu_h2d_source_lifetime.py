@@ -9,7 +9,7 @@ this repo, and only one of them survives measurement:
    so by the time the copy function is entered the array is already gone and its
    block is available to the next same-size allocation.  No device-side timing is
    involved.  This is what broke
-   ``tests/test_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction``
+   ``tests/test_gpu_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction``
    depending on which test ran before it.
 
 2. *The transfer reads the source after the copy returns.* This is **false** on
@@ -39,7 +39,7 @@ def _fresh(size: int) -> np.ndarray:
     """A factory, so the allocation is not visible to the AST guard.
 
     ``host_array_ptr(_fresh())`` is an inline temporary like any other, but the
-    guard in ``tests/test_device_memory_hygiene.py`` sees a call to an unknown
+    guard in ``tests/test_gpu_device_memory_hygiene.py`` sees a call to an unknown
     name and cannot know it allocates.  That is a real limit of a source-level
     lint, and this test is the demonstration that the limit is not theoretical.
     """
