@@ -1105,13 +1105,13 @@ class EvieRunner:
             self._zero_conv_state = _malloc_committed(self.GDN_QKV_DIM * 4 * 4)
             self._misc_buffers.append(self._zero_conv_state)
         # the prefill conv kernel chains segments through conv_state, so it
-        # must be re-zeroed before every layer invocation (GPU-side scale
-        # by 0.0 — an H2D upload here cost a host alloc + copy per layer)
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(self._zero_conv_state.ptr), _P(self._zero_conv_state.ptr),
-            _F(0.0), _I(self.GDN_QKV_DIM * 4), _S(0),
-        )
-        self._check(err, "zero conv state")
+        # must be re-zeroed before every layer invocation. This has to be a real
+        # device memset: a scale-by-zero kernel (``x * 0.0``) cannot clear a NaN
+        # left in recycled device memory (``NaN * 0 == NaN``), and the recurrent
+        # state then turns every output into NaN. An H2D upload here cost a
+        # host alloc + copy per layer, which is why the GPU-side re-zero exists.
+        self.runtime.memset(self._zero_conv_state.ptr, 0,
+                            self._zero_conv_state.nbytes)
         if seg is None:
             qwen35_linear_attn_conv_prefill_f32(
                 qkv_ptr,
@@ -1132,11 +1132,9 @@ class EvieRunner:
             # re-zeroed before every layer (otherwise layer N reads layer
             # N-1's final state as its boundary history).
             n_conv_state = seg.segments * self.GDN_QKV_DIM * 4
-            err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-                _P(seg.conv_state_slab.ptr), _P(seg.conv_state_slab.ptr),
-                _F(0.0), _I(n_conv_state), _S(0),
-            )
-            self._check(err, "zero conv state slab")
+            # Real memset for the same reason as the single-request path: a
+            # scale-by-zero leaves a recycled NaN in place.
+            self.runtime.memset(seg.conv_state_slab.ptr, 0, n_conv_state * 4)
             qwen35_linear_attn_conv_prefill_segments_f32(
                 qkv_ptr,
                 seg.conv_state_slab.ptr,
@@ -1204,12 +1202,9 @@ class EvieRunner:
         else:
             state_slab = seg.gdn_state_slab
             n_state_total = n_state * seg.segments
-        # GPU-side re-zero (x * 0.0) avoids the 2 MB host upload per layer
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(state_slab.ptr), _P(state_slab.ptr),
-            _F(0.0), _I(n_state_total), _S(0),
-        )
-        self._check(err, "zero gdn state")
+        # GPU-side re-zero (a real memset, not ``x * 0.0``: a scale-by-zero
+        # cannot clear a recycled NaN) avoids the 2 MB host upload per layer
+        self.runtime.memset(state_slab.ptr, 0, n_state_total * 4)
         if seg is None:
             self._gdn_recurrence(
                 q_ptr,
