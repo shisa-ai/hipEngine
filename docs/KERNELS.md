@@ -1125,9 +1125,13 @@ It compiles `linear_attn/qwen4_exp_gdn.hip` in the separately hashed
 `qwen4_exp_gdn_dpp` family with `HIPENGINE_QWEN4_GDN_DPP=1`; the ordinary
 tile16 and serial strict keys remain unchanged fallbacks. Source:
 pwilkin/llama.cpp `964c6f2`, `ggml/src/ggml-cuda/gated_delta_net.cu`,
-inspected at `f5daaa3c`. No default dispatch selects this experimental key.
+inspected at `f5daaa3c`. The named gfx1151 UD-Q4_K_XL production profile now
+selects this key within its existing tiled16 suffix; other quant/strict scopes
+retain their prior owners.
 Complete output/carried-state parent parity, CPU-reference outer checks
-and cached profiler smoke pass; whole-model A/B remains required.
+and cached profiler smoke pass; full72-sample whole-model A/B is exact and
+improves weighted PP0.125%/0.265%/0.262% at512/1K/4K. Evidence:
+`benchmarks/results/2026-09-14-journey-gdn-dpp/artifact.json`.
 
 | Profile | Important flags | Wavefront | Typical use |
 | --- | --- | --- | --- |

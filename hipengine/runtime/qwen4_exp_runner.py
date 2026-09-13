@@ -5681,7 +5681,16 @@ def run_qwen4_exp_gdn_token_mixer(
             ):
                 # PF-5 production: exact token-tile-16 owner, bit-exact to
                 # the columnwarp parent at the binding Hk16/Hv48/D128 shape.
-                qwen4_exp_gdn_prefill_tiled16_f32(
+                tile16_variant = os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT")
+                tile16 = (
+                    resolve(
+                        backend=weights["attn_qkv"].backend,
+                        layer="gdn_recurrence_norm_gate", quant="f32_state",
+                        variant=tile16_variant,
+                    )
+                    if tile16_variant else qwen4_exp_gdn_prefill_tiled16_f32
+                )
+                tile16(
                     scratch.conv.ptr,
                     scratch.gate.ptr,
                     scratch.alpha.ptr,

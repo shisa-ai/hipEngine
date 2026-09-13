@@ -105,6 +105,10 @@ def _selection(
 
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
+            "qwen4exp_sigmoid_strict_prefill", "qwen4exp_sigmoid_strict_prefill", "f32_state",
+        ),
         _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
                    "coltile8_rowbatch4_f32_f32_out","coltile8_rowbatch4_f32_f32_out","gguf_q8_0"),
         _selection(
@@ -272,8 +276,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
     )
 
 
-def _production_selections() -> tuple[VariantSelection, ...]:
+def _production_selections(*, dpp: bool = False) -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
+            "qwen4exp_gdn_tiled16_dpp_prefill" if dpp else "qwen4exp_gdn_tiled16_prefill",
+            "qwen4exp_sigmoid_strict_prefill", "f32_state",
+            evidence="benchmarks/results/2026-09-14-journey-gdn-dpp/artifact.json" if dpp else _GDN_COLWARPS_EVIDENCE,
+        ),
         _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
                    "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
                    "coltile8_rowbatch4_f32_f32_out","gguf_q8_0",
@@ -592,6 +602,11 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else ""
+        ),
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
             if production
@@ -665,7 +680,7 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.PRODUCTION,
             plan=RuntimeProfilePlan(
-                selections=_production_selections(),
+                selections=_production_selections(dpp=quant == "gguf_ud_q4_k_xl"),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,

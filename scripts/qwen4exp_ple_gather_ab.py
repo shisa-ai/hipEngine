@@ -111,6 +111,9 @@ def main():
         dpp_calls = 0
         dpp_library = None
         if args.method == "gdn_dpp":
+            # Explicit parent/candidate library A/B bypasses the production
+            # registry selector so the control cannot silently select DPP.
+            os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] = ""
             from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import build_qwen4_exp_gdn_dpp
             dpp_library = build_qwen4_exp_gdn_dpp()
             report["kind"] = "qwen4exp_gdn_complete_model_ab"

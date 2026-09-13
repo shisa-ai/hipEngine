@@ -610,6 +610,12 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
 
+Exact DPP reductions improve the admitted tiled-GDN prefill suffix:
+matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s
+at512/1K/4K (+0.125%/+0.265%/+0.262%). Full72-sample output/state A/B is
+exact; no decode speedup or broader numerical qualification is claimed.
+[DPP evidence](results/2026-09-14-journey-gdn-dpp/README.md).
+
 Mapping-only random advice for sparse PLE reads is now the gfx1151 production
 default. In the matched file-scoped cold-cache protocol, all-category
 512/1K/4K prefill improves **84.161/134.330/225.864 ->

@@ -3,11 +3,11 @@
 ## Journey GDN DPP Experiment
 
 - The `qwen4_exp_gdn_dpp` build family and gfx1151
-  `qwen4exp_gdn_tiled16_dpp_prefill` key are experimental. Ordinary tile16
-  and serial strict keys remain registered. Kernel parity/CPU-reference and
-  owner timing pass; retain/promote only after complete-model non-regression.
-  Remove the variant/build flag if complete-owner or model validation fails;
-  no permanently default-off successful path.
+  `qwen4exp_gdn_tiled16_dpp_prefill` key are promoted for the existing
+  UD-Q4_K_XL production suffix after full72-sample exact A/B. Ordinary tile16
+  and serial strict keys remain registered. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`
+  is profile-owned; remove temporary experiment harness interception once
+  final campaign ablations finish. Keep the ordinary key for strict/bisection.
 
 ## Qwen4Exp PLE Mapping Advice (2026-09-14 JST)
 
