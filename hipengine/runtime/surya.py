@@ -164,8 +164,20 @@ DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 #
 # The envelope is not optimal at every grid, and the misses are recorded in
 # ``docs/REFACTOR.md`` rather than hidden: at 6400 patches a 96-row tile (67
-# tiles, 1940.93 ms) beats the envelope's 192 rows (2130.11 ms) by 10%, and at
-# 16384 text tokens the envelope's 512 rows cost 2.4% against the budget's 1024.
+# tiles, 1940.93 ms) beats the envelope's 192 rows (2130.11 ms) by 10%, and the
+# text prefill's curve is monotone in the other direction. Measured across
+# query blocks at 8580 and 16384 tokens on gfx1151 (the sweep artifact
+# ``benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json``),
+# every halving of the tile count is faster: at 16384 tokens 128/64/32/16/9/8
+# tiles cost 17.799/17.611/17.397/16.927/16.853/16.808 s, so the envelope's 512
+# rows cost 3.0% against the 1024 the 512 MiB budget admits, and at 8580 tokens
+# its 256 rows cost 2.1% against 1955. Both budget widths are at or below the
+# dense time, so on the text path the cap is pure loss: it buys 268 MB of a
+# 6.4 GB peak for that 3.0%, and a user who needs the memory sets a smaller
+# budget, which derives a smaller tile anyway. The batched score GEMMs are
+# shape-invariant in arithmetic (each tile still computes the full key range,
+# ``sum(bq) == tokens``), so the cost is in the GEMM shapes and the per-tile
+# key/value re-read, not in extra FLOPs.
 # It recovers 28.5-42.8% at the grids where the budget alone picks a bad shape.
 SHAPE_TILE_ROWS = 128
 SHAPE_TILE_DIVISOR = 32

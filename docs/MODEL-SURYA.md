@@ -679,7 +679,15 @@ the page's 8580 image tokens need 70 MB instead of 2.36 GB and a full
 16384-token prompt 268 MB instead of 8.59 GB; the measured prefill peak at
 `max_seq` 16384 falls from 7.03 GB to 4.75 GB for the page and from 14.71 GB to
 6.39 GB at a full prompt, with the remaining scratch linear at 180.8 KiB/token
-and the tiling costing 0.7% wall-clock for the page and 3.1% at 16384 tokens.
+across every shape. What the tiling costs is the shape envelope's, not the
+tiling's: swept across query blocks at both lengths
+(`benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`),
+the widest tile the 512 MiB budget admits is the text optimum — 16.927 s at
+16384 tokens against 17.436 s for the envelope's 512 rows (3.0%), and 7.535 s
+at 8580 tokens against 7.692 s for its 256 rows (2.1%) — and both budget widths
+are at or below the dense time (16.984 s and 7.619 s). The text curve is
+monotone in tile count, because every tile still computes the full key range,
+so fewer tiles is less per-tile work at unchanged arithmetic.
 The generator admits
 `max_seq` 16384 by default (upstream Surya budgets 12,288 context tokens per OCR
 slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
@@ -744,8 +752,13 @@ actually separates on: every measured A4 width that is a multiple of 32 runs
 43862-44668 ms and every width that is not runs 45050-48496 ms, and the 512 MiB
 budget derives 325 rows, on the slow side of that line. The envelope is not
 optimal at every grid and the misses are recorded rather than hidden: at 6400
-patches a 96-row tile is 10% faster than the 192 rows the cap picks, and the A4
-page's own best measured width is 2048 rows (41622 ms, 5.1% below the default).
+patches a 96-row tile is 10% faster than the 192 rows the cap picks, the A4
+page's own best measured width is 2048 rows (41622 ms, 5.1% below the default),
+and the text prefill is a third miss in the opposite direction. Its curve is
+monotone in tile count (fewer, wider tiles are always faster), so the cap costs
+3.0% at 16384 tokens and 2.1% at 8580 while the widest tile the 512 MiB budget
+admits is at or below the dense time — the shared planner wants a text-aware
+rule, not the vision envelope, and `docs/REFACTOR.md` records it as open.
 
 No Surya rate or memory target is established here. EVIE retrieval throughput
 and upstream NVIDIA/Apple results are not hipEngine OCR baselines. Begin on
