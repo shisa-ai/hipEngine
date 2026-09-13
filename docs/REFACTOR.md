@@ -7339,6 +7339,38 @@ rule uses the wavefront multiple instead, which does separate on the A4 page
 effect). If a future rule wants to use divisibility, the data to re-check is
 already in the artifacts.
 
+## 2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism — open
+
+The 4096-patch shape curve is reproducibly non-monotone, confirmed by four
+independent measurements (two full sweeps, a one-runner probe with a mutated
+budget, and a fresh-runner probe; all on a quiet GPU, all with the block
+asserted):
+
+| rows | 16 | 32 | 64 | 96 | 128 | 160 | 192 | 256 | 341 | 512 | 1024 | 2048 | 2730 | 4096 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ms | 1575 | 1089 | 939 | 894 | 881 | 909 | 1102 | 1168 | 1175 | 1667 | 1327 | 1137 | 1118 | 1040 |
+
+192/256/341/512/1024 rows are 24-89% slower than 128, and 512 -- a multiple of
+32 -- is the worst shape on the grid, 1.6x the dense tile. Nothing measured
+explains where the spikes fall; rocBLAS kernel selection at particular
+`(M, N, K)` triples is the leading candidate, and a `rocprofv3 --kernel-trace`
+over one fast shape (128) and one slow shape (512) at 4096 patches would settle
+whether the score-scale or softmax kernel changes or a GEMM switches tiles.
+Worth doing before anyone adds another shape rule: the envelope's floor of 128
+happens to land on a spike-free value here, which is luck, not design.
+
+Two related consequences, both already applied:
+
+- Rounding down to a multiple of 32 is a memory-neutral tie-break justified by
+the A4 page's clean separation, not a guarantee. 512 rows at 4096 patches is a
+multiple of 32 and the slowest shape measured on that grid.
+- A shape probe that varies the block from outside
+  `scripts/surya_vision_tiling_cost.py` must lift `SHAPE_TILE_ROWS` /
+  `SHAPE_TILE_DIVISOR` / `SHAPE_TILE_MULTIPLE`, or the production cap overrides
+  the requested block and the probe reports one block for every shape. That
+  happened here and produced a flat, plausible curve that looked like evidence
+  the sweep was wrong.
+
 ## 2026-09-13 Surya attention tile shape envelope is not optimal everywhere — open
 
 `plan_score_tiles` caps the query block at `max(128, ceil(rows / 32))` rows and
