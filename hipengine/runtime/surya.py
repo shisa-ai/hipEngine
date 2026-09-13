@@ -176,6 +176,54 @@ SHAPE_TILE_MULTIPLE = 32
 # chat-template overhead) and sizes its vLLM lane at 18,000. A 300-DPI A4 page
 # alone is 8580 image tokens, so the previous 2048 default rejected every real
 # document before the prompt or any output token.
+#
+# 16384 is measured rather than assumed: ``scripts/surya_attention_memory.py
+# --max-seq 8192 12288 16384 20480 32768 --decode-steps 16`` on gfx1151
+# (``benchmarks/results/2026-09-13-gfx1151-surya-context-default.json``), one
+# fresh runner per row, three timed prefills and sixteen timed decode steps per
+# row:
+#
+#   max_seq  KV planes  resident  chunk  reach@4000-tok  reach@2108-tok  vision
+#      8192    201 MB   2886 MB    128         4.2 MP          6.1 MP    25 s
+#     12288    302 MB   2986 MB    192         8.4 MP         10.3 MP    57 s
+#     16384    403 MB   3087 MB    256        12.6 MP         14.5 MP   119 s
+#     20480    503 MB   3188 MB    320        16.8 MP         18.7 MP   161 s
+#     32768    805 MB   3490 MB    512        29.3 MP         31.3 MP   437 s
+#
+# The cost is 24.58 KiB per context token, measured exactly linear across those
+# five candidates (KV planes 24.0 KiB/token over the six full-attention layers
+# plus ~9 B/token of ``KVLiveSpans`` metadata), so 16384 is 403 MB of the
+# 3087 MB resident. Reach is ``max_seq`` minus the 121-token prompt minus the
+# output budget, and the two reach columns are the two defensible output models:
+# a fixed 4000-token budget (the largest any retained gate row declares) and the
+# largest measured page-scale output (2108 tokens, the A4 page's). A page's text
+# does not grow with its resolution, so the fixed-output column is the physical
+# one; the third column is where that page's vision forward lands in time.
+#
+# Three measured facts fix the default. First, the lower bound is a gate we run:
+# the transcription acceptance A4 row declares a 4000-token output budget and
+# needs 121 + 8580 + 4000 = 12701 tokens, so 12288 -- upstream's own llama.cpp
+# slot budget -- cannot serve it, and 13312 is the smallest 1024-multiple that
+# can, with 5% headroom. Second, the upper bound is the vision time budget: with
+# the A4's measured output held fixed, 16384 reaches 14155 image tokens =
+# 14.49 MP against the 120 s vision budget's 14.56 MP ceiling, so the two
+# policy defaults agree to 0.5% and a larger context only buys pages that cost
+# more than 119 s of vision -- pages past the vision ceiling need
+# ``max_vision_seconds`` raised first, and ``max_sequence_length`` with it.
+# Third, the measured workload has headroom: the A4 page's end-to-end request
+# uses 10809 of 16384 (66%) and its output 2108 of the 7683 the default allows
+# for that page, while every other measured page needs at most 4321 tokens
+# (``page_long``: 1600 image tokens and a 2600-token budget).
+#
+# Prefill does not see ``max_seq`` at all (at 16384 tokens: 17.17/17.19/17.18 s
+# across 16384/20480/32768, with the same 268.4 MB score tile and 3032.9 MB of
+# non-attention scratch), but decode does, weakly: at a *fixed* live context the
+# split chunk grows with ``max_seq`` (128/192/256/320/512) while the split count
+# stays 64, so fewer blocks have work and 1024 live tokens decode in
+# 18.31/18.36/18.88/18.96/19.55 ms. That is 3% from 8192 to 16384 and 4% more to
+# 32768, i.e. a reason not to over-provision the default; the chunk is derived
+# from ``max_seq`` rather than the live count, which ``docs/REFACTOR.md``
+# records as a recoverable inefficiency.
 DEFAULT_MAX_SEQ = 16384
 
 
