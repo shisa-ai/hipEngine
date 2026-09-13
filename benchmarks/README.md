@@ -399,27 +399,44 @@ denominator is not the resident graph-replay leaf used below, so it does not
 replace these rates.
 
 The retained paired measurement (c1, natural25, B3, ten prompts, two repeats,
-recorded production graph replay for the true-AR arm):
+recorded production graph replay for the true-AR arm), taken on a clean
+worktree at `92c7e3dc4`:
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `Q4_K_M` | 31.904 | 37.313 | **0.855x** | 49.409 | 63.885 | **0.773x** | **1.5487x** |
-| `Q4_K_S` | 30.428 | 39.774 | **0.765x** | 46.955 | 66.709 | **0.704x** | **1.5432x** |
+| `Q4_K_M` | 32.922 | 38.373 | **0.858x** | 50.231 | 65.347 | **0.769x** | **1.5258x** |
+| `Q4_K_S` | 32.311 | 41.135 | **0.785x** | 49.356 | 70.092 | **0.704x** | **1.5275x** |
 
 All four arms have complete 20-row-per-group evidence, deterministic repeats,
-GPU/CPU acceptance agreement, and a positive MTP/AR ratio; the `Q4_K_M` arms
-are generated-ID exact and `Q4_K_S` carries the recorded `general_ja_plan`
-exactness divergence described below. The remaining gap is concentrated in MTP
-compute: UD trails plain by 14.5%/23.5% in AR but 22.7%/29.6% in MTP.
-([paired artifact](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json),
-[prior artifact](results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json),
-[worklog](../worklog/entries/20260912T125745.171165Z-ud-phase4-lane-ud-phase4-rows-sibling-retained-43a671.md).)
+GPU/CPU acceptance agreement, and a positive MTP/AR ratio. The `Q4_K_M` arms
+are generated-ID exact and both carry `speed_claim_eligible: true` from a clean
+worktree. `Q4_K_S` carries the recorded `general_ja_plan` exactness divergence
+(2/20 rows) described below, which the suite scores as `correctness_failed` and
+so marks `speed_claim_eligible: false`; the `Q4_K_S` row is published as a
+measured rate with that caveat, not as an eligible speed claim. The remaining
+gap is concentrated in MTP compute: UD trails plain by 14.2%/21.5% in AR but
+23.1%/29.6% in MTP.
+([paired artifact](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json),
+[predecessor, superseded](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[provenance audit](../worklog/entries/20260913T114312.816781Z-lhl-ud-claim-evidence-audit-c22a97.md).)
 
 Those rates follow the rows 2-4 local32 IQ verifier sibling
 (`2ac44d7a7`), the Q5_K gate/up pair row gate, the Q8_0 attention K/V
-rowtile route, and the Q5T16 single-wave verifier rowtile (all `2026-09-13`),
-which together moved UD MTP B3 35.541 -> **49.409** (K_M, +39.0%) and
-33.061 -> **46.955** (K_S, +42.0%) at flat AR. The sibling gives each block
+rowtile route, the Q5T16 single-wave verifier rowtile, and the rounded
+fixed-5120 norm leaf (all `2026-09-13`), which together moved UD MTP B3
+35.541 -> **50.231** (K_M, +41.3%) at flat AR; the K_S progression
+33.061 -> **49.356** carries the same exactness divergence at both ends.
+
+**Provenance of the per-lever deltas.** The incremental before/after figures
+quoted in the per-lever paragraphs below were measured on worktrees that the
+suite records as `dirty: true`, so their own provenance gate marks them
+`speed_claim_eligible: false`. They remain valid as kernel- and
+verifier-level diagnostics, and the verifier sub-window A/Bs they rest on are
+separate measurements, but only the retained table above carries
+`speed_claim_eligible: true`. Re-deriving each lever's end-to-end delta on a
+clean tree is tracked in the provenance audit entry.
+
+The rows 2-4 local32 IQ verifier sibling gives each block
 several prompt rows over the same local32 IQ decode geometry, with every row
 bit-identical to the rows == 1 owner's output for that row; at kernel level it
 is 2.0-4.3x the strict per-row GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9%
@@ -1174,7 +1191,7 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.313 | **63.885** | **1.7121x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 38.373 | **65.347** | **1.7029x** | Current `ud-quants` paired control on a clean worktree at `92c7e3dc4`; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, `speed_claim_eligible: true`, and the true-AR arm uses recorded production graph replay. [`artifact`](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |

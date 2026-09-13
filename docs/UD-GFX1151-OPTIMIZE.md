@@ -12,11 +12,15 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **50.131** tok/s
-at **1.5328x** over its own AR and `UD-Q4_K_S` **48.634** at **1.5160x**
-(`benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json`).
-The 16 unchecked items below are follow-on work with recorded blockers, not
-unfinished phases; each names what is missing.
+both artifacts. The retained paired result, re-measured on a clean worktree at
+`92c7e3dc4`, is `UD-Q4_K_M` MTP **50.231** tok/s at **1.5258x** over its own AR
+and `UD-Q4_K_S` **49.356** at **1.5275x**
+(`benchmarks/results/2026-09-13-ud-gfx1100-paired-clean-provenance.json`). The
+`Q4_K_M` arms carry `speed_claim_eligible: true`; the `Q4_K_S` arms carry the
+recorded `general_ja_plan` exactness divergence and are published as measured
+rates rather than as eligible speed claims. The 16 unchecked items below are
+follow-on work with recorded blockers, not unfinished phases; each names what
+is missing.
 
 ## References
 
@@ -35,8 +39,9 @@ unfinished phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json)
-- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json)
+- [Current paired GPU1 artifact (clean provenance)](../benchmarks/results/2026-09-13-ud-gfx1100-paired-clean-provenance.json)
+- [Prior paired GPU1 artifact (superseded; rates carried no per-arm provenance)](../benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json)
+- [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json)
 - [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json)
 - [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json)
 - [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
