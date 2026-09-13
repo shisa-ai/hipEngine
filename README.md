@@ -184,8 +184,7 @@ qualified scopes. Compare only matching models and workloads.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
-| Qwen3.6-27B Dense | GGUF `Q4_K_M` | **875.4** | **28.7** | **60.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **680.4** | **29.7** | — | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
