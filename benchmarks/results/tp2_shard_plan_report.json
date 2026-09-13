@@ -10,7 +10,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "c6dc8b6953a626495a765b11456492e8fdbd1407797e0057c5e4c63c82cf749b",
+        "manifest_hash": "e73622ab8cb6c3534c02292380aa4b71dbcbd61a3361ca01b14d2184a81144ff",
         "mismatches": [],
         "rank_bytes": [
           16806250496
@@ -19,8 +19,8 @@
         "tensors_checked": 851,
         "world_size": 1
       },
-      "byte_check_seconds": 36.89,
-      "manifest_hash": "c6dc8b6953a626495a765b11456492e8fdbd1407797e0057c5e4c63c82cf749b",
+      "byte_check_seconds": 41.12,
+      "manifest_hash": "e73622ab8cb6c3534c02292380aa4b71dbcbd61a3361ca01b14d2184a81144ff",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -54,7 +54,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "6ee685942825af3f1b58c639c3d15614969584bb08d0175da0bc19d5a2902ec9",
+        "manifest_hash": "7fc6cbf4251e0b8c68cc4852c8030ec1507db566966a79ee9617b7c52dab670a",
         "mismatches": [],
         "rank_bytes": [
           9283527680,
@@ -64,8 +64,8 @@
         "tensors_checked": 851,
         "world_size": 2
       },
-      "byte_check_seconds": 45.57,
-      "manifest_hash": "6ee685942825af3f1b58c639c3d15614969584bb08d0175da0bc19d5a2902ec9",
+      "byte_check_seconds": 44.16,
+      "manifest_hash": "7fc6cbf4251e0b8c68cc4852c8030ec1507db566966a79ee9617b7c52dab670a",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -95,15 +95,15 @@
         7.009
       ],
       "streaming_rank": {
-        "anonymous_growth_bytes": 37904384,
-        "baseline_anonymous_bytes": 165912576,
+        "anonymous_growth_bytes": 37920768,
+        "baseline_anonymous_bytes": 109047808,
         "full_model_copy_bytes": 7525422080,
         "largest_tensor_bytes": 36556800,
         "local_bytes": 7525422080,
-        "peak_anonymous_bytes": 203816960,
-        "peak_rss_bytes": 284344320,
+        "peak_anonymous_bytes": 146968576,
+        "peak_rss_bytes": 241586176,
         "rank": 1,
-        "seconds": 3.92,
+        "seconds": 4.35,
         "streaming": true,
         "tensors": 851,
         "world_size": 2
@@ -122,7 +122,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "a450ff35895770745d15a60b90b8731cffbc06a6f81fe38a975f4dd85e4d8cd4",
+        "manifest_hash": "9feb21f5419f56ff9f9077583c3df6a3b046241d85f0d4a010822e5eea4b31e6",
         "mismatches": [],
         "rank_bytes": [
           5522166272,
@@ -134,8 +134,8 @@
         "tensors_checked": 851,
         "world_size": 4
       },
-      "byte_check_seconds": 57.0,
-      "manifest_hash": "a450ff35895770745d15a60b90b8731cffbc06a6f81fe38a975f4dd85e4d8cd4",
+      "byte_check_seconds": 56.88,
+      "manifest_hash": "9feb21f5419f56ff9f9077583c3df6a3b046241d85f0d4a010822e5eea4b31e6",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -183,15 +183,15 @@
         3.506
       ],
       "streaming_rank": {
-        "anonymous_growth_bytes": 39395328,
-        "baseline_anonymous_bytes": 119894016,
+        "anonymous_growth_bytes": 39354368,
+        "baseline_anonymous_bytes": 119844864,
         "full_model_copy_bytes": 3764060672,
         "largest_tensor_bytes": 18278400,
         "local_bytes": 3764060672,
-        "peak_anonymous_bytes": 159289344,
-        "peak_rss_bytes": 240340992,
+        "peak_anonymous_bytes": 159199232,
+        "peak_rss_bytes": 241328128,
         "rank": 1,
-        "seconds": 3.24,
+        "seconds": 3.28,
         "streaming": true,
         "tensors": 851,
         "world_size": 4
@@ -201,10 +201,11 @@
       "world_size": 4
     }
   },
-  "elapsed_seconds": 147.45,
+  "elapsed_seconds": 162.09,
   "kind": "tp_shard_plan_report",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_bytes": 17106773984,
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
   "owner_rank": 0,
   "rejected_degrees": {},
   "tensor_count": 866

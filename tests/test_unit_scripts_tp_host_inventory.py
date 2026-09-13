@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import pathlib
 import sys
 
@@ -254,3 +255,44 @@ def test_inventory_is_json_serializable(mod, tmp_path: pathlib.Path) -> None:
         )],
     }
     assert json.loads(json.dumps(inventory))["devices"][0]["rank"] == 0
+
+
+def test_collect_display_load_reports_openers(tmp_path: pathlib.Path, mod) -> None:
+    """A process holding a DRM node must be visible; an idle GPU must read empty."""
+
+    drm = tmp_path / "dri"
+    drm.mkdir()
+    for name in ("card0", "renderD128"):
+        (drm / name).write_text("", encoding="utf-8")
+    (drm / "by-path").mkdir()
+
+    proc = tmp_path / "proc"
+    busy_pid = proc / "4242"
+    (busy_pid / "fd").mkdir(parents=True)
+    (busy_pid / "comm").write_text("compositor\n", encoding="utf-8")
+    (busy_pid / "fd" / "7").symlink_to(drm / "card0")
+
+    idle_pid = proc / "4343"
+    (idle_pid / "fd").mkdir(parents=True)
+    (idle_pid / "fd" / "3").symlink_to("/dev/null")
+
+    # ``is_char_device`` is only true for real device nodes, so exercise the
+    # opener scan with a monkeypatched predicate rather than a fake node.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(mod.Path, "is_char_device", lambda self: True, raising=False)
+    try:
+        state = mod.collect_display_load(proc_root=proc, drm_root=drm)
+    finally:
+        monkeypatch.undo()
+
+    assert state["devices"] == ["card0", "renderD128"]
+    assert state["busy"] is True
+    assert [entry["comm"] for entry in state["openers"]["card0"]] == ["compositor"]
+    assert state["openers"]["renderD128"] == []
+    assert all(entry["pid"] != os.getpid() for entry in state["openers"]["card0"])
+
+
+def test_collect_display_load_handles_missing_drm(tmp_path: pathlib.Path, mod) -> None:
+    state = mod.collect_display_load(proc_root=tmp_path / "proc", drm_root=tmp_path / "dri")
+    assert state["devices"] == []
+    assert state["busy"] is False

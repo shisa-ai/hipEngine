@@ -13,11 +13,11 @@
       "hip_index": 0,
       "hwmon": {
         "freq_mclk_hz": 96000000,
-        "freq_sclk_hz": 110000000,
+        "freq_sclk_hz": 86000000,
         "path": "/sys/class/drm/card1/device/hwmon/hwmon2",
-        "power_average_uw": 17000000,
+        "power_average_uw": 18000000,
         "power_cap_uw": 0,
-        "temp_edge_c": 26.0,
+        "temp_edge_c": 25.0,
         "temp_junction_c": 32.0
       },
       "name": "AMD Radeon Pro W7900",
@@ -67,10 +67,10 @@
         "pcie_clock_level": "2 (16.0GT/s x8)",
         "pcie_speed_gts": 16.0,
         "pcie_width_lanes": 8,
-        "power_average_w": 7.0,
+        "power_average_w": 12.0,
         "sclk_mhz": 0.0,
         "sclk_raw": "(0Mhz)",
-        "temperature_edge_c": 26.0
+        "temperature_edge_c": 25.0
       },
       "uuid": "65323832-3839-3562-3632-633262323935",
       "uuid_hex": "65323832383935623632633262323935",
@@ -86,12 +86,12 @@
       "hip_index": 1,
       "hwmon": {
         "freq_mclk_hz": 96000000,
-        "freq_sclk_hz": 97000000,
+        "freq_sclk_hz": 108000000,
         "path": "/sys/class/drm/card0/device/hwmon/hwmon3",
-        "power_average_uw": 13000000,
+        "power_average_uw": 14000000,
         "power_cap_uw": 0,
-        "temp_edge_c": 30.0,
-        "temp_junction_c": 37.0
+        "temp_edge_c": 29.0,
+        "temp_junction_c": 36.0
       },
       "name": "AMD Radeon RX 7900 XTX",
       "numa_node": -1,
@@ -140,7 +140,7 @@
         "pcie_clock_level": "2 (16.0GT/s x8)",
         "pcie_speed_gts": 16.0,
         "pcie_width_lanes": 8,
-        "power_average_w": 6.0,
+        "power_average_w": 8.0,
         "sclk_mhz": 0.0,
         "sclk_raw": "(0Mhz)",
         "temperature_edge_c": 29.0
@@ -151,8 +151,24 @@
       "vram_total_bytes": 25753026560
     }
   ],
+  "display": {
+    "busy": false,
+    "devices": [
+      "card0",
+      "card1",
+      "renderD128",
+      "renderD129"
+    ],
+    "openers": {
+      "card0": [],
+      "card1": [],
+      "renderD128": [],
+      "renderD129": []
+    },
+    "session": "wayland"
+  },
   "errors": [],
-  "generated_at": "2026-09-14T07:57:33+0900",
+  "generated_at": "2026-09-14T08:34:05+0900",
   "host": {
     "cpu_count": 32,
     "cpu_model": "AMD Ryzen 9 5950X 16-Core Processor",
