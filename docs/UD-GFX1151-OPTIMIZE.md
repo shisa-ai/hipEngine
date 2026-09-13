@@ -578,6 +578,23 @@ Likely investigation order:
   control is 824 calls/step, 4.39 ms/step and 5.33 us per launch), so it is
   launch overhead rather than a synchronization stall. Reducing it means
   fewer, wider launches or replay-side launch elision.
+  **Evidence gap, found 2026-09-13.** Those five figures are not locatable: the
+  entry this item cites
+  (`worklog/entries/20260912T081032.217161Z-lhl-ud-phase1-attribution-a570a6.md`)
+  does not contain the 1032 or 5.25 figures, no artifact under
+  `benchmarks/results/` carries them, and the artifact named
+  `2026-06-09-hipengine-m16-ar-verify-launch-census.json` is a launch census for
+  a different model (Qwen3.6-35B-A3B-PARO, 40 layers, 920 launches/tok) rather
+  than the UD-Q4_K_M case. Under this repo's evidence policy a specific
+  per-step measurement needs its host, command and result recorded, so the
+  census has to be located or re-measured before any launch-reduction work is
+  targeted from it: the target list depends entirely on which of the 208 extra
+  calls/step they are. The qualitative conclusion is not in doubt and does not
+  depend on those figures — the 2026-09-12 attribution already establishes that
+  device work dominates at a kernel share of 0.861-0.928, and a per-launch cost
+  in the 4-6 us range makes a ~200-call difference the obvious explanation —
+  but the numbers themselves are unverified. Re-measuring this census on the
+  UD-Q4_K_M AR path is the concrete next step for this item.
 - [x] Q8_0 prefill WMMA owner at verifier rows. Retained 2026-09-13. The
   verifier-window census (kernels attributed to the twelve
   `gguf_mtp_verify_block_N` marker ranges, not divided by the step count) put
