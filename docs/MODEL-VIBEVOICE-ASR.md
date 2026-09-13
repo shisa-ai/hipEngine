@@ -23,11 +23,11 @@ Two official artifacts need to be kept distinct:
 | `microsoft/VibeVoice-ASR-HF` | `model_type=vibevoice_asr`, `VibeVoiceAsrForConditionalGeneration`; ships tokenizer, processor and template | Preferred initial native-Transformers fixture source, after a smoke run |
 
 The HF version changes namespaces and serializes encoder configuration
-differently; do not mix weights, config, or token IDs across them. The
-original checkpoint serializes float32 (about 36 GB of weights), while the HF
-checkpoint is bfloat16 (about 18 GB); on the 48 GB W7900 the original only
-fits with an on-load BF16 cast, which is a further memory reason the HF
-artifact is the initial target. Current
+differently; do not mix weights, config, or token IDs across them. Despite
+the original config's top-level `"dtype": "float32"` metadata, both
+checkpoints' safetensors are bfloat16 (about 17-18 GB of weights); the
+HF artifact remains the initial target because it ships the tokenizer,
+processor and chat template. Current
 Microsoft source offers an inference-specific ASR class despite the original
 checkpoint's training-class metadata. Both implementations can supply oracle
 fixtures; neither was run for this review. Microsoft's repository also links
