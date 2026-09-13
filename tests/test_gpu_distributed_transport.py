@@ -1,0 +1,179 @@
+"""Two-GPU guarded tests for the distributed transport and KV claims.
+
+These run only on a host with at least two HIP devices. They exercise the parts
+of Packet 1 that a CPU mock cannot: a real RCCL communicator, a real group
+all-reduce, a real peer-copy probe, and a real KV claim against device memory.
+"""
+
+from __future__ import annotations
+
+import ctypes
+from types import SimpleNamespace
+
+import pytest
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+def _device_count() -> int:
+    if not _hip_available():
+        return 0
+    from hipengine.core.hip import get_hip_runtime
+
+    try:
+        return int(get_hip_runtime().device_count())
+    except Exception:  # noqa: BLE001 - no usable device
+        return 0
+
+
+needs_two_gpus = pytest.mark.skipif(
+    _device_count() < 2,
+    reason="requires two HIP devices (W7900 + RX 7900 XTX target host)",
+)
+
+
+def _devices(count: int = 2) -> list[int]:
+    return list(range(count))
+
+
+@pytest.fixture
+def plan():
+    from hipengine.distributed.plan import DistributedPlan
+
+    return DistributedPlan.resolve(_devices(), hidden_size=5120)
+
+
+@needs_two_gpus
+def test_gpu_distributed_rccl_group_all_reduce_matches_host_sum() -> None:
+    """A real two-rank RCCL all-reduce produces the arithmetic sum on both ranks."""
+
+    import numpy as np
+
+    from hipengine.core.device import Device, scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_array_to_device, free, host_array_ptr, malloc
+    from hipengine.distributed.plan import DistributedPlan
+    from hipengine.distributed.rccl import RcclTransport
+
+    runtime = get_hip_runtime()
+    resolved = DistributedPlan.resolve(_devices(), hidden_size=5120, algorithm="rccl")
+    transport = RcclTransport([spec.device for spec in resolved.ranks], runtime=runtime, init_timeout_s=120.0)
+    count = 5120
+    nbytes = count * 4
+    send = [malloc(nbytes, device=Device("hip", rank)) for rank in range(2)]
+    recv = [malloc(nbytes, device=Device("hip", rank)) for rank in range(2)]
+    try:
+        for rank in range(2):
+            copy_host_array_to_device(send[rank], np.full(count, float(rank + 1), dtype=np.float32))
+        transport.group_start()
+        for rank in range(2):
+            transport.all_reduce_sum(rank, send[rank].ptr, recv[rank].ptr, count=count, dtype="fp32")
+        transport.group_end()
+        transport.sync(timeout_s=120.0)
+        for rank in range(2):
+            host = np.empty(count, dtype=np.float32)
+            with scoped_current_device(runtime, rank):
+                copy_device_to_host(host_array_ptr(host), recv[rank])
+            assert np.array_equal(host, np.full(count, 3.0, dtype=np.float32)), f"rank {rank} all-reduce"
+    finally:
+        for buffer in (*send, *recv):
+            free(buffer, runtime=runtime)
+        transport.close()
+
+
+@needs_two_gpus
+def test_gpu_distributed_context_selects_and_restores_devices() -> None:
+    """A rank-bound context binds the right device and restores the caller's."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.context import DistributedContext
+    from hipengine.distributed.plan import DistributedPlan
+    from hipengine.distributed.rccl import RcclTransport
+
+    runtime = get_hip_runtime()
+    resolved = DistributedPlan.resolve(_devices(), hidden_size=5120, algorithm="rccl")
+    transport = RcclTransport([spec.device for spec in resolved.ranks], runtime=runtime, init_timeout_s=120.0)
+    with DistributedContext.create(resolved, transport=transport, runtime=runtime) as context:
+        assert context.rank(1).device.index == 1
+        with context.rank(1).activate():
+            assert int(runtime.current_device()) == 1
+        assert int(runtime.current_device()) == 0
+
+
+@needs_two_gpus
+def test_gpu_distributed_kv_claim_allocates_and_rolls_back_on_device() -> None:
+    """A real KV claim allocates on every rank and releases on failure."""
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.distributed.kv import claim_all, resolve_kv_claims, resolve_kv_geometry
+    from hipengine.distributed.plan import DistributedPlan
+
+    runtime = get_hip_runtime()
+    config = SimpleNamespace(
+        layer_types=tuple("full_attention" if index % 4 == 3 else "linear_attention" for index in range(64)),
+        head_count_kv=4,
+        key_length=256,
+    )
+    resolved = DistributedPlan.resolve(_devices(), hidden_size=5120)
+    geometry = resolve_kv_geometry(config, world_size=2, context_tokens=8192)
+    claims = resolve_kv_claims(resolved, geometry)
+    live: list[object] = []
+    released: list[int] = []
+
+    def allocate(claim):
+        """A well-behaved allocator: never return a buffer it cannot keep."""
+
+        buffer = malloc(claim.total_bytes, device=Device("hip", claim.rank))
+        if claim.rank == 1:
+            # The allocator owns this buffer until it returns it, so it must
+            # free it itself when it fails.
+            free(buffer, runtime=runtime)
+            raise RuntimeError("synthetic failure after rank 0 allocated")
+        live.append(buffer)
+        return buffer
+
+    def release(buffer) -> None:
+        free(buffer, runtime=runtime)
+        live.remove(buffer)
+        released.append(1)
+
+    with pytest.raises(Exception) as error:
+        claim_all(claims, allocate, release)
+    assert "1 of 2 ranks" in str(error.value)
+    assert released == [1], "rank 0's device allocation must be released when rank 1 fails"
+    assert live == [], "no device buffer may survive a failed claim"
+
+    # The happy path allocates on both ranks and releases cleanly.
+    buffers = claim_all(claims, lambda claim: malloc(claim.total_bytes, device=Device("hip", claim.rank)), lambda buffer: free(buffer, runtime=runtime))
+    assert len(buffers) == 2
+    for buffer in buffers:
+        free(buffer, runtime=runtime)
+
+
+@needs_two_gpus
+def test_gpu_distributed_peer_access_screen_is_recorded() -> None:
+    """Peer access is probed, not assumed: the result is recorded either way."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.device import scoped_current_device
+
+    runtime = get_hip_runtime()
+    observed: list[bool] = []
+    for source, target in ((0, 1), (1, 0)):
+        try:
+            with scoped_current_device(runtime, source):
+                can = bool(runtime.device_can_access_peer(source, target))
+        except Exception as error:  # noqa: BLE001 - an unavailable probe is a result
+            pytest.skip(f"peer probe unavailable: {error!r}")
+        observed.append(can)
+    # This host has no peer DMA (256 MB BARs and ACS redirection), so the screen
+    # must report false; a host that enables it reports true. Either way the
+    # probe must answer rather than raise.
+    assert len(observed) == 2

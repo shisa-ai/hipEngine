@@ -466,6 +466,32 @@ def manifest_n2(model_info):
 
 
 @requires_model
+@requires_model
+def test_unit_shards_tied_head_manifest_does_not_invent_a_head_tensor(model_info):
+    """A tied model plans its head from the embedding, not from a missing tensor."""
+
+    from dataclasses import replace
+
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+
+    tied = replace(model_info, tensors=tuple(t for t in model_info.tensors if t.name != "output.weight"))
+    config = qwen35_gguf_config_from_metadata(tied)
+    assert config.lm_head_tensor_name == "token_embd.weight"
+
+    manifest = build_shard_manifest(tied, world_size=2, owner_rank=1)
+    assert "output.weight" not in manifest.tensor_names
+    embedding = manifest.plan_for("token_embd.weight")
+    assert embedding.kind == OWNER
+    # The head is the embedding, so the owner rank is the one that holds it.
+    assert [shard_slice.rank for shard_slice in embedding.slices if shard_slice.local_nbytes] == [1]
+    # Everything else is unchanged by the missing head.
+    full = build_shard_manifest(model_info, world_size=2, owner_rank=1)
+    shared = [plan.name for plan in full.tensors if plan.name != "output.weight"]
+    assert manifest.tensor_names == tuple(shared)
+    assert manifest.rank_bytes(0) + manifest.rank_bytes(1) < full.rank_bytes(0) + full.rank_bytes(1)
+
+
+@requires_model
 def test_unit_shards_manifest_is_deterministic_and_hashed(model_info):
     first = build_shard_manifest(model_info, world_size=2)
     second = build_shard_manifest(model_info, world_size=2)
