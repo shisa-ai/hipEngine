@@ -14,14 +14,36 @@ hipEngine now runs more than the Qwen 3.6 35B mixture-of-experts models: dense
 Qwen models, a multimodal retrieval encoder, a time-series forecaster, and
 Qwen3.8 Flash-Next on Strix Halo. Several performance choices that used to need
 manual settings now happen on their own, but only where they have been measured
-as safe for the model and shape in use. Everything below was tested on Radeon
-RDNA 3 (`gfx1100`: RX 7900 XTX, Pro W7900) and on Strix Halo (`gfx1151`: Ryzen
-AI MAX+ 395 with Radeon 8060S). Numbers live in
+as safe for the model and shape in use. Hardware validation covers Radeon
+RDNA 3 (`gfx1100`: RX 7900 XTX, Pro W7900) and Strix Halo (`gfx1151`: Ryzen
+AI MAX+ 395 with Radeon 8060S); support and results are specific to each model
+and backend. Numbers live in
 [`benchmarks/README.md`](benchmarks/README.md) and the dated performance history
 in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
 
 ### Added
 
+- **Terminal chat.** `hipengine chat` connects to a running local server and
+  discovers its model automatically. Install `hipengine[chat]` for live
+  Markdown, optional reasoning display, per-turn stats, input history, and
+  command completion. `/status` shows server limits, `/usage` shows token
+  counts, and `/retry` regenerates a reply. Sampling, system prompts, and
+  reasoning settings can be changed without leaving the conversation.
+  A dependency-free plain mode is also available.
+- **Visible startup progress.** Model preparation shows an approximate loading
+  bar based on the increase in VRAM usage relative to the model file size.
+  Terminal output updates in place; redirected logs receive periodic snapshots.
+  A startup summary groups context, KV format, pool budget, and device memory.
+  The bar is a memory proxy, not an exact weight-loading percentage or ETA.
+- **KV pool budget controls for dense GGUF.** The shared pool starts with a
+  configurable page allocation and has a growth path and prefix-cache pressure
+  handling. `--kv-pool-memory-budget-mib` sets a KV-pool budget independently
+  of `--max-active-requests`. `/ready` and Prometheus expose the pool's budget,
+  maximum pages, and current usage.
+- **Automatic dense-GGUF context sizing.** Starting the server without
+  `--max-context-tokens` selects a context using available device memory and
+  preparation reserves. Qualified artifacts use INT8 KV with FP32 scales;
+  unsupported GGUF artifact contracts fall back to BF16.
 - **Dense Qwen 27B models.** Qwen3.6-27B and Qwen3.8-27B now load, generate, and
   serve from GGUF `Q4_K_M` on both AMD backends. Qwen3.8-27B also runs in
   `Q4_K_S` on Strix Halo. Both sizes can use speculative decoding driven by the

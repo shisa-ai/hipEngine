@@ -12,7 +12,8 @@ The root README exports this compact retained summary verbatim.
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Measured tokens/s on each named host. **Prompt processing** measures input;
 **text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Compare only matching models and workloads.
+qualified scopes. Compare only matching models and workloads. Dashes indicate
+unmeasured results; context limits come from separate capacity tests.
 
 ### Performance
 
@@ -21,19 +22,22 @@ qualified scopes. Compare only matching models and workloads.
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
-| Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
+| Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | — | **176,128** |
-| Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
+| Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
+
+Laguna prompt processing uses a 4K-token prompt. The 35B-A3B GGUF MTP
+figures use an explicitly enabled mode.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — | — |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 (strict K3) | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
 
 Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
 a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched
@@ -54,33 +58,28 @@ strict FP32 parity path is one flag away.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
-Blank cells are shapes we have not measured yet, not failures. Max context is
-published only where a dedicated ceiling run exists.
+### Long context on a 24 GB GPU
 
-- **Qwen3.8-27B `Q4_K_M` context and KV-accuracy on 24 GB `gfx1100`:** with
-  [DMS](https://arxiv.org/abs/2506.05345) (a trained eviction policy that
-  compacts the KV cache), long-context modes hold up to 232K tokens, and
-  the DMS INT8 route is far more accurate than direct-INT8 KV:
+Qwen3.8-27B `Q4_K_M` can hold up to 232K tokens on a 24 GB `gfx1100` GPU
+using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy.
+In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 route:
 
-  | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
-  | --- | ---: | ---: | ---: |
-  | BF16 KV (reference) | 40,960 | — | — |
-  | DMS BF16 | 73,728 | — | — |
-  | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
-  | DMS INT8 | 232,448 | 100% | 0.001 |
+| KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+| --- | ---: | ---: | ---: |
+| BF16 KV | 40,960 | — | — |
+| DMS BF16 | 73,728 | — | — |
+| Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
+| DMS INT8 | 232,448 | 100% | 0.001 |
 
-  The model's full 262,144 context needs a predicted 24.8 GiB and does not
-  fit. The direct-INT8 figures come from a route the suite rejects: 9 of 11
-  prompts fail, so it is an opt-in lever with a measured quality cost, not a
-  default. [Capacity
-  evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+The full 262,144-token context needs a predicted 24.8 GiB and does not fit.
+The direct-INT8 route shown here failed 9 of 11 quality prompts and is not a
+default. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
 
 ### Serving several requests at once
 
-hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
 Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
-on the W7900 under one server protocol; the peers use F16 KV where hipEngine
-uses BF16.
+on the W7900, measured September 4, 2026 under one server protocol.
+The peers use F16 KV where hipEngine uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -88,8 +87,9 @@ uses BF16.
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 
-Direct engine route on the same card and model, 512-token prompts and 128
-generated tokens per request, showing what each added request costs in memory:
+Direct engine measurements from September 6, 2026 on the same card and model,
+with 512-token prompts and 128 outputs per request. These precede the shared-pool
+changes; memory figures are not current serving estimates:
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
