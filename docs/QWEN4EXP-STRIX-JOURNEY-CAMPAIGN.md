@@ -3,6 +3,13 @@
 Date: September 13, 2026 UTC (runs span September 13-14 JST).
 Status: source review and baseline-attempt campaign plan; optimization not started.
 
+Independent September 14 JST audit:
+[Prefill and Wilkin audit](PREFILL-WILKIN-INDEPENDENT-AUDIT.md).
+The six dense-prefill review findings are repaired in `70dd4055a`.
+The audit independently checks the journey mechanisms against active code,
+distinguishes the numerical GDN suffix boundary from a missing optimization,
+and leaves J2 profiling/quality and all new performance promotions open.
+
 **Overlap restart:** the user reported a resolved GPU/CPU process overlap
 when resuming the interrupted current-HEAD HIP AR/MTP comparison. Its old
 attempt is excluded from timing evidence. Both AR and MTP restart with new
