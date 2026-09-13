@@ -3326,6 +3326,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         import_module(module_name)
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         qwen4_exp_gdn_prefill_tiled16_dpp_f32,
+        qwen4_exp_gdn_prefill_tiled16_multi_f32,
     )
     dpp_key = KernelKey(
         BACKEND, "gdn_recurrence_norm_gate", "f32_state",
@@ -3333,6 +3334,12 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
     )
     if replace or not is_registered(dpp_key):
         register(dpp_key, qwen4_exp_gdn_prefill_tiled16_dpp_f32, replace=replace)
+    multi_key = KernelKey(
+        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        "qwen4exp_gdn_tiled16_multi_prefill",
+    )
+    if replace or not is_registered(multi_key):
+        register(multi_key, qwen4_exp_gdn_prefill_tiled16_multi_f32, replace=replace)
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
         if (key.layer, key.quant, key.variant) in _GFX1151_ALIAS_EXCLUSIONS:

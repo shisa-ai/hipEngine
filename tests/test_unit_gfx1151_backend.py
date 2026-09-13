@@ -444,6 +444,10 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "qwen4exp_gdn_tiled16_dpp_prefill",
         ),
         KernelKey(
+            "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_gdn_tiled16_multi_prefill",
+        ),
+        KernelKey(
             "hip_gfx1151",
             "linear",
             "gguf_q6_k_t16_qmicro_planar_v1",

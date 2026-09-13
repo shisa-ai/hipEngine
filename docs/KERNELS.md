@@ -1119,6 +1119,13 @@ Stable porting rules:
 
 ### HIP build profiles
 
+Journey multi-column GDN remains experimental:
+`qwen4exp_gdn_tiled16_multi_prefill` uses eight columns per warp, eight
+warps and token-tile16 with DPP. The single-column DPP default remains the
+fallback. Parent parity is not exact; CPU-reference/numerical smoke,
+carried-state and deterministic repeats pass. Full production envelope
+qualification is required before any default selection.
+
 Journey GDN DPP experiment: gfx1151 registers
 `gdn_recurrence_norm_gate/f32_state/qwen4exp_gdn_tiled16_dpp_prefill`.
 It compiles `linear_attn/qwen4_exp_gdn.hip` in the separately hashed

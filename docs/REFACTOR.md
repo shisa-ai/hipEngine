@@ -1,5 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Journey Multi-Column GDN
+
+- `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry
+  `qwen4exp_gdn_tiled16_multi_prefill` are numerical candidates, not defaults.
+  Full profile gate owns promotion. The ordinary single-column DPP route
+  remains selected until the complete gate passes; remove the multi-column
+  path if the numerical or operation-complete performance gate rejects it.
+
 ## Journey GDN DPP Experiment
 
 - The `qwen4_exp_gdn_dpp` build family and gfx1151

@@ -62,6 +62,20 @@ class CandidateSpec:
 
 
 CANDIDATES = {
+    "gdn_multi_column": CandidateSpec(
+        name="gdn_multi_column",
+        classification="T1",
+        mechanism="eight state columns per warp in admitted tiled16 GDN suffix",
+        environment={
+            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-gdn-multi-column",
+        candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                       "qwen4exp_gdn_tiled16_multi_prefill"),
+        fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                      "qwen4exp_sigmoid_strict_prefill"),
+    ),
     "production_q8down_gdn_fallback": CandidateSpec(
         name="production_q8down_gdn_fallback",
         classification="diagnostic",
