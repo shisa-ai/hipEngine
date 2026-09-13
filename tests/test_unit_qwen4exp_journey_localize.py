@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from scripts.qwen4exp_journey_localize import ARMS, OUTLIER, PREFIX, clear_arm_graphs
+from scripts.qwen4exp_journey_localize import ARMS, OUTLIER, PREFIX, clear_arm_graphs, strict_family_overrides
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 
 
@@ -37,3 +37,16 @@ def test_each_arm_drains_and_replaces_both_graph_caches(monkeypatch):
     assert runner.layer_graph_cache is not old[1]
     assert runner.moe_graph_cache.enabled is True
     assert runner.layer_graph_cache.enabled is False
+
+
+def test_remaining_family_flags_are_taken_from_strict_binding():
+    flags = {PREFIX + key: "0" for key in (
+        "Q4_PAIR_PREFILL", "Q8_WAVE_SCALE", "GDN_REGISTER_PREFILL",
+    )}
+    groups = strict_family_overrides(flags)
+    for group in groups.values():
+        assert group[PREFIX + "Q4_DP4A64"] == "0"
+    assert groups["base_plus_moe_flags"][PREFIX + "Q4_PAIR_PREFILL"] == "0"
+    assert PREFIX + "GDN_REGISTER_PREFILL" not in groups["base_plus_moe_flags"]
+    assert groups["base_plus_q8_gr_flags"][PREFIX + "Q8_WAVE_SCALE"] == "0"
+    assert groups["base_plus_gdn_flags"][PREFIX + "GDN_REGISTER_PREFILL"] == "0"

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.qwen4exp_ple_gather_ab import select_gather_arm
+from scripts.qwen4exp_ple_gather_ab import pair_sequence, select_gather_arm
 
 
 def test_mapping_arms_reset_hint_after_each_cold_remap():
@@ -34,3 +34,13 @@ def test_mapping_arms_reset_hint_after_each_cold_remap():
 def test_gather_arm_rejects_unknown_mode():
     with pytest.raises(ValueError):
         select_gather_arm(None, None, mode="invalid", method="mmap_random", cache_mode="warm")
+
+
+def test_pair_sequence_preserves_original_order_and_extends_counterbalance():
+    assert pair_sequence(0, 3) == ("before", "after", "after", "before", "before", "after")
+    for index in (0, 1):
+        sequence = pair_sequence(index, 5)
+        assert sequence.count("before") == sequence.count("after") == 5
+        assert all(set(sequence[i:i + 2]) == {"before", "after"} for i in range(0, 10, 2))
+    with pytest.raises(ValueError):
+        pair_sequence(0, 0)
