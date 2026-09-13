@@ -872,6 +872,10 @@ enqueue (1-row fp32: 429 vs 339 us device, 280 vs 55 us enqueue; 1024-row fp32:
 2954 vs 2725 us device), and root order did not matter, so the first rank's
 collective does not block the second rank's enqueue in group mode.
 
+Both GPUs are idle and unclaimed while these numbers are taken: no process holds
+`card0`/`card1`/`renderD128`/`renderD129` open on a Wayland session, so no
+compositor shares either device.
+
 **Peer DMA is unavailable on this host, for two independent reasons.**
 `hipDeviceCanAccessPeer` returns false in both directions and
 `hipDeviceEnablePeerAccess` fails with HIP error 101, because both cards expose a
@@ -928,11 +932,16 @@ Shard plan for Qwen3.8-27B `Q4_K_M`: 851 autoregressive tensors, 15.65 GiB, MTP
 block excluded from the AR set. Every degree round-trips every tensor payload
 bit-exactly against the source GGUF.
 
-| TP degree | rank bytes | byte-exact round trip |
-| --- | --- | --- |
-| N=1 | 15.652 GiB | 851/851 tensors |
-| N=2 | 8.646 / 7.009 GiB | 851/851 tensors |
-| N=4 | 5.143 / 3.506 / 3.506 / 3.506 GiB | 851/851 tensors |
+| TP degree | rank bytes | manifest hash | byte-exact round trip |
+| --- | --- | --- | --- |
+| N=1 | 15.652 GiB | `e73622ab8cb6` | 851/851 tensors |
+| N=2 | 8.646 / 7.009 GiB | `7fc6cbf4251e` | 851/851 tensors |
+| N=4 | 5.143 / 3.506 / 3.506 / 3.506 GiB | `9feb21f5419f` | 851/851 tensors |
+
+The manifest hash is bound to the model file's SHA-256
+(`7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b` for the
+`Qwen3.8-27B-Q4_K_M.gguf` above), so a different file cannot produce the same
+shard identity.
 
 N=3 is refused (the GDN key-head axis holds 16 groups) and N=8 is refused
 (17408 MLP input columns per rank is not a 256-element quant block), both before
@@ -948,8 +957,8 @@ refuses it.
 
 The loader path streams one tensor at a time (`iter_rank_payloads`), so a rank
 never needs a full model copy: streaming rank 1's 7.01 GiB shard set at N=2 grows
-anonymous memory by **36.1 MiB** against a 34.9 MiB largest tensor and a 7.01 GiB
-full copy (N=4: 37.6 MiB growth, 17.4 MiB largest, 3.51 GiB full copy). The
+anonymous memory by **36.2 MiB** against a 34.9 MiB largest tensor and a 7.01 GiB
+full copy (N=4: 37.5 MiB growth, 17.4 MiB largest, 3.51 GiB full copy). The
 reconstruction oracle that holds every rank's payload is a test path, not the
 loader path.
 [Collective screening](results/tp2_collective_bench.json),

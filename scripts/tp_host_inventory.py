@@ -656,6 +656,67 @@ def collect_topology(devices: Sequence[dict[str, Any]]) -> dict[str, Any]:
     return topology
 
 
+def collect_display_load(
+    *,
+    proc_root: Path = Path("/proc"),
+    drm_root: Path = Path("/dev/dri"),
+) -> dict[str, Any]:
+    """Which processes hold a DRM device open, per render/card node.
+
+    A compositor or a browser on the same GPU perturbs latency measurements, so
+    the screen records the openers instead of assuming an idle desktop. Only the
+    device nodes are recorded; no process details beyond name/pid.
+    """
+
+    devices = (
+        sorted(
+            path.name
+            for path in drm_root.glob("*")
+            if path.name.startswith(("card", "renderD")) and path.is_char_device()
+        )
+        if drm_root.is_dir()
+        else []
+    )
+    openers: dict[str, list[dict[str, Any]]] = {name: [] for name in devices}
+    if not devices:
+        return {
+            "devices": [],
+            "openers": {},
+            "session": os.environ.get("XDG_SESSION_TYPE") or os.environ.get("WAYLAND_DISPLAY") or None,
+            "busy": False,
+        }
+    targets = {str(drm_root / name): name for name in devices}
+    for entry in sorted(proc_root.glob("[0-9]*")):
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            continue
+        fd_dir = entry / "fd"
+        try:
+            fds = list(fd_dir.iterdir())
+        except (PermissionError, FileNotFoundError, OSError):
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(fd)
+            except (PermissionError, FileNotFoundError, OSError):
+                continue
+            name = targets.get(target)
+            if name is None:
+                continue
+            if pid == os.getpid():
+                continue
+            openers[name].append({"pid": pid, "comm": read_text(entry / "comm") or "?"})
+            break
+    session = os.environ.get("XDG_SESSION_TYPE") or os.environ.get("WAYLAND_DISPLAY") or None
+    return {
+        "devices": devices,
+        "openers": openers,
+        "session": session,
+        "busy": any(entries for entries in openers.values()),
+    }
+
+
 def collect_host() -> dict[str, Any]:
     uname = {
         "system": platform.system(),
@@ -698,6 +759,7 @@ def build_inventory(indices: Sequence[int]) -> dict[str, Any]:
         "host": collect_host(),
         "software": collect_software_versions(),
         "topology": collect_topology(devices),
+        "display": collect_display_load(),
         "devices": devices,
         "errors": errors,
     }

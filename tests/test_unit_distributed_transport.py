@@ -16,6 +16,7 @@ from hipengine.distributed.transport import (
     CollectiveRequest,
     CommunicatorAbortedError,
     EnqueueRecorder,
+    TransportError,
     TransportStateError,
 )
 
@@ -209,3 +210,105 @@ def test_mock_memory_rejects_unknown_pointer() -> None:
     memory = MockMemory()
     with pytest.raises(TransportStateError):
         memory.read(0, 0xDEAD, dtype="fp32", count=1)
+
+
+def test_mock_repeated_groups_reuse_the_same_buffers_without_state_leak() -> None:
+    """Many groups over one buffer pair must not accumulate or drift."""
+
+    transport = MockTransport(world_size=2)
+    memory = transport.memory
+    send = [memory.alloc(rank, 16) for rank in range(2)]
+    recv = [memory.alloc(rank, 16) for rank in range(2)]
+    for group in range(50):
+        for rank in range(2):
+            memory.fill(rank, send[rank], float(rank + 1), dtype="fp32", count=4)
+        transport.group_start()
+        for rank in range(2):
+            transport.all_reduce_sum(rank, send[rank], recv[rank], count=4, dtype="fp32")
+        transport.group_end()
+        transport.sync()
+        for rank in range(2):
+            actual = memory.read(rank, recv[rank], dtype="fp32", count=4)
+            assert np.array_equal(actual, np.full(4, 3.0, dtype=np.float32)), f"group {group} rank {rank}"
+    assert transport.groups_committed == 50
+    assert transport.sequence == 50
+
+
+def test_mock_cleanup_is_idempotent_and_rejects_later_work() -> None:
+    """Closing twice is safe and no later group is accepted."""
+
+    transport = MockTransport(world_size=2)
+    memory = transport.memory
+    send = [memory.alloc(rank, 16) for rank in range(2)]
+    recv = [memory.alloc(rank, 16) for rank in range(2)]
+    transport.close()
+    transport.close()
+    with pytest.raises(TransportStateError):
+        transport.group_start()
+    with pytest.raises(TransportStateError):
+        transport.all_reduce_sum(0, send[0], recv[0], count=4, dtype="fp32")
+    with pytest.raises(TransportStateError):
+        transport.sync()
+    # A context manager also closes cleanly when the body never ran a group.
+    with MockTransport(world_size=2) as context_transport:
+        assert context_transport.world_size == 2
+    with pytest.raises(TransportStateError):
+        context_transport.group_start()
+
+
+def test_mock_abort_mid_group_leaves_no_open_group() -> None:
+    """A poisoned group must not leave the transport stuck inside group_start."""
+
+    transport = MockTransport(world_size=2, fail_at_group_end=0)
+    memory = transport.memory
+    send = [memory.alloc(rank, 16) for rank in range(2)]
+    recv = [memory.alloc(rank, 16) for rank in range(2)]
+    transport.group_start()
+    for rank in range(2):
+        transport.all_reduce_sum(rank, send[rank], recv[rank], count=4, dtype="fp32")
+    with pytest.raises(CommunicatorAbortedError):
+        transport.group_end()
+    assert transport.poisoned is True
+    # The failed group closed itself, so the next attempt is rejected for being
+    # poisoned rather than for leaving a group open.
+    with pytest.raises(TransportError):
+        transport.group_start()
+    with pytest.raises(TransportError):
+        transport.sync()
+    with pytest.raises(TransportError):
+        transport.check_errors()
+
+
+def test_mock_group_keeps_each_rank_request_on_its_own_buffers() -> None:
+    """A group must apply each rank's request to that rank's pointers only."""
+
+    transport = MockTransport(world_size=3)
+    memory = transport.memory
+    send = [memory.alloc(rank, 12) for rank in range(3)]
+    recv = [memory.alloc(rank, 12) for rank in range(3)]
+    for rank in range(3):
+        memory.fill(rank, send[rank], float(rank + 1), dtype="fp32", count=3)
+    transport.group_start()
+    for rank in range(3):
+        transport.all_reduce_sum(rank, send[rank], recv[rank], count=3, dtype="fp32")
+    transport.group_end()
+    transport.sync()
+    for rank in range(3):
+        # Sum of 1 + 2 + 3 on every rank, and the send buffers are untouched.
+        assert np.array_equal(memory.read(rank, recv[rank], dtype="fp32", count=3), np.full(3, 6.0))
+        assert np.array_equal(memory.read(rank, send[rank], dtype="fp32", count=3), np.full(3, float(rank + 1)))
+
+
+def test_enqueue_recorder_tracks_repeated_groups_separately() -> None:
+    """Recorder state is per group, not cumulative across groups."""
+
+    first = EnqueueRecorder()
+    first.record(0, start=0.0, end=0.001)
+    first.record(1, start=0.002, end=0.004)
+    second = EnqueueRecorder()
+    second.record(0, start=10.0, end=10.0005)
+    second.record(1, start=10.001, end=10.002)
+    assert first.skew_s() == pytest.approx(0.002)
+    assert second.skew_s() == pytest.approx(0.001)
+    assert first.to_dict()["enqueue_count"] == 2
+    assert second.max_enqueue_s() == pytest.approx(0.001)

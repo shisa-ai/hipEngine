@@ -40,6 +40,21 @@ from hipengine.loading.qwen35_gguf_shards import (  # noqa: E402
 GIB = 1024**3
 
 
+def file_sha256(path: Path, *, chunk_bytes: int = 8 << 20) -> str:
+    """Stream a file hash so binding the manifest to the artifact is cheap."""
+
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(chunk_bytes)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="path to a .gguf model file")
@@ -57,6 +72,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="plan only; skip the byte-preservation round trip",
     )
     parser.add_argument("--owner-rank", type=int, default=0, help="rank owning embedding/lm_head")
+    parser.add_argument(
+        "--skip-hash",
+        action="store_true",
+        help="skip the model SHA-256 (streamed once, ~10 s for a 16 GiB file)",
+    )
     parser.add_argument(
         "--stream-rank",
         type=int,
@@ -82,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         "kind": "tp_shard_plan_report",
         "model": str(model_path),
         "model_bytes": int(model_path.stat().st_size),
+        "model_sha256": None if args.skip_hash else file_sha256(model_path),
         "tensor_count": len(info.tensors),
         "owner_rank": int(args.owner_rank),
         "degrees": {},
@@ -91,7 +112,12 @@ def main(argv: list[str] | None = None) -> int:
     for degree in degrees:
         entry: dict = {"world_size": int(degree)}
         try:
-            manifest = build_shard_manifest(info, world_size=degree, owner_rank=int(args.owner_rank))
+            manifest = build_shard_manifest(
+                info,
+                world_size=degree,
+                owner_rank=int(args.owner_rank),
+                model_hash=str(artifact["model_sha256"] or ""),
+            )
         except ShardPlanError as error:
             artifact["rejected_degrees"][str(degree)] = str(error)
             if not args.quiet:
