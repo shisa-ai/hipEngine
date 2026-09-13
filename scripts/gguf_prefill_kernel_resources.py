@@ -6,17 +6,11 @@ assembly's ``.amdhsa_kernel`` metadata, which is the same metadata the runtime
 profiler reports: allocated VGPR and SGPR counts, the LDS (group segment) byte
 footprint, and the private-segment footprint.
 
-Occupancy model (gfx11, wave32; one workgroup's waves spread over the CU's
-SIMDs):
-
-* ``waves_per_simd_vgpr`` = ``min(8, 512 // round_up_8(next_free_vgpr))``
-* ``workgroups_per_cu_lds`` = ``floor(65536 / group_segment_fixed_size)``
-* ``waves_per_cu`` = ``min(32, waves_per_simd_vgpr * 4,
-  workgroups_per_cu_lds * waves_per_workgroup)``
-
-LDS bounds resident workgroups, VGPR bounds resident waves per SIMD. Both must
-clear the next step for occupancy to move, so a tile change that only lowers
-LDS does not by itself raise resident waves.
+For gfx1100/gfx1151 wave32, report the register-only ceiling using 1536
+physical VGPRs per SIMD and 24-register allocation granularity. This is not
+measured occupancy. CU/WGP mode, LDS placement, workgroup distribution and
+runtime constraints are not inferred from a register count. Legacy aggregate
+occupancy fields are explicitly null rather than silently mixing CU and WGP.
 
 Examples:
     python3 scripts/gguf_prefill_kernel_resources.py \
@@ -64,40 +58,44 @@ def parse_metadata(block: str) -> dict[str, str]:
     return meta
 
 
-def round_up_8(value: int) -> int:
-    return (value + 7) // 8 * 8
-
-
 def derived_occupancy(
-    vgpr: int, lds_bytes: int, waves_per_workgroup: int
-) -> dict[str, int]:
-    waves_per_simd = min(8, 512 // round_up_8(vgpr)) if vgpr else 0
-    workgroups_per_cu = max(1, 65536 // lds_bytes) if lds_bytes else 32
-    waves_per_cu = min(
-        32, waves_per_simd * 4, workgroups_per_cu * waves_per_workgroup
-    )
+    vgpr: int, lds_bytes: int, waves_per_workgroup: int, *, arch: str = "gfx1151"
+) -> dict[str, object]:
+    # LLVM AMDGPU.td FeatureISAVersion11_0_0/11_5_1: Feature1536VGPRs;
+    # AMDGPUBaseInfo.cpp getVGPRAllocGranule: wave32 uses a granule of 24.
+    if arch not in ("gfx1100", "gfx1151"):
+        raise ValueError(f"unqualified wave32 resource model: {arch}")
+    if vgpr < 0 or not 0 <= lds_bytes <= 65536 or not 1 <= waves_per_workgroup <= 32:
+        raise ValueError("invalid register, addressable LDS, or workgroup size")
+    allocated = (vgpr + 23) // 24 * 24
     return {
-        "waves_per_simd_vgpr": waves_per_simd,
-        "workgroups_per_cu_lds": workgroups_per_cu,
-        "waves_per_cu": waves_per_cu,
+        "vgpr_allocated": allocated,
+        "vgpr_allocation_granule": 24,
+        "physical_vgpr_per_simd": 1536,
+        "waves_per_simd_vgpr": min(16, 1536 // allocated) if allocated else 16,
+        "workgroups_per_cu_lds": None,
+        "waves_per_cu": None,
+        "occupancy_kind": "wave32_register_only_upper_bound",
     }
 
 
 def kernel_rows(
-    asm_text: str, *, waves_per_workgroup: int, name_filter: str | None
+    asm_text: str, *, waves_per_workgroup: int, name_filter: str | None,
+    arch: str = "gfx1151",
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for name, block in KERNEL_RE.findall(asm_text):
         if name_filter and name_filter not in name:
             continue
         meta = parse_metadata(block)
+        if meta.get("wavefront_size32") != "1":
+            raise ValueError(f"wave32 metadata required for {name}")
         vgpr = int(meta.get("vgpr_count") or meta.get("next_free_vgpr", "0"))
         sgpr = int(meta.get("sgpr_count") or meta.get("next_free_sgpr", "0"))
         lds_bytes = int(meta.get("group_segment_fixed_size", "0"))
         row: dict[str, object] = {
             "kernel": name,
             "vgpr": vgpr,
-            "vgpr_allocated": round_up_8(vgpr),
             "sgpr": sgpr,
             "lds_bytes": lds_bytes,
             "private_bytes": int(meta.get("private_segment_fixed_size", "0")),
@@ -105,7 +103,7 @@ def kernel_rows(
                 meta.get("max_flat_workgroup_size", "0")
             ),
         }
-        row.update(derived_occupancy(vgpr, lds_bytes, waves_per_workgroup))
+        row.update(derived_occupancy(vgpr, lds_bytes, waves_per_workgroup, arch=arch))
         rows.append(row)
     rows.sort(key=lambda row: str(row["kernel"]))
     return rows
@@ -212,6 +210,7 @@ def main() -> int:
         asm_path.read_text(errors="replace"),
         waves_per_workgroup=args.waves_per_workgroup,
         name_filter=args.filter,
+        arch=args.arch,
     )
     payload = {"provenance": provenance, "kernels": rows}
     if args.json:
@@ -224,9 +223,8 @@ def main() -> int:
             f"{str(row['kernel'])[:96]:96s} vgpr={row['vgpr']:4d}"
             f" sgpr={row['sgpr']:4d} lds={row['lds_bytes']:6d}"
             f" private={row['private_bytes']:4d}"
-            f" wg/cu={row['workgroups_per_cu_lds']}"
-            f" waves/simd={row['waves_per_simd_vgpr']}"
-            f" waves/cu={row['waves_per_cu']}"
+            f" register-only waves/simd<={row['waves_per_simd_vgpr']}"
+            " actual occupancy=unmeasured"
         )
     if temp_root is not None:
         temp_root.cleanup()

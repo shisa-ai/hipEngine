@@ -33,7 +33,8 @@ full-attention layers. Prefill processes the 48 linear-attention layers in
 prompt, so at 4096 tokens the same owner appears twice with different grid
 heights, for example 192 launches at 1024 rows plus 16 launches at 4096 rows
 for the fused gate+up kernel. Both pass modes reach the same throughput
-(27.74 and 27.97 TFLOP/s), so chunking costs nothing by itself.
+(27.74 and 27.97 TFLOP/s). This observation does not isolate chunking's
+complete cost.
 
 Every owner row is explained by the GGUF tensor table in `artifact.json`: the
 launch count divided by the chunk count gives the number of tensor slots a row
@@ -43,18 +44,19 @@ which prefill does not run.
 
 ## What limits prefill
 
-- **Not memory.** The dense prefill re-reads 12.4 GB of weights at 512 tokens
-  and 47.8 GB at 4096 tokens (the 48 linear-attention layers are re-read once
-  per chunk) at an aggregate 4.7-10.4 GB/s, with the busiest single owner at
-  25 GB/s.
-- **Occupancy.** Every dense owner runs at 2 waves per SIMD because its
-  248-256 VGPR footprint fits only twice into the 512-VGPR per-thread budget.
-  Dropping below 171 VGPR would admit a third wave. The 96-VGPR `shared8r3`
-  owner is the only dense owner above 2 waves.
+- **Memory remains unclassified.** Logical tensor bytes counted once per
+  chunk total 12.4 GB at 512 tokens and 47.8 GB at 4096. These exclude
+  repeated block loads, staging, cache transactions and memory-system effects.
+  Dividing by time yields effective bandwidth, not physical traffic.
+- **Occupancy was not measured.** gfx1151 wave32 uses a 1536-register physical
+  budget per SIMD and a 24-register allocation granule. A 248-256 count rounds
+  to 264 and gives a register-only ceiling of five waves. LDS and mode-specific
+  placement can lower this. The earlier two-wave and 171-register claims are
+  withdrawn.
 - **Owner choice on the wide down shape.** On the identical `(17408, 5120)`
   shape the Q4_K `shared_b` owner reaches 27.50 TFLOP/s while the Q6_K planar
-  owners reach 21.28 and 20.34 TFLOP/s, a 25-29% gap that quant size does not
-  explain. That shape is 10.9% of 4096-token prefill kernel time.
+  owners reach 21.28 and 20.34 TFLOP/s. The cause is not isolated.
+  That shape is 10.9% of 4096-token prefill kernel time.
 - **Narrow outputs.** Owners with 1024 output columns (attention K and V) run
   at 8.75-19.12 TFLOP/s against 30-33 TFLOP/s for the same kernel families on
   6144- to 12288-wide outputs. This profile does not establish the mechanism.
@@ -110,8 +112,10 @@ LDS per CU) with `Qwen3.8-27B-Q4_K_M.gguf` (SHA-256
 `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`), BF16 K/V,
 bulk prefill, one discarded warmup and one measured pass per length, under the
 production execution profile with the Q4 rowtile and GDN capture verifiers
-enabled. All three profiled children returned the same first token (9707) and
-finite logits.
+enabled. All three profiled children returned the same first token (9707).
+The original driver requested no logits and incorrectly tested `.all()` on an
+empty array. Its finiteness flags are invalid and are now null in the derived
+artifact. New driver runs read and validate nonempty logits after timing.
 
 This artifact reports attribution, not a performance claim: the recorded
 prefill rates (431.2, 412.7 and 399.8 tok/s) are single-pass context for the
@@ -119,8 +123,7 @@ published resident-sweep row, and no per-kernel confidence interval is
 claimed. The prompt is one repeated token id, so attention is not
 representative of natural text; both attention owners stay under 3% at every
 length. VGPR, SGPR and LDS are the dispatch-recorded resource counts, and
-waves per SIMD is derived from the VGPR budget rather than measured from
-hardware counters. Owner-to-tensor attribution is a launch-count and
+register-only wave ceilings are not actual occupancy. Owner-to-tensor attribution is a launch-count and
 column-count argument over the GGUF tensor table, not a per-dispatch tensor
 probe. The bulk path also records per-stage host timers; their sum exceeds the
 measured wall time because a fallback alias is recorded next to its parent, so

@@ -1,7 +1,7 @@
 {
  "schema": 2,
  "status": "accepted",
- "timestamp": "2026-09-13T11:50:20.848328+00:00",
+ "timestamp": "2026-09-13T16:45:52.245852+00:00",
  "date": "2026-09-13",
  "run_tag": "gfx1151-q6-planar-prefill-wide-down-row-bands",
  "kind": "qwen38_gfx1151_q6_planar_wide_down_row_bands",

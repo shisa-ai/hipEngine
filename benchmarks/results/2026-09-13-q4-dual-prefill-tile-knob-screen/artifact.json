@@ -1,768 +1,491 @@
 {
- "schema": 1,
+ "schema": 2,
+ "date": "2026-09-13",
  "status": "diagnostic",
  "kind": "q4_dual_wmma_prefill_tile_knob_screen",
- "date": "2026-09-13",
  "performance_claim": false,
- "purpose": "Name the tile-geometry and occupancy knobs of the gfx1151 Q4_K_M dense WMMA prefill owner (the gate/up dual-SiLU kernel that holds 33-36% of prefill kernel time) and measure which direction each knob moves at prefill rows, before writing a new tile variant.",
+ "review_correction": "Six-finding review; original raw measurements unchanged.",
  "hardware": {
   "host_name": "gfx1151",
   "device_name": "AMD Radeon 8060S Graphics",
   "target_arch": "gfx1151",
-  "cu_count": 40,
-  "lds_bytes_per_cu": 65536,
-  "vgpr_file_per_simd": 512,
-  "source": "rocprofv3 agent_info.csv in the companion kernel profile; LDS and VGPR capacities are the gfx11 wave32 limits used by scripts/gguf_prefill_kernel_resources.py"
+  "physical_vgpr_per_simd_wave32": 1536,
+  "vgpr_allocation_granule_wave32": 24,
+  "occupancy_measured": false
  },
- "owner_under_study": {
-  "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi4ELi4EEEvPKtPKhS4_S4_S4_Ptlll",
-  "registered_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
-  "layer": "linear_pair_silu",
-  "quant": "gguf_q4_k_t16_v1",
-  "tile": {
-   "columns_per_block": 32,
-   "rows_per_block": 256,
-   "row_tiles_per_wave": 4,
-   "active_waves_per_block": 4,
-   "threads_per_block": 128
-  },
-  "dispatch": {
-   "selector": "hipengine.runtime.gguf_linear._q4_t16_physical_dual_silu_variant",
-   "policies": [
-    "GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY",
-    "GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY"
-   ],
-   "selected_rows": {
-    "32": "row32",
-    "36": "row48",
-    "28": "row32"
-   },
-   "prefill_rows": "every row count above 36 selects the 256-row parent"
-  },
-  "knobs": {
-   "row_tiles_per_wave": "template parameter, 1-4; sets rows per wave (16 x rt) and the accumulator footprint (2 matrices x 2 out tiles x rt x float8)",
-   "active_waves_per_block": "template parameter, 1-4; sets rows per block (waves x rt x 16). The launcher always launches 128 threads, so waves below 4 leave wave capacity idle in the WMMA phase",
-   "out_tiles_per_block": "compile-time constant 2 (32 columns) in this kernel; it sets the LDS weight slab (2 x 256 x 32 x 2 B = 32 KiB) and the decode work per block",
-   "threads_per_block": "compile-time constant 128; the weight decode needs threads/4 >= 2 matrices x (columns/2) decode pairs, which is exactly saturated at 32 columns",
-   "launch_bounds_min_blocks": "compile-time constant 1; the compiler therefore spends up to 512 VGPRs per thread and every variant lands at 248"
-  }
- },
- "dual_row_tile_sweep": {
-  "protocol": {
-   "harness": "scripts/qwen38_packet4_q4_dual_silu_row_leaf.py",
-   "weights": "real Qwen3.8-27B-Q4_K_M blk.0.ffn_gate/ffn_up tiles",
-   "burst": 4,
-   "warmups": 2,
-   "repetitions": 3,
-   "device": "AMD Radeon 8060S Graphics",
-   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
-  },
-  "shape": {
+ "protocol": {
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "shape": [
+   5120,
+   17408
+  ],
+  "burst": 4,
+  "warmups": 2,
+  "repetitions": 3,
+  "column_sweep_config": {
    "rows": [
-    256,
     512,
-    1024,
-    2048,
     4096
    ],
    "in_features": 5120,
-   "out_features": 17408
-  },
-  "cells": [
-   {
-    "rows": 256,
-    "variants": {
-     "row32": {
-      "median_ms": 8.2768,
-      "vs_parent": 0.3951,
-      "bit_equal_vs_parent": true,
-      "blocks": 4352,
-      "per_block_us": 1.9018,
-      "per_row_ns": 32331.25,
-      "tflop_s": 11.027
-     },
-     "row48": {
-      "median_ms": 8.2801,
-      "vs_parent": 0.3949,
-      "bit_equal_vs_parent": true,
-      "blocks": 3264,
-      "per_block_us": 2.5368,
-      "per_row_ns": 32344.141,
-      "tflop_s": 11.023
-     },
-     "row64": {
-      "median_ms": 7.1211,
-      "vs_parent": 0.4592,
-      "bit_equal_vs_parent": true,
-      "blocks": 2176,
-      "per_block_us": 3.2726,
-      "per_row_ns": 27816.797,
-      "tflop_s": 12.817
-     },
-     "row128": {
-      "median_ms": 3.895,
-      "vs_parent": 0.8396,
-      "bit_equal_vs_parent": true,
-      "blocks": 1088,
-      "per_block_us": 3.58,
-      "per_row_ns": 15214.844,
-      "tflop_s": 23.432
-     },
-     "parent": {
-      "median_ms": 3.2702,
-      "vs_parent": 1.0,
-      "bit_equal_vs_parent": null,
-      "blocks": 544,
-      "per_block_us": 6.0114,
-      "per_row_ns": 12774.219,
-      "tflop_s": 27.909
-     }
-    }
-   },
-   {
-    "rows": 512,
-    "variants": {
-     "row32": {
-      "median_ms": 16.3577,
-      "vs_parent": 0.4052,
-      "bit_equal_vs_parent": true,
-      "blocks": 8704,
-      "per_block_us": 1.8793,
-      "per_row_ns": 31948.633,
-      "tflop_s": 11.159
-     },
-     "row48": {
-      "median_ms": 15.1784,
-      "vs_parent": 0.4367,
-      "bit_equal_vs_parent": true,
-      "blocks": 5984,
-      "per_block_us": 2.5365,
-      "per_row_ns": 29645.312,
-      "tflop_s": 12.026
-     },
-     "row64": {
-      "median_ms": 14.0033,
-      "vs_parent": 0.4734,
-      "bit_equal_vs_parent": true,
-      "blocks": 4352,
-      "per_block_us": 3.2177,
-      "per_row_ns": 27350.195,
-      "tflop_s": 13.035
-     },
-     "row128": {
-      "median_ms": 7.6868,
-      "vs_parent": 0.8624,
-      "bit_equal_vs_parent": true,
-      "blocks": 2176,
-      "per_block_us": 3.5325,
-      "per_row_ns": 15013.281,
-      "tflop_s": 23.747
-     },
-     "parent": {
-      "median_ms": 6.6289,
-      "vs_parent": 1.0,
-      "bit_equal_vs_parent": null,
-      "blocks": 1088,
-      "per_block_us": 6.0927,
-      "per_row_ns": 12947.07,
-      "tflop_s": 27.536
-     }
-    }
-   },
-   {
-    "rows": 1024,
-    "variants": {
-     "row32": {
-      "median_ms": 32.5264,
-      "vs_parent": 0.4036,
-      "bit_equal_vs_parent": true,
-      "blocks": 17408,
-      "per_block_us": 1.8685,
-      "per_row_ns": 31764.063,
-      "tflop_s": 11.224
-     },
-     "row48": {
-      "median_ms": 30.3601,
-      "vs_parent": 0.4324,
-      "bit_equal_vs_parent": true,
-      "blocks": 11968,
-      "per_block_us": 2.5368,
-      "per_row_ns": 29648.535,
-      "tflop_s": 12.025
-     },
-     "row64": {
-      "median_ms": 27.8186,
-      "vs_parent": 0.4719,
-      "bit_equal_vs_parent": true,
-      "blocks": 8704,
-      "per_block_us": 3.1961,
-      "per_row_ns": 27166.602,
-      "tflop_s": 13.123
-     },
-     "row128": {
-      "median_ms": 15.0374,
-      "vs_parent": 0.8731,
-      "bit_equal_vs_parent": true,
-      "blocks": 4352,
-      "per_block_us": 3.4553,
-      "per_row_ns": 14684.961,
-      "tflop_s": 24.278
-     },
-     "parent": {
-      "median_ms": 13.1288,
-      "vs_parent": 1.0,
-      "bit_equal_vs_parent": null,
-      "blocks": 2176,
-      "per_block_us": 6.0335,
-      "per_row_ns": 12821.094,
-      "tflop_s": 27.807
-     }
-    }
-   },
-   {
-    "rows": 2048,
-    "variants": {
-     "row32": {
-      "median_ms": 64.8839,
-      "vs_parent": 0.4011,
-      "bit_equal_vs_parent": true,
-      "blocks": 34816,
-      "per_block_us": 1.8636,
-      "per_row_ns": 31681.592,
-      "tflop_s": 11.253
-     },
-     "row48": {
-      "median_ms": 59.229,
-      "vs_parent": 0.4394,
-      "bit_equal_vs_parent": true,
-      "blocks": 23392,
-      "per_block_us": 2.532,
-      "per_row_ns": 28920.41,
-      "tflop_s": 12.327
-     },
-     "row64": {
-      "median_ms": 55.5622,
-      "vs_parent": 0.4684,
-      "bit_equal_vs_parent": true,
-      "blocks": 17408,
-      "per_block_us": 3.1918,
-      "per_row_ns": 27129.98,
-      "tflop_s": 13.141
-     },
-     "row128": {
-      "median_ms": 29.8678,
-      "vs_parent": 0.8713,
-      "bit_equal_vs_parent": true,
-      "blocks": 8704,
-      "per_block_us": 3.4315,
-      "per_row_ns": 14583.887,
-      "tflop_s": 24.446
-     },
-     "parent": {
-      "median_ms": 26.0234,
-      "vs_parent": 1.0,
-      "bit_equal_vs_parent": null,
-      "blocks": 4352,
-      "per_block_us": 5.9796,
-      "per_row_ns": 12706.738,
-      "tflop_s": 28.057
-     }
-    }
-   },
-   {
-    "rows": 4096,
-    "variants": {
-     "row32": {
-      "median_ms": 129.3037,
-      "vs_parent": 0.404,
-      "bit_equal_vs_parent": true,
-      "blocks": 69632,
-      "per_block_us": 1.857,
-      "per_row_ns": 31568.286,
-      "tflop_s": 11.293
-     },
-     "row48": {
-      "median_ms": 118.2269,
-      "vs_parent": 0.4419,
-      "bit_equal_vs_parent": true,
-      "blocks": 46784,
-      "per_block_us": 2.5271,
-      "per_row_ns": 28863.989,
-      "tflop_s": 12.352
-     },
-     "row64": {
-      "median_ms": 110.9628,
-      "vs_parent": 0.4708,
-      "bit_equal_vs_parent": true,
-      "blocks": 34816,
-      "per_block_us": 3.1871,
-      "per_row_ns": 27090.527,
-      "tflop_s": 13.16
-     },
-     "row128": {
-      "median_ms": 59.4558,
-      "vs_parent": 0.8787,
-      "bit_equal_vs_parent": true,
-      "blocks": 17408,
-      "per_block_us": 3.4154,
-      "per_row_ns": 14515.576,
-      "tflop_s": 24.561
-     },
-     "parent": {
-      "median_ms": 52.2447,
-      "vs_parent": 1.0,
-      "bit_equal_vs_parent": null,
-      "blocks": 8704,
-      "per_block_us": 6.0024,
-      "per_row_ns": 12755.054,
-      "tflop_s": 27.951
-     }
-    }
-   }
-  ]
+   "out_features": 17408,
+   "warmup": 3,
+   "iters": 10,
+   "seed": 17,
+   "weight_bytes": 51527680
+  }
  },
  "dual_ladder_resources": [
   {
    "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi1ELi2EEEvPKtPKhS4_S4_S4_Ptlll",
-   "owner": "row32",
-   "row_tiles_per_wave": 1,
-   "active_waves_per_block": 2,
-   "columns_per_block": 32,
-   "rows_per_block": 32,
-   "threads_per_block": 128,
-   "accumulator_vgpr": 32,
    "vgpr": 241,
-   "vgpr_allocated": 248,
    "sgpr": 28,
    "lds_bytes": 32768,
    "private_bytes": 0,
-   "waves_per_simd_vgpr": 2,
-   "workgroups_per_cu_lds": 2,
-   "waves_per_cu": 4
+   "owner": "row32",
+   "rows_per_block": 32,
+   "columns_per_block": 32,
+   "row_tiles_per_wave": 1,
+   "active_waves_per_block": 2,
+   "launched_waves_per_block": 4,
+   "threads_per_block": 128,
+   "vgpr_allocated": 264,
+   "vgpr_allocation_granule": 24,
+   "physical_vgpr_per_simd": 1536,
+   "waves_per_simd_vgpr": 5,
+   "workgroups_per_cu_lds": null,
+   "waves_per_cu": null,
+   "occupancy_kind": "wave32_register_only_upper_bound"
   },
   {
    "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi1ELi3EEEvPKtPKhS4_S4_S4_Ptlll",
-   "owner": "row48",
-   "row_tiles_per_wave": 1,
-   "active_waves_per_block": 3,
-   "columns_per_block": 32,
-   "rows_per_block": 48,
-   "threads_per_block": 128,
-   "accumulator_vgpr": 32,
    "vgpr": 241,
-   "vgpr_allocated": 248,
    "sgpr": 28,
    "lds_bytes": 32768,
    "private_bytes": 0,
-   "waves_per_simd_vgpr": 2,
-   "workgroups_per_cu_lds": 2,
-   "waves_per_cu": 6
+   "owner": "row48",
+   "rows_per_block": 48,
+   "columns_per_block": 32,
+   "row_tiles_per_wave": 1,
+   "active_waves_per_block": 3,
+   "launched_waves_per_block": 4,
+   "threads_per_block": 128,
+   "vgpr_allocated": 264,
+   "vgpr_allocation_granule": 24,
+   "physical_vgpr_per_simd": 1536,
+   "waves_per_simd_vgpr": 5,
+   "workgroups_per_cu_lds": null,
+   "waves_per_cu": null,
+   "occupancy_kind": "wave32_register_only_upper_bound"
   },
   {
    "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi1ELi4EEEvPKtPKhS4_S4_S4_Ptlll",
-   "owner": "row64",
-   "row_tiles_per_wave": 1,
-   "active_waves_per_block": 4,
-   "columns_per_block": 32,
-   "rows_per_block": 64,
-   "threads_per_block": 128,
-   "accumulator_vgpr": 32,
    "vgpr": 241,
-   "vgpr_allocated": 248,
    "sgpr": 26,
    "lds_bytes": 32768,
    "private_bytes": 0,
-   "waves_per_simd_vgpr": 2,
-   "workgroups_per_cu_lds": 2,
-   "waves_per_cu": 8
+   "owner": "row64",
+   "rows_per_block": 64,
+   "columns_per_block": 32,
+   "row_tiles_per_wave": 1,
+   "active_waves_per_block": 4,
+   "launched_waves_per_block": 4,
+   "threads_per_block": 128,
+   "vgpr_allocated": 264,
+   "vgpr_allocation_granule": 24,
+   "physical_vgpr_per_simd": 1536,
+   "waves_per_simd_vgpr": 5,
+   "workgroups_per_cu_lds": null,
+   "waves_per_cu": null,
+   "occupancy_kind": "wave32_register_only_upper_bound"
   },
   {
    "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi2ELi4EEEvPKtPKhS4_S4_S4_Ptlll",
-   "owner": "row128",
-   "row_tiles_per_wave": 2,
-   "active_waves_per_block": 4,
-   "columns_per_block": 32,
-   "rows_per_block": 128,
-   "threads_per_block": 128,
-   "accumulator_vgpr": 64,
    "vgpr": 241,
-   "vgpr_allocated": 248,
    "sgpr": 26,
    "lds_bytes": 32768,
    "private_bytes": 0,
-   "waves_per_simd_vgpr": 2,
-   "workgroups_per_cu_lds": 2,
-   "waves_per_cu": 8
+   "owner": "row128",
+   "rows_per_block": 128,
+   "columns_per_block": 32,
+   "row_tiles_per_wave": 2,
+   "active_waves_per_block": 4,
+   "launched_waves_per_block": 4,
+   "threads_per_block": 128,
+   "vgpr_allocated": 264,
+   "vgpr_allocation_granule": 24,
+   "physical_vgpr_per_simd": 1536,
+   "waves_per_simd_vgpr": 5,
+   "workgroups_per_cu_lds": null,
+   "waves_per_cu": null,
+   "occupancy_kind": "wave32_register_only_upper_bound"
   },
   {
    "kernel": "_ZN12_GLOBAL__N_152gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernelILb0ELb0ELi4ELi4EEEvPKtPKhS4_S4_S4_Ptlll",
-   "owner": "parent",
-   "row_tiles_per_wave": 4,
-   "active_waves_per_block": 4,
-   "columns_per_block": 32,
-   "rows_per_block": 256,
-   "threads_per_block": 128,
-   "accumulator_vgpr": 128,
    "vgpr": 241,
-   "vgpr_allocated": 248,
    "sgpr": 28,
    "lds_bytes": 32768,
    "private_bytes": 0,
-   "waves_per_simd_vgpr": 2,
-   "workgroups_per_cu_lds": 2,
-   "waves_per_cu": 8
+   "owner": "parent",
+   "rows_per_block": 256,
+   "columns_per_block": 32,
+   "row_tiles_per_wave": 4,
+   "active_waves_per_block": 4,
+   "launched_waves_per_block": 4,
+   "threads_per_block": 128,
+   "vgpr_allocated": 264,
+   "vgpr_allocation_granule": 24,
+   "physical_vgpr_per_simd": 1536,
+   "waves_per_simd_vgpr": 5,
+   "workgroups_per_cu_lds": null,
+   "waves_per_cu": null,
+   "occupancy_kind": "wave32_register_only_upper_bound"
   }
  ],
- "column_tile_sweep": {
-  "protocol": {
-   "harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py",
-   "weights": "synthetic Q4_K tiles, seed 17",
-   "warmup": 3,
-   "iters": 10,
-   "note": "single-matrix owners; each launch computes one projection. The 16-column owners are 32-thread single-wave blocks, so they confound the column tile with block size and rows per block; the 32- and 48-column owners are 4- or 8-wave blocks"
-  },
-  "cells": [
-   {
-    "rows": 512,
-    "owners": {
-     "shared_b": {
-      "columns_per_block": 48,
-      "rows_per_block": 256,
-      "threads_per_block": 128,
-      "waves_per_workgroup": 4,
-      "row_tiles_per_wave": 4,
-      "median_ms": 3.8776,
-      "tflop_s": 23.537,
-      "column_blocks": 363,
-      "blocks": 726,
-      "activation_bytes_per_launch": 1903165440,
-      "bit_exact_vs_shared_b": null
-     },
-     "shared_b3w8r3": {
-      "columns_per_block": 48,
-      "rows_per_block": 384,
-      "threads_per_block": 256,
-      "waves_per_workgroup": 8,
-      "row_tiles_per_wave": 3,
-      "median_ms": 5.484,
-      "tflop_s": 16.643,
-      "column_blocks": 363,
-      "blocks": 726,
-      "activation_bytes_per_launch": 1903165440,
-      "bit_exact_vs_shared_b": true
-     },
-     "shared_b2w2": {
-      "columns_per_block": 32,
-      "rows_per_block": 128,
-      "threads_per_block": 64,
-      "waves_per_workgroup": 2,
-      "row_tiles_per_wave": 4,
-      "median_ms": 4.6484,
-      "tflop_s": 19.634,
-      "column_blocks": 544,
-      "blocks": 2176,
-      "activation_bytes_per_launch": 2852126720,
-      "bit_exact_vs_shared_b": true
-     },
-     "shared_b2w4": {
-      "columns_per_block": 32,
-      "rows_per_block": 256,
-      "threads_per_block": 128,
-      "waves_per_workgroup": 4,
-      "row_tiles_per_wave": 4,
-      "median_ms": 4.5509,
-      "tflop_s": 20.055,
-      "column_blocks": 544,
-      "blocks": 1088,
-      "activation_bytes_per_launch": 2852126720,
-      "bit_exact_vs_shared_b": true
-     },
-     "default": {
-      "columns_per_block": 48,
-      "rows_per_block": 64,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 4,
-      "median_ms": 7.5045,
-      "tflop_s": 12.162,
-      "column_blocks": 363,
-      "blocks": 2904,
-      "activation_bytes_per_launch": 1903165440,
-      "bit_exact_vs_shared_b": true
-     },
-     "lowvgpr": {
-      "columns_per_block": 16,
-      "rows_per_block": 32,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 2,
-      "median_ms": 6.7784,
-      "tflop_s": 13.465,
-      "column_blocks": 1088,
-      "blocks": 17408,
-      "activation_bytes_per_launch": 5704253440,
-      "bit_exact_vs_shared_b": true
-     },
-     "lowvgpr48": {
-      "columns_per_block": 16,
-      "rows_per_block": 48,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 3,
-      "median_ms": 6.2345,
-      "tflop_s": 14.639,
-      "column_blocks": 1088,
-      "blocks": 11968,
-      "activation_bytes_per_launch": 5704253440,
-      "bit_exact_vs_shared_b": true
-     }
-    }
-   },
-   {
-    "rows": 4096,
-    "owners": {
-     "shared_b": {
-      "columns_per_block": 48,
-      "rows_per_block": 256,
-      "threads_per_block": 128,
-      "waves_per_workgroup": 4,
-      "row_tiles_per_wave": 4,
-      "median_ms": 30.8191,
-      "tflop_s": 23.691,
-      "column_blocks": 363,
-      "blocks": 5808,
-      "activation_bytes_per_launch": 15225323520,
-      "bit_exact_vs_shared_b": null
-     },
-     "shared_b3w8r3": {
-      "columns_per_block": 48,
-      "rows_per_block": 384,
-      "threads_per_block": 256,
-      "waves_per_workgroup": 8,
-      "row_tiles_per_wave": 3,
-      "median_ms": 35.2856,
-      "tflop_s": 20.692,
-      "column_blocks": 363,
-      "blocks": 3993,
-      "activation_bytes_per_launch": 15225323520,
-      "bit_exact_vs_shared_b": true
-     },
-     "shared_b2w2": {
-      "columns_per_block": 32,
-      "rows_per_block": 128,
-      "threads_per_block": 64,
-      "waves_per_workgroup": 2,
-      "row_tiles_per_wave": 4,
-      "median_ms": 39.1086,
-      "tflop_s": 18.67,
-      "column_blocks": 544,
-      "blocks": 17408,
-      "activation_bytes_per_launch": 22817013760,
-      "bit_exact_vs_shared_b": true
-     },
-     "shared_b2w4": {
-      "columns_per_block": 32,
-      "rows_per_block": 256,
-      "threads_per_block": 128,
-      "waves_per_workgroup": 4,
-      "row_tiles_per_wave": 4,
-      "median_ms": 42.9696,
-      "tflop_s": 16.992,
-      "column_blocks": 544,
-      "blocks": 8704,
-      "activation_bytes_per_launch": 22817013760,
-      "bit_exact_vs_shared_b": true
-     },
-     "default": {
-      "columns_per_block": 48,
-      "rows_per_block": 64,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 4,
-      "median_ms": 57.9578,
-      "tflop_s": 12.598,
-      "column_blocks": 363,
-      "blocks": 23232,
-      "activation_bytes_per_launch": 15225323520,
-      "bit_exact_vs_shared_b": true
-     },
-     "lowvgpr": {
-      "columns_per_block": 16,
-      "rows_per_block": 32,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 2,
-      "median_ms": 56.9096,
-      "tflop_s": 12.83,
-      "column_blocks": 1088,
-      "blocks": 139264,
-      "activation_bytes_per_launch": 45634027520,
-      "bit_exact_vs_shared_b": true
-     },
-     "lowvgpr48": {
-      "columns_per_block": 16,
-      "rows_per_block": 48,
-      "threads_per_block": 32,
-      "waves_per_workgroup": 1,
-      "row_tiles_per_wave": 3,
-      "median_ms": 52.1446,
-      "tflop_s": 14.002,
-      "column_blocks": 1088,
-      "blocks": 93568,
-      "activation_bytes_per_launch": 45634027520,
-      "bit_exact_vs_shared_b": true
-     }
+ "dual_row_tile_sweep": [
+  {
+   "rows": 256,
+   "variants": {
+    "row32": {
+     "median_ms": 8.2768,
+     "vs_parent": 0.3951,
+     "bit_equal_vs_parent": true,
+     "blocks": 4352,
+     "amortized_us_per_block": 1.9018
+    },
+    "row48": {
+     "median_ms": 8.2801,
+     "vs_parent": 0.3949,
+     "bit_equal_vs_parent": true,
+     "blocks": 3264,
+     "amortized_us_per_block": 2.5368
+    },
+    "row64": {
+     "median_ms": 7.1211,
+     "vs_parent": 0.4592,
+     "bit_equal_vs_parent": true,
+     "blocks": 2176,
+     "amortized_us_per_block": 3.2726
+    },
+    "row128": {
+     "median_ms": 3.895,
+     "vs_parent": 0.8396,
+     "bit_equal_vs_parent": true,
+     "blocks": 1088,
+     "amortized_us_per_block": 3.58
+    },
+    "parent": {
+     "median_ms": 3.2702,
+     "vs_parent": 1.0,
+     "bit_equal_vs_parent": true,
+     "blocks": 544,
+     "amortized_us_per_block": 6.0114
     }
    }
-  ],
-  "resource_metadata": {
-   "shared_b": {
-    "vgpr": 249,
-    "vgpr_allocated": 256,
-    "sgpr": 21,
-    "lds_bytes": 24576,
-    "private_bytes": 0,
-    "waves_per_simd_vgpr": 2,
-    "workgroups_per_cu_lds": 2,
-    "waves_per_cu": 8
-   },
-   "shared_b2w4": {
-    "vgpr": 217,
-    "vgpr_allocated": 224,
-    "sgpr": 22,
-    "lds_bytes": 16384,
-    "private_bytes": 0,
-    "waves_per_simd_vgpr": 2,
-    "workgroups_per_cu_lds": 4,
-    "waves_per_cu": 8
-   },
-   "shared_b2w2": {
-    "vgpr": 217,
-    "vgpr_allocated": 224,
-    "sgpr": 22,
-    "lds_bytes": 16384,
-    "private_bytes": 0,
-    "waves_per_simd_vgpr": 2,
-    "workgroups_per_cu_lds": 4,
-    "waves_per_cu": 8
-   },
-   "shared_b3w8r3": {
-    "vgpr": 223,
-    "vgpr_allocated": 224,
-    "sgpr": 20,
-    "lds_bytes": 24576,
-    "private_bytes": 0,
-    "waves_per_simd_vgpr": 2,
-    "workgroups_per_cu_lds": 2,
-    "waves_per_cu": 8
+  },
+  {
+   "rows": 512,
+   "variants": {
+    "row32": {
+     "median_ms": 16.3577,
+     "vs_parent": 0.4052,
+     "bit_equal_vs_parent": true,
+     "blocks": 8704,
+     "amortized_us_per_block": 1.8793
+    },
+    "row48": {
+     "median_ms": 15.1784,
+     "vs_parent": 0.4367,
+     "bit_equal_vs_parent": true,
+     "blocks": 5984,
+     "amortized_us_per_block": 2.5365
+    },
+    "row64": {
+     "median_ms": 14.0033,
+     "vs_parent": 0.4734,
+     "bit_equal_vs_parent": true,
+     "blocks": 4352,
+     "amortized_us_per_block": 3.2177
+    },
+    "row128": {
+     "median_ms": 7.6868,
+     "vs_parent": 0.8624,
+     "bit_equal_vs_parent": true,
+     "blocks": 2176,
+     "amortized_us_per_block": 3.5325
+    },
+    "parent": {
+     "median_ms": 6.6289,
+     "vs_parent": 1.0,
+     "bit_equal_vs_parent": true,
+     "blocks": 1088,
+     "amortized_us_per_block": 6.0927
+    }
+   }
+  },
+  {
+   "rows": 1024,
+   "variants": {
+    "row32": {
+     "median_ms": 32.5264,
+     "vs_parent": 0.4036,
+     "bit_equal_vs_parent": true,
+     "blocks": 17408,
+     "amortized_us_per_block": 1.8685
+    },
+    "row48": {
+     "median_ms": 30.3601,
+     "vs_parent": 0.4324,
+     "bit_equal_vs_parent": true,
+     "blocks": 11968,
+     "amortized_us_per_block": 2.5368
+    },
+    "row64": {
+     "median_ms": 27.8186,
+     "vs_parent": 0.4719,
+     "bit_equal_vs_parent": true,
+     "blocks": 8704,
+     "amortized_us_per_block": 3.1961
+    },
+    "row128": {
+     "median_ms": 15.0374,
+     "vs_parent": 0.8731,
+     "bit_equal_vs_parent": true,
+     "blocks": 4352,
+     "amortized_us_per_block": 3.4553
+    },
+    "parent": {
+     "median_ms": 13.1288,
+     "vs_parent": 1.0,
+     "bit_equal_vs_parent": true,
+     "blocks": 2176,
+     "amortized_us_per_block": 6.0335
+    }
+   }
+  },
+  {
+   "rows": 2048,
+   "variants": {
+    "row32": {
+     "median_ms": 64.8839,
+     "vs_parent": 0.4011,
+     "bit_equal_vs_parent": true,
+     "blocks": 34816,
+     "amortized_us_per_block": 1.8636
+    },
+    "row48": {
+     "median_ms": 59.229,
+     "vs_parent": 0.4394,
+     "bit_equal_vs_parent": true,
+     "blocks": 23392,
+     "amortized_us_per_block": 2.532
+    },
+    "row64": {
+     "median_ms": 55.5622,
+     "vs_parent": 0.4684,
+     "bit_equal_vs_parent": true,
+     "blocks": 17408,
+     "amortized_us_per_block": 3.1918
+    },
+    "row128": {
+     "median_ms": 29.8678,
+     "vs_parent": 0.8713,
+     "bit_equal_vs_parent": true,
+     "blocks": 8704,
+     "amortized_us_per_block": 3.4315
+    },
+    "parent": {
+     "median_ms": 26.0234,
+     "vs_parent": 1.0,
+     "bit_equal_vs_parent": true,
+     "blocks": 4352,
+     "amortized_us_per_block": 5.9796
+    }
+   }
+  },
+  {
+   "rows": 4096,
+   "variants": {
+    "row32": {
+     "median_ms": 129.3037,
+     "vs_parent": 0.404,
+     "bit_equal_vs_parent": true,
+     "blocks": 69632,
+     "amortized_us_per_block": 1.857
+    },
+    "row48": {
+     "median_ms": 118.2269,
+     "vs_parent": 0.4419,
+     "bit_equal_vs_parent": true,
+     "blocks": 46784,
+     "amortized_us_per_block": 2.5271
+    },
+    "row64": {
+     "median_ms": 110.9628,
+     "vs_parent": 0.4708,
+     "bit_equal_vs_parent": true,
+     "blocks": 34816,
+     "amortized_us_per_block": 3.1871
+    },
+    "row128": {
+     "median_ms": 59.4558,
+     "vs_parent": 0.8787,
+     "bit_equal_vs_parent": true,
+     "blocks": 17408,
+     "amortized_us_per_block": 3.4154
+    },
+    "parent": {
+     "median_ms": 52.2447,
+     "vs_parent": 1.0,
+     "bit_equal_vs_parent": true,
+     "blocks": 8704,
+     "amortized_us_per_block": 6.0024
+    }
    }
   }
- },
- "fork_comparison": {
-  "fork_commit": "654803517b06da47f5210553a661bf6c80deb97f",
-  "fork_file": "ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh",
-  "fork_change": "Q4_K/Q5_K/Q6_K dense MMQ entries gain a 128-thread configuration with I=64 weight rows per block alongside the 256-thread I=128 entry (J stays 128 tokens)",
-  "axis_mapping": {
-   "fork_I_weight_rows": "hipEngine columns_per_block",
-   "fork_J_tokens": "hipEngine rows_per_block",
-   "fork_nthreads": "hipEngine threads_per_block (32 x waves)"
+ ],
+ "column_tile_sweep": [
+  {
+   "rows": 512,
+   "owners": {
+    "shared_b": {
+     "columns_per_block": 48,
+     "rows_per_block": 256,
+     "threads_per_block": 128,
+     "median_ms": 3.8776,
+     "bit_exact_vs_shared_b": null
+    },
+    "shared_b3w8r3": {
+     "columns_per_block": 48,
+     "rows_per_block": 384,
+     "threads_per_block": 256,
+     "median_ms": 5.484,
+     "bit_exact_vs_shared_b": true
+    },
+    "shared_b2w2": {
+     "columns_per_block": 32,
+     "rows_per_block": 128,
+     "threads_per_block": 64,
+     "median_ms": 4.6484,
+     "bit_exact_vs_shared_b": true
+    },
+    "shared_b2w4": {
+     "columns_per_block": 32,
+     "rows_per_block": 256,
+     "threads_per_block": 128,
+     "median_ms": 4.5509,
+     "bit_exact_vs_shared_b": true
+    },
+    "default": {
+     "columns_per_block": 48,
+     "rows_per_block": 64,
+     "threads_per_block": 32,
+     "median_ms": 7.5045,
+     "bit_exact_vs_shared_b": true
+    },
+    "lowvgpr": {
+     "columns_per_block": 16,
+     "rows_per_block": 32,
+     "threads_per_block": 32,
+     "median_ms": 6.7784,
+     "bit_exact_vs_shared_b": true
+    },
+    "lowvgpr48": {
+     "columns_per_block": 16,
+     "rows_per_block": 48,
+     "threads_per_block": 32,
+     "median_ms": 6.2345,
+     "bit_exact_vs_shared_b": true
+    }
+   }
   },
-  "fork_transfer": "the fork's change is a halved weight axis plus halved threads; hipEngine's measured equivalents are the 16-column block (columns_per_block 32 -> 16) and the 64-thread launch. Neither is exercised by the existing registered variants, which vary only rows_per_block."
- },
+  {
+   "rows": 4096,
+   "owners": {
+    "shared_b": {
+     "columns_per_block": 48,
+     "rows_per_block": 256,
+     "threads_per_block": 128,
+     "median_ms": 30.8191,
+     "bit_exact_vs_shared_b": null
+    },
+    "shared_b3w8r3": {
+     "columns_per_block": 48,
+     "rows_per_block": 384,
+     "threads_per_block": 256,
+     "median_ms": 35.2856,
+     "bit_exact_vs_shared_b": true
+    },
+    "shared_b2w2": {
+     "columns_per_block": 32,
+     "rows_per_block": 128,
+     "threads_per_block": 64,
+     "median_ms": 39.1086,
+     "bit_exact_vs_shared_b": true
+    },
+    "shared_b2w4": {
+     "columns_per_block": 32,
+     "rows_per_block": 256,
+     "threads_per_block": 128,
+     "median_ms": 42.9696,
+     "bit_exact_vs_shared_b": true
+    },
+    "default": {
+     "columns_per_block": 48,
+     "rows_per_block": 64,
+     "threads_per_block": 32,
+     "median_ms": 57.9578,
+     "bit_exact_vs_shared_b": true
+    },
+    "lowvgpr": {
+     "columns_per_block": 16,
+     "rows_per_block": 32,
+     "threads_per_block": 32,
+     "median_ms": 56.9096,
+     "bit_exact_vs_shared_b": true
+    },
+    "lowvgpr48": {
+     "columns_per_block": 16,
+     "rows_per_block": 48,
+     "threads_per_block": 32,
+     "median_ms": 52.1446,
+     "bit_exact_vs_shared_b": true
+    }
+   }
+  }
+ ],
  "findings": [
+  "The measured row32/48/64/128 variants lose to the 256-row parent on these prefill shapes. This does not settle all possible geometries.",
+  "The single-matrix column sweep changes other geometry axes too; it is not an isolated dual-kernel column ablation.",
+  "Raw VGPR/SGPR/LDS counts are compiler metadata. Register-only wave ceilings are not actual occupancy and do not rule out a residency change from a smaller LDS slab.",
+  "Kernel duration divided by grid size is an amortized cost, not a block latency. Source operation counts do not isolate issue stalls.",
+  "The subsequent two col16 arms lost and were removed. The original instruction-count ranking and later doubled-decode-time explanation are withdrawn; neither isolates the measured slowdown."
+ ],
+ "candidate_directions": [
   {
-   "id": "row_tile_direction",
-   "kind": "measured",
-   "finding": "shrinking the token-row tile loses at every prefill row count: row128 is 0.84-0.88x the parent, row64 0.46-0.47x, row48 0.40-0.44x, row32 0.40x, on real gate/up tiles with bit-identical outputs in all 20 cells",
-   "evidence": "dual_row_tile_sweep"
+   "id": "decode_restructure",
+   "status": "unmeasured",
+   "prerequisite": "Inspect ISA, load layout, resource changes and complete-owner cost."
   },
   {
-   "id": "row_tile_mechanism",
-   "kind": "measured",
-   "finding": "per-block time does not fall with rows per block: at 4096 rows one block costs 6.00 us at 256 rows, 3.42 us at 128 rows, 3.19 us at 64 rows and 1.86 us at 32 rows, so the per-row cost rises as the tile shrinks",
-   "evidence": "dual_row_tile_sweep.cells[].variants[].per_block_us"
+   "id": "wider_columns",
+   "status": "unmeasured",
+   "prerequisite": "Redesign decode coverage and assess LDS/epilogue resources."
   },
   {
-   "id": "occupancy_is_pinned",
-   "kind": "measured",
-   "finding": "every registered dual variant reports 248 allocated VGPR and 32768 LDS bytes, so all of them sit at 2 workgroups per CU and 2 waves per SIMD; the row-tile knob cannot move occupancy",
-   "evidence": "dual_ladder_resources"
+   "id": "more_token_rows",
+   "status": "unmeasured",
+   "prerequisite": "Assess the 64-KiB epilogue union or a new register-local epilogue."
   },
   {
-   "id": "column_tile_direction",
-   "kind": "measured",
-   "finding": "for the single-matrix sibling at the same shape, wider column tiles win at both row counts. At 4096 rows the 48-column block takes 30.82 ms, the 32-column block 39.11-42.97 ms and the 16-column block 52.15-56.91 ms. At 512 rows the four-wave pair keeps the same order (48 columns 3.88 ms against 32 columns 4.55 ms), and the 16-column blocks are slowest at 6.23-6.78 ms. Outputs are bit-identical in every non-reference cell",
-   "evidence": "column_tile_sweep"
-  },
-  {
-   "id": "lds_reduction_is_not_occupancy",
-   "kind": "measured",
-   "finding": "LDS headroom alone does not raise resident waves: the 16 KiB shared_b2w4 instantiation still allocates 217 VGPR and stays at 2 waves per SIMD, and the highest-occupancy owner in the companion profile (q6, 32 columns, 96 VGPR, 5 waves per SIMD) is the slowest Q6 prefill owner",
-   "evidence": "column_tile_sweep.resource_metadata, benchmarks/results/2026-09-13-qwen38-gfx1151-prefill-kernel-profile"
-  },
-  {
-   "id": "fork_direction_does_not_transfer",
-   "kind": "measured",
-   "finding": "the fork halves the weight axis (I 128 -> 64) and the threads (256 -> 128) at J=128 tokens. Mapped to hipEngine, that is a halved column tile plus a halved thread count; the measured hipEngine equivalents of the same direction are 1.14x slower (rows halved) and 1.27-1.39x slower (columns halved at the same rows)",
-   "evidence": "dual_row_tile_sweep, column_tile_sweep"
-  },
-  {
-   "id": "instruction_stream_model",
-   "kind": "analytic",
-   "finding": "counting source-level operations for the parent block gives about 3840 warp instructions per K block for 8.39 MFLOP: roughly 1536 for the weight decode (2 matrices x 32 columns x 256 weights at about 3 instructions per weight) and roughly 2304 for the WMMA phase (16 sub-block/k-tile iterations x 4 waves x (4 activation loads + 8 b-fragment loads + 16 WMMAs + addressing)). The decode is about 40% of the issue stream and is the only part rows per block amortize; b-fragment loads are about 20% and are amortized by row tiles per wave",
-   "assumptions": [
-    "about 3 instructions per decoded weight (one packed byte load, unpack, two scale/min FMAs, two half converts, one vectorized LDS store per two weights)",
-    "one 16-byte LDS load per b fragment (the compiler emits ds_load_b128 for the contiguous 16-half fragment)",
-    "issue-bound behaviour at 2 waves per SIMD"
-   ],
-   "evidence": "derived from the kernel source in hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip"
+   "id": "residency_retune",
+   "status": "unmeasured",
+   "prerequisite": "Use corrected architecture/mode limits and actual resource evidence."
   }
  ],
- "candidate_direction": {
-  "summary": "Neither tile axis should be shrunk. The measured per-block cost is dominated by work that rows per block amortize and by operand traffic that a wider block amortizes, so the candidates below increase amortization while holding the resources that the measurements show are already at the family norm (248 VGPR, 2 waves per SIMD, 2 workgroups per CU)",
-  "candidates": [
-   {
-    "id": "ot1_rt8_w4",
-    "priority": 1,
-    "geometry": "16 columns x 512 rows per block, row tiles per wave 8, 4 waves, 128 threads",
-    "resources": "32 KiB LDS (the rounded-tile union member, 2 x 512 x 16 x 2 B, equals the weight slab), 128 accumulator VGPRs, 2 workgroups per CU, 2 waves per SIMD",
-    "why": "halving columns per block halves the per-block decode for the same compute, and doubling row tiles per wave halves b-fragment loads per WMMA. Per block the instruction-stream model predicts about 3072 warp instructions for the same 8.39 MFLOP, roughly 20% fewer than the parent",
-    "risk": "16-column blocks double activation traffic per FLOP (31.25 versus 15.6 KB per MFLOP) and the only same-shape 16-column arm measured so far is 1.7x slower, though that arm is a 32-thread single-wave block",
-    "code_change": "out_tiles as a template parameter (currently the constant 2), row_tiles_per_wave up to 8 in the static_assert, and a 16-pair decode guard; no change to threads, epilogue or LDS layout"
-   },
-   {
-    "id": "ot1_rt4_w4_minblocks4",
-    "priority": 2,
-    "geometry": "16 columns x 256 rows per block, row tiles per wave 4, 4 waves, 128 threads, launch bounds min 4 blocks per CU",
-    "resources": "16 KiB LDS allows 4 workgroups per CU; the register cap forces the 128 VGPR budget that 4 waves per SIMD needs",
-    "why": "the only arm that can raise resident waves. The measured sibling instantiations show LDS savings alone do not: 16 KiB LDS blocks still allocate 217 VGPR and stay at 2 waves per SIMD",
-    "risk": "spills if 128 VGPRs cannot hold the accumulators, activation fragments and b fragments; the highest-occupancy owner in the companion profile is the slowest, so more resident waves is not itself a win"
-   },
-   {
-    "id": "ot2_rt4_w8_rows512",
-    "priority": 3,
-    "geometry": "32 columns x 512 rows per block, row tiles per wave 4, 8 waves, 256 threads",
-    "resources": "the epilogue must stop publishing through the LDS union, because 2 x 512 x 32 x 2 B is 64 KiB; with a register-local SiLU the LDS is the 32 KiB weight slab and occupancy is unchanged",
-    "why": "keeps the measured-good column tile, row tiles per wave and epilogue structure and only doubles rows per block, so the decode is amortized twice as far; the register-local SiLU is bit-identical because the same BF16 rounding is applied to gate and up before the product",
-    "risk": "needs 256-thread blocks and an epilogue rewrite, and it does not reduce b-fragment loads per WMMA"
-   },
-   {
-    "id": "decode_restructure",
-    "priority": 4,
-    "geometry": "unchanged tile",
-    "why": "the decode reads one packed byte per thread per two weights and is about 40% of the issue stream; a lane mapping that gives each thread four consecutive bytes would cut those loads fourfold",
-    "risk": "touches the exact decode path, so it needs the same bit-exactness gate as a geometry change"
-   }
-  ],
-  "rejected_by_measurement": [
-   "every shrink of rows per block (row32, row48, row64, row128) at prefill rows",
-   "shrinking the column tile at fixed rows, per the sibling measurement",
-   "raising occupancy without a register cap: 16 KiB LDS instantiations still allocate 217-248 VGPR"
-  ],
-  "gate": "every geometry arm in this family is bit-exact against the parent by construction, and the screen confirms it in 20 of 20 cells, so a candidate is judged by wall time at prefill rows plus the registered strict fallback, not by a new numerical envelope"
- },
+ "gate": "Exact ownership and the declared production numerical/task gates, registered strict fallback, complete-owner screen and same-host whole-model validation before promotion.",
  "provenance": {
-  "resource_table": {
+  "resource_capture": {
    "arch": "gfx1151",
    "waves_per_workgroup": 4,
    "compiler_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
@@ -775,14 +498,11 @@
    ],
    "device_asm": "/tmp/q4dual-temps/gguf_k_t16_selected_prefill-hip-amdgcn-amd-amdhsa-gfx1151.s"
   },
-  "row_tile_harness": "scripts/qwen38_packet4_q4_dual_silu_row_leaf.py",
-  "column_tile_harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py",
   "source_commit": "a333c4fb926aba7a7dc7691b5160dce0b97ff773",
-  "generated_at": "2026-09-13T12:29:46.135655+00:00"
- },
- "limitations": [
-  "single host (Radeon 8060S, gfx1151), single model, one warmup and three measured repetitions per cell",
-  "the column-tile sweep uses synthetic Q4_K tiles and single-matrix owners; the dual kernel cannot express a 16-column block without a new instantiation, so that direction is measured on the sibling and inferred for the dual",
-  "occupancy figures come from compiler metadata, not from a hardware counter"
- ]
+  "input_sha256": {
+   "resource_table.json": "25f3660aa1e582be8f37d636936ed3da2b1a2b91f72c17f8ae91b8bb1fad5ae6",
+   "rowtile_prefill.json": "6ed380967d15835a6b26ccad3a3a4d87a32a20c09757f4d1fb0780fb141a5701",
+   "col_tile_owners.json": "90152f2afe054728c1bbba914a46bc39bf9a7da2ea5618ec81a56bb362f204c0"
+  }
+ }
 }

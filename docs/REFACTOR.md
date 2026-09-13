@@ -9,30 +9,24 @@
   gate/up tiles at rows 256/512/1024/2048/4096, three harness invocations per
   shape: the parent takes 3.31/6.62/13.12/26.03/52.15 ms, `col16_row256`
   **0.71/0.67/0.63/0.61/0.61x** and `col16_row512` **0.41/0.71/0.69/0.68/0.67x**,
-  bit-identical output in all 30 cells. Do not re-attempt 16-column blocks for
-  this kernel.
-- Mechanism, so the next attempt starts from the right model: the weight decode
-  needs `threads/4 >= 2 x (columns/2)` pairs, which is exactly saturated at 32
-  columns with 128 threads. Halving columns halves per-block compute but not
-  per-block decode *time* (the same 32 k-values per participating thread, half
-  the threads busy), so the decode share of the issue stream rises while the
-  WMMA work per block falls. The instruction-stream model in
-  `benchmarks/results/2026-09-13-q4-dual-prefill-tile-knob-screen` assumed a
-  decode-time saving that does not exist; the sibling measurement it contradicted
-  (16 columns 1.7x slower) was right.
+  bit-identical output in all 30 cells. Do not repeat these unchanged variants;
+  a different decode mapping or epilogue is a new hypothesis.
+- Review correction: neither the original instruction-count ranking nor the
+  later doubled-decode-time explanation isolates the loss. In particular,
+  col16_row512 has the same block count as the parent at rows512+, not double.
+  Source-level counts and effective bandwidth are not issue/traffic counters.
 - The screen's occupancy arm (16 columns x 256 rows with
   `__launch_bounds__(128, 4)`) was built, measured, and dropped inside the same
   day: gfx1151 allocates 219 VGPRs with min-blocks 1 and with min-blocks 4,
-  literal and template-parameter spellings both, so the floor cannot raise
-  resident workgroups. Re-attempt occupancy only with a mechanism that caps
-  registers directly (for example `amdgpu_num_vgpr`), and expect accumulator
-  spills once the budget falls to 128 VGPRs.
+  literal and template-parameter spellings both. This establishes unchanged
+  compiled register counts, not actual residency. The previous 512-VGPR
+  occupancy model was wrong: gfx1151 wave32 uses 1536 physical VGPRs and a
+  24-register granule. Recompute mode/LDS limits before any register-cap work.
 - Open directions that the removal leaves untouched, with their prerequisites:
   a wider column tile (48 columns) needs the decode to reach 192 threads or a
   lane remap, since 128 threads cannot cover 48 decode pairs; 32 columns x 512
-  rows per block is expressible today but the epilogue union becomes the whole
-  64 KiB of LDS, so it needs either that occupancy drop or the 256-thread
-  register-local-SiLU epilogue rewrite.
+  rows per block needs the row-tile limit extended and makes the epilogue
+  union 64 KiB. Measure residency or test a register-local-SiLU epilogue.
 
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 

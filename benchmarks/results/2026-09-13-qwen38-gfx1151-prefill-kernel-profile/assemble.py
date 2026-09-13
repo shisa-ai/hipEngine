@@ -34,6 +34,7 @@ from scripts.qwen38_gfx1151_prefill_kernel_profile import (  # noqa: E402
     _classify,
     _summarize_trace,
 )
+from scripts.gguf_prefill_kernel_resources import derived_occupancy
 
 # Owner geometry is a property of the registered launcher, not of the trace:
 # rocprofv3 reports the launched workgroup and grid, not the compile-time tile.
@@ -213,13 +214,6 @@ OWNER_TENSORS: Mapping[tuple[str, str, int], Mapping[str, Any]] = {
         "single_pass": [],
     },
 }
-
-# gfx1151 wave32 register file per SIMD: 512 VGPRs are addressable per thread
-# for one wave, so waves per SIMD = floor(512 / vgpr), capped at the reported
-# 16 waves per SIMD.
-WAVES_PER_SIMD_VGPR_BUDGET = 512
-WAVES_PER_SIMD_CAP = 16
-
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -404,8 +398,10 @@ def _trace_owners(trace_dir: Path) -> list[dict[str, Any]]:
             "vgpr": vgpr,
             "sgpr": sorted(entry["sgpr"]),
             "lds_bytes": LDS_BY_TEMPLATE.get((short, template)),
-            "waves_per_simd": min(WAVES_PER_SIMD_CAP,
-                                  WAVES_PER_SIMD_VGPR_BUDGET // max(vgpr, 1)),
+            "register_waves_per_simd_upper_bound": derived_occupancy(
+                vgpr, LDS_BY_TEMPLATE.get((short, template), 0), 4,
+            )["waves_per_simd_vgpr"],
+            "occupancy_measured": False,
             "launches": entry["launches"],
             "total_ms": round(entry["ns"] / 1e6, 3),
         })
@@ -483,6 +479,7 @@ def _resolve_attribution(owners: list[dict[str, Any]],
                 * (in_features + out_features) * per_launch * 2
             )
             arithmetic = {
+                "traffic_kind": "logical_tensor_bytes_not_measured_memory_transactions",
                 "in_features": in_features,
                 "out_features": out_features,
                 "rows_processed": rows_processed,
@@ -632,13 +629,10 @@ def _findings(families: Mapping[str, Any], owners: Mapping[str, Any],
                 "On the identical wide-down shape (K 17408, N 5120), the Q4_K "
                 "shared-weight owner reaches 27.50 TFLOP/s in 1024-row chunks "
                 "while the Q6_K planar owners reach 21.28 TFLOP/s in 1024-row "
-                "chunks and 20.34 TFLOP/s in a single 4096-row pass. Quant size "
-                "does not explain the gap: both owners move weights far below the "
-                "memory system's capability, so neither is "
-                "bandwidth-bound: 8.5 GB/s for the Q6 owner against 11.0 GB/s for "
-                "the Q4 owner. They differ in columns per block (48 versus 32 or "
-                "48), LDS per block (24 versus 16 or 24 KiB) and VGPR (256 versus "
-                "176 or 248) at the same 2 waves per SIMD."
+                "chunks and 20.34 TFLOP/s in a single 4096-row pass. Logical "
+                "weight bytes per elapsed second do not measure memory traffic "
+                "or isolate the cause. Compare decode, repeated loads, cache "
+                "behavior and actual residency before attributing the gap."
             ),
             "measured": {
                 "q4_k_shared_b_tflops": q4_wide_4096["arithmetic"]["tflops"],
@@ -659,34 +653,30 @@ def _findings(families: Mapping[str, Any], owners: Mapping[str, Any],
             },
         },
         {
-            "id": "weights-are-not-the-bottleneck",
+            "id": "logical-weight-volume",
             "statement": (
-                "The dense prefill re-reads 12.4 GB of weights at 512 tokens and "
-                "47.8 GB at 4096 tokens, because the 48 linear-attention layers "
-                "are re-read once per 1024-row chunk; the aggregate rate is "
-                "4.7-10.4 GB/s and the busiest single owner is 25 GB/s. That is "
-                "a few percent of the memory system, so prefill is "
-                "WMMA-throughput and latency bound, and the weight re-read that "
-                "chunking costs is not what limits it."
+                "Logical tensor bytes counted once per chunk total 12.4 GB at "
+                "512 tokens and 47.8 GB at 4096. These figures exclude repeated "
+                "block loads, cache transactions and staging traffic. They are "
+                "not measured bandwidth and cannot rule out a memory bottleneck."
             ),
             "measured": weight_traffic,
         },
         {
-            "id": "occupancy-is-vgpr-limited",
+            "id": "register-only-residency-ceiling",
             "statement": (
-                "Every dense Q4/Q6 owner runs at 2 waves per SIMD because its "
-                "248-256 VGPR footprint only fits twice into the 512-VGPR "
-                "per-thread budget; dropping below 171 VGPR would admit a third "
-                "wave. The 96-VGPR shared8r3 owner is the only dense owner above "
-                "2 waves, and it is also the slowest per output element on the "
-                "10240-wide QKV shape (18.62 versus 32.03 TFLOP/s for the "
-                "48-column owner on the same shape)."
+                "gfx1151 wave32 has 1536 physical VGPRs per SIMD and a "
+                "24-register allocation granule. A count of 248-256 rounds "
+                "to 264 and permits at most five waves by registers alone. "
+                "LDS, CU/WGP mode, scheduling and other constraints still apply. "
+                "No occupancy counter was captured; the earlier two-wave and "
+                "171-register conclusions are withdrawn."
             ),
             "measured": {
                 length: {
                     owner["registered_variant"]: {
                         "vgpr": owner["vgpr"],
-                        "waves_per_simd": owner["waves_per_simd"],
+                        "register_waves_per_simd_upper_bound": owner["register_waves_per_simd_upper_bound"],
                     }
                     for owner in owners[length]
                 }
@@ -721,10 +711,10 @@ def _findings(families: Mapping[str, Any], owners: Mapping[str, Any],
                     ]
                     for length in ("512", "1024", "4096")
                 },
-                "resident_workgroups_needed": 400,
+                "resident_workgroups_needed": None,
                 "resident_workgroups_note": (
-                    "40 CUs x 10 workgroups per CU at 2 waves per SIMD and 4 "
-                    "waves per 128-thread workgroup"
+                    "Not established by this trace; register counts are not "
+                    "measured workgroup residency."
                 ),
             },
         },
@@ -759,7 +749,9 @@ def main() -> int:
             "measured_prefill_tok_s": row["measured_prefill_tok_s"],
             "warmup_prefill_seconds": row["warmup_prefill_seconds"],
             "first_token_id": row["first_token_id"],
-            "logits_finite": row["logits_finite"],
+            "logits_finite": (
+                row["logits_finite"] if row.get("logits_checked_after_timing") is True else None
+            ),
             "host_stage_timings_ms": row["gpu_stage_timings_ms"],
         }
 
@@ -861,11 +853,11 @@ def main() -> int:
         },
         "correctness": {
             "gate": (
-                "the child records the first token and the finiteness of the "
-                "logits at every length, and all three profiled children agree on "
-                "both; each child runs under the production execution profile with "
-                "the Q4 rowtile and GDN capture verifiers enabled, and the warm "
-                "child must start compiler-free"
+                "The original child did not read logits; its empty-array .all() "
+                "flags are invalid and now null. First-token observations and "
+                "compiler-free warmup remain recorded. New captures validate "
+                "nonempty finite logits after the measured region. This profile "
+                "is not a full production numerical certificate."
             ),
             "first_token_id": {length: wall[length]["first_token_id"] for length in wall},
             "first_token_identical_across_lengths": len(
