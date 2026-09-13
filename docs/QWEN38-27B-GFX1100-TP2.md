@@ -132,6 +132,15 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   satisfies the "first rank's collective must not block the second rank's
   enqueue" requirement, and threaded enqueue is measurably worse, so no host
   threads are needed for enqueue.
+- **RCCL work can be captured into a HIP graph, up to a size limit.** With
+  communicator creation outside capture and each rank's whole chain captured on
+  its own stream, 40/40 probes across chain depths 1/4/8/16/24 replayed
+  bit-identically to the graph-disabled result, and replay is 20-30% faster than
+  eager enqueue (a 24-op group: 1.05-1.19 -> 0.72-0.88 ms). The limit matters:
+  49 captured nodes (24 ops plus their producer/consumer memsets) works, 65
+  nodes (32 ops) faults the device with a memory access error, so a TP2 decode
+  step's 36 collectives must be split across at least two graphs rather than
+  captured as one.
 - **The GDN value-head axis is tiled.** GGUF linear-attention weights use
   llama.cpp's reordering (`k_head = v_head % ssm_group_count`), so a shard plan
   must split the key-head axis contiguously and cut each value tile the same way.

@@ -10,7 +10,14 @@ Measures, on an explicitly ordered device list:
     and realistic prefill chunks,
   * rank order and enqueue-mode effects, including sequential reductions with a
     local producer/consumer on each rank,
+  * optional HIP graph capture of a whole chain (``--graph-chain-depth``) with a
+    replay that must match the graph-disabled result bit-for-bit,
   * PCIe negotiated link width/speed sampled while traffic is running.
+
+Capture size is bounded on ROCm 7.2 / RCCL 2.27.7: 49 captured nodes (a 24-op
+chain with its producer/consumer memsets) captures and replays, while 65 nodes
+(a 32-op chain) faults the device with a memory access error. Keep any captured
+group well below that; a TP2 decode step's 36 collectives cannot be one graph.
 
 Every number comes from a real device run and is written to a compact JSON
 artifact. This script drives :mod:`hipengine.distributed` (the same plan and
@@ -476,6 +483,176 @@ def _enqueue_threaded(
             raise RuntimeError(f"threaded enqueue failed on rank {rank}: {error!r}") from error
 
 
+def _capture_graph_probe(
+    *,
+    transport,
+    runtime,
+    case: Case,
+    send: Sequence[Any],
+    recv: Sequence[Any],
+    producer: Sequence[Any],
+    consumer: Sequence[Any],
+    iterations: int,
+    warmup: int,
+    chain_depth: int,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Capture the collective group into a HIP graph per rank and time replay.
+
+    This answers the Packet 1 question of whether RCCL work can be captured and
+    replayed: communicator creation stays outside capture, each rank's whole
+    group is captured on that rank's own stream, and the replayed result is
+    checked against the graph-disabled (eager) result bit-for-bit.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import HIP_GRAPH_CAPTURE_MODE_RELAXED
+
+    world = transport.world_size
+    devices = transport.devices
+    streams = [transport.stream(rank) for rank in range(world)]
+
+    def enqueue_group() -> None:
+        _enqueue_single_thread(
+            transport=transport,
+            runtime=runtime,
+            case=case,
+            send=send,
+            recv=recv,
+            producer=producer,
+            consumer=consumer,
+            chain_depth=int(chain_depth),
+            root=0,
+        )
+
+    # Eager (graph-disabled) reference result.
+    enqueue_group()
+    transport.sync(timeout_s=timeout_s)
+    reference = _snapshot_recv(case, recv)
+
+    graphs: list[int] = []
+    execs: list[int] = []
+    node_counts: list[int] = []
+    try:
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.stream_begin_capture(streams[rank], mode=HIP_GRAPH_CAPTURE_MODE_RELAXED)
+        enqueue_group()
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                graph = runtime.stream_end_capture(streams[rank])
+                graphs.append(graph)
+                node_counts.append(len(runtime.graph_nodes(graph)))
+                execs.append(runtime.graph_instantiate(graph))
+    except Exception as error:  # noqa: BLE001 - capture support is the result
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                try:
+                    runtime.stream_end_capture(streams[rank])
+                except Exception:  # noqa: BLE001
+                    pass
+        for graph in graphs:
+            try:
+                runtime.graph_destroy(graph)
+            except Exception:  # noqa: BLE001
+                pass
+        return {
+            "captured": False,
+            "error": f"{type(error).__name__}: {error}",
+            "world_size": world,
+            "chain_depth": int(chain_depth),
+        }
+
+    def launch_all() -> None:
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.graph_launch(execs[rank], streams[rank])
+
+    def timed_launch() -> tuple[float, float]:
+        start_events = []
+        end_events = []
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                start_events.append(runtime.event_create())
+                end_events.append(runtime.event_create())
+                runtime.event_record(start_events[rank], streams[rank])
+        host_start = time.perf_counter()
+        launch_all()
+        host_end = time.perf_counter()
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.event_record(end_events[rank], streams[rank])
+        transport.sync(timeout_s=timeout_s)
+        per_rank = []
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                per_rank.append(runtime.event_elapsed_time_ms(start_events[rank], end_events[rank]))
+                runtime.event_destroy(start_events[rank])
+                runtime.event_destroy(end_events[rank])
+        return max(per_rank), (host_end - host_start) * 1e3
+
+    try:
+        # Poison the receive buffers so a graph that silently does nothing
+        # cannot pass the replay check by leaving the eager result in place.
+        _poison_recv(case, recv)
+        for _ in range(max(0, int(warmup))):
+            launch_all()
+            transport.sync(timeout_s=timeout_s)
+        latencies: list[float] = []
+        launch_ms: list[float] = []
+        for _ in range(max(1, int(iterations))):
+            device_ms, host_ms = timed_launch()
+            latencies.append(device_ms)
+            launch_ms.append(host_ms)
+        replayed = _snapshot_recv(case, recv)
+        summary = summarize_samples(latencies)
+        summary["launch"] = summarize_samples(launch_ms)
+        summary["bandwidth_gbs"] = bandwidth_gbs(payload_bytes=case.payload_bytes, latency_ms=summary["p50_ms"])
+        return {
+            "captured": True,
+            "world_size": world,
+            "chain_depth": int(chain_depth),
+            "graph_nodes": node_counts,
+            "replay_matches_eager": all(
+                replayed[rank] == reference[rank] for rank in range(world)
+            ),
+            **summary,
+        }
+    finally:
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.graph_exec_destroy(execs[rank])
+        for graph in graphs:
+            runtime.graph_destroy(graph)
+
+
+def _poison_recv(case: Case, recv: Sequence[Any]) -> None:
+    """Fill every receive buffer with a byte pattern that is never a result."""
+
+    import numpy as np
+
+    from hipengine.core.memory import copy_host_array_to_device
+
+    poison = np.full(case.count * wire_itemsize(case.dtype), 0xFF, dtype=np.uint8)
+    for buffer in recv:
+        copy_host_array_to_device(buffer, poison)
+
+
+def _snapshot_recv(case: Case, recv: Sequence[Any]) -> list[bytes]:
+    """Read every rank's receive buffer back as raw bytes."""
+
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+    import numpy as np
+
+    snapshots: list[bytes] = []
+    for buffer in recv:
+        raw = np.empty(case.count * wire_itemsize(case.dtype), dtype=np.uint8)
+        copy_device_to_host(host_array_ptr(raw), buffer)
+        snapshots.append(raw.tobytes())
+    return snapshots
+
+
 def _measure_case(
     *,
     transport,
@@ -611,6 +788,8 @@ def run_collective_bench(
     chain_depths: Sequence[int],
     timeout_s: float,
     root_orders: Sequence[str],
+    graph_chain_depths: Sequence[int] = (),
+    graph_iterations: int = 20,
 ) -> dict[str, Any]:
     """Measure broadcast/all-reduce for every case and enqueue mode."""
 
@@ -667,6 +846,28 @@ def run_collective_bench(
                                 entry["enqueue_modes"][key] = {"error": repr(error)}
                                 if transport.poisoned:
                                     raise
+                if graph_chain_depths:
+                    entry["graph_capture"] = {}
+                    for graph_depth in graph_chain_depths:
+                        try:
+                            entry["graph_capture"][f"chain_{int(graph_depth)}"] = _capture_graph_probe(
+                                transport=transport,
+                                runtime=runtime,
+                                case=case,
+                                send=send,
+                                recv=recv,
+                                producer=producer,
+                                consumer=consumer,
+                                iterations=int(graph_iterations),
+                                warmup=max(2, int(warmup) // 4),
+                                chain_depth=int(graph_depth),
+                                timeout_s=float(timeout_s),
+                            )
+                        except Exception as error:  # noqa: BLE001
+                            results["errors"].append(f"{case.key()} graph chain_{graph_depth}: {error!r}")
+                            entry["graph_capture"][f"chain_{int(graph_depth)}"] = {"captured": False, "error": repr(error)}
+                            if transport.poisoned:
+                                raise
                 entry["verification"] = _verify_case(
                     transport=transport,
                     case=case,
@@ -723,6 +924,12 @@ def main() -> int:
     parser.add_argument("--peer-sizes", default=",".join(str(size) for size in DEFAULT_PEER_SIZES))
     parser.add_argument("--timeout", type=float, default=300.0, help="Per-completion deadline in seconds")
     parser.add_argument("--mode", default="all", choices=("all", "peer", "collective"))
+    parser.add_argument(
+        "--graph-chain-depth",
+        default="",
+        help="Comma list of chain depths to also capture into a HIP graph (empty disables the capture probe)",
+    )
+    parser.add_argument("--graph-iterations", type=int, default=20, help="Graph replay iterations per case")
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -767,6 +974,8 @@ def main() -> int:
                 prefill_rows=prefill_rows,
                 ops=ops,
             )
+            graph_depths = [int(chunk) for chunk in str(args.graph_chain_depth).split(",") if chunk.strip()]
+            artifact["modes"]["graph_chain_depth"] = graph_depths
             with LinkSampler(link_paths) as sampler:
                 artifact["collective"] = run_collective_bench(
                     devices,
@@ -777,6 +986,8 @@ def main() -> int:
                     chain_depths=chain_depths,
                     timeout_s=float(args.timeout),
                     root_orders=root_orders,
+                    graph_chain_depths=graph_depths,
+                    graph_iterations=int(args.graph_iterations),
                 )
             artifact["pcie_under_load"] = sampler.to_dict()
     except Exception as error:  # noqa: BLE001 - artifact must record the failure
