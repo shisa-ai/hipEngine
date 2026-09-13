@@ -67,7 +67,11 @@ artifacts = [
 ]
 
 [tool.hatch.build.targets.wheel]
+core-metadata-version = "2.4"
 packages = ["hipengine", "scripts"]
+
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
