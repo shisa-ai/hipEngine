@@ -756,9 +756,12 @@ class Qwen35GGUFModel:
     )
     kv_capability_evidence: tuple[KVCapabilityEvidence, ...] = _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
-        _UD_Q4K_MTP_SERVING_EVIDENCE
-        + _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
+        _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
         + _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE
+        # Appended, not prepended: the declaration order is the resolver's
+        # tie-break, and the existing rows' positions are part of the retained
+        # evidence ordering that the serving tests assert.
+        + _UD_Q4K_MTP_SERVING_EVIDENCE
     )
     speculative_mtp2_adapter: str = "dense_nextn"
 
