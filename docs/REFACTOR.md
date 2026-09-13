@@ -7157,3 +7157,26 @@ comparison, drop the `enabled_env` / `enabled_default` keys from the table, the
 `_gguf_norm_residual_decode_kernel`, and the switch test; keep the fixed-5120
 policy alone. The generic `rounded_bf16_out` registration must stay: it is the
 declared fallback for every shape the policy does not cover.
+
+## IQ4_XS T16 replacement layout (`GGUF_IQ4_XS_T16_*`)
+
+**What.** `hipengine/quant/gguf_t16.py` carries the IQ4_XS T16 layout
+constants, `GGUFIQ4XSTile16`, `repack_gguf_iq4_xs_tile16` and
+`unpack_gguf_iq4_xs_tile16`, plus `IQ4_XS_T16_SHAPE` in
+`hipengine/quant/gguf_repack.py` and `tests/test_gguf_iq4_xs_t16_layout.py`.
+
+**Why it is unused.** It was built as the first half of the "IQ4_XS repack
+into a tile layout" item in `docs/UD-GFX1151-OPTIMIZE.md`, on the assumption
+that IQ4_XS's lack of a tile layout explained the 1.53x gap to the t16 rowtile
+owners. The T16-layout owner was then built and measured, and it is
+bit-identical to the shipped local32 owner but only 0.79-1.12x on six real
+tensors, with the single-wave geometry worse still. The item is rejected, so
+nothing consumes the layout.
+
+**Removal trigger.** If no IQ4_XS T16 owner lands, delete the layout
+constants, the dataclass, both functions, their `__all__` entries,
+`IQ4_XS_T16_SHAPE`, and `tests/test_gguf_iq4_xs_t16_layout.py`. The layout is
+byte-neutral and correct, so it is cheap to keep as a tested primitive; the
+reason to remove it is that dead code in the quant layer reads as a live
+option. If it is removed and the item is ever re-opened, the test file is the
+specification to restore it from.

@@ -569,23 +569,33 @@ Likely investigation order:
   selected through `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT`, with
   `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0` as the rollback. See
   `benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json`.
-- [ ] IQ4_XS repack into a tile layout. `gguf_iq4_xs_local32_gemv` runs at
-  396-461 GB/s across all five of its verifier shapes (11.44 ms/step, 26.7% of
-  the UD-Q4_K_M verifier), while the t16 rowtile owner reaches **704 GB/s on the
-  same (5120, 17408) shape**. That 1.53x is structural to the two owner
-  families, not a tuning miss: IQ4_XS has no tile layout, so the local32 owner
-  is the only option for it. Closing the gap means repacking IQ4_XS into a tile
-  layout at load time plus a new owner, at the cost of the repacked resident
-  footprint. **Two bit-identical knobs were closed on 2026-09-13.** `COLS` is
-  already optimal at 8 (4 -> 442.1, 8 -> 440.9, 2 -> 421.4, 16 -> 149.3 GB/s
-  per-tensor over all 117 IQ4_XS tensors at rows=3, all bit-identical), and
-  the `ROWS > 1` launch-bounds floor is neutral (min-blocks 1 -> 10.796,
-  2 -> 10.869, 4 -> 10.803, 8 -> 10.828 ms). The owner degrades monotonically
-  with the row slab at a fixed byte count -- 563.1 GB/s at rows=1, 482.7 at
-  rows=2, 440.9 at rows=3, 399.2 at rows=4 -- so a replacement owner should
-  minimise live per-row state. Measured L1 wave-request rate (about 1.5% of
+- [x] IQ4_XS repack into a tile layout. **Rejected 2026-09-13 by
+  measurement.** The item assumed the 1.53x between the local32 owner and the
+  t16 rowtile owner on the same shape was structural to the two owner
+  families, i.e. that IQ4_XS's lack of a tile layout was the gap. It is not.
+  The byte-neutral `GGUF_IQ4_XS_T16_*` layout (2176 bytes per 16-column tile
+  against 16 x 136 raw, so no resident-footprint growth) and a T16-layout
+  owner that keeps the local32 accumulation order exactly were built and
+  measured on six real IQ4_XS tensors at rows 1 and 3: the owner is
+  **bit-identical** to `gguf_iq4_xs_local32_gemv` in all twelve cases, and
+  only 1.02x / 0.79x (ffn_gate), 0.83x / 0.91x (ffn_down), 0.85x / 0.83x
+  (attn_q), 0.94x / 1.02x (attn_gate), 0.90x / 0.83x (attn_qkv), 0.90x /
+  1.12x (ssm_out) against it. The single-wave geometry that makes the Q5_K
+  t16 rowtile fast is worse still on this owner (0.62-1.13x), because the
+  IQ4_XS per-element decode is a dependent LDS codebook lookup rather than
+  arithmetic. The layout halves the payload loads and payload bytes per
+  block, and that buys nothing, which independently confirms the earlier
+  finding that this owner is latency-bound at low occupancy and not
+  load-bound. Do not re-open without a change to the decode itself.
+  Measured before this: `COLS` optimal at 8 (4 -> 442.1, 8 -> 440.9,
+  2 -> 421.4, 16 -> 149.3 GB/s, all bit-identical), the `WAVES` heuristic
+  optimal on all six real shapes, the `ROWS > 1` launch-bounds floor neutral
+  (min-blocks 1/2/4/8 -> 10.796/10.869/10.803/10.828 ms), and a row-slab
+  gradient at a fixed byte count of 563.1 GB/s at rows=1, 482.7 at rows=2,
+  440.9 at rows=3, 399.2 at rows=4. L1 wave-request rate (about 1.5% of
   capacity) and payload over-fetch (1.25x) rule out request and bandwidth
-  limits, so the residual is latency at the owner's low occupancy.
+  limits. The layout primitive is retained but has no consumer; see
+  `docs/REFACTOR.md`.
 - [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
   verifier-window censuses on the same host and protocol: UD-Q4_K_M is
   435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
