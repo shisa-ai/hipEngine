@@ -576,7 +576,16 @@ Likely investigation order:
   families, not a tuning miss: IQ4_XS has no tile layout, so the local32 owner
   is the only option for it. Closing the gap means repacking IQ4_XS into a tile
   layout at load time plus a new owner, at the cost of the repacked resident
-  footprint.
+  footprint. **Two bit-identical knobs were closed on 2026-09-13.** `COLS` is
+  already optimal at 8 (4 -> 442.1, 8 -> 440.9, 2 -> 421.4, 16 -> 149.3 GB/s
+  per-tensor over all 117 IQ4_XS tensors at rows=3, all bit-identical), and
+  the `ROWS > 1` launch-bounds floor is neutral (min-blocks 1 -> 10.796,
+  2 -> 10.869, 4 -> 10.803, 8 -> 10.828 ms). The owner degrades monotonically
+  with the row slab at a fixed byte count -- 563.1 GB/s at rows=1, 482.7 at
+  rows=2, 440.9 at rows=3, 399.2 at rows=4 -- so a replacement owner should
+  minimise live per-row state. Measured L1 wave-request rate (about 1.5% of
+  capacity) and payload over-fetch (1.25x) rule out request and bandwidth
+  limits, so the residual is latency at the owner's low occupancy.
 - [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
   verifier-window censuses on the same host and protocol: UD-Q4_K_M is
   435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
