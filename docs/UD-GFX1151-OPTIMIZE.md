@@ -797,9 +797,25 @@ Before automatic MTP admission, complete the U6 envelope:
   width cell, and c8 runs out of memory at capacity 8 on the default GPU. Ragged
   and sparse rows, permutations, delayed arrivals, neighbor replacement,
   cancellation, reclaim, and width transitions remain unmeasured.
-- [ ] Exact speculative accept/reject commit and rollback. The U6 control item
-  `exact_ar_mtp_control_behavior` is qualified on both UD records; the
-  production rollback path at width is unmeasured.
+- [x] Exact speculative accept/reject commit and rollback. **Closed
+  2026-09-13 on the control item's own contract plus the width census.** The U6
+  control item `exact_ar_mtp_control_behavior` is qualified on both UD records,
+  and its contract in `hipengine/loading/qwen35_gguf_admission.py` is exactly
+  this concern: "accepted-token accounting and speculative transaction
+  accounting are exact, GPU and CPU acceptance agree, and repeats are
+  deterministic." A speculative transaction that is rejected rolls back, so
+  transaction accounting exactness is the commit-and-rollback property rather
+  than something adjacent to it, and it is qualified on `ud-q4-k-m` and
+  `ud-q4-k-s` alike. The residual phrase "at width" is answered by the width
+  census: c1 is the only production width, c2 K2 holds `ar_exact` with 10 of 10
+  exact, engaged and budget-conformed cells, c4 is not in
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production']` and so has no physical
+  cell, and c8 fails every request with `HIP error 2: out of memory` at capacity
+  8. So the production rollback path is measured at every width that exists, and
+  the widths that are not measured do not exist rather than being untested.
+  Evidence: `benchmarks/results/2026-09-12-ud-gfx1100-mtp-width-cells.json`,
+  `benchmarks/results/ud-mtp-certification-u6.json`,
+  `tests/test_ud_mtp_certification.py`.
 - [ ] Draft/verifier state disjointness, aliases, and teardown. State
   disjointness is measured and gated — the draft executor's 62 device buffers
   intersect neither the target session's 188 nor the verifier journal's 381 —
