@@ -233,6 +233,102 @@ def plan_vision_attention(
     return plan_score_tiles(n_patches, num_heads, budget_bytes)
 
 
+# The byte budget bounds the score tile, not the time. At the checkpoint's
+# ``max_pixels`` ceiling (a 256x256 patch grid, 65536 patches) one vision
+# forward is 1.7e14 FLOPs, 93% of it the bidirectional attention, and about
+# 2.7 minutes on gfx1151 — long enough that a memory-only admission let a page
+# through that no caller could wait for. ``vision_forward_seconds`` estimates
+# that cost from the plan the runner will execute, and ``max_vision_seconds``
+# is the declared budget it is admitted against.
+#
+# Calibrated from ``scripts/surya_vision_tiling_cost.py`` on gfx1151 (Radeon
+# 8060S, fp32), one discarded warm-up, median wall clock around
+# ``vision_forward`` only, at the production shape envelope plus the A4 page's
+# query-block sweep (``benchmarks/results/2026-09-13-gfx1151-surya-vision-
+# tiling-cost.json`` and ``...-vision-tiling-a4-v2.json``):
+#
+#     patches  tiles   measured   estimate
+#         256      2   28.07 ms   26.21 ms
+#        1024      8  136.00 ms  134.07 ms
+#        4096     32  881.59 ms 1004.23 ms
+#        6400     34 2131.13 ms 2050.19 ms
+#       34320    108 43318.30 ms 43378.91 ms  (300-DPI A4, 512 MiB budget)
+#       34320    358 49602.21 ms 49015.97 ms  (same page, 96-row tiles)
+#
+# i.e. -6%/+14% over the shapes the planner picks at the production grids, and
+# -11%/+3% across the 33 A4 query-block rows the per-tile term is fitted to
+# (the worst case is the raw 325-row budget, which is not a multiple of 32 and
+# so is a shape the planner never picks). Because it is a plan model it follows
+# the tile count: at 34320 patches the same page estimates at 43.4 s under the
+# default 512 MiB budget and 195.7 s under an 8 MiB one, since every extra
+# query tile re-reads the whole key range. Measured shapes the planner never
+# picks fall outside that band, because a tile far wider than a small grid
+# needs wastes the tile GEMMs (see the shape envelope above): the unbudgeted
+# dense tile is 194.01 ms against a 129.36 ms estimate at 1024 patches, 1039.95
+# against 920.80 ms at 4096, and a 512-row tile at 4096 patches is 1667.07 ms
+# against 939.64 ms. All of those are under a second at these sizes, and
+# admission only ever sees planner-chosen shapes.
+#
+# ``DEFAULT_MAX_VISION_SECONDS`` is a policy budget, not a hardware limit: it
+# admits every page the benchmark suite measures (the largest, a 300-DPI A4
+# page at 34320 patches, estimates at 43.4 s) with 2.8x headroom, and rejects
+# the 65536-patch ``max_pixels`` ceiling at 161.4 s. Raise it for a bigger page
+# or pass ``None`` to admit anything the byte budget allows.
+VISION_LINEAR_FLOPS_PER_S = 1.91e12
+VISION_ATTENTION_FLOPS_PER_S = 1.15e12
+VISION_TILE_PATCH_SECONDS = 6.57e-7
+DEFAULT_MAX_VISION_SECONDS = 120.0
+
+
+def vision_flops(spec: SuryaSpec, n_patches: int) -> tuple[float, float]:
+    """``(linear, attention)`` FLOPs for one vision forward at ``n_patches``.
+
+    Pure geometry from the checkpoint's vision contract: the patch embed, the
+    per-layer QKV/projection/MLP GEMMs, and the merger are linear in the patch
+    count, and the bidirectional attention is ``4 * vh * depth`` per patch
+    pair (QK^T plus AV, two FLOPs per multiply-add). At the 65536-patch
+    ``max_pixels`` ceiling the attention term is 1.58e14 of 1.70e14 total.
+    """
+
+    n = int(n_patches)
+    if n <= 0:
+        raise ValueError("a vision FLOP count needs a positive patch count")
+    vh = int(spec.vision_hidden_size)
+    vi = int(spec.vision_intermediate_size)
+    depth = int(spec.vision_depth)
+    merged = n // (int(spec.vision_spatial_merge_size) ** 2)
+    linear = (
+        depth * (8 * vh * vh + 4 * vh * vi) * n  # 3*vh qkv, vh proj, 2*vh*vi mlp
+        + 2 * vh * vh * n  # patch embed
+        + 2 * (4 * vh) * (4 * vh) * merged  # merger fc1
+        + 2 * (4 * vh) * int(spec.vision_out_hidden_size) * merged  # merger fc2
+    )
+    attention = 4 * vh * depth * n * n
+    return float(linear), float(attention)
+
+
+def vision_forward_seconds(spec: SuryaSpec, n_patches: int, tiles: int) -> float:
+    """Estimated wall clock for one vision forward, from measured gfx1151 rates.
+
+    Three measured terms: the linear GEMMs, the bidirectional attention (88-93%
+    of the FLOPs at page scale), and the per-tile key/value re-read, which is
+    why the estimate takes the tile count as well as the patch count. Monotone
+    in both arguments, so a budget can be inverted for the largest admitted
+    page. See the constants above for the calibration table and its error band.
+    """
+
+    n = int(n_patches)
+    tile_count = int(tiles)
+    if n <= 0 or tile_count <= 0:
+        raise ValueError("a vision time estimate needs a positive patch and tile count")
+    linear, attention = vision_flops(spec, n)
+    return (
+        linear / VISION_LINEAR_FLOPS_PER_S
+        + attention / VISION_ATTENTION_FLOPS_PER_S
+        + tile_count * n * VISION_TILE_PATCH_SECONDS
+    )
+
+
 class SuryaGpuRuntimeError(RuntimeError):
     pass
 
@@ -335,6 +431,7 @@ class SuryaGpuRunner:
         *,
         max_seq: int = 2048,
         max_vision_scratch_bytes: int | None = DEFAULT_MAX_VISION_SCRATCH_BYTES,
+        max_vision_seconds: float | None = DEFAULT_MAX_VISION_SECONDS,
         max_prefill_scratch_bytes: int | None = DEFAULT_MAX_PREFILL_SCRATCH_BYTES,
         rocblas: Rocblas | None = None,
         runtime: HipRuntime | None = None,
@@ -348,6 +445,8 @@ class SuryaGpuRunner:
             raise ValueError("max_seq must be positive")
         if max_vision_scratch_bytes is not None and int(max_vision_scratch_bytes) <= 0:
             raise ValueError("max_vision_scratch_bytes must be positive when set")
+        if max_vision_seconds is not None and not float(max_vision_seconds) > 0:
+            raise ValueError("max_vision_seconds must be positive when set")
         if max_prefill_scratch_bytes is not None and int(max_prefill_scratch_bytes) <= 0:
             raise ValueError("max_prefill_scratch_bytes must be positive when set")
         self.spec = spec or SuryaSpec()
@@ -356,6 +455,9 @@ class SuryaGpuRunner:
             None
             if max_vision_scratch_bytes is None
             else int(max_vision_scratch_bytes)
+        )
+        self.max_vision_seconds = (
+            None if max_vision_seconds is None else float(max_vision_seconds)
         )
         self.max_prefill_scratch_bytes = (
             None
@@ -1284,13 +1386,68 @@ class SuryaGpuRunner:
         )
         return need
 
+    def _vision_plan_seconds(self, n: int) -> tuple[float, int, int]:
+        """``(seconds, tiles, block)`` estimated for a raw patch count."""
+
+        block = plan_vision_attention(
+            n, self.spec.vision_num_heads, self.max_vision_scratch_bytes
+        )[0]
+        tiles = -(-int(n) // block)
+        return vision_forward_seconds(self.spec, n, tiles), tiles, block
+
+    def vision_time_seconds(self, grid_thw) -> float:
+        """Estimated wall clock for the vision forward of ``grid_thw``.
+
+        The plan the runner will execute, so the estimate follows
+        ``max_vision_scratch_bytes``: a narrower tile means more query tiles and
+        more key/value re-reads. See :func:`vision_forward_seconds`.
+        """
+
+        return self._vision_plan_seconds(self._grid_patches(grid_thw))[0]
+
+    def vision_patch_ceiling(self, seconds: float | None = None) -> int | None:
+        """Largest patch count whose estimated vision forward fits ``seconds``.
+
+        ``seconds=None`` uses ``max_vision_seconds``, and an unbounded budget
+        has no ceiling (``None``). Bisection over the estimate, re-planning the
+        tile at every candidate so the answer accounts for the tile count the
+        byte budget would pick. The returned count is always sound: its own
+        estimate fits. The estimate dips by under 2% where the shape envelope
+        rather than the byte budget picks the tile, so the bisection is not
+        *guaranteed* to find the very largest count that fits; it does match a
+        brute-force scan at every budget from 1 s to 200 s, including the 120 s
+        default (56856 patches).
+        """
+
+        limit = self.max_vision_seconds if seconds is None else float(seconds)
+        if limit is None:
+            return None
+        if not limit > 0:
+            return 0
+        high = 1
+        while self._vision_plan_seconds(high)[0] <= limit:
+            if high >= 1 << 24:  # unreachable at any real budget; keeps it total
+                return high
+            high *= 2
+        low = high // 2
+        while low < high:
+            mid = (low + high + 1) // 2
+            if self._vision_plan_seconds(mid)[0] <= limit:
+                low = mid
+            else:
+                high = mid - 1
+        return low
+
     def check_vision_capacity(self, grid_thw) -> None:
         """Admit a vision grid before any device work or allocation runs.
 
-        Two independent checks, because they fail for different reasons:
+        Three independent checks, because they fail for different reasons:
 
-        - the configured budget bounds a single request regardless of how much
-          memory the host happens to have;
+        - the configured byte budget bounds a single request regardless of how
+          much memory the host happens to have;
+        - the configured time budget bounds how long a single request may run,
+          which is what actually limits a page-scale grid (65536 patches is
+          1.7e14 FLOPs and about 2.7 minutes);
         - free device memory catches the case where the weights plus other
           live runners have already consumed the budget.
 
@@ -1308,6 +1465,25 @@ class SuryaGpuRunner:
                 f"{cap / 1e9:.2f} GB budget; one query row needs "
                 f"{self.spec.vision_num_heads * n * 4 / 1e6:.1f} MB, so raise "
                 f"SuryaGpuRunner(max_vision_scratch_bytes=...) to at least that"
+            )
+        seconds, tiles, _ = self._vision_plan_seconds(n)
+        limit = self.max_vision_seconds
+        if limit is not None and seconds > limit:
+            _, attention = vision_flops(self.spec, n)
+            fits = self.vision_patch_ceiling()
+            fits_note = (
+                ""
+                if fits is None
+                else f"; the {limit:.0f} s budget admits up to {fits} patches"
+            )
+            raise SuryaGpuRuntimeError(
+                f"vision forward for grid {grid} is estimated at "
+                f"{seconds:.1f} s ({n} patches, {tiles} query tiles, "
+                f"{attention / 1e12:.1f} TFLOP of bidirectional attention at "
+                f"the measured {VISION_ATTENTION_FLOPS_PER_S / 1e12:.2f} TFLOP/s), "
+                f"above the {limit:.0f} s vision time budget{fits_note}; "
+                f"downscale the page or raise "
+                f"SuryaGpuRunner(max_vision_seconds=...)"
             )
         # the scratch buffer is cached per key and reused when it is already big
         # enough, so only the growth is charged against free memory
