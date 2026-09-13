@@ -1174,3 +1174,197 @@ extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,
     }
     return int(hipGetLastError());
 }
+
+// ===========================================================================
+// IQ4_XS T16-layout local32 decode GEMV (2026-09-13).
+//
+// Same owner geometry as gguf_iq4_xs_local32_gemv_kernel -- one wave per 8
+// output columns, lane k = lane*8..lane*8+7, wave32 shuffle tree, serial
+// wave-0..WAVES-1 cross-wave sum -- but it reads the IQ4_XS T16 tile instead of
+// raw GGUF columns.
+//
+// Why the T16 tile: in the raw layout a lane's 8-byte payload window is read by
+// two lanes at opposite nibbles (lane 4g+0 reads bytes 0..7 for the low nibble
+// and lane 4g+2 reads the same bytes 0..7 for the high nibble), so a
+// 256-element, 8-column block moves 2048 weight bytes. The T16 qs plane is
+// [group][element][column pair], so one u32 load at a fixed (group, element)
+// yields all four column pairs -- eight output columns -- for that element.
+// The same block then moves 1024 weight bytes. Decode is weight-bandwidth
+// bound, so this is the structural lever the layout was built for.
+//
+// Arithmetic is unchanged per column: the accumulation still runs j = 0..7 over
+// this lane's eight elements in order, each weight is still
+// s_d * s_cb[code] with s_d = half_load(d) * float(scale), and the reduction
+// tree and cross-wave order are identical. So every output is bit-identical to
+// the raw-layout owner's output, which the parity test asserts rather than
+// assumes.
+//
+// T16 tile geometry (GGUF_IQ4_XS_T16_BLOCK_BYTES = 2176 per 16-column tile):
+//   d        at 2*t                      (f16, one per tile-local column t)
+//   scales_h at 32 + 2*t                 (u16, two bits per group)
+//   scales_l at 64 + 4*t                 (u32, one nibble per group)
+//   qs       at 128 + g*256 + e*8 + cp   (one byte per (group, element, pair))
+// A qs byte's low nibble belongs to column 2*cp and its high nibble to
+// column 2*cp + 1.
+#define IQ4XS_T16_BLOCK_BYTES 2176
+#define IQ4XS_T16_HI_OFFSET 32
+#define IQ4XS_T16_LO_OFFSET 64
+#define IQ4XS_T16_QS_OFFSET 128
+#define IQ4XS_T16_QS_GROUP_STRIDE 256
+#define IQ4XS_T16_QS_ELEMENT_STRIDE 8
+
+template<int WAVES, int ROWS = 1>
+__global__ __launch_bounds__(32 * WAVES,
+    ROWS > 1 ? 1 : (16 / WAVES > 0 ? 16 / WAVES : 1))
+void gguf_iq4_xs_t16_local32_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    uint16_t* __restrict__ out, int64_t K, int64_t N) {
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    // One T16 tile holds 16 columns, so this block's columns live in the tile
+    // at n0/16 and start at tile-local column (n0 & 15).
+    const uint8_t* tile = w + (n0 >> 4) * (blocks_per_row * IQ4XS_T16_BLOCK_BYTES);
+    const int ct0 = int(n0 & 15);
+
+    // Lane-constant in-block geometry: group, and the lane's first element
+    // within that group. This is the raw owner's lane ownership unchanged.
+    const int g = lane >> 2;
+    const int el = (lane & 3) * 8;
+    // A u32 at the element's qs slot covers column pairs 0..3 (tile-local
+    // columns 0..7) or 4..7 (tile-local columns 8..15).
+    const int qs_pair_base = (ct0 >= 8) ? 4 : 0;
+
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc[ROWS][COLS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) acc[r][t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        float xv[ROWS][8];
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) {
+            const uint16_t* xp = x + r * K + blk * 256 + lane * 8;
+#pragma unroll
+            for (int j = 0; j < 8; ++j) xv[r][j] = bf16_load(xp[j]);
+        }
+        const uint8_t* blkp = tile + blk * IQ4XS_T16_BLOCK_BYTES;
+        // Per-column d*scale for this lane's group, read from this block's own
+        // header. The header is inside the 2176-byte block, so it cannot be
+        // hoisted out of the K loop the way a per-column-only scale could.
+        float sd[COLS];
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            const int ct = ct0 + t;
+            const uint16_t hi = *reinterpret_cast<const uint16_t*>(
+                blkp + IQ4XS_T16_HI_OFFSET + 2 * ct);
+            const uint32_t lo = *reinterpret_cast<const uint32_t*>(
+                blkp + IQ4XS_T16_LO_OFFSET + 4 * ct);
+            const int scale = (((lo >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
+                               (((hi >> (2 * g)) & 3) << 4)) - 32;
+            sd[t] = half_load(blkp + 2 * ct) * float(scale);
+        }
+        const uint8_t* qsb = blkp
+            + IQ4XS_T16_QS_OFFSET + g * IQ4XS_T16_QS_GROUP_STRIDE
+            + el * IQ4XS_T16_QS_ELEMENT_STRIDE
+            + qs_pair_base;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+            // Eight columns' nibbles for element el+j, in one u32.
+            const uint32_t packed = *reinterpret_cast<const uint32_t*>(
+                qsb + j * IQ4XS_T16_QS_ELEMENT_STRIDE);
+#pragma unroll
+            for (int cp = 0; cp < 4; ++cp) {
+                const uint32_t byte = (packed >> (8 * cp)) & 0xffu;
+                // The LUT takes the whole byte: s_cb[v] is iq4_values[v & 15]
+                // and s_cb[256 + v] is iq4_values[v >> 4], so the nibble is
+                // selected inside the LUT and must not be shifted out here.
+                const float wl = sd[2 * cp] * s_cb[byte];
+                const float wh = sd[2 * cp + 1] * s_cb[256 + byte];
+#pragma unroll
+                for (int r = 0; r < ROWS; ++r) {
+                    acc[r][2 * cp] += xv[r][j] * wl;
+                    acc[r][2 * cp + 1] += xv[r][j] * wh;
+                }
+            }
+        }
+    }
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t)
+            for (int delta = 16; delta; delta >>= 1)
+                acc[r][t] += __shfl_down(acc[r][t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][ROWS][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+            for (int t = 0; t < COLS; ++t) xwave[wave][r][t] = acc[r][t];
+    }
+    __syncthreads();
+    if (tid < ROWS * COLS) {
+        const int r = tid / COLS;
+        const int t = tid % COLS;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][r][t];
+            out[int64_t(r) * N + n0 + t] = bf16_store(total);
+        }
+    }
+}
+
+template<int ROWS>
+int launch_iq4_xs_t16_local32_rows(const void* x, const void* w, void* out,
+    int64_t K, int64_t N, int waves, hipStream_t s) {
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1: gguf_iq4_xs_t16_local32_gemv_kernel<1, ROWS>
+            <<<grid, 32, 0, s>>>(xp, wp, op, K, N); break;
+        case 2: gguf_iq4_xs_t16_local32_gemv_kernel<2, ROWS>
+            <<<grid, 64, 0, s>>>(xp, wp, op, K, N); break;
+        case 4: gguf_iq4_xs_t16_local32_gemv_kernel<4, ROWS>
+            <<<grid, 128, 0, s>>>(xp, wp, op, K, N); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_xs_t16_local32_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    // N % 16 because a T16 tile is 16 columns wide and this block reads a whole
+    // tile's qs plane; N % 8 alone would let the last half tile read past it.
+    if (!x || !w || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 16)
+        return int(hipErrorInvalidValue);
+    return launch_iq4_xs_t16_local32_rows<1>(
+        x, w, out, K, N, waves, (hipStream_t)stream);
+}
+
+extern "C" int hipengine_gguf_iq4_xs_t16_local32_rows_gemv(const void* x,
+    const void* w, void* out, int64_t rows, int64_t K, int64_t N,
+    int waves, void* stream) {
+    if (!x || !w || !out || rows < 2 || rows > 4 || K <= 0 || K % 256
+        || N <= 0 || N % 16)
+        return int(hipErrorInvalidValue);
+    const hipStream_t s = (hipStream_t)stream;
+    switch (rows) {
+        case 2: return launch_iq4_xs_t16_local32_rows<2>(x, w, out, K, N, waves, s);
+        case 3: return launch_iq4_xs_t16_local32_rows<3>(x, w, out, K, N, waves, s);
+        case 4: return launch_iq4_xs_t16_local32_rows<4>(x, w, out, K, N, waves, s);
+        default: return int(hipErrorInvalidValue);
+    }
+}
