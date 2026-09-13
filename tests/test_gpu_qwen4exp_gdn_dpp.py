@@ -16,7 +16,8 @@ def hip_available():
 
 @pytest.mark.skipif(not hip_available(), reason="HIP runtime unavailable")
 @pytest.mark.parametrize("rows", [16, 17, 64, 512, 1024])
-def test_dpp_prefill_matches_all_outputs_and_carried_state(rows):
+@pytest.mark.parametrize("multi_column", [False, True])
+def test_dpp_prefill_matches_all_outputs_and_carried_state(rows, multi_column):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import copy_host_to_device, free, host_array_ptr
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
@@ -30,7 +31,7 @@ def test_dpp_prefill_matches_all_outputs_and_carried_state(rows):
     if "gfx1151" not in detect_hip_target_arches():
         pytest.skip("DPP variant qualified only for gfx1151")
     parent = build_qwen4_exp_gdn()
-    candidate = build_qwen4_exp_gdn_dpp()
+    candidate = build_qwen4_exp_gdn_dpp(multi_column=multi_column)
     rng = np.random.default_rng(73194 + rows)
     heads, dim = 48, 128
     arrays = [
@@ -55,12 +56,16 @@ def test_dpp_prefill_matches_all_outputs_and_carried_state(rows):
                     rows, 16, heads, dim, dim, library=lib, runtime=runtime,
                 )
             runtime.device_synchronize()
-            assert _download(outputs[0], (rows, heads * dim), np.float32, runtime).tobytes() == (
-                _download(outputs[1], (rows, heads * dim), np.float32, runtime).tobytes()
-            )
-            assert _download(states[0], initial.shape, np.float32, runtime).tobytes() == (
-                _download(states[1], initial.shape, np.float32, runtime).tobytes()
-            )
+            parent_out = _download(outputs[0], (rows, heads * dim), np.float32, runtime)
+            candidate_out = _download(outputs[1], (rows, heads * dim), np.float32, runtime)
+            parent_state = _download(states[0], initial.shape, np.float32, runtime)
+            candidate_state = _download(states[1], initial.shape, np.float32, runtime)
+            if multi_column:
+                np.testing.assert_allclose(candidate_out, parent_out, rtol=2e-4, atol=2e-5)
+                np.testing.assert_allclose(candidate_state, parent_state, rtol=2e-4, atol=2e-5)
+            else:
+                assert parent_out.tobytes() == candidate_out.tobytes()
+                assert parent_state.tobytes() == candidate_state.tobytes()
             if rows == 16 and iteration == 0:
                 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
                 from hipengine.kernels.cpu_reference.qwen4_exp import sigmoid_gated_rmsnorm
@@ -85,6 +90,20 @@ def test_dpp_prefill_matches_all_outputs_and_carried_state(rows):
                     _download(states[1], initial.shape, np.float32, runtime),
                     cpu_state[0], rtol=2e-4, atol=2e-5,
                 )
+        if multi_column:
+            repeated = []
+            for _ in range(3):
+                copy_host_to_device(states[1], host_array_ptr(initial), runtime=runtime)
+                qwen4_exp_gdn_prefill_tiled16_f32(
+                    *(a.ptr for a in inputs), states[1].ptr, outputs[1].ptr,
+                    rows, 16, heads, dim, dim, library=candidate, runtime=runtime,
+                )
+                runtime.device_synchronize()
+                repeated.append((
+                    _download(outputs[1], (rows, heads * dim), np.float32, runtime).tobytes(),
+                    _download(states[1], initial.shape, np.float32, runtime).tobytes(),
+                ))
+            assert repeated[0] == repeated[1] == repeated[2]
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)

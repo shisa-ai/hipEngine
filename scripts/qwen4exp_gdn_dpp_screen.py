@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--rows", nargs="+", type=int, default=[16, 17, 64, 512, 1024, 4096])
     parser.add_argument("--pairs", type=int, default=8)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--multi-column", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     check_host()
@@ -40,8 +41,13 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runtime = get_hip_runtime()
         libs = {
-            "parent": build_qwen4_exp_gdn(require_cached=args.require_cached_build),
-            "dpp": build_qwen4_exp_gdn_dpp(require_cached=args.require_cached_build),
+            "parent": (
+                build_qwen4_exp_gdn_dpp(require_cached=args.require_cached_build)
+                if args.multi_column else build_qwen4_exp_gdn(require_cached=args.require_cached_build)
+            ),
+            "dpp": build_qwen4_exp_gdn_dpp(
+                require_cached=args.require_cached_build, multi_column=args.multi_column,
+            ),
         }
         report = {
             "kind": "qwen4exp_gdn_dpp_screen", "status": "running", "performance_claim": False,
@@ -51,6 +57,7 @@ def main():
             "libraries": {name: {"path": lib._name, "sha256": hashlib.sha256(Path(lib._name).read_bytes()).hexdigest()}
                           for name, lib in libs.items()},
             "cases": [],
+            "multi_column": args.multi_column,
         }
         for rows in args.rows:
             rng = np.random.default_rng(83194 + rows)
@@ -77,6 +84,8 @@ def main():
                     )
 
                 gold = None
+                reference = None
+                error = {}
                 for name in libs:
                     copy_host_to_device(state, host_array_ptr(initial), runtime=runtime)
                     launch(name)
@@ -84,7 +93,14 @@ def main():
                     result = (_download(out, (rows, 6144), np.float32, runtime).tobytes(),
                               _download(state, initial.shape, np.float32, runtime).tobytes())
                     if gold is not None and gold != result:
-                        raise ValueError(f"DPP changed outputs/state at rows{rows}")
+                        if not args.multi_column:
+                            raise ValueError(f"DPP changed outputs/state at rows{rows}")
+                        for label, before, after in zip(("output", "state"), gold, result):
+                            a, b = np.frombuffer(before, np.float32), np.frombuffer(after, np.float32)
+                            np.testing.assert_allclose(a, b, rtol=2e-4, atol=2e-5)
+                            error[label + "_max_abs"] = float(np.max(np.abs(a - b)))
+                    if reference is None:
+                        reference = result
                     gold = result
                 samples = []
                 for pair in range(args.pairs):
@@ -103,7 +119,8 @@ def main():
                             runtime.event_destroy(start)
                 medians = {name: statistics.median(s["ms"] for s in samples if s["arm"] == name)
                            for name in libs}
-                row = {"rows": rows, "bit_exact_outputs_and_state": True,
+                row = {"rows": rows, "bit_exact_outputs_and_state": reference == gold,
+                       "numerical_smoke_only": args.multi_column, "error": error,
                        "median_ms": medians, "samples": samples,
                        "parent_over_dpp": medians["parent"] / medians["dpp"]}
                 report["cases"].append(row)

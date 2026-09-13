@@ -61,17 +61,26 @@ def build_qwen4_exp_gdn(
 
 def build_qwen4_exp_gdn_dpp(
     *, compiler_version=None, cache_root=None, require_cached=False, load=True,
+    multi_column=False,
 ):
+    flags = ("-DHIPENGINE_QWEN4_GDN_DPP=1",)
+    if multi_column:
+        flags += ("-DHIPENGINE_QWEN4_GDN_MULTI_COLUMN=1",)
     return build_hip(
-        sources=[_SOURCE], family="qwen4_exp_gdn_dpp", profile="decode",
+        sources=[_SOURCE], family="qwen4_exp_gdn_multi" if multi_column else "qwen4_exp_gdn_dpp", profile="decode",
         cache_root=cache_root, compiler_version=compiler_version,
-        target_arch="gfx1151", extra_flags=("-DHIPENGINE_QWEN4_GDN_DPP=1",),
+        target_arch="gfx1151", extra_flags=flags,
         output_name="qwen4_exp_gdn_dpp.so", require_cached=require_cached, load=load,
     )
 
 
 def qwen4_exp_gdn_prefill_tiled16_dpp_f32(*args, library=None, **kwargs):
     library = library or build_qwen4_exp_gdn_dpp()
+    return qwen4_exp_gdn_prefill_tiled16_f32(*args, library=library, **kwargs)
+
+
+def qwen4_exp_gdn_prefill_tiled16_multi_f32(*args, library=None, **kwargs):
+    library = library or build_qwen4_exp_gdn_dpp(multi_column=True)
     return qwen4_exp_gdn_prefill_tiled16_f32(*args, library=library, **kwargs)
 
 
