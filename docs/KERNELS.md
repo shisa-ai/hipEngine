@@ -1119,6 +1119,16 @@ Stable porting rules:
 
 ### HIP build profiles
 
+Journey GDN DPP experiment: gfx1151 registers
+`gdn_recurrence_norm_gate/f32_state/qwen4exp_gdn_tiled16_dpp_prefill`.
+It compiles `linear_attn/qwen4_exp_gdn.hip` in the separately hashed
+`qwen4_exp_gdn_dpp` family with `HIPENGINE_QWEN4_GDN_DPP=1`; the ordinary
+tile16 and serial strict keys remain unchanged fallbacks. Source:
+pwilkin/llama.cpp `964c6f2`, `ggml/src/ggml-cuda/gated_delta_net.cu`,
+inspected at `f5daaa3c`. No default dispatch selects this experimental key.
+Complete output/carried-state parent parity, CPU-reference outer checks
+and cached profiler smoke pass; whole-model A/B remains required.
+
 | Profile | Important flags | Wavefront | Typical use |
 | --- | --- | --- | --- |
 | `decode` | local unroll threshold plus `-mcumode` | 32 | paged attention, GEMV, decode MoE |

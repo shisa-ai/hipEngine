@@ -1,4 +1,4 @@
-"""Counterbalanced complete-model PLE gather A/B without a runtime selector.
+"""Counterbalanced complete-model PLE or GDN owner A/B.
 
 Both methods run in one production residency. Gather and final-logit/state
 equality are checked; the incumbent numerical certificate remains separate.
@@ -56,7 +56,7 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--method", choices=("copy_elision", "sampled_dedup_elision", "mmap_random"), required=True)
+    parser.add_argument("--method", choices=("copy_elision", "sampled_dedup_elision", "mmap_random", "gdn_dpp"), required=True)
     parser.add_argument("--cache-mode", choices=("warm", "cold"), default="warm")
     parser.add_argument("--screen-only", action="store_true")
     parser.add_argument("--pairs", type=int, default=3)
@@ -106,6 +106,15 @@ def main():
             "samples": [],
         }
         generator, profile, _ = _make_generator(args, "production")
+        import hipengine.runtime.qwen4_exp_runner as runner_module
+        original_gdn = runner_module.qwen4_exp_gdn_prefill_tiled16_f32
+        dpp_calls = 0
+        dpp_library = None
+        if args.method == "gdn_dpp":
+            from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import build_qwen4_exp_gdn_dpp
+            dpp_library = build_qwen4_exp_gdn_dpp()
+            report["kind"] = "qwen4exp_gdn_complete_model_ab"
+            report["candidate_library_sha256"] = hashlib.sha256(Path(dpp_library._name).read_bytes()).hexdigest()
         table = generator._resident.ple_table
         original_gather = table.gather_rows
         original_step = generator.runner.step
@@ -118,12 +127,25 @@ def main():
 
         generator.runner.step = step
 
+        def dpp(*a, **kw):
+            nonlocal dpp_calls
+            dpp_calls += 1
+            return original_gdn(*a, **{**kw, "library": dpp_library})
+
         def sample(mode, case, rep):
             if table.telemetry() is not None or table._random_access_requested_mode != "off":
                 raise ValueError("unqualified telemetry/advice configuration")
-            select_gather_arm(table, original_gather, mode=mode,
-                              method=args.method, cache_mode=args.cache_mode)
+            if args.method == "gdn_dpp":
+                runner_module.qwen4_exp_gdn_prefill_tiled16_f32 = original_gdn if mode == "before" else dpp
+            else:
+                select_gather_arm(table, original_gather, mode=mode,
+                                  method=args.method, cache_mode=args.cache_mode)
+            previous_dpp_calls = dpp_calls
             row = _hipengine_case_sample(generator.runner, case=case, repetition=rep, transitions=transitions)
+            if args.method == "gdn_dpp":
+                row["dpp_calls"] = dpp_calls - previous_dpp_calls
+                if (row["dpp_calls"] > 0) != (mode == "after"):
+                    raise ValueError("DPP candidate did not engage")
             logits = np.asarray(last["result"].logits)
             if not logits.size or not np.isfinite(logits).all():
                 raise ValueError("missing/nonfinite final logits")
@@ -159,6 +181,7 @@ def main():
             report["exact_final_logits_and_state"] = True
             report["status"] = "completed"
         finally:
+            runner_module.qwen4_exp_gdn_prefill_tiled16_f32 = original_gdn
             table.gather_rows = original_gather
             generator.runner.step = original_step
             generator.close()

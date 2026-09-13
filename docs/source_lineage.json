@@ -16,6 +16,11 @@
     "/home/lhl/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
   ],
   "repositories": {
+    "pwilkin-journey": {
+      "path": "/tmp/hipengine-pwilkin-20260913",
+      "baseline_ref": "f5daaa3cfa6358e5dd398911ec741813745a5440",
+      "baseline_note": "Pinned read-only integration checkout used for the independently qualified GDN DPP reduction experiment."
+    },
     "nano-vllm-amd": {
       "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
       "baseline_ref": "22405a9",
@@ -58,6 +63,12 @@
     }
   },
   "files": [
+    {
+      "repo": "pwilkin-journey",
+      "path": "ggml/src/ggml-cuda/gated_delta_net.cu",
+      "kind": "kernel",
+      "family": "Qwen4Exp journey GDN DPP reduction"
+    },
     {
       "repo": "atlas",
       "path": "kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu",
