@@ -1215,7 +1215,12 @@ runners:
   `x * 0.0` is a no-op for a NaN or an Inf (`NaN * 0 == NaN`), so a recurrent
   state "cleared" that way keeps whatever the previous owner of the block left
   in it and turns every later output into NaN. `runtime.memset(ptr, 0, nbytes)`
-  is the correct re-zero. This is why the Surya text decoder returned all-NaN
+  is the correct re-zero. That form is free in a hot loop: `hipMemset` acts on
+  the NULL stream, which is the stream the runners launch their kernels on, and
+  it only enqueues (measured on gfx1151: a 1 MiB memset behind 2.47 ms of
+  queued work returns in 28 us, against 15 us for `hipMemsetAsync`), so a
+  per-layer re-zero costs one enqueue and no host synchronization. This is why
+  the Surya text decoder returned all-NaN
   logits after a long test suite and finite logits in isolation, and why the
   failure looked like device-state poisoning:
   `tests/test_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan` and
