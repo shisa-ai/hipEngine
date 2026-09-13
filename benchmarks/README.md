@@ -66,9 +66,9 @@ and media form are engine declarations, so a page-scale model is admitted
 without editing the server.
 [HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
 
-The text prefill's score tile is a shared-planner shape choice: swept across query
-blocks, the 512 MiB budget's own widest tile is the optimum and the envelope costs
-2.1-3.0% ([shape sweep](results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json)).
+The text prefill's score tile is the byte budget's own width, not the vision
+envelope's: swept across query blocks, the budget's widest tile is the optimum, and
+the envelope applies only where the budget alone leaves one or two tiles ([sweep](results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json)).
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the

@@ -8,10 +8,12 @@ ceiling (65536). Those grids cannot run densely, so they have no dense baseline.
 This measures the grids that *can* run both ways, so the tiling's cost is known
 rather than assumed: ``None`` disables the budget and runs one dense tile, and a
 byte budget selects the largest query block whose tile fits *and* that the
-planner's shape envelope admits. ``--blocks`` measures named shapes directly,
-lifting the envelope so shapes the planner would not choose are still on the
-curve; byte-budget rows always keep it, because those rows are the production
-plan. One runner per shape, warm-up call discarded, median of ``--reps``.
+planner's shape rule admits (the envelope applies only while the budget alone
+would leave the grid in one or two tiles). ``--blocks`` measures named shapes
+directly, lifting the envelope so shapes the planner would not choose are still
+on the curve; byte-budget rows always keep it, because those rows are the
+production plan. One runner per shape, warm-up call discarded, median of
+``--reps``.
 
 Run this with no other GPU job. The sweep is sequential per shape, so a
 concurrent job inflates whichever shape happens to be running, and it inflates
@@ -21,9 +23,11 @@ every sample of that row -- the row's own spread does not show it. ``--passes
 When varying the shape from outside this script, lift the planner's envelope
 (``hipengine.runtime.surya.SHAPE_TILE_ROWS`` / ``SHAPE_TILE_DIVISOR`` /
 ``SHAPE_TILE_MULTIPLE``) or the production cap silently overrides the requested
-block. A re-check of 4096-patch shapes that forgot to do that measured a
-128-row tile for every shape it asked for and reported a flat, fast curve --
-which reads like "the budget-derived shape is fine" rather than like a bug.
+block where it applies, and the wavefront rounding shortens any width that is
+not a multiple of 32. A re-check of 4096-patch shapes that forgot to do that
+measured a 128-row tile for every shape it asked for and reported a flat, fast
+curve -- which reads like "the budget-derived shape is fine" rather than like a
+bug.
 ``--blocks`` does the lift, and every row records ``envelope_lifted`` so the
 artifact says which mode it was measured in.
 

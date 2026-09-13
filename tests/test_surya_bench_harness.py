@@ -896,12 +896,14 @@ def test_text_shape_sweep_lifts_and_restores_the_planner_envelope() -> None:
     """A sweep row must measure the width it names, and must not leak.
 
     ``--text-blocks`` exists to measure shapes the production planner would not
-    choose, so it lifts the shape envelope and the wavefront rounding. If that
-    lift silently failed, every sweep row would be the production shape wearing
-    a different label, which is exactly the failure mode the sweep rules out.
-    The lift is process-global planner state, so it must also be restored, or
-    the next measurement in the process inherits a shape rule it did not ask
-    for.
+    choose, so it lifts the shape envelope and the wavefront rounding. The lift
+    has to reach the planner in both regimes: where the envelope caps the
+    budget's width (small grids, one or two tiles) and where it only rounds it
+    (larger grids, where the budget's own shape wins). If that lift silently
+    failed, every sweep row would be the production shape wearing a different
+    label, which is exactly the failure mode the sweep rules out. The lift is
+    process-global planner state, so it must also be restored, or the next
+    measurement in the process inherits a shape rule it did not ask for.
     """
 
     from hipengine.runtime import surya
@@ -915,8 +917,12 @@ def test_text_shape_sweep_lifts_and_restores_the_planner_envelope() -> None:
     )
     heads, tokens = 8, 8580
     try:
-        # production: the envelope caps the width the byte budget admits
-        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 256
+        # production: 8580 tokens leaves 5 tiles, so the budget's own 1955 rows
+        # survive, rounded down to the 32-lane wavefront multiple
+        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 1952
+        # production, capped regime: 1024 tokens admits the whole dense matrix
+        # in one tile, so the envelope splits it into 8
+        assert surya.plan_score_tiles(1024, heads, 512 * 1024**2)[0] == 128
         # lifted: the same backwards-solved budget returns the named width,
         # including a non-multiple of 32 the production planner would round
         M._shape_envelope(False)
@@ -924,11 +930,13 @@ def test_text_shape_sweep_lifts_and_restores_the_planner_envelope() -> None:
         assert surya.plan_score_tiles(
             tokens, heads, heads * tokens * 1955 * 4
         )[0] == 1955
-        # the width the envelope's 512-row cap costs the 16384-token prefill
+        # lifted, capped regime: the dense width the envelope splits is reachable
+        assert surya.plan_score_tiles(1024, heads, 512 * 1024**2)[0] == 1024
+        # the width the budget admits at the full context
         assert surya.plan_score_tiles(
             16384, heads, heads * 16384 * 1024 * 4
         )[0] == 1024
     finally:
         M._shape_envelope(True)
     assert M._production_envelope() == shipped
-    assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 256
+    assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 1952

@@ -107,13 +107,15 @@ DEFAULT_MAX_VISION_SCRATCH_BYTES = 512 * 1024**2
 DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 
 # The tile's query block is a shape choice, not simply the widest tile the byte
-# budget admits. The block is capped by the measured envelope
+# budget admits. When the budget alone would leave the grid in one or two query
+# tiles, the block is capped by the measured envelope
 # ``max(SHAPE_TILE_ROWS, ceil(rows / SHAPE_TILE_DIVISOR))`` and then rounded
 # down to a whole number of wavefronts; the constants are calibrated with
 # ``scripts/surya_vision_tiling_cost.py`` on gfx1151, as the median of 3-8
-# timed forwards per shape, and the same envelope is applied to the text
-# prefill (``scripts/surya_attention_memory.py``) because the two paths tile
-# the same matrix.
+# timed forwards per shape, and the text prefill shares both the planner and
+# that cap (``scripts/surya_attention_memory.py``) because the two paths tile
+# the same matrix. The cap is a small-grid correction and not a global ceiling:
+# see "When the cap applies" below, which is where the two sweeps disagree.
 #
 # Why cap at all: the budget alone takes the widest tile that fits, and where
 # the dense matrix is small that is a bad shape. At 1024 patches the budget
@@ -127,16 +129,24 @@ DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 # On the 34320-patch A4 page 715 tiles (48 rows) take 65983 ms, 269 tiles (128
 # rows) 45639 ms, 68 tiles (512 rows) 43766 ms and 17 tiles (2048 rows)
 # 41374 ms, so a fixed 128-row cap would cost 5.4% against what the 512 MiB
-# budget can buy (108 tiles, 320 rows, 43318 ms). Capping at a 32nd of the grid
-# instead admits 1073 rows at 34320 patches, which leaves the byte budget the
-# binding constraint: the 512 MiB default still chooses the shape, so raising
-# the budget still buys a wider tile. The page's curve flattens above the
-# budget rather than stopping: same-run 320 rows 43288 ms, 1024 41711, 2048
-# 40618, 3072 40362, and 4096 40076 (steps of 1.43/0.68/0.16 ms per MiB, then a
-# 0.93% turn-up at 8192 rows), so the default sits 7.4% above the page's
-# optimum for 1/12.8th of its scratch. SHAPE_TILE_ROWS is where the two bounds
-# meet: the cap is 128 rows for every grid up to 4096 patches, and rows/32 above
-# it.
+# budget can buy (108 tiles, 320 rows, 43318 ms) wherever it bound. The
+# conditional rule below already keeps the cap off page-scale grids under the
+# default budget -- at 34320 patches the budget's 325 rows leaves 108 tiles, so
+# the cap is never consulted -- but a raised budget on a mid-size grid does
+# enter the capped regime, and there the cap must not force a tile so narrow
+# that the re-read traffic costs more than the shape saves. Capping at a 32nd
+# of the grid admits 1073 rows at 34320 patches, which leaves the byte budget
+# the binding constraint there: the 512 MiB default still chooses the shape, so
+# raising the budget still buys a wider tile. Under the default budget the
+# capped regime is rows <= 4729 (where the budget's block first exceeds half the
+# grid), and rows/32 is 148 there, rounding down to the same 128 the floor
+# gives, so the divisor only matters for a raised budget. The page's curve
+# flattens above the budget rather than stopping: same-run 320 rows 43288 ms,
+# 1024 41711, 2048 40618, 3072 40362, and 4096 40076 (steps of 1.43/0.68/0.16
+# ms per MiB, then a 0.93% turn-up at 8192 rows), so the default sits 7.4% above
+# the page's optimum for 1/12.8th of its scratch. SHAPE_TILE_ROWS is where the
+# two bounds meet: the envelope is 128 rows for every grid up to 4096 patches,
+# and rows/32 above it.
 #
 # Why the rounding: on the A4 page, in the two retained sweeps, every measured
 # width that is a multiple of 32 lands in 43318-44831 ms (8 measurements of 256,
@@ -179,9 +189,29 @@ DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 # ``sum(bq) == tokens``), so the cost is in the GEMM shapes and the per-tile
 # key/value re-read, not in extra FLOPs.
 # It recovers 28.5-42.8% at the grids where the budget alone picks a bad shape.
+#
+# When the cap applies: only while the byte budget alone would leave the grid in
+# ``SHAPE_TILE_CAP_MAX_TILES`` tiles or fewer. That is where a tile wider than
+# the grid needs starves the batched GEMM of output tiles, and it is exactly
+# what the sweeps separate on. At 1024 patches the budget admits the whole dense
+# matrix (193.54 ms) against 135.52 ms at 128 rows, and at 4096 patches it
+# admits 2730 rows (1123.42 ms) against 874.38 ms at 128 rows -- both one or two
+# tiles. Once the budget leaves four or more tiles its own choice is at least as
+# good as the cap: at 6400 patches it takes 1747 rows (4 tiles) for 2004.85 ms
+# against the cap's 192 rows at 2125.18 ms, 5.7%; at the 34320-patch A4 page it
+# takes 320 rows (43318 ms) where the cap's 1073 rows never binds; and on the
+# text prefill, whose curve is monotone in the tile count, at 16384 tokens it
+# takes 1024 rows (16.927 s) against the cap's 512 at 17.436 s, 3.0%, and at 8580
+# tokens 1955 rows (7.535 s) against the cap's 256 at 7.692 s, 2.1%. Applying
+# the cap below four tiles costs that 2.1-3.0% on the text path for nothing,
+# which is the regression
+# ``benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json``
+# was run to catch. Three tiles is not measured on either path; docs/REFACTOR.md
+# records it.
 SHAPE_TILE_ROWS = 128
 SHAPE_TILE_DIVISOR = 32
 SHAPE_TILE_MULTIPLE = 32
+SHAPE_TILE_CAP_MAX_TILES = 2
 
 # Text-decoder context the generator admits by default. Upstream Surya budgets
 # 12,288 context tokens per OCR slot (image prefill + full-page output +
@@ -252,13 +282,14 @@ def plan_score_tiles(
 
     The tile is ``num_heads * rows * block`` fp32 elements — the full key range
     for ``block`` query rows. ``block`` is the largest value whose tile fits
-    ``budget_bytes``, bounded by the measured shape envelope
-    (:data:`SHAPE_TILE_ROWS` / :data:`SHAPE_TILE_DIVISOR`) and rounded down to a
-    whole number of wavefronts (:data:`SHAPE_TILE_MULTIPLE`); ``None`` disables
-    the budget and the envelope and returns one tile covering every query. A
-    budget too small for even one query row still returns ``block == 1`` so
-    admission can report the shortfall instead of silently producing an
-    unusable plan.
+    ``budget_bytes``, unless that would leave the grid in
+    :data:`SHAPE_TILE_CAP_MAX_TILES` tiles or fewer, in which case it is bounded
+    by the measured shape envelope (:data:`SHAPE_TILE_ROWS` /
+    :data:`SHAPE_TILE_DIVISOR`); either way it is rounded down to a whole number
+    of wavefronts (:data:`SHAPE_TILE_MULTIPLE`). ``None`` disables the budget and
+    the envelope and returns one tile covering every query. A budget too small
+    for even one query row still returns ``block == 1`` so admission can report
+    the shortfall instead of silently producing an unusable plan.
     """
 
     n = int(rows)
@@ -269,9 +300,16 @@ def plan_score_tiles(
     if budget_bytes is None:
         return n, per_row * n
     block = int(budget_bytes) // per_row
-    envelope = max(SHAPE_TILE_ROWS, -(-n // SHAPE_TILE_DIVISOR))
-    if block > envelope:
-        block = envelope
+    # The cap is a small-grid correction, not a global ceiling: it applies only
+    # while the budget's own plan would leave the grid in
+    # ``SHAPE_TILE_CAP_MAX_TILES`` tiles or fewer, which is where a tile wider
+    # than the grid needs starves the batched GEMM of output tiles. Where the
+    # budget already splits the grid further, its own choice is measured to be
+    # at least as good; see the block comment above the constants.
+    if block * SHAPE_TILE_CAP_MAX_TILES >= n:
+        envelope = max(SHAPE_TILE_ROWS, -(-n // SHAPE_TILE_DIVISOR))
+        if block > envelope:
+            block = envelope
     if block > SHAPE_TILE_MULTIPLE:
         block -= block % SHAPE_TILE_MULTIPLE
     if block > n:
@@ -311,9 +349,15 @@ def plan_vision_attention(
 #         256      2   28.07 ms   26.21 ms
 #        1024      8  136.00 ms  134.07 ms
 #        4096     32  881.59 ms 1004.23 ms
-#        6400     34 2131.13 ms 2050.19 ms
+#        6400      4 2004.85 ms 1924.05 ms
 #       34320    108 43318.30 ms 43378.91 ms  (300-DPI A4, 512 MiB budget)
 #       34320    358 49602.21 ms 49015.97 ms  (same page, 96-row tiles)
+#
+# The 6400 row is the plan the conditional cap now picks (1747 rows, 4 tiles);
+# the same sweep measured the old cap's 192 rows at 34 tiles as 2125.18 ms, so
+# the rule change is worth 5.7% on that grid, and 1924.05 ms estimates it to
+# -4.0%. The page's 1-tile dense row measures 1917.35 ms there, 4.6% faster
+# than the new plan and 4x the scratch.
 #
 # i.e. -6%/+14% over the shapes the planner picks at the production grids, and
 # -11%/+3% across the 33 A4 query-block rows the per-tile term is fitted to
@@ -1472,11 +1516,18 @@ class SuryaGpuRunner:
         has no ceiling (``None``). Bisection over the estimate, re-planning the
         tile at every candidate so the answer accounts for the tile count the
         byte budget would pick. The returned count is always sound: its own
-        estimate fits. The estimate dips by under 2% where the shape envelope
-        rather than the byte budget picks the tile, so the bisection is not
-        *guaranteed* to find the very largest count that fits; it does match a
-        brute-force scan at every budget from 1 s to 200 s, including the 120 s
-        default (56856 patches).
+        estimate fits, because the search only raises ``low`` on a candidate
+        that fits. The estimate is not monotone in the patch count, though: at
+        the default budget the shape cap stops applying at 4730 patches (the
+        budget's own block first exceeds half the grid there), the plan drops
+        from 37 tiles of 128 rows to 3 of 2336, and the estimate falls 8.3%
+        (1270.91 -> 1165.67 ms) even as the grid grows. So for a time budget
+        inside that dip the search can stop short of the largest count that
+        fits; it matches a brute-force scan at the 120 s default (56856
+        patches) and at every budget tried from 0.5 s to 200 s except the dip
+        window itself (1.20 s: 4565 against the true 4815). Admission does not
+        use this: ``check_vision_capacity`` compares the estimate of the grid
+        it was given, which the dip cannot make unsound.
         """
 
         limit = self.max_vision_seconds if seconds is None else float(seconds)
