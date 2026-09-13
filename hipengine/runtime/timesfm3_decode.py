@@ -308,10 +308,27 @@ class TimesFM3GPUDecoder:
             front_masked=malloc(batch * variates * 4),
             q_offset=malloc(batch * variates * 4),
         )
-        runtime = get_hip_runtime()
-        runtime.memset(buffers.q_offset.ptr, 0, buffers.q_offset.nbytes)
         self._buffers[key] = buffers
         return buffers
+
+    def _zero_q_offset(self, bufs: _Buffers) -> None:
+        """Re-zero the constant zero query offset before every decode.
+
+        ``q_offset`` is a constant-zero input to the attention kernels: it is
+        never written per call, so its value is whatever the allocation held.
+        Zeroing it when the buffers were *allocated* is the "correct only by
+        accident of allocation" rule in ``docs/KERNELS.md`` -- a recycled block
+        holding anything else silently shifts every query, and the allocator is
+        not required to hand back zeroed pages.  Measured with
+        ``tests/_poison_probe.py``: poisoning it alone moves the decode by up to
+        5.8e+02 while poisoning every other per-call buffer is bit-identical.
+
+        A memset is the re-zero: ``x * 0.0`` cannot clear a NaN, so a
+        scale-by-zero kernel would keep the poison.
+        """
+
+        runtime = get_hip_runtime()
+        runtime.memset(bufs.q_offset.ptr, 0, bufs.q_offset.nbytes)
 
     # -- GEMM helper ---------------------------------------------------------
 
@@ -346,12 +363,16 @@ class TimesFM3GPUDecoder:
         dt = "f16" if self.precision == "fp16" else "f32"
         itemsize = 2 if self.precision == "fp16" else 4
 
-        copy_host_to_device(
-            bufs.front_masked,
-            host_array_ptr(np.ascontiguousarray(front_masked_host.astype(np.int32))),
-        )
+        # The host source of an unpinned H2D copy must outlive the transfer:
+        # on this stack the DMA reads it after ``copy_host_to_device`` returns,
+        # so an ``astype`` result inlined into the call can be freed and
+        # recycled first (docs/KERNELS.md "Device-memory hygiene").
+        front_masked_i32 = np.ascontiguousarray(front_masked_host.astype(np.int32))
+        copy_host_to_device(bufs.front_masked, host_array_ptr(front_masked_i32))
         pos_host = np.tile(np.arange(n, dtype=np.float32), (seq_batch, 1))
         copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+        # The copies above must have landed before these locals are released.
+        get_hip_runtime().device_synchronize()
 
         # Tokenizer ResidualBlock (ReLU, no biases).
         self._gemm(bufs.tok_in.ptr, self._w["tok_hidden"], bufs.hidden.ptr, rows, spec.tokenizer_input_dims, d)
@@ -644,6 +665,7 @@ class TimesFM3GPUDecoder:
 
         n = num_total_patches
         bufs = self._buffers_for(batch_size, num_variates, n)
+        self._zero_q_offset(bufs)
         rows = batch_size * num_variates * n
         tok_in = np.ascontiguousarray(resblock_input.astype(host_dt)).reshape(
             rows, spec.tokenizer_input_dims

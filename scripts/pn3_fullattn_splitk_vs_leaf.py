@@ -144,7 +144,8 @@ def main() -> int:
                     library=lib, runtime=rt,
                 )
 
-            copy_host_to_device(gated_b16, host_array_ptr(np.zeros(total, np.uint16)), total * 2, runtime=rt)
+            gate_host = np.zeros(total, np.uint16)
+            copy_host_to_device(gated_b16, host_array_ptr(gate_host), total * 2, runtime=rt)
             splitk()
             rt.device_synchronize()
             got = np.empty(total, np.uint16)

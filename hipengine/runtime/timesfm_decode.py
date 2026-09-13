@@ -253,6 +253,29 @@ class TimesFMGPUDecoder:
             free(buffer)
         self._fp16_weights.clear()
 
+    def _zero_caches(self, bufs: _Buffers) -> None:
+        """Re-zero the KV caches before every decode, with a memset.
+
+        The batched attention GEMMs sweep the whole cache, including the AR
+        slots the prefill has not written yet, and mask those slots with a zero
+        weight: ``0 * garbage`` is 0 for finite garbage and NaN for a NaN, so
+        the sweep is only correct while every slot is non-NaN.  Zeroing the
+        caches when they were *allocated* made that true for the first call and
+        left every later one to chance -- the "correct only by accident of
+        allocation" rule in ``docs/KERNELS.md`` -- so a recycled block holding
+        a NaN (any prior test or kernel can leave one) turned the whole decode
+        NaN.  Measured with ``tests/_poison_probe.py``: poisoning the V caches
+        alone makes 20480 of 40960 output values non-finite, while poisoning
+        every other per-call buffer is bit-identical.
+
+        A memset is the re-zero.  A scale-by-zero kernel would not do: ``x *
+        0.0`` is a no-op for a NaN, which is exactly how the poison survives.
+        """
+
+        runtime = get_hip_runtime()
+        for cache in (*bufs.caches_k, *bufs.caches_v):
+            runtime.memset(cache.ptr, 0, cache.nbytes)
+
     # -- buffer management ---------------------------------------------------
 
     def _buffers_for(self, batch: int, patches: int, cache_size: int) -> _Buffers:
@@ -265,12 +288,6 @@ class TimesFMGPUDecoder:
         f16 = lambda n: malloc(n * itemsize)  # noqa: E731
         caches_k = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
         caches_v = tuple(f16(batch * cache_size * head_vectors) for _ in range(self.spec.num_hidden_layers))
-        # The batched attention GEMMs sweep the whole cache including the
-        # not-yet-written AR slots; masked weights are zero but 0 * garbage
-        # is NaN when the allocator hands back dirty pages, so zero-init.
-        runtime = get_hip_runtime()
-        for cache in (*caches_k, *caches_v):
-            runtime.memset(cache.ptr, 0, cache.nbytes)
         buffers = _Buffers(
             tok_in=f16(batch * patches * self.spec.tokenizer_input_dims),
             hidden=f16(batch * patches * h),
@@ -338,12 +355,20 @@ class TimesFMGPUDecoder:
         patch_stride = self.spec.qkv_size
         dt = "f16" if self.precision == "fp16" else "f32"
 
-        copy_host_to_device(bufs.num_masked, host_array_ptr(np.ascontiguousarray(num_masked_host.astype(np.int32))))
-        copy_host_to_device(bufs.q_offset, host_array_ptr(np.ascontiguousarray(next_index_host.astype(np.int32))))
+        # The host source of an unpinned H2D copy must outlive the transfer:
+        # on this stack the DMA reads it after ``copy_host_to_device`` returns,
+        # so an ``astype`` result inlined into the call can be freed and
+        # recycled first (docs/KERNELS.md "Device-memory hygiene").
+        num_masked_i32 = np.ascontiguousarray(num_masked_host.astype(np.int32))
+        copy_host_to_device(bufs.num_masked, host_array_ptr(num_masked_i32))
+        next_index_i32 = np.ascontiguousarray(next_index_host.astype(np.int32))
+        copy_host_to_device(bufs.q_offset, host_array_ptr(next_index_i32))
         pos_host = (
             np.arange(n, dtype=np.float32)[None, :] + next_index_host[:, None] - num_masked_host[:, None]
         ).astype(np.float32)
         copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+        # The copies above must have landed before these locals are released.
+        get_hip_runtime().device_synchronize()
 
         # Tokenizer ResidualBlock (biased).
         self._gemm(bufs.tok_in.ptr, self._w["tokenizer_hidden"], bufs.hidden.ptr, rows, self.spec.tokenizer_input_dims, h)
@@ -471,6 +496,7 @@ class TimesFMGPUDecoder:
         # Scratch is sized for the prefill segment (the largest); AR steps
         # reuse the same buffers with smaller row counts.
         bufs = self._buffers_for(batch, num_input_patches, cache_size)
+        self._zero_caches(bufs)
 
         patched_inputs = inputs.reshape(batch, -1, p)
         patched_masks = masks.reshape(batch, -1, p)

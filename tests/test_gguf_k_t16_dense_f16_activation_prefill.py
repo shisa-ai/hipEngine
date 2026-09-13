@@ -218,11 +218,13 @@ def test_f16_dense_sibling_numerics_vs_bf16_owner(rows: int) -> None:
                     x_dev, host_array_ptr(np.ascontiguousarray(x_bf16)),
                     runtime=runtime,
                 )
+                # ``view`` shares storage but ``ascontiguousarray`` copies a
+                # non-contiguous one; keep the result alive across the copy.
+                x16_host = np.ascontiguousarray(x_f16.view(np.uint16))
                 copy_host_to_device(
-                    x16_dev,
-                    host_array_ptr(np.ascontiguousarray(x_f16.view(np.uint16))),
-                    runtime=runtime,
+                    x16_dev, host_array_ptr(x16_host), runtime=runtime
                 )
+                runtime.device_synchronize()
                 copy_host_to_device(
                     tiles_dev, host_array_ptr(np.ascontiguousarray(tiles)),
                     runtime=runtime,

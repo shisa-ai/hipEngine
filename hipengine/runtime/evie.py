@@ -344,7 +344,15 @@ class EvieRunner:
         """Upload a host pointer list for rocBLAS batched GEMMs (device arrays).
 
         Buffers are cached per unique pointer list, so the A/B/C arrays of
-        one call never alias.
+        one call never alias.  The cache key is the whole content, so a hit is
+        already correct and does not need a second upload.
+
+        The upload keeps its host source alive across the transfer and
+        synchronizes before releasing it: on this stack the DMA of an unpinned
+        source reads the host buffer *after* ``hipMemcpy`` returns, so a source
+        that goes out of scope with the call can be recycled first and the
+        device array ends up holding stale heap bytes
+        (``docs/KERNELS.md`` "Device-memory hygiene").
         """
 
         if not hasattr(self, "_ptr_array_bufs"):
@@ -354,9 +362,10 @@ class EvieRunner:
         buf = self._ptr_array_bufs.get(key)
         if buf is None:
             buf = _malloc_committed(nbytes + _GEMM_PAD_BYTES)
+            host = np.array(ptrs, dtype=np.uint64)
+            copy_host_to_device(buf, host_array_ptr(host), nbytes)
+            self.runtime.device_synchronize()
             self._ptr_array_bufs[key] = buf
-        host = np.array(ptrs, dtype=np.uint64)
-        copy_host_to_device(buf, host_array_ptr(host), nbytes)
         return buf.ptr
 
     def _evict_caches(self, keep: tuple) -> None:
