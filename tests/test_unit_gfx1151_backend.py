@@ -2066,6 +2066,33 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
             "gguf_ud_q4_k_s",
         ): fixed5120_rows,
     }
+    # 2026-09-13: the rounded add+rmsnorm layer has its own shape table, because
+    # it selects a different kernel for the same shape.
+    rounded_rows = {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == {
+        "enabled_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120",
+        "enabled_default": True,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): rounded_rows,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): rounded_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf_ud_q4_k_m",
+        ): rounded_rows,
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_S",
+            "gguf_ud_q4_k_s",
+        ): rounded_rows,
+    }
     for layer in ("rmsnorm", "add_rmsnorm"):
         for variant in (
             "bf16_out_fixed1024_wave256",

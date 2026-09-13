@@ -100,6 +100,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rounded_add_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_f32_f32_weight,
     gguf_rmsnorm_f32_f32_weight_out_f32,
     register_paro_combine_kernels,
@@ -3269,11 +3270,23 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_decode_output_cast_fn_cache = fn
         return fn
 
-    def _rounded_add_rmsnorm_fn(self):
-        """Resolve the exact rounded-add plus next-input RMSNorm composite."""
+    def _rounded_add_rmsnorm_fn(self, *, rows: int = 0):
+        """Resolve the exact rounded-add plus next-input RMSNorm composite.
+
+        ``rows`` selects the fixed-5120 register-cached sibling when the
+        backend declares one for the shape; ``rows=0`` returns the generic
+        owner unconditionally.
+        """
 
         missing = object()
-        fn = getattr(self, "_gguf_rounded_add_rmsnorm_fn_cache", missing)
+        cache = self.__dict__.setdefault(
+            "_gguf_rounded_add_rmsnorm_fn_cache", {}
+        )
+        if not isinstance(cache, dict):
+            cache = {}
+            self._gguf_rounded_add_rmsnorm_fn_cache = cache
+        key = int(rows) if rows and self.hidden_size == 5_120 else 0
+        fn = cache.get(key, missing)
         if fn is missing:
             load_backend_kernel_package(self.backend)
             fn = resolve(
@@ -3283,7 +3296,18 @@ class Qwen35GGUFFullStackRunner:
                 variant="rounded_bf16_out",
                 missing="none",
             )
-            self._gguf_rounded_add_rmsnorm_fn_cache = fn
+            if fn is not None and key:
+                # Keep the per-backend resolution as the fallback so a backend
+                # without the capability does not inherit another backend's
+                # wrapper.
+                fn = _gguf_norm_residual_decode_kernel(
+                    self,
+                    layer="add+rmsnorm",
+                    rows=key,
+                    hidden_size=self.hidden_size,
+                    fallback=fn,
+                )
+            cache[key] = fn
         return fn
 
     def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
@@ -9583,7 +9607,7 @@ class Qwen35GGUFFullStackRunner:
         if next_norm_weight_ptr is not None and f32_residual:
             raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
         rounded_next_rms_fn = (
-            self._rounded_add_rmsnorm_fn()
+            self._rounded_add_rmsnorm_fn(rows=rows)
             if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
@@ -11789,15 +11813,23 @@ def _gguf_norm_residual_decode_kernel(
     layer: str,
     rows: int,
     hidden_size: int,
+    fallback: object = None,
 ):
     """Resolve one exact model/backend/shape-qualified D5 norm leaf."""
 
-    fallback = {
-        "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
-        "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
-    }.get(layer)
     if fallback is None:
-        raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+        fallback = {
+            "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
+            "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
+            "add+rmsnorm": gguf_rounded_add_rmsnorm_bf16_f32_weight,
+        }.get(layer)
+        if fallback is None:
+            raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+    capability = {
+        "rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add_rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add+rmsnorm": "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES",
+    }[layer]
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
@@ -11811,7 +11843,9 @@ def _gguf_norm_residual_decode_kernel(
     if identity is None:
         return fallback
     shape = (int(rows), int(hidden_size))
-    policy_key = (backend, identity, shape)
+    # The layer is part of the memo key: the plain and the rounded layers share
+    # a shape table shape but select different kernels.
+    policy_key = (backend, layer, identity, shape)
     cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
     if (
         isinstance(cached_policy, tuple)
@@ -11821,11 +11855,20 @@ def _gguf_norm_residual_decode_kernel(
         variant = cached_policy[1]
     else:
         try:
-            policies = backend_package_capability(
-                backend, "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-            )
+            policies = backend_package_capability(backend, capability, {})
         except (ImportError, ValueError):
             return fallback
+        if isinstance(policies, Mapping):
+            enabled_env = policies.get("enabled_env")
+            if isinstance(enabled_env, str) and enabled_env:
+                raw = os.environ.get(enabled_env)
+                enabled = (
+                    bool(policies.get("enabled_default", False))
+                    if raw is None
+                    else raw.strip().lower() not in {"0", "false", "no", "off"}
+                )
+                if not enabled:
+                    return fallback
         shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
         variant = shapes.get(shape) if isinstance(shapes, Mapping) else None
         try:
@@ -21362,7 +21405,7 @@ class Qwen35GGUFResidentSession:
                 and rows <= 8
                 and not capture_layer_boundary_ids
                 and full_attention_prefused_ready
-                and self.runner._rounded_add_rmsnorm_fn() is not None
+                and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
             input_norm_ptr: int | None = None
             with (

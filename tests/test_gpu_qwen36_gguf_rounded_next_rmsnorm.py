@@ -310,7 +310,9 @@ def test_dense_runner_uses_projection_then_rounded_next_rmsnorm(
     def rounded(*args, **kwargs):
         calls.append(("rounded_next_rms", args, kwargs))
 
-    monkeypatch.setattr(runner, "_rounded_add_rmsnorm_fn", lambda: rounded, raising=False)
+    monkeypatch.setattr(
+        runner, "_rounded_add_rmsnorm_fn", lambda **_kwargs: rounded, raising=False
+    )
     monkeypatch.setattr(
         runner_module,
         "launch_gguf_linear_residual",
@@ -364,7 +366,9 @@ def test_dense_runner_registry_miss_keeps_projection_add_rmsnorm_fallback(
     runner, scratch = _fake_dense_runner()
     calls: list[tuple[str, tuple, dict]] = []
     _patch_dense_prefix(monkeypatch, calls)
-    monkeypatch.setattr(runner, "_rounded_add_rmsnorm_fn", lambda: None, raising=False)
+    monkeypatch.setattr(
+        runner, "_rounded_add_rmsnorm_fn", lambda **_kwargs: None, raising=False
+    )
     monkeypatch.setattr(
         runner_module,
         "launch_gguf_linear_residual",
