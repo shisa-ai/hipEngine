@@ -8,8 +8,8 @@ vision tower and text decoder on gfx1151.
 
 ### Installation and acceptance
 
-Install image preprocessing support with `pip install 'hipengine[surya]'`.
-For a source checkout, run the complete acceptance gate with the local Surya
+From a source checkout, install image preprocessing support with
+`pip install '.[surya]'`. Run the complete acceptance gate with the local Surya
 checkpoint and a supported HIP device:
 
 ```bash
@@ -84,7 +84,7 @@ just text finding. `page_list.png` (512x512) decodes to
 the list label. Both are 1x32x32 grids and both reach a natural EOS (94 and 46
 tokens).
 
-### Transcription acceptance (2026-09-12)
+### Transcription acceptance (2026-09-14)
 
 Agreeing with a captured oracle is regression coverage, not transcription
 qualification. Surya is prompt-driven: the wording *is* the task, and the
@@ -102,17 +102,29 @@ drawn on it — reading order, line recall and omissions, line exact rate,
 character error rate, table shape/header/cells, and truncation — and
 `scripts/surya_transcription_report.py` emits the measurement artifact.
 
-Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`, one page per scope:
+Measured 2026-09-14 on zbook / Radeon 8060S (gfx1151), Surya OCR 2 fp32,
+with `FULL_PAGE_HTML_PROMPT` and the checkpoint/software listed in the lane
+comparison below. One request per page with resident weights, loading excluded;
+these latencies are single observations, not repeated medians.
 
-| page | tokens | finish | recall | exact | CER | order violations | table cells |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| ja | 287 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
-| mixed | 341 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
-| dense | 1054 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
-| table | 448 | eos | 1.000 | 1.000 | 0.0000 | 0 | 1.000 (32/32) |
-| blank | 12 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
-| scan | 616 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
-| long | 1804 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| page | tokens | request s | finish | recall | exact | CER | order violations | table cells |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| ja | 287 | 7.224 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| mixed | 341 | 8.065 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| dense | 1054 | 20.048 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| table | 448 | 8.743 | eos | 1.000 | 1.000 | 0.0000 | 0 | 32/32 |
+| blank | 12 | 0.652 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| scan | 616 | 13.250 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| long | 1804 | 37.301 | eos | 1.000 | 1.000 | 0.0000 | 0 | — |
+| a4 | 2108 | 91.891 | eos | 1.000 | 1.000 | 0.0000 | 0 | 32/32 |
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_transcription_report.py --stage-timings --out /tmp/surya-closeout-transcription.json
+```
+
+[Full-page results and provenance](../benchmarks/results/2026-09-14-gfx1151-surya-final-transcription.json).
+A4 is qualified against visible-text ground truth; it has no captured torch
+fp32 full-page oracle. The other seven pages have the parity coverage below.
 
 The gate is `tests/test_surya_transcription.py` (ROCm- and checkpoint-gated):
 exact id parity with a captured torch fp32 protocol oracle on six pages, a
@@ -150,15 +162,54 @@ re-captured. The one measurement that did not change is the truncated
 `scan` continuation: the old page's clipped text drove torch fp32 to 504 ids
 against a 512 cap, while the re-cut page reaches a natural EOS at 158.
 
-#### The lane comparison (2026-09-13)
+#### Final lane comparison (2026-09-14)
 
-The re-cut suite is 12 pages x 2 lanes, `--split all --runs 3`, all 24 rows
-PASS: hipEngine decodes at 54.6-57.0 tok/s against the torch fp32 lane's
-24.6-28.1, a median 2.19x (2.03x-2.23x on every page), and end-to-end is
-0.20-8.85 s against 0.29-14.38 s. The four re-cut pages cost hipEngine more
-end-to-end time than the clipped ones did (`ja` 2.71 -> 5.75 s, `long`
-5.67 -> 8.85 s, `mixed` 5.13 -> 6.76 s) because their vision grids are 4x
-bigger, while decode is unchanged at ~55 tok/s.
+Measured on **zbook, AMD Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
+Surya OCR 2 fp32, checkpoint `3b3d4cdf88d6928b0acdc75181b13206ea67c4a3`.
+Both lanes explicitly run preprocessing, vision, prefill, and a manual greedy
+loop. Each stage and the complete request have one discarded warmup and three
+measured repetitions; checkpoint loading is excluded. Each lane runs in its own
+process. The benchmark environment is Python 3.13.13, NumPy 2.4.4, Pillow 12.3.0,
+torch 2.13.0+rocm10.0.0 (HIP 7.15.26333), transformers 5.15.0.
+
+| Page | hipEngine decode tok/s | torch decode tok/s | hipEngine request s | torch request s |
+| --- | ---: | ---: | ---: | ---: |
+| small | 57.0 | 30.2 | 1.255 | 2.376 |
+| rect | 55.4 | 25.1 | 0.199 | 0.273 |
+| ja | 55.7 | 25.7 | 5.497 | 9.348 |
+| dense | 56.0 | 26.3 | 6.365 | 13.079 |
+| table | 56.0 | 26.6 | 0.915 | 1.425 |
+| blank | 55.6 | 25.3 | 0.438 | 0.401 |
+| mixed | 55.7 | 25.8 | 6.499 | 11.586 |
+| scan | 55.6 | 25.6 | 4.543 | 7.309 |
+| long | 55.5 | 25.6 | 8.874 | 13.732 |
+| full | 55.7 | 25.8 | 3.103 | 4.127 |
+| columns | 55.8 | 26.6 | 2.062 | 3.868 |
+| list | 55.9 | 27.0 | 1.199 | 2.016 |
+
+All **24 rows pass** their declared correctness gates, including repeatability
+and agreement between isolated decode and whole-request output. Median per-page
+speedup is **2.16x for decode** and **1.65x end to end**. hipEngine is faster end
+to end on 11/12 pages; the blank page is about 9% slower. These are the 12-page
+layout/markup benchmark workloads, with their declared EOS or token-limit
+termination. Full-page transcription uses the real task prompt and independent
+visible-text ground truth in the separate acceptance report above.
+
+The same-session before/after cleanup comparison is near-flat: median per-page
+decode rate +0.18%, end-to-end latency +0.22%. No whole-request speedup is claimed
+for removing the redundant upload synchronization. The correctness fixes and
+new failure checks are qualified by 415 passing Surya tests with zero skips.
+
+Commands (sequential processes, `python3` is `/home/lhl/miniforge3/bin/python3`):
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu --out /tmp/surya-closeout-after.json
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes torch_cuda --out /tmp/surya-closeout-torch.json
+python3 scripts/surya_perf_compare.py --merge /tmp/surya-closeout-after.json /tmp/surya-closeout-torch.json --out benchmarks/results/2026-09-14-gfx1151-surya-final-lanes.json
+```
+
+[Full lane distributions and input shapes](../benchmarks/results/2026-09-14-gfx1151-surya-final-lanes.json),
+[same-session cleanup A/B](../benchmarks/results/2026-09-14-gfx1151-surya-upload-cleanup-ab.json).
 
 **The scan page cannot carry an exact-id gate under this prompt.** The bench
 suite's ad-hoc prompt `"Transcribe this page."` is not one of the checkpoint's
@@ -190,16 +241,16 @@ comparison is therefore one run per lane merged with `--merge`; a combined run
 is reproducible with
 `HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu,torch_cuda`.
 
-#### The 300-DPI A4 page (2026-09-12)
+#### The 300-DPI A4 page (2026-09-14)
 
-The seven pages above are 512-1600 px on a side. `page_a4.png` is the real
+The seven smaller pages above are 512-1600 px on a side. `page_a4.png` is the real
 page-scale case: 2480x3508 at 300 DPI, which `smart_resize` rounds to 2496x3520
 — exactly the 220x156 patch grid and 8580 merged image tokens the page-scale
 memory plan is written against.
 
 Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`,
 `scripts/surya_transcription_report.py`, artifact
-`benchmarks/results/2026-09-12-gfx1151-surya-transcription-acceptance.json`:
+`benchmarks/results/2026-09-14-gfx1151-surya-final-transcription.json`:
 
 | metric | value | gate |
 | --- | ---: | --- |
@@ -210,8 +261,8 @@ Measured fp32 on gfx1151 with `FULL_PAGE_HTML_PROMPT`,
 | `table_cell_accuracy` | 1.0000 (32/32) | 1.0000 |
 | finish | eos, 2108 tokens, not truncated | eos |
 
-Stages: vision 47.7 s, prefill 8.0 s, decode 58.4 s (2108 steps, 27.7 ms/step,
-36.1 tok/s), 114.3 s total.
+Stages: vision 43.297 s, prefill 7.860 s, decode 40.504 s (2108 steps,
+19.21 ms/step, 52.04 tok/s), 91.891 s total (one measured request).
 
 The 8580-image-token prefill is verified rather than inferred from the grid
 arithmetic: `render_chat_prompt` — the same call the generator makes — returns
