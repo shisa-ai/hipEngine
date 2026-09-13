@@ -125,28 +125,37 @@ DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 # Why the cap grows with the grid: every tile re-reads the whole key range, so
 # the key/value re-read traffic and the launch count grow with the tile count.
 # On the 34320-patch A4 page 715 tiles (48 rows) take 65983 ms, 269 tiles (128
-# rows) 45834 ms, 68 tiles (512 rows) 44022 ms and 17 tiles (2048 rows)
-# 41622 ms, so a fixed 128-row cap would cost 13% against what the 512 MiB
-# budget can buy. Capping at a 32nd of the grid instead admits 1073 rows at
-# 34320 patches, which leaves the byte budget the binding constraint: the
-# 512 MiB default still chooses the shape, so raising the budget still buys a
-# wider tile. SHAPE_TILE_ROWS is where the two bounds meet: the cap is 128 rows
-# for every grid up to 4096 patches, and rows/32 above it.
+# rows) 45639 ms, 68 tiles (512 rows) 43766 ms and 17 tiles (2048 rows)
+# 41374 ms, so a fixed 128-row cap would cost 5.4% against what the 512 MiB
+# budget can buy (108 tiles, 320 rows, 43318 ms). Capping at a 32nd of the grid
+# instead admits 1073 rows at 34320 patches, which leaves the byte budget the
+# binding constraint: the 512 MiB default still chooses the shape, so raising
+# the budget still buys a wider tile. The page's curve flattens above the
+# budget rather than stopping: same-run 320 rows 43288 ms, 1024 41711, 2048
+# 40618, 3072 40362, and 4096 40076 (steps of 1.43/0.68/0.16 ms per MiB, then a
+# 0.93% turn-up at 8192 rows), so the default sits 7.4% above the page's
+# optimum for 1/12.8th of its scratch. SHAPE_TILE_ROWS is where the two bounds
+# meet: the cap is 128 rows for every grid up to 4096 patches, and rows/32 above
+# it.
 #
-# Why the rounding: on the A4 page every measured width that is a multiple of 32
-# lands in 43862-44668 ms (256, 288, 320, 352, 384, 448, 480, 512) and every
-# width that is not lands in 45050-48496 ms (272, 300, 304, 325, 336, 400), so
-# the best non-multiple is slower than the worst multiple and the means differ
-# by 4.8%. The tile's `n` dimension is the block, so a width that is not a whole
-# number of 32-lane wavefronts leaves the last wavefront partly idle. The
-# 512 MiB budget derives 325 rows there, which is the slow side of that line;
-# rounding down to 320 takes it 48496.26 -> 43862.87 ms (1.106x) and shrinks the
-# tile 510.6 -> 502.7 MiB. Rounding down can only shrink the tile, so it cannot
-# break the budget. The rounding is a tie-break, not a guarantee: at 4096
-# patches a 512-row tile is a multiple of 32 and is the slowest shape measured
-# on that grid (1667 ms against 881 ms at 128 rows), and 192/256/341/1024 rows
-# are 24-50% slower than 128 there too. Where those spikes fall is not explained
-# by width or by divisibility; see docs/REFACTOR.md.
+# Why the rounding: on the A4 page, in the two retained sweeps, every measured
+# width that is a multiple of 32 lands in 43318-44831 ms (8 measurements of 256,
+# 288, 320, 352, 512) and every width that is not lands in 46168-48496 ms (5
+# measurements of 300, 325, 336), so every non-multiple is slower than every
+# multiple in its own sweep and the means differ by 7.2%. The tile's `n`
+# dimension is the block, so a width that is not a whole number of 32-lane
+# wavefronts leaves the last wavefront partly idle. The 512 MiB budget derives
+# 325 rows there, which is the slow side of that line; rounding down to 320
+# takes it 47836.19 -> 43318.30 ms (1.104x) in the second sweep and
+# 48496.26 -> 43862.87 ms (1.106x) in the first, and shrinks the tile
+# 510.6 -> 502.7 MiB. Rounding down can only shrink the tile, so it cannot break
+# the budget. The rounding is a tie-break, not a guarantee: an earlier
+# cliff-mapping sweep recorded 400 rows at 45050 ms, within 1.1% of the slowest
+# multiple that sweep measured (352 rows, 44568 ms), and at 4096 patches a
+# 512-row tile is a multiple of 32 and is the slowest shape measured on that
+# grid (1667 ms against 881 ms at 128 rows), with 192/256/341/1024 rows 24-50%
+# slower than 128 there too. Where those spikes fall is not explained by width
+# or by divisibility; see docs/REFACTOR.md.
 #
 # Grid divisibility was the other candidate shape rule and it
 # was tested too: the sweep records `even` (full last tile) per row, and even

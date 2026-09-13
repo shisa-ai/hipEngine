@@ -6519,18 +6519,31 @@ tiles is 1940.93 ms, a 10% gap, and 256/341/1024/2048/4096 rows are all
 multiple the way the A4 page does (64 rows is 2057.20 ms, 96 is 1940.93, 128 is
 2112.64). Revisit when a sweep over more mid-size grids shows what makes it
 different; special-casing one grid would be overfitting.
-- The A4 page's own best measured width is 2048 rows (41622.25 ms), 5.1% below
-the 320-row default, but the byte budget is what stops there (512 MiB admits
-325 rows), not the envelope. Raise `max_vision_scratch_bytes` rather than
-loosen the cap.
+- The A4 page's time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
+3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
+budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
+admits 1073 rows at 34320 patches. Raise `max_vision_scratch_bytes` rather than
+loosen the cap. 4096 rows (6435.0 MiB, 40076.23 ms) is the measured minimum and
+8192 rows is 0.93% slower in the same run, so the return from fewer tiles
+saturates around 9 tiles; `rows / 8` would be 4290 rows here and is not a
+candidate rule (see the envelope's other grids).
 
-Also latent, found while sweeping: a user-raised `max_vision_scratch_bytes`
-above ~6 GB on an A4 grid makes the vision attention fail with
+Also found while sweeping, and now refuted: a user-raised
+`max_vision_scratch_bytes` above ~6 GB on an A4 grid was recorded as making the
+vision attention fail with
 `hipErrorInvalidConfiguration` (error 9) from the `vision score scale` check
-instead of erroring cleanly — block 2048 works and the 4096/8192/34320 rows of
-the same sweep died. The 512 MiB default derives 320 rows and never reaches it.
-Worth a launch-config guard on `_vision_attention_packed` (or a clearer error)
-before the budget is advertised as freely raisable.
+instead of erroring cleanly. **That does not reproduce**: 4096 rows (6435.0 MiB)
+and 8192 rows (12870.0 MiB) both ran cleanly, twice each, in four separate
+processes, at 40076-40449 ms
+(`2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json`). The original sweep's
+logs are not retained, so its cause is unknown and no memory ceiling should be
+taken from it. The 512 MiB default derives 320 rows and never approaches that
+scratch. What is still untested is the dense tile itself — 56.5 GB of score
+matrix at 34320 patches, which is inside the host's 124 GiB GTT aperture but is
+a ~10-15 minute forward and a 56.5 GB allocation on a shared machine, so the A4
+evidence remains shape-to-shape rather than shape-to-dense. If a launch-config
+guard on `_vision_attention_packed` is still wanted, the first question is
+whether the dense tile runs at all.
 
 ## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
 
