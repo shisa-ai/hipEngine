@@ -8,6 +8,11 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+- Source archives now omit repository-only benchmark data, surveys, worklogs,
+  docs, and test fixtures while retaining all wheel build inputs.
+- CI checks every distribution's size before any upload, preventing a partial
+  PyPI release when an artifact exceeds the project limit.
+
 ## v0.5.0 - 2026-09-12
 
 hipEngine now runs more than the Qwen 3.6 35B mixture-of-experts models: dense
