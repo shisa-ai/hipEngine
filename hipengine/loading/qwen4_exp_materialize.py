@@ -552,6 +552,8 @@ class Qwen4ExpPLEMMapTable:
         indices = np.asarray(row_indices, dtype=np.int64)
         if indices.ndim != 1:
             raise ValueError("row_indices must have shape [rows]")
+        if not indices.size:
+            return np.empty((0, self.row_width), dtype=np.float32)
         if indices.size and (
             int(np.min(indices)) < 0 or int(np.max(indices)) >= self.semantic_rows
         ):

@@ -211,6 +211,8 @@ def main():
     parser.add_argument("--method", choices=("sorted_unique", "copy_elision", "dedup_elision", "sampled_dedup_elision", "pread", "pread_workers", "mmap_random"), default="sorted_unique")
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--skip-synthetic", action="store_true")
+    parser.add_argument("--parent-mapping", choices=("normal", "random"), default="normal",
+                        help="fixed mapping policy shared by both non-mapping arms")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     check_host()
@@ -230,6 +232,7 @@ def main():
         tensor = reader.tensor_info("per_layer_token_embd.weight")
         semantic_rows = max(int(o + n) for o, n in zip(cfg.ple_head_offsets, cfg.ple_head_vocab_sizes))
         table = Qwen4ExpPLEMMapTable(reader, tensor, semantic_rows=semantic_rows)
+        table.configure_mapping_access(args.parent_mapping)
         pread = PreadGather(table, workers=8 if args.method == "pread_workers" else 0) if args.method.startswith("pread") else None
         report = {
             "kind": "qwen4exp_ple_sorted_gather_screen", "status": "running",
@@ -238,6 +241,7 @@ def main():
             "model_identity": identity, "fixture_sha256": fixture_hash,
             "command": sys.argv, "cases": [],
             "method": args.method,
+            "parent_mapping": args.parent_mapping,
             "scope": "CPU gather/dequant/scatter plus staging copy; excludes H2D and inference",
             "cache_limit": "cold is file-scoped advice, not proof every requested page was evicted",
         }
