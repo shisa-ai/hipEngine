@@ -1,0 +1,1563 @@
+{
+ "schema": 2,
+ "status": "accepted",
+ "timestamp": "2026-09-13T11:41:01.948087+00:00",
+ "date": "2026-09-13",
+ "run_tag": "gfx1151-q6-planar-prefill-wide-down-row-bands",
+ "kind": "qwen38_gfx1151_q6_planar_wide_down_row_bands",
+ "performance_claim": true,
+ "summary": "The gfx1151 planar-Q6 prefill policy routed the wide down shape (K,N)=(17408,5120) to a 32-row shared tile from row 256. A rows 256-4096 screen of the registered ladder shows that owner 1.4-1.7x off inside its band and 2.4x off above it; retiling to shared4r4 (rows 288-1024) and shared4_gfx1100 (rows >= 1025) lifts Qwen3.8-27B Q4_K_M prefill by 4.7-7.6% at 512/1024/4096 prompt tokens with bit-identical outputs.",
+ "execution_profile": "production",
+ "execution_profile_schema": 1,
+ "variant_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+ "arithmetic_class": "T0",
+ "generated_id_equality": {
+  "binding": false,
+  "diagnostic": {
+   "reason": "prefill tiling change; the selected owners are BF16-bit exact to the plain parent at every screened row, so no generated-id change is expected or required"
+  }
+ },
+ "hardware": {
+  "physical_host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "host_name": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "hardware_queues": 2,
+  "hip_version": "7.15.26333",
+  "compiler_commit": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+ },
+ "model": {
+  "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "recurrent_storage": "fp32"
+ },
+ "workload": {
+  "shape": "512/1024/4096 prompt tokens, one sequential resident session",
+  "warmup_runs": 1,
+  "measured_runs": 3
+ },
+ "commands": {
+  "environment": [
+   "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hip1151-t6/hipcc-version-gfx1151.txt HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE=1"
+  ],
+  "screen": "PYTHONPATH=. .venv/bin/python scripts/qwen38_q6_planar_prefill_large_row_screen.py --rows 256 288 384 480 536 768 1024 1152 1536 2048 3072 4096 --shapes ffn_down attn_v --output screen-bands.json",
+  "benchmark": "PYTHONPATH=. .venv/bin/python scripts/qwen38_gfx1151_readme_sweep.py --prompt-lengths 512 1024 4096 --decode-tokens <16|128> --warmups 1 --repetitions 3 --output raw/<arm>.json",
+  "profiler": "rocprofv3 --kernel-trace --output-format csv -d trace/hipengine-4k -- <same sweep command at 4096>"
+ },
+ "screen": {
+  "kind": "q6-planar-prefill-large-row-screen",
+  "device": "AMD Radeon 8060S Graphics",
+  "geometries": {
+   "plain": "waves2/rows?/cols32",
+   "shared4": "2w x 1r x 32c (32 rows, 64 thr)",
+   "shared3r1": "3w x 1r x 32c (48 rows, 96 thr)",
+   "shared4_row64": "4w x 1r x 48c (64 rows, 128 thr)",
+   "shared4r3": "4w x 3r x 32c (192 rows, 128 thr)",
+   "shared4r4": "4w x 4r x 32c (256 rows, 128 thr)",
+   "shared4r6": "4w x 6r x 32c (384 rows, 128 thr)",
+   "shared4r9": "4w x 9r x 32c (576 rows, 128 thr)",
+   "shared4_gfx1100": "4w x 4r x 48c (256 rows, 128 thr)"
+  },
+  "burst": 8,
+  "warmups": 3,
+  "repetitions": 3,
+  "artifacts": {
+   "screen-bands.json": "6a1aa5ceaf19b4de850f6a0f114144e287de06dc939d134808c0e2310f052574",
+   "screen-ffn-down.json": "e6e8b7b0dde2e94812d89cbcfbf28fb4fe1c5b621ff50e715f9033b266bddb80"
+  },
+  "ffn_down": [
+   {
+    "rows": 256,
+    "previous_owner": "shared4r4",
+    "previous_owner_ms": 1.9265,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 1.9265,
+    "selected_vs_previous": 1.0,
+    "plain_ms": 3.7526,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 3.7526,
+     "shared4": 5.5007,
+     "shared3r1": 5.4384,
+     "shared4_row64": 4.3017,
+     "shared4r3": 2.846,
+     "shared4r4": 1.9265,
+     "shared4r6": 3.4645,
+     "shared4r9": 5.2842,
+     "shared4_gfx1100": 2.9459
+    }
+   },
+   {
+    "rows": 288,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 3.6328,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 3.2028,
+    "selected_vs_previous": 1.134,
+    "plain_ms": 4.0967,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 4.0967,
+     "shared4": 6.1764,
+     "shared3r1": 5.4081,
+     "shared4_row64": 5.2818,
+     "shared4r3": 2.89,
+     "shared4r4": 3.2028,
+     "shared4r6": 3.6328,
+     "shared4r9": 5.7985,
+     "shared4_gfx1100": 4.044
+    }
+   },
+   {
+    "rows": 384,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 4.8978,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 3.5944,
+    "selected_vs_previous": 1.363,
+    "plain_ms": 6.2875,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 6.2875,
+     "shared4": 8.2103,
+     "shared3r1": 7.2341,
+     "shared4_row64": 6.4043,
+     "shared4r3": 3.1886,
+     "shared4r4": 3.5944,
+     "shared4r6": 4.8978,
+     "shared4r9": 5.8561,
+     "shared4_gfx1100": 4.4262
+    }
+   },
+   {
+    "rows": 480,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 6.5733,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 3.9086,
+    "selected_vs_previous": 1.682,
+    "plain_ms": 7.0602,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 7.0602,
+     "shared4": 10.2881,
+     "shared3r1": 8.9507,
+     "shared4_row64": 8.2094,
+     "shared4r3": 4.261,
+     "shared4r4": 3.9086,
+     "shared4r6": 6.5733,
+     "shared4r9": 6.2997,
+     "shared4_gfx1100": 4.6018
+    }
+   },
+   {
+    "rows": 536,
+    "previous_owner": "shared4r9",
+    "previous_owner_ms": 6.5694,
+    "selected_owner": "shared4r9",
+    "selected_owner_ms": 6.5694,
+    "selected_vs_previous": 1.0,
+    "plain_ms": 7.3375,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 7.3375,
+     "shared4": 11.6398,
+     "shared3r1": 10.6777,
+     "shared4_row64": 9.5107,
+     "shared4r3": 4.577,
+     "shared4r4": 5.2362,
+     "shared4r6": 6.8007,
+     "shared4r9": 6.5694,
+     "shared4_gfx1100": 6.2125
+    }
+   },
+   {
+    "rows": 768,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 9.1949,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 6.0861,
+    "selected_vs_previous": 1.511,
+    "plain_ms": 10.4534,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 10.4534,
+     "shared4": 16.4524,
+     "shared3r1": 14.2476,
+     "shared4_row64": 12.3219,
+     "shared4r3": 6.3789,
+     "shared4r4": 6.0861,
+     "shared4r6": 9.1949,
+     "shared4r9": 13.0714,
+     "shared4_gfx1100": 7.7142
+    }
+   },
+   {
+    "rows": 1024,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 12.09,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 8.8124,
+    "selected_vs_previous": 1.372,
+    "plain_ms": 13.1368,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 13.1368,
+     "shared4": 21.9248,
+     "shared3r1": 19.4863,
+     "shared4_row64": 16.1049,
+     "shared4r3": 9.3952,
+     "shared4r4": 8.8124,
+     "shared4r6": 12.09,
+     "shared4r9": 14.0815,
+     "shared4_gfx1100": 9.4839
+    }
+   },
+   {
+    "rows": 1152,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 24.6215,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 10.9548,
+    "selected_vs_previous": 2.248,
+    "plain_ms": 14.9919,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 14.9919,
+     "shared4": 24.6215,
+     "shared3r1": 21.2244,
+     "shared4_row64": 18.2536,
+     "shared4r3": 10.1187,
+     "shared4r4": 10.3577,
+     "shared4r6": 14.2291,
+     "shared4r9": 15.4129,
+     "shared4_gfx1100": 10.9548
+    }
+   },
+   {
+    "rows": 1536,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 32.6927,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 14.04,
+    "selected_vs_previous": 2.329,
+    "plain_ms": 19.6936,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 19.6936,
+     "shared4": 32.6927,
+     "shared3r1": 28.1857,
+     "shared4_row64": 24.0588,
+     "shared4r3": 14.4771,
+     "shared4r4": 15.3448,
+     "shared4r6": 20.7545,
+     "shared4r9": 21.3297,
+     "shared4_gfx1100": 14.04
+    }
+   },
+   {
+    "rows": 2048,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 43.498,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 17.7168,
+    "selected_vs_previous": 2.455,
+    "plain_ms": 26.6753,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 26.6753,
+     "shared4": 43.498,
+     "shared3r1": 37.8175,
+     "shared4_row64": 31.8696,
+     "shared4r3": 21.3865,
+     "shared4r4": 23.1764,
+     "shared4r6": 29.528,
+     "shared4r9": 29.0693,
+     "shared4_gfx1100": 17.7168
+    }
+   },
+   {
+    "rows": 3072,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 65.195,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 27.0254,
+    "selected_vs_previous": 2.412,
+    "plain_ms": 40.1365,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 40.1365,
+     "shared4": 65.195,
+     "shared3r1": 56.2071,
+     "shared4_row64": 47.5482,
+     "shared4r3": 38.0936,
+     "shared4r4": 41.0655,
+     "shared4r6": 46.1517,
+     "shared4r9": 43.877,
+     "shared4_gfx1100": 27.0254
+    }
+   },
+   {
+    "rows": 4096,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 86.8979,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 36.438,
+    "selected_vs_previous": 2.385,
+    "plain_ms": 54.5527,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 54.5527,
+     "shared4": 86.8979,
+     "shared3r1": 75.3971,
+     "shared4_row64": 63.3888,
+     "shared4r3": 54.9986,
+     "shared4r4": 60.6596,
+     "shared4r6": 63.0496,
+     "shared4r9": 57.738,
+     "shared4_gfx1100": 36.438
+    }
+   }
+  ],
+  "attn_v": [
+   {
+    "rows": 256,
+    "previous_owner": "shared4r4",
+    "previous_owner_ms": 0.2446,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 0.2446,
+    "selected_vs_previous": 1.0,
+    "plain_ms": 0.5814,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.5814,
+     "shared4": 0.3084,
+     "shared3r1": 0.4523,
+     "shared4_row64": 0.4323,
+     "shared4r3": 0.2326,
+     "shared4r4": 0.2446,
+     "shared4r6": 0.3323,
+     "shared4r9": 0.5094,
+     "shared4_gfx1100": 0.2849
+    }
+   },
+   {
+    "rows": 288,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 0.3462,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 0.3004,
+    "selected_vs_previous": 1.152,
+    "plain_ms": 0.5458,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.5458,
+     "shared4": 0.3177,
+     "shared3r1": 0.4483,
+     "shared4_row64": 0.4405,
+     "shared4r3": 0.2377,
+     "shared4r4": 0.3004,
+     "shared4r6": 0.3462,
+     "shared4r9": 0.5194,
+     "shared4_gfx1100": 0.3801
+    }
+   },
+   {
+    "rows": 384,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 0.4502,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 0.3312,
+    "selected_vs_previous": 1.359,
+    "plain_ms": 0.6016,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.6016,
+     "shared4": 0.4423,
+     "shared3r1": 0.5198,
+     "shared4_row64": 0.444,
+     "shared4r3": 0.3003,
+     "shared4r4": 0.3312,
+     "shared4r6": 0.4502,
+     "shared4r9": 0.5487,
+     "shared4_gfx1100": 0.3882
+    }
+   },
+   {
+    "rows": 480,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 0.4807,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 0.3792,
+    "selected_vs_previous": 1.268,
+    "plain_ms": 0.6387,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.6387,
+     "shared4": 0.4949,
+     "shared3r1": 0.5475,
+     "shared4_row64": 0.6522,
+     "shared4r3": 0.3555,
+     "shared4r4": 0.3792,
+     "shared4r6": 0.4807,
+     "shared4r9": 0.6507,
+     "shared4_gfx1100": 0.4075
+    }
+   },
+   {
+    "rows": 536,
+    "previous_owner": "shared4r9",
+    "previous_owner_ms": 0.7072,
+    "selected_owner": "shared4r9",
+    "selected_owner_ms": 0.7072,
+    "selected_vs_previous": 1.0,
+    "plain_ms": 0.6644,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.6644,
+     "shared4": 0.583,
+     "shared3r1": 0.7534,
+     "shared4_row64": 0.6567,
+     "shared4r3": 0.3963,
+     "shared4r4": 0.4743,
+     "shared4r6": 0.4906,
+     "shared4r9": 0.7072,
+     "shared4_gfx1100": 0.4163
+    }
+   },
+   {
+    "rows": 768,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 0.7388,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 0.7487,
+    "selected_vs_previous": 0.987,
+    "plain_ms": 0.8201,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 0.8201,
+     "shared4": 0.7391,
+     "shared3r1": 0.9626,
+     "shared4_row64": 0.8662,
+     "shared4r3": 0.778,
+     "shared4r4": 0.7487,
+     "shared4r6": 0.7388,
+     "shared4r9": 0.8124,
+     "shared4_gfx1100": 0.5188
+    }
+   },
+   {
+    "rows": 1024,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 1.1136,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 1.1855,
+    "selected_vs_previous": 0.939,
+    "plain_ms": 1.032,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 1.032,
+     "shared4": 1.0012,
+     "shared3r1": 1.2374,
+     "shared4_row64": 1.0798,
+     "shared4r3": 1.3123,
+     "shared4r4": 1.1855,
+     "shared4r6": 1.1136,
+     "shared4r9": 1.0987,
+     "shared4_gfx1100": 1.0062
+    }
+   },
+   {
+    "rows": 1152,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 1.1239,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 1.0077,
+    "selected_vs_previous": 1.115,
+    "plain_ms": 1.2085,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 1.2085,
+     "shared4": 1.1239,
+     "shared3r1": 1.2585,
+     "shared4_row64": 1.0996,
+     "shared4r3": 1.3756,
+     "shared4r4": 1.4472,
+     "shared4r6": 1.3679,
+     "shared4r9": 1.28,
+     "shared4_gfx1100": 1.0077
+    }
+   },
+   {
+    "rows": 1536,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 1.44,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 1.1235,
+    "selected_vs_previous": 1.282,
+    "plain_ms": 1.7605,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 1.7605,
+     "shared4": 1.44,
+     "shared3r1": 1.7195,
+     "shared4_row64": 1.5104,
+     "shared4r3": 1.5083,
+     "shared4r4": 2.0902,
+     "shared4r6": 2.2428,
+     "shared4r9": 1.9833,
+     "shared4_gfx1100": 1.1235
+    }
+   },
+   {
+    "rows": 2048,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 1.9289,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 1.4465,
+    "selected_vs_previous": 1.333,
+    "plain_ms": 3.3988,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 3.3988,
+     "shared4": 1.9289,
+     "shared3r1": 2.1938,
+     "shared4_row64": 1.9364,
+     "shared4r3": 1.8014,
+     "shared4r4": 2.2166,
+     "shared4r6": 2.3852,
+     "shared4r9": 2.4489,
+     "shared4_gfx1100": 1.4465
+    }
+   },
+   {
+    "rows": 3072,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 2.9706,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 1.9445,
+    "selected_vs_previous": 1.528,
+    "plain_ms": 3.7761,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 3.7761,
+     "shared4": 2.9706,
+     "shared3r1": 3.2119,
+     "shared4_row64": 2.8434,
+     "shared4r3": 2.2716,
+     "shared4r4": 2.6539,
+     "shared4r6": 3.0412,
+     "shared4r9": 3.2898,
+     "shared4_gfx1100": 1.9445
+    }
+   },
+   {
+    "rows": 4096,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 3.9031,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 2.4393,
+    "selected_vs_previous": 1.6,
+    "plain_ms": 4.9179,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 4.9179,
+     "shared4": 3.9031,
+     "shared3r1": 4.3803,
+     "shared4_row64": 3.7483,
+     "shared4r3": 2.7041,
+     "shared4r4": 3.2079,
+     "shared4r6": 3.484,
+     "shared4r9": 4.1121,
+     "shared4_gfx1100": 2.4393
+    }
+   }
+  ],
+  "ffn_down_including_row512": [
+   {
+    "rows": 256,
+    "previous_owner": "shared4r4",
+    "previous_owner_ms": 1.9258,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 1.9258,
+    "selected_vs_previous": 1.0,
+    "plain_ms": 3.7964,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 3.7964,
+     "shared4": 5.494,
+     "shared3r1": 5.4458,
+     "shared4_row64": 4.3273,
+     "shared4r3": 2.7779,
+     "shared4r4": 1.9258,
+     "shared4r6": 3.4625,
+     "shared4r9": 5.2634,
+     "shared4_gfx1100": 2.9278
+    }
+   },
+   {
+    "rows": 512,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 6.6937,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 4.1044,
+    "selected_vs_previous": 1.631,
+    "plain_ms": 7.0565,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 7.0565,
+     "shared4": 10.9827,
+     "shared3r1": 9.8047,
+     "shared4_row64": 8.1381,
+     "shared4r3": 4.4267,
+     "shared4r4": 4.1044,
+     "shared4r6": 6.6937,
+     "shared4r9": 6.4166,
+     "shared4_gfx1100": 4.7215
+    }
+   },
+   {
+    "rows": 1024,
+    "previous_owner": "shared4r6",
+    "previous_owner_ms": 12.2247,
+    "selected_owner": "shared4r4",
+    "selected_owner_ms": 8.7323,
+    "selected_vs_previous": 1.4,
+    "plain_ms": 13.1477,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 13.1477,
+     "shared4": 21.9013,
+     "shared3r1": 19.4687,
+     "shared4_row64": 16.1026,
+     "shared4r3": 9.3773,
+     "shared4r4": 8.7323,
+     "shared4r6": 12.2247,
+     "shared4r9": 14.1241,
+     "shared4_gfx1100": 9.4638
+    }
+   },
+   {
+    "rows": 2048,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 43.4907,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 17.7094,
+    "selected_vs_previous": 2.456,
+    "plain_ms": 26.7187,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 26.7187,
+     "shared4": 43.4907,
+     "shared3r1": 37.8097,
+     "shared4_row64": 31.8335,
+     "shared4r3": 21.0137,
+     "shared4r4": 23.1089,
+     "shared4r6": 28.8686,
+     "shared4r9": 29.0876,
+     "shared4_gfx1100": 17.7094
+    }
+   },
+   {
+    "rows": 4096,
+    "previous_owner": "shared4",
+    "previous_owner_ms": 86.9165,
+    "selected_owner": "shared4_gfx1100",
+    "selected_owner_ms": 36.0858,
+    "selected_vs_previous": 2.409,
+    "plain_ms": 54.5659,
+    "all_owners_bit_equal_to_plain": true,
+    "max_abs_vs_plain": 0.0,
+    "owners_ms": {
+     "plain": 54.5659,
+     "shared4": 86.9165,
+     "shared3r1": 75.4232,
+     "shared4_row64": 63.4398,
+     "shared4r3": 54.1017,
+     "shared4r4": 60.8389,
+     "shared4r6": 64.5603,
+     "shared4r9": 57.8026,
+     "shared4_gfx1100": 36.0858
+    }
+   }
+  ],
+  "reproducibility": {
+   "shared_rows": [
+    256,
+    1024,
+    2048,
+    4096
+   ],
+   "worst_owner_rel_diff_pct": 2.451,
+   "worst_owner": {
+    "rows": 256,
+    "owner": "shared4r3",
+    "a_ms": 2.846,
+    "b_ms": 2.7779
+   },
+   "worst_selected_owner_rel_diff_pct": 0.976,
+   "worst_selected_owner": {
+    "rows": 4096,
+    "owner": "shared4_gfx1100",
+    "a_ms": 36.438,
+    "b_ms": 36.0858
+   }
+  },
+  "note": "Row 256 already selected shared4r4 under the previous policy via the exact-row rule, so its selected_vs_previous ratio of 1.00 is the status quo rather than a gain; rows 288-1024 are the ones this change moved."
+ },
+ "correctness": {
+  "passed": true,
+  "oracle": "plain planar-qmicro Q6T16 WMMA prefill parent",
+  "bit_exact_owners": true,
+  "max_abs_vs_plain": 0.0,
+  "screened_rows": 12,
+  "screened_shapes": [
+   "ffn_down (17408,5120)",
+   "attn_v (5120,1024)"
+  ],
+  "graph_eager_gate": {
+   "prompts": 18,
+   "all_passed": true,
+   "ids_exact": true,
+   "state_exact": true,
+   "final_logits_exact": true,
+   "by_category": {
+    "code": {
+     "prompts": 6,
+     "passed": 6
+    },
+    "general_en": {
+     "prompts": 4,
+     "passed": 4
+    },
+    "general_ja": {
+     "prompts": 4,
+     "passed": 4
+    },
+    "mixed_ja_en": {
+     "prompts": 4,
+     "passed": 4
+    }
+   },
+   "state_sha256": [
+    "159d2aecbea5d2d1892533ca45a962f00ae93902a6f5586d874ef34e83a42504",
+    "1bd1781804f380a088ecf18dfcdc2c970282a59f7dee5c16f6dfc4e8176384db",
+    "1fba97404575919ab732192fd4686ebf506c7700eeb86c8d71f1e8074c1a01c3",
+    "2f44bb079bb605755c71fd6776ea40c78edef65c21367679aaf7780b779f8790",
+    "3c8d676290632bd67de0c7342d433a076fd6979823aa299edbad6e2d25e3db46",
+    "4ae19edae3dfe052cefeb67c866fd7ce952bab46f43354a4d34f92fbd276e496",
+    "5addf32e6febfc879b89827c5d22cb5b47833dd9ddbf699f4428f7ea5ef5ca36",
+    "83687f5ae05a040e8d1eedb521bb3a4a7e144e79c1cf84c1c7f74b6e15060006",
+    "8a3241e30166948e9aa9b63ced8125c378917dbcc0778d419d7ad6f073a22545",
+    "93e9c89523c547454d06c4f7fc739b17a4d3caf423694e0c5c06347c30bde61e",
+    "94122b7acbb245a492ede9e8a28d2629973fad75ebacf19c465b0ba39bebd808",
+    "a76225eb81a53bbcd497d5c3f27238758a9dae147a5b20bdca8faa88efb1a48c",
+    "afa632b894ecf3ea8406b421889a9c13b6d0aa40c84050668bccddb5cfd5ce6b",
+    "b5c9990834c91bbf3f09fbbf97e0009a619137ae14d68a25fa999406aa617920",
+    "c233c43b1514d68164436f9ea391380f184469b38d40572cd3fe97774394707d",
+    "c65b7bf293475cae49ab332f07a75e96e98fca2e1397304cdf9e02cf8b368694",
+    "dde438c0610f80032891855aab1b7350aaab606c99ee7587f3312b5d0e87bcc0",
+    "e282fce143baf1769aee17e8230482e91679ab2ee8c6b9902804b2ec61b2b2b9"
+   ]
+  },
+  "graph_eager_state_sha256_matches_baseline": true,
+  "control_semantics_passed": true,
+  "note": "Every sibling in the family shares the K16 WMMA association and BF16 store; the screen compares each owner's full output buffer against the plain parent at every row count. The retile changes no arithmetic, only tile geometry."
+ },
+ "profiled_call_sites": {
+  "source": "rocprofv3 --kernel-trace of a 4096-token prefill under the previous policy",
+  "wide_down_rows1024_calls": 96,
+  "wide_down_rows1024_ms_each": 12.09,
+  "wide_down_rows4096_calls": 8,
+  "wide_down_rows4096_ms_each": 86.8,
+  "share_of_prefill_kernel_time": 0.167,
+  "note": "Rows 1024 are the four GDN-layer prompt chunks; rows 4096 are the single full-attention layer pass."
+ },
+ "comparison_basis": "Same physical host (machine-id 55ea6c50..., host name gfx1151), same model file, same resident-sweep protocol as benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json (commit a2f62c881), except that the retained headline refresh ran from a clean export tree at /tmp/hipengine-qwen38-release-20260913 and these arms ran from the live checkout, where no file under hipengine/ differs from the measured commit.",
+ "prefill_comparison": {
+  "512/128": {
+   "baseline_prefill_tok_s": 405.02607554095005,
+   "after_prefill_tok_s": 434.41807034576937,
+   "delta_pct": 7.26,
+   "clean_rerun_prefill_tok_s": 435.4234465169532,
+   "clean_rerun_stdev_pct": 0.029646050608246877,
+   "baseline_decode_tok_s": 12.225910903462704,
+   "clean_rerun_decode_tok_s": 12.214244087103022,
+   "decode_delta_pct": -0.1
+  },
+  "1024/128": {
+   "baseline_prefill_tok_s": 395.97765490860144,
+   "after_prefill_tok_s": 414.6266396438344,
+   "delta_pct": 4.71,
+   "clean_rerun_prefill_tok_s": 414.74858072579826,
+   "clean_rerun_stdev_pct": 0.13834700566615982,
+   "baseline_decode_tok_s": 12.013925539435107,
+   "clean_rerun_decode_tok_s": 11.98232782584036,
+   "decode_delta_pct": -0.26
+  },
+  "4096/128": {
+   "baseline_prefill_tok_s": 373.2461703138098,
+   "after_prefill_tok_s": 401.03708836883624,
+   "delta_pct": 7.45,
+   "clean_rerun_prefill_tok_s": 401.4150795317486,
+   "clean_rerun_stdev_pct": 0.10018703173161876,
+   "baseline_decode_tok_s": 12.158478062427225,
+   "clean_rerun_decode_tok_s": 12.136960656114903,
+   "decode_delta_pct": -0.18
+  }
+ },
+ "arms": {
+  "baseline": {
+   "artifact": "raw/prefill-baseline-b984176-16decode.json",
+   "artifact_sha256": "5950a6fe65fc722df5b3d23b7d17ff3e317628178802a49c91f9bd452e08a5d1",
+   "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-13T11:09:16.929924+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "b98417620eeeeced45ef595391b45357048a7a09",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 4,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+     "algorithm": "sha256-sampled-v1",
+     "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+     "size_bytes": 17106775008,
+     "sampled_bytes": 3145728,
+     "sample_offsets": [
+      0,
+      8552863216,
+      17105726432
+     ],
+     "exists": true,
+     "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+     "/home/lhl/hipEngine/.venv/bin/python",
+     "scripts/qwen38_gfx1151_readme_sweep.py",
+     "--prompt-lengths",
+     "512",
+     "1024",
+     "4096",
+     "--decode-tokens",
+     "16",
+     "--warmups",
+     "1",
+     "--repetitions",
+     "3",
+     "--output",
+     "/tmp/qwen38-ablation/prefill-ab-baseline.json"
+    ],
+    "environment": {
+     "GPU_MAX_HW_QUEUES": "2",
+     "HIPENGINE_HIP_ARCH": "gfx1151",
+     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+     "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+     "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public_profile_readme_sweep",
+    "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+     "enabled": false
+    }
+   },
+   "decode_tokens": 16,
+   "execution_profile": "production",
+   "variant_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+   "performance_claim": false,
+   "limitation": "Publication requires separately linked profile quality and serving gates",
+   "graph_eager_gate": {
+    "prompts": 18,
+    "all_passed": true,
+    "ids_exact": true,
+    "state_exact": true,
+    "final_logits_exact": true,
+    "by_category": {
+     "code": {
+      "prompts": 6,
+      "passed": 6
+     },
+     "general_en": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "general_ja": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "mixed_ja_en": {
+      "prompts": 4,
+      "passed": 4
+     }
+    },
+    "state_sha256": [
+     "159d2aecbea5d2d1892533ca45a962f00ae93902a6f5586d874ef34e83a42504",
+     "1bd1781804f380a088ecf18dfcdc2c970282a59f7dee5c16f6dfc4e8176384db",
+     "1fba97404575919ab732192fd4686ebf506c7700eeb86c8d71f1e8074c1a01c3",
+     "2f44bb079bb605755c71fd6776ea40c78edef65c21367679aaf7780b779f8790",
+     "3c8d676290632bd67de0c7342d433a076fd6979823aa299edbad6e2d25e3db46",
+     "4ae19edae3dfe052cefeb67c866fd7ce952bab46f43354a4d34f92fbd276e496",
+     "5addf32e6febfc879b89827c5d22cb5b47833dd9ddbf699f4428f7ea5ef5ca36",
+     "83687f5ae05a040e8d1eedb521bb3a4a7e144e79c1cf84c1c7f74b6e15060006",
+     "8a3241e30166948e9aa9b63ced8125c378917dbcc0778d419d7ad6f073a22545",
+     "93e9c89523c547454d06c4f7fc739b17a4d3caf423694e0c5c06347c30bde61e",
+     "94122b7acbb245a492ede9e8a28d2629973fad75ebacf19c465b0ba39bebd808",
+     "a76225eb81a53bbcd497d5c3f27238758a9dae147a5b20bdca8faa88efb1a48c",
+     "afa632b894ecf3ea8406b421889a9c13b6d0aa40c84050668bccddb5cfd5ce6b",
+     "b5c9990834c91bbf3f09fbbf97e0009a619137ae14d68a25fa999406aa617920",
+     "c233c43b1514d68164436f9ea391380f184469b38d40572cd3fe97774394707d",
+     "c65b7bf293475cae49ab332f07a75e96e98fca2e1397304cdf9e02cf8b368694",
+     "dde438c0610f80032891855aab1b7350aaab606c99ee7587f3312b5d0e87bcc0",
+     "e282fce143baf1769aee17e8230482e91679ab2ee8c6b9902804b2ec61b2b2b9"
+    ]
+   },
+   "rows": {
+    "512/16": {
+     "prompt_length": 512,
+     "prefill_tok_s": {
+      "samples": [
+       405.2532734691887,
+       405.02607554095005,
+       404.7781530384379
+      ],
+      "median": 405.02607554095005,
+      "p95": 405.02607554095005,
+      "min": 404.7781530384379,
+      "max": 405.2532734691887,
+      "stdev": 0.2376355366117886,
+      "stdev_pct_of_median": 0.05867166361928777
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.225910903462704,
+       12.220965922809812,
+       12.243885743266214
+      ],
+      "median": 12.225910903462704,
+      "p95": 12.225910903462704,
+      "min": 12.220965922809812,
+      "max": 12.243885743266214,
+      "stdev": 0.012061411397323907,
+      "stdev_pct_of_median": 0.09865450102296912
+     }
+    },
+    "1024/16": {
+     "prompt_length": 1024,
+     "prefill_tok_s": {
+      "samples": [
+       395.97765490860144,
+       395.4769937409297,
+       396.0126874762607
+      ],
+      "median": 395.97765490860144,
+      "p95": 395.97765490860144,
+      "min": 395.4769937409297,
+      "max": 396.0126874762607,
+      "stdev": 0.29968223829141494,
+      "stdev_pct_of_median": 0.07568160338759186
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.014244287400393,
+       12.009582594414924,
+       12.013925539435107
+      ],
+      "median": 12.013925539435107,
+      "p95": 12.013925539435107,
+      "min": 12.009582594414924,
+      "max": 12.014244287400393,
+      "stdev": 0.002604296232653147,
+      "stdev_pct_of_median": 0.02167731291578823
+     }
+    },
+    "4096/16": {
+     "prompt_length": 4096,
+     "prefill_tok_s": {
+      "samples": [
+       373.1447329395791,
+       373.39337830744205,
+       373.2461703138098
+      ],
+      "median": 373.2461703138098,
+      "p95": 373.2461703138098,
+      "min": 373.1447329395791,
+      "max": 373.39337830744205,
+      "stdev": 0.12502283340770454,
+      "stdev_pct_of_median": 0.03349607935765036
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.158079051457438,
+       12.158478062427225,
+       12.16235575869846
+      ],
+      "median": 12.158478062427225,
+      "p95": 12.158478062427225,
+      "min": 12.158079051457438,
+      "max": 12.16235575869846,
+      "stdev": 0.0023624127127217036,
+      "stdev_pct_of_median": 0.019430167991355406
+     }
+    }
+   }
+  },
+  "after_16_decode": {
+   "artifact": "raw/prefill-after-fca92ac-16decode.json",
+   "artifact_sha256": "3dce1ae76de2ed1907cb64a758b255bae976368b879e2761adac4fff9aaae3f0",
+   "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-13T11:15:23.918914+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "b98417620eeeeced45ef595391b45357048a7a09",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 4,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+     "algorithm": "sha256-sampled-v1",
+     "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+     "size_bytes": 17106775008,
+     "sampled_bytes": 3145728,
+     "sample_offsets": [
+      0,
+      8552863216,
+      17105726432
+     ],
+     "exists": true,
+     "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+     "/home/lhl/hipEngine/.venv/bin/python",
+     "scripts/qwen38_gfx1151_readme_sweep.py",
+     "--prompt-lengths",
+     "512",
+     "1024",
+     "4096",
+     "--decode-tokens",
+     "16",
+     "--warmups",
+     "1",
+     "--repetitions",
+     "3",
+     "--output",
+     "/tmp/qwen38-ablation/prefill-ab-q6rowfix.json"
+    ],
+    "environment": {
+     "GPU_MAX_HW_QUEUES": "2",
+     "HIPENGINE_HIP_ARCH": "gfx1151",
+     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+     "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+     "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public_profile_readme_sweep",
+    "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+     "enabled": false
+    }
+   },
+   "decode_tokens": 16,
+   "execution_profile": "production",
+   "variant_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+   "performance_claim": false,
+   "limitation": "Publication requires separately linked profile quality and serving gates",
+   "graph_eager_gate": {
+    "prompts": 18,
+    "all_passed": true,
+    "ids_exact": true,
+    "state_exact": true,
+    "final_logits_exact": true,
+    "by_category": {
+     "code": {
+      "prompts": 6,
+      "passed": 6
+     },
+     "general_en": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "general_ja": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "mixed_ja_en": {
+      "prompts": 4,
+      "passed": 4
+     }
+    },
+    "state_sha256": [
+     "159d2aecbea5d2d1892533ca45a962f00ae93902a6f5586d874ef34e83a42504",
+     "1bd1781804f380a088ecf18dfcdc2c970282a59f7dee5c16f6dfc4e8176384db",
+     "1fba97404575919ab732192fd4686ebf506c7700eeb86c8d71f1e8074c1a01c3",
+     "2f44bb079bb605755c71fd6776ea40c78edef65c21367679aaf7780b779f8790",
+     "3c8d676290632bd67de0c7342d433a076fd6979823aa299edbad6e2d25e3db46",
+     "4ae19edae3dfe052cefeb67c866fd7ce952bab46f43354a4d34f92fbd276e496",
+     "5addf32e6febfc879b89827c5d22cb5b47833dd9ddbf699f4428f7ea5ef5ca36",
+     "83687f5ae05a040e8d1eedb521bb3a4a7e144e79c1cf84c1c7f74b6e15060006",
+     "8a3241e30166948e9aa9b63ced8125c378917dbcc0778d419d7ad6f073a22545",
+     "93e9c89523c547454d06c4f7fc739b17a4d3caf423694e0c5c06347c30bde61e",
+     "94122b7acbb245a492ede9e8a28d2629973fad75ebacf19c465b0ba39bebd808",
+     "a76225eb81a53bbcd497d5c3f27238758a9dae147a5b20bdca8faa88efb1a48c",
+     "afa632b894ecf3ea8406b421889a9c13b6d0aa40c84050668bccddb5cfd5ce6b",
+     "b5c9990834c91bbf3f09fbbf97e0009a619137ae14d68a25fa999406aa617920",
+     "c233c43b1514d68164436f9ea391380f184469b38d40572cd3fe97774394707d",
+     "c65b7bf293475cae49ab332f07a75e96e98fca2e1397304cdf9e02cf8b368694",
+     "dde438c0610f80032891855aab1b7350aaab606c99ee7587f3312b5d0e87bcc0",
+     "e282fce143baf1769aee17e8230482e91679ab2ee8c6b9902804b2ec61b2b2b9"
+    ]
+   },
+   "rows": {
+    "512/16": {
+     "prompt_length": 512,
+     "prefill_tok_s": {
+      "samples": [
+       434.5995111752286,
+       434.17246259260264,
+       434.41807034576937
+      ],
+      "median": 434.41807034576937,
+      "p95": 434.41807034576937,
+      "min": 434.17246259260264,
+      "max": 434.5995111752286,
+      "stdev": 0.21432624467281186,
+      "stdev_pct_of_median": 0.04933640179889886
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.22618467851077,
+       12.227050892828652,
+       12.236616672777787
+      ],
+      "median": 12.227050892828652,
+      "p95": 12.227050892828652,
+      "min": 12.22618467851077,
+      "max": 12.236616672777787,
+      "stdev": 0.005789084234817368,
+      "stdev_pct_of_median": 0.04734652931078214
+     }
+    },
+    "1024/16": {
+     "prompt_length": 1024,
+     "prefill_tok_s": {
+      "samples": [
+       413.78229760328674,
+       414.9934562644207,
+       414.6266396438344
+      ],
+      "median": 414.6266396438344,
+      "p95": 414.6266396438344,
+      "min": 413.78229760328674,
+      "max": 414.9934562644207,
+      "stdev": 0.6210707443620059,
+      "stdev_pct_of_median": 0.1497903619737284
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.005602847867802,
+       12.009045705705441,
+       12.008711284754577
+      ],
+      "median": 12.008711284754577,
+      "p95": 12.008711284754577,
+      "min": 12.005602847867802,
+      "max": 12.009045705705441,
+      "stdev": 0.0018985734706892788,
+      "stdev_pct_of_median": 0.01580996849428444
+     }
+    },
+    "4096/16": {
+     "prompt_length": 4096,
+     "prefill_tok_s": {
+      "samples": [
+       401.03708836883624,
+       400.75746550689865,
+       401.15810871018385
+      ],
+      "median": 401.03708836883624,
+      "p95": 401.03708836883624,
+      "min": 400.75746550689865,
+      "max": 401.15810871018385,
+      "stdev": 0.20548716272826842,
+      "stdev_pct_of_median": 0.05123894240407027
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.130309127931964,
+       12.11687975063723,
+       12.089780458734767
+      ],
+      "median": 12.11687975063723,
+      "p95": 12.11687975063723,
+      "min": 12.089780458734767,
+      "max": 12.130309127931964,
+      "stdev": 0.0206449865707354,
+      "stdev_pct_of_median": 0.17038203725385387
+     }
+    }
+   }
+  },
+  "after_128_decode": {
+   "artifact": "raw/prefill-after-fca92ac-128decode.json",
+   "artifact_sha256": "f69f92b2751d6f20582fc364a81661277518a108676aa47ef5d7145bd5292bc7",
+   "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-13T11:23:32.988055+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 3,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+     "algorithm": "sha256-sampled-v1",
+     "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+     "size_bytes": 17106775008,
+     "sampled_bytes": 3145728,
+     "sample_offsets": [
+      0,
+      8552863216,
+      17105726432
+     ],
+     "exists": true,
+     "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+     "/home/lhl/hipEngine/.venv/bin/python",
+     "scripts/qwen38_gfx1151_readme_sweep.py",
+     "--prompt-lengths",
+     "512",
+     "1024",
+     "4096",
+     "--decode-tokens",
+     "128",
+     "--warmups",
+     "1",
+     "--repetitions",
+     "3",
+     "--output",
+     "/tmp/qwen38-ablation/prefill-ab-q6rowfix-clean.json"
+    ],
+    "environment": {
+     "GPU_MAX_HW_QUEUES": "2",
+     "HIPENGINE_HIP_ARCH": "gfx1151",
+     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+     "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+     "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public_profile_readme_sweep",
+    "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+     "enabled": false
+    }
+   },
+   "decode_tokens": 128,
+   "execution_profile": "production",
+   "variant_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+   "performance_claim": false,
+   "limitation": "Publication requires separately linked profile quality and serving gates",
+   "graph_eager_gate": {
+    "prompts": 18,
+    "all_passed": true,
+    "ids_exact": true,
+    "state_exact": true,
+    "final_logits_exact": true,
+    "by_category": {
+     "code": {
+      "prompts": 6,
+      "passed": 6
+     },
+     "general_en": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "general_ja": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "mixed_ja_en": {
+      "prompts": 4,
+      "passed": 4
+     }
+    },
+    "state_sha256": [
+     "159d2aecbea5d2d1892533ca45a962f00ae93902a6f5586d874ef34e83a42504",
+     "1bd1781804f380a088ecf18dfcdc2c970282a59f7dee5c16f6dfc4e8176384db",
+     "1fba97404575919ab732192fd4686ebf506c7700eeb86c8d71f1e8074c1a01c3",
+     "2f44bb079bb605755c71fd6776ea40c78edef65c21367679aaf7780b779f8790",
+     "3c8d676290632bd67de0c7342d433a076fd6979823aa299edbad6e2d25e3db46",
+     "4ae19edae3dfe052cefeb67c866fd7ce952bab46f43354a4d34f92fbd276e496",
+     "5addf32e6febfc879b89827c5d22cb5b47833dd9ddbf699f4428f7ea5ef5ca36",
+     "83687f5ae05a040e8d1eedb521bb3a4a7e144e79c1cf84c1c7f74b6e15060006",
+     "8a3241e30166948e9aa9b63ced8125c378917dbcc0778d419d7ad6f073a22545",
+     "93e9c89523c547454d06c4f7fc739b17a4d3caf423694e0c5c06347c30bde61e",
+     "94122b7acbb245a492ede9e8a28d2629973fad75ebacf19c465b0ba39bebd808",
+     "a76225eb81a53bbcd497d5c3f27238758a9dae147a5b20bdca8faa88efb1a48c",
+     "afa632b894ecf3ea8406b421889a9c13b6d0aa40c84050668bccddb5cfd5ce6b",
+     "b5c9990834c91bbf3f09fbbf97e0009a619137ae14d68a25fa999406aa617920",
+     "c233c43b1514d68164436f9ea391380f184469b38d40572cd3fe97774394707d",
+     "c65b7bf293475cae49ab332f07a75e96e98fca2e1397304cdf9e02cf8b368694",
+     "dde438c0610f80032891855aab1b7350aaab606c99ee7587f3312b5d0e87bcc0",
+     "e282fce143baf1769aee17e8230482e91679ab2ee8c6b9902804b2ec61b2b2b9"
+    ]
+   },
+   "rows": {
+    "512/128": {
+     "prompt_length": 512,
+     "prefill_tok_s": {
+      "samples": [
+       435.4234465169532,
+       435.2016350026759,
+       435.42694885929797
+      ],
+      "median": 435.4234465169532,
+      "p95": 435.4234465169532,
+      "min": 435.2016350026759,
+      "max": 435.42694885929797,
+      "stdev": 0.12908585531458872,
+      "stdev_pct_of_median": 0.029646050608246877
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.2142797426365,
+       12.214244087103022,
+       12.209476809194777
+      ],
+      "median": 12.214244087103022,
+      "p95": 12.214244087103022,
+      "min": 12.209476809194777,
+      "max": 12.2142797426365,
+      "stdev": 0.0027627395708221484,
+      "stdev_pct_of_median": 0.022618997550076108
+     }
+    },
+    "1024/128": {
+     "prompt_length": 1024,
+     "prefill_tok_s": {
+      "samples": [
+       414.3998544415458,
+       414.74858072579826,
+       415.5210571142072
+      ],
+      "median": 414.74858072579826,
+      "p95": 414.74858072579826,
+      "min": 414.3998544415458,
+      "max": 415.5210571142072,
+      "stdev": 0.5737922424770375,
+      "stdev_pct_of_median": 0.13834700566615982
+     },
+     "decode_tok_s": {
+      "samples": [
+       11.982228220457271,
+       11.98232782584036,
+       11.982393707319774
+      ],
+      "median": 11.98232782584036,
+      "p95": 11.98232782584036,
+      "min": 11.982228220457271,
+      "max": 11.982393707319774,
+      "stdev": 8.3314167793954e-05,
+      "stdev_pct_of_median": 0.0006953086996525311
+     }
+    },
+    "4096/128": {
+     "prompt_length": 4096,
+     "prefill_tok_s": {
+      "samples": [
+       401.529696831745,
+       401.4150795317486,
+       400.782925147118
+      ],
+      "median": 401.4150795317486,
+      "p95": 401.4150795317486,
+      "min": 400.782925147118,
+      "max": 401.529696831745,
+      "stdev": 0.40216585310597563,
+      "stdev_pct_of_median": 0.10018703173161876
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.137641678619744,
+       12.136960656114903,
+       12.136806098874652
+      ],
+      "median": 12.136960656114903,
+      "p95": 12.136960656114903,
+      "min": 12.136806098874652,
+      "max": 12.137641678619744,
+      "stdev": 0.00044457341032735274,
+      "stdev_pct_of_median": 0.003662971504347471
+     }
+    }
+   }
+  },
+  "cross_tree_baseline_export": {
+   "kind": "live_checkout_vs_frozen_release_export",
+   "note": "The same command run back to back on the same host against the live checkout (retiled) and the frozen release export at a2f62c881 (no retile). The export arm is an independent same-day reproduction of the pre-change baseline on a different tree, and it also shows why the process-tracked high-water mark differs between the two trees.",
+   "live_checkout": {
+    "artifact": "raw/memory-ab-live.json",
+    "artifact_sha256": "622f497b43ec11ea139ae14cd6e6e5a905d706a73d6a5f082b45e66c7d801b30",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
+    "dirty": true,
+    "rows": {
+     "512/128": {
+      "prefill_tok_s": 436.062001419833,
+      "decode_tok_s": 12.21733161208772,
+      "tracked_peak_gib": 37.42757194489241,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 26.289146423339844
+     },
+     "1024/128": {
+      "prefill_tok_s": 413.20938147167436,
+      "decode_tok_s": 11.98636022508625,
+      "tracked_peak_gib": 37.42757194489241,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 26.289146423339844
+     },
+     "4096/128": {
+      "prefill_tok_s": 400.24486076431856,
+      "decode_tok_s": 12.139556666438773,
+      "tracked_peak_gib": 37.42757194489241,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 26.34903335571289
+     }
+    }
+   },
+   "frozen_export": {
+    "artifact": "raw/memory-ab-export.json",
+    "artifact_sha256": "6d18d1726721fc5ad68bb289ae5ff19f821534ad771b4467d69f59e56afcceef",
+    "repo_root": "/tmp/hipengine-qwen38-release-20260913",
+    "hipengine_commit": "a2f62c881ba5a2a9c0be280a67de233fd7088091",
+    "dirty": false,
+    "rows": {
+     "512/128": {
+      "prefill_tok_s": 404.60486937646016,
+      "decode_tok_s": 12.222452634718053,
+      "tracked_peak_gib": 24.15250550955534,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 24.789146423339844
+     },
+     "1024/128": {
+      "prefill_tok_s": 395.81843951517146,
+      "decode_tok_s": 11.99159748107487,
+      "tracked_peak_gib": 24.15250550955534,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 24.789146423339844
+     },
+     "4096/128": {
+      "prefill_tok_s": 373.3749591251545,
+      "decode_tok_s": 12.145343093139429,
+      "tracked_peak_gib": 24.15250550955534,
+      "session_owned_peak_gib": 19.809751085937023,
+      "device_used_peak_gib": 24.84903335571289
+     }
+    }
+   },
+   "live_vs_export_prefill_pct": {
+    "512/128": 7.77,
+    "1024/128": 4.39,
+    "4096/128": 7.2
+   },
+   "pre_change_baseline_reproduction_pct": {
+    "512/128": 0.1,
+    "1024/128": 0.04,
+    "4096/128": -0.03
+   },
+   "tracked_peak_delta_gib": 13.275,
+   "tracked_peak_explanation": "The process high-water mark tracks hipEngine's own allocations, and the live checkout contains a038c2f9f 'size the dense GGUF resident context from free HIP memory', which sizes the resident context from free device memory instead of a fixed small context. On this 120 GB host that reservation dominates the high-water mark. It is not a throughput or session-ownership change: session-owned peak is identical in both arms and the pre-retile prefill rates agree within 0.21%."
+  }
+ },
+ "limitations": [
+  "One physical gfx1151 host; the same GPU model on another host is an independent lane and its absolute rates are not an old-to-new comparison against these numbers.",
+  "Between-sweep variation is larger than the within-run stdev: two back-to-back sweeps of the retiled tree gave 435.423/414.749/401.415 and 436.062/413.209/400.245 tok/s, a spread of 0.37%, while the within-run stdev is 0.03-0.14%.",
+  "The screen covers the (17408,5120) and (5120,1024) planar shapes. The (5120,1024) bands were measured but deliberately not changed.",
+  "The clean rerun at fca92ac62 reported dirty=true because benchmark prose in benchmarks/results/20260913-qwen38-27b-comparison/ was edited while it ran; no file under hipengine/ differs from that commit.",
+  "Decode is unchanged by construction (the planar Q6 decode GEMV selector is untouched) and measured 0.10-0.26% below the baseline across the three prompt lengths, which is small and consistent in sign but larger than the within-run stdev; the residual is not attributed and no decode path was changed.",
+  "The process-tracked high-water mark in these arms is dominated by the auto-sized resident context reservation described in arms.cross_tree_baseline_export, not by session ownership."
+ ],
+ "decision": "Promoted to the default gfx1151 planar-Q6 prefill policy for the wide down shape; the previous band is retained in git history only. All other shapes and bands are unchanged."
+}

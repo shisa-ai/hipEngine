@@ -37,7 +37,7 @@ figures use an explicitly enabled mode.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **435.4** | **12.2** | 21.0 | — |
 
 Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
 a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched
@@ -745,18 +745,29 @@ backend-selected HIP graph path.
 
 | Shape | Prefill | AR decode | Tracked peak |
 | --- | ---: | ---: | ---: |
-| 512/128 | **404.487 tok/s** | **12.226 tok/s** | 24.153 GiB |
-| 1K/128 | **395.000 tok/s** | **11.997 tok/s** | 24.153 GiB |
-| 4K/128 | **373.218 tok/s** | **12.153 tok/s** | 24.153 GiB |
+| 512/128 | **435.423 tok/s** | **12.214 tok/s** | 37.428 GiB |
+| 1K/128 | **414.749 tok/s** | **11.982 tok/s** | 37.428 GiB |
+| 4K/128 | **401.415 tok/s** | **12.137 tok/s** | 37.428 GiB |
 
-Every prefill/decode CV is below 0.22%. All timed final logits are finite,
-and the graph/eager preflight matches every generated ID, final full logits,
-and state fingerprint on 18 category/heldout prompts. The public packed
-numerical gate covers 8,716 rows at KL0/top-1 100%; real-socket blocking/SSE,
-cancellation, refill and clean-drain checks pass. Tracked peak includes
-public session pools and the graph preflight; session-owned peak is 19.810 GiB.
-These memory scopes differ from the older right-sized low-level-session
-measurements. [Current profile measurements](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
+Every prefill/decode CV is below 0.14%, and two back-to-back sweeps of this
+revision agree within 0.37%. All timed final logits are finite, and the
+graph/eager preflight matches every generated ID, final full logits, and state
+fingerprint on 18 category/heldout prompts. The public packed numerical gate
+covers 8,716 rows at KL0/top-1 100%; real-socket blocking/SSE, cancellation,
+refill and clean-drain checks pass. **Tracked peak** is the process high-water
+mark through hipEngine's own allocator, including the graph/eager preflight and
+a resident context that is sized from free device memory; on this 120 GB host
+that auto-selected reservation dominates the column. The session-owned peak is
+19.810 GiB and the sampled device-used peak is 26.3 GiB, and
+`HIPENGINE_GGUF_AUTO_CONTEXT=0` restores fixed sizing. These memory scopes
+differ from the older right-sized low-level-session measurements.
+[Current profile measurements](results/2026-09-13-q6-planar-prefill-large-row-screen/artifact.json);
+the throughput rows above are the 2026-09-13 retile of the planar-Q6 wide-down
+prefill bands, which lifted 512/128 from **404.487**, 1K/128 from **395.000**
+and 4K/128 from **373.218 tok/s** on this host (**+7.65%/+5.00%/+7.56%**).
+The change is a row-band policy for one shape, not new arithmetic: every
+screened tile owner is bit-identical to its parent, and the graph/eager state
+fingerprints are unchanged from the pre-change arm.
 
 The following earlier September 12 same-file comparison used the then-current
 low-level hipEngine session. Both engines ran back to back on one host with
@@ -794,7 +805,9 @@ Vulkan, and hipEngine on that same file at 512/128, 1K/128 and 4K/128.
 **+9.2%/+12.2%/+16.1%** over hipEngine's **405.0/394.4/372.1** tok/s; both
 Vulkan builds lead text generation by **+4.4% to +6.9%**; upstream llama.cpp
 HIP is 3.7% behind hipEngine at 512/128, level at 1K/128, and 3.0% ahead at
-4K/128. The hipEngine row reproduces the published **404.5/12.2** to +0.13%.
+4K/128. The hipEngine row reproduces the then-published **404.5/12.2** to
++0.13%, and is the pre-retile measurement; the current default is faster on
+the same host (see the current profile table above).
 An ablation of the HIP prefill lead shows that about half of it is one compile-time
 table: replacing only `ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh` in upstream
 llama.cpp `002a12ad2` with the fork's version lifts 4K/128 prefill from 382.9 to

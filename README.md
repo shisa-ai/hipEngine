@@ -121,7 +121,7 @@ figures use an explicitly enabled mode.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **435.4** | **12.2** | 21.0 | — |
 
 Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
 a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched

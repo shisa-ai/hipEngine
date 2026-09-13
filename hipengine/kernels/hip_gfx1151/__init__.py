@@ -2158,7 +2158,7 @@ GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE = {
 # previously used from row256 is 1.4-1.7x slower inside the band and 2.4x
 # slower above it. Evidence:
 # scripts/qwen38_q6_planar_prefill_large_row_screen.py and
-# benchmarks/results/2026-09-13-q6-planar-prefill-large-row-screen.json
+# benchmarks/results/2026-09-13-q6-planar-prefill-large-row-screen/artifact.json
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MIN_ROWS = 288
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MAX_ROWS = 1_024
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS = 256
