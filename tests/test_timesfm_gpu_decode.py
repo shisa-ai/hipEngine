@@ -88,3 +88,86 @@ def test_gpu_decode_rejects_unknown_precision() -> None:
             TimesFMGPUDecoder(local, precision="bf16")
     finally:
         local.free()
+
+
+def test_gpu_decode_is_invariant_to_poisoned_device_memory() -> None:
+    """A decode must not depend on recycled device memory being zero.
+
+    The batched attention GEMMs sweep the whole KV cache, including the AR slots
+    the prefill has not written yet, and mask those slots with a zero weight:
+    ``0 * garbage`` is 0 for finite garbage but ``NaN`` for a NaN, so the sweep
+    is only correct while every slot is non-NaN.  The caches were zero-inited
+    when they were *allocated*, which made that true for the first call and left
+    every later one to chance -- the "correct only by accident of allocation"
+    rule in ``docs/KERNELS.md``.  A recycled block holding a NaN (any prior test
+    or kernel can leave one) then turned the whole decode NaN.
+
+    The probe in ``tests/_poison_probe.py`` overwrites every per-call buffer
+    with ``0xFF`` and requires the next decode to be bit-identical.  Poisoning
+    one family at a time localized it to the V caches alone (20480 of 40960
+    output values not finite) while every other buffer was bit-identical, which
+    is why the fix re-zeros the caches per decode with a memset rather than
+    keeping the allocation-time zero.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.loading.timesfm import load_timesfm_model
+    from hipengine.runtime.timesfm_decode import TimesFMGPUDecoder
+
+    from _poison_probe import (
+        assert_poison_invariant,
+        collect_device_buffers,
+        group_by_prefix,
+    )
+
+    fixture = np.load(FIXTURE)
+    inputs, masks, horizon = fixture["inputs"], fixture["masks"], int(fixture["horizon"])
+    local = load_timesfm_model(str(_snapshot()))
+    try:
+        holder: dict[str, object] = {}
+
+        def reset() -> None:
+            """Rebuild the decoder, which releases and reallocates its buffers.
+
+            A poison is not undoable, so localization needs a clean state per
+            group; a fresh decoder is the public-API way to get one.
+            """
+
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+            decoder = TimesFMGPUDecoder(local, precision="fp16")
+            holder["decoder"] = decoder
+            decoder.decode(horizon, inputs, masks)
+
+        def run():
+            return holder["decoder"].decode(horizon, inputs, masks)
+
+        reset()
+
+        def collect() -> dict[str, list]:
+            found = collect_device_buffers(holder["decoder"])
+            names = {path for path, _ in found}
+            assert any("caches_k" in name for name in names), sorted(names)
+            assert any("caches_v" in name for name in names), sorted(names)
+            return group_by_prefix(found)
+
+        groups = collect()
+        assert "caches_v" in "".join(groups), sorted(groups)
+        try:
+            report = assert_poison_invariant(
+                get_hip_runtime(),
+                collect,
+                run,
+                label="TimesFM fp16 decode",
+                reset=reset,
+            )
+        finally:
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+        # The probe is only meaningful if it poisoned the whole per-call set.
+        assert report["buffers"] >= 20, report
+        assert report["bytes"] >= 4 * 1024 * 1024, report
+    finally:
+        local.free()

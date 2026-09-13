@@ -124,3 +124,69 @@ def test_gpu_decode_rejects_unknown_precision() -> None:
             TimesFM3GPUDecoder(local, precision="bf16")
     finally:
         local.free()
+
+
+def test_gpu_decode_is_invariant_to_poisoned_device_memory() -> None:
+    """A decode must not depend on recycled device memory being zero.
+
+    TimesFM 3.0 writes its single scratch cache pair once and then reads it, so
+    this path has no unwritten-slot sweep.  The probe still runs because the
+    class of defect is "any per-call buffer whose unread region is assumed to be
+    zero" (``docs/KERNELS.md`` "Device-memory hygiene"), and the sibling 2.5
+    decoder turned out to have exactly that in its V cache: the batched
+    attention GEMMs sweep the not-yet-written AR slots and rely on
+    ``0 * garbage == 0``, which is false for a NaN.
+
+    Poison every per-call buffer with ``0xFF`` and require the next decode to be
+    bit-identical.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.loading.timesfm3 import load_timesfm3_model
+    from hipengine.runtime.timesfm3_decode import TimesFM3GPUDecoder
+
+    from _poison_probe import (
+        assert_poison_invariant,
+        collect_device_buffers,
+        group_by_prefix,
+    )
+
+    fixture = np.load(FIXTURES[0])
+    target, horizon = fixture["target"], int(fixture["horizon"])
+    kwargs = _fixture_kwargs(fixture)
+    local = load_timesfm3_model(str(_snapshot()))
+    try:
+        holder: dict[str, object] = {}
+
+        def reset() -> None:
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+            decoder = TimesFM3GPUDecoder(local, precision="fp16")
+            holder["decoder"] = decoder
+            decoder.decode(target, horizon, **kwargs)
+
+        def run():
+            return holder["decoder"].decode(target, horizon, **kwargs)
+
+        def collect() -> dict[str, list]:
+            found = collect_device_buffers(holder["decoder"])
+            assert found, "no device buffers reachable from the decoder"
+            return group_by_prefix(found)
+
+        reset()
+        try:
+            report = assert_poison_invariant(
+                get_hip_runtime(),
+                collect,
+                run,
+                label="TimesFM 3.0 fp16 decode",
+                reset=reset,
+            )
+        finally:
+            existing = holder.pop("decoder", None)
+            if existing is not None:
+                existing.close()
+        assert report["buffers"] >= 10, report
+    finally:
+        local.free()

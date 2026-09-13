@@ -1,5 +1,27 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Unpinned H2D sources: conditional copies and helpers that hoist without synchronizing
+
+- `tests/test_device_memory_hygiene.py` forbids an *always-allocating* array as
+  the argument of `host_array_ptr`. Two residues are outside that guard and are
+  not yet fixed:
+  - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
+    so the temporary is the only reference and the DMA can read it after the
+    call returns. On a contiguous `x` it is a no-op and safe, which is why the
+    guard does not flag it. Making it safe everywhere means hoisting the result
+    into a local (and synchronizing) at each of the ~100 call sites.
+  - `_copy_array_to_tensor`-style helpers (e.g.
+    `hipengine/runtime/gguf_native_spec_cycle.py`) already hoist into a local but
+    never `device_synchronize()`, so the local can still be released while the
+    copy is in flight. The durable fix is a persistent *pinned* staging buffer
+    reused across calls; a per-call `device_synchronize()` in the decode path
+    would serialize metadata staging and is not acceptable as a hot-path fix.
+- The host-source class is a heap-choreography race, so it has no deterministic
+  poison probe: it was reproduced once (Surya `test_surya_kv_spans.py`, 4
+  denormal values) by a specific preceding allocation pattern and is documented
+  in `docs/KERNELS.md` "Device-memory hygiene". Remove this entry when the
+  pinned-staging-buffer change lands and the guard covers the conditional form.
+
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
 - Exact dequantized row-major sidecar with unchanged coltile8/row4
