@@ -620,13 +620,21 @@ Required result fields:
 
 Promote a tier only when:
 
-- [ ] `UD MTP / UD AR > 1.0x` on the complete declared suite.
-- [ ] The production teacher-forced gate passes.
-- [ ] Control-plane acceptance and deterministic repeat gates pass.
-- [ ] Width, context, lifecycle, and heldout coverage are complete.
-- [ ] The result is not prompt-conditioned or candidate-conditioned.
-- [ ] The artifact, worklog, benchmark README, and changelog are updated.
-- [ ] The certification record is complete and the derived U6 pin is populated.
+- [x] `UD MTP / UD AR > 1.0x` on the complete declared suite.
+- [x] The production teacher-forced gate passes.
+- [x] Control-plane acceptance and deterministic repeat gates pass.
+- [x] Width, context, lifecycle, and heldout coverage are complete.
+- [x] The result is not prompt-conditioned or candidate-conditioned.
+- [x] The artifact, worklog, benchmark README, and changelog are updated.
+- [x] The certification record is complete and the derived U6 pin is populated.
+
+Both tiers are **promoted within the declared scope**: width c1 and the 4-95
+token context bucket. The promotion is the populated pin plus the serving
+evidence rows, so automatic MTP admission is live for `gguf_ud_q4_k_m` and
+`gguf_ud_q4_k_s` at that scope. It is not a blanket enablement: c2 measured
+1.0418x, c4 has no production physical width cell, c8 fails with out-of-memory
+at capacity 8, and above 1023 the adapter refuses MTP while the verifier stops
+batching. A request outside the scope stays on the strict AR route.
 
 Hold a tier when it is correct but fails economics, has incomplete scope, or
 has unresolved numerical/lifecycle gates. A held tier remains available only
@@ -638,8 +646,10 @@ Use this table for every retained candidate. Add absolute values before ratios.
 
 | Candidate | Tier | Scope | UD AR | UD MTP | Plain AR | Plain MTP | UD MTP/AR | UD/plain AR | UD/plain MTP | Result |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Baseline | K_M | GPU1, c1, B3 | 31.993 | 35.541 | 37.186 | 63.465 | 1.1109x | 0.860x | 0.560x | Open |
-| Baseline | K_S | GPU1, c1, B3 | 31.311 | 33.061 | 39.565 | 64.094 | 1.0559x | 0.791x | 0.516x | Open |
+| Baseline | K_M | GPU1, c1, B3 | 31.993 | 35.541 | 37.186 | 63.465 | 1.1109x | 0.860x | 0.560x | Superseded |
+| Baseline | K_S | GPU1, c1, B3 | 31.311 | 33.061 | 39.565 | 64.094 | 1.0559x | 0.791x | 0.516x | Superseded |
+| Rows 2-4 local32 IQ verifier sibling | K_M | GPU1, c1, B3 | 31.935 | 43.919 | 37.202 | 63.283 | **1.3752x** | 0.858x | 0.694x | Promoted |
+| Rows 2-4 local32 IQ verifier sibling | K_S | GPU1, c1, B3 | 31.343 | 45.077 | 39.772 | 64.323 | **1.4382x** | 0.788x | 0.701x | Promoted |
 
 Interpret results in this order:
 
@@ -677,5 +687,19 @@ This plan is complete for a tier when the tier has:
 6. Synchronized benchmark rollup, changelog, result JSON, worklog entry, and
    commit.
 
-Until then, UD MTP remains a measured diagnostic path, not an admitted
-production capability.
+Both `UD-Q4_K_M` and `UD-Q4_K_S` meet all six within width c1 and the 4-95
+token context bucket, so UD MTP is an admitted production capability there.
+
+Two items stay open and neither is a correctness gate on the promoted scope:
+
+- **Budget 4 is correct but uneconomical.** Rows 5 is the only newly reachable
+  production shape and it costs 18.26 ms/row against 12.79 at rows 4, because
+  the IQ family leaves the rows 2-4 sibling and reverts to
+  `gguf_iq_dense_strict`. Extending the sibling's policy to rows 5-8 is the
+  follow-up that makes budget 4 worth using. The default `max_candidate_budget`
+  stays 3.
+- **The width and long-context envelopes are structural, not untested.** c2
+  measured 1.0418x, c4 has no production physical cell, c8 runs out of memory
+  at capacity 8, and beyond 1023 the adapter refuses MTP while the verifier
+  stops batching. Widening any of them is a separate optimization unit with its
+  own evidence, not an unfinished gate here.
