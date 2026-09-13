@@ -668,7 +668,10 @@ Likely investigation order:
   contiguous, wave-aligned k range and write ordered partials, then reduce
   `for wave: for split:` so the concatenation reproduces the original order
   exactly. That keeps the grid at 6 x S without touching the arithmetic.
-- [ ] UD-versus-plain family budget. Measured 2026-09-13 from two rocprofv3
+- [x] UD-versus-plain family budget. **Closed 2026-09-13: the budget is
+  measured and all three ranked next steps it named are measured and rejected,
+  so the IQ family's extra kernel time has no remaining measured lever.**
+  Measured 2026-09-13 from two rocprofv3
   verifier-window censuses on the same host and protocol: UD-Q4_K_M is
   435.74 ms total kernel time (36.31 ms/step) against plain Q4_K_M at
   351.98 ms (29.33 ms/step), so UD carries 83.8 ms of extra kernel time.
@@ -691,6 +694,20 @@ Likely investigation order:
   (b) Q5_K has only **12** gate/up pairs, so a Q5_K T16 dense dual rowtile
   SiLU sibling of `q4_k_t16_dense_dual_rowtile_silu_gemv` (762 GB/s on the
   Q4 pairs) is worth at most ~0.8 ms/step; (c) the IQ4_XS T16 repack above.
+  **(c) closed 2026-09-13 by direct measurement.** The layout's first consumer
+  is built and bit-exact (`gguf_iq4_xs_t16_local32_gemv_kernel`, 16 parity tests
+  in `tests/test_gguf_iq4_xs_t16_local32_parity.py`), and under an interleaved
+  paired protocol it is 0.803x at (17408, 5120), 0.791x at (5120, 17408), 0.773x
+  at (5120, 13824) and 0.633x at (5120, 5120), with every cell bit-exact. The
+  reason is now known rather than guessed: the raw owner's duplicate 8-byte
+  payload window reads are L1 hits, so both owners issue the same number of load
+  requests and halving bytes that were already cached cannot win. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-iq4-xs-t16-local32-decode.json`.
+  The consequence for the gap itself: UD carries 15.37 ms/step of IQ-family
+  kernel time that plain has no counterpart for, against UD savings of 9.2
+  ms/step on Q4_K, 5.0 on Q6_K and 1.0 on the norm tail, and none of the three
+  ranked levers recovers it. The remaining ~6 ms/step is therefore the cost of
+  serving IQ-quantized weights at all, not a dispatch or layout defect.
 - [ ] Q5_K t16 rowtile short-K steady state. **Re-opened and closed again
   2026-09-13.** The 704 GB/s at (5120, 17408) against 454 GB/s at (17408, 5120)
   is not per-block amortization: `TILE_COLS` 4 -> 8 halves the block count and
