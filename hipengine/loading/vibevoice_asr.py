@@ -14,7 +14,9 @@ stride product 3200, head wiring) before returning.
 
 from __future__ import annotations
 
+import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -180,4 +182,101 @@ def load_vibevoice_connector(model_path: str | Path, tokenizer: str) -> Vibevoic
         norm_weight=_load_tensor(index, f"{prefix}.norm.weight", path),
         fc2_weight=_load_tensor(index, f"{prefix}.fc2.weight", path),
         fc2_bias=_load_tensor(index, f"{prefix}.fc2.bias", path),
+    )
+
+
+@dataclass(frozen=True)
+class VibevoiceQwen2Spec:
+    """Static Qwen2 text-backbone geometry."""
+
+    hidden_size: int
+    num_layers: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    head_dim: int
+    intermediate_size: int
+    vocab_size: int
+    rope_theta: float
+    rms_norm_eps: float
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, Any]) -> "VibevoiceQwen2Spec":
+        text = config.get("text_config", config)
+        hidden = int(text["hidden_size"])
+        heads = int(text["num_attention_heads"])
+        return cls(
+            hidden_size=hidden,
+            num_layers=int(text["num_hidden_layers"]),
+            num_attention_heads=heads,
+            num_key_value_heads=int(text["num_key_value_heads"]),
+            head_dim=int(text.get("head_dim", hidden // heads)),
+            intermediate_size=int(text["intermediate_size"]),
+            vocab_size=int(text["vocab_size"]),
+            rope_theta=float(text.get("rope_theta", 1000000.0)),
+            rms_norm_eps=float(text.get("rms_norm_eps", 1e-5)),
+        )
+
+
+@dataclass(frozen=True)
+class VibevoiceQwen2LayerWeights:
+    input_layernorm: np.ndarray
+    q_weight: np.ndarray
+    q_bias: np.ndarray
+    k_weight: np.ndarray
+    k_bias: np.ndarray
+    v_weight: np.ndarray
+    v_bias: np.ndarray
+    o_weight: np.ndarray
+    post_attention_layernorm: np.ndarray
+    gate_proj: np.ndarray
+    up_proj: np.ndarray
+    down_proj: np.ndarray
+
+
+@dataclass(frozen=True)
+class VibevoiceQwen2Weights:
+    """Qwen2 backbone + untied lm_head, numpy fp32."""
+
+    spec: VibevoiceQwen2Spec
+    embed_tokens: np.ndarray
+    final_norm: np.ndarray
+    lm_head: np.ndarray
+    layers: tuple[VibevoiceQwen2LayerWeights, ...]
+
+
+def load_vibevoice_qwen2(model_path: str | Path) -> VibevoiceQwen2Weights:
+    """Load the Qwen2 text backbone from the HF ``VibeVoice-ASR-HF`` artifact."""
+    path = resolve_model_path(model_path)
+    index = load_weight_index(path)
+    with open(path / "config.json") as fh:
+        spec = VibevoiceQwen2Spec.from_config(json.load(fh))
+
+    def t(name: str) -> np.ndarray:
+        return _load_tensor(index, name, path)
+
+    layers = []
+    for i in range(spec.num_layers):
+        p = f"language_model.model.layers.{i}"
+        layers.append(
+            VibevoiceQwen2LayerWeights(
+                input_layernorm=t(f"{p}.input_layernorm.weight"),
+                q_weight=t(f"{p}.self_attn.q_proj.weight"),
+                q_bias=t(f"{p}.self_attn.q_proj.bias"),
+                k_weight=t(f"{p}.self_attn.k_proj.weight"),
+                k_bias=t(f"{p}.self_attn.k_proj.bias"),
+                v_weight=t(f"{p}.self_attn.v_proj.weight"),
+                v_bias=t(f"{p}.self_attn.v_proj.bias"),
+                o_weight=t(f"{p}.self_attn.o_proj.weight"),
+                post_attention_layernorm=t(f"{p}.post_attention_layernorm.weight"),
+                gate_proj=t(f"{p}.mlp.gate_proj.weight"),
+                up_proj=t(f"{p}.mlp.up_proj.weight"),
+                down_proj=t(f"{p}.mlp.down_proj.weight"),
+            )
+        )
+    return VibevoiceQwen2Weights(
+        spec=spec,
+        embed_tokens=t("language_model.model.embed_tokens.weight"),
+        final_norm=t("language_model.model.norm.weight"),
+        lm_head=t("language_model.lm_head.weight"),
+        layers=tuple(layers),
     )
