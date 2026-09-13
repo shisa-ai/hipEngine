@@ -8,6 +8,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import mmap
 import os
 from pathlib import Path
 import sys
@@ -25,13 +26,28 @@ from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
+def select_gather_arm(table, original, *, mode, method, cache_mode):
+    if mode not in ("before", "after") or cache_mode not in ("warm", "cold"):
+        raise ValueError("invalid gather arm or cache mode")
+    if cache_mode == "cold":
+        table.advise_cache("cold")
+    if method == "mmap_random":
+        table._raw._mmap.madvise(mmap.MADV_RANDOM if mode == "after" else mmap.MADV_NORMAL)
+        table.gather_rows = original
+    else:
+        table.gather_rows = original if mode == "before" else (
+            lambda ids: gather_sorted_unique(table, ids, method=method)
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--method", choices=("copy_elision", "sampled_dedup_elision"), required=True)
+    parser.add_argument("--method", choices=("copy_elision", "sampled_dedup_elision", "mmap_random"), required=True)
+    parser.add_argument("--cache-mode", choices=("warm", "cold"), default="warm")
     parser.add_argument("--screen-only", action="store_true")
     args = parser.parse_args()
     check_host()
@@ -60,7 +76,8 @@ def main():
                 "chunk": 1024, "kv": "BF16", "decode_transitions": transitions,
                 "warmups_per_arm_case": 1, "repetitions_per_arm": 1 if args.screen_only else 3,
                 "screen_only": args.screen_only, "counterbalanced": True,
-                "cache": "warm per case/arm; no persistent row cache",
+                "cache": args.cache_mode,
+                "cache_scope": "file-scoped PLE only; no persistent row cache",
             },
             "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "candidate_script_sha256": hashlib.sha256((ROOT / "scripts/qwen4exp_ple_gather_screen.py").read_bytes()).hexdigest(),
@@ -82,9 +99,8 @@ def main():
         def sample(mode, case, rep):
             if table.telemetry() is not None or table._random_access_requested_mode != "off":
                 raise ValueError("unqualified telemetry/advice configuration")
-            table.gather_rows = original_gather if mode == "before" else (
-                lambda ids: gather_sorted_unique(table, ids, method=args.method)
-            )
+            select_gather_arm(table, original_gather, mode=mode,
+                              method=args.method, cache_mode=args.cache_mode)
             row = _hipengine_case_sample(generator.runner, case=case, repetition=rep, transitions=transitions)
             logits = np.asarray(last["result"].logits)
             if not logits.size or not np.isfinite(logits).all():
