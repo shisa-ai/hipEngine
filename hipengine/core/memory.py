@@ -2,6 +2,12 @@
 
 No HIP library is loaded on import. Allocation/copy helpers load the runtime lazily only when
 called.
+
+Buffers created here carry the device they were allocated on. Buffers built directly by
+callers with ``DeviceBuffer(ptr, nbytes)`` stay unattributed (``device is None``) so existing
+single-device derived-view code keeps working; every allocation made through :func:`malloc`
+or :meth:`DeviceMemoryArena.create` is attributed and its device is validated at copy/free
+boundaries.
 """
 
 from __future__ import annotations
@@ -10,6 +16,7 @@ import ctypes
 from dataclasses import dataclass
 from threading import Lock
 
+from hipengine.core.device import Device, scoped_current_device
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.runtime import DeviceRuntime, MemcpyKind
 
@@ -18,12 +25,15 @@ from hipengine.core.runtime import DeviceRuntime, MemcpyKind
 class DeviceBuffer:
     ptr: int
     nbytes: int
+    device: Device | None = None
 
     def __post_init__(self) -> None:
         if self.ptr < 0:
             raise ValueError("device pointer must be non-negative")
         if self.nbytes < 0:
             raise ValueError("buffer size must be non-negative")
+        if self.device is not None and self.device.kind != "hip":
+            raise ValueError("DeviceBuffer device must be a hip device")
 
 
 class DeviceMemoryArena:
@@ -54,12 +64,17 @@ class DeviceMemoryArena:
         *,
         runtime: DeviceRuntime | None = None,
         alignment: int = 4096,
+        device: Device | int | None = None,
     ) -> "DeviceMemoryArena":
         parsed_alignment = _validate_alignment(alignment)
         capacity = _align_up(_validate_allocation_size(capacity_bytes), parsed_alignment)
         selected_runtime = runtime or get_hip_runtime()
-        owner = malloc(capacity, runtime=selected_runtime)
+        owner = malloc(capacity, runtime=selected_runtime, device=device)
         return cls(owner, runtime=selected_runtime, alignment=parsed_alignment)
+
+    @property
+    def device(self) -> Device | None:
+        return self.owner.device
 
     @property
     def capacity_bytes(self) -> int:
@@ -80,7 +95,7 @@ class DeviceMemoryArena:
                 f"device arena capacity {self.capacity_bytes} cannot fit "
                 f"{size} bytes at aligned offset {offset}"
             )
-        view = DeviceBuffer(ptr=int(self.owner.ptr) + offset, nbytes=size)
+        view = DeviceBuffer(ptr=int(self.owner.ptr) + offset, nbytes=size, device=self.owner.device)
         self._offset = end
         self.requested_bytes += size
         self.allocation_count += 1
@@ -107,17 +122,39 @@ class DeviceMemoryArena:
         self.closed = True
 
 
-def malloc(nbytes: int, *, runtime: DeviceRuntime | None = None) -> DeviceBuffer:
+def malloc(
+    nbytes: int,
+    *,
+    runtime: DeviceRuntime | None = None,
+    device: Device | int | None = None,
+) -> DeviceBuffer:
+    """Allocate device memory on ``device`` (or the current device when omitted).
+
+    When ``device`` is given the current-device selection is scoped to the call
+    and restored afterwards, so one process can allocate for several ranks without
+    leaking thread-local current-device state.
+    """
+
     runtime = runtime or get_hip_runtime()
-    ptr = runtime.malloc(nbytes)
-    buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes)
+    if device is None:
+        ptr = runtime.malloc(nbytes)
+        buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes, device=_runtime_device(runtime))
+    else:
+        index = _device_index(device)
+        with scoped_current_device(runtime, index):
+            ptr = runtime.malloc(nbytes)
+        buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes, device=Device("hip", index))
     _MEMORY_STATS.record_malloc(buffer)
     return buffer
 
 
 def free(buffer: DeviceBuffer, *, runtime: DeviceRuntime | None = None) -> None:
     runtime = runtime or get_hip_runtime()
-    runtime.free(buffer.ptr)
+    if buffer.device is None:
+        runtime.free(buffer.ptr)
+    else:
+        with scoped_current_device(runtime, buffer.device.index):
+            runtime.free(buffer.ptr)
     _MEMORY_STATS.record_free(buffer)
 
 
@@ -169,6 +206,34 @@ def copy_device_to_host(
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
     runtime.memcpy(host_ptr, buffer.ptr, count, MemcpyKind.DEVICE_TO_HOST)
+
+
+def copy_device_to_device(
+    dst: DeviceBuffer,
+    src: DeviceBuffer,
+    nbytes: int | None = None,
+    *,
+    runtime: DeviceRuntime | None = None,
+) -> None:
+    """Copy between device buffers, validating attributed device identity.
+
+    Both buffers must be attributed and on the same device: a cross-device copy is
+    a peer transfer and must go through the explicit peer path instead of a silent
+    ``hipMemcpy`` whose meaning depends on the current device.
+    """
+
+    runtime = runtime or get_hip_runtime()
+    if dst.device is None or src.device is None:
+        raise ValueError("device-to-device copy requires attributed device buffers")
+    if dst.device != src.device:
+        raise ValueError(
+            f"device-to-device copy requires one device; got dst={dst.device} src={src.device}"
+        )
+    count = dst.nbytes if nbytes is None else nbytes
+    _check_copy_size(count, dst.nbytes)
+    _check_copy_size(count, src.nbytes)
+    with scoped_current_device(runtime, dst.device.index):
+        runtime.memcpy(dst.ptr, src.ptr, count, MemcpyKind.DEVICE_TO_DEVICE)
 
 
 def host_array_ptr(array: object) -> int:
@@ -302,6 +367,29 @@ class _MemoryStatsTracker:
 
 
 _MEMORY_STATS = _MemoryStatsTracker()
+
+
+def _device_index(device: Device | int) -> int:
+    if isinstance(device, Device):
+        if device.kind != "hip":
+            raise ValueError("HIP allocation requires a hip device")
+        return device.index
+    index = int(device)
+    if index < 0:
+        raise ValueError("device index must be non-negative")
+    return index
+
+
+def _runtime_device(runtime: DeviceRuntime) -> Device | None:
+    """Best-effort current-device attribution for runtimes that expose it."""
+
+    get_device = getattr(runtime, "get_device", None)
+    if not callable(get_device):
+        return None
+    try:
+        return Device("hip", int(get_device()))
+    except Exception:  # pragma: no cover - defensive: attribution must never break allocation
+        return None
 
 
 def _validate_alignment(alignment: int) -> int:

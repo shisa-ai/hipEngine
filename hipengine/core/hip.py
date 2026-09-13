@@ -24,6 +24,12 @@ class HipDim3(ctypes.Structure):
     _fields_ = [("x", ctypes.c_uint), ("y", ctypes.c_uint), ("z", ctypes.c_uint)]
 
 
+class HipUuid(ctypes.Structure):
+    """ctypes layout of HIP's 16-byte ``hipUUID`` value."""
+
+    _fields_ = [("bytes", ctypes.c_char * 16)]
+
+
 class HipKernelNodeParams(ctypes.Structure):
     """ctypes layout of ``hipKernelNodeParams`` from ``hip_runtime_api.h``."""
 
@@ -50,6 +56,26 @@ class HipError(RuntimeError):
         super().__init__(f"HIP error {self.code}: {message}")
 
 
+@dataclass(frozen=True)
+class HipDeviceInfo:
+    """Stable per-device identity snapshot used by distributed plan admission."""
+
+    index: int
+    name: str
+    uuid_hex: str
+    uuid: str
+    pci_bus_id: str
+
+
+def format_hip_uuid(raw: bytes) -> str:
+    """Format 16 raw ``hipUUID`` bytes as canonical 8-4-4-4-12 lowercase hex."""
+
+    if len(raw) != 16:
+        raise ValueError("hipUUID must contain exactly 16 bytes")
+    hexstr = bytes(raw).hex()
+    return f"{hexstr[:8]}-{hexstr[8:12]}-{hexstr[12:16]}-{hexstr[16:20]}-{hexstr[20:]}"
+
+
 @dataclass
 class HipRuntime:
     """Loaded HIP runtime library with typed entry points."""
@@ -61,6 +87,92 @@ class HipRuntime:
         runtime = cls(ctypes.CDLL(path))
         runtime._configure()
         return runtime
+
+    def device_count(self) -> int:
+        count = ctypes.c_int()
+        self.check(self.library.hipGetDeviceCount(ctypes.byref(count)))
+        return int(count.value)
+
+    def set_device(self, device: int) -> None:
+        if int(device) < 0:
+            raise ValueError("device index must be non-negative")
+        self.check(self.library.hipSetDevice(ctypes.c_int(int(device))))
+
+    def get_device(self) -> int:
+        device = ctypes.c_int()
+        self.check(self.library.hipGetDevice(ctypes.byref(device)))
+        return int(device.value)
+
+    def device_get_name(self, device: int | None = None) -> str:
+        selected = self.get_device() if device is None else int(device)
+        output = ctypes.create_string_buffer(256)
+        self.check(self.library.hipDeviceGetName(output, ctypes.c_int(len(output)), ctypes.c_int(selected)))
+        return output.value.decode("utf-8", errors="replace")
+
+    def device_get_uuid_bytes(self, device: int | None = None) -> bytes:
+        selected = self.get_device() if device is None else int(device)
+        uuid = HipUuid()
+        self.check(self.library.hipDeviceGetUuid(ctypes.byref(uuid), ctypes.c_int(selected)))
+        return bytes(uuid.bytes)
+
+    def device_get_uuid(self, device: int | None = None) -> str:
+        """Return the canonical UUID string for one device."""
+
+        return format_hip_uuid(self.device_get_uuid_bytes(device))
+
+    def device_info(self, device: int | None = None) -> HipDeviceInfo:
+        """Return one device's identity; never leaves the current device changed."""
+
+        selected = self.get_device() if device is None else int(device)
+        raw = self.device_get_uuid_bytes(selected)
+        return HipDeviceInfo(
+            index=selected,
+            name=self.device_get_name(selected),
+            uuid_hex=raw.hex(),
+            uuid=format_hip_uuid(raw),
+            pci_bus_id=self.device_pci_bus_id(selected),
+        )
+
+    def device_can_access_peer(self, device: int, peer_device: int) -> bool:
+        """Query ``hipDeviceCanAccessPeer`` without enabling peer access."""
+
+        can_access = ctypes.c_int()
+        self.check(
+            self.library.hipDeviceCanAccessPeer(
+                ctypes.byref(can_access), ctypes.c_int(int(device)), ctypes.c_int(int(peer_device))
+            )
+        )
+        return bool(can_access.value)
+
+    def device_enable_peer_access(self, peer_device: int, *, flags: int = 0) -> None:
+        self.check(
+            self.library.hipDeviceEnablePeerAccess(ctypes.c_int(int(peer_device)), ctypes.c_uint(int(flags)))
+        )
+
+    def device_disable_peer_access(self, peer_device: int) -> None:
+        self.check(self.library.hipDeviceDisablePeerAccess(ctypes.c_int(int(peer_device))))
+
+    def memcpy_peer(
+        self,
+        dst: int,
+        dst_device: int,
+        src: int,
+        src_device: int,
+        nbytes: int,
+    ) -> None:
+        """Peer copy that names both devices explicitly (no implicit current device)."""
+
+        if nbytes < 0:
+            raise ValueError("nbytes must be non-negative")
+        self.check(
+            self.library.hipMemcpyPeer(
+                ctypes.c_void_p(dst),
+                ctypes.c_int(int(dst_device)),
+                ctypes.c_void_p(src),
+                ctypes.c_int(int(src_device)),
+                ctypes.c_size_t(nbytes),
+            )
+        )
 
     def malloc(self, nbytes: int) -> int:
         if nbytes < 0:
@@ -362,6 +474,34 @@ class HipRuntime:
             raise HipError(int(code), self.error_string(int(code)))
 
     def _configure(self) -> None:
+        self.library.hipGetDeviceCount.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        self.library.hipGetDeviceCount.restype = ctypes.c_int
+        self.library.hipSetDevice.argtypes = [ctypes.c_int]
+        self.library.hipSetDevice.restype = ctypes.c_int
+        self.library.hipGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        self.library.hipGetDevice.restype = ctypes.c_int
+        self.library.hipDeviceGetName.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+        self.library.hipDeviceGetName.restype = ctypes.c_int
+        self.library.hipDeviceGetUuid.argtypes = [ctypes.POINTER(HipUuid), ctypes.c_int]
+        self.library.hipDeviceGetUuid.restype = ctypes.c_int
+        self.library.hipDeviceCanAccessPeer.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
+        self.library.hipDeviceCanAccessPeer.restype = ctypes.c_int
+        self.library.hipDeviceEnablePeerAccess.argtypes = [ctypes.c_int, ctypes.c_uint]
+        self.library.hipDeviceEnablePeerAccess.restype = ctypes.c_int
+        self.library.hipDeviceDisablePeerAccess.argtypes = [ctypes.c_int]
+        self.library.hipDeviceDisablePeerAccess.restype = ctypes.c_int
+        self.library.hipMemcpyPeer.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_size_t,
+        ]
+        self.library.hipMemcpyPeer.restype = ctypes.c_int
         self.library.hipMalloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
         self.library.hipMalloc.restype = ctypes.c_int
         self.library.hipFree.argtypes = [ctypes.c_void_p]
