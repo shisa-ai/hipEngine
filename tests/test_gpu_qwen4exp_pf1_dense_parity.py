@@ -632,7 +632,7 @@ def test_pf1_mmq_plane_policy_binding() -> None:
 
     for planes, variant, route in (
         (3, "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out", "raw_mmq_d4x3_f32"),
-        (2, "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out", "raw_mmq_d4x2_f32"),
+        (2, "mmq128_raw_vec4_q8_1_d4x2_guarded_f32_f32_out", "raw_mmq_d4x2_f32"),
     ):
         policy = Q8MMQPrefillPolicy(
             min_rows=base.min_rows,

@@ -15891,6 +15891,9 @@ def test_gguf_cN_diagnostic_executes_independent_c1_equality(tmp_path: Path, mon
             self.calls: list[tuple[Any, ...]] = []
             self.instances.append(self)
 
+        def close(self):
+            pass
+
         def prepare(self, *, max_sequence_length, sampling_params):
             assert max_sequence_length == 1024
             assert sampling_params.max_tokens == 4

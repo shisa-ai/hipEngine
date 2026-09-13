@@ -67,6 +67,9 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     generator.tokenizer = _FakeTokenizer()
     generator._mtp_serving_assets = None
     generator._mtp_serving_lock = threading.Lock()
+    generator._auto_resolved_max_sequence_lengths = {}
+    generator._auto_resolved_max_sequence_length = None
+    generator._auto_context_estimate = None
     return generator
 
 
@@ -2980,6 +2983,8 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     observability = adapter.live_loop_snapshot()["runner"]
     assert observability["model_runner"] == {
         "capacity": 2,
+        "max_active_requests": 2,
+        "max_context_tokens": None,
         "active_request_ids": [],
         "active_requests": 0,
         "available_sessions": 2,
@@ -3632,7 +3637,9 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     assert runner._rows[3].kv_allocation is not None
     assert runner.kv_pool_memory_snapshot()["dynamic_pool"]["refcounted_pages"] == 2
     observability = runner.observability_snapshot()
-    assert observability["kv_pool"] == runner.kv_pool_stats.to_json_dict()
+    assert observability["kv_pool"] == {
+        **runner.kv_pool_stats.to_json_dict(), "max_pages": None, "budget_bytes": None,
+    }
     assert observability["kv_pool"]["current_pages"] == 2
     assert observability["kv_pool"]["high_water_observed_pages"] == 2
     assert observability["kv_pool"]["refcounted_pages"] == 2
@@ -3649,9 +3656,9 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     ceiling_runner.configure_engine_loop(EngineLoopConfig(max_active_requests=3))
     assert ceiling_runner.kv_pool is not None
     assert ceiling_runner.kv_pool.high_water_pages is None
-    assert ceiling_runner.kv_pool.current_pages == 9
-    assert ceiling_runner.kv_pool.low_water_pages == 9
-    assert ceiling_runner.kv_pool.chunk_pages == 9
+    assert ceiling_runner.kv_pool.current_pages == 128
+    assert ceiling_runner.kv_pool.low_water_pages == 128
+    assert ceiling_runner.kv_pool.chunk_pages == 128
     ceiling_runner.close()
 
 

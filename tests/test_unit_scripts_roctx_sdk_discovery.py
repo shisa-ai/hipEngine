@@ -59,4 +59,4 @@ def test_wrapper_resolves_the_sdk_that_is_actually_installed(name: str) -> None:
             f"missing {resolved}; the candidate list needs sys.base_prefix, not just sys.prefix"
         )
     else:  # pragma: no cover - runner without the ROCm SDK packages
-        assert str(resolved).endswith(LIB), resolved
+        assert resolved.name in {LIB, f"{LIB}.1"}, resolved

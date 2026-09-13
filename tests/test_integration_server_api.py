@@ -1077,8 +1077,6 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert "MODEL_LOAD: loading model=fake-path" in caplog.text
-    assert "MODEL_LOAD: engine created elapsed=" in caplog.text
     body = response.json()
     assert body["object"] == "list"
     assert len(body["data"]) == 1
@@ -2983,6 +2981,8 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
 
     assert response.status_code == 200
     assert "Config: model=fake-path" in caplog.text
+    assert "MODEL_LOAD: loading model=fake-path" in caplog.text
+    assert "MODEL_LOAD: engine created elapsed=" in caplog.text
     assert "max_context_tokens=131072" in caplog.text
     assert "chat_default_max_tokens=4096" in caplog.text
     assert "kv_storage=auto" in caplog.text
