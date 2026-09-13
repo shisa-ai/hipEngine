@@ -80,12 +80,18 @@ that line, so rounding down to 320 rows takes **48496.26 -> 43862.87 ms
 optimal at every grid, and the misses are reported rather than hidden: at 6400
 patches a 96-row tile is 1940.93 ms against the 2130.11 ms the cap picks (10%),
 and the A4 page's own best measured width is 2048 rows at 41622.25 ms (5.1%
-below the default). Measured with `python3
+below the default). The shape curve is also not monotone, and the rounding is a
+tie-break rather than a guarantee: at 4096 patches 192/256/341/512/1024 rows
+are 24-89% slower than 128, and 512 — a multiple of 32 — is the slowest shape
+measured there (1667 ms against 881 ms), so a wider tile is not automatically
+safe. Where those spikes fall has no measured explanation yet. Measured with `python3
 scripts/surya_vision_tiling_cost.py --reps 7` for the 256-6400-patch grids and
 `--reps 2` for the A4 grid, one runner per shape, one discarded warm-up,
-median wall clock around `vision_forward` only.
+median wall clock around `vision_forward` only; a second two-pass sweep on a
+quiet GPU reproduces the first to a median 0.31% over all 67 rows.
 [Old vs new default in one run](results/2026-09-13-gfx1151-surya-tile-shape-ab.json),
 [vision tiling cost](results/2026-09-13-gfx1151-surya-vision-tiling-cost.json),
+[vision tiling cost, two-pass re-check](results/2026-09-13-gfx1151-surya-vision-tiling-cost-v2.json),
 [A4 page shapes](results/2026-09-13-gfx1151-surya-vision-tiling-a4.json).
 
 Surya's KV write and decode read the same `KVLiveSpans` `(base_offsets,
