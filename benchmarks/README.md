@@ -891,10 +891,17 @@ IOMMU-isolation tradeoff and has not been changed.
 A direct chain ladder pins the per-token cost better than a two-point marginal:
 one 20 KB fp32 all-reduce chain measures 398 us at depth 1, 827 us at depth 16
 (28.6 us per op) and 1388 us at depth 32, so 36 collectives per token is about
-1.3-1.5 ms. Against the current same-host single-GPU baselines (W7900 27.9 tok/s;
-XTX 29.82 tok/s at 8192 context), a TP2 decode that halves per-rank weight
-traffic projects near 1.7-1.9x, above the plan's 1.3x target. This is a
-projection from measured collective latency, not a measured engine result.
+1.3-1.5 ms.
+
+**Break-even, measured on both sides.** Taking the same-host TP1 rows (W7900
+27.9 tok/s, XTX 29.82 tok/s at 8192 context) and the measured collective cost,
+TP2 wins while its per-token collective time stays under
+`(1 - fixed_share) * T1 * (1 - rank_weight_fraction)`: **11.2-16.0 ms** on the
+W7900 and 13.0-18.5 ms on the XTX for fixed-cost shares of 0-30%, so the measured
+1.3-1.5 ms is **7.5-14x below the budget** and every row clears the plan's 1.3x
+target (projected 1.37-1.70x on the W7900, 1.52-2.06x on the XTX). This is a
+projection from measured collective latency and an explicit fixed-cost
+assumption, not a measured engine result.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
@@ -940,6 +947,7 @@ reconstruction oracle that holds every rank's payload is a test path, not the
 loader path.
 [Collective screening](results/tp2_collective_bench.json),
 [graph capture and replay](results/tp2_graph_capture_probe.json),
+[break-even projection](results/tp2_break_even.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
 [degree admissibility](results/tp2_shard_plan_degrees.json),
 [topology inventory](results/tp2_host_inventory.json).
