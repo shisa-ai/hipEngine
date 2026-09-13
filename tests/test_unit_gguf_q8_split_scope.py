@@ -1,6 +1,7 @@
 import pytest
 
 import hipengine.runtime.gguf_linear as linear
+from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_t16_gemv as kernels
 from tests.test_unit_gguf_linear_dispatch import _fake_weight
 
@@ -32,6 +33,9 @@ def test_standalone_q8_split_keeps_main_reference_default():
 
 @pytest.mark.parametrize("backend,expected", [("hip_gfx1100", 256), ("hip_gfx1151", 0)])
 def test_live_pair_dispatch_forwards_scoped_threads(monkeypatch, backend, expected):
+    # Capability lookup may have imported this package before registry cleanup.
+    # Refresh through the supported loader; a cached import alone is insufficient.
+    load_backend_kernel_package(backend)
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)
     calls = []
     monkeypatch.setattr(linear, "gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out",
