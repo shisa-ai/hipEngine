@@ -573,6 +573,19 @@ Likely investigation order:
   reassociation.
 - [x] Norm, SiLU, residual, and logits tail overhead. Closed 2026-09-12:
   1.885 ms/step, 4.00% of the UD-Q4_K_M verifier, below the repair threshold.
+  **Re-checked 2026-09-13 against the verifier-window launch census and not
+  contradicted.** The census attributes 212.0 us/token to
+  `gguf_norm_fixed5120_wave256_kernel` (40 launches/token at 5.3 us each, one
+  per layer), 38.3 to `silu_mul_separate_out_kernel` (18.44 launches at 2.1 us),
+  22.2 to `gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel`, and
+  under 10 us combined to the remaining norm, copy and logits kernels: a
+  genuine tail of **0.284 ms/step**, which is below rather than above the
+  closure's 1.885 ms/step. The two large families whose names contain "norm" or
+  "silu" are excluded because they are compute, not tail:
+  `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel` at 502.3
+  us/token and `q4_k_t16_dense_dual_rowtile_silu_gemv_kernel` at 205.8. The
+  closure stands. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-verifier-window-launch-census.json`.
 - [ ] Graph capture/replay ownership and synchronization. The host residual is
   5.25 ms/step against 1032 kernel calls/step, 5.09 us per launch (the plain
   control is 824 calls/step, 4.39 ms/step and 5.33 us per launch), so it is
