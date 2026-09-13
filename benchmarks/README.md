@@ -749,8 +749,8 @@ backend-selected HIP graph path.
 | 1K/128 | **414.749 tok/s** | **11.982 tok/s** | 37.428 GiB |
 | 4K/128 | **401.415 tok/s** | **12.137 tok/s** | 37.428 GiB |
 
-Every prefill/decode CV is below 0.14%, and two back-to-back sweeps of this
-revision agree within 0.37%. All timed final logits are finite, and the
+Every prefill/decode CV is below 0.15%, and three sweeps of this revision
+agree within 0.37%. All timed final logits are finite, and the
 graph/eager preflight matches every generated ID, final full logits, and state
 fingerprint on 18 category/heldout prompts. The public packed numerical gate
 covers 8,716 rows at KL0/top-1 100%; real-socket blocking/SSE, cancellation,

@@ -1,7 +1,7 @@
 {
  "schema": 2,
  "status": "accepted",
- "timestamp": "2026-09-13T11:41:01.948087+00:00",
+ "timestamp": "2026-09-13T11:50:20.848328+00:00",
  "date": "2026-09-13",
  "run_tag": "gfx1151-q6-planar-prefill-wide-down-row-bands",
  "kind": "qwen38_gfx1151_q6_planar_wide_down_row_bands",
@@ -1474,33 +1474,386 @@
     }
    }
   },
+  "after_128_decode_clean_tree": {
+   "artifact": "raw/prefill-after-a14f9de01-cleantree-128decode.json",
+   "artifact_sha256": "bf18b8ff093f3464d6bc3f2e7c5adb85d6dd44a23b8de827828edcd0eec1c9b6",
+   "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-13T11:47:17.136877+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "a14f9de010a0aecbb81777a86fd88f3de6f7d880",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 3,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+     "algorithm": "sha256-sampled-v1",
+     "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+     "size_bytes": 17106775008,
+     "sampled_bytes": 3145728,
+     "sample_offsets": [
+      0,
+      8552863216,
+      17105726432
+     ],
+     "exists": true,
+     "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+     "/home/lhl/hipEngine/.venv/bin/python",
+     "scripts/qwen38_gfx1151_readme_sweep.py",
+     "--prompt-lengths",
+     "512",
+     "1024",
+     "4096",
+     "--decode-tokens",
+     "128",
+     "--warmups",
+     "1",
+     "--repetitions",
+     "3",
+     "--output",
+     "/tmp/qwen38-ablation/prefill-after-a14f9de01-cleantree.json"
+    ],
+    "environment": {
+     "GPU_MAX_HW_QUEUES": "2",
+     "HIPENGINE_HIP_ARCH": "gfx1151",
+     "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+     "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+     "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public_profile_readme_sweep",
+    "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+     "enabled": false
+    }
+   },
+   "decode_tokens": 128,
+   "execution_profile": "production",
+   "variant_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+   "performance_claim": false,
+   "limitation": "Publication requires separately linked profile quality and serving gates",
+   "graph_eager_gate": {
+    "prompts": 18,
+    "all_passed": true,
+    "ids_exact": true,
+    "state_exact": true,
+    "final_logits_exact": true,
+    "by_category": {
+     "code": {
+      "prompts": 6,
+      "passed": 6
+     },
+     "general_en": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "general_ja": {
+      "prompts": 4,
+      "passed": 4
+     },
+     "mixed_ja_en": {
+      "prompts": 4,
+      "passed": 4
+     }
+    },
+    "state_sha256": [
+     "159d2aecbea5d2d1892533ca45a962f00ae93902a6f5586d874ef34e83a42504",
+     "1bd1781804f380a088ecf18dfcdc2c970282a59f7dee5c16f6dfc4e8176384db",
+     "1fba97404575919ab732192fd4686ebf506c7700eeb86c8d71f1e8074c1a01c3",
+     "2f44bb079bb605755c71fd6776ea40c78edef65c21367679aaf7780b779f8790",
+     "3c8d676290632bd67de0c7342d433a076fd6979823aa299edbad6e2d25e3db46",
+     "4ae19edae3dfe052cefeb67c866fd7ce952bab46f43354a4d34f92fbd276e496",
+     "5addf32e6febfc879b89827c5d22cb5b47833dd9ddbf699f4428f7ea5ef5ca36",
+     "83687f5ae05a040e8d1eedb521bb3a4a7e144e79c1cf84c1c7f74b6e15060006",
+     "8a3241e30166948e9aa9b63ced8125c378917dbcc0778d419d7ad6f073a22545",
+     "93e9c89523c547454d06c4f7fc739b17a4d3caf423694e0c5c06347c30bde61e",
+     "94122b7acbb245a492ede9e8a28d2629973fad75ebacf19c465b0ba39bebd808",
+     "a76225eb81a53bbcd497d5c3f27238758a9dae147a5b20bdca8faa88efb1a48c",
+     "afa632b894ecf3ea8406b421889a9c13b6d0aa40c84050668bccddb5cfd5ce6b",
+     "b5c9990834c91bbf3f09fbbf97e0009a619137ae14d68a25fa999406aa617920",
+     "c233c43b1514d68164436f9ea391380f184469b38d40572cd3fe97774394707d",
+     "c65b7bf293475cae49ab332f07a75e96e98fca2e1397304cdf9e02cf8b368694",
+     "dde438c0610f80032891855aab1b7350aaab606c99ee7587f3312b5d0e87bcc0",
+     "e282fce143baf1769aee17e8230482e91679ab2ee8c6b9902804b2ec61b2b2b9"
+    ]
+   },
+   "rows": {
+    "512/128": {
+     "prompt_length": 512,
+     "prefill_tok_s": {
+      "samples": [
+       435.07138439305777,
+       435.7070228033773,
+       434.41743322279126
+      ],
+      "median": 435.07138439305777,
+      "p95": 435.07138439305777,
+      "min": 434.41743322279126,
+      "max": 435.7070228033773,
+      "stdev": 0.6448164607238446,
+      "stdev_pct_of_median": 0.14820934767369032
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.215878194920434,
+       12.21399873035725,
+       12.214740652631368
+      ],
+      "median": 12.214740652631368,
+      "p95": 12.214740652631368,
+      "min": 12.21399873035725,
+      "max": 12.215878194920434,
+      "stdev": 0.0009466465518261116,
+      "stdev_pct_of_median": 0.007750033985553182
+     }
+    },
+    "1024/128": {
+     "prompt_length": 1024,
+     "prefill_tok_s": {
+      "samples": [
+       414.57247428871943,
+       415.15206534370185,
+       414.2629671958766
+      ],
+      "median": 414.57247428871943,
+      "p95": 414.57247428871943,
+      "min": 414.2629671958766,
+      "max": 415.15206534370185,
+      "stdev": 0.45133430846802786,
+      "stdev_pct_of_median": 0.10886740834455558
+     },
+     "decode_tok_s": {
+      "samples": [
+       11.984854852764078,
+       11.984400762660355,
+       11.984684713211319
+      ],
+      "median": 11.984684713211319,
+      "p95": 11.984684713211319,
+      "min": 11.984400762660355,
+      "max": 11.984854852764078,
+      "stdev": 0.00022940982437006692,
+      "stdev_pct_of_median": 0.0019141915691547311
+     }
+    },
+    "4096/128": {
+     "prompt_length": 4096,
+     "prefill_tok_s": {
+      "samples": [
+       401.6225479892268,
+       400.96818196582063,
+       401.44894194684474
+      ],
+      "median": 401.44894194684474,
+      "p95": 401.44894194684474,
+      "min": 400.96818196582063,
+      "max": 401.6225479892268,
+      "stdev": 0.338984785768296,
+      "stdev_pct_of_median": 0.08444032362481116
+     },
+     "decode_tok_s": {
+      "samples": [
+       12.135919697257522,
+       12.137283669786584,
+       12.13703576446771
+      ],
+      "median": 12.13703576446771,
+      "p95": 12.13703576446771,
+      "min": 12.135919697257522,
+      "max": 12.137283669786584,
+      "stdev": 0.0007265769200865951,
+      "stdev_pct_of_median": 0.0059864445832294244
+     }
+    }
+   }
+  },
   "cross_tree_baseline_export": {
    "kind": "live_checkout_vs_frozen_release_export",
    "note": "The same command run back to back on the same host against the live checkout (retiled) and the frozen release export at a2f62c881 (no retile). The export arm is an independent same-day reproduction of the pre-change baseline on a different tree, and it also shows why the process-tracked high-water mark differs between the two trees.",
    "live_checkout": {
     "artifact": "raw/memory-ab-live.json",
     "artifact_sha256": "622f497b43ec11ea139ae14cd6e6e5a905d706a73d6a5f082b45e66c7d801b30",
+    "provenance": {
+     "kind": "hipengine_artifact_provenance",
+     "schema_version": 2,
+     "collected_at": "2026-09-13T11:32:32.194154+00:00",
+     "host_name": "gfx1151",
+     "repo_root": "/home/lhl/hipEngine",
+     "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
+     "git_branch": "qwen3.8-flash-next",
+     "staged_dirty": false,
+     "unstaged_dirty": true,
+     "untracked_dirty": true,
+     "untracked_count": 10,
+     "dirty": true,
+     "configured_backend": "hip_gfx1151",
+     "resolved_backend": "hip_gfx1151",
+     "target_arch": "gfx1151",
+     "device_name": "AMD Radeon 8060S Graphics",
+     "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "model_revision": null,
+     "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+       0,
+       8552863216,
+       17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+     },
+     "quant": "gguf_q4_k_m",
+     "kv_dtype": "bf16",
+     "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/qwen38_gfx1151_readme_sweep.py",
+      "--prompt-lengths",
+      "512",
+      "1024",
+      "4096",
+      "--decode-tokens",
+      "128",
+      "--warmups",
+      "1",
+      "--repetitions",
+      "3",
+      "--output",
+      "/tmp/qwen38-ablation/memory-ab-live.json"
+     ],
+     "environment": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+      "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+     },
+     "rocm_version": "HIP version: 7.15.26333-0000000",
+     "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+     "build_profile": "public_profile_readme_sweep",
+     "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+     "warmups": 1,
+     "repetitions": 3,
+     "profiler": {
+      "enabled": false
+     }
+    },
     "repo_root": "/home/lhl/hipEngine",
     "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
     "dirty": true,
     "rows": {
      "512/128": {
-      "prefill_tok_s": 436.062001419833,
-      "decode_tok_s": 12.21733161208772,
+      "prefill_tok_s": {
+       "samples": [
+        435.7128572027422,
+        436.062001419833,
+        436.34784587744326
+       ],
+       "median": 436.062001419833,
+       "p95": 436.062001419833,
+       "min": 435.7128572027422,
+       "max": 436.34784587744326,
+       "stdev": 0.3180197465758578,
+       "stdev_pct_of_median": 0.0729299378392005
+      },
+      "decode_tok_s": {
+       "samples": [
+        12.21525478111979,
+        12.217656020828073,
+        12.21733161208772
+       ],
+       "median": 12.21733161208772,
+       "p95": 12.21733161208772,
+       "min": 12.21525478111979,
+       "max": 12.217656020828073,
+       "stdev": 0.001302844326644432,
+       "stdev_pct_of_median": 0.010663902462591825
+      },
       "tracked_peak_gib": 37.42757194489241,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 26.289146423339844
      },
      "1024/128": {
-      "prefill_tok_s": 413.20938147167436,
-      "decode_tok_s": 11.98636022508625,
+      "prefill_tok_s": {
+       "samples": [
+        413.94479791338983,
+        413.20938147167436,
+        412.7843476161368
+       ],
+       "median": 413.20938147167436,
+       "p95": 413.20938147167436,
+       "min": 412.7843476161368,
+       "max": 413.94479791338983,
+       "stdev": 0.5871024915482795,
+       "stdev_pct_of_median": 0.14208353388717182
+      },
+      "decode_tok_s": {
+       "samples": [
+        11.986171440688866,
+        11.986647090575145,
+        11.98636022508625
+       ],
+       "median": 11.98636022508625,
+       "p95": 11.98636022508625,
+       "min": 11.986171440688866,
+       "max": 11.986647090575145,
+       "stdev": 0.00023950440905227353,
+       "stdev_pct_of_median": 0.0019981412585199534
+      },
       "tracked_peak_gib": 37.42757194489241,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 26.289146423339844
      },
      "4096/128": {
-      "prefill_tok_s": 400.24486076431856,
-      "decode_tok_s": 12.139556666438773,
+      "prefill_tok_s": {
+       "samples": [
+        400.7079832675365,
+        400.24486076431856,
+        399.9779603473897
+       ],
+       "median": 400.24486076431856,
+       "p95": 400.24486076431856,
+       "min": 399.9779603473897,
+       "max": 400.7079832675365,
+       "stdev": 0.36938050604658623,
+       "stdev_pct_of_median": 0.09228863184931521
+      },
+      "decode_tok_s": {
+       "samples": [
+        12.138198975802519,
+        12.139556666438773,
+        12.140131864892233
+       ],
+       "median": 12.139556666438773,
+       "p95": 12.139556666438773,
+       "min": 12.138198975802519,
+       "max": 12.140131864892233,
+       "stdev": 0.0009924915917167076,
+       "stdev_pct_of_median": 0.008175682349756372
+      },
       "tracked_peak_gib": 37.42757194489241,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 26.34903335571289
@@ -1510,27 +1863,168 @@
    "frozen_export": {
     "artifact": "raw/memory-ab-export.json",
     "artifact_sha256": "6d18d1726721fc5ad68bb289ae5ff19f821534ad771b4467d69f59e56afcceef",
+    "provenance": {
+     "kind": "hipengine_artifact_provenance",
+     "schema_version": 2,
+     "collected_at": "2026-09-13T11:38:16.558662+00:00",
+     "host_name": "gfx1151",
+     "repo_root": "/tmp/hipengine-qwen38-release-20260913",
+     "hipengine_commit": "a2f62c881ba5a2a9c0be280a67de233fd7088091",
+     "git_branch": null,
+     "staged_dirty": false,
+     "unstaged_dirty": false,
+     "untracked_dirty": false,
+     "untracked_count": 0,
+     "dirty": false,
+     "configured_backend": "hip_gfx1151",
+     "resolved_backend": "hip_gfx1151",
+     "target_arch": "gfx1151",
+     "device_name": "AMD Radeon 8060S Graphics",
+     "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "model_revision": null,
+     "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+       0,
+       8552863216,
+       17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+     },
+     "quant": "gguf_q4_k_m",
+     "kv_dtype": "bf16",
+     "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/qwen38_gfx1151_readme_sweep.py",
+      "--prompt-lengths",
+      "512",
+      "1024",
+      "4096",
+      "--decode-tokens",
+      "128",
+      "--warmups",
+      "1",
+      "--repetitions",
+      "3",
+      "--output",
+      "/tmp/qwen38-ablation/memory-ab-export.json"
+     ],
+     "environment": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hip1151-t6/hipcc-version-gfx1151.txt",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+      "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+     },
+     "rocm_version": "HIP version: 7.15.26333-0000000",
+     "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+     "build_profile": "public_profile_readme_sweep",
+     "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+     "warmups": 1,
+     "repetitions": 3,
+     "profiler": {
+      "enabled": false
+     }
+    },
     "repo_root": "/tmp/hipengine-qwen38-release-20260913",
     "hipengine_commit": "a2f62c881ba5a2a9c0be280a67de233fd7088091",
     "dirty": false,
     "rows": {
      "512/128": {
-      "prefill_tok_s": 404.60486937646016,
-      "decode_tok_s": 12.222452634718053,
+      "prefill_tok_s": {
+       "samples": [
+        404.75353880089966,
+        404.3293525047945,
+        404.60486937646016
+       ],
+       "median": 404.60486937646016,
+       "p95": 404.60486937646016,
+       "min": 404.3293525047945,
+       "max": 404.75353880089966,
+       "stdev": 0.21523094500986634,
+       "stdev_pct_of_median": 0.053195342246266215
+      },
+      "decode_tok_s": {
+       "samples": [
+        12.222452634718053,
+        12.222174983535638,
+        12.22295428670071
+       ],
+       "median": 12.222452634718053,
+       "p95": 12.222452634718053,
+       "min": 12.222174983535638,
+       "max": 12.22295428670071,
+       "stdev": 0.0003949806564660684,
+       "stdev_pct_of_median": 0.003231598994657751
+      },
       "tracked_peak_gib": 24.15250550955534,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 24.789146423339844
      },
      "1024/128": {
-      "prefill_tok_s": 395.81843951517146,
-      "decode_tok_s": 11.99159748107487,
+      "prefill_tok_s": {
+       "samples": [
+        395.7310407660666,
+        396.64357128143854,
+        395.81843951517146
+       ],
+       "median": 395.81843951517146,
+       "p95": 395.81843951517146,
+       "min": 395.7310407660666,
+       "max": 396.64357128143854,
+       "stdev": 0.5035197636857799,
+       "stdev_pct_of_median": 0.1272097793883805
+      },
+      "decode_tok_s": {
+       "samples": [
+        11.99159748107487,
+        11.990945450015749,
+        11.992175678382822
+       ],
+       "median": 11.99159748107487,
+       "p95": 11.99159748107487,
+       "min": 11.990945450015749,
+       "max": 11.992175678382822,
+       "stdev": 0.0006154833417905956,
+       "stdev_pct_of_median": 0.005132621760878407
+      },
       "tracked_peak_gib": 24.15250550955534,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 24.789146423339844
      },
      "4096/128": {
-      "prefill_tok_s": 373.3749591251545,
-      "decode_tok_s": 12.145343093139429,
+      "prefill_tok_s": {
+       "samples": [
+        373.3914654452452,
+        373.21393849649826,
+        373.3749591251545
+       ],
+       "median": 373.3749591251545,
+       "p95": 373.3749591251545,
+       "min": 373.21393849649826,
+       "max": 373.3914654452452,
+       "stdev": 0.09807813125869494,
+       "stdev_pct_of_median": 0.026267999195366327
+      },
+      "decode_tok_s": {
+       "samples": [
+        12.145026354193863,
+        12.145343093139429,
+        12.145911981229967
+       ],
+       "median": 12.145343093139429,
+       "p95": 12.145343093139429,
+       "min": 12.145026354193863,
+       "max": 12.145911981229967,
+       "stdev": 0.00044875614504067427,
+       "stdev_pct_of_median": 0.003694882405538336
+      },
       "tracked_peak_gib": 24.15250550955534,
       "session_owned_peak_gib": 19.809751085937023,
       "device_used_peak_gib": 24.84903335571289
@@ -1551,11 +2045,95 @@
    "tracked_peak_explanation": "The process high-water mark tracks hipEngine's own allocations, and the live checkout contains a038c2f9f 'size the dense GGUF resident context from free HIP memory', which sizes the resident context from free device memory instead of a fixed small context. On this 120 GB host that reservation dominates the high-water mark. It is not a throughput or session-ownership change: session-owned peak is identical in both arms and the pre-retile prefill rates agree within 0.21%."
   }
  },
+ "reproduction": {
+  "kind": "three_retiled_arms_one_command",
+  "note": "The retained arm, the live arm of the memory A/B, and a rerun from the committed revision. The rerun's only dirty flag is untracked_dirty from three files owned by another worker; no tracked file differs from its commit. Between-sweep spread is larger than the within-run stdev, so the spread is the honest error bar for the table's rates.",
+  "arms": [
+   {
+    "artifact": "raw/prefill-after-fca92ac-128decode.json",
+    "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "rows": {
+     "512/128": {
+      "prefill_tok_s": 435.4234465169532,
+      "stdev_pct_of_median": 0.029646050608246877,
+      "decode_tok_s": 12.214244087103022
+     },
+     "1024/128": {
+      "prefill_tok_s": 414.74858072579826,
+      "stdev_pct_of_median": 0.13834700566615982,
+      "decode_tok_s": 11.98232782584036
+     },
+     "4096/128": {
+      "prefill_tok_s": 401.4150795317486,
+      "stdev_pct_of_median": 0.10018703173161876,
+      "decode_tok_s": 12.136960656114903
+     }
+    }
+   },
+   {
+    "artifact": "raw/memory-ab-live.json",
+    "hipengine_commit": "fca92ac623b10312784e76de74d2af6264bcf1a6",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "rows": {
+     "512/128": {
+      "prefill_tok_s": 436.062001419833,
+      "stdev_pct_of_median": 0.0729299378392005,
+      "decode_tok_s": 12.21733161208772
+     },
+     "1024/128": {
+      "prefill_tok_s": 413.20938147167436,
+      "stdev_pct_of_median": 0.14208353388717182,
+      "decode_tok_s": 11.98636022508625
+     },
+     "4096/128": {
+      "prefill_tok_s": 400.24486076431856,
+      "stdev_pct_of_median": 0.09228863184931521,
+      "decode_tok_s": 12.139556666438773
+     }
+    }
+   },
+   {
+    "artifact": "raw/prefill-after-a14f9de01-cleantree-128decode.json",
+    "hipengine_commit": "a14f9de010a0aecbb81777a86fd88f3de6f7d880",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "rows": {
+     "512/128": {
+      "prefill_tok_s": 435.07138439305777,
+      "stdev_pct_of_median": 0.14820934767369032,
+      "decode_tok_s": 12.214740652631368
+     },
+     "1024/128": {
+      "prefill_tok_s": 414.57247428871943,
+      "stdev_pct_of_median": 0.10886740834455558,
+      "decode_tok_s": 11.984684713211319
+     },
+     "4096/128": {
+      "prefill_tok_s": 401.44894194684474,
+      "stdev_pct_of_median": 0.08444032362481116,
+      "decode_tok_s": 12.13703576446771
+     }
+    }
+   }
+  ],
+  "prefill_spread_pct": {
+   "512/128": 0.23,
+   "1024/128": 0.37,
+   "4096/128": 0.3
+  },
+  "graph_eager_state_sha256_identical_across_arms": true
+ },
  "limitations": [
   "One physical gfx1151 host; the same GPU model on another host is an independent lane and its absolute rates are not an old-to-new comparison against these numbers.",
-  "Between-sweep variation is larger than the within-run stdev: two back-to-back sweeps of the retiled tree gave 435.423/414.749/401.415 and 436.062/413.209/400.245 tok/s, a spread of 0.37%, while the within-run stdev is 0.03-0.14%.",
+  "Between-sweep variation is larger than the within-run stdev: three sweeps of the retiled revision span 0.23-0.37% per shape, while the within-run stdev is 0.03-0.15%.",
   "The screen covers the (17408,5120) and (5120,1024) planar shapes. The (5120,1024) bands were measured but deliberately not changed.",
-  "The clean rerun at fca92ac62 reported dirty=true because benchmark prose in benchmarks/results/20260913-qwen38-27b-comparison/ was edited while it ran; no file under hipengine/ differs from that commit.",
+  "The retained arm at fca92ac62 reported dirty=true because benchmark prose in benchmarks/results/20260913-qwen38-27b-comparison/ was edited while it ran; no file under hipengine/ differs from that commit. The rerun at a14f9de01 is clean apart from three untracked files owned by another worker.",
   "Decode is unchanged by construction (the planar Q6 decode GEMV selector is untouched) and measured 0.10-0.26% below the baseline across the three prompt lengths, which is small and consistent in sign but larger than the within-run stdev; the residual is not attributed and no decode path was changed.",
   "The process-tracked high-water mark in these arms is dominated by the auto-sized resident context reservation described in arms.cross_tree_baseline_export, not by session ownership."
  ],
