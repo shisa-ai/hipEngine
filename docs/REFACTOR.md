@@ -7135,3 +7135,25 @@ to preserve an arithmetic variant.
 **Removal trigger.** Once no artifact or test needs the round-down comparison,
 delete `_row_batch_round_down()`, `_ROW_BATCH_DOWN_ENV` and the switch test, and
 keep the covering rule alone.
+
+## 2026-09-13 rounded add+rmsnorm fixed-5120 leaf — env kill switch
+
+**State.** `GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` in
+`hipengine/kernels/hip_gfx1100/__init__.py` routes the `add+rmsnorm` layer to
+`rounded_bf16_out_fixed5120_wave256` for `(rows, 5120)` with `2 <= rows <= 8`.
+`HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0` restores the generic
+`rounded_bf16_out` owner.
+
+**Why it is retained.** The two owners are bit-identical - the new leaf
+reproduces the generic 256-thread tree level for level and only caches the 20
+per-thread rounded values - so the switch exists to bisect a launch-geometry or
+routing suspicion, not to preserve an arithmetic variant. It is also what makes
+the interleaved census A/B possible, because the switch is read from the
+environment inside the profiled child process.
+
+**Removal trigger.** Once no artifact or test needs the generic-owner
+comparison, drop the `enabled_env` / `enabled_default` keys from the table, the
+`_backend_environment_policy_enabled` branch in
+`_gguf_norm_residual_decode_kernel`, and the switch test; keep the fixed-5120
+policy alone. The generic `rounded_bf16_out` registration must stay: it is the
+declared fallback for every shape the policy does not cover.

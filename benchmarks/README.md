@@ -451,6 +451,32 @@ these projections and K_S three.
 ([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
 [numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
 
+The rounded add+rmsnorm leaf now has a fixed-5120 owner too. It was the last
+norm-family item in the verifier without one, and it carried the same defect the
+plain generic owner had: one block per row, but a runtime-trip-count loop over
+`hidden_size` with no register cache, so it read the residual and the addend
+twice and paid the nine-barrier tree. `gguf_norm_fixed5120_wave256_kernel` gains
+a `kRoundSum` template parameter that makes both the reduction and the residual
+output consume `bf16(bf16(x) + bf16(add))`, the `add+rmsnorm` layer gets a
+`rounded_bf16_out_fixed5120_wave256` variant of it, and gfx1100 declares
+`GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` for `2 <= rows <= 8`. The
+interleaved A/B (three baseline runs, two candidate runs) puts the family at
+**12.640 -> 5.171 ms over 12 steps** (**1.053 -> 0.431 ms/step**, 13.38 ->
+5.47 us per call, -59.1%) and the whole verifier at **36.760 -> 36.321
+ms/step (-1.19%)** at an unchanged 985 calls/step, with the two bands not
+overlapping. The leaves are **byte-identical to their generic counterparts at
+rows 2/3/4/5/6/8**, so the section-6.1 gate is **identical to the last digit**
+to the parent commit's run (mean/p95/p99/max KL **2.503e-05 / 1.654e-04 /
+2.930e-04 / 2.971e-04**, top-1 **1.0000** overall and per category and per
+budget). The paired suite follows: MTP B3 rises **49.371 -> 50.131 tok/s**
+(UD-Q4_K_M, +1.54%) and **48.294 -> 48.634** (UD-Q4_K_S, +0.70%) while the
+true-AR denominator stays flat (32.750 -> 32.705 and 32.098 -> 32.081), which is
+what a verifier-only change must do. All four paired arms are `binding_passed`
+with `timing_evidence_valid`. Rollback:
+`HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0`.
+([artifact](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[worklog](../worklog/entries/20260913T090609.044291Z-lhl-ud-rounded-norm-fixed5120-fa5016.md).)
+
 The fixed-5120 norm leaf now reaches the verifier row slab. The kernel and both
 of its registry keys already existed on this backend, but only the gfx1151
 package declared `GGUF_NORM_RESIDUAL_DECODE_POLICIES` and its table admits

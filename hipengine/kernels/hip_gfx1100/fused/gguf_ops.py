@@ -450,6 +450,59 @@ def gguf_rounded_add_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    residual_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
+) -> None:
+    """Fixed-5120 register-cached owner for the rounded add-plus-RMSNorm leaf.
+
+    Same rounded arithmetic and the same 256-thread reduction tree as
+    :func:`gguf_rounded_add_rmsnorm_bf16_f32_weight`, with both passes fully
+    unrolled over the 20 values each thread owns so the residual is read once
+    and the second pass does not reload it.
+    """
+
+    if not _prevalidated:
+        if not 2 <= rows <= 8:
+            raise ValueError("rows must be 2 to 8")
+        _check_fixed5120_wave256(
+            (
+                (residual_ptr, "residual_ptr"),
+                (add_ptr, "add_ptr"),
+                (weight_ptr, "weight_ptr"),
+                (norm_out_ptr, "norm_out_ptr"),
+                (residual_out_ptr, "residual_out_ptr"),
+            ),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+            max_rows=8,
+        )
+    _launch_add_rmsnorm(
+        "hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
+        (residual_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256(
     x_ptr: int,
     add_ptr: int,
@@ -1048,6 +1101,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "add+rmsnorm",
+            "gguf_f32_weight",
+            "rounded_bf16_out_fixed5120_wave256",
+        ),
+        gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "add_rmsnorm",
             "gguf_f32_weight",
             "bf16_out_staged_f32_local256",
@@ -1460,6 +1523,7 @@ __all__ = [
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
+    "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_rounded_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",

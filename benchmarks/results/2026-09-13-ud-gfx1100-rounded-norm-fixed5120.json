@@ -1,0 +1,195 @@
+{
+  "unit": "ud-gfx1100-rounded-norm-fixed5120",
+  "date": "2026-09-13",
+  "status": "retained",
+  "host": {
+    "name": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_index": 1,
+    "HIP_VISIBLE_DEVICES": "1",
+    "ROCR_VISIBLE_DEVICES": null
+  },
+  "change": {
+    "summary": "gguf_norm_fixed5120_wave256_kernel gains a kRoundSum template parameter, the add+rmsnorm layer gets a rounded_bf16_out_fixed5120_wave256 variant of it, and gfx1100 declares GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES for (rows, 5120) with 2 <= rows <= 8. The generic gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel was one block per row already but had a runtime-trip-count loop with no register cache, so it read the residual and the addend twice and paid the nine-barrier tree.",
+    "files": [
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip",
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.py",
+      "hipengine/kernels/hip_gfx1100/__init__.py",
+      "hipengine/runtime/qwen35_gguf_runner.py"
+    ],
+    "owner": "gguf_norm_fixed5120_wave256_kernel<true, true> (layer add+rmsnorm, variant rounded_bf16_out_fixed5120_wave256)",
+    "rollback_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0",
+    "arithmetic_neutral_basis": "One block owns one row, so blockIdx.x only selects the row base. The rounded leaf caches the same 20 per-thread bf16(bf16(x)+bf16(add)) values the generic owner recomputes in its second pass, and reproduces the generic 256-thread reduction tree level for level."
+  },
+  "bit_identity": {
+    "method": "New leaf vs generic gguf_rounded_add_rmsnorm_bf16_f32_weight on real bf16 tensors at hidden_size 5120, rows 2/3/4/5/6/8; norm_out and residual_out compared elementwise. The same test asserts the rounded residual differs from the exact f32 sum, so the round-trip is exercised.",
+    "rows_tested": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      8
+    ],
+    "differing_elements": 0,
+    "result": "byte-identical at every row count"
+  },
+  "microbenchmark": {
+    "protocol": "400 launches per measurement, min of 7 rounds, real IQ4_XS tensor bytes",
+    "rows_3_us": {
+      "generic": 7.59,
+      "fixed5120": 4.23,
+      "speedup": 1.8
+    },
+    "by_rows_speedup": {
+      "2": 1.83,
+      "3": 1.8,
+      "4": 1.78,
+      "8": 1.83
+    }
+  },
+  "verifier_census_ab": {
+    "command": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=<0|1> scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+    "interleaved": true,
+    "runs": [
+      {
+        "run": 1,
+        "arm": "baseline",
+        "avg_kernel_ms": 36.6946
+      },
+      {
+        "run": 2,
+        "arm": "candidate",
+        "avg_kernel_ms": 36.2715
+      },
+      {
+        "run": 3,
+        "arm": "baseline",
+        "avg_kernel_ms": 36.7925
+      },
+      {
+        "run": 4,
+        "arm": "candidate",
+        "avg_kernel_ms": 36.3714
+      },
+      {
+        "run": 5,
+        "arm": "baseline",
+        "avg_kernel_ms": 36.7925
+      }
+    ],
+    "arm_baseline": {
+      "avg_kernel_ms": 36.7599,
+      "kernel": "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel",
+      "calls_per_step": 78.75,
+      "us_per_call": 13.38,
+      "total_ms_over_12_steps": 12.64,
+      "ms_per_step": 1.0533,
+      "pct_of_step": 2.9
+    },
+    "arm_candidate": {
+      "avg_kernel_ms": 36.3214,
+      "kernel": "gguf_norm_fixed5120_wave256_kernel<true, true>",
+      "calls_per_step": 78.75,
+      "us_per_call": 5.47,
+      "total_ms_over_12_steps": 5.171,
+      "ms_per_step": 0.4309,
+      "pct_of_step": 1.2
+    },
+    "family_delta_ms_per_step": -0.6224,
+    "family_delta_pct": -59.1,
+    "whole_verifier_delta_ms_per_step": -0.4385,
+    "whole_verifier_delta_pct": -1.19,
+    "calls_per_step_both_arms": 985.0,
+    "note": "The two arms' bands do not overlap. The family delta (-7.469 ms over 12 steps) is larger than the whole-step delta (-5.27 ms over 12 steps), the expected direction when a sub-window win is partly absorbed by run-to-run spread elsewhere. A separate baseline run with the switch set and the final resolver code confirmed the trace carries the generic kernel name (945 calls, 13.38 us, 12.640 ms)."
+  },
+  "numerics_gate": {
+    "command": "scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --json <out>",
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05,
+      "top1_overall": 0.99
+    },
+    "ud_q4_k_m": {
+      "rows": 162,
+      "mean_kl": 2.503408023680291e-05,
+      "p95": 0.0001654278080627903,
+      "p99": 0.0002930217617801769,
+      "max": 0.00029713407659434773,
+      "top1_agreement": 1.0,
+      "top1_by_scope": {
+        "code": 1.0,
+        "general_en": 1.0,
+        "general_ja": 1.0,
+        "mixed_ja_en": 1.0
+      },
+      "top1_by_budget": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0
+      },
+      "deterministic": true,
+      "screen_passed": true,
+      "repeats": 2
+    },
+    "note": "Identical to the last digit to the parent commit's run (results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json). That is the predicted outcome of the bit-identity proof, and it is the direct end-to-end confirmation that the substitution is numerically invisible."
+  },
+  "paired_suite": {
+    "command": "scripts/ud_mtp_paired.py --output <path> --runs 2 --device-index 1 --expect-device \"7900 XTX\"",
+    "arms": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 32.705,
+        "mtp_b3_tok_s": 50.131,
+        "mtp_over_ar": 1.5328
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 32.081,
+        "mtp_b3_tok_s": 48.634,
+        "mtp_over_ar": 1.516
+      },
+      "plain-q4-k-m": {
+        "true_ar_tok_s": 37.905,
+        "mtp_b3_tok_s": 65.288,
+        "mtp_over_ar": 1.7224
+      },
+      "plain-q4-k-s": {
+        "true_ar_tok_s": 41.198,
+        "mtp_b3_tok_s": 70.07,
+        "mtp_over_ar": 1.7008
+      }
+    },
+    "previous_retained": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 32.75,
+        "mtp_b3_tok_s": 49.371,
+        "mtp_over_ar": 1.5075
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 32.098,
+        "mtp_b3_tok_s": 48.294,
+        "mtp_over_ar": 1.5046
+      }
+    },
+    "true_ar_delta_pct": {
+      "ud-q4-k-m": -0.14,
+      "ud-q4-k-s": -0.05
+    },
+    "mtp_b3_delta_pct": {
+      "ud-q4-k-m": 1.54,
+      "ud-q4-k-s": 0.7
+    },
+    "binding_gates": "all four arms binding_passed=True timing_evidence_valid=True; both UD arms complete_exact 0/20 divergent",
+    "note": "The flat true-AR denominator is the confirmation: the rounded leaf's envelope starts at rows 2, so a verifier-only change must not move the single-row rate."
+  },
+  "tests": {
+    "command": "pytest tests/test_gguf_norm_residual_fixed5120.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gfx1151_backend.py tests/test_qwen36_gguf_rounded_next_rmsnorm.py tests/test_gguf_ud_ffn_callers.py tests/test_qwen35_gguf_geometry_policy.py tests/test_qwen35_gguf_verify_f32_attn_out.py -q -p no:randomly",
+    "result": "all pass"
+  },
+  "incident": {
+    "first_attempt": "The variant was registered without making the new wrapper _prevalidated-aware. The profiled child died with TypeError: gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256() got an unexpected keyword argument '_prevalidated'.",
+    "resolution": "Every kernel reached through _gguf_norm_residual_decode_kernel is invoked with _prevalidated=True, so the new wrapper honours it like its fixed-5120 siblings."
+  }
+}

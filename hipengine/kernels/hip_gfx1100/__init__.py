@@ -530,6 +530,35 @@ GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
         (rows, 5_120): "bf16_out_fixed5120_wave256" for rows in range(1, 9)
     },
 }
+# Rows 2-8 fixed-5120 rounded add+rmsnorm leaf (2026-09-13). Same shape table as
+# the plain layer above, resolved under the "add+rmsnorm" layer. The rounded
+# owner is the second-largest norm-family item in the verifier (about 1.05
+# ms/step, 79 calls at 13.4 us) and has the same defect as the plain generic
+# owner: a runtime-trip-count loop with no register cache, so it reads the
+# residual and the addend twice and pays the nine-barrier tree. The fixed-5120
+# sibling caches the 20 per-thread rounded values, unrolls both passes, and
+# reproduces the generic tree level for level. Rows 1 is excluded because the
+# rounded entry point's declared envelope is 2 <= rows <= 8.
+GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES = {
+    "enabled_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120",
+    "enabled_default": True,
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S", "gguf_ud_q4_k_s"): {
+        (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
+        for rows in range(2, 9)
+    },
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -1515,6 +1544,7 @@ __all__ = [
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+    "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q5_T16_H5120",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",

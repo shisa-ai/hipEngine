@@ -12,14 +12,10 @@ economically unattractive.
 
 **Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
 the 4-95 token context bucket, and automatic MTP admission is live there for
-both artifacts. The retained paired result is `UD-Q4_K_M` MTP **49.371** tok/s
-at **1.5075x** over its own AR and `UD-Q4_K_S` **48.294** at **1.5046x**
-(`benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json`). The
-ratio is lower than the 1.5482x/1.5509x of the previous row because the true-AR
-denominator improved faster than MTP did, not because either path slowed: the
-same change is bit-identical and takes **-0.9 ms off every single-row AR step**
-while the MTP B3 step is about twice as long.
-The 13 unchecked items below are follow-on work with recorded blockers, not
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **50.131** tok/s
+at **1.5328x** over its own AR and `UD-Q4_K_S` **48.634** at **1.5160x**
+(`benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json`).
+The 16 unchecked items below are follow-on work with recorded blockers, not
 unfinished phases; each names what is missing.
 
 ## References
@@ -39,8 +35,9 @@ unfinished phases; each names what is missing.
 
 ### Current baseline and evidence
 
-- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json)
-- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json)
+- [Current paired GPU1 artifact](../benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json)
+- [Prior paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json)
+- [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json)
 - [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json)
 - [Earlier paired GPU1 artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json)
 - [Phase 6 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
@@ -454,6 +451,26 @@ Likely investigation order:
   The same artifact leaves `gguf_rounded_add_rmsnorm_bf16_f32_weight` as the
   next lever: 63 calls/step at 13.37 us, 0.842 ms/step (2.3%), with no
   fixed-5120 sibling and no policy table.
+- [x] Rounded add+rmsnorm fixed-5120 leaf. Retained 2026-09-13.
+  `gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel` was the last norm-family item
+  in the verifier without a fixed-5120 sibling, and it had the same defect the
+  plain generic owner had: one block per row, but a runtime-trip-count loop with
+  no register cache, so it read the residual and the addend twice and paid the
+  nine-barrier tree. `gguf_norm_fixed5120_wave256_kernel` gains a `kRoundSum`
+  template parameter and the `add+rmsnorm` layer gets a
+  `rounded_bf16_out_fixed5120_wave256` variant of it, selected by
+  `GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` for `2 <= rows <= 8`. An
+  interleaved A/B (three baseline runs, two candidate runs) puts the family at
+  **12.640 -> 5.171 ms over 12 steps** (1.053 -> 0.431 ms/step, 13.38 -> 5.47 us
+  per call, -59.1%) and the whole verifier at **36.760 -> 36.321 ms/step
+  (-1.19%)** at an unchanged 985 calls/step, with the two bands not overlapping.
+  The leaves are byte-identical to their generic counterparts at rows
+  2/3/4/5/6/8, and the section-6.1 gate is identical to the last digit to the
+  parent commit's run. Paired: UD-Q4_K_M MTP B3 49.371 -> **50.131** (+1.54%) and
+  UD-Q4_K_S 48.294 -> **48.634** (+0.70%) at a flat true-AR denominator, which is
+  what a verifier-only change must do. Rollback:
+  `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0`. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json`.
 - [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
   rows 2-4 sibling either; it keeps the strict per-row GEMV. Blocked, not
   merely unattempted: routing it was measured on gfx1151 at +176.5 tok/s but

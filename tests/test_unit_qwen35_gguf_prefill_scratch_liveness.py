@@ -431,12 +431,72 @@ def test_fixed5120_norm_residual_decode_kernel_is_exactly_scoped(
     assert gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="add_rmsnorm", rows=9, hidden_size=5_120
     ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    # 2026-09-13: the rounded layer resolves its own register-cached sibling
+    # from a separate capability table, and the layer is part of the memo key
+    # so the two layers cannot serve each other's shape.
+    selected = gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add+rmsnorm", rows=3, hidden_size=5_120
+    )
+    assert selected.func is candidate
+    assert selected.keywords == {"_prevalidated": True}
+    assert resolved[-1] == {
+        "backend": "hip_gfx1100",
+        "layer": "add+rmsnorm",
+        "quant": "gguf_f32_weight",
+        "variant": "rounded_bf16_out_fixed5120_wave256",
+    }
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add+rmsnorm", rows=1, hidden_size=5_120
+    ) is gguf_runner.gguf_rounded_add_rmsnorm_bf16_f32_weight
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add+rmsnorm", rows=3, hidden_size=1_024
+    ) is gguf_runner.gguf_rounded_add_rmsnorm_bf16_f32_weight
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner,
+        layer="add+rmsnorm",
+        rows=3,
+        hidden_size=1_024,
+        fallback="sentinel",
+    ) == "sentinel"
     runner.backend = "hip_gfx1151"
     runner.weights.file_type_name = "MOSTLY_Q8_0"
     assert gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="rmsnorm", rows=1, hidden_size=5_120
     ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
-    assert len(resolved) == 3
+    assert len(resolved) == 4
+
+
+def test_rounded_norm_residual_fixed5120_leaf_has_a_bisection_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rounded layer must honour its enabled_env and fall back when off."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", raising=False)
+    runner = _fake_dense_qwen36_runner()
+    runner.backend = "hip_gfx1100"
+    selected = gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add+rmsnorm", rows=3, hidden_size=5_120
+    )
+    assert selected.func.__name__ == (
+        "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256"
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", "0")
+    disabled = _fake_dense_qwen36_runner()
+    disabled.backend = "hip_gfx1100"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        disabled, layer="add+rmsnorm", rows=3, hidden_size=5_120
+    ) is gguf_runner.gguf_rounded_add_rmsnorm_bf16_f32_weight
+
+    monkeypatch.setenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", "1")
+    enabled = _fake_dense_qwen36_runner()
+    enabled.backend = "hip_gfx1100"
+    selected = gguf_runner._gguf_norm_residual_decode_kernel(
+        enabled, layer="add+rmsnorm", rows=4, hidden_size=5_120
+    )
+    assert selected.func.__name__ == (
+        "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256"
+    )
 
 
 def test_attention_norm_rows_uses_fixed1024_registry_selection(
