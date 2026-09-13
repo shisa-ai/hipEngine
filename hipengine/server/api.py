@@ -9248,7 +9248,14 @@ def _kv_pool_stream_payload(engine: Any | None) -> dict[str, float] | None:
     stats = _kv_pool_stats_object(engine)
     if stats is None:
         return None
-    return _kv_pool_metric_values_from_stats(stats)
+    values = _kv_pool_metric_values_from_stats(stats)
+    # Keep the established streaming payload compact and backwards-compatible;
+    # readiness and Prometheus expose the independent budget fields.
+    return {
+        key: value
+        for key, value in values.items()
+        if key not in {"max_pages", "budget_bytes"}
+    }
 
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
