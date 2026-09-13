@@ -17,6 +17,9 @@ HIP_ERROR_NOT_READY: Final[int] = 600
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
+HIP_GRAPH_CAPTURE_MODE_GLOBAL: Final[int] = 0
+HIP_GRAPH_CAPTURE_MODE_THREAD_LOCAL: Final[int] = 1
+HIP_GRAPH_CAPTURE_MODE_RELAXED: Final[int] = 2
 
 
 class HipDim3(ctypes.Structure):
@@ -374,7 +377,7 @@ class HipRuntime:
             )
         )
 
-    def stream_begin_capture(self, stream: int, mode: int = 2) -> None:
+    def stream_begin_capture(self, stream: int, mode: int = HIP_GRAPH_CAPTURE_MODE_RELAXED) -> None:
         self.check(self.library.hipStreamBeginCapture(ctypes.c_void_p(stream), ctypes.c_int(mode)))
 
     def stream_end_capture(self, stream: int) -> int:

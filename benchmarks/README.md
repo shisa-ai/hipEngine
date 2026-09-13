@@ -888,11 +888,34 @@ Resizable BAR / Above 4G Decoding in firmware *and* ACS redirection disabled on
 the path between the cards would both be needed to change this; the second is an
 IOMMU-isolation tradeoff and has not been changed.
 
-Decode budget: 36 all-reduces per token at 28-35 us is about 1.0-1.25 ms per
-token. Against the current same-host single-GPU baselines (W7900 27.9 tok/s;
+A direct chain ladder pins the per-token cost better than a two-point marginal:
+one 20 KB fp32 all-reduce chain measures 398 us at depth 1, 827 us at depth 16
+(28.6 us per op) and 1388 us at depth 32, so 36 collectives per token is about
+1.3-1.5 ms. Against the current same-host single-GPU baselines (W7900 27.9 tok/s;
 XTX 29.82 tok/s at 8192 context), a TP2 decode that halves per-rank weight
 traffic projects near 1.7-1.9x, above the plan's 1.3x target. This is a
 projection from measured collective latency, not a measured engine result.
+
+**RCCL work captures into a HIP graph and replays bit-identically.** With
+communicator creation outside capture and each rank's whole chain captured on its
+own stream, all 40 probes across chain depths 1/4/8/16/24 (rows 1 and 4, fp32 and
+bf16, all-reduce and broadcast) replayed to the same bytes as the graph-disabled
+path - the receive buffers are poisoned with `0xFF` first, so a graph that did
+nothing cannot pass. Replay is 20-30% faster than eager enqueue and much less
+variable (1-row all-reduce p50 lands in a 202-205 us band across every case,
+against 219-334 us eager):
+
+| Chain depth | Captured nodes | Eager p50 | Graph replay p50 | Delta |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 3 | 219-334 us | 203-204 us | -7 to -39% |
+| 4 | 9 | 333-434 us | 276 us | -18 to -36% |
+| 8 | 17 | 467-522 us | 345-393 us | -23 to -32% |
+| 16 | 33 | 779-880 us | 539-632 us | -27 to -35% |
+| 24 | 49 | 1046-1194 us | 724-880 us | -26 to -39% |
+
+Capture size is bounded: 49 nodes captures and replays, while a 32-op chain at 65
+nodes faults the device with a memory access error, so a decode step's 36
+collectives must be split across at least two graphs.
 
 Shard plan for Qwen3.8-27B `Q4_K_M`: 851 autoregressive tensors, 15.65 GiB, MTP
 block excluded from the AR set. Every degree round-trips every tensor payload
@@ -916,6 +939,7 @@ full copy (N=4: 37.6 MiB growth, 17.4 MiB largest, 3.51 GiB full copy). The
 reconstruction oracle that holds every rank's payload is a test path, not the
 loader path.
 [Collective screening](results/tp2_collective_bench.json),
+[graph capture and replay](results/tp2_graph_capture_probe.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
 [degree admissibility](results/tp2_shard_plan_degrees.json),
 [topology inventory](results/tp2_host_inventory.json).
