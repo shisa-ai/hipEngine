@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "gguf_q4_t16_dense_prefill_owner_microbench",
+  "created_at": "2026-09-13T12:23:59.778176+00:00",
+  "config": {
+    "rows": [
+      512,
+      4096
+    ],
+    "in_features": 5120,
+    "out_features": 17408,
+    "warmup": 3,
+    "iters": 10,
+    "seed": 17,
+    "weight_bytes": 51527680
+  },
+  "cells": [
+    {
+      "rows": 512,
+      "owners": {
+        "shared_b": {
+          "median_s": 0.0038776269648224115,
+          "min_s": 0.003797937650233507,
+          "effective_weight_bandwidth_gb_s": 13.288457210416546
+        },
+        "shared_b3w8r3": {
+          "median_s": 0.005483976565301418,
+          "min_s": 0.005409501027315855,
+          "effective_weight_bandwidth_gb_s": 9.396043069554558,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "shared_b2w2": {
+          "median_s": 0.0046484339982271194,
+          "min_s": 0.004626432899385691,
+          "effective_weight_bandwidth_gb_s": 11.084954636260791,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "shared_b2w4": {
+          "median_s": 0.004550870507955551,
+          "min_s": 0.004375501070171595,
+          "effective_weight_bandwidth_gb_s": 11.3225985907361,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "default": {
+          "median_s": 0.007504493463784456,
+          "min_s": 0.007479055784642696,
+          "effective_weight_bandwidth_gb_s": 6.866243571090407,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "lowvgpr": {
+          "median_s": 0.006778386188670993,
+          "min_s": 0.006771747954189777,
+          "effective_weight_bandwidth_gb_s": 7.601762213861527,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "lowvgpr48": {
+          "median_s": 0.006234460044652224,
+          "min_s": 0.0062210047617554665,
+          "effective_weight_bandwidth_gb_s": 8.26497878420109,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        }
+      }
+    },
+    {
+      "rows": 4096,
+      "owners": {
+        "shared_b": {
+          "median_s": 0.030819117557257414,
+          "min_s": 0.030584386084228754,
+          "effective_weight_bandwidth_gb_s": 1.6719388510806354
+        },
+        "shared_b3w8r3": {
+          "median_s": 0.035285639110952616,
+          "min_s": 0.03452565288171172,
+          "effective_weight_bandwidth_gb_s": 1.4603017345945104,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "shared_b2w2": {
+          "median_s": 0.03910855296999216,
+          "min_s": 0.03877904498949647,
+          "effective_weight_bandwidth_gb_s": 1.3175552682692449,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "shared_b2w4": {
+          "median_s": 0.04296958912163973,
+          "min_s": 0.042281598318368196,
+          "effective_weight_bandwidth_gb_s": 1.1991662255399684,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "default": {
+          "median_s": 0.05795783153735101,
+          "min_s": 0.05765469837933779,
+          "effective_weight_bandwidth_gb_s": 0.8890546563460179,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "lowvgpr": {
+          "median_s": 0.056909603998064995,
+          "min_s": 0.05684003932401538,
+          "effective_weight_bandwidth_gb_s": 0.905430303147989,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        },
+        "lowvgpr48": {
+          "median_s": 0.05214455188252032,
+          "min_s": 0.052001839969307184,
+          "effective_weight_bandwidth_gb_s": 0.9881699648333327,
+          "bit_exact_vs_shared_b": true,
+          "max_abs_vs_shared_b": 0.0
+        }
+      }
+    }
+  ],
+  "source_commit": "a333c4fb926aba7a7dc7691b5160dce0b97ff773"
+}
