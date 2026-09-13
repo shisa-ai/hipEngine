@@ -1,6 +1,6 @@
 # UD gfx1151 Optimization Plan
 
-Last updated: 2026-09-12.
+Last updated: 2026-09-13.
 
 This is the active optimization and certification handoff for the published
 Qwen3.8-27B Unsloth Dynamic `Q4_K_M` and `Q4_K_S` artifacts on the active
@@ -9,6 +9,14 @@ graph-replay paired measurement and tracks absolute throughput as well as
 relative parity. A ratio improvement is not sufficient if both paths get
 slower; an absolute improvement is not sufficient if it makes UD MTP
 economically unattractive.
+
+**Status:** phases 0-7 are closed. Both tiers are promoted within width c1 and
+the 4-95 token context bucket, and automatic MTP admission is live there for
+both artifacts. The retained paired result is `UD-Q4_K_M` MTP **43.919** tok/s
+at **1.3752x** over its own AR and `UD-Q4_K_S` **45.077** at **1.4382x**
+(`benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json`). The 14
+unchecked items below are follow-on work with recorded blockers, not unfinished
+phases; each names what is missing.
 
 ## References
 
@@ -27,7 +35,8 @@ economically unattractive.
 
 ### Current baseline and evidence
 
-- [Valid paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json)
+- [Valid paired GPU1 artifact](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase6.json)
+- [Phase 4 paired artifact (superseded)](../benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-phase4.json)
 - [Benchmark scoreboard](../benchmarks/README.md)
 - [Benchmark changelog](../benchmarks/CHANGELOG.md)
 - [U6 certification artifact](../benchmarks/results/ud-mtp-certification-u6.json)
