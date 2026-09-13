@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-from types import SimpleNamespace
 
 import pytest
 
@@ -13,7 +12,8 @@ def test_chat_parser_defaults_to_local_server() -> None:
     args = build_parser().parse_args([])
     assert args.server == "http://127.0.0.1:8000"
     assert args.model is None
-    assert args.max_tokens == 512
+    assert args.max_tokens is None
+    assert args.think == "default"
 
 
 def test_chat_fails_clearly_without_a_running_server(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -21,7 +21,6 @@ def test_chat_fails_clearly_without_a_running_server(monkeypatch: pytest.MonkeyP
         raise OSError("connection refused")
 
     monkeypatch.setattr("hipengine.chat_cli.urlopen", fail)
-    error = io.StringIO()
     result = run(build_parser().parse_args([]), input_stream=io.StringIO(), output_stream=io.StringIO())
     assert result == 1
 
@@ -81,3 +80,118 @@ def test_chat_discovers_model_and_streams_completion(monkeypatch: pytest.MonkeyP
     assert "context=176128" in output.getvalue()
     assert "assistant> " in output.getvalue()
     assert "hello world" in output.getvalue()
+
+
+def test_rich_chat_renders_status_reasoning_markdown_and_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("rich")
+    from rich.console import Console
+    from rich.theme import Theme
+
+    from hipengine.chat_cli import _THEME, _RichChat, _Settings
+
+    ready = {
+        "context": {"effective_max_context_tokens": 176128},
+        "queue": {"max_active_requests": None},
+        "kv_capacity": {
+            "storage": "int8_per_token_head",
+            "scale_dtype": "fp32",
+            "pool": {"current_bytes": 6 * 1024**3, "budget_bytes": 21 * 1024**3},
+        },
+    }
+
+    class JsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(ready).encode()
+
+    class StreamResponse(JsonResponse):
+        def __iter__(self):
+            yield b'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}\n'
+            yield b'data: {"choices":[{"delta":{"content":"**hello**"}}]}\n'
+            yield b'data: {"choices":[],"usage":{"completion_tokens":7}}\n'
+            yield b"data: [DONE]\n"
+
+    def fake_urlopen(request, timeout=None):
+        return StreamResponse() if request.full_url.endswith("/chat/completions") else JsonResponse()
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", fake_urlopen)
+    lines = iter(["hi", "/retry", "/think high", "/temp abc", "/bogus", "/quit"])
+    console = Console(file=io.StringIO(), theme=Theme(_THEME), width=100, record=True)
+    settings = _Settings(build_parser().parse_args([]))
+    chat = _RichChat(console, "http://x", "local-model", settings, read_line=lambda: next(lines))
+    assert chat.loop() == 0
+    text = console.export_text()
+    assert "176,128 tokens" in text and "concurrency auto" in text
+    assert "thought for" in text
+    assert "hello" in text and "**" not in text
+    assert "7 tokens" in text
+    assert "unknown command /bogus" in text
+    assert "reasoning: high" in text and "expects a float" in text
+    assert [turn["role"] for turn in chat.convo.turns] == ["user", "assistant"]
+
+
+def test_chat_settings_map_reasoning_and_sampling_to_request_fields() -> None:
+    from hipengine.chat_cli import _Settings, _think_fields
+
+    settings = _Settings(build_parser().parse_args(["--think", "off", "--top-p", "0.9"]))
+    assert settings.request_fields() == {"temperature": 0.0, "top_p": 0.9, "enable_thinking": False}
+    assert _think_fields("medium") == {"enable_thinking": True, "reasoning_effort": "medium"}
+    assert _think_fields("2048") == {"enable_thinking": True, "thinking_token_budget": 2048}
+    assert _think_fields("default") == {}
+    with pytest.raises(ValueError):
+        _think_fields("sometimes")
+    settings.command("/max", "1024")
+    settings.command("/temp", "default")
+    settings.command("/think", "low")
+    assert settings.request_fields() == {
+        "top_p": 0.9,
+        "max_tokens": 1024,
+        "enable_thinking": True,
+        "reasoning_effort": "low",
+    }
+    assert settings.command("/nope", "") is None
+
+
+def test_plain_chat_sends_settings_and_stashes_failed_prompt_for_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    bodies = []
+
+    class JsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({"data": [{"id": "m"}]}).encode()
+
+    class StreamResponse(JsonResponse):
+        def __iter__(self):
+            yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n'
+            yield b"data: [DONE]\n"
+
+    def fake_urlopen(request, timeout=None):
+        if request.full_url.endswith("/chat/completions"):
+            bodies.append(json.loads(request.data))
+            if len(bodies) == 1:
+                raise OSError("boom")
+            return StreamResponse()
+        return JsonResponse()
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", fake_urlopen)
+    output = io.StringIO()
+    result = run(
+        build_parser().parse_args(["--model", "m"]),
+        input_stream=io.StringIO("/think 512\nhello\n/retry\n/quit\n"),
+        output_stream=output,
+    )
+    assert result == 0
+    assert len(bodies) == 2
+    assert bodies[1]["thinking_token_budget"] == 512
+    assert bodies[1]["messages"] == [{"role": "user", "content": "hello"}]
+    assert "ok" in output.getvalue()

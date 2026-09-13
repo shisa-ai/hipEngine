@@ -36,6 +36,11 @@ dependencies = [
 [project.optional-dependencies]
 # Server dependencies install by default; this extra is intentionally empty.
 server = []
+# Rich terminal UI for `hipengine chat`; without it the chat client runs in plain mode.
+chat = [
+  "prompt_toolkit>=3.0",
+  "rich>=13",
+]
 torch = [
   "torch>=2.5",
 ]
