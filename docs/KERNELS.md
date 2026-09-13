@@ -1294,7 +1294,21 @@ runners:
 - **A kernel that reads a buffer before writing it is correct only by accident
   of allocation.** Any per-call buffer whose unread region is assumed to be
   zero is a latent full-suite failure. Poison it with `0xFF` in a test and
-  require the result to be bit-identical.
+  require the result to be bit-identical. Re-zero it **where it is used, not
+  where it is allocated**: a `memset` in the buffer-cache or `__init__` helper
+  that allocates the block only covers the first call, and the block comes back
+  from the allocator holding whatever its previous owner wrote. Two runners had
+  exactly that shape and both passed every test until the poison probe ran:
+  TimesFM 2.5's V cache (the batched attention GEMMs sweep the not-yet-written
+  AR slots with a zero weight, and `0 * garbage` is 0 only while the garbage is
+  finite -- poisoning the V caches alone made 20480 of 40960 output values
+  non-finite) and TimesFM 3.0's `q_offset` (a constant-zero input that is never
+  uploaded per call; poisoning it moved the decode by 5.8e+02). The fix in both
+  is a per-call `memset` of the affected buffers, not a per-call
+  scale-by-zero. `tests/test_timesfm_gpu_decode.py`,
+  `tests/test_timesfm3_gpu_decode.py`, and
+  `tests/test_laguna_moe_gpu.py` pin their paths with
+  `tests/_poison_probe.py`.
 - **Keep the source of an unpinned H2D copy alive until the copy lands.** On
   this stack the DMA of an unpinned host source reads the host buffer *after*
   `memcpy` returns, so a same-statement temporary (e.g.
@@ -1304,7 +1318,13 @@ runners:
   and `device_synchronize()` before releasing it. This made
   `tests/test_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
   pass or fail depending on which Surya test ran before it -- 4 denormal
-  values in the slots the scatter never writes.
+  values in the slots the scatter never writes. Hoisting is not optional and is
+  not a style question: the same statement can pass alone and fail in a suite,
+  because whether the freed block is recycled before the DMA lands depends on
+  what the *next* allocation does. `tests/test_device_memory_hygiene.py`
+  enforces the always-allocating forms (`np.zeros*`, `np.ones*`, `np.full*`,
+  `np.array`, `np.asarray`, `np.tile`, `.astype(...)`, `.copy()`, `.flatten()`)
+  by AST scan over `hipengine/`, `tests/`, `scripts/`, and `benchmarks/`.
 
 ## Registering a kernel
 
