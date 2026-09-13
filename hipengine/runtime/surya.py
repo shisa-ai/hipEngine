@@ -901,12 +901,14 @@ class SuryaGpuRunner:
         self._gemm(norm_ptr, self._w[p + "in_proj_a.weight"].ptr, a_in.ptr, tokens, h, nv)
 
         conv_state = self._conv_state[layer]
-        # zero the state slot, then the segment-aware prefill writes the
-        # final (channels, k) window into slot 0 for the decode step
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(conv_state.ptr), _P(conv_state.ptr), _F(0.0),
-            _I(channels * s.gdn_conv_kernel), _S(0))
-        self._check(err, "zero conv state")
+        # Zero the state slot, then the segment-aware prefill writes the
+        # final (channels, k) window into slot 0 for the decode step. This has
+        # to be a real device memset: a scale-by-zero kernel (``x * 0.0``) does
+        # not clear a NaN or an Inf left in recycled device memory
+        # (``NaN * 0 == NaN``), and the recurrent state then propagates it into
+        # every logit. A fresh process only worked because hipMalloc hands back
+        # zeroed pages for allocations this size.
+        self.runtime.memset(conv_state.ptr, 0, conv_state.nbytes)
         # cu_seqlens is int32 in the conv kernel ABI; state_indices is int64
         self._h2d_i32([0, tokens], self._cu_buf)
         self._h2d_i64([0], self._state_idx_buf)
@@ -934,10 +936,8 @@ class SuryaGpuRunner:
             _I(nv), _I(hv), _I(1), _S(0))
         self._check(err, "gdn v expand")
         gdn_state = self._gdn_state[layer]
-        err = self._k("hipengine_evie_scale_f32", [_P, _P, _F, _I, _S])(
-            _P(gdn_state.ptr), _P(gdn_state.ptr), _F(0.0),
-            _I(nv * hk * hv), _S(0))
-        self._check(err, "zero gdn state")
+        # Same reason as the conv state above: ``x * 0.0`` cannot clear a NaN.
+        self.runtime.memset(gdn_state.ptr, 0, gdn_state.nbytes)
         qwen35_gdn_prefill_recurrent_f32(
             q.ptr, k.ptr, v.ptr, beta.ptr, decay.ptr, gdn_state.ptr, gdn_out.ptr,
             tokens, nv, hk, hv, stream=0, library=self.gdn_library, runtime=self.runtime,

@@ -1203,6 +1203,40 @@ Check expected kernel identity, plausible duration, workgroup/grid, VGPR, LDS, a
 
 For MTP, profile the final child (`scripts/mtp_verifier_rocprof.py` or the final smoke), not the parent economics/prompt-suite harness that launches nested Python processes. Wrapper defaults, flag syntax, padding, compiler-probe, and PMC-counter traps for `rocprofv3` on this toolchain are cataloged in [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md), section 4.9.
 
+## Device-memory hygiene
+
+`hipMalloc` returns zeroed pages for a fresh allocation, but a *recycled* block
+keeps its previous contents at small sizes (measured on gfx1151: a 1 MiB block
+comes back holding what was written to it, 4 MiB and above come back zeroed).
+Three rules follow, and the first two were violated by the Surya and Evie
+runners:
+
+- **Re-zero device state with a memset, never with a scale-by-zero kernel.**
+  `x * 0.0` is a no-op for a NaN or an Inf (`NaN * 0 == NaN`), so a recurrent
+  state "cleared" that way keeps whatever the previous owner of the block left
+  in it and turns every later output into NaN. `runtime.memset(ptr, 0, nbytes)`
+  is the correct re-zero. This is why the Surya text decoder returned all-NaN
+  logits after a long test suite and finite logits in isolation, and why the
+  failure looked like device-state poisoning:
+  `tests/test_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan` and
+  `tests/test_evie_gpu_runtime.py::test_state_rezero_clears_recycled_nan` pin
+  it by poisoning the state buffers with `0xFF` and requiring an unchanged
+  result.
+- **A kernel that reads a buffer before writing it is correct only by accident
+  of allocation.** Any per-call buffer whose unread region is assumed to be
+  zero is a latent full-suite failure. Poison it with `0xFF` in a test and
+  require the result to be bit-identical.
+- **Keep the source of an unpinned H2D copy alive until the copy lands.** On
+  this stack the DMA of an unpinned host source reads the host buffer *after*
+  `memcpy` returns, so a same-statement temporary (e.g.
+  `copy_host_to_device(buf, host_array_ptr(np.zeros_like(x)), ...)`) can be
+  freed and recycled first and the destination receives stale heap bytes.
+  `SuryaGpuRunner._upload` states the contract; hoist the temporary into a local
+  and `device_synchronize()` before releasing it. This made
+  `tests/test_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
+  pass or fail depending on which Surya test ran before it -- 4 denormal
+  values in the slots the scatter never writes.
+
 ## Registering a kernel
 
 Wrappers register explicit keys:
