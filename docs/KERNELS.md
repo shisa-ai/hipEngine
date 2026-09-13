@@ -1309,19 +1309,30 @@ runners:
   `tests/test_timesfm3_gpu_decode.py`, and
   `tests/test_laguna_moe_gpu.py` pin their paths with
   `tests/_poison_probe.py`.
-- **Keep the source of an unpinned H2D copy alive until the copy lands.** On
-  this stack the DMA of an unpinned host source reads the host buffer *after*
-  `memcpy` returns, so a same-statement temporary (e.g.
-  `copy_host_to_device(buf, host_array_ptr(np.zeros_like(x)), ...)`) can be
-  freed and recycled first and the destination receives stale heap bytes.
-  `SuryaGpuRunner._upload` states the contract; hoist the temporary into a local
-  and `device_synchronize()` before releasing it. This made
+- **Bind the source of an H2D copy to a local, because the pointer is a bare
+  address.** ``copy_host_to_device`` takes an ``int``, so the array has to
+  outlive the call on its own. ``copy_host_to_device(buf,
+  host_array_ptr(np.zeros_like(x)))`` does not: CPython drops the temporary's
+  last reference when ``host_array_ptr`` returns, so the array is already freed
+  and reusable *before* the copy is entered -- measured on gfx1151, the freed
+  block is handed straight back to the next same-size allocation (same address),
+  and the copy then reads whatever that allocation wrote. ``SuryaGpuRunner._upload``
+  states the contract; hoist the temporary into a local. This made
   `tests/test_surya_kv_spans.py::test_scatter_f32_spans_honors_page_table_and_eviction`
   pass or fail depending on which Surya test ran before it -- 4 denormal
   values in the slots the scatter never writes. Hoisting is not optional and is
   not a style question: the same statement can pass alone and fail in a suite,
-  because whether the freed block is recycled before the DMA lands depends on
-  what the *next* allocation does. `tests/test_device_memory_hygiene.py`
+  because whether the freed block is recycled before the copy runs depends on
+  what the *next* allocation does.
+- **The transfer itself is complete when the copy returns, so a named local
+  needs no synchronization.** Overwriting the source in place immediately after
+  ``copy_host_to_device`` returns leaves the destination untouched at 1, 16, 64,
+  and 128 MiB on gfx1151, so an unpinned source does not have to outlive the
+  call and a per-call ``device_synchronize()`` buys nothing for source lifetime.
+  The runner helpers that keep one are load-time or cache-miss paths where the
+  cost is irrelevant and a future async copy variant would otherwise be silently
+  unsafe; do not add one to a decode loop, where it stalls the whole device
+  queue. `tests/test_device_memory_hygiene.py`
   enforces the always-allocating forms (`np.zeros*`, `np.ones*`, `np.full*`,
   `np.array`, `np.asarray`, `np.tile`, `.astype(...)`, `.copy()`, `.flatten()`)
   by AST scan over `hipengine/`, `tests/`, `scripts/`, and `benchmarks/`.
