@@ -13,6 +13,20 @@ lifting the envelope so shapes the planner would not choose are still on the
 curve; byte-budget rows always keep it, because those rows are the production
 plan. One runner per shape, warm-up call discarded, median of ``--reps``.
 
+Run this with no other GPU job. The sweep is sequential per shape, so a
+concurrent job inflates whichever shape happens to be running, and it inflates
+every sample of that row -- the row's own spread does not show it. ``--passes
+2`` re-runs the plans in reverse order, which is the check for that.
+
+When varying the shape from outside this script, lift the planner's envelope
+(``hipengine.runtime.surya.SHAPE_TILE_ROWS`` / ``SHAPE_TILE_DIVISOR`` /
+``SHAPE_TILE_MULTIPLE``) or the production cap silently overrides the requested
+block. A re-check of 4096-patch shapes that forgot to do that measured a
+128-row tile for every shape it asked for and reported a flat, fast curve --
+which reads like "the budget-derived shape is fine" rather than like a bug.
+``--blocks`` does the lift, and every row records ``envelope_lifted`` so the
+artifact says which mode it was measured in.
+
 Usage::
 
     python3 scripts/surya_vision_tiling_cost.py --out benchmarks/results/....json
@@ -34,6 +48,12 @@ import numpy as np
 FIXTURES = Path("tests/fixtures/surya")
 MODEL = "datalab-to/surya-ocr-2"
 MIB = 1024 * 1024
+
+# A second pass in reverse order is compared against this: a relative tolerance
+# for the big rows and an absolute floor for the 27-30 ms ones, where 5% is
+# 1.4 ms of ordinary run-to-run noise and would flag every pass.
+PASS_TOLERANCE = 0.10
+PASS_TOLERANCE_MS = 2.0
 
 
 def _production_envelope() -> tuple[int, int, int]:
@@ -255,6 +275,12 @@ def main() -> None:
         help="with --blocks, run the byte-budget plans first so one artifact "
              "holds both the default path and the shape sweep",
     )
+    parser.add_argument(
+        "--passes", type=int, default=1, choices=(1, 2),
+        help="run the plans twice, the second time in reverse order, and "
+             "record pass_ratio per row; the only check that catches a "
+             "steady disturbance from a concurrent GPU job",
+    )
     args = parser.parse_args()
 
     import sys
@@ -273,6 +299,8 @@ def main() -> None:
         if args.blocks else None
     )
     rows: list[dict[str, object]] = []
+    keys: list[tuple[str, int | None, int | None]] = []
+    second: dict[tuple[str, int | None, int | None], dict[str, object]] = {}
     for page, expected in CASES:
         if page not in selected:
             continue
@@ -292,27 +320,68 @@ def main() -> None:
                 plans = [
                     {"budget": budget, "block": None} for budget in BUDGETS
                 ] + plans
-        for plan in plans:
-            budget, block = plan["budget"], plan["block"]
-            # budget rows are the production plan; named shapes lift the
-            # envelope so the whole landscape is on the curve
-            _shape_envelope(block is None)
-            row = _timings(page, budget, args.reps, block=block)
-            row["envelope_lifted"] = block is not None
-            if row["patches"] != expected:
-                raise SystemExit(
-                    f"{page} produced {row['patches']} patches, expected {expected}"
+        for pass_index in range(args.passes):
+            # the second pass reverses the order, so a steady disturbance from
+            # a concurrent job cannot land on the same shape twice
+            ordered = plans if pass_index == 0 else list(reversed(plans))
+            for plan in ordered:
+                budget, block = plan["budget"], plan["block"]
+                # budget rows are the production plan; named shapes lift the
+                # envelope so the whole landscape is on the curve
+                _shape_envelope(block is None)
+                row = _timings(page, budget, args.reps, block=block)
+                row["envelope_lifted"] = block is not None
+                if row["patches"] != expected:
+                    raise SystemExit(
+                        f"{page} produced {row['patches']} patches, expected {expected}"
+                    )
+                if pass_index == 1:
+                    second[(page, block, budget)] = row
+                    continue
+                rows.append(row)
+                keys.append((page, block, budget))
+                label = "dense" if budget is None and block is None else (
+                    f"block={block}" if block is not None else f"{budget // MIB} MiB"
                 )
-            rows.append(row)
-            label = "dense" if budget is None and block is None else (
-                f"block={block}" if block is not None else f"{budget // MIB} MiB"
-            )
-            print(
-                f"{page:18s} {label:>12s} block={row['query_block']:5d} "
-                f"tiles={row['tiles']:4d} tail={row['tail_rows']:5d} "
-                f"scratch={row['scratch_mib']:7.1f} MiB "
-                f"median={row['median_ms']:9.2f} ms"
-            )
+                print(
+                    f"{page:18s} {label:>12s} block={row['query_block']:5d} "
+                    f"tiles={row['tiles']:4d} tail={row['tail_rows']:5d} "
+                    f"scratch={row['scratch_mib']:7.1f} MiB "
+                    f"median={row['median_ms']:9.2f} ms"
+                )
+
+    for row, key in zip(rows, keys):
+        twin = second.pop(key, None)
+        if twin is None:
+            continue
+        row["median_ms_pass2"] = twin["median_ms"]
+        row["samples_ms_pass2"] = twin["samples_ms"]
+        row["pass_ratio"] = round(
+            float(row["median_ms"]) / float(twin["median_ms"]), 3
+        )
+    if second:
+        raise SystemExit(
+            f"{len(second)} pass-2 rows did not match a pass-1 row; "
+            "the plan list is not stable across passes"
+        )
+    noisy = [
+        row for row in rows
+        if abs(float(row.get("median_ms", 0.0))
+               - float(row.get("median_ms_pass2", row.get("median_ms", 0.0))))
+        > max(PASS_TOLERANCE * float(row.get("median_ms", 0.0)), PASS_TOLERANCE_MS)
+    ]
+    for row in noisy:
+        print(
+            f"WARNING pass disagreement {row['page']} "
+            f"block={row['query_block']} budget={row['budget_bytes']}: "
+            f"{row['median_ms']} vs {row['median_ms_pass2']} ms "
+            f"({row['pass_ratio']}x) -- re-measure on a quiet GPU"
+        )
+    if args.passes > 1:
+        print(
+            f"pass check: {len(rows) - len(noisy)}/{len(rows)} rows within "
+            f"max({PASS_TOLERANCE:.0%}, {PASS_TOLERANCE_MS:g} ms)"
+        )
 
     # Dense is the baseline wherever it is runnable, so the cost of a tile
     # budget is reported against it per page rather than across pages.
@@ -369,6 +438,15 @@ def main() -> None:
             "both ways."
         ),
         "reps": args.reps,
+        "passes": args.passes,
+        "pass_check": (
+            "no second pass: run with --passes 2 to detect a steady disturbance "
+            "from a concurrent GPU job, which a row's own spread cannot see"
+            if args.passes < 2 else
+            f"second pass in reverse order; {len(rows) - len(noisy)}/{len(rows)} "
+            f"rows agree with pass 1 within max({PASS_TOLERANCE:.0%}, "
+            f"{PASS_TOLERANCE_MS:g} ms), pass_ratio = pass1/pass2 per row"
+        ),
         "results": rows,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

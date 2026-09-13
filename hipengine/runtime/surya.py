@@ -142,7 +142,13 @@ DEFAULT_MAX_PREFILL_SCRATCH_BYTES = 512 * 1024**2
 # 512 MiB budget derives 325 rows there, which is the slow side of that line;
 # rounding down to 320 takes it 48496.26 -> 43862.87 ms (1.106x) and shrinks the
 # tile 510.6 -> 502.7 MiB. Rounding down can only shrink the tile, so it cannot
-# break the budget. Grid divisibility was the other candidate shape rule and it
+# break the budget. The rounding is a tie-break, not a guarantee: at 4096
+# patches a 512-row tile is a multiple of 32 and is the slowest shape measured
+# on that grid (1667 ms against 881 ms at 128 rows), and 192/256/341/1024 rows
+# are 24-50% slower than 128 there too. Where those spikes fall is not explained
+# by width or by divisibility; see docs/REFACTOR.md.
+#
+# Grid divisibility was the other candidate shape rule and it
 # was tested too: the sweep records `even` (full last tile) per row, and even
 # division wins at 256 and 6400 patches and loses at 1024 and 4096, so it does
 # not predict the curve.
