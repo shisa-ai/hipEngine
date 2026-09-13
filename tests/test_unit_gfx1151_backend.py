@@ -2593,9 +2593,25 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
     assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
+    # 2026-09-13: the Q5T16 single-wave verifier rowtile (43fdf9129) registered
+    # its own c1 variant table on this backend, so the alias check is no longer
+    # an empty-table equality.
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
-    ) == {}
+    ) == {
+        "gguf_q5_k_t16_v1": {
+            shape: "dense_single_local32_bf16_bf16_out"
+            for shape in (
+                (1_024, 5_120),
+                (5_120, 6_144),
+                (5_120, 10_240),
+                (5_120, 12_288),
+                (5_120, 17_408),
+                (6_144, 5_120),
+                (17_408, 5_120),
+            )
+        }
+    }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
     ) == {
