@@ -39,6 +39,9 @@ ARMS["all_numerics_strict"] = {
 }
 ARMS["all_flags_strict"] = {}
 ARMS["gdn_flags_strict"] = {}
+ARMS["base_plus_moe_flags"] = {}
+ARMS["base_plus_q8_gr_flags"] = {}
+ARMS["base_plus_gdn_flags"] = {}
 OUTLIER = "heldout_general_ja_speculative"
 
 
@@ -52,6 +55,24 @@ def clear_arm_graphs(runner):
             enabled = cache.enabled
             cache.close()
             setattr(runner, name, MoeGraphCache(runner.runtime, enabled=enabled))
+
+
+def strict_family_overrides(strict_flags):
+    families = {
+        "base_plus_moe_flags": (
+            "Q4_", "Q51_", "Q5_", "GROUPED_", "FORKB_", "PROFILE_Q5_1_",
+            "Q8_0_SELECTED_WMMA_DOWN",
+        ),
+        "base_plus_q8_gr_flags": ("Q8_", "GR_"),
+        "base_plus_gdn_flags": ("GDN_",),
+    }
+    return {
+        name: {
+            **ARMS["all_numerics_strict"],
+            **{key: value for key, value in strict_flags.items()
+               if any(key.startswith(PREFIX + prefix) for prefix in prefixes)},
+        } for name, prefixes in families.items()
+    }
 
 
 def main():
@@ -103,6 +124,7 @@ def main():
         ARMS["all_flags_strict"] = strict_flags
         ARMS["gdn_flags_strict"] = {key: value for key, value in strict_flags.items()
                                    if key.startswith(PREFIX + "GDN_")}
+        ARMS.update(strict_family_overrides(strict_flags))
         strict_logits = np.stack([r["logits"] for p in prompt_rows for r in strict[p["id"]]])
         report = {
             "kind": "journey_incumbent_family_localization", "status": "running",

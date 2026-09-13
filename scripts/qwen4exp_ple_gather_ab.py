@@ -40,6 +40,16 @@ def select_gather_arm(table, original, *, mode, method, cache_mode):
         )
 
 
+def pair_sequence(case_index, pairs):
+    if pairs < 1:
+        raise ValueError("positive pair count required")
+    result = []
+    for pair in range(pairs):
+        result.extend(("before", "after") if (case_index + pair) % 2 == 0
+                      else ("after", "before"))
+    return tuple(result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -49,6 +59,8 @@ def main():
     parser.add_argument("--method", choices=("copy_elision", "sampled_dedup_elision", "mmap_random"), required=True)
     parser.add_argument("--cache-mode", choices=("warm", "cold"), default="warm")
     parser.add_argument("--screen-only", action="store_true")
+    parser.add_argument("--pairs", type=int, default=3)
+    parser.add_argument("--case-id", action="append")
     args = parser.parse_args()
     check_host()
     args.prefill_chunk_size = 1024
@@ -61,7 +73,15 @@ def main():
     with open("/tmp/hipengine-gfx1151-benchmark.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fixture, fixture_hash = load_fixture(args.fixture)
+        case_indices = {c["id"]: i for i, c in enumerate(fixture["cases"])}
         cases = fixture["cases"]
+        if args.case_id:
+            if not set(args.case_id) <= set(case_indices):
+                raise ValueError("unknown canonical case id")
+            cases = [c for c in cases if c["id"] in args.case_id]
+        pairs = 1 if args.screen_only else args.pairs
+        if pairs < 1 or (not args.screen_only and pairs < 3):
+            raise ValueError("use at least three pairs or explicit screen-only")
         transitions = fixture["decode_transitions"]
         args.max_sequence_length = max(c["prompt_tokens"] for c in cases) + transitions + 8
         register_gfx1151_kernels(replace=True)
@@ -74,8 +94,10 @@ def main():
             "command": sys.argv, "fixture_sha256": fixture_hash, "model_identity": identity,
             "method": args.method, "protocol": {
                 "chunk": 1024, "kv": "BF16", "decode_transitions": transitions,
-                "warmups_per_arm_case": 1, "repetitions_per_arm": 1 if args.screen_only else 3,
+                "warmups_per_arm_case": 1, "repetitions_per_arm": pairs,
                 "screen_only": args.screen_only, "counterbalanced": True,
+                "complete_canonical_suite": not bool(args.case_id),
+                "case_ids": [c["id"] for c in cases],
                 "cache": args.cache_mode,
                 "cache_scope": "file-scoped PLE only; no persistent row cache",
             },
@@ -113,13 +135,14 @@ def main():
             return row
 
         try:
-            for index, case in enumerate(cases):
+            for case in cases:
+                index = case_indices[case["id"]]
                 warm = [sample(mode, case, -1) for mode in arm_sequence(index)[:2]]
                 for field in ("output_token_ids_sha256", "final_logits_sha256", "final_state_sha256"):
                     if warm[0][field] != warm[1][field]:
                         raise ValueError(f"warmup differs: {case['id']} {field}")
                 counts = {"before": 0, "after": 0}
-                order = arm_sequence(index)[:2] if args.screen_only else arm_sequence(index)
+                order = pair_sequence(index, pairs)
                 for slot, mode in enumerate(order):
                     row = sample(mode, case, counts[mode])
                     counts[mode] += 1
@@ -131,7 +154,7 @@ def main():
                     args.output.write_text(json.dumps(report, indent=2) + "\n")
                     print(case["id"], mode, slot, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
             report["summary"] = summarize_campaign_ab(
-                report["samples"], repetitions_per_mode=1 if args.screen_only else 3,
+                report["samples"], repetitions_per_mode=pairs,
             )
             report["exact_final_logits_and_state"] = True
             report["status"] = "completed"
