@@ -6654,3 +6654,24 @@ that same function already use. The clear then becomes safe, and the generation
 registry can join the collection-time baseline restore in `tests/conftest.py`
 that already makes the kernel registry order-independent under
 `clear_registry_for_tests()`.
+
+## Compact scoreboard: 6-line headroom at 494/500
+
+- `benchmarks/README.md` was returned to its documented shape on 2026-09-13
+  (1962 -> 494 lines). The Qwen4Exp/Framework optimization journal, the
+  Qwen3.8-Flash-Next implementation-first status, the Surya planner/kernel
+  internals, the harness catalog that duplicates `benchmarks/HARNESSES.md`, and
+  the per-campaign delta prose moved verbatim to `benchmarks/HISTORY.md`; no
+  line was dropped and every current row stayed.
+- What remains is current by construction (Surya topline, root-README export
+  block, the `## Current ...` sections, evidence status, reading, maintenance).
+  Six lines of headroom absorbs a row or two, not a new lane.
+- When the next substantial lane lands, either raise the line budget in
+  `tests/test_benchmark_readme_sync.py` under the 2026-09-06 rationale
+  ("guardrails against worklog-style prose, not a content budget"), or move the
+  next-least-current section to `HISTORY.md`. The closest calls this time were
+  the harness catalog (already duplicated in `HARNESSES.md`) and the
+  Maple-Preview retained backend comparison (Maple still has concurrency rows
+  in the scoreboard).
+- Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
+  failure mode was silent drift, not a single large addition.
