@@ -34,6 +34,7 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -26955,9 +26956,9 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
             self._verify_linear_state_layer_count = n_entries
             self._buffers = (*self._buffers, *new_buffers)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_commit_row_i32_buf,
-                host_array_ptr(np.asarray([0], dtype=np.int32)),
+                np.asarray([0], dtype=np.int32),
                 DType.INT32.itemsize,
                 runtime=runtime,
             )
