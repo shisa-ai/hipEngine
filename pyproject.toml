@@ -36,6 +36,9 @@ dependencies = [
 [project.optional-dependencies]
 # Server dependencies install by default; this extra is intentionally empty.
 server = []
+surya = [
+  "pillow>=10",
+]
 torch = [
   "torch>=2.5",
 ]
