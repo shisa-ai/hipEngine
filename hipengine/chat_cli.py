@@ -35,7 +35,7 @@ _COMMANDS = (
     ("/system <text>", "set the system message (no text clears it)"),
     ("/retry", "regenerate the last reply"),
     ("/clear", "clear the conversation"),
-    ("/quit", "exit (also Ctrl-D)"),
+    ("/quit", "exit (also Ctrl-C, Ctrl-D)"),
 )
 
 _THEME = {
@@ -445,7 +445,7 @@ def _render_markdown_plain(text: str, output_stream) -> None:
 
 def _run_plain(settings: _Settings, server: str, model: str, input_stream, output_stream) -> int:
     convo = _Conversation(settings)
-    print("Type /help for commands. Ctrl-D or /quit exits.", file=output_stream)
+    print("Type /help for commands. Ctrl-C, Ctrl-D, or /quit exits.", file=output_stream)
     if _is_tty(output_stream) and _make_console(output_stream) is None:
         print("Tip: pip install 'hipengine[chat]' for the rich terminal UI.", file=output_stream)
     while True:
@@ -454,9 +454,11 @@ def _run_plain(settings: _Settings, server: str, model: str, input_stream, outpu
             line = input_stream.readline()
         except KeyboardInterrupt:
             print(file=output_stream)
+            print("bye 👋", file=output_stream)
             return 0
         if not line:
             print(file=output_stream)
+            print("bye 👋", file=output_stream)
             return 0
         prompt = line.rstrip("\n")
         if prompt.strip().startswith("/"):
@@ -551,6 +553,34 @@ def _quiet_tty(stream=None):
         yield
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, saved)
+
+
+def _prompt_bindings():
+    """Key bindings for the prompt_toolkit reader.
+
+    ``alt-enter`` inserts a newline. Ctrl-C clears typed text first, and quits at
+    an empty prompt (Ctrl-D's behaviour), so an accidental Ctrl-C mid-sentence
+    does not discard the session.
+    """
+
+    from prompt_toolkit.key_binding import KeyBindings
+
+    bindings = KeyBindings()
+
+    @bindings.add("escape", "enter")
+    def _newline(event) -> None:
+        event.current_buffer.insert_text("\n")
+
+    @bindings.add("c-c")
+    @bindings.add("<sigint>")
+    def _interrupt(event) -> None:
+        if event.current_buffer.text:
+            event.current_buffer.reset()
+            event.app.invalidate()
+        else:
+            event.app.exit(exception=EOFError)
+
+    return bindings
 
 
 class _Tail:
@@ -656,7 +686,6 @@ class _RichChat:
             from prompt_toolkit import PromptSession
             from prompt_toolkit.completion import WordCompleter
             from prompt_toolkit.history import FileHistory, InMemoryHistory
-            from prompt_toolkit.key_binding import KeyBindings
             from prompt_toolkit.styles import Style
         except ImportError:
             try:
@@ -673,12 +702,6 @@ class _RichChat:
             history = FileHistory(str(state / "hipengine" / "chat_history"))
         except OSError:
             history = InMemoryHistory()
-        bindings = KeyBindings()
-
-        @bindings.add("escape", "enter")
-        def _newline(event) -> None:
-            event.current_buffer.insert_text("\n")
-
         style = Style.from_dict(
             {
                 "prompt": "#5fd7ff bold",
@@ -705,7 +728,7 @@ class _RichChat:
             history=history,
             completer=WordCompleter(commands, WORD=True),
             complete_while_typing=True,
-            key_bindings=bindings,
+            key_bindings=_prompt_bindings(),
             style=style,
             bottom_toolbar=toolbar,
             prompt_continuation=lambda width, line, wrap: [("class:continuation", "┆ ".rjust(width))],
@@ -771,7 +794,7 @@ class _RichChat:
             grid,
             title=Text.assemble(" ◆ ", ("hipEngine", "hip.accent"), " chat "),
             title_align="left",
-            subtitle=Text(" /help · ctrl-d to exit ", style="hip.dim"),
+            subtitle=Text(" /help · ctrl-c / ctrl-d to exit ", style="hip.dim"),
             subtitle_align="right",
             border_style="hip.border",
             padding=(0, 1),
@@ -788,7 +811,8 @@ class _RichChat:
         for name, text in _COMMANDS:
             table.add_row(name, text)
         table.add_row("alt-enter", "insert a newline")
-        table.add_row("ctrl-c", "clear input, or stop generation (partial reply is kept)")
+        table.add_row("ctrl-c", "stop generation, clear input, or exit (at an empty prompt)")
+        table.add_row("ctrl-d", "exit")
         return Padding(table, (0, 0, 0, 2))
 
     def params_table(self):
@@ -810,9 +834,8 @@ class _RichChat:
             self.console.print()
             try:
                 line = self.read_line()
-            except KeyboardInterrupt:
-                continue
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
+                # Ctrl-D, or Ctrl-C at an empty prompt (see _prompt_bindings).
                 self.note("bye 👋")
                 return 0
             prompt = line.strip()
