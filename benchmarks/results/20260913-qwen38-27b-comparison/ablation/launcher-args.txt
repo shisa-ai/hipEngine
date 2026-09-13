@@ -1,0 +1,21 @@
+Launcher-argument check (env-gated printf in launch_mul_mat_q, config-only build)
+=================================================================================
+llama-bench -p 4096 -n 0 -r 1, MMQ_DEBUG=1, first dispatches of the warmup ubatch:
+
+[mmq] type=12 J=128 I=64 nthreads=128 nrows_x=6144  ncols_max=512 -> ntx=4 nty=96
+[mmq] type=13 J=128 I=64 nthreads=128 nrows_x=5120  ncols_max=512 -> ntx=4 nty=80
+[mmq] type=12 J=128 I=64 nthreads=128 nrows_x=17408 ncols_max=512 -> ntx=4 nty=272
+[mmq] type=12 J=128 I=64 nthreads=128 nrows_x=12288 ncols_max=512 -> ntx=4 nty=192
+[mmq] type=12 J=128 I=64 nthreads=128 nrows_x=1024  ncols_max=512 -> ntx=4 nty=16
+[mmq] type=12 J=128 I=64 nthreads=128 nrows_x=5120  ncols_max=512 -> ntx=4 nty=80
+
+nrows_x is the real weight row count (17408 = ffn gate/up, 12288 = attn q, 6144 = attn gate,
+5120 = ffn down / attn output, 1024 = attn k/v), ncols_max is the 512-token ubatch, and
+J=128 is unchanged from upstream, so ntx = 512/128 = 4 in both builds. The only difference is
+the row-tile height I (128 -> 64) and the threads per block (256 -> 128):
+
+  upstream        I=128, nthreads=256 -> blocks = nrows/128 x 4, wg = 32x8
+  fork / config   I=64,  nthreads=128 -> blocks = nrows/64  x 4, wg = 32x4
+
+which matches the rocprofv3 traces exactly (e.g. ffn gate: reported grid 4352x32 wg 32x8 vs
+8704x16 wg 32x4 = 136x4 vs 272x4 blocks).

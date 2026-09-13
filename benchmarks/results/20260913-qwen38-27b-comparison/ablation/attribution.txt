@@ -1,0 +1,100 @@
+Qwen3.8-27B Q4_K_M prefill-lead attribution (gfx1151, 2026-09-13)
+=================================================================
+
+Question: strix-llama.cpp HIP prefills this GGUF 12.9% faster than upstream llama.cpp HIP
+(432.4 vs 382.9 tok/s at 4K/128). Where does the lead come from?
+
+1. End-to-end llama-bench prefill, -r 5, one binary at a time
+   (llama-bench --phases prefill 512/128 1K/128 4K/128, -ngl 99 -fa 1 -ctk/-ctv bf16 -dev ROCm0)
+
+build                                           512/128     1K/128     4K/128
+llama.cpp HIP (002a12ad2)                       386.342    389.939    382.918
+  + fork mmq-config-rdna3-5.cuh only            413.539    416.313    409.464
+strix-llama.cpp HIP (6548035)                   436.867    440.554    432.427
+
++ fork mmq-config-rdna3-5.cuh only            +7.04% (  54% of the fork gain)  +6.76% (  52% of the fork gain)  +6.93% (  54% of the fork gain)
+strix-llama.cpp HIP (6548035)                +13.08% ( 100% of the fork gain) +12.98% ( 100% of the fork gain) +12.93% ( 100% of the fork gain)
+
+2. Kernel time by functional group
+   rocprofv3 --kernel-trace, 4K prefill, llama-bench warmup + measured pass (2 x 4096 tokens).
+   Group definitions: group_breakdown.py
+
+group                               calls    llama.cpp      +config        strix  last-first
+Q4_K MMQ (mul_mat_q type 12)         4608       12.095       10.763       10.827      -1.268
+Q5_K MMQ (mul_mat_q type 13)          768        0.938        0.874        0.883      -0.054
+Q6_K MMQ (mul_mat_q type 14)            0        0.000        0.000        0.000      +0.000
+GDN + concat + ssm_conv              2304        1.880        1.890        0.938      -0.942
+quantize Q8_1 for MMQ                5376        0.438        0.440        0.324      -0.115
+flash attention                       256        0.525        0.525        0.446      -0.080
+norm                                 4880        0.327        0.328        0.287      -0.040
+convert / unary / elementwise       11776        1.922        1.919        1.877      -0.045
+hipBLASLt GEMM (Cijk_*)              2560        2.877        2.877        2.914      +0.037
+everything else                      4570        0.112        0.111        0.116      +0.004
+TOTAL                               37098       21.115       19.726       18.612      -2.503
+
+   The config-only build reproduces the whole Q4_K/Q5_K MMQ delta and leaves every other group
+   unchanged (10.763 vs the fork's 10.827; all other groups within 0.01 s).
+
+3. Largest individual kernels, upstream vs strix-llama.cpp
+   (compare_kernel_traces.py --top 8)
+
+== Top 8 kernels by upstream time ==
+kernel                                                      calls     up s   cand s  ratio
+void mul_mat_q<(ggml_type)12, 128, false>(char const*, int   4608   12.095   10.827  0.895
+Cijk_Alik_Bljk_HB_MT128x128x32_MI16x16x16x1_SN_1LDSB0_AMAS    896    2.424    2.458  1.014
+void gated_delta_net_cuda<128, false, false>(float const*,    768    1.171    0.000  0.000
+void mul_mat_q<(ggml_type)13, 128, false>(char const*, int    768    0.938    0.883  0.942
+void dequantize_block_q6_K<__half>(void const*, __half*)     1024    0.776    0.778  1.002
+void unary_gated_op_kernel<&(op_silu(float)), float>(float   1792    0.579    0.557  0.962
+void concat_non_cont<unsigned int, 0>(char const*, char co    768    0.541    0.000  0.000
+void flash_attn_ext_f16<256, 256, 32, 2, false, false, fal    256    0.525    0.446  0.848
+
+== Kernels present only in the candidate (top 6) ==
+void gated_delta_net_tiled_cuda<128, 8, 8, 16, false>(floa    768    0.565
+convert_f32_f16_cont(float const*, __half*, long)            1024    0.195
+void concat_transposed_src1_dim0<unsigned int>(char const*    768    0.195
+void rms_norm_f32<128, true, false>(float const*, float*,     768    0.085
+convert_f16_f32_cont(__half const*, float*, long)            1024    0.036
+void mul_mat_vec_q_fq<(ggml_type)14, false, 16, 2>(void co      4    0.019
+
+== Kernels present only in upstream (top 6) ==
+void gated_delta_net_cuda<128, false, false>(float const*,    768    1.171
+void concat_non_cont<unsigned int, 0>(char const*, char co    768    0.541
+void convert_unary<float, __half>(void const*, __half*, lo   1024    0.198
+void convert_unary<__half, float>(void const*, float*, lon   1024    0.069
+void mul_mat_vec_q<(ggml_type)14, 1, false, false, false>(      4    0.018
+quantize_q8_1(float const*, void*, long, long, long, long,      4    0.000
+
+4. Launch geometry of the Q4_K MMQ kernel
+   Same kernel name, same call count, same VGPR/SGPR counts; only the block shape changes.
+   rocprofv3 reports grid dimensions in work-items, so both reported dimensions move when the
+   workgroup size changes; blocks = reported grid / workgroup size. See launcher-args.txt for
+   the launcher arguments that confirm I and nthreads are the only changed values.
+
+===== llama.cpp
+   12.095 s  calls= 4608  void mul_mat_q<(ggml_type)12, 128, false>
+      blocks=136x4x1 wg=32x8x1 (reported grid=4352x32x1) calls=2048
+      blocks=48x4x1 wg=32x8x1 (reported grid=1536x32x1) calls=768
+      blocks=40x4x1 wg=32x8x1 (reported grid=1280x32x1) calls=768
+      vgpr/sgpr/lds: [(('240', '128', '0'), 4608)]
+    0.938 s  calls=  768  void mul_mat_q<(ggml_type)13, 128, false>
+      blocks=40x4x1 wg=32x8x1 (reported grid=1280x32x1) calls=768
+      vgpr/sgpr/lds: [(('248', '128', '0'), 768)]
+===== +config
+   10.763 s  calls= 4608  void mul_mat_q<(ggml_type)12, 128, false>
+      blocks=272x4x1 wg=32x4x1 (reported grid=8704x16x1) calls=2048
+      blocks=96x4x1 wg=32x4x1 (reported grid=3072x16x1) calls=768
+      blocks=80x4x1 wg=32x4x1 (reported grid=2560x16x1) calls=768
+      vgpr/sgpr/lds: [(('240', '128', '0'), 4608)]
+    0.874 s  calls=  768  void mul_mat_q<(ggml_type)13, 128, false>
+      blocks=80x4x1 wg=32x4x1 (reported grid=2560x16x1) calls=768
+      vgpr/sgpr/lds: [(('248', '128', '0'), 768)]
+===== strix
+   10.827 s  calls= 4608  void mul_mat_q<(ggml_type)12, 128, false>
+      blocks=272x4x1 wg=32x4x1 (reported grid=8704x16x1) calls=2048
+      blocks=96x4x1 wg=32x4x1 (reported grid=3072x16x1) calls=768
+      blocks=80x4x1 wg=32x4x1 (reported grid=2560x16x1) calls=768
+      vgpr/sgpr/lds: [(('240', '128', '0'), 4608)]
+    0.883 s  calls=  768  void mul_mat_q<(ggml_type)13, 128, false>
+      blocks=80x4x1 wg=32x4x1 (reported grid=2560x16x1) calls=768
+      vgpr/sgpr/lds: [(('248', '128', '0'), 768)]
