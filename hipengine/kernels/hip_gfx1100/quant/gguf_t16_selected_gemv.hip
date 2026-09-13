@@ -3625,6 +3625,141 @@ void q5_k_t16_dense_rowtile_gemv_kernel(
   }
 }
 
+// Single-wave Q5T16 verifier rowtile. One wave32 owns TILE_COLS output columns
+// over the whole K, with each lane owning 8 contiguous k inside every
+// 256-element block. Because a lane's 8 k values fall inside one 32-element
+// subblock, the per-subblock d/dmin/scale/min decode hoists out of the inner
+// 8-step loop, and because one wave covers the whole block there is no
+// shared-memory cross-wave exchange and no __syncthreads(). This is the
+// geometry the Q4_K t16 rowtile already runs (q4_k_t16_dense_rowtile_gemv_
+// kernel, __launch_bounds__(32, 1)), which reaches 670-888 GB/s where the
+// 128-thread four-wave owner below reaches 406-704 GB/s on the same shapes.
+// The four-wave owner keeps an ordered wave-0..3 sum for parent parity; this
+// owner deliberately trades that parity for the single-wave geometry, so it is
+// a production-profile variant that owes the section-6.1 gate.
+template <typename scalar_t, int ROW_TILE, int TILE_COLS>
+__global__ __launch_bounds__(32, 1)
+void q5_k_t16_dense_rowtile_single_wave_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  static_assert(TILE_COLS == 8, "single-wave Q5 rowtile owns eight columns");
+  constexpr int kTileCols = TILE_COLS;
+  constexpr int kGroupsPerTile = T16_COLS / kTileCols;
+  const int64_t out_group = blockIdx.x;
+  const int64_t out_tile = out_group / kGroupsPerTile;
+  const int col_base =
+      static_cast<int>(out_group % kGroupsPerTile) * kTileCols;
+  const int lane = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int k_lane_base = lane * (QK_K / 32);
+  const int sb = k_lane_base >> 5;
+  float acc[ROW_TILE][kTileCols];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      acc[row][local_col] = 0.0f;
+    }
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) * Q5_T16_BLOCK_BYTES;
+    const int64_t k_base = blk * QK_K;
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0; local_pair < kTileCols / 2; ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d_pair = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin_pair = *reinterpret_cast<const uint32_t*>(
+          tile + Q5_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q5_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t min_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q5_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d_pair)) *
+          static_cast<float>(scale_pair & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d_pair >> 16)) *
+          static_cast<float>(scale_pair >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_pair)) *
+          static_cast<float>(min_pair & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_pair >> 16)) *
+          static_cast<float>(min_pair >> 8);
+    }
+#pragma unroll
+    for (int j = 0; j < QK_K / 32; ++j) {
+      const int quant_row = k_lane_base + j;
+      float weight[kTileCols];
+#pragma unroll
+      for (int local_pair = 0; local_pair < kTileCols / 2; ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const int col0 = col_base + local_col0;
+        const uint8_t low_packed =
+            tile[Q5_T16_QL_OFFSET +
+                 quant_row * (T16_COLS / 2) +
+                 (col0 >> 1)];
+        const uint8_t high_packed =
+            tile[Q5_T16_QH_OFFSET +
+                 quant_row * (T16_COLS / 8) +
+                 (col0 >> 3)];
+        const uint8_t q0 =
+            (low_packed & 0x0Fu) |
+            (((high_packed >> (col0 & 7)) & 0x01u) << 4);
+        const uint8_t q1 =
+            (low_packed >> 4) |
+            (((high_packed >> (local_col1 & 7)) & 0x01u) << 4);
+        weight[local_col0] =
+            scale[local_col0] * static_cast<float>(q0) - min_value[local_col0];
+        weight[local_col1] =
+            scale[local_col1] * static_cast<float>(q1) - min_value[local_col1];
+      }
+#pragma unroll
+      for (int row = 0; row < ROW_TILE; ++row) {
+        const float xv = scalar_to_float<scalar_t>(
+            x[static_cast<int64_t>(row) * in_features +
+              k_base + quant_row]);
+#pragma unroll
+        for (int local_col = 0; local_col < kTileCols; ++local_col) {
+          acc[row][local_col] =
+              fmaf(xv, weight[local_col], acc[row][local_col]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+  if (lane == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        out[static_cast<int64_t>(row) * out_features +
+            out_base + local_col] =
+            float_to_scalar<scalar_t>(0.0f + acc[row][local_col]);
+      }
+    }
+  }
+}
+
 // Exact grouped rows6 geometry for dense Q5T16. Grid.y owns independent
 // contiguous row chunks while every WG128 block executes the retained
 // four-wave/4-column arithmetic unchanged. This changes only launch ownership;
@@ -7020,6 +7155,49 @@ int launch_q5_dense_rowtile(
   return hipGetLastError();
 }
 
+template <typename scalar_t, int TILE_COLS>
+int launch_q5_dense_rowtile_single_wave(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  static_assert(TILE_COLS == 8,
+                "single-wave Q5 rowtile owns eight columns");
+  if (!x || !tiles || !out || rows < 2 || rows > 8 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_features / TILE_COLS));
+#define Q5_T16_DENSE_ROWTILE_SW_CASE(N)                                     \
+  case N:                                                                    \
+    hipLaunchKernelGGL(                                                       \
+        (q5_k_t16_dense_rowtile_single_wave_gemv_kernel<scalar_t, N,          \
+                                                         TILE_COLS>),        \
+        grid, block, 0, stream,                                               \
+        reinterpret_cast<const scalar_t*>(x),                                \
+        reinterpret_cast<const uint8_t*>(tiles),                             \
+        reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
+    break
+  switch (rows) {
+    Q5_T16_DENSE_ROWTILE_SW_CASE(2);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(3);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(4);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(5);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(6);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(7);
+    Q5_T16_DENSE_ROWTILE_SW_CASE(8);
+    default:
+      return hipErrorInvalidValue;
+  }
+#undef Q5_T16_DENSE_ROWTILE_SW_CASE
+  return hipGetLastError();
+}
+
 template <typename scalar_t>
 int launch_q5_dense_rowtile_grouped_rows6(
     const void* x,
@@ -8468,6 +8646,15 @@ hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q5_dense_rowtile<uint16_t, 8>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_rowtile_single_wave<uint16_t, 8>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

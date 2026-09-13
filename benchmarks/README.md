@@ -403,21 +403,23 @@ recorded production graph replay for the true-AR arm):
 
 | Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `Q4_K_M` | 31.909 | 37.201 | **0.858x** | 46.192 | 63.153 | **0.731x** | **1.4476x** |
-| `Q4_K_S` | 31.313 | 39.706 | **0.789x** | 47.023 | 66.437 | **0.708x** | **1.5017x** |
+| `Q4_K_M` | 31.904 | 37.313 | **0.855x** | 49.409 | 63.885 | **0.773x** | **1.5487x** |
+| `Q4_K_S` | 30.428 | 39.774 | **0.765x** | 46.955 | 66.709 | **0.704x** | **1.5432x** |
 
 All four arms have complete 20-row-per-group evidence, deterministic repeats,
-GPU/CPU acceptance agreement, a positive MTP/AR ratio, and generated-ID
-exactness. The remaining gap is concentrated in MTP compute: UD trails plain by
-14.2%/21.1% in AR but 26.9%/29.2% in MTP.
-([paired artifact](results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json),
+GPU/CPU acceptance agreement, and a positive MTP/AR ratio; the `Q4_K_M` arms
+are generated-ID exact and `Q4_K_S` carries the recorded `general_ja_plan`
+exactness divergence described below. The remaining gap is concentrated in MTP
+compute: UD trails plain by 14.5%/23.5% in AR but 22.7%/29.6% in MTP.
+([paired artifact](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json),
+[prior artifact](results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json),
 [worklog](../worklog/entries/20260912T125745.171165Z-ud-phase4-lane-ud-phase4-rows-sibling-retained-43a671.md).)
 
 Those rates follow the rows 2-4 local32 IQ verifier sibling
-(`2ac44d7a7`), the Q5_K gate/up pair row gate, and the Q8_0 attention K/V
-rowtile route (all `2026-09-13`), which together moved UD MTP B3
-35.541 -> **46.192** (K_M, +30.0%) and 33.061 -> **47.023** (K_S, +42.2%) at
-flat AR, and made both UD arms generated-ID exact. The sibling gives each block
+(`2ac44d7a7`), the Q5_K gate/up pair row gate, the Q8_0 attention K/V
+rowtile route, and the Q5T16 single-wave verifier rowtile (all `2026-09-13`),
+which together moved UD MTP B3 35.541 -> **49.409** (K_M, +39.0%) and
+33.061 -> **46.955** (K_S, +42.0%) at flat AR. The sibling gives each block
 several prompt rows over the same local32 IQ decode geometry, with every row
 bit-identical to the rows == 1 owner's output for that row; at kernel level it
 is 2.0-4.3x the strict per-row GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9%
@@ -448,6 +450,25 @@ tok/s (+0.48%) against a plain-control spread of -0.31%/+0.18%, and UD-Q4_K_S
 these projections and K_S three.
 ([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
 [numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
+
+The Q5T16 single-wave route retires the four-wave WG128 geometry from the
+verifier rows-2-8 rowtile. The four-wave owner runs four wave32 waves and sums
+their partial vectors through shared memory; the single-wave owner runs one
+wave32 per output block over eight columns with each lane owning eight
+contiguous `k` inside the 256-element block, so the subblock `d`/`dmin` decode
+hoists out of the inner loop and the block needs no cross-wave exchange or
+`__syncthreads()`. On the verifier the Q5_K family falls **11.75 -> 7.98
+ms/step (-32%)** across 126 in-window calls per step, at 1.05x-1.58x per call
+on all six Q5_K shapes, and the whole-kernel step falls 40.9 -> 38.4 ms/step.
+The paired arm measures UD-Q4_K_M MTP B3 46.192 -> **49.409** tok/s (+6.96%)
+at an unchanged AR denominator (31.909 -> 31.904), so MTP/AR rises
+1.4476 -> **1.5487x**. The plain control arms carry no Q5_K weights and move
++1.16%/+0.41%, which bounds the session spread. The four-wave entry point
+stays registered as the parent-parity owner that the grouped rows6/rows8
+variants are bit-identical to, and the single-wave owner is selected by policy
+with `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0` as the rollback.
+([artifact](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json),
+[worklog](../worklog/entries/20260913T041334.891199Z-lhl-ud-q5t16-single-wave-rowtile-06039f.md).)
 
 The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR /
 35.541 MTP B3 (1.1109x) and UD-Q4_K_S 31.311 / 33.061 (1.0559x), with plain
@@ -1076,7 +1097,7 @@ for the current gfx1151 FP32 production profile.
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.201 | **63.153** | **1.6976x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 37.313 | **63.885** | **1.7121x** | Current `ud-quants` paired control; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, and the true-AR arm uses recorded production graph replay. [`artifact`](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. Production default is AR. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |

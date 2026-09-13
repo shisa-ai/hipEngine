@@ -1,0 +1,311 @@
+{
+  "unit": "ud-gfx1100-q5t16-single-wave-rowtile",
+  "date": "2026-09-13",
+  "status": "retained",
+  "host": {
+    "name": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_index": 1,
+    "HIP_VISIBLE_DEVICES": "1",
+    "ROCR_VISIBLE_DEVICES": null
+  },
+  "protocol": {
+    "ar_baseline": "suite true no-MTP single-row greedy per artifact through recorded production decode-graph replay",
+    "ar_decode_mode": "graph",
+    "candidate_budgets": [
+      3
+    ],
+    "correctness_gates": {
+      "binding": [
+        "true_ar_denominator_present",
+        "all_gpu_accept_match_cpu",
+        "deterministic_repeats",
+        "faster_than_true_ar"
+      ],
+      "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator, and section 4.1 permits logits and generated IDs to differ at near ties under the production profile. The control-plane gates are binding in every profile.",
+      "recorded_not_binding": [
+        "status_complete_exact",
+        "all_exact_greedy"
+      ]
+    },
+    "draft_hidden_variant": "pre_output_norm",
+    "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
+    "max_new_tokens": 25,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs": 2,
+    "suite": "scripts/qwen36_dense_gguf_suite.py",
+    "target_verify_mode": "native",
+    "warmup": true
+  },
+  "device": {
+    "device_index": 1,
+    "expect_device": "7900 XTX",
+    "note": "The device is declared, never inferred. A rate measured while another worker shares the card is not evidence.",
+    "selected_environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "ROCR_VISIBLE_DEVICES": null
+    }
+  },
+  "timing_evidence_valid": true,
+  "u6_gate": {
+    "gate_passed": true,
+    "gated": {
+      "ud-q4-k-m": {
+        "blockers": {},
+        "measurement_blockers": [],
+        "measurement_ready": true,
+        "open_items": [],
+        "pin_complete": true,
+        "preset_key": "gguf_ud_q4_k_m"
+      },
+      "ud-q4-k-s": {
+        "blockers": {},
+        "measurement_blockers": [],
+        "measurement_ready": true,
+        "open_items": [],
+        "pin_complete": true,
+        "preset_key": "gguf_ud_q4_k_s"
+      }
+    },
+    "pin_fingerprints": [
+      "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",
+      "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c"
+    ]
+  },
+  "change": {
+    "summary": "Q5T16 verifier rows-2-8 rowtile moves to the single-wave eight-column owner via GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT; t16_gemv_rowtile_bf16_bf16_out stays bound to the four-wave WG128 parent-parity owner.",
+    "new_kernel": "q5_k_t16_dense_rowtile_single_wave_gemv_kernel",
+    "new_variant": "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+    "parity_parent": "t16_gemv_rowtile_bf16_bf16_out",
+    "rollback_env": "HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0"
+  },
+  "kernel_census": {
+    "command": "scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+    "family_ms_per_step": {
+      "four_wave": 11.75,
+      "single_wave": 7.98,
+      "delta_pct": -32.1
+    },
+    "kernel_ms_per_step": {
+      "four_wave": 40.9,
+      "single_wave": 38.355
+    },
+    "host_ms_per_step": {
+      "four_wave": 46.0,
+      "single_wave": 43.362
+    },
+    "per_shape_us_per_call": {
+      "(5120, 17408)": {
+        "four_wave": 87.1,
+        "single_wave": 60.1,
+        "speedup": 1.45
+      },
+      "(17408, 5120)": {
+        "four_wave": 135.1,
+        "single_wave": 93.9,
+        "speedup": 1.44
+      },
+      "(10240, 5120)": {
+        "four_wave": 84.5,
+        "single_wave": 57.8,
+        "speedup": 1.46
+      },
+      "(12288, 5120)": {
+        "four_wave": 100.0,
+        "single_wave": 63.1,
+        "speedup": 1.58
+      },
+      "(6144, 5120)": {
+        "four_wave": 53.2,
+        "single_wave": 38.1,
+        "speedup": 1.4
+      },
+      "(1024, 5120)": {
+        "four_wave": 20.5,
+        "single_wave": 19.6,
+        "speedup": 1.05
+      }
+    }
+  },
+  "paired_suite": {
+    "command": "scripts/ud_mtp_paired.py --runs 2 --device-index 1 --expect-device \"7900 XTX\"",
+    "prior_artifact": "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-q8-rowtile-attn-kv.json",
+    "arms": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 31.904093387057305,
+        "mtp_b3_tok_s": 49.40939358641746,
+        "mtp_vs_true_ar": 1.548685085233032,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "b9d2e6d00e17dae1ee5cda49f72654d6f30cb692",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_M",
+          "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "model_size_bytes": 16464440224,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "complete_exact",
+          "target_arch": "gfx1100",
+          "untracked_count": 0
+        },
+        "prior_mtp_b3_tok_s": 46.19214008778531,
+        "mtp_b3_delta_pct": 6.964937092150203
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 30.42790102360912,
+        "mtp_b3_tok_s": 46.95524161831739,
+        "mtp_vs_true_ar": 1.5431640053608904,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "b9d2e6d00e17dae1ee5cda49f72654d6f30cb692",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_S",
+          "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+          "model_size_bytes": 15358213024,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "complete_exact",
+          "target_arch": "gfx1100",
+          "untracked_count": 0
+        },
+        "prior_mtp_b3_tok_s": 47.02288660658841,
+        "mtp_b3_delta_pct": -0.14385545667785493
+      },
+      "plain-q4-k-m": {
+        "true_ar_tok_s": 37.313346709730865,
+        "mtp_b3_tok_s": 63.88520864404061,
+        "mtp_vs_true_ar": 1.712127543557494,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "b9d2e6d00e17dae1ee5cda49f72654d6f30cb692",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_M",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "model_size_bytes": 17106773984,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "complete_exact",
+          "target_arch": "gfx1100",
+          "untracked_count": 0
+        },
+        "prior_mtp_b3_tok_s": 63.15342064529643,
+        "mtp_b3_delta_pct": 1.158746416689449
+      },
+      "plain-q4-k-s": {
+        "true_ar_tok_s": 39.77406284694462,
+        "mtp_b3_tok_s": 66.70854421944935,
+        "mtp_vs_true_ar": 1.6771870773210136,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "correctness_failed",
+        "divergent_rows": [
+          "general_ja_plan#run0",
+          "general_ja_plan#run1"
+        ],
+        "provenance": {
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "dirty": true,
+          "git_branch": "ud-quants",
+          "hipengine_commit": "b9d2e6d00e17dae1ee5cda49f72654d6f30cb692",
+          "host_name": "epyc",
+          "model_file_type": "MOSTLY_Q4_K_S",
+          "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+          "model_size_bytes": 16121359328,
+          "prompt_file": "/home/lhl/hipEngine-ud/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+          "resolved_backend": "hip_gfx1100",
+          "speed_claim_eligible": false,
+          "suite_status": "correctness_failed",
+          "target_arch": "gfx1100",
+          "untracked_count": 0
+        },
+        "prior_mtp_b3_tok_s": 66.43698548548917,
+        "mtp_b3_delta_pct": 0.4087463210074249
+      }
+    },
+    "comparisons": {
+      "q4_k_m": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 22.659102732653437,
+          "true_ar": 14.49683236605226
+        },
+        "plain_label": "plain-q4-k-m",
+        "ud_label": "ud-q4-k-m",
+        "ud_over_plain": {
+          "mtp_b3": 0.7734089726734656,
+          "true_ar": 0.8550316763394774
+        }
+      },
+      "q4_k_s": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 29.61135313663875,
+          "true_ar": 23.4981320849737
+        },
+        "plain_label": "plain-q4-k-s",
+        "ud_label": "ud-q4-k-s",
+        "ud_over_plain": {
+          "mtp_b3": 0.7038864686336125,
+          "true_ar": 0.765018679150263
+        }
+      }
+    },
+    "control_note": "The plain (non-UD) arms carry no Q5_K weights and move +1.16% / +0.41%, which bounds the session noise floor."
+  }
+}

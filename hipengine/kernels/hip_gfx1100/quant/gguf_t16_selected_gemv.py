@@ -183,6 +183,9 @@ _Q5_DENSE_ROWTILE_BF16 = (
 _Q5_DENSE_ROWTILE_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q5_DENSE_ROWTILE_SINGLE_WAVE_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out"
+)
 _Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out"
 )
@@ -2170,7 +2173,14 @@ def gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch exact four-column Q5T16 row reuse for rows 2-8."""
+    """Launch the four-wave WG128 parent-parity Q5T16 rowtile for rows 2-8.
+
+    The ordered wave-0..3 reduction is the contract the grouped rows6/rows8
+    owners and the one-expert direct producer share, so this entry point stays
+    the parity parent. Production verifier rows select the single-wave
+    eight-column owner instead through
+    ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT``.
+    """
 
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
@@ -2270,6 +2280,41 @@ def gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
         _Q5_DENSE_ROWTILE_COL8_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the single-wave eight-column Q5T16 verifier rowtile.
+
+    One wave32 per block owns eight columns over the whole K, each lane owning
+    eight contiguous k, so the subblock scale/min decode hoists out of the
+    inner loop and the block needs no cross-wave exchange. This is the Q4_K
+    rowtile's geometry; it is a production-profile owner, not parent-parity.
+    """
+
+    _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
+    _launch_dense_q5_t16(
+        _Q5_DENSE_ROWTILE_SINGLE_WAVE_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -4815,6 +4860,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "linear",
             "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
             "t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
         ),
         gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out,
@@ -5255,6 +5310,7 @@ __all__ = [
     "gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out",
