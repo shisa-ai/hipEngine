@@ -1,10 +1,14 @@
-# Qwen3.8-27B: TP2 on W7900 + RX 7900 XTX
+# Tensor parallelism: TP=N architecture, Qwen3.8-27B TP2 bring-up
 
 Status: implementation plan; no two-GPU measurements or runtime support claimed.
+Reviewed: 2026-09-14 against source `a9aa29c364601620cf86b3824479d808adae46ad`.
+The filename is retained for existing links. Infrastructure targets single-host
+TP=N; the first topology to qualify is W7900 + RX 7900 XTX.
+N-rank design is not N-rank certification.
 
 ## Objective and decision rule
 
-Implement torch-free two-way tensor parallelism (TP2) for Qwen3.8-27B GGUF
+Implement torch-free tensor parallelism, first qualifying TP2 for Qwen3.8-27B GGUF
 `Q4_K_M` on one host containing a W7900 and an RX 7900 XTX, both gfx1100,
 connected through PCIe. Optimize **one active request's decode latency**, not
 aggregate throughput from two independent requests. Include multi-token
@@ -33,7 +37,8 @@ Do not divert this campaign into DFlash or independent two-request throughput.
 
 ## Implementation facts and dependencies
 
-Notation: TP1 means one GPU; C is the number of active requests; K is draft
+Notation: N is the number of TP ranks; TP1 means one GPU;
+C is the number of active requests; K is draft
 candidate depth, with K0 meaning no MTP. Q/K/V are attention query/key/value;
 KV is the key/value cache. RCCL is AMD's collective communication library;
 P2P means peer-to-peer device transfer. GEMV/GEMM are matrix-vector/matrix-matrix
@@ -46,12 +51,16 @@ Read these before coding:
 | Source | Relevant fact or contract |
 | --- | --- |
 | [`PLAN.md`](PLAN.md#multi-gpu-strategy) | Host-owned sharding and communication; the former minimal TP sketch is not an implementation or a validated effort estimate. |
-| `hipengine/distributed/__init__.py` | Empty at campaign creation; no working TP engine to extend. |
+| `hipengine/distributed/__init__.py` | Still empty at review; no working TP engine to extend. |
 | `hipengine/server/api.py` | Capability metadata advertises world size 1 and no tensor-parallel support. Do not advertise TP2 before integration gates pass. |
 | `hipengine/core/{hip,device,memory,tensor}.py` | Existing HIP/device primitives to audit for explicit device ownership. |
+| `hipengine/core/runtime.py`, `hipengine/core/pm4/{transport,graph}.py` | Backend-neutral runtime protocol and registered HIP/native submission transports; submission transport is not collective transport. |
+| `hipengine/generation/{engine_loop,engine_service}.py`, `hipengine/dispatch/` | One model-owning loop and scheduler; TP ranks are not independent requests or replica engines. |
+| `hipengine/kvcache/{backend,ledger,global_pool,graph_binding}.py` | `KVCacheBackend`, atomic resource claims/deltas, generation-checked storage and graph bindings. |
 | `hipengine/loading/qwen35_gguf{,_materialize}.py` | Metadata, mixed GGUF tensor formats, full/linear attention mapping, and materialization. |
 | `hipengine/runtime/qwen35_gguf_runner.py` | Resident target, recurrent state, prefill, and packed verification. |
 | `hipengine/runtime/qwen35_gguf_{mtp,nextn}.py`, `hipengine/speculative/gguf_mtp.py` | Draft/target integration; also inspect `transaction.py`, `native_cycle.py`, and `verify_graph.py` in `hipengine/speculative/`. |
+| `hipengine/generation/qwen35_gguf_mtp2{,_registry}.py`, `hipengine/speculative/{provider,frontier,interfaces}.py` | Current provider/frontier integration; `mtp2` names the speculative implementation, not tensor-parallel degree two. |
 | [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md) | Normative arithmetic, determinism, ownership, and test gates. |
 | [`BENCHMARK.md`](BENCHMARK.md), [`benchmarks/README.md`](../benchmarks/README.md) | Evidence and matched-baseline rules. Historical rates are not TP2 denominators. |
 
@@ -60,25 +69,140 @@ all-softmax transformer: linear-attention layers carry convolution and Gated
 DeltaNet (GDN) recurrent state. Generate the exact layer/head/state inventory
 from the supplied GGUF; do not hardcode dimensions from the model name.
 
-The [2026-09-06 MTP matrix handoff](../worklog/entries/20260906T050447.321364Z-lhl-gfx1100-mtp-ck-matrix-blocked-8dc5cc.md)
-records two prerequisites: the physical width-one path can fall back to no MTP,
-and unqualified width/depth cells cannot engage without existing serving
-evidence. It also records qualified multi-request cells losing to their matched
-AR arms. These are not single-request TP2 measurements, but they rule out using
-old acceptance or speedup numbers as proof of a new MTP gain. Recheck source at
-campaign start because another unit may resolve these blockers.
+### Review findings and current boundaries
+
+- **TP2-only orchestration would become architectural debt.** Use rank vectors,
+  explicit partitions, and collective schedules, not paired fields or `1 - rank`.
+  The two-rank peer optimization is a transport capability, not the generic API.
+- **Device labels are not device ownership.** `DeviceBuffer` stores pointer/size;
+  `DeviceRuntime` has no device-selection contract, and `get_hip_runtime()` is a
+  process singleton. A shared library binding can remain shared, but allocation
+  and launch ownership must be verified.
+- **Serving must use the current loop and KV contracts.** A separate TP scheduler
+  or one complete runner per GPU duplicates request ownership and cannot insert
+  the required intra-layer collectives.
+- **Replay and profile policy are first-class dependencies.** Native PM4 replay
+  currently drains its HIP stream and waits on its native queue. Its kernel-only
+  graph inspection does not establish RCCL interoperability. Existing profile
+  certificates cover TP1, not distributed sums.
+- **The September 6 MTP handoff is historical, not a current capability map.**
+  The gfx1100 capability table now contains physical C1 and width/depth entries,
+  while model-local evidence independently controls admission. Backend capability,
+  explicit legacy MTP, physical provider engagement, and automatic qualification
+  are different facts. Inspect `hipengine/models/qwen35.py`,
+  `hipengine/kernels/hip_gfx1100/__init__.py`, and resolved serving evidence at
+  implementation time. No TP1 result qualifies TP=N.
+
+The recommendation remains column/row sharding with replicated hidden
+activations and RCCL first. Whether this is fastest on the actual PCIe host
+requires measurement; the review does not establish a performance result.
 
 ## Architecture to implement
 
+### TP=N plan and integration boundaries
+
+Resolve one immutable distributed plan at construction, before weight allocation.
+These are proposed responsibilities, not existing public APIs:
+
+| Owner | Responsibility |
+| --- | --- |
+| `hipengine/distributed/` plan/context | Ordered unique devices, N, control/draft owners, rank-local contexts, communicator lifetime, collective schedule, topology fingerprint. |
+| Model plugin / shard planner | Logical tensor axes, full-attention and GDN head maps, layer boundaries, aliases, admissible degrees. |
+| Quant/materialization plugin | Byte-preserving extraction, block alignment, local strides, preflight/consumer checks, rank-local repacks and sidecars. |
+| Distributed runner adapter | Consume one scheduler `WorkItem`; enqueue local layer segments on all ranks and collectives; expose one logical runner/result to the existing loop. |
+| Distributed KV composition | Aggregate rank-local pools/leases/views behind the existing backend contract; own distributed state transactions. |
+| Local four-axis kernel registry | Resolve actual local dimensions/profile scopes; no TP degree or transport as a fifth axis. |
+| Collective transport | Rank-group broadcast and all-reduce-sum, completion/errors, optional correctness/sampling gather; no model or scheduler policy. |
+| Submission transport registry | HIP graph or independently qualified native replay for local compute; not an RCCL replacement. |
+
+Bind model/quant/KV identities, rank order and physical devices, global-to-local
+head/channel maps, replicated tensors, local layout/variant manifests,
+communication dtype/algorithm, ordered reduction boundaries, graph policy and
+evidence scope. Serialize deterministically and hash the plan. Use per-layer
+partitions where geometries differ; require exact coverage without gaps/overlaps
+except declared replication. Reject impossible degrees before allocation.
+Generic TP=N does not mean every integer degree works for every model.
+
+Start with balanced aligned ranges for arbitrary admissible N. Test N=1,2,3,4
+on synthetic CPU fixtures, including non-power-of-two and uneven legal
+partitions. Do not generalize `hidden/2` or a pair-specific reduce tree.
+Initially require compatible homogeneous backend/architecture families;
+different gfx1100 card capacities are allowed. Mixed HIP/CUDA or architecture
+groups need separate qualification. N=1 bypasses communicator construction and
+preserves the existing TP1 runner.
+
+One existing model-owning engine loop decides admission, row maps, sampling,
+finish and cancellation. It sends the same logical work/positions/active-mask
+schedule to every rank. Physical pointers and head-local KV dimensions differ;
+request identity and causal visibility do not. TP degree N, physical request
+width C, and verifier rows R are independent axes.
+
+### KV pools, transactions, and admission
+
+Expose one composite `KVCacheBackend` with rank-qualified pool IDs in its
+`KVPoolPlan`. The existing ledger reserves one atomic `ResourceClaimSet`
+spanning every rank, including communication workspace and transaction snapshots.
+Never admit from aggregate free VRAM: each rank's claims must fit. Failed
+reservation/preparation releases all acquired resources before another admission;
+inject failures after each rank's acquisition in tests.
+
+Each local attention call consumes local `KVLiveSpans` and `KVStorageView`
+through a rank-local prepared view. Preserve the common backend interface with
+a distributed adapter/internal view bundle; do not concatenate foreign-device
+pointers into one kernel view. Head-local offsets can differ, but logical
+positions, visibility and prefix ownership must agree. Prefix keys include the
+distributed layout identity. Disable prefix/tiering/eviction compositions until
+qualified rather than inheriting TP1 capability claims.
+
+Use a group transaction ID and epoch for AR mutation as well as MTP. Prepare
+all ranks, enqueue agreed work, check completion, then publish one committed
+prefix/output. Do not expose a sampled token before its state commits everywhere.
+This is a logical commit protocol, not a requirement to copy all KV/recurrent
+state on every AR token. AR may mutate in place and invalidate the group on
+failure; speculative rollback requires its declared snapshots/journal.
+Recoverable pre-launch errors unwind all ranks; asynchronous device/collective
+failure poisons the group and fails its requests. Partially advanced groups are
+not reusable. Cancellation takes effect at an agreed boundary, never by skipping
+one rank's next collective. Reclaim only after all consumers/graphs complete.
+
 ### Runtime and communication
 
-Use one process, one explicit device context and compute stream per rank, and
-persistent per-device workspaces. A rank is one participating GPU. Enqueue both
-ranks' work before waiting. Establish reductions **inside each layer**, before
+Use one process, one explicit device context and nonblocking compute stream per
+rank, and persistent per-device workspaces. A rank is one participating GPU.
+Enqueue all ranks' work before waiting. Establish reductions **inside each layer**, before
 the next consumer; running two complete forwards and reducing afterward is
 incorrect. Prototype with grouped RCCL calls through `ctypes` (`librccl.so`),
 without importing torch. Validate group launch semantics so the first rank's
 collective cannot block the second rank from being enqueued.
+
+For each segment: enqueue local producers for every rank, issue matching
+collectives for all communicators inside one group, close the group, then enqueue
+dependent consumers. Start with collectives on the compute stream for ordering.
+A separate communication stream is an optimization only when independent work
+can overlap; require producer/completion events and stable buffer lifetimes.
+
+RCCL exports NCCL-compatible `nccl*` names. Bind against installed headers and
+version, not guessed enums or opaque-struct sizes. Group initialization separately
+from collectives. Successful blocking-mode `ncclGroupEnd` establishes enqueue,
+not device completion; nonblocking communicator/group progress needs explicit
+status polling. Do not enqueue dependent kernels until nonblocking group enqueue
+has completed on every communicator. Validate kind, sequence, count, dtype, root
+and communicator epoch before issuing a group. Uneven weight shards still produce equal
+`rows * hidden_size` all-reduce counts. Provide asynchronous-error/timeout handling
+and communicator abort. Do not promise Python recovery from a hung driver:
+a supervisor must be able to terminate a poisoned worker.
+
+The serving transport must use a version-qualified nonblocking communicator/
+abort path and poll stream progress plus asynchronous errors under a deadline,
+not wait indefinitely in `hipStreamSynchronize`. Never abort while another
+thread is inside a communicator call. Older blocking-only bring-up belongs in
+a supervised diagnostic process, not the public serving path.
+
+Prevalidate static collective schedules at plan/capture construction and validate
+dynamic row/epoch metadata once per work item. Do not add Python tensor inspection,
+D2H probes, or host barriers inside every production layer. GPU stream ordering
+carries layer dependencies; only the request/transaction boundary needs host
+completion before externally publishing results.
 
 Use RCCL as the reference communication implementation. Screen a specialized
 two-rank peer-copy plus local-sum path only if measured small-message latency
@@ -94,6 +218,17 @@ including thread-local current-device state. Compile artifacts may be shared
 by architecture where safe; loaded handles and graph/device pointers must not
 be reused across devices accidentally. TP configuration chooses a distributed
 plan; model and dispatch code must not grow backend/quant string branches.
+
+Use rank-bound runtime owners over existing library bindings, with scoped
+current-device selection/restoration for allocation, launch, capture and teardown.
+Carry device identity through buffers, arenas, tensors and allocation accounting;
+validate it at wrapper boundaries. Audit BLAS handles, ctypes caches, native-cycle
+descriptors, sampler buffers, PM4 queues and environment-derived settings.
+Existing profile binders use process-wide settings: resolve one consistent group
+profile before rank construction, never toggle environment variables per rank.
+Add host threads or a native enqueue loop only after measuring launch skew;
+multiprocessing is a separate decision if single-process constraints cannot be
+resolved.
 
 ### Weight and state ownership
 
@@ -115,6 +250,28 @@ means split input features and sum partial outputs.
 | Target vocabulary head | One owner for first correctness implementation; then shard vocabulary rows | Greedy: reduce local `(max logit, global token ID)` with deterministic tie-breaking, not full vocabulary gathers. Full distributions need a separate correct path. |
 | MTP NextN block and proposal head | One designated draft owner initially | Reuse replicated verified hidden state and exact token embeddings; broadcast candidates and commit decisions. Include head weights/aliases in memory accounting. |
 
+This table applies to each of N ranks. Preserve global query-to-KV mapping;
+when N exceeds KV-head count, replicate required KV heads and reject unsupported
+local kernel mappings. For GDN inventory `ssm_group_count`, `ssm_time_step_rank`,
+`ssm_state_size` and derived value dimension from config. Replicate repeated Q/K
+groups when value-head partitions require them; do not simply divide both head
+counts by N. Test gate/Q interleaving and convolution channel layout separately.
+
+For vocabulary sharding, gather N local `(score, global ID)` candidates to the
+control owner, select deterministically, and broadcast the winning ID as the
+first implementation. This does not require a custom RCCL pair-reduction
+operator. Full-logit numerical probes and initially supported stochastic
+sampling gather the complete vocabulary on the owner outside timed greedy runs.
+Keep one authoritative per-request RNG/processor state; shard-local selection is
+valid only for processors whose semantics are proven to commute with that split.
+
+Produce identical replicated post-reduction values on every rank: sum partials,
+apply output bias once, add residual once, convert dtype at the declared boundary.
+In an MLP-only diagnostic replicated attention outputs are already complete and
+must not be summed again. FP32 communication after BF16 partial-output rounding
+is not FP32 partial accumulation: qualify the actual kernel/dtype chain or add
+an FP32-output variant.
+
 The model inventory must specify every GGUF tensor's logical axes, byte/block
 alignment, per-rank ranges, replications, and local dimensions. `Q4_K_M` is a
 mixed-tensor preset, not a promise that every matrix uses Q4. Cutting a packed
@@ -122,6 +279,11 @@ row on its reduction axis may require block-aligned repacking and local stride
 changes. Preserve original quantized blocks/scales without dequantizing and
 requantizing to manufacture shards. If an axis cannot be partitioned safely,
 replicate that operation first and record its serial cost.
+Keep existing materializer metadata-only preflight, precision-contraction checks
+and native-consumer validation. Slice original blocks first, then create only
+needed rank-local T16/planar/other sidecars; existing TP1 repacks may not admit
+the same cuts. Replicated-output operations need no sum; owner-only operations
+need broadcast.
 
 Use the RX 7900 XTX's 24 GB as the limiting rank budget, not half the combined
 VRAM. Record actual free memory on both cards. Budget weights, draft copies,
@@ -144,6 +306,17 @@ bitwise single-GPU parity just because the weight bytes are unchanged.
 - Preserve the registered TP1 strict fallback. Do not register a TP2 route as
   public `strict` unless it meets that profile's reference arithmetic contract.
   A deterministic split oracle alone does not certify public strict parity.
+- Topology admission precedes profile fallback. A strict TP1 primitive can serve
+  a local shard only with compatible shape/layout; it does not certify distributed
+  sums. Keep an unfused distributed reference chain for localization and the TP1
+  model as teacher. Reject explicit strict/batch-invariant TP=N without a
+  certified group plan. Never silently load a full TP1 model on one rank or
+  change degree mid-session; TP1 fallback requires a separately admitted session.
+- Extend cold-path certification and serving evidence with the distributed
+  manifest before public admission. The current default TP1 `production`
+  selection cannot authorize TP=N by key coincidence. Record selected collective
+  algorithm/protocol and rank-local variants; fixed rank order alone does not
+  prove repeat determinism.
 - Qualify changed arithmetic as `production` only through the full calibrated
   strict-teacher mean/tail/max KL, top-1, BF16-relative, isolation, and task gates
   in `EXECUTION-PROFILES.md`. The CPU-reference KL ≤ 0.05 / top-1 ≥ 90% smoke
@@ -156,6 +329,10 @@ bitwise single-GPU parity just because the weight bytes are unchanged.
 
 Each packet ends with focused tests, an immutable worklog entry, and a scoped
 commit. New names below are proposed deliverables, not existing commands/APIs.
+Packet 0's topology/microbench screen may share minimal primitives with Packet 1.
+The final break-even decision uses Packet 2's validated local shapes and shard
+kernel timings before committing to Packet 3; do not build duplicate temporary
+communication wrappers or treat estimated half-model time as measured evidence.
 
 ### Packet 0 — Establish the host and break-even budget
 
@@ -172,7 +349,8 @@ commit. New names below are proposed deliverables, not existing commands/APIs.
 - [ ] Inventory `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` (or record replacement
   path/hash), all tensor formats, layer types, MTP block, hidden/head/state
   dimensions, and per-device memory budget. Bind the shard manifest to its hash.
-- [ ] Add a guarded `scripts/tp2_collective_bench.py` and tests. Measure warm
+- [ ] Add a guarded `scripts/tp_collective_bench.py` and tests accepting an
+  ordered device list (proposed interface). Measure warm
   latency p50/p95/p99 and bandwidth for broadcast and sum, for FP32 and any
   proposed transport dtype: payload `rows * hidden_size * dtype_bytes`, rows
   1, 2, 3, 4, 5, plus actual prefill chunks. Test rank orders and many sequential
@@ -181,10 +359,13 @@ commit. New names below are proposed deliverables, not existing commands/APIs.
   this host, using the full category suite. Profile per-layer and head time.
   Do not substitute a result from another host, even with the same GPU model.
 - [ ] Write a break-even artifact and a go/no-go decision before Packet 3.
+- [ ] Use Tier-1 allocation probes before full-prompt capacity testing. Record
+  actual TP1 HIP/PM4 submission transport and resolved profile; measure local
+  shard-shaped kernels and rank enqueue skew before extrapolating.
 
 For each segment between synchronization boundaries estimate:
 
-`TP2 segment time ≈ max(rank0 local time, rank1 local time) + exposed reduction + launch/synchronization cost`.
+`TP=N segment time ≈ max(local time over ranks) + exposed reduction + launch/synchronization cost`.
 
 Sum segment costs across layers and add embeddings, head, serial operations,
 and sampling. Do not take one maximum over an entire layer when ranks can
@@ -202,6 +383,8 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
 - [ ] Implement minimal distributed config/context and a transport interface in
   `hipengine/distributed/`; add only missing HIP device/peer operations in core.
   Keep world-size-one behavior unchanged and RCCL optional until TP is requested.
+- [ ] Resolve the N-rank plan and composite KV pool/claim set. Preserve the
+  model-owning scheduler; add a distributed runner adapter, not N schedulers.
 - [ ] Audit core, weight loading, runtime workspaces, graphs, native cycle ABI,
   sampler, and global caches for implicit device zero/default stream ownership.
 - [ ] Add CPU/mock tests for rank/device mismatch, invalid topology and dtype,
@@ -213,6 +396,7 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
 - [ ] Establish a graph-disabled correctness baseline. Test RCCL capture support
   explicitly before graph integration; a Python loop that synchronizes every
   rank/layer is an oracle implementation, not the intended fast path.
+  Even the oracle must enqueue all participants before a collective wait.
 
 ### Packet 2 — Build shard manifests and CPU reconstruction tests
 
@@ -226,6 +410,9 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
   multiple tokens, odd/unsupported dimensions, and snapshot restoration.
 - [ ] Confirm a rank never allocates a second full target model as an accidental
   materialization intermediate. Account for host-side conversion copies too.
+- [ ] Exercise N=1/2/3/4 CPU plans, uneven legal cuts, KV-head replication,
+  impossible degrees, metadata-only refusals and aggregate claim rollback.
+  Two-GPU success cannot mark N=3/4 hardware support complete.
 
 ### Packet 3 — Integrate AR in incremental boundaries
 
@@ -259,11 +446,19 @@ memory/timing evidence, and a decision on whether to proceed with optimization.
   supported. Keep event dependencies explicit and verify repeated replay,
   address lifetimes, and graph invalidation. Do not assume one cross-device
   HIP graph works, or discard graphs without measuring the lost TP1 benefit.
+- [ ] Use the existing submission registry. Qualify RCCL capture for the whole
+  communicator group, consistent replay order and capture failure on any rank.
+  Native PM4 `NativeGraphSubmission.launch()` currently waits on the caller's
+  HIP stream and native completion; sequential rank calls can serialize compute.
+  Do not export RCCL internal kernels into kernel-only PM4 manifests or assume
+  HSA writes are ordered by HIP-stream events. A native TP path needs explicit
+  cross-queue completion and independent stress/capture gates. Explicit
+  unsupported transport requests fail closed; report automatic HIP selection.
 - [ ] Compare RCCL to peer-copy/local-sum for actual payloads and the full layer
   chain. If justified, fuse local sum with residual/norm without double-adding
   residual; follow kernel catalog, lineage, strict fallback, numerical, and
   `rocprofv3 --kernel-trace` gates for each new kernel.
-- [ ] Tune local half-width GEMV and verifier shapes through the four-axis
+- [ ] Tune actual rank-local GEMV and verifier shapes through the four-axis
   registry. Smaller shards may hit different performance regimes than TP1.
 - [ ] Screen aligned unequal shards only if rank skew warrants it; retest the
   complete manifest and numerical contract for each split. Drop rejected paths
@@ -289,9 +484,10 @@ memory/timing evidence, and a decision on whether to proceed with optimization.
   the verified hidden seed at the exact boundary expected by NextN. Restore or
   advance the draft owner's recurrent state consistently with that prefix too;
   target rollback alone is insufficient.
-- [ ] Resolve width-one engagement and evidence-admission blockers without
-  weakening production admission. If still needed, add a test-only screening
-  mode that labels unqualified cells and cannot enable public automatic MTP.
+- [ ] Establish actual width-one provider engagement and TP-specific evidence
+  admission without weakening production admission. If needed, add a test-only
+  screening mode that labels unqualified cells and cannot enable public automatic
+  MTP.
   Zero engaged cycles invalidate an MTP speed claim.
 - [ ] Screen K=0,1,2,3,4 only where implemented and actually engaged. Measure
   draft, candidate broadcast, verifier, head, acceptance, rollback/commit,
@@ -303,6 +499,12 @@ memory/timing evidence, and a decision on whether to proceed with optimization.
 - [ ] Extend serving-evidence keys to distinguish TP degree, device pair/rank
   map, shard/transport and variant manifests, context, verifier shape, K,
   sampling and profile. Never reuse a TP1 qualification record for TP2.
+- [ ] Use existing provider/frontier/transaction integration. The native
+  single-device cycle descriptor is not a distributed ABI: use per-rank
+  descriptors and group-owned commit coordination before optimizing host control.
+  Apply sampling constraints/processors before local argmax when sharding the
+  vocabulary. Raw-logit top-1 is not valid for arbitrary public sampling options.
+  Mask padded vocabulary rows and define global-ID tie behavior.
 
 Economics check: `MTP time per committed token = cycle wall / committed tokens`.
 Include all draft, verification, communication, and recovery work. MTP wins only
@@ -315,6 +517,10 @@ Keep K0 as the automatic fallback outside qualified winning scopes.
 - [ ] Wire explicit TP configuration through model construction, `LLM.generate`,
   and serving. Reject unsupported hardware/model/profile/sampling combinations
   before loading; expose the resolved topology and MTP engagement in diagnostics.
+- [ ] Publish capability per model/profile/degree/transport, not a global flag
+  inferred from visible GPUs. An explicit ordered device list defines rank
+  mapping; validate its length against any degree selector. Mock tests and TP2
+  evidence do not authorize public N>2 hardware support.
 - [ ] Test streaming/non-streaming output, cancellation, request reuse, error
   propagation, and final memory/ownership drain. Initial support may admit only
   one active request; reject/queue extra work explicitly rather than silently
@@ -400,3 +606,21 @@ profile final leaf processes rather than the multi-process suite parent.
   architecture notes, and cleanup ledger match the implementation. If no TP2
   win is possible on this PCIe topology, close with a measured negative result
   and its limiting costs rather than claiming success from capacity alone.
+
+## External API checks
+
+Reviewed against AMD official documentation on 2026-09-14. Recheck the installed
+version in Packet 0: documentation does not certify this Radeon topology's peer
+access, capture behavior or throughput.
+
+- HIP multi-device management: device selection, stream/event ownership and
+  possible host staging without peer access.
+  `https://rocmdocs.amd.com/projects/HIP/en/latest/how-to/hip_runtime_api/multi_device.html`
+- RCCL API library: rank collectives and single-thread group semantics.
+  `https://rocm.docs.amd.com/projects/rccl/en/docs-6.4.2/api-reference/api-library.html`
+- RCCL group calls: group enqueue versus stream completion.
+  `https://rocmdocs.amd.com/projects/rccl/en/develop/userguide/source/api/group.html`
+- RCCL fault tolerance and communicator progress: nonblocking progress, abort
+  ownership, and deadline/error polling.
+  `https://rocm.docs.amd.com/projects/rccl/en/latest/how-to/fault-tolerance.html`
+  `https://rocmdocs.amd.com/projects/rccl/en/develop/userguide/source/api/comms.html`

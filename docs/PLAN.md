@@ -73,12 +73,14 @@ Our compute kernels operate on local device tensors. The host plan owns
 multi-GPU sharding, communication, and state. Local-shape tuning or fused
 communication consumers may require registered kernel variants.
 
-The concrete dense TP2 implementation plan is
+The single-host TP=N architecture and first dense TP2 qualification plan is
 [`QWEN38-27B-GFX1100-TP2.md`](QWEN38-27B-GFX1100-TP2.md): one W7900 plus one
 RX 7900 XTX on the same PCIe host, prioritizing single-request latency and
 separately qualified MTP gains. This is planned work, not implemented support.
 It requires measured communication break-even, hybrid attention/state sharding,
-and execution-profile qualification before default promotion.
+and topology-specific execution-profile qualification before default promotion.
+Use N-rank manifests and CPU reconstruction tests from the start; two-device
+evidence does not certify arbitrary degrees or mixed backends.
 
 ### Tensor Parallelism (TP) — Default Path
 
@@ -89,10 +91,18 @@ and execution-profile qualification before default promotion.
 | KV cache | Local head shards, with necessary KV-head replication | Preserve grouped-query mapping and `KVLiveSpans`; recurrent layers shard complete state groups |
 | All-reduce points | Inside each layer after attention output and MLP down; shared-expert reduction where applicable | Complete each sum before its dependent residual/next operation |
 | Process model | Single-process multi-GPU preferred; multiprocessing fallback | Explicit HIP devices/streams and grouped collective launches |
+| Scheduler and KV | One existing model-owning loop, distributed runner adapter, composite `KVCacheBackend` | Atomic rank-qualified resource claims; one logical request and commit decision |
+| Plan identity | Immutable N-rank shard/topology/collective and local-variant manifests | Reject unsupported degree/profile/layout before allocation; no fifth kernel-registry axis |
+| Replay | HIP-stream baseline; separately qualify HIP graph/RCCL capture and native PM4 interoperability | Current native replay waits at HIP/HSA boundaries; do not assume asynchronous multi-rank replay |
 
 Reuse local compute kernels where shapes/layouts permit. Validate packed quant
 boundaries and row-split arithmetic; sharding is not automatically bit-exact to
 the single-GPU reference.
+
+TP1 production certificates do not authorize distributed reductions. The TP1
+strict model remains the teacher, not a mid-session fallback for sharded state;
+unsupported distributed profiles fail before loading. One group owns all-rank
+commit, cancellation and failure propagation through the common lifecycle.
 
 ### Pipeline Parallelism (PP) — For Very Large Models
 
@@ -133,8 +143,9 @@ the single-GPU reference.
 3. Build byte-preserving GGUF shard manifests and independent reconstruction
    tests; integrate MLP, full-attention, and recurrent-state sharding in order.
 4. Qualify end-to-end AR before graph/transport/local-shape optimization.
-5. Add a rank-owned MTP draft and TP2 multi-row target verification with exact
-   distributed commit/rollback; measure against true TP2 AR and TP1 MTP.
+5. Add a rank-owned MTP draft and distributed multi-row target verification
+   through the existing provider/frontier integration with exact distributed
+   commit/rollback; measure against true TP2 AR and TP1 MTP.
 6. Gate public support on profile, lifecycle, and matched performance evidence.
 
 See the campaign for packet exit criteria and the benchmark matrix. The former
