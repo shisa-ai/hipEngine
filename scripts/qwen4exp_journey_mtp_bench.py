@@ -36,6 +36,26 @@ def validate_output(tokens, count):
     return list(tokens)
 
 
+def validate_local_mtp(diagnostics):
+    proposed = diagnostics.get("proposed_draft_tokens")
+    if type(proposed) is not int or proposed <= 0:
+        raise ValueError("MTP arm did not report real draft proposals")
+
+
+def wait_server(process, host, port, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        code = process.poll()
+        if code is not None:
+            raise RuntimeError(f"server exited during startup: {code}")
+        try:
+            _wait_for_health(host, port, min(2, deadline - time.monotonic()))
+            return
+        except TimeoutError:
+            continue
+    raise TimeoutError("server startup deadline exceeded")
+
+
 def summarize(rows, *, expected_ids, repetitions):
     expected = {(name, mode, rep) for name in expected_ids
                 for mode in ("ar", "mtp") for rep in range(repetitions)}
@@ -125,6 +145,12 @@ def main():
         parser.error("llamacpp needs --server-bin and --source-root")
     if args.output.exists():
         raise FileExistsError(args.output)
+    from scripts.qwen4exp_framework_family_refresh import model_identity
+
+    identity = model_identity(args.model_root)
+    sidecar_hash = sha256_path(args.sidecar)
+    if sidecar_hash != "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d":
+        raise ValueError("MTP sidecar does not match the frozen Q8_0 artifact")
     cases = prompt_rows(args.model_root, args.prompts, args.max_tokens)
     report = {
         "schema": 1, "kind": "qwen4exp_journey_mtp_request_baseline",
@@ -132,7 +158,8 @@ def main():
         "command": [sys.executable, *sys.argv], "source": _git_metadata(ROOT),
         "host": _host_metadata(), "engine": args.engine,
         "model_root": str(args.model_root), "quant": "UD-Q4_K_XL", "kv": "bf16",
-        "sidecar": str(args.sidecar), "sidecar_sha256": sha256_path(args.sidecar),
+        "model_identity": identity,
+        "sidecar": str(args.sidecar), "sidecar_sha256": sidecar_hash,
         "prompt_file_sha256": sha256_path(args.prompts), "cases": cases,
         "protocol": {
             "timing": "synchronized complete request wall; includes prefill; excludes load",
@@ -170,6 +197,10 @@ def main():
             from hipengine import LLM, SamplingParams
             from hipengine.core.hip import get_hip_runtime
             from hipengine.core.memory import memory_stats
+            from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
+            from hipengine.generation.qwen4_exp_profiles import (
+                QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, QWEN4_EXP_QUANTS,
+            )
 
             llm = LLM(str(args.model_root), backend="hip_gfx1151",
                       quant="gguf_ud_q4_k_xl", execution_profile="production",
@@ -184,10 +215,21 @@ def main():
                           else llm.generate_speculative_mtp_detailed)
                 output = method([case["prompt_token_ids"]], params)[0]
                 runtime.device_synchronize()
-                return list(output.generated_token_ids), (
-                    dict(output.telemetry.diagnostics) if output.telemetry else {})
+                diagnostics = dict(output.telemetry.diagnostics) if output.telemetry else {}
+                if mode == "mtp":
+                    validate_local_mtp(diagnostics)
+                return list(output.generated_token_ids), diagnostics
 
             try:
+                llm.prepare(max_sequence_length=1024)
+                resolved = resolve_runtime_profile(
+                    model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
+                    quant=QWEN4_EXP_QUANTS[1], profile=ExecutionProfile.PRODUCTION)
+                report["profile"] = {
+                    "requested": "production", "manifest_sha256": resolved.manifest_sha256,
+                    "strict_manifest_sha256": resolved.strict_manifest_sha256,
+                    "fell_back_to_strict": resolved.fell_back_to_strict,
+                }
                 for rep in range(-1, args.repetitions):
                     for index, case in enumerate(cases):
                         modes = ("ar", "mtp") if (index + rep) % 2 else ("mtp", "ar")
@@ -214,7 +256,7 @@ def main():
                 with log_path.open("wb") as log:
                     try:
                         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-                        _wait_for_health("127.0.0.1", args.port, 600)
+                        wait_server(process, "127.0.0.1", args.port, 600)
 
                         def call(case, _mode):
                             response = _post_json("127.0.0.1", args.port, "/completion", {
