@@ -7100,3 +7100,21 @@ registered variant policy rather than an admission helper — or once no UD
 artifact carries Q8_0 attention K/V projections — fold the set into the
 registry and delete both the set and the env override, leaving
 `_Q8_T16_QWEN35_ATTN_IN` as the only in-feature admission.
+
+## 2026-09-13 Q5T16 single-wave verifier rowtile — env kill switch
+
+**State.** `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` in
+`hipengine/kernels/hip_gfx1100/__init__.py` names the production owner for
+`gguf_q5_k_t16_v1` rows 2-8. `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE`
+overrides it on/off for bisection; clearing it to `0` restores the four-wave
+WG128 parent-parity owner `t16_gemv_rowtile_bf16_bf16_out`.
+
+**Why it is retained.** The four-wave entry point cannot be rebound: the
+grouped rows6/rows8 owners declare bit-identity to it applied to six-row
+chunks, so the two geometries must stay separately registered for as long as
+that parity contract is asserted.
+
+**Removal trigger.** If the grouped rows6/rows8 owners are retired, or their
+parity contract is restated against the single-wave owner, delete the four-wave
+variant, the capability table, and the env switch, and bind
+`t16_gemv_rowtile_bf16_bf16_out` to the single-wave body.

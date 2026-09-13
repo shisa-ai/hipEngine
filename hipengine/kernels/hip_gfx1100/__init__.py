@@ -325,6 +325,30 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
     }
 }
+# Single-wave Q5T16 verifier rowtile (2026-09-13). The four-wave WG128 owner
+# keeps an ordered wave-0..3 sum for parent parity with the one-expert direct
+# producer. This geometry is the Q4_K rowtile's instead: one wave32 per block,
+# eight columns, each lane owning eight contiguous k inside the 256-element
+# block, so the subblock d/dmin/scale/min decode hoists out of the inner loop
+# and the block needs no shared-memory cross-wave exchange or __syncthreads().
+# Measured on the RX 7900 XTX (gfx1100, physical GPU1) UD-Q4_K_M verifier at
+# rows 3, it is 1.05x-1.58x per call on every one of the six Q5_K rowtile
+# shapes and takes the kernel from 11.75 to 7.99 ms/step (-32%): ffn_down
+# (5120, 17408) 87.1 -> 60.2 us (704 -> 1019 GB/s), ffn_gate/up (17408, 5120)
+# 135.1 -> 93.7 us (454 -> 654 GB/s), attn_qkv (10240, 5120) 84.5 -> 57.8 us,
+# attn_q (12288, 5120) 100.0 -> 63.1 us, ssm_out (6144, 5120) 53.2 -> 38.2 us,
+# attn_k/v (1024, 5120) 20.5 -> 19.5 us. Both section-6.1 gates pass
+# (UD-Q4_K_M mean/p95/p99/max 3.51e-05/1.93e-04/2.46e-04/2.52e-04, UD-Q4_K_S
+# 2.96e-05/8.75e-05/5.71e-04/5.71e-04, top-1 1.0000, two deterministic
+# repeats), and the smoke's generated token sequence is unchanged. The env
+# switch restores the four-wave owner for rollback and bisection.
+GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT = {
+    "gguf_q5_k_t16_v1": {
+        "variant": "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+        "enabled_env": "HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE",
+        "enabled_default": True,
+    }
+}
 # The physical pair helper owns a distinct split seam from the single-projection
 # wrapper. The complete C5-C8 gate retains grouped-grid ownership here while
 # repeated R6 pair fallback remains the exact explicit rollback.
@@ -1439,6 +1463,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
+    "GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT",
     "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY",
     "GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",

@@ -7921,6 +7921,49 @@ def _q6_planar_rowtile_dispatch(
     return GGUFLinearDispatch(key, dispatch.abi)
 
 
+def _t16_native_rowtile_variant(quant: str, *, backend: str) -> str:
+    """Name the native rows 2-8 rowtile owner for a T16 quant.
+
+    ``t16_gemv_rowtile_bf16_bf16_out`` is the four-wave WG128 parent-parity
+    owner. A backend may declare a measured single-wave replacement for a
+    quant through ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT``; the four-
+    wave owner stays registered and reachable by clearing the entry's env
+    switch, so the change is a policy selection rather than a rebinding.
+    """
+
+    default = "t16_gemv_rowtile_bf16_bf16_out"
+    table = backend_package_capability(
+        backend,
+        "GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT",
+        {},
+    )
+    entry = table.get(quant) if isinstance(table, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return default
+    variant = entry.get("variant")
+    if not isinstance(variant, str) or not variant:
+        return default
+    enabled_env = entry.get("enabled_env")
+    if isinstance(enabled_env, str) and enabled_env:
+        raw = os.environ.get(enabled_env, "").strip().lower()
+        if raw:
+            if raw in {"1", "true", "yes", "on"}:
+                enabled = True
+            elif raw in {"0", "false", "no", "off"}:
+                enabled = False
+            else:
+                raise ValueError(f"{enabled_env} must be a boolean value")
+        else:
+            enabled = bool(entry.get("enabled_default", False))
+        if not enabled:
+            return default
+    if not is_registered(
+        KernelKey(backend, "linear", quant, variant)
+    ):
+        return default
+    return variant
+
+
 def _native_batch_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -7995,7 +8038,7 @@ def _native_batch_decode_dispatch(
                 dispatch.key.backend,
                 dispatch.key.layer,
                 dispatch.key.quant,
-                "t16_gemv_rowtile_bf16_bf16_out",
+                _t16_native_rowtile_variant(dispatch.key.quant, backend=dispatch.key.backend),
             )
             if is_registered(rewritten_key):
                 return GGUFLinearDispatch(rewritten_key, dispatch.abi)
