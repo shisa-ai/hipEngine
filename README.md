@@ -107,11 +107,12 @@ unmeasured results; context limits come from separate capacity tests.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
 | Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | — | **176,128** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna prompt processing uses a 4K-token prompt. The 35B-A3B GGUF MTP
-figures use an explicitly enabled mode.
+Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled.
+Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
+**1.63x versus its matched 24.36 tok/s AR**, not the INT8 column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
