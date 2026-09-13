@@ -1,6 +1,9 @@
 # Tensor parallelism: TP=N architecture, Qwen3.8-27B TP2 bring-up
 
-Status: implementation plan; no two-GPU measurements or runtime support claimed.
+Status: implementation plan; no tensor-parallel engine exists yet and no TP
+speedup is claimed. Packet 0 topology/collective screening, Packet 1 rank-bound
+transport, and Packet 2 shard planning are measured or implemented; see
+"Measured status" below.
 Reviewed: 2026-09-14 against source `a9aa29c364601620cf86b3824479d808adae46ad`.
 The filename is retained for existing links. Infrastructure targets single-host
 TP=N; the first topology to qualify is W7900 + RX 7900 XTX.
@@ -96,6 +99,58 @@ from the supplied GGUF; do not hardcode dimensions from the model name.
 The recommendation remains column/row sharding with replicated hidden
 activations and RCCL first. Whether this is fastest on the actual PCIe host
 requires measurement; the review does not establish a performance result.
+
+## Measured status
+
+Packets 0-2 are measured on the target host (Ryzen 9 5950X, W7900 at
+`0000:0d:00.0` + RX 7900 XTX at `0000:10:00.0`, both `gfx1100`, separate CPU root
+ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
+`benchmarks/results/tp2_*.json`; the numbers and their scope are in
+`benchmarks/README.md` and the worklog entry for the unit.
+
+- **Peer DMA is unavailable on this host, for two independent reasons.**
+  `hipDeviceCanAccessPeer` is false in both directions and
+  `hipDeviceEnablePeerAccess` fails with HIP error 101: both cards expose a
+  256 MB BAR even though the kernel advertises a resize attribute
+  (`resource0_resize`). Independently, every bridge between the two cards — the
+  CPU root ports `00:03.1`/`00:03.2` and the downstream bridges `0c:00.0`/
+  `0f:00.0` — has ACS redirection enabled (`ACSCtl` sets `SrcValid+`,
+  `ReqRedir+`, `CmpltRedir+`, `UpstreamFwd+`), which sends peer TLPs to the root
+  complex instead of forwarding them. Both cards are trained at PCIe 4.0 x16
+  (`LnkSta: Speed 16GT/s, Width x16`; `pp_dpm_pcie`'s `x8` is a DPM capability
+  table, not the live link), so link width is not the limiter. Collectives
+  therefore host-stage at ~8 GB/s of payload.
+  **Host-level action**: peer DMA needs Resizable BAR / Above 4G Decoding in
+  firmware *and* ACS redirection turned off on the path between the cards; the
+  second is an IOMMU-isolation tradeoff and is the human lead's call, not a
+  benchmark-time change. Until both are in place the peer-copy path in "Runtime
+  and communication" is not a candidate and bf16 transport is the prefill
+  default (2.593 -> 1.309 ms per 1024-row all-reduce).
+- **Collective latency is affordable for decode.** A 20 KB all-reduce costs
+  28-32 us marginal inside one group; 36 collectives per token is 1.0-1.15
+  ms/token against 33.5-35.8 ms/token of single-GPU decode. Group enqueue already
+  satisfies the "first rank's collective must not block the second rank's
+  enqueue" requirement, and threaded enqueue is measurably worse, so no host
+  threads are needed for enqueue.
+- **The GDN value-head axis is tiled.** GGUF linear-attention weights use
+  llama.cpp's reordering (`k_head = v_head % ssm_group_count`), so a shard plan
+  must split the key-head axis contiguously and cut each value tile the same way.
+  A contiguous value-head split silently pairs value heads with the wrong key
+  heads and is not a legal plan. `hipengine/loading/qwen35_gguf_shards.py` owns
+  this mapping, and `gdn_head_map` exposes the rank-local head mapping a kernel
+  needs.
+- **Admissible degrees are model geometry, not a free choice.** Qwen3.8-27B
+  `Q4_K_M` admits N=1, 2, and 4: N=3 fails on the 16-group GDN key-head axis and
+  N=8 fails because 17408 MLP input columns per rank is not a 256-element quant
+  block. Both are refused before allocation.
+- **Byte preservation is verified end to end.** All 851 autoregressive tensors
+  (15.65 GiB) round-trip bit-exactly at N=1, 2, and 4, with original quant blocks
+  copied verbatim.
+
+Still unimplemented: rank-local runner adapter, distributed KV composition,
+local kernel registry resolution at halved head counts, nonblocking
+communicator/abort with a supervised diagnostic fallback, MTP on one rank, and
+vocabulary sharding.
 
 ## Architecture to implement
 

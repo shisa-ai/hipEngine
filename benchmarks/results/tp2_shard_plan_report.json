@@ -1,0 +1,211 @@
+{
+  "degrees": {
+    "1": {
+      "byte_check": {
+        "bit_exact": true,
+        "bytes_by_kind": {
+          "column": 6417285120,
+          "group": 3362998272,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 5265162240
+        },
+        "manifest_hash": "c6dc8b6953a626495a765b11456492e8fdbd1407797e0057c5e4c63c82cf749b",
+        "mismatches": [],
+        "rank_bytes": [
+          16806250496
+        ],
+        "source_bytes": 16806250496,
+        "tensors_checked": 851,
+        "world_size": 1
+      },
+      "byte_check_seconds": 36.89,
+      "manifest_hash": "c6dc8b6953a626495a765b11456492e8fdbd1407797e0057c5e4c63c82cf749b",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        16806250496
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 6417285120,
+          "group": 3362998272,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 5265162240
+        }
+      ],
+      "rank_gib": [
+        15.652
+      ],
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 1
+    },
+    "2": {
+      "byte_check": {
+        "bit_exact": true,
+        "bytes_by_kind": {
+          "column": 6417285120,
+          "group": 3362998272,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 5265162240
+        },
+        "manifest_hash": "6ee685942825af3f1b58c639c3d15614969584bb08d0175da0bc19d5a2902ec9",
+        "mismatches": [],
+        "rank_bytes": [
+          9283527680,
+          7525422080
+        ],
+        "source_bytes": 16806250496,
+        "tensors_checked": 851,
+        "world_size": 2
+      },
+      "byte_check_seconds": 45.57,
+      "manifest_hash": "6ee685942825af3f1b58c639c3d15614969584bb08d0175da0bc19d5a2902ec9",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        9283527680,
+        7525422080
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 3208642560,
+          "group": 1681499136,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 2632581120
+        },
+        {
+          "column": 3208642560,
+          "group": 1681499136,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 2632581120
+        }
+      ],
+      "rank_gib": [
+        8.646,
+        7.009
+      ],
+      "streaming_rank": {
+        "anonymous_growth_bytes": 37904384,
+        "baseline_anonymous_bytes": 165912576,
+        "full_model_copy_bytes": 7525422080,
+        "largest_tensor_bytes": 36556800,
+        "local_bytes": 7525422080,
+        "peak_anonymous_bytes": 203816960,
+        "peak_rss_bytes": 284344320,
+        "rank": 1,
+        "seconds": 3.92,
+        "streaming": true,
+        "tensors": 851,
+        "world_size": 2
+      },
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 2
+    },
+    "4": {
+      "byte_check": {
+        "bit_exact": true,
+        "bytes_by_kind": {
+          "column": 6417285120,
+          "group": 3362998272,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 5265162240
+        },
+        "manifest_hash": "a450ff35895770745d15a60b90b8731cffbc06a6f81fe38a975f4dd85e4d8cd4",
+        "mismatches": [],
+        "rank_bytes": [
+          5522166272,
+          3764060672,
+          3764060672,
+          3764060672
+        ],
+        "source_bytes": 16806250496,
+        "tensors_checked": 851,
+        "world_size": 4
+      },
+      "byte_check_seconds": 57.0,
+      "manifest_hash": "a450ff35895770745d15a60b90b8731cffbc06a6f81fe38a975f4dd85e4d8cd4",
+      "notes": [
+        "excluded 15 MTP/NextN tensors from the AR shard set",
+        "architecture=qwen35 blocks=64"
+      ],
+      "rank_bytes": [
+        5522166272,
+        3764060672,
+        3764060672,
+        3764060672
+      ],
+      "rank_bytes_by_kind": [
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 1758105600,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        },
+        {
+          "column": 1604321280,
+          "group": 840749568,
+          "owner": 0,
+          "replicated": 2699264,
+          "row": 1316290560
+        }
+      ],
+      "rank_gib": [
+        5.143,
+        3.506,
+        3.506,
+        3.506
+      ],
+      "streaming_rank": {
+        "anonymous_growth_bytes": 39395328,
+        "baseline_anonymous_bytes": 119894016,
+        "full_model_copy_bytes": 3764060672,
+        "largest_tensor_bytes": 18278400,
+        "local_bytes": 3764060672,
+        "peak_anonymous_bytes": 159289344,
+        "peak_rss_bytes": 240340992,
+        "rank": 1,
+        "seconds": 3.24,
+        "streaming": true,
+        "tensors": 851,
+        "world_size": 4
+      },
+      "tensor_count": 851,
+      "total_sharded_bytes": 16806250496,
+      "world_size": 4
+    }
+  },
+  "elapsed_seconds": 147.45,
+  "kind": "tp_shard_plan_report",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_bytes": 17106773984,
+  "owner_rank": 0,
+  "rejected_degrees": {},
+  "tensor_count": 866
+}
