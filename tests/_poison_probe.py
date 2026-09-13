@@ -51,6 +51,7 @@ _DENY_TOKENS = (
     "hipblaslt",
     "weight",
     "local",
+    "loaded",
     "model",
     "spec",
     "config",
@@ -88,7 +89,8 @@ def collect_device_buffers(
     """Return every ``DeviceBuffer`` reachable from ``root`` as (path, buffer).
 
     Walks dataclass fields, mappings, sequences, and plain attributes, skipping
-    names matching :data:`_DENY_TOKENS` and anything deeper than ``max_depth``.
+    names matching :data:`_DENY_TOKENS`. Incomplete traversal raises instead
+    of silently certifying a partial buffer set.
     Arena views are reported through their owning allocation, so a poison write
     covers the whole arena rather than one view of it.
     """
@@ -98,25 +100,27 @@ def collect_device_buffers(
     budget = [_MAX_VISITED]
 
     def visit(value: Any, path: str, depth: int) -> None:
+        if id(value) in seen:
+            return
+        if isinstance(value, (str, bytes, bytearray, int, float, bool, type(None))):
+            return
+        if any(token in type(value).__name__ for token in _DENY_TYPES):
+            return
+        if budget[0] <= 0:
+            raise ValueError(f"poison traversal budget exhausted at {path}")
+        budget[0] -= 1
+        seen.add(id(value))
         if isinstance(value, DeviceBuffer):
             found.append((path, value))
             return
-        if budget[0] <= 0:
-            return
-        budget[0] -= 1
         # ``DeviceMemoryArena`` is not imported here to keep this helper usable
         # without a device; its owning allocation is the poisonable range.
         owner = getattr(value, "owner", None)
         if isinstance(owner, DeviceBuffer) and type(value).__name__.endswith("Arena"):
             found.append((f"{path}.owner", owner))
             return
-        if depth >= max_depth or id(value) in seen:
-            return
-        if isinstance(value, (str, bytes, bytearray, int, float, bool, type(None))):
-            return
-        if any(token in type(value).__name__ for token in _DENY_TYPES):
-            return
-        seen.add(id(value))
+        if depth >= max_depth:
+            raise ValueError(f"poison traversal depth limit reached at {path}")
         if dataclasses.is_dataclass(value) and not isinstance(value, type):
             for field in dataclasses.fields(value):
                 if _denied(field.name, deny):
@@ -210,6 +214,19 @@ def _diff(a: Any, b: Any) -> tuple[str, str]:
     return ("bit-identical", "ok")
 
 
+def _snapshot(value: Any) -> dict[str, np.ndarray]:
+    # Runners may return views into reusable host output buffers. Own the
+    # reference bytes before a later run can overwrite them, also in localization.
+    return {name: array.copy() for name, array in _flatten(value)}
+
+
+def _checked_groups(collect) -> dict[str, Sequence[DeviceBuffer]]:
+    groups = dict(collect())
+    if not groups or any(not any(b.nbytes > 0 for b in group) for group in groups.values()):
+        raise ValueError("poison probe has empty buffer coverage")
+    return groups
+
+
 def assert_poison_invariant(
     runtime: Any,
     collect: Callable[[], Mapping[str, Sequence[DeviceBuffer]]],
@@ -240,9 +257,9 @@ def assert_poison_invariant(
     reported as skipped.
     """
 
-    groups = dict(collect())
+    reference = _snapshot(run())
+    groups = _checked_groups(collect)
     all_buffers = [buffer for group in groups.values() for buffer in group]
-    reference = run()
     written = poison(runtime, all_buffers)
     poisoned = run()
     message, verdict = _diff(reference, poisoned)
@@ -262,8 +279,8 @@ def assert_poison_invariant(
         offenders: list[tuple[str, str]] = []
         for name in groups:
             reset()
-            fresh = run()
-            current = collect()
+            fresh = _snapshot(run())
+            current = _checked_groups(collect)
             buffers = current.get(name)
             if not buffers:
                 offenders.append((name, "group absent after reset"))

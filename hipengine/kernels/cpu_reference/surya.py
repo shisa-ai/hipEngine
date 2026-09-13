@@ -481,7 +481,9 @@ def vision_pos_embed(
     n = idx.shape[0]
     flat = idx.reshape(n, 4)
     wflat = wts.reshape(n, 4)
-    return (table[flat] * wflat[:, :, None]).sum(axis=1)
+    # Coordinates use float64 for interpolation, but the model's activations
+    # are fp32. Do not promote every subsequent vision block to float64.
+    return (table[flat] * wflat[:, :, None]).sum(axis=1).astype(np.float32)
 
 
 def vision_rotary(
@@ -511,7 +513,7 @@ def _rotate_half_vision(x: np.ndarray) -> np.ndarray:
 
 
 def _gelu_tanh_np(x: np.ndarray) -> np.ndarray:
-    return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * x**3)))
+    return 0.5 * x * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3)))
 
 
 def _erf(x: np.ndarray) -> np.ndarray:
@@ -532,7 +534,7 @@ def _erf(x: np.ndarray) -> np.ndarray:
 
 
 def _gelu_erf_np(x: np.ndarray) -> np.ndarray:
-    return x * 0.5 * (1.0 + _erf(x / np.sqrt(2.0)))
+    return x * 0.5 * (1.0 + _erf(x / math.sqrt(2.0)))
 
 
 def vision_forward(
