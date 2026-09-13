@@ -25,6 +25,11 @@ What it reports, per (``max_seq``, ``text budget``, token count):
   4``) and everything else, which is linear in the token count (activations,
   GDN projections, MLP scratch).
 * ``peak_total_bytes`` — the sum, i.e. what the device must have free.
+* ``decode_ms_per_token`` — with ``--decode-steps``, the cost of one decode step
+  at the row's live token count. This is what answers "does a longer context
+  cost speed?": the split-K plan targets ``SURYA_TARGET_SPLITS`` regardless of
+  ``max_seq``, so the work is set by the live count and a bigger ``max_seq``
+  should cost only the KV planes.
 
 Measurement is the process-local hipEngine allocation counter, so it covers
 buffers hipEngine owns and excludes ROCm/rocBLAS internal allocations. The
@@ -36,6 +41,8 @@ Usage:
     python3 scripts/surya_attention_memory.py --out benchmarks/results/<name>.json
     python3 scripts/surya_attention_memory.py --tokens 2048,4096,8580,16384 \
         --text-budget-bytes 0 536870912 --runs 3
+    python3 scripts/surya_attention_memory.py --max-seq 8192 16384 32768 \
+        --tokens 1024,8580 --decode-steps 16
 """
 
 from __future__ import annotations
@@ -228,12 +235,15 @@ def measure(
     token_counts: list[int],
     budget_bytes: int | None,
     runs: int = 1,
+    decode_steps: int = 0,
 ) -> dict:
     from hipengine.core.memory import memory_stats, reset_memory_stats
+    from hipengine.kernels.hip_gfx1100.surya.surya_ops import plan_surya_dense_spans
     from hipengine.runtime.surya import SuryaGpuRunner, plan_score_tiles
 
     s = spec
     nq = s.num_attention_heads
+    spans = plan_surya_dense_spans(max_seq)
 
     def fresh():
         """A runner with a clean allocation high-water mark.
@@ -274,28 +284,66 @@ def measure(
                 t0 = time.time()
                 runner.prefill(ids, pos)
                 timings.append(time.time() - t0)
+            # Decode cost at this live context. Each ``decode_step`` ends with
+            # ``_logits_last``, which synchronizes before the D2H, so a step is
+            # launch plus execution plus the copy the greedy loop needs. A row
+            # filled to ``max_seq`` has no slot left for another token, so the
+            # probe stops at ``max_seq - tokens`` steps.
+            decode_runs = []
+            decode_planned = min(int(decode_steps), max_seq - int(tokens))
+            if decode_planned > 0:
+                next_id = int(ids[-1])
+                next_pos = int(tokens)
+                for _ in range(decode_planned):
+                    t0 = time.time()
+                    logits = runner.decode_step(next_id, next_pos)
+                    decode_runs.append(time.time() - t0)
+                    next_id = int(np.argmax(logits))
+                    next_pos += 1
         finally:
             runner.close()
         block, tile = plan_score_tiles(tokens, nq, budget_bytes)
-        rows.append(
-            {
-                "tokens": int(tokens),
-                "query_block": block,
-                "resident_bytes": int(resident),
-                "peak_scratch_bytes": int(peak),
-                "retained_scratch_bytes": int(scratch),
-                "score_tile_bytes": int(tile),
-                "dense_score_bytes": int(nq * tokens * tokens * 4),
-                "non_attention_scratch_bytes": int(peak - tile),
-                "linear_bytes_per_token": ((peak - tile) / tokens if tokens else 0.0),
-                "peak_total_bytes": int(resident + peak),
-                "prefill_seconds": float(np.mean(timings)),
-                "prefill_seconds_runs": [float(t) for t in timings],
-            }
-        )
+        row = {
+            "tokens": int(tokens),
+            "query_block": block,
+            "resident_bytes": int(resident),
+            "peak_scratch_bytes": int(peak),
+            "retained_scratch_bytes": int(scratch),
+            "score_tile_bytes": int(tile),
+            "dense_score_bytes": int(nq * tokens * tokens * 4),
+            "non_attention_scratch_bytes": int(peak - tile),
+            "linear_bytes_per_token": ((peak - tile) / tokens if tokens else 0.0),
+            "peak_total_bytes": int(resident + peak),
+            "prefill_seconds": float(np.mean(timings)),
+            "prefill_seconds_runs": [float(t) for t in timings],
+        }
+        if decode_steps > 0:
+            row.update(
+                {
+                    "decode_steps": len(decode_runs),
+                    "decode_steps_requested": int(decode_steps),
+                    "decode_seconds_runs": [float(t) for t in decode_runs],
+                    "decode_seconds_mean": (
+                        float(np.mean(decode_runs)) if decode_runs else None
+                    ),
+                    "decode_ms_per_token": (
+                        float(np.mean(decode_runs) * 1e3) if decode_runs else None
+                    ),
+                    "decode_tokens_per_s": (
+                        float(1.0 / np.mean(decode_runs)) if decode_runs else None
+                    ),
+                }
+            )
+        rows.append(row)
     return {
         "max_seq": int(max_seq),
         "budget_bytes": None if budget_bytes is None else int(budget_bytes),
+        "split_plan": {
+            "chunk_size": int(spans.chunk_size),
+            "num_splits": int(spans.num_splits),
+            "block_size": int(spans.block_size),
+            "block_table_len": int(spans.block_table_len),
+        },
         "skipped_over_context": skipped,
         "rows": rows,
     }
@@ -335,6 +383,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--runs", type=int, default=1, help="timed prefill repeats per row"
+    )
+    parser.add_argument(
+        "--decode-steps",
+        type=int,
+        default=0,
+        help="decode steps to time per row after the prefill; 0 disables",
     )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
@@ -385,22 +439,33 @@ def main() -> int:
                 token_counts=token_counts,
                 budget_bytes=budget,
                 runs=args.runs,
+                decode_steps=args.decode_steps,
             )
             result["fitted_linear_bytes_per_token"] = fit_linear(result["rows"])
             blocks.append(result)
             budget_label = "dense" if budget is None else f"{budget / 1024**2:.0f} MiB"
             print(f"max_seq={max_seq} text budget={budget_label}")
             for row in result["rows"]:
+                decode = (
+                    f"  {row['decode_ms_per_token']:6.1f} ms/token"
+                    if row.get("decode_ms_per_token") is not None
+                    else "  (no decode room)"
+                    if args.decode_steps > 0
+                    else ""
+                )
                 print(
                     f"  tokens={row['tokens']:6d}  "
                     f"peak={row['peak_total_bytes'] / 1e6:9.1f} MB  "
                     f"tile={row['score_tile_bytes'] / 1e6:8.1f} MB  "
                     f"other={row['non_attention_scratch_bytes'] / 1e6:8.1f} MB  "
                     f"({row['linear_bytes_per_token'] / 1024:6.1f} KiB/token)  "
-                    f"{row['prefill_seconds']:6.2f}s"
+                    f"{row['prefill_seconds']:6.2f}s{decode}"
                 )
             slope = result["fitted_linear_bytes_per_token"]
-            print(f"  fitted non-attention slope: {slope / 1024:.1f} KiB/token")
+            if slope is None:
+                print("  fitted non-attention slope: n/a (needs two token counts)")
+            else:
+                print(f"  fitted non-attention slope: {slope / 1024:.1f} KiB/token")
         results.append(
             {
                 "max_seq": int(max_seq),
@@ -421,6 +486,7 @@ def main() -> int:
         "text_attention": {
             "budget_bytes_list": [None if b is None else int(b) for b in budgets],
             "runs": int(args.runs),
+            "decode_steps": int(args.decode_steps),
             "tile_plan": plan,
         },
         "protocol": {
@@ -430,6 +496,7 @@ def main() -> int:
             "isolation": "a fresh runner per token count, with reset_memory_stats() after construction, so the peak is one prefill's footprint and not a previous run's high-water mark",
             "score_tile_bytes": "the planner's causal score tile (nq * tokens * block * 4) for the row's budget; budget_bytes null means the dense path",
             "timing": "prefill_seconds is the mean of prefill_seconds_runs, which are wall-clock repeats on an already-warm runner",
+            "decode_timing": "decode_seconds_runs are per-step wall clocks at the row's live token count; each decode_step ends in _logits_last, which synchronizes before the logits D2H, so a step is launch plus execution plus the copy the greedy loop needs. A row whose token count equals max_seq has no free KV slot and records decode_steps 0",
         },
         "page_tokens": {"300dpi_a4": PAGE_TOKENS_300DPI},
         "results": results,

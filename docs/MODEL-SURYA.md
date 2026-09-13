@@ -683,7 +683,41 @@ The generator admits
 slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
 a 300-DPI A4 page's 8580 image tokens fit that context with room for a
 full-page output, whereas the previous 2048 default rejected every real
-document. The two score tiles are configurable through
+document. That default is measured, not assumed
+(`scripts/surya_attention_memory.py --max-seq 8192 12288 16384 20480 32768
+--decode-steps 16`, artifact
+`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json`). The cost is
+exactly 24.58 KiB per context token (KV planes 24.0 KiB/token over the six
+full-attention layers plus ~9 B/token of span metadata), measured linear across
+the five candidates, so 16384 is 403 MB of the 3087 MB resident and 32768 would
+be 805 MB of 3490 MB. The reach a candidate buys is `max_seq` minus the
+121-token prompt minus the output budget, in megapixels of vision grid:
+
+| `max_seq` | resident | reach at a 4000-token output | reach at the A4's measured 2108 | vision time at the measured output |
+| --- | --- | --- | --- | --- |
+| 8192 | 2886 MB | 4.2 MP | 6.1 MP | 25 s |
+| 12288 | 2986 MB | 8.4 MP | 10.3 MP | 57 s |
+| **16384** | **3087 MB** | **12.6 MP** | **14.5 MP** | **119 s** |
+| 20480 | 3188 MB | 16.8 MP | 18.7 MP | 161 s |
+| 32768 | 3490 MB | 29.3 MP | 31.3 MP | 437 s |
+
+Three measured facts fix the value. The lower bound is a gate that is actually
+run: the transcription acceptance suite's A4 row declares a 4000-token output
+budget and needs 121 + 8580 + 4000 = 12701 tokens, so 12288 — upstream's own
+llama.cpp slot budget — cannot serve it, and 13312 is the smallest
+1024-multiple that can, with 5% headroom. The upper bound is the vision time
+budget: with the A4's measured output held fixed, 16384 reaches 14.49 MP
+against the 120 s budget's 14.56 MP ceiling, so the two policy defaults agree to
+0.5% and a larger context buys only pages costing more than 119 s of vision —
+pages past the vision ceiling need `max_vision_seconds` raised first. The
+measured workload has room: the A4 request uses 10809 of 16384 (66%) and its
+output 2108 of the 7683 the default allows for that page, and every other
+measured page needs at most 4321 tokens. Prefill is `max_seq`-independent (at
+16384 tokens, 17.17/17.19/17.18 s across 16384/20480/32768 with the same score
+tile and scratch), while decode is weakly not: the split chunk grows with
+`max_seq` while the split count stays 64, so at a fixed live context 1024 tokens
+decode in 18.31/18.36/18.88/18.96/19.55 ms — a further reason not to
+over-provision the default. The two score tiles are configurable through
 `LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`,
 and the vision forward's wall-clock budget through
 `LLM(vision_max_seconds=...)` (120 s by default, `math.inf` for unbounded); a

@@ -55,10 +55,17 @@ rather than 2.36 GB for the page's 8580 image tokens and 268 MB rather than
 4.75 GB for the page and 14.71 -> 6.39 GB at a full prompt for 0.7% and 3.1%
 wall-clock, and the tiled logits are bit-identical to the dense path. The
 generator's default text context is 16384 tokens, set with
-`LLM(max_sequence_length=...)`, so a 300-DPI A4 page's 8580 image tokens fit
-with room for a full-page output; the two score tiles are
+`LLM(max_sequence_length=...)`: 403 MB of the 3087 MB resident, at 24.58 KiB per
+context token, which fits a 300-DPI A4 page's 8580 image tokens with room for a
+full-page output. The value is measured against both bounds rather than
+assumed: 12288 (upstream Surya's own per-slot budget) cannot serve the A4 row's
+declared 4000-token output at all, while at the A4's measured output a
+16384-token context reaches 14.49 MP against the 120 s vision budget's 14.56 MP
+ceiling, and 32768 would cost 403 MB more resident plus 4% more decode time per
+token for pages that exceed the vision budget anyway. The two score tiles are
 `LLM(vision_max_scratch_bytes=...)` and `LLM(prefill_max_scratch_bytes=...)`.
 [Attention memory](results/2026-09-12-gfx1151-surya-attention-memory.json),
+[context default](results/2026-09-13-gfx1151-surya-context-default.json),
 [text-prefill tiling](results/2026-09-13-gfx1151-surya-text-prefill-tiling.json),
 [numerical gate](results/2026-09-12-gfx1151-surya-numerical-gate.json),
 [vision tiling cost](results/2026-09-13-gfx1151-surya-vision-tiling-cost.json).
