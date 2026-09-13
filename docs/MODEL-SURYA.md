@@ -687,10 +687,14 @@ the widest tile the 512 MiB budget admits is the text optimum — 16.927 s at
 7.535 s at 8580 tokens against 7.692 s for its 256 rows (2.1%) — and both
 budget widths are at or below the dense time (16.984 s and 7.619 s). The text
 curve is monotone in tile count, because every tile still computes the full key
-range, so fewer tiles is less per-tile work at unchanged arithmetic; the
-planner therefore consults the envelope only while the budget alone would leave
-the grid in one or two tiles, and the text prefill keeps the budget's width at
-both measured lengths.
+range, so fewer tiles is less per-tile work at unchanged arithmetic; the shape
+envelope is calibrated on the vision tower and the text prefill does not consult
+it (`shape_envelope=False`), so the text prefill keeps the budget's width at
+every measured length. Small prompts are shape-insensitive, which is why the
+text path needs no envelope of its own: the whole dense matrix runs 0.779 s
+against 0.775 s at 128 rows at 1024 tokens and 3.442 s against 3.401 s at 4096
+(`benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-small-prompts.json`),
+where the same dense tile costs the vision tower 19-43%.
 The generator admits
 `max_seq` 16384 by default (upstream Surya budgets 12,288 context tokens per OCR
 slot and 18,000 for vLLM), configurable through `LLM(max_sequence_length=...)`;
@@ -754,21 +758,24 @@ for 512 rows across 68). The wavefront rounding is what the page-scale curve
 actually separates on: every measured A4 width that is a multiple of 32 runs
 43862-44668 ms and every width that is not runs 45050-48496 ms, and the 512 MiB
 budget derives 325 rows, on the slow side of that line. The envelope applies
-only while the byte budget alone would leave the grid in one or two tiles,
-which is where a tile wider than the grid needs starves the batched GEMM of
-output tiles: at 1024 patches the budget admits the whole dense matrix
-(193.54 ms) against 135.52 ms at 128 rows, and at 4096 patches it admits 2730
-rows (1123.42 ms) against 874.38 ms at 128 rows. Once the budget leaves four or
-more tiles its own choice is at least as good, and the sweeps say so: at 6400
-patches it takes 1747 rows (2004.85 ms at 4 tiles) against the cap's 192 rows
-(2125.18 ms, 5.7% slower), at the A4 page it takes 320 rows (43318 ms) where
-the cap's 1073 rows never binds, and the text prefill's monotone curve keeps
-the budget's width at 8580 and 16384 tokens. What is still not optimal is
-recorded rather than hidden: at 6400 patches a 96-row tile is 3.4% faster than
-the budget's 1747 rows (1938.40 ms against 2004.85 ms) and the A4 page's own
-best measured width is 2048 rows (41622 ms, 5.1% below the default). The
-three-tile band the rule does not measure is recorded in `docs/REFACTOR.md`,
-as is the 6400-patch grid's own anomaly.
+whenever it is narrower than the tile the byte budget admits, which is where a
+tile wider than the grid needs starves the batched GEMM of output tiles: at
+1024 patches the budget admits the whole dense matrix (193.54 ms) against
+135.52 ms at 128 rows, and at 4096 patches it admits 2730 rows (1123.42 ms)
+against 874.38 ms at 128 rows. Bounding it by a tile count instead looks right
+on the default budget — at 6400 patches the budget's 1747 rows measures
+2004.85 ms against the envelope's 192 rows at 2125.18 ms (5.7%) — and regresses
+narrow budgets, because the 4096-patch curve has a spike band between roughly
+256 and 1344 rows: a 64 MiB budget then picks 320 rows (1081.07 ms) and a
+128 MiB budget 672 rows (1378.13 ms), against 882.39 ms at the envelope's 128
+rows, 22% and 56% slower
+(`benchmarks/results/2026-09-13-gfx1151-surya-vision-narrow-budget-check.json`).
+The text prefill shares the planner but not the envelope. What is still not
+optimal is recorded rather than hidden: at 6400 patches a 96-row tile is 3.4%
+faster than the budget's 1747 rows (1938.40 ms against 2004.85 ms) and the A4
+page's own best measured width is 2048 rows (41622 ms, 5.1% below the default).
+That 6400-patch anomaly is recorded in `docs/REFACTOR.md` rather than bought
+with a rule that regresses a supported budget.
 
 No Surya rate or memory target is established here. EVIE retrieval throughput
 and upstream NVIDIA/Apple results are not hipEngine OCR baselines. Begin on

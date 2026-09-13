@@ -1045,7 +1045,10 @@ def test_gpu_prefill_scratch_admission_matches_the_allocation(runner) -> None:
     try:
         for tokens in (64, 257, 1024):
             block, scratch = plan_score_tiles(
-                tokens, spec.num_attention_heads, r.max_prefill_scratch_bytes
+                tokens,
+                spec.num_attention_heads,
+                r.max_prefill_scratch_bytes,
+                shape_envelope=False,
             )
             assert r.prefill_block(tokens) == block
             admitted = r.prefill_scratch_bytes(tokens)

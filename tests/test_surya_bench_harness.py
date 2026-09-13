@@ -892,51 +892,45 @@ sys.modules[_M_SPEC.name] = M
 _M_SPEC.loader.exec_module(M)
 
 
-def test_text_shape_sweep_lifts_and_restores_the_planner_envelope() -> None:
+def test_text_shape_sweep_measures_the_named_width() -> None:
     """A sweep row must measure the width it names, and must not leak.
 
     ``--text-blocks`` exists to measure shapes the production planner would not
-    choose, so it lifts the shape envelope and the wavefront rounding. The lift
-    has to reach the planner in both regimes: where the envelope caps the
-    budget's width (small grids, one or two tiles) and where it only rounds it
-    (larger grids, where the budget's own shape wins). If that lift silently
-    failed, every sweep row would be the production shape wearing a different
-    label, which is exactly the failure mode the sweep rules out. The lift is
-    process-global planner state, so it must also be restored, or the next
-    measurement in the process inherits a shape rule it did not ask for.
+    choose, so it lifts the wavefront rounding: without that lift a named 1955
+    would silently become the planner's 1952 and the row would be labelled with
+    a width it never ran. The lift is process-global planner state, so it must
+    also be restored, or the next measurement in the process inherits a rounding
+    rule it did not ask for. The text prefill's shape envelope is not part of
+    this: its policy is the byte budget's own width, so the production planner
+    already returns the budget's width on these inputs (``shape_envelope=False``
+    at every call site in the script).
     """
 
     from hipengine.runtime import surya
 
-    shipped = M._production_envelope()
-    assert M._ENVELOPE == shipped, "the shipped constants are captured at import"
-    assert shipped == (
-        int(surya.SHAPE_TILE_ROWS),
-        int(surya.SHAPE_TILE_DIVISOR),
-        int(surya.SHAPE_TILE_MULTIPLE),
-    )
+    assert M._ENVELOPE_MULTIPLE == int(surya.SHAPE_TILE_MULTIPLE)
     heads, tokens = 8, 8580
+    text = dict(shape_envelope=False)
     try:
-        # production: 8580 tokens leaves 5 tiles, so the budget's own 1955 rows
-        # survive, rounded down to the 32-lane wavefront multiple
-        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 1952
-        # production, capped regime: 1024 tokens admits the whole dense matrix
-        # in one tile, so the envelope splits it into 8
-        assert surya.plan_score_tiles(1024, heads, 512 * 1024**2)[0] == 128
-        # lifted: the same backwards-solved budget returns the named width,
-        # including a non-multiple of 32 the production planner would round
-        M._shape_envelope(False)
+        # production text: the budget's own 1955 rows, rounded down to the
+        # 32-lane wavefront multiple
+        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2, **text)[0] == 1952
+        # production text, and the width the vision envelope would cap is not
+        # used: the budget admits the whole dense matrix at 1024 tokens
+        assert surya.plan_score_tiles(1024, heads, 512 * 1024**2, **text)[0] == 1024
+        # the vision planner, on the same inputs, is re-shaped by the envelope
+        assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 256
+        # lifted: the backwards-solved budget returns the named width, including
+        # a non-multiple of 32 the production planner would round
+        M._wavefront_rounding(False)
         assert surya.SHAPE_TILE_MULTIPLE == 1
         assert surya.plan_score_tiles(
-            tokens, heads, heads * tokens * 1955 * 4
+            tokens, heads, heads * tokens * 1955 * 4, **text
         )[0] == 1955
-        # lifted, capped regime: the dense width the envelope splits is reachable
-        assert surya.plan_score_tiles(1024, heads, 512 * 1024**2)[0] == 1024
-        # the width the budget admits at the full context
         assert surya.plan_score_tiles(
-            16384, heads, heads * 16384 * 1024 * 4
+            16384, heads, heads * 16384 * 1024 * 4, **text
         )[0] == 1024
     finally:
-        M._shape_envelope(True)
-    assert M._production_envelope() == shipped
-    assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2)[0] == 1952
+        M._wavefront_rounding(True)
+    assert surya.SHAPE_TILE_MULTIPLE == M._ENVELOPE_MULTIPLE
+    assert surya.plan_score_tiles(tokens, heads, 512 * 1024**2, **text)[0] == 1952

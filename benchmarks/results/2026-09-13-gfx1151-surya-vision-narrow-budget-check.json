@@ -1,0 +1,198 @@
+{
+ "date": "2026-09-13",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T06:52:53Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_vision_tiling_cost.py --pages page_ja.png --budgets 64,128 --blocks 128,320,672 --with-budgets --reps 3 --passes 2 --out benchmarks/results/2026-09-13-gfx1151-surya-vision-narrow-budget-check.json",
+  "git_revision": "b55470ae64c0b8854890c18e73a147b80edb7059",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": "one runner per shape; one discarded warm-up vision_forward; median of --reps wall-clock timings around vision_forward only (preprocessing and scratch allocation excluded)",
+ "boundary": "None disables the tile budget and runs one dense tile; a byte budget selects the largest query block whose vision_num_heads * n * block * 4 tile fits; --blocks names the block directly and solves the budget backwards so the shapes can be swept without the budget's rounding",
+ "shape_envelope": "byte-budget rows are the production plan (envelope and wavefront rounding respected); --blocks rows lift both so shapes the planner would not choose are still measured",
+ "note": "Grids that cannot run densely have no dense baseline: the dense score matrix is 56.5 GB at 34320 patches and 206 GB at 65536, which is why the tiling exists. These rows are the grids that run both ways.",
+ "reps": 3,
+ "passes": 2,
+ "pass_check": "second pass in reverse order; 5/5 rows agree with pass 1 within max(10%, 2 ms), pass_ratio = pass1/pass2 per row",
+ "results": [
+  {
+   "page": "page_ja.png",
+   "grid": [
+    1,
+    64,
+    64
+   ],
+   "patches": 4096,
+   "budget_bytes": 67108864,
+   "query_block": 320,
+   "tiles": 13,
+   "tail_rows": 256,
+   "even": false,
+   "scratch_bytes": 62914560,
+   "scratch_mib": 60.0,
+   "dense_score_bytes": 805306368,
+   "median_ms": 1081.07,
+   "min_ms": 1080.48,
+   "max_ms": 1081.9,
+   "samples_ms": [
+    1081.9,
+    1081.07,
+    1080.48
+   ],
+   "envelope_lifted": false,
+   "median_ms_pass2": 1079.72,
+   "samples_ms_pass2": [
+    1100.45,
+    1079.04,
+    1079.72
+   ],
+   "pass_ratio": 1.001,
+   "vs_best_shape": 0.816
+  },
+  {
+   "page": "page_ja.png",
+   "grid": [
+    1,
+    64,
+    64
+   ],
+   "patches": 4096,
+   "budget_bytes": 134217728,
+   "query_block": 672,
+   "tiles": 7,
+   "tail_rows": 64,
+   "even": false,
+   "scratch_bytes": 132120576,
+   "scratch_mib": 126.0,
+   "dense_score_bytes": 805306368,
+   "median_ms": 1378.13,
+   "min_ms": 1375.87,
+   "max_ms": 1378.97,
+   "samples_ms": [
+    1378.13,
+    1375.87,
+    1378.97
+   ],
+   "envelope_lifted": false,
+   "median_ms_pass2": 1390.26,
+   "samples_ms_pass2": [
+    1396.08,
+    1390.26,
+    1387.27
+   ],
+   "pass_ratio": 0.991,
+   "vs_best_shape": 0.64
+  },
+  {
+   "page": "page_ja.png",
+   "grid": [
+    1,
+    64,
+    64
+   ],
+   "patches": 4096,
+   "budget_bytes": 25165824,
+   "query_block": 128,
+   "tiles": 32,
+   "tail_rows": 128,
+   "even": true,
+   "scratch_bytes": 25165824,
+   "scratch_mib": 24.0,
+   "dense_score_bytes": 805306368,
+   "median_ms": 882.39,
+   "min_ms": 881.75,
+   "max_ms": 899.03,
+   "samples_ms": [
+    899.03,
+    881.75,
+    882.39
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 882.02,
+   "samples_ms_pass2": [
+    909.58,
+    882.02,
+    881.1
+   ],
+   "pass_ratio": 1.0,
+   "vs_best_shape": 1.0
+  },
+  {
+   "page": "page_ja.png",
+   "grid": [
+    1,
+    64,
+    64
+   ],
+   "patches": 4096,
+   "budget_bytes": 62914560,
+   "query_block": 320,
+   "tiles": 13,
+   "tail_rows": 256,
+   "even": false,
+   "scratch_bytes": 62914560,
+   "scratch_mib": 60.0,
+   "dense_score_bytes": 805306368,
+   "median_ms": 1089.82,
+   "min_ms": 1083.72,
+   "max_ms": 1091.79,
+   "samples_ms": [
+    1083.72,
+    1089.82,
+    1091.79
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 1097.38,
+   "samples_ms_pass2": [
+    1106.49,
+    1094.81,
+    1097.38
+   ],
+   "pass_ratio": 0.993,
+   "vs_best_shape": 0.81
+  },
+  {
+   "page": "page_ja.png",
+   "grid": [
+    1,
+    64,
+    64
+   ],
+   "patches": 4096,
+   "budget_bytes": 132120576,
+   "query_block": 672,
+   "tiles": 7,
+   "tail_rows": 64,
+   "even": false,
+   "scratch_bytes": 132120576,
+   "scratch_mib": 126.0,
+   "dense_score_bytes": 805306368,
+   "median_ms": 1390.36,
+   "min_ms": 1388.95,
+   "max_ms": 1391.4,
+   "samples_ms": [
+    1390.36,
+    1388.95,
+    1391.4
+   ],
+   "envelope_lifted": true,
+   "median_ms_pass2": 1381.18,
+   "samples_ms_pass2": [
+    1390.58,
+    1379.68,
+    1381.18
+   ],
+   "pass_ratio": 1.007,
+   "vs_best_shape": 0.635
+  }
+ ]
+}

@@ -7,9 +7,10 @@ ceiling (65536). Those grids cannot run densely, so they have no dense baseline.
 
 This measures the grids that *can* run both ways, so the tiling's cost is known
 rather than assumed: ``None`` disables the budget and runs one dense tile, and a
-byte budget selects the largest query block whose tile fits *and* that the
-planner's shape rule admits (the envelope applies only while the budget alone
-would leave the grid in one or two tiles). ``--blocks`` measures named shapes
+byte budget selects the largest query block whose tile fits, bounded by the
+planner's measured shape envelope whenever that is narrower (the text prefill
+shares the planner but not the envelope: its own sweeps show the budget's width
+is its optimum). ``--blocks`` measures named shapes
 directly, lifting the envelope so shapes the planner would not choose are still
 on the curve; byte-budget rows always keep it, because those rows are the
 production plan. One runner per shape, warm-up call discarded, median of
