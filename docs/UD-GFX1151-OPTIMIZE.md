@@ -537,7 +537,10 @@ Likely investigation order:
   rejected, including the direct full-unroll route to more loads in flight, so
   the remaining lever is explicit prefetch or a wider row/wave split, which
   needs a hardware-counter unit plus a new bit-exactness contract.
-- [ ] Strict Q3_K/IQ3_S owner geometry and decode. Swept 2026-09-13.
+- [x] Strict Q3_K/IQ3_S owner geometry and decode. **Closed 2026-09-13: the
+  geometry axis is swept, the shipped geometry is optimal on every bit-identical
+  axis, and the residual is localized to the owner's structure rather than to
+  its decode or its tiling.** Swept 2026-09-13.
   `gguf_iq_dense_strict` owns all eleven Q3_K/IQ3_S verifier tensors, every
   one 38.30 MB, and moves 421.3 MB/step in eleven calls at 258-361 us/call =
   106-148 GB/s against 600-704 GB/s for the t16 rowtile owners on the same
@@ -555,6 +558,19 @@ Likely investigation order:
   element) cannot reach the t16 rate. Closing it means split-K or a tile
   repack, both of which change the declared accumulation order and owe the
   full production profile gate.
+  The two forward routes are therefore the deliverable, not this sweep. One
+  cross-reference is worth recording because a later measurement constrains it:
+  the T16 tile repack was built for the IQ4_XS local32 owner and is bit-exact
+  and **not faster** there (`benchmarks/results/2026-09-13-ud-gfx1100-iq4-xs-t16-local32-decode.json`),
+  but that result does not transfer to this owner. IQ4_XS local32 already runs
+  at 46-58% of the DRAM roofline, so its duplicate payload reads were L1 hits
+  and halving already-cached bytes could not win. `gguf_iq_dense_strict` runs at
+  106-148 GB/s, 11-25% of the 960 GB/s roofline, and its floor is structural
+  rather than bandwidth-saturated, so the same repack argument is untested here
+  and is the more promising of the two routes. It still owes the full production
+  profile gate, because a repack that preserves lane geometry and FMA order is
+  bit-exact (as the IQ4_XS T16 consumer is) while one that does not is a
+  reassociation.
 - [x] Norm, SiLU, residual, and logits tail overhead. Closed 2026-09-12:
   1.885 ms/step, 4.00% of the UD-Q4_K_M verifier, below the repair threshold.
 - [ ] Graph capture/replay ownership and synchronization. The host residual is
