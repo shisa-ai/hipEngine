@@ -61,8 +61,12 @@ variant of the `strix-llama.cpp` HIP build and is not marked.
 
 Upstream llama.cpp was rebuilt at `002a12ad2` with exactly one file swapped for
 the `strix-llama.cpp` version — `ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh`, the
-RDNA3.5 (`gfx1151`) MMQ tile-configuration table — and nothing else. That one
-file carries about half the prefill lead.
+RDNA3.5 (`gfx1151`) MMQ tile-configuration table — and nothing else. At 4K that
+one file is worth +6.93% over upstream llama.cpp, which is 54% of the +12.93%
+the fork leads upstream by. It is not 54% of the fork's lead over hipEngine:
+the config-only build is +10.0% over hipEngine's 372.1 tok/s at 4K, but that
+comparison crosses two engines with entirely different prefill kernels and is
+not evidence that hipEngine could inherit the change.
 
 | Build | 512/128 | 1K/128 | 4K/128 |
 | --- | ---: | ---: | ---: |
@@ -75,13 +79,31 @@ file carries about half the prefill lead.
 llama-bench means, `-r 5`, prefill-only processes, same flags as the main
 comparison.
 
-The change is confined to the tile table. For `Q4_K`, `Q5_K`, `Q6_K` and `Q8_0`
-at the 128-wide token tile with a batch of 48 or more tokens, `gfx1151` now uses
-a 64-row SRAM tile with 128 threads per block instead of a 128-row tile with 256
-threads. The kernel itself is untouched: same template instantiation, same 4608
-dispatches in a 4K prefill, same 240 VGPR and 128 SGPR per thread. Only the
-block shape changes — for the 17,408-row FFN projections, 136x4 blocks of 256
-threads become 272x4 blocks of 128 threads.
+The change is confined to the tile table. For `Q4_K`, `Q5_K` and `Q6_K` at the
+128-wide token tile, `gfx1151` now uses a 64-row tile with 128 threads per block
+instead of a 128-row tile with 256 threads, for batches of 48 or more tokens.
+The template instantiation is unchanged (`mul_mat_q<type, 128, fallback>`, same
+4608 dispatches in a 4K prefill, same 240 VGPR and 128 SGPR per thread), but
+the table is consumed as compile-time constants *inside* the kernel body
+(`constexpr int I = ggml_cuda_mmq_get_I(type, J, fallback)`), so the emitted
+device code is not guaranteed to be byte-identical. What
+`ablation/launcher-args.txt` directly verifies is the launch geometry: for the
+17,408-row FFN projections, 136x4 blocks of 256 threads become 272x4 blocks of
+128 threads.
+
+Two scope qualifications:
+
+- The patch rewrites 41 table rows in total, including `Q8_0`, `IQ3_XXS` and
+  `MXFP4`. The 4K trace contains no `Q6_K`, `Q8_0`, `IQ3_XXS` or `MXFP4` MMQ
+  launches — only `mul_mat_q<(ggml_type)12, 128, false>` (Q4_K, 4608 calls) and
+  `mul_mat_q<(ggml_type)13, 128, false>` (Q5_K, 768 calls) — so the measured
+  attribution covers Q4_K and Q5_K only. The primary (non-fallback) `Q8_0`
+  J=128 row keeps 256 threads and halves `I` to 64 instead of narrowing the
+  block.
+- The rebuild establishes the causal effect; it does not establish the
+  mechanism. One 256-thread block and two 128-thread blocks each hold eight
+  wave32 waves, so more resident blocks is not by itself more resident waves.
+  Register allocation, LDS, scheduling and tail utilisation were not measured.
 
 Kernel time by group (`rocprofv3 --kernel-trace`, one warmup plus one measured
 4K prefill, so two 4096-token passes):
@@ -229,9 +251,12 @@ sits one commit behind the Vulkan binary. That commit deletes two lines from
   difference; the `strix-llama.cpp` HIP prefill lead is much larger than it.
 - All arms ran sequentially in one session, not counterbalanced pairs, so
   thermal drift is not controlled.
-- The ablation isolates the MMQ tile table by rebuilding it. The other 47% of
+- The ablation isolates the MMQ tile table by rebuilding it. The other 46% of
   the `strix-llama.cpp` prefill lead is attributed from kernel-level time deltas,
   not by rebuilding the fork's remaining HIP changes one at a time.
+- The tile-table attribution covers `Q4_K` and `Q5_K`, the only quantized MMQ
+  kernels this model launches. The same patch also changes `Q6_K`, `Q8_0`,
+  `IQ3_XXS` and `MXFP4` rows that this workload never exercises.
 - The ablation ran on the HIP backend only. The Vulkan rows are unchanged and
   were not attributed.
 
@@ -249,7 +274,7 @@ sits one commit behind the Vulkan binary. That commit deletes two lines from
 | `raw/run_comparison.log` | Full console log of the recorded run |
 | `ablation/run_ablation.sh` | Rebuilds upstream with the fork's MMQ tile table, measures prefill, kernel-traces all three binaries |
 | `ablation/attribution.txt` | Prefill-lead attribution: end-to-end table, kernel groups, launch geometry |
-| `ablation/launcher-args.txt` | Launcher arguments proving only the tile height and thread count changed |
+| `ablation/launcher-args.txt` | Launcher arguments proving only the tile width and thread count changed at an unchanged `J` |
 | `ablation/mmq-config-rdna3-5.patch` | The tile-table change on its own, against `002a12ad2` |
 | `ablation/output-check.txt` | Greedy-output smoke check across the three builds |
 | `ablation/*-prefill.json` | Prefill artifacts for upstream, upstream+config and `strix-llama.cpp` |
