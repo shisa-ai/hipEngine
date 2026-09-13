@@ -429,9 +429,10 @@ Likely investigation order:
   memory-level parallelism at fixed occupancy. `gguf_iq4_xs_local32_gemv` is
   12.24 ms/step (26.0% of the UD-Q4_K_M verifier) at 46% (`ffn_gate`, N=17408
   K=5120) and 58% (`ffn_down`, N=5120 K=17408) of the 960 GB/s DRAM roofline,
-  with 192 VGPRs. Two instruction-level candidates were measured and rejected,
-  so the lever is explicit prefetch or a wider row/wave split, which needs a
-  hardware-counter unit plus a new bit-exactness contract.
+  with 192 VGPRs. Three instruction-level candidates were measured and
+  rejected, including the direct full-unroll route to more loads in flight, so
+  the remaining lever is explicit prefetch or a wider row/wave split, which
+  needs a hardware-counter unit plus a new bit-exactness contract.
 - [x] Norm, SiLU, residual, and logits tail overhead. Closed 2026-09-12:
   1.885 ms/step, 4.00% of the UD-Q4_K_M verifier, below the repair threshold.
 - [ ] Graph capture/replay ownership and synchronization. The host residual is
@@ -463,6 +464,21 @@ recorded so they are not retried:
   the rows == 1 owner +1.5%, both inside run-to-run spread, with bit-exactness
   preserved. Rejected as neutral: the compiler already coalesces the loads, so
   the family is not load-issue-bound.
+- **local32 column-loop full unroll (the direct route to more loads in
+  flight).** `gguf_iq4_xs_local32_gemv_kernel` carried `if (n0 + t >= N) break;`
+  inside its unrolled eight-column loop and the mirroring `if (n0 + t < N)` on
+  the store. Both are dead code: `N % 8 == 0` and `grid == N / 8` are launch
+  preconditions enforced by the Python wrapper and the C entry, so every
+  column of every block is in range. Removing them was expected to let the
+  compiler hoist the eight columns' 136-byte records and lift memory-level
+  parallelism on a latency-bound owner. Measured on the four real IQ4_XS
+  tensors, two independent runs, interleaved min-of-N: the rows 2-4 sibling
+  regressed **+5.0%/+26.9%/+10.1%/+23.5%** (`ffn_down`/`ffn_gate`/`attn_q`/
+  `attn_qkv` at rows 4) and the rows == 1 owner regressed **+20.6%/+8.8%/
+  +14.0%/+25.0%**, with bit-exactness preserved throughout. Rejected: the
+  branches are load-bearing. They bound the live range of each column's
+  header, scale and payload words, and forcing the full unroll raises register
+  pressure instead of raising memory-level parallelism.
 
 For each candidate that is carried as far as an implementation:
 
