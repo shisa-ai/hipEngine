@@ -595,6 +595,24 @@ Likely investigation order:
   in the 4-6 us range makes a ~200-call difference the obvious explanation —
   but the numbers themselves are unverified. Re-measuring this census on the
   UD-Q4_K_M AR path is the concrete next step for this item.
+  **Partial replacement measured 2026-09-13.** An earlier-session UD trace
+  (`/tmp/phase8/trace-i13.csv`, 4.7 MB) run through
+  `scripts/gguf_decode_census_summary.py` gives the verifier window at
+  **307.94 launches/token and 11421.98 pure us/token** over 32 steps, across 37
+  kernel families that account for all 307.9 launches. The launch-heavy families
+  are `gguf_iq4_xs_local32_gemv_kernel` 36.56 launches/tok at 97.9 us each,
+  `q5_k_t16_dense_rowtile_single_wave_gemv_kernel` 39.38 at 63.7,
+  `q4_k_t16_dense_rowtile_gemv_kernel` 28.75 at 46.8,
+  `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tl` 15.00 at 33.5,
+  `q8_0_t16_dual_split_gemv_kernel` 15.00 at 18.4 and
+  `gguf_norm_fixed5120_wave256_kernel` 40.00 at **5.3 us**, which is the one
+  family whose time is almost entirely launch cost. See
+  `benchmarks/results/2026-09-13-ud-gfx1100-verifier-window-launch-census.json`.
+  Two caveats keep this from closing the item: the window contains ROWS=3
+  kernels, so it is the MTP verifier path rather than the single-row AR decode
+  path the 1032 figure refers to, and the trace's exact driver command was not
+  recorded, so it meets the census protocol but not the full command-level
+  evidence requirement.
 - [x] Q8_0 prefill WMMA owner at verifier rows. Retained 2026-09-13. The
   verifier-window census (kernels attributed to the twelve
   `gguf_mtp_verify_block_N` marker ranges, not divided by the step count) put
