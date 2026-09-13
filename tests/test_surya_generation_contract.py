@@ -186,10 +186,10 @@ def test_vision_tile_plan_is_bounded_by_the_measured_shape_envelope() -> None:
     where a 128-row tile runs 874.38 ms, and at 1024 patches the budget admits
     the whole dense matrix (193.54 ms) where a 128-row tile runs 135.52 ms. The
     envelope that recovers those caps the block at ``max(128, rows/32)`` rows
-    whenever the budget alone would leave the grid in two tiles or fewer, so the
-    budget stays the binding constraint where it matters: at the 34320-patch A4
-    page the budget's 325 rows leaves 108 tiles, the cap is never consulted, and
-    the 512 MiB budget still chooses the shape.
+    whenever the budget's own tile is wider, so the budget stays the binding
+    constraint where it matters: at the 34320-patch A4 page the budget's 325
+    rows leaves 108 tiles, the cap is never consulted, and the 512 MiB budget
+    still chooses the shape.
     """
 
     from hipengine.runtime.surya import plan_vision_attention
@@ -274,7 +274,9 @@ def test_prefill_tile_plan_stays_inside_the_budget() -> None:
     heads = 8
     budget = 512 * _MIB
     for tokens in (256, 1024, 8580, 16384):
-        block, scratch = plan_score_tiles(tokens, heads, budget)
+        block, scratch = plan_score_tiles(
+            tokens, heads, budget, shape_envelope=False
+        )
         assert 1 <= block <= tokens, (tokens, block)
         assert scratch == heads * tokens * block * 4, (tokens, block, scratch)
         assert scratch <= budget, f"{tokens} tokens need {scratch} > {budget}"
@@ -285,7 +287,7 @@ def test_prefill_tile_plan_stays_inside_the_budget() -> None:
     # the two measured peaks: the 8580-token page and the full 16384-token
     # context, against the dense matrices they used to materialize
     for tokens, dense in ((8580, 2_355_724_800), (16384, 8_589_934_592)):
-        _, scratch = plan_score_tiles(tokens, heads, budget)
+        _, scratch = plan_score_tiles(tokens, heads, budget, shape_envelope=False)
         assert heads * tokens * tokens * 4 == dense
         assert scratch <= budget < dense
 
@@ -295,6 +297,10 @@ def test_prefill_and_vision_share_one_planner() -> None:
 
     The vision tower and the text prefill tile the same ``heads * rows * rows``
     matrix, so a fix or a tuning change to one must not leave the other behind.
+    The arithmetic is shared; the *shape policy* is the one parameter that is
+    not (``shape_envelope``), because the two paths have measured different
+    shape optima. The default is the vision policy, so the vision-shaped name
+    and the raw planner agree, and the text path differs only by that flag.
     """
 
     from hipengine.runtime.surya import plan_score_tiles, plan_vision_attention
@@ -309,6 +315,17 @@ def test_prefill_and_vision_share_one_planner() -> None:
         assert plan_vision_attention(rows, heads, budget) == plan_score_tiles(
             rows, heads, budget
         ), (rows, heads, budget)
+        # the text policy is the budget's own width, and it never exceeds it
+        text_block, text_scratch = plan_score_tiles(
+            rows, heads, budget, shape_envelope=False
+        )
+        assert 1 <= text_block <= rows
+        assert text_scratch == heads * rows * text_block * 4
+        # the budget bounds the tile unless it cannot hold even one query row,
+        # where the planner returns block == 1 for admission to report
+        if budget is not None and budget >= heads * rows * 4:
+            assert text_scratch <= budget
+        assert text_block >= plan_vision_attention(rows, heads, budget)[0]
 
 
 def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
@@ -319,74 +336,85 @@ def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
     heads = 8
     tokens = 128
     dense = heads * tokens * tokens * 4
-    block, scratch = plan_score_tiles(tokens, heads, dense)
+    block, scratch = plan_score_tiles(
+        tokens, heads, dense, shape_envelope=False
+    )
     assert block == tokens
     assert scratch == dense
     # and one byte less must split it
-    block, scratch = plan_score_tiles(tokens, heads, dense - 1)
+    block, scratch = plan_score_tiles(
+        tokens, heads, dense - 1, shape_envelope=False
+    )
     assert 1 <= block < tokens
     assert scratch == heads * tokens * block * 4 <= dense - 1
 
 
-def test_prefill_tile_plan_keeps_the_budget_shape_where_it_already_splits() -> None:
-    """The text prefill keeps the byte budget's own shape above two tiles.
+def test_prefill_tile_plan_takes_the_budget_width_not_the_vision_envelope() -> None:
+    """The text prefill's shape policy is the byte budget, with no envelope.
 
     The text prefill's curve is monotone in the tile count
     (``benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json``):
     at 16384 tokens the budget's 1024 rows runs 16.927 s against the vision
     envelope's 512 rows at 17.436 s (3.0%), and at 8580 tokens 1955 rows runs
-    7.535 s against 256 rows at 7.692 s (2.1%). So the envelope is a small-grid
-    correction, not a global ceiling: it applies only while the budget alone
-    would leave the grid in two tiles or fewer, which is where it does help --
-    at 1024 tokens the budget admits the whole 32 MiB dense matrix and the cap
-    still splits it into 8 tiles.
+    7.535 s against 256 rows at 7.692 s (2.1%). It is also shape-insensitive at
+    small prompts, where the vision envelope would bind hardest
+    (``...-text-prefill-small-prompts.json``): at 1024 tokens the whole dense
+    matrix runs 0.779 s against 0.775 s at 128 rows, and at 4096 tokens
+    3.442 s against 3.401 s, where the same dense tile costs the vision tower
+    19-43%.
+    So the text path passes ``shape_envelope=False`` and the vision tower keeps
+    it; the two differ on identical inputs.
     """
 
-    from hipengine.runtime.surya import plan_score_tiles
+    from hipengine.runtime.surya import plan_score_tiles, plan_vision_attention
 
     heads = 8
-    # 1024 tokens: the budget admits the whole dense matrix (one tile), so the
-    # cap applies and splits it into 8
-    block, scratch = plan_score_tiles(1024, heads, 512 * _MIB)
-    assert block == 128
-    assert scratch == heads * 1024 * 128 * 4
-    # the full 16384-token context: the budget alone leaves 16 tiles, so it
-    # keeps its own 1024 rows
-    block, scratch = plan_score_tiles(16384, heads, 512 * _MIB)
+    # 1024 tokens: the budget admits the whole dense matrix and keeps it
+    block, scratch = plan_score_tiles(1024, heads, 512 * _MIB, shape_envelope=False)
+    assert block == 1024
+    assert scratch == heads * 1024 * 1024 * 4
+    # the full 16384-token context: the budget's own 1024 rows, 16 tiles
+    block, scratch = plan_score_tiles(16384, heads, 512 * _MIB, shape_envelope=False)
     assert block == 1024
     assert scratch == heads * 16384 * 1024 * 4 <= 512 * _MIB
-    # 8580 tokens: 5 tiles, 1955 rows rounded down to a wavefront multiple
-    block, _ = plan_score_tiles(8580, heads, 512 * _MIB)
-    assert block == 1952
-    # and a budget narrower than the envelope still wins
-    assert plan_score_tiles(16384, heads, 64 * _MIB)[0] == 128
+    # 8580 tokens: 1955 rows rounded down to a wavefront multiple
+    assert plan_score_tiles(8580, heads, 512 * _MIB, shape_envelope=False)[0] == 1952
+    # a budget narrower than the vision envelope still wins
+    assert plan_score_tiles(16384, heads, 64 * _MIB, shape_envelope=False)[0] == 128
+    # the same inputs through the vision planner are re-shaped
+    assert plan_vision_attention(1024, heads, 512 * _MIB)[0] == 128
+    assert plan_vision_attention(16384, heads, 512 * _MIB)[0] == 512
 
 
-def test_shape_cap_only_overrides_a_budget_that_leaves_two_tiles() -> None:
-    """The envelope is a small-grid correction, not a global ceiling.
+def test_vision_shape_envelope_is_not_a_tile_count_threshold() -> None:
+    """The vision envelope applies whenever it is narrower than the budget.
 
-    The cap exists because a tile wider than the grid needs starves the batched
-    GEMM of output tiles: at 1024 patches the budget admits the whole dense
-    matrix (193.54 ms) where 128 rows runs 135.52 ms, and at 4096 patches it
-    admits 2730 rows (1123.42 ms) where 128 rows runs 874.38 ms. Both plans are
-    one or two tiles. Where the budget already leaves four or more, its own
-    choice is measured to be at least as good: 6400 patches takes 1747 rows,
-    inside the 1024-4096-row band's 2056-2101 ms against the cap's 192 rows at
-    2130.11 ms, and the 34320-patch A4 page takes 320 rows at 43318 ms. Three
-    tiles is not measured on either path; ``docs/REFACTOR.md`` records it.
+    Bounding it by a tile count looks right on the default 512 MiB budget -- at
+    6400 patches the budget's 1747 rows measures 2004.85 ms against the
+    envelope's 192 rows at 2125.18 ms (5.7%) -- and regresses narrow budgets,
+    because the 4096-patch curve has a spike band between roughly 256 and 1344
+    rows (``benchmarks/results/2026-09-13-gfx1151-surya-vision-narrow-budget-check.json``):
+    a 64 MiB budget then picks 320 rows at 1081.07 ms and a 128 MiB budget 672
+    rows at 1378.13 ms, against 882.39 ms at the envelope's 128 rows -- 22% and
+    56% slower. So the vision planner consults the envelope unconditionally and
+    the 6400-patch anomaly stays in ``docs/REFACTOR.md``.
     """
 
-    from hipengine.runtime.surya import plan_score_tiles
+    from hipengine.runtime.surya import plan_score_tiles, plan_vision_attention
 
-    # vision, heads=12: a budget that admits the whole dense matrix is one tile
-    # and is capped to 32
-    assert plan_score_tiles(4096, 12, 12 * 4096 * 4096 * 4)[0] == 128
-    # exactly two tiles is still capped
-    assert plan_score_tiles(4096, 12, 12 * 4096 * 2048 * 4)[0] == 128
-    # three tiles is not, so the budget's width survives (rounded down to 1344)
-    assert plan_score_tiles(4096, 12, 12 * 4096 * 1366 * 4)[0] == 1344
-    # four tiles is not, and 6400 patches keeps the budget's 1747 -> 1728 rows
-    assert plan_score_tiles(6400, 12, 512 * _MIB)[0] == 1728
+    # 4096 patches: every budget wide enough to leave a tile wider than the
+    # envelope is capped back to it, including the 64 and 128 MiB budgets whose
+    # own plans sit in the spike band
+    for budget in (512, 256, 128, 64, 32):
+        assert plan_vision_attention(4096, 12, budget * _MIB)[0] == 128
+    # a budget narrower than the envelope still wins
+    assert plan_vision_attention(4096, 12, 16 * _MIB)[0] == 64
+    # the text path, on the same grid and budget, keeps the budget's width
+    assert plan_score_tiles(4096, 12, 64 * _MIB, shape_envelope=False)[0] == 320
+    # 6400 patches: the envelope's rows/32 bound (34 tiles) is the plan
+    assert plan_vision_attention(6400, 12, 512 * _MIB)[0] == 192
+    # page scale is budget-bound either way
+    assert plan_vision_attention(34320, 12, 512 * _MIB)[0] == 320
 
 
 def test_gpu_factory_declares_the_budgets_it_honors() -> None:

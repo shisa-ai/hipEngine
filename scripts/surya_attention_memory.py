@@ -48,9 +48,12 @@ Usage:
 
 ``--text-blocks`` is the shape sweep for the text prefill: each named query
 block solves the byte budget backwards (``nq * tokens * block * 4``) and lifts
-the planner's shape envelope and wavefront rounding, so a width the production
-planner would not choose is still measured. Byte-budget rows are measured with
-the envelope in force, because they are the production plan.
+the wavefront rounding, so a width the planner would not choose (a non-multiple
+of 32) is still measured. The text prefill's shape policy is the byte budget's
+own width -- it does not consult the vision shape envelope, whose constants are
+calibrated on the vision tower and would re-choose the text tile -- so the
+byte-budget rows are the production plan and the named-block rows only need the
+rounding lifted.
 """
 
 from __future__ import annotations
@@ -81,47 +84,31 @@ PASS_TOLERANCE = 0.03
 PASS_TOLERANCE_SECONDS = 0.25
 
 
-def _production_envelope() -> tuple[int, int, int]:
-    """The planner's shipped shape envelope, read before anything lifts it."""
+def _production_multiple() -> int:
+    """The planner's shipped wavefront multiple, read before anything lifts it."""
 
-    from hipengine.runtime.surya import (
-        SHAPE_TILE_DIVISOR,
-        SHAPE_TILE_MULTIPLE,
-        SHAPE_TILE_ROWS,
-    )
+    from hipengine.runtime.surya import SHAPE_TILE_MULTIPLE
 
-    return (
-        int(SHAPE_TILE_ROWS),
-        int(SHAPE_TILE_DIVISOR),
-        int(SHAPE_TILE_MULTIPLE),
-    )
+    return int(SHAPE_TILE_MULTIPLE)
 
 
-_ENVELOPE = _production_envelope()
+_ENVELOPE_MULTIPLE = _production_multiple()
 
 
-def _shape_envelope(enable: bool) -> None:
-    """Turn the planner's shape envelope on or off for the next measurement.
+def _wavefront_rounding(enable: bool) -> None:
+    """Turn the planner's wavefront rounding on or off for the next row.
 
-    Byte-budget rows are the production plan, so they keep the envelope and the
-    wavefront rounding. Shape rows measure the landscape, so they lift both: a
-    width the planner would never choose still has to be measured to know what
-    it costs, and the envelope's own constants were chosen from widths outside
-    it.
+    Byte-budget rows are the production plan, so they keep the rounding. A row
+    that names a width is measuring the landscape, so it lifts the rounding:
+    a width the planner would never choose (a non-multiple of 32) still has to
+    be measured to know what it costs, and the shape sweep's own widths were
+    chosen from inside that landscape. The text prefill's shape envelope is not
+    involved either way: its policy is the byte budget's own width.
     """
 
     import hipengine.runtime.surya as surya
 
-    if enable:
-        (
-            surya.SHAPE_TILE_ROWS,
-            surya.SHAPE_TILE_DIVISOR,
-            surya.SHAPE_TILE_MULTIPLE,
-        ) = _ENVELOPE
-    else:
-        surya.SHAPE_TILE_ROWS = 1 << 40
-        surya.SHAPE_TILE_DIVISOR = 1 << 40
-        surya.SHAPE_TILE_MULTIPLE = 1
+    surya.SHAPE_TILE_MULTIPLE = _ENVELOPE_MULTIPLE if enable else 1
 
 
 def _git(*args: str) -> str | None:
@@ -209,7 +196,9 @@ def text_tile_plan(model: str, token_counts: list[int], budgets: list[int | None
         dense = heads * tokens * tokens * 4
         plans = []
         for budget in budgets:
-            block, scratch = plan_score_tiles(tokens, heads, budget)
+            block, scratch = plan_score_tiles(
+                tokens, heads, budget, shape_envelope=False
+            )
             plans.append(
                 {
                     "budget_bytes": None if budget is None else int(budget),
@@ -365,7 +354,9 @@ def measure(
                     next_pos += 1
         finally:
             runner.close()
-        planned_block, tile = plan_score_tiles(tokens, nq, effective)
+        planned_block, tile = plan_score_tiles(
+            tokens, nq, effective, shape_envelope=False
+        )
         if block is not None and planned_block != int(block):
             raise SystemExit(
                 f"asked for block {block} at {tokens} tokens but the planner "
@@ -461,8 +452,8 @@ def main() -> int:
         "--text-blocks",
         default=None,
         help="comma-separated explicit text-prefill query-block shapes; the "
-             "byte budget is solved backwards for each and the planner's shape "
-             "envelope is lifted, so this is the text shape sweep",
+             "byte budget is solved backwards for each and the wavefront "
+             "rounding is lifted, so this is the text shape sweep",
     )
     parser.add_argument(
         "--passes", type=int, default=1, choices=(1, 2),
@@ -540,9 +531,9 @@ def main() -> int:
             ordered = plans if pass_index == 0 else list(reversed(plans))
             for plan in ordered:
                 # byte budgets are the production plan, so they keep the
-                # planner's shape envelope and wavefront rounding; a named block
-                # lifts both so shapes the planner would not choose are measured
-                _shape_envelope(plan["block"] is None)
+                # planner's wavefront rounding; a named block lifts it so widths
+                # the planner would not choose are measured
+                _wavefront_rounding(plan["block"] is None)
                 result = measure(
                     spec=spec,
                     weights=weights,
@@ -583,7 +574,7 @@ def main() -> int:
                     print("  fitted non-attention slope: n/a (needs two token counts)")
                 else:
                     print(f"  fitted non-attention slope: {slope / 1024:.1f} KiB/token")
-        _shape_envelope(True)
+        _wavefront_rounding(True)
         if second:
             unmatched = set(second) - {r["label"] for r in blocks}
             if unmatched:
@@ -689,15 +680,11 @@ def main() -> int:
             "budget_bytes_list": [None if b is None else int(b) for b in budgets],
             "block_list": [int(b) for b in text_blocks],
             "shape_envelope": (
-                "byte-budget rows are the production plan (envelope and "
-                "wavefront rounding respected); --text-blocks rows lift both "
-                "and solve the byte budget backwards from the named width"
+                "the text prefill does not consult the vision shape envelope: "
+                "the byte budget's own width is the production plan, and "
+                "--text-blocks rows lift the wavefront rounding and solve the "
+                "byte budget backwards from the named width"
             ),
-            "production_envelope": {
-                "rows": _ENVELOPE[0],
-                "divisor": _ENVELOPE[1],
-                "multiple": _ENVELOPE[2],
-            },
             "runs": int(args.runs),
             "passes": int(args.passes),
             "pass_check": (
