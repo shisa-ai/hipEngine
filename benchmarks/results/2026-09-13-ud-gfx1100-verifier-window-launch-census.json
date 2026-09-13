@@ -1,0 +1,259 @@
+{
+  "backend": "hip_gfx1100",
+  "by_family": [
+    {
+      "family": "gguf_iq4_xs_local32_gemv_kernel",
+      "launches_per_token": 36.56,
+      "us_per_launch": 97.9,
+      "us_per_token": 3578.06
+    },
+    {
+      "family": "q5_k_t16_dense_rowtile_single_wave_gemv_kernel",
+      "launches_per_token": 39.38,
+      "us_per_launch": 63.7,
+      "us_per_token": 2509.38
+    },
+    {
+      "family": "q4_k_t16_dense_rowtile_gemv_kernel",
+      "launches_per_token": 28.75,
+      "us_per_launch": 46.8,
+      "us_per_token": 1346.86
+    },
+    {
+      "family": "gguf_iq_dense_strict_kernel",
+      "launches_per_token": 3.44,
+      "us_per_launch": 294.1,
+      "us_per_token": 1011.62
+    },
+    {
+      "family": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+      "launches_per_token": 4.37,
+      "us_per_launch": 147.1,
+      "us_per_token": 642.77
+    },
+    {
+      "family": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 33.5,
+      "us_per_token": 502.27
+    },
+    {
+      "family": "q8_0_t16_dual_split_gemv_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 18.4,
+      "us_per_token": 276.03
+    },
+    {
+      "family": "gguf_iq4_nl_local32_gemv_kernel",
+      "launches_per_token": 2.19,
+      "us_per_launch": 111.9,
+      "us_per_token": 245.02
+    },
+    {
+      "family": "gguf_norm_fixed5120_wave256_kernel",
+      "launches_per_token": 40.0,
+      "us_per_launch": 5.3,
+      "us_per_token": 212.02
+    },
+    {
+      "family": "q4_k_t16_dense_dual_rowtile_silu_gemv_kernel",
+      "launches_per_token": 1.56,
+      "us_per_launch": 131.9,
+      "us_per_token": 205.78
+    },
+    {
+      "family": "q6_k_t16_qmicro_planar_gemv_bf16_kernel",
+      "launches_per_token": 8.44,
+      "us_per_launch": 17.9,
+      "us_per_token": 151.43
+    },
+    {
+      "family": "qwen35_paged_full_attn_decode_context_tensor_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 8.0,
+      "us_per_token": 120.45
+    },
+    {
+      "family": "q8_0_t16_rowtile_gemv_kernel",
+      "launches_per_token": 2.19,
+      "us_per_launch": 51.4,
+      "us_per_token": 112.6
+    },
+    {
+      "family": "linear_state_pair_commit_chunked_i32_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 350.4,
+      "us_per_token": 108.62
+    },
+    {
+      "family": "qk_t16_selected_direct_gemv_kernel",
+      "launches_per_token": 4.69,
+      "us_per_launch": 19.6,
+      "us_per_token": 92.13
+    },
+    {
+      "family": "qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 4.1,
+      "us_per_token": 62.22
+    },
+    {
+      "family": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 126.6,
+      "us_per_token": 39.26
+    },
+    {
+      "family": "silu_mul_separate_out_kernel",
+      "launches_per_token": 18.44,
+      "us_per_launch": 2.1,
+      "us_per_token": 38.34
+    },
+    {
+      "family": "qwen35_write_paged_kv_mixed_value_position_tensor_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 2.3,
+      "us_per_token": 34.38
+    },
+    {
+      "family": "qwen35_full_attn_gate_mul_bf16_kernel",
+      "launches_per_token": 15.0,
+      "us_per_launch": 1.6,
+      "us_per_token": 24.26
+    },
+    {
+      "family": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel",
+      "launches_per_token": 5.0,
+      "us_per_launch": 4.4,
+      "us_per_token": 22.18
+    },
+    {
+      "family": "qwen35_split_qgate_bf16_kernel",
+      "launches_per_token": 5.0,
+      "us_per_launch": 3.4,
+      "us_per_token": 17.24
+    },
+    {
+      "family": "q8_0_t16_gemv_kernel",
+      "launches_per_token": 0.94,
+      "us_per_launch": 13.6,
+      "us_per_token": 12.83
+    },
+    {
+      "family": "dflash_commit_chain_i32_kernel",
+      "launches_per_token": 0.62,
+      "us_per_launch": 19.6,
+      "us_per_token": 12.14
+    },
+    {
+      "family": "bf16_to_f32_kernel",
+      "launches_per_token": 5.31,
+      "us_per_launch": 1.8,
+      "us_per_token": 9.72
+    },
+    {
+      "family": "f32_to_bf16_kernel",
+      "launches_per_token": 5.0,
+      "us_per_launch": 1.9,
+      "us_per_token": 9.41
+    },
+    {
+      "family": "__amd_rocclr_copyBuffer",
+      "launches_per_token": 1.62,
+      "us_per_launch": 3.3,
+      "us_per_token": 5.42
+    },
+    {
+      "family": "q4_k_t16_dense_rowtile_col4_gemv_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 12.2,
+      "us_per_token": 3.79
+    },
+    {
+      "family": "gguf_rmsnorm_bf16_f32_weight_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 10.4,
+      "us_per_token": 3.21
+    },
+    {
+      "family": "argmax_rows_stage1_i32_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 8.5,
+      "us_per_token": 2.65
+    },
+    {
+      "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 7.1,
+      "us_per_token": 2.2
+    },
+    {
+      "family": "dflash_accept_chain_i32_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 6.1,
+      "us_per_token": 1.88
+    },
+    {
+      "family": "gguf_q4_k_embedding_bf16_out_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 5.7,
+      "us_per_token": 1.77
+    },
+    {
+      "family": "advance_decode_position_i64_kernel",
+      "launches_per_token": 1.0,
+      "us_per_launch": 1.6,
+      "us_per_token": 1.62
+    },
+    {
+      "family": "argmax_rows_stage2_i32_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 3.5,
+      "us_per_token": 1.09
+    },
+    {
+      "family": "unpack_verify_chain_dynamic_metadata_i64_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 2.3,
+      "us_per_token": 0.7
+    },
+    {
+      "family": "copy_i32_to_i64_kernel",
+      "launches_per_token": 0.31,
+      "us_per_launch": 2.0,
+      "us_per_token": 0.62
+    }
+  ],
+  "date": "2026-09-13",
+  "family_count": 37,
+  "hardware": {
+    "arch": "gfx1100 / RDNA3",
+    "device": "AMD Radeon Pro W7900",
+    "host": "hipEngine-ud worktree"
+  },
+  "kind": "kernel-launch-census",
+  "model": "Qwen3.8-27B-UD-Q4_K_M",
+  "performance_claim": false,
+  "phase": "verifier-window launch census",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "protocol": {
+    "command": null,
+    "steps": 32,
+    "tool": "scripts/gguf_decode_census_summary.py",
+    "tool_protocol": "rocprofv3 --kernel-trace CSV; the tool slices the trailing kernel burst after the last long GPU-idle interval and divides by the step count",
+    "trace": "/tmp/phase8/trace-i13.csv",
+    "trace_bytes": 4704479,
+    "window_kernels": 9854
+  },
+  "provenance_caveats": [
+    "The trace was produced earlier in the same session (iteration 13) and its exact driver command was not recorded, so this satisfies the protocol but not the full command-level evidence requirement.",
+    "The window contains ROWS=3 kernels (gguf_iq4_xs_local32_gemv_kernel<2,3> and <4,3>, gguf_iq_dense_strict_kernel<3,...>), so it is the MTP verifier path rather than the single-row AR decode path.",
+    "The item this was gathered for (the host residual, 1032 calls/step on the AR path) is therefore only partially served: the verifier window is measured at 307.94 launches/token, the AR path is not."
+  ],
+  "schema": 1,
+  "status": "diagnostic",
+  "totals": {
+    "launches_per_token": 307.94,
+    "pure_us_per_token": 11421.98
+  }
+}
