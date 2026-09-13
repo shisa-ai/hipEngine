@@ -457,6 +457,23 @@ Likely investigation order:
   control is 824 calls/step, 4.39 ms/step and 5.33 us per launch), so it is
   launch overhead rather than a synchronization stall. Reducing it means
   fewer, wider launches or replay-side launch elision.
+- [ ] Q8_0 prefill WMMA owner at verifier rows. The 2026-09-13 census shows
+  `gguf_q8_0_t16_prefill_wmma` at **0.86 ms/step (2.0% of the UD-Q4_K_M
+  verifier)** with two instantiations: `gridX=1024, wgX=32` for the
+  `attn_k`/`attn_v` shapes (N=1024, K=5120, 5.571 MB) at 121.0 us/call and
+  `gridX=96, wgX=32` for `ssm_alpha`/`ssm_beta` (N=48, K=5120, 0.261 MB) at
+  71.6 us/call. That is **one wave32 per block, and 32 or 3 blocks total** - at
+  most 1024 threads on a 96-CU part - which is a prefill-sized parallelism
+  running at verifier rows, and it puts the 5.571 MB shape at 46 GB/s and the
+  0.261 MB shape at 3.6 GB/s. The obvious repair is a GEMV owner at these
+  shapes: the same step already runs `q8_0_t16_dual_split_gemv` (128 threads,
+  `gridY=rows`) at 18.2 us/call for the `ssm_alpha`/`ssm_beta` pair. Not yet
+  attempted, and **the first attempt was null**: setting
+  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` left every kernel's ms/step and the
+  985 calls/step unchanged, because `_use_q8_t16_all_rowtile` also requires
+  `in_features == _Q8_T16_QWEN35_ATTN_IN`, which these shapes do not satisfy.
+  A real repair is a dispatch change plus a check that the replacement owner
+  is correct at these shapes.
 - [ ] The t16 decode-versus-rowtile accumulation order (Q4_K 27.4% + Q5_K
   25.7% + Q6_K 8.1% of rank-2 MACs) is the dominant remaining source of
   verification-specific drift: the rows 2-4 t16 rowtile owners are not
