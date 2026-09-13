@@ -37,7 +37,7 @@ import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -641,6 +641,31 @@ def _paired_comparisons(pairs: list[dict[str, object]]) -> dict[str, object]:
     return comparisons
 
 
+def _candidate_mode_note(gate: Mapping[str, object]) -> str:
+    """Describe what the artifact is evidence for, from the gate's own state.
+
+    This used to be a constant saying the pin was empty. That was true while the
+    U6 records were incomplete and false the moment they completed, and a
+    retained artifact that misdescribes itself is worse than one that says
+    nothing. The note is derived so it cannot drift again.
+    """
+
+    gated = gate.get("gated", {}) if isinstance(gate, Mapping) else {}
+    entries = [entry for entry in gated.values() if isinstance(entry, Mapping)]
+    if entries and all(bool(entry.get("pin_complete")) for entry in entries):
+        return (
+            "the U6 admission pin is complete for every measured artifact, so this "
+            "artifact is retained admission evidence. The in-process MTP scope grant "
+            "is kept only so the measurement cannot depend on admission state, and it "
+            "is a no-op once the pin is derived."
+        )
+    return (
+        "the U6 admission pin is empty (the paired_run items are still open), so "
+        "MTP scope is granted in-process and this artifact is diagnostic evidence "
+        "for those items, not a retained admission."
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path)
@@ -732,11 +757,7 @@ def main() -> int:
         "unit": "paired-ud-plain-mtp",
         "protocol": PAIRED_PROTOCOL,
         "u6_gate": gate,
-        "candidate_mode": (
-            "the U6 admission pin is empty (the two paired_run items are still open), so "
-            "MTP scope is granted in-process and this artifact is diagnostic evidence "
-            "for those items, not a retained admission."
-        ),
+        "candidate_mode": _candidate_mode_note(gate),
         "host_note": (
             "single host/GPU by construction; no concurrent GPU work is enforced by "
             "the operator, not by this script"
