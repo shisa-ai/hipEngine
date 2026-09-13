@@ -38,7 +38,20 @@ ARMS["all_numerics_strict"] = {
     for key, value in values.items()
 }
 ARMS["all_flags_strict"] = {}
+ARMS["gdn_flags_strict"] = {}
 OUTLIER = "heldout_general_ja_speculative"
+
+
+def clear_arm_graphs(runner):
+    from hipengine.runtime.moe_graph import MoeGraphCache
+
+    runner.runtime.device_synchronize()
+    for name in ("moe_graph_cache", "layer_graph_cache"):
+        cache = getattr(runner, name, None)
+        if cache is not None:
+            enabled = cache.enabled
+            cache.close()
+            setattr(runner, name, MoeGraphCache(runner.runtime, enabled=enabled))
 
 
 def main():
@@ -88,6 +101,8 @@ def main():
             strict_generator.close()
         strict_close = memory_stats()
         ARMS["all_flags_strict"] = strict_flags
+        ARMS["gdn_flags_strict"] = {key: value for key, value in strict_flags.items()
+                                   if key.startswith(PREFIX + "GDN_")}
         strict_logits = np.stack([r["logits"] for p in prompt_rows for r in strict[p["id"]]])
         report = {
             "kind": "journey_incumbent_family_localization", "status": "running",
@@ -98,7 +113,8 @@ def main():
             "strict_manifest_sha256": strict_profile.manifest_sha256,
             "protocol": {"prefill_prompts": 18, "outlier_decode_steps": 32,
                          "rows": len(descriptors), "chunk": 1024, "kv": "BF16",
-                         "repeats": 1, "task_gate": "not_run"},
+                         "repeats": 1, "task_gate": "not_run",
+                         "graph_cache_reset_per_arm": True},
             "arms": {}, "strict_after_close": strict_close,
         }
         generator, production_profile, _ = _make_generator(args, "production")
@@ -106,6 +122,9 @@ def main():
         bound = {key: os.environ.get(key) for key in controlled}
         try:
             for arm in args.arms:
+                # Family overrides can affect captured nodes beyond the normal
+                # production cache key. Never reuse an earlier arm's graphs.
+                clear_arm_graphs(generator.runner)
                 for key, value in bound.items():
                     if value is None:
                         os.environ.pop(key, None)
