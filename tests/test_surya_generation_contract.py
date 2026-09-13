@@ -185,9 +185,11 @@ def test_vision_tile_plan_is_bounded_by_the_measured_shape_envelope() -> None:
     At 4096 patches the byte budget alone picks a 2730-row tile (1123.42 ms)
     where a 128-row tile runs 874.38 ms, and at 1024 patches the budget admits
     the whole dense matrix (193.54 ms) where a 128-row tile runs 135.52 ms. The
-    envelope that recovers that caps the block at ``max(128, rows/32)`` rows, so
-    the budget stays the binding constraint where it matters: at the 34320-patch
-    A4 page the cap is 1073 rows and the 512 MiB budget still chooses the shape.
+    envelope that recovers those caps the block at ``max(128, rows/32)`` rows
+    whenever the budget alone would leave the grid in two tiles or fewer, so the
+    budget stays the binding constraint where it matters: at the 34320-patch A4
+    page the budget's 325 rows leaves 108 tiles, the cap is never consulted, and
+    the 512 MiB budget still chooses the shape.
     """
 
     from hipengine.runtime.surya import plan_vision_attention
@@ -326,26 +328,65 @@ def test_prefill_tile_plan_uses_one_tile_when_it_fits() -> None:
     assert scratch == heads * tokens * block * 4 <= dense - 1
 
 
-def test_prefill_tile_plan_is_bounded_by_the_measured_shape_envelope() -> None:
-    """The text prefill shares the vision envelope and wavefront multiple."""
+def test_prefill_tile_plan_keeps_the_budget_shape_where_it_already_splits() -> None:
+    """The text prefill keeps the byte budget's own shape above two tiles.
+
+    The text prefill's curve is monotone in the tile count
+    (``benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json``):
+    at 16384 tokens the budget's 1024 rows runs 16.927 s against the vision
+    envelope's 512 rows at 17.436 s (3.0%), and at 8580 tokens 1955 rows runs
+    7.535 s against 256 rows at 7.692 s (2.1%). So the envelope is a small-grid
+    correction, not a global ceiling: it applies only while the budget alone
+    would leave the grid in two tiles or fewer, which is where it does help --
+    at 1024 tokens the budget admits the whole 32 MiB dense matrix and the cap
+    still splits it into 8 tiles.
+    """
 
     from hipengine.runtime.surya import plan_score_tiles
 
     heads = 8
-    # 1024 tokens need 32 MiB dense, well inside the default budget, and the
-    # envelope still splits them into 8 tiles
+    # 1024 tokens: the budget admits the whole dense matrix (one tile), so the
+    # cap applies and splits it into 8
     block, scratch = plan_score_tiles(1024, heads, 512 * _MIB)
     assert block == 128
     assert scratch == heads * 1024 * 128 * 4
-    # the full 16384-token context: the cap is 512 rows, inside the budget
+    # the full 16384-token context: the budget alone leaves 16 tiles, so it
+    # keeps its own 1024 rows
     block, scratch = plan_score_tiles(16384, heads, 512 * _MIB)
-    assert block == 512
-    assert scratch == heads * 16384 * 512 * 4 <= 512 * _MIB
-    # 8580 tokens: the cap is 269 rows, rounded down to 256
+    assert block == 1024
+    assert scratch == heads * 16384 * 1024 * 4 <= 512 * _MIB
+    # 8580 tokens: 5 tiles, 1955 rows rounded down to a wavefront multiple
     block, _ = plan_score_tiles(8580, heads, 512 * _MIB)
-    assert block == 256
+    assert block == 1952
     # and a budget narrower than the envelope still wins
     assert plan_score_tiles(16384, heads, 64 * _MIB)[0] == 128
+
+
+def test_shape_cap_only_overrides_a_budget_that_leaves_two_tiles() -> None:
+    """The envelope is a small-grid correction, not a global ceiling.
+
+    The cap exists because a tile wider than the grid needs starves the batched
+    GEMM of output tiles: at 1024 patches the budget admits the whole dense
+    matrix (193.54 ms) where 128 rows runs 135.52 ms, and at 4096 patches it
+    admits 2730 rows (1123.42 ms) where 128 rows runs 874.38 ms. Both plans are
+    one or two tiles. Where the budget already leaves four or more, its own
+    choice is measured to be at least as good: 6400 patches takes 1747 rows,
+    inside the 1024-4096-row band's 2056-2101 ms against the cap's 192 rows at
+    2130.11 ms, and the 34320-patch A4 page takes 320 rows at 43318 ms. Three
+    tiles is not measured on either path; ``docs/REFACTOR.md`` records it.
+    """
+
+    from hipengine.runtime.surya import plan_score_tiles
+
+    # vision, heads=12: a budget that admits the whole dense matrix is one tile
+    # and is capped to 32
+    assert plan_score_tiles(4096, 12, 12 * 4096 * 4096 * 4)[0] == 128
+    # exactly two tiles is still capped
+    assert plan_score_tiles(4096, 12, 12 * 4096 * 2048 * 4)[0] == 128
+    # three tiles is not, so the budget's width survives (rounded down to 1344)
+    assert plan_score_tiles(4096, 12, 12 * 4096 * 1366 * 4)[0] == 1344
+    # four tiles is not, and 6400 patches keeps the budget's 1747 -> 1728 rows
+    assert plan_score_tiles(6400, 12, 512 * _MIB)[0] == 1728
 
 
 def test_gpu_factory_declares_the_budgets_it_honors() -> None:
@@ -902,6 +943,19 @@ def test_vision_patch_ceiling_inverts_the_time_budget() -> None:
     assert short is not None and estimate(short) <= 1.0
     exact = max(n for n in range(1, 20001) if estimate(n) <= 1.0)
     assert 0.98 * exact <= short <= exact
+
+    # The cap's crossing is the one non-monotone step in the estimate: at the
+    # default budget it stops applying at 4730 patches, where the plan drops
+    # from 37 tiles of 128 rows to 3 of 2336 and the estimate falls 8.3%
+    # (1270.91 -> 1165.67 ms) as the grid grows. A budget inside that window can
+    # make the bisection stop short -- 1.20 s returns 4565 where a brute-force
+    # scan finds 4815 -- but the returned count is still sound, which is what
+    # admission depends on (``check_vision_capacity`` estimates the grid it was
+    # given rather than inverting the ceiling).
+    dip = _admission_runner(max_vision_seconds=1.20)
+    inside = dip.vision_patch_ceiling()
+    assert inside is not None and estimate(inside) <= 1.20
+    assert 4000 < inside < 4815, inside
 
 
 def test_llm_forwards_the_vision_time_budget() -> None:
