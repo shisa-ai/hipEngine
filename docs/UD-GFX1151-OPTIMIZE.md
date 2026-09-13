@@ -443,8 +443,8 @@ Likely investigation order:
   package declares the policy for rows 1-8 under both the plain and the
   UD-preset-extended keys. One block owns one row, so the leaves are
   **byte-identical to their generic counterparts at rows 1/2/3/4/6/8**. The
-  `add_rmsnorm` leaf falls **770.07 -> 328.56 ms/step** (64 calls, 12.03 ->
-  5.13 us per call, -57.3%) and the whole verifier **37.067 -> 36.6206
+  `add_rmsnorm` leaf falls **0.770 -> 0.329 ms/step** (770.07 -> 328.56
+  us/step, 64 calls, 12.03 -> 5.13 us per call, -57.3%) and the whole verifier **37.067 -> 36.6206
   ms/step (-1.21%)** at an unchanged 985 calls/step, and true-AR decode rises
   **31.904 -> 32.750** tok/s (K_M) / **31.303 -> 32.098** (K_S). The
   section-6.1 gate passes on both repeats at mean/p95/p99/max KL 2.503e-05 /
@@ -452,7 +452,7 @@ Likely investigation order:
   category and at every budget. See
   `benchmarks/results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json`.
   The same artifact leaves `gguf_rounded_add_rmsnorm_bf16_f32_weight` as the
-  next lever: 63 calls/step at 13.37 us, 842.38 ms/step (2.3%), with no
+  next lever: 63 calls/step at 13.37 us, 0.842 ms/step (2.3%), with no
   fixed-5120 sibling and no policy table.
 - [ ] Q3_K strict decode. Q3_K has no rows==1 local32 owner, so it has no
   rows 2-4 sibling either; it keeps the strict per-row GEMV. Blocked, not

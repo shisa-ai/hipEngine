@@ -45,46 +45,50 @@
       "avg_kernel_ms": 37.067,
       "avg_host_ms": 42.077,
       "calls_per_step": 985.0,
-      "add_rmsnorm_family_ms_per_step": 770.07,
       "add_rmsnorm_family_calls_per_step": 64.0,
       "add_rmsnorm_family_us_per_call": 12.03,
-      "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel"
+      "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+      "add_rmsnorm_family_us_per_step": 770.07,
+      "add_rmsnorm_family_ms_per_step": 0.7701
     },
     "arm_row_slab": {
       "avg_kernel_ms": 36.6206,
       "avg_host_ms": 41.639,
       "calls_per_step": 985.0,
-      "add_rmsnorm_family_ms_per_step": 328.558,
       "add_rmsnorm_family_calls_per_step": 64.0,
       "add_rmsnorm_family_us_per_call": 5.13,
-      "kernel": "gguf_norm_fixed5120_wave256_kernel<true>"
+      "kernel": "gguf_norm_fixed5120_wave256_kernel<true>",
+      "add_rmsnorm_family_us_per_step": 328.558,
+      "add_rmsnorm_family_ms_per_step": 0.3286
     },
     "family_delta_pct": -57.3,
-    "whole_verifier_delta_ms_per_step": -446.7,
     "whole_verifier_delta_pct": -1.21,
     "unchanged_entries_ms_per_step": {
       "q5_k_t16_dense_rowtile_single_wave_gemv_kernel": [
-        7.925,
-        7.931
+        0.0079,
+        0.0079
       ],
       "gguf_iq4_xs_local32_gemv_kernel<2, 3>": [
-        7.733,
-        7.729
+        0.0077,
+        0.0077
       ],
       "gguf_iq4_xs_local32_gemv_kernel<4, 3>": [
-        3.578,
-        3.58
+        0.0036,
+        0.0036
       ],
       "q4_k_t16_dense_rowtile_gemv_kernel": [
-        4.296,
-        4.282
+        0.0043,
+        0.0043
       ],
       "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel": [
-        0.836,
-        0.842
+        0.0008,
+        0.0008
       ]
     },
-    "note": "Single-arm sequential runs on the same host and session, baseline measured minutes before the change. The 985 calls/step count is identical in both arms, so no launch was added or removed."
+    "note": "Single-arm sequential runs on the same host and session, baseline measured minutes before the change. The 985 calls/step count is identical in both arms, so no launch was added or removed.",
+    "whole_verifier_delta_ms_per_step": -0.4464,
+    "whole_verifier_delta_us_per_step": -446.4,
+    "unit_note": "Family and per-kernel totals are microseconds per step; the whole-step totals are milliseconds per step. The family saving (770.07 - 328.56 = 441.5 us) accounts for the whole-step delta (446.4 us), which is the cross-check that the family figures are us."
   },
   "paired_suite": {
     "command": "scripts/ud_mtp_paired.py --output <path> --runs 2 --device-index 1 --expect-device \"7900 XTX\"",
@@ -150,10 +154,11 @@
   },
   "next_lead": {
     "kernel": "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel",
-    "ms_per_step": 842.38,
     "calls_per_step": 63.0,
     "us_per_call": 13.37,
-    "note": "Separate kernel with no fixed-5120 sibling and no policy table; needs a kRoundSum variant plus a rows-aware resolver at _rounded_add_rmsnorm_fn (qwen35_gguf_runner.py:9079 already knows rows)."
+    "note": "Separate kernel with no fixed-5120 sibling and no policy table; needs a kRoundSum variant plus a rows-aware resolver at _rounded_add_rmsnorm_fn (qwen35_gguf_runner.py:9079 already knows rows).",
+    "us_per_step": 842.38,
+    "ms_per_step": 0.842
   },
   "numerics_gate": {
     "command": "scripts/ud_mtp_ar_verify_numerics_gate.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --json <out>",
