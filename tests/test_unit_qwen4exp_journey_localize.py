@@ -79,3 +79,23 @@ def test_gdn_isolation_keeps_other_families_strict():
     assert arms["strict_plus_gdn_multi"][PREFIX + "GDN_TILE16_VARIANT"] == (
         "qwen4exp_gdn_tiled16_multi_prefill"
     )
+
+
+def test_split_trajectory_reconstructs_prefix_then_switches_without_reset(monkeypatch):
+    import numpy as np
+    from scripts import qwen4exp_journey_localize as module
+
+    calls = []
+    result = SimpleNamespace(logits=np.array([1, 2], dtype=np.float32))
+    runner = SimpleNamespace(
+        reset=lambda: calls.append("reset"),
+        prefill=lambda ids: (calls.append(("prefill", ids)) or result),
+        step=lambda token: (calls.append(("step", token)) or result),
+    )
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: calls.append("clear"))
+    monkeypatch.setattr(module, "set_flags", lambda flags: calls.append(flags))
+    rows = module.split_trajectory(runner, [3, 4], [5, 6], {"pre": "1"}, {"dec": "1"})
+    assert calls == ["clear", {"pre": "1"}, "reset", ("prefill", [3, 4]),
+                     "clear", {"dec": "1"}, ("step", 5), ("step", 6)]
+    assert len(rows) == 3
+    assert not np.shares_memory(rows[0], result.logits)

@@ -47,9 +47,23 @@ ARMS["base_plus_q8_selected_down_strict"] = {
     **ARMS["all_numerics_strict"], **ARMS["q8_selected_down_strict"],
 }
 for name in ("strict_plus_gdn", "strict_plus_gdn_serial",
-             "strict_plus_gdn_multi"):
+             "strict_plus_gdn_multi", "strict_prefill_production_decode",
+             "production_prefill_strict_decode"):
     ARMS[name] = {}
 OUTLIER = "heldout_general_ja_speculative"
+FAMILY_PREFIXES = {
+    "matrix": ("Q4_", "Q51_", "Q5_", "GROUPED_", "FORKB_", "PROFILE_Q5_1_",
+               "PRODUCTION_MOE_", "Q8_0_"),
+    "dense": ("Q8_MMQ_", "Q8_IU8_", "GR_"),
+    "qsa": ("QSA_",),
+}
+for family in FAMILY_PREFIXES:
+    ARMS["strict_plus_" + family] = {}
+    ARMS["q8down_off_without_" + family] = {}
+for flag in ("Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN"):
+    ARMS["strict_plus_" + flag.lower()] = {}
+    ARMS["q8down_off_without_" + flag.lower()] = {
+        **ARMS["q8_selected_down_strict"], PREFIX + flag: "0"}
 
 
 def clear_arm_graphs(runner):
@@ -94,6 +108,29 @@ def gdn_isolation_overrides(strict_flags, production_flags):
             PREFIX + "GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
         },
     }
+
+
+def set_flags(flags):
+    for key, value in flags.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags):
+    # Reconstruct the complete prefix in one runner; snapshots omit KV data.
+    clear_arm_graphs(runner)
+    set_flags(prefill_flags)
+    runner.reset()
+    result = runner.prefill(prompt_ids)
+    logits = [np.array(result.logits, dtype=np.float32, copy=True)]
+    clear_arm_graphs(runner)
+    set_flags(decode_flags)
+    for token in forced_ids:
+        result = runner.step(token)
+        logits.append(np.array(result.logits, dtype=np.float32, copy=True))
+    return logits
 
 
 def main():
@@ -162,6 +199,17 @@ def main():
         }
         generator, production_profile, _ = _make_generator(args, "production")
         ARMS.update(gdn_isolation_overrides(strict_flags, os.environ))
+        for family, prefixes in FAMILY_PREFIXES.items():
+            keys = [key for key in strict_flags
+                    if any(key.startswith(PREFIX + prefix) for prefix in prefixes)]
+            ARMS["strict_plus_" + family] = {
+                **strict_flags, **{key: os.environ.get(key) for key in keys}}
+            ARMS["q8down_off_without_" + family] = {
+                **ARMS["q8_selected_down_strict"],
+                **{key: strict_flags[key] for key in keys}}
+        for flag in ("Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN"):
+            ARMS["strict_plus_" + flag.lower()] = {
+                **strict_flags, PREFIX + flag: "1"}
         controlled = set(key for values in ARMS.values() for key in values)
         bound = {key: os.environ.get(key) for key in controlled}
         try:
@@ -178,10 +226,25 @@ def main():
                 candidate = []
                 for row in prompt_rows:
                     key = row["id"]
-                    run = _candidate_trajectory(generator.runner, tokens[key],
-                                                [r["token_id"] for r in strict[key][:-1]])
-                    candidate.extend(r["logits"] for r in run)
-                quality = compare_profile_logits(strict_logits, np.stack(candidate), descriptors)
+                    forced = [r["token_id"] for r in strict[key][:-1]]
+                    if arm in ("strict_prefill_production_decode",
+                               "production_prefill_strict_decode"):
+                        pre, dec = ({**bound, **strict_flags}, bound)
+                        if arm == "production_prefill_strict_decode":
+                            pre, dec = dec, pre
+                        candidate.extend(split_trajectory(
+                            generator.runner, tokens[key], forced, pre, dec))
+                    else:
+                        run = _candidate_trajectory(generator.runner, tokens[key], forced)
+                        candidate.extend(r["logits"] for r in run)
+                candidate_logits = np.stack(candidate)
+                quality = compare_profile_logits(strict_logits, candidate_logits, descriptors)
+                quality["all_rows"] = [
+                    {**descriptor.to_dict(), **compare_profile_logits(
+                        strict_logits[i:i + 1], candidate_logits[i:i + 1],
+                        [descriptor])["summary"]}
+                    for i, descriptor in enumerate(descriptors)
+                ]
                 report["arms"][arm] = {"overrides": ARMS[arm], "quality": quality}
                 args.output.write_text(json.dumps(report, indent=2) + "\n")
                 print(arm, quality["summary"], flush=True)
