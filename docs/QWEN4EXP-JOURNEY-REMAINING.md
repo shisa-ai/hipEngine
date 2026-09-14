@@ -76,3 +76,10 @@ the column-warp recurrence changes reduction association.
 Earlier captures preserve their original T1 metadata for provenance. This
 classification correction changes no numerical limit, recorded result or
 task verdict; both classes require the full production gate.
+
+R04's generic `Q8_IU8_WMM` switch can also cover Q8 GR-down through
+`launch_gguf_linear` when the dedicated `GR_IU8_DOWN` switch is off. A CPU
+selector test confirms the K10240/N320 route activates above256 rows.
+Therefore R04 and R06 are not disjoint merely because their flag names differ.
+Count actual kernel calls by shape/role; label generic coverage honestly or
+use an explicit, counted role exclusion when independent attribution needs it.
