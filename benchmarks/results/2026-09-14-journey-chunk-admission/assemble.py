@@ -13,7 +13,8 @@ from scripts.qwen4exp_chunk_memory_probe import allocation_margins
 def assemble(root):
     packets, hashes = {}, {}
     for name in ("resume-chunk2048-allocation.json", "resume-chunk2048-lazy-allocation.json",
-                 "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json"):
+                 "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json",
+                 "resume-chunk-workspace-check.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -76,6 +77,18 @@ def assemble(root):
         size = 1024 if trace["arm"] == "strict" else 2048
         if trace["chunks"] != [min(size, tokens - start) for start in range(0, tokens, size)]:
             raise ValueError("wrong executed chunk split")
+    workspace = packets["resume-chunk-workspace-check.json"]
+    check = workspace["workspace_check"]
+    if (workspace["status"] != "workspace_check_passed" or not workspace["source"]["tracked_clean"]
+            or not check["logits_exact"] or not check["state_exact"]
+            or check["rows"] != 5 or workspace["after_close"]["current_allocated_bytes"]
+            or check["native_chunks"] != [1024] * 4
+            or check["borrowed_chunks"] != [1024] * 4):
+        raise ValueError("workspace borrowing equivalence failed")
+    for arm, size in (("before", 1024), ("production_baseline", 2048)):
+        description = workspace["workspaces"][arm]
+        if any(description[key] != size for key in ("chunk_size", "token_capacity", "metadata_rows")):
+            raise ValueError("workspace is not correctly sized")
     return dict(
         schema=1, performance_claim=False, promotion_claim=False,
         inference_scope="Canonical 512/1K/4K,64 teacher-forced decode steps,three repeats only",
