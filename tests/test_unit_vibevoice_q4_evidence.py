@@ -15,6 +15,7 @@ Each test pins a defect that was found by review and fixed:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -28,13 +29,29 @@ from scripts import vibevoice_asr_to_gguf as to_gguf  # noqa: E402
 from scripts.vibevoice_asr_wer import (  # noqa: E402
     _transcription_only,
     _wer,
+    _wer_content,
     _wer_pct,
+    _wer_pct_content,
     parse_transcript,
 )
 
 
+def _has_jiwer() -> bool:
+    try:
+        import jiwer  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# Scoring needs jiwer, which ships with the benchmark extra rather than the
+# package; the parser/merge/cache tests below must run without it.
+requires_jiwer = pytest.mark.skipif(not _has_jiwer(), reason="needs jiwer")
+
+
 # --- WER unit -----------------------------------------------------------
 
+@requires_jiwer
 def test_wer_is_a_fraction_and_wer_pct_is_its_percentage():
     refs = ["the quick brown fox jumps"]
     hyps = ['[{"Content": "the quick brown fox jumped"}]']
@@ -45,11 +62,34 @@ def test_wer_is_a_fraction_and_wer_pct_is_its_percentage():
     assert _wer_pct(refs, hyps) == 100.0 * fraction
 
 
+@requires_jiwer
 def test_wer_perfect_transcript_is_zero_in_both_units():
     refs = ["hello world"]
     hyps = ['[{"Content": "hello world"}]']
     assert _wer(refs, hyps) == 0.0
     assert _wer_pct(refs, hyps) == 0.0
+
+
+def test_extracted_content_is_not_reparsed():
+    """_wer takes raw model output; _wer_content takes extracted text.
+
+    Scoring an already-extracted transcript through _wer() re-parses it as
+    JSON and raises, which broke the per-clip records.
+    """
+    raw = '[{"Content": "hello world"}]'
+    content, status = parse_transcript(raw)
+    assert status == "ok" and content == "hello world"
+    with pytest.raises(ValueError):
+        _wer(["hello world"], [content])
+
+
+@requires_jiwer
+def test_extracted_content_scores_without_reparsing():
+    raw = '[{"Content": "hello world"}]'
+    content, _ = parse_transcript(raw)
+    assert _wer(["hello world"], [raw]) == 0.0
+    assert _wer_content(["hello world"], [content]) == 0.0
+    assert _wer_pct_content(["hello world"], [content]) == 0.0
 
 
 # --- transcript parsing -------------------------------------------------
@@ -59,6 +99,17 @@ def test_parse_transcript_reports_status():
     assert parse_transcript("plain text")[1] == "no_json"
     assert parse_transcript('[{"Content": "a"') [1] == "bad_json"
     assert parse_transcript('{"Content": "a"}')[1] == "no_json"
+
+
+def test_content_outside_the_array_is_not_ok():
+    """Only the assistant role prefix may sit outside the JSON array."""
+    good = '[{"Content": "hello world"}]'
+    assert parse_transcript(good)[1] == "ok"
+    assert parse_transcript("assistant\n" + good)[1] == "ok"
+    assert parse_transcript("<|im_start|>assistant\n" + good)[1] == "ok"
+    assert parse_transcript("garbage " + good)[1] == "no_json"
+    assert parse_transcript(good + " trailing")[1] == "bad_json"
+    assert parse_transcript(good + " trailing")[1] != "ok"
 
 
 def test_malformed_transcript_raises_in_strict_mode():
@@ -194,8 +245,51 @@ def test_merge_rejects_non_bf16_encoder(tmp_path):
                               _ModelInfo([_Tensor("ate.blk.0.ffn.weight", 1)]))
 
 
-def test_merge_rejects_architecture_mismatch(tmp_path):
+def test_merge_accepts_llama_backbone_with_vibevoice_export(tmp_path):
+    """The real pipeline pairs a llama-quantize backbone with a BF16 export.
+
+    Requiring equal architectures rejected the pipeline's own inputs.
+    """
     backbone, full = _files(tmp_path)
-    with pytest.raises(SystemExit, match="architecture mismatch"):
-        merge.validate_inputs(backbone, full, _ModelInfo(_backbone_tensors(), "llama"),
+    merge.validate_inputs(backbone, full, _ModelInfo(_backbone_tensors(), "llama"),
+                          _ModelInfo([_Tensor("ate.blk.0.ffn.weight", 30)]))
+    merge.validate_inputs(backbone, full, _ModelInfo(_backbone_tensors(), "vibevoice-asr"),
+                          _ModelInfo([_Tensor("ate.blk.0.ffn.weight", 30)]))
+
+
+def test_merge_rejects_unexpected_backbone_architecture(tmp_path):
+    backbone, full = _files(tmp_path)
+    with pytest.raises(SystemExit, match="backbone architecture"):
+        merge.validate_inputs(backbone, full, _ModelInfo(_backbone_tensors(), "qwen2"),
                               _ModelInfo([_Tensor("ate.blk.0.ffn.weight", 30)]))
+
+
+def test_merge_rejects_non_vibevoice_full_export(tmp_path):
+    backbone, full = _files(tmp_path)
+    with pytest.raises(SystemExit, match="full-bf16 architecture"):
+        merge.validate_inputs(backbone, full, _ModelInfo(_backbone_tensors(), "llama"),
+                              _ModelInfo([_Tensor("ate.blk.0.ffn.weight", 30)], "llama"))
+
+
+# --- full driver request cache -----------------------------------------
+
+def test_request_cache_revalidates_against_run_parameters(tmp_path):
+    """A stale request must not be reused after seed/model/audio changes."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "wer_full", Path(__file__).resolve().parents[1] / "scripts" / "vibevoice_asr_wer_full.py")
+    driver = importlib.util.module_from_spec(spec)
+    sys.modules["wer_full"] = driver
+    spec.loader.exec_module(driver)
+
+    sidecar = tmp_path / "clip.json"
+    key = driver._cache_key(20260914, "/model", 256, "audio-hash")
+    sidecar.write_text(json.dumps(key))
+    assert driver._cache_is_current(sidecar, key)
+    for changed in (driver._cache_key(1, "/model", 256, "audio-hash"),
+                    driver._cache_key(20260914, "/other", 256, "audio-hash"),
+                    driver._cache_key(20260914, "/model", 256, "other-audio"),
+                    driver._cache_key(20260914, "/model", 512, "audio-hash")):
+        assert not driver._cache_is_current(sidecar, changed)
+    assert not driver._cache_is_current(tmp_path / "absent.json", key)
