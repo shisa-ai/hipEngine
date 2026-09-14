@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
 """A/B the native and Python orchestration of the two-rank staged exchange.
 
-Both arms implement the same protocol with the same dependency structure and
-completion boundaries: both device-to-host copies submitted before either wait,
-two host waits per reduction, a host sum, both return copies submitted with no
-wait, and one drain per chain. The Python arm is
-``scripts/tp_collective_bench.py``'s ``staged_exchange_batched``; the native arm
-is ``benchmarks/micro/runners/hip_staged_exchange.hip``.
+Both arms run in this process, at the same depths and payload, with balanced
+repetitions, and the comparison is only reported as matched when both arms agree
+on the payload, the depth ladder, the protocol and the physical devices, and when
+each arm's source is pinned by hash. Until then the native figure is a screen and
+the ratio is provisional.
 
-The comparison is on total latency and on the same ladder slope, not on presumed
-savings. Phase counters from each arm are reported side by side because they are
-*not* transferable: earlier submission changes the exposed wait, so a phase that
-shrinks in one arm can grow in the other.
+The Python arm is ``scripts/tp_collective_bench.py``'s
+``staged_exchange_batched``; the native arm is
+``benchmarks/micro/runners/hip_staged_exchange.hip``. They implement the same
+protocol: both device-to-host copies submitted before either wait, two host waits
+per reduction, a host reduction, both return copies submitted with no wait, and
+one drain per chain.
+
+Phase counters from the two arms are reported side by side because they are *not*
+transferable: earlier submission changes the exposed wait, so a phase that
+shrinks in one arm can grow in the other. Compare totals.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import math
 import os
 import shlex
-import shutil
+import statistics
 import subprocess
 import sys
 import time
@@ -31,8 +36,46 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE_SOURCE = REPO_ROOT / "benchmarks" / "micro" / "runners" / "hip_staged_exchange.hip"
+PYTHON_SOURCE = REPO_ROOT / "scripts" / "tp_collective_bench.py"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-tp2-native-staged-exchange")
 DEFAULT_DEPTHS = (1, 4, 16, 32, 64, 128)
+
+#: The native runner reports its protocol as this string; the Python arm reports
+#: ``batched``. They must describe the same structure before a comparison is
+#: reported as matched.
+NATIVE_PROTOCOL = "batched: both D2H submitted before either wait, no return wait"
+PYTHON_PROTOCOL = "batched"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_commit() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True
+    )
+    return completed.stdout.strip() or "unknown"
+
+
+def _visible_device_names(environment: dict[str, str]) -> list[str]:
+    """The physical cards this process can see, in visible order."""
+
+    import ctypes
+
+    try:
+        library = ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return []
+    count = ctypes.c_int()
+    if library.hipGetDeviceCount(ctypes.byref(count)) != 0:
+        return []
+    names: list[str] = []
+    for index in range(count.value):
+        buffer = ctypes.create_string_buffer(256)
+        if library.hipDeviceGetName(buffer, 256, index) == 0:
+            names.append(buffer.value.decode("utf-8", "replace"))
+    return names
 
 
 def _build(source: Path, build_dir: Path, arch: str, *, require_cached: bool) -> Path:
@@ -41,26 +84,14 @@ def _build(source: Path, build_dir: Path, arch: str, *, require_cached: bool) ->
     if require_cached and not exe.exists():
         raise SystemExit(f"require_cached set but {exe} is missing; build it first")
     if not exe.exists() or exe.stat().st_mtime < source.stat().st_mtime:
-        command = [
-            "hipcc",
-            "-O2",
-            f"--offload-arch={arch}",
-            str(source),
-            "-o",
-            str(exe),
-        ]
+        command = ["hipcc", "-O2", f"--offload-arch={arch}", str(source), "-o", str(exe)]
         print(f"$ {shlex.join(command)}", file=sys.stderr)
         subprocess.run(command, check=True)
     return exe
 
 
 def _run_native(
-    exe: Path,
-    *,
-    depth: int,
-    count: int,
-    iterations: int,
-    warmup: int,
+    exe: Path, *, depth: int, count: int, iterations: int, warmup: int
 ) -> dict[str, Any]:
     command = [
         str(exe),
@@ -75,11 +106,110 @@ def _run_native(
     ]
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
-        return {
+        payload: dict[str, Any] = {
             "error": f"exit {completed.returncode}",
             "stderr": completed.stderr[-2000:],
         }
+        # The runner prints its report before it exits non-zero on a failed check,
+        # so keep the verification detail when there is one.
+        try:
+            payload["report"] = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            pass
+        return payload
     return json.loads(completed.stdout)
+
+
+def _native_verification_ok(entry: dict[str, Any]) -> bool:
+    """Both recurrences must hold: bounded always, sum wherever it is exact."""
+
+    verification = entry.get("verification") or {}
+    bounded = verification.get("bounded") or {}
+    summed = verification.get("sum") or {}
+    if not bounded.get("exact") or not bounded.get("finite"):
+        return False
+    if summed.get("informative"):
+        return bool(summed.get("finite") and summed.get("exact"))
+    # Otherwise the closed form overflows fp32 at this depth and the nonfinite
+    # values are expected rather than a failure.
+    return bool(summed.get("saturation_expected"))
+
+
+def _run_python_arm(
+    *, depths: list[int], count: int, iterations: int, warmup: int, seed: float, timeout_s: float
+) -> dict[str, Any]:
+    """Run the Python arm in this process, at the same depths and payload."""
+
+    import importlib.util
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.distributed.plan import DistributedPlan
+    from hipengine.distributed.rccl import RcclTransport
+
+    spec = importlib.util.spec_from_file_location("tp_collective_bench_arm", PYTHON_SOURCE)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load the Python arm from {PYTHON_SOURCE}")
+    bench = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = bench
+    spec.loader.exec_module(bench)
+
+    runtime = get_hip_runtime()
+    case = bench.Case(op="all_reduce", rows=1, dtype="fp32", hidden_size=count)
+    if case.count != count:
+        raise RuntimeError(f"case count {case.count} does not match --count {count}")
+    plan = DistributedPlan.resolve([0, 1], hidden_size=count, algorithm="rccl")
+    transport = RcclTransport(
+        [rank.device for rank in plan.ranks], runtime=runtime, init_timeout_s=timeout_s
+    )
+    world = transport.world_size
+    work = [malloc(case.payload_bytes, device=Device("hip", rank)) for rank in range(world)]
+    scratch = [malloc(case.payload_bytes, device=Device("hip", rank)) for rank in range(world)]
+    try:
+        # The whole ladder in one call: the dependency verdict and the deepest
+        # informative depth are properties of the ladder, so a per-depth invocation
+        # would report them against a single point (and depth 1 can never
+        # demonstrate compounding, since its value *is* the single-step value).
+        entry = bench._measure_staged_exchange_chain(
+            transport=transport,
+            runtime=runtime,
+            case=case,
+            buffers=(work, scratch),
+            depths=tuple(depths),
+            iterations=iterations,
+            warmup=warmup,
+            seed=seed,
+            protocol=PYTHON_PROTOCOL,
+            instrumented=False,
+        )
+        results: dict[str, Any] = {
+            "protocol": entry.get("protocol"),
+            "host_waits_per_reduction": entry.get("host_waits_per_reduction"),
+            "depends_on_every_step": entry.get("depends_on_every_step"),
+            "dependency_carried_by": entry.get("dependency_carried_by"),
+            "dependency_verdict_depth": entry.get("dependency_verdict_depth"),
+            "vector_check": entry.get("vector_check"),
+            "marginal": entry.get("marginal"),
+            "depths": {},
+        }
+        for depth in depths:
+            measured = entry.get("depths", {}).get(str(depth), {})
+            # ``p50_ms`` is the median whole-chain time at this depth, which is the
+            # quantity the native runner reports as ``total_median_us``; the entry's
+            # ``per_step_us`` is that divided by the depth.
+            p50_ms = measured.get("p50_ms")
+            results["depths"][str(depth)] = {
+                "value_check_informative": measured.get("value_check_informative"),
+                "final_value_matches": measured.get("final_value_matches"),
+                "observed_final_value": measured.get("observed_final_value"),
+                "total_median_us": (float(p50_ms) * 1e3) if p50_ms is not None else None,
+                "per_step_us": measured.get("per_step_us"),
+            }
+        return results
+    finally:
+        for buffer in (*work, *scratch):
+            free(buffer)
 
 
 def _marginal(points: list[tuple[int, float]]) -> dict[str, Any]:
@@ -98,100 +228,245 @@ def _marginal(points: list[tuple[int, float]]) -> dict[str, Any]:
     }
 
 
+def _depth_total(arm: dict[str, Any], depth: int, key: str) -> float | None:
+    entry = arm.get("depths", {}).get(str(depth)) or {}
+    value = entry.get(key)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--depths", default=",".join(str(d) for d in DEFAULT_DEPTHS))
     parser.add_argument("--count", type=int, default=5120)
     parser.add_argument("--iterations", type=int, default=30)
     parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument(
+        "--reps",
+        type=int,
+        default=2,
+        help="balanced repetitions; each rep runs both arms at every depth, alternating order",
+    )
+    parser.add_argument("--seed", type=float, default=1.0)
+    parser.add_argument("--timeout-s", type=float, default=120.0)
     parser.add_argument("--arch", default="gfx1100")
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
     parser.add_argument("--require-cached", action="store_true")
     parser.add_argument(
-        "--python-artifact",
-        type=Path,
-        default=REPO_ROOT / "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
-        help="the Python arm's chain report to compare against",
+        "--python-only",
+        action="store_true",
+        help="run only the Python arm, for a provenance-matched control on its own",
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
     depths = [int(value) for value in args.depths.split(",") if value.strip()]
-    exe = _build(NATIVE_SOURCE, args.build_dir, args.arch, require_cached=args.require_cached)
+    if args.reps < 1:
+        raise SystemExit("--reps must be at least 1")
+    environment = dict(os.environ)
+    device_names = _visible_device_names(environment)
 
-    native_points: list[tuple[int, float]] = []
-    native: dict[str, Any] = {}
-    for depth in depths:
-        result = _run_native(
-            exe,
-            depth=depth,
-            count=args.count,
-            iterations=args.iterations,
-            warmup=args.warmup,
-        )
-        native[str(depth)] = result
-        if "error" in result:
-            print(f"native depth {depth} failed: {result['error']}", file=sys.stderr)
-            continue
-        native_points.append((depth, float(result["total_median_us"])))
+    exe = None if args.python_only else _build(
+        NATIVE_SOURCE, args.build_dir, args.arch, require_cached=args.require_cached
+    )
 
-    native_marginal = _marginal(native_points)
+    # Balanced: each repetition runs both arms at every depth, alternating which
+    # goes first, so a slow drift in machine state cannot land on one arm.
+    python_samples: dict[int, list[float]] = {depth: [] for depth in depths}
+    native_samples: dict[int, list[float]] = {depth: [] for depth in depths}
+    python_entries: dict[int, dict[str, Any]] = {}
+    native_entries: dict[int, dict[str, Any]] = {}
+    python_ladder: dict[str, Any] = {}
+    errors: list[str] = []
 
-    python_arm: dict[str, Any] = {}
-    if args.python_artifact.exists():
-        artifact = json.loads(args.python_artifact.read_text())
+    def run_python_ladder() -> None:
         try:
-            chain = artifact["collective"]["cases"]["all_reduce:rows1:fp32"]["dependent_chain"]
-            python_arm = chain["modes"]["staged_exchange_batched"]
-            # The performance arm is deliberately uninstrumented, so the phase
-            # breakdown comes from the attribution arm, which is a different and
-            # slower measurement of the same protocol.
-            python_instrumented = chain["modes"]["staged_exchange_instrumented"]
-        except KeyError as error:
-            python_arm = {"error": f"could not read the batched arm: {error}"}
-            python_instrumented = {}
+            result = _run_python_arm(
+                depths=depths,
+                count=args.count,
+                iterations=args.iterations,
+                warmup=args.warmup,
+                seed=args.seed,
+                timeout_s=args.timeout_s,
+            )
+        except Exception as error:  # noqa: BLE001 - reported, not raised
+            errors.append(f"python: {error!r}")
+            return
+        python_ladder.clear()
+        python_ladder.update(result)
+        for ladder_depth in depths:
+            python_entries[ladder_depth] = {
+                **result["depths"][str(ladder_depth)],
+                "protocol": result.get("protocol"),
+                "host_waits_per_reduction": result.get("host_waits_per_reduction"),
+                "depends_on_every_step": result.get("depends_on_every_step"),
+                "vector_check": result.get("vector_check"),
+            }
+            total = _depth_total(result, ladder_depth, "total_median_us")
+            if total is not None:
+                python_samples[ladder_depth].append(total)
 
-    python_marginal = (python_arm.get("marginal") or {}).get("overall_us_per_step")
-    native_marginal_us = native_marginal.get("overall_us_per_step")
-    ratio = None
-    if python_marginal and native_marginal_us:
-        ratio = python_marginal / native_marginal_us
+    def run_native_ladder() -> None:
+        if exe is None:
+            return
+        for ladder_depth in depths:
+            result = _run_native(
+                exe,
+                depth=ladder_depth,
+                count=args.count,
+                iterations=args.iterations,
+                warmup=args.warmup,
+            )
+            if "error" in result:
+                errors.append(f"native depth {ladder_depth}: {result['error']}")
+                continue
+            native_entries[ladder_depth] = result
+            total = result.get("total_median_us")
+            if isinstance(total, (int, float)):
+                native_samples[ladder_depth].append(float(total))
+
+    # Balanced: each repetition runs both arms over the whole ladder, alternating
+    # which goes first, so a slow drift in machine state cannot land on one arm.
+    for rep in range(args.reps):
+        order = (run_python_ladder, run_native_ladder)
+        if rep % 2:
+            order = tuple(reversed(order))
+        for runner in order:
+            runner()
+
+    python_medians = {
+        depth: statistics.median(values) for depth, values in python_samples.items() if values
+    }
+    # The ladder-level dependency verdict, taken from the last Python repetition.
+    python_dependency = python_ladder.get("depends_on_every_step") if python_ladder else None
+    native_medians = {
+        depth: statistics.median(values) for depth, values in native_samples.items() if values
+    }
+    python_marginal = _marginal(sorted(python_medians.items()))
+    native_marginal = _marginal(sorted(native_medians.items()))
+
+    # Provenance and protocol agreement, checked rather than assumed.
+    python_count = None
+    python_payload = None
+    for entry in python_entries.values():
+        summary = entry.get("summary") or {}
+        if isinstance(summary, dict):
+            python_payload = python_payload or summary.get("payload_bytes")
+    native_counts = {entry.get("count") for entry in native_entries.values()}
+    native_payloads = {entry.get("payload_bytes") for entry in native_entries.values()}
+    native_protocols = {entry.get("protocol") for entry in native_entries.values()}
+    python_protocols = {entry.get("protocol") for entry in python_entries.values()}
+    native_verified = {
+        _native_verification_ok(entry) for entry in native_entries.values()
+    }
+    match = {
+        "count": (
+            bool(native_counts) and native_counts == {args.count}
+        ),
+        "payload_bytes": (
+            bool(native_payloads) and native_payloads == {args.count * 4}
+        ),
+        "depths": (
+            sorted(python_samples) == sorted(native_samples) == sorted(depths)
+            and all(python_samples[depth] and native_samples[depth] for depth in depths)
+        ),
+        "protocol": (
+            python_protocols == {PYTHON_PROTOCOL} and native_protocols == {NATIVE_PROTOCOL}
+        ),
+        "python_dependency_check": python_dependency is True,
+        "native_verification": native_verified == {True},
+        "balanced_repetitions": all(
+            len(python_samples[depth]) == args.reps and len(native_samples[depth]) == args.reps
+            for depth in depths
+        ),
+        "two_devices": len(device_names) >= 2,
+    }
+    matched = all(match.values())
+    python_us = python_marginal.get("overall_us_per_step")
+    native_us = native_marginal.get("overall_us_per_step")
+    ratio = (python_us / native_us) if python_us and native_us else None
 
     report: dict[str, Any] = {
         "schema_version": 1,
         "kind": "tp2-staged-exchange-native-ab",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "protocol": "batched: both D2H before either wait, no return wait, one drain per chain",
+        "protocol": NATIVE_PROTOCOL,
         "count": args.count,
         "payload_bytes": args.count * 4,
         "depths": depths,
         "iterations": args.iterations,
         "warmup": args.warmup,
+        "reps": args.reps,
         "arch": args.arch,
-        "native": native,
-        "native_marginal": native_marginal,
-        "python_arm": {
-            "source": str(args.python_artifact.relative_to(REPO_ROOT))
-            if args.python_artifact.exists()
-            else None,
-            "marginal_us_per_step": python_marginal,
-            "instrumented_marginal_us_per_step": (python_instrumented.get("marginal") or {}).get(
-                "overall_us_per_step"
-            ),
-            "phases_per_step_us": python_instrumented.get("phases_per_step_us"),
-            "vector_check": python_arm.get("vector_check"),
-            "copy_probe": python_arm.get("copy_probe"),
+        "provenance": {
+            "git_commit": _git_commit(),
+            "python_arm": {
+                "path": str(PYTHON_SOURCE.relative_to(REPO_ROOT)),
+                "sha256": _sha256(PYTHON_SOURCE),
+                "entry_point": "staged_exchange_batched",
+            },
+            "native_arm": {
+                "path": str(NATIVE_SOURCE.relative_to(REPO_ROOT)),
+                "sha256": _sha256(NATIVE_SOURCE),
+                "binary_sha256": _sha256(exe) if exe else None,
+                "compile_flags": ["-O2", f"--offload-arch={args.arch}"],
+            },
+            "devices": {
+                "hip_visible_devices": environment.get("HIP_VISIBLE_DEVICES", ""),
+                "visible_names": device_names,
+            },
         },
+        "arms": {
+            "python": {
+                "ladder": {
+                    "depends_on_every_step": python_dependency,
+                    "dependency_carried_by": python_ladder.get("dependency_carried_by"),
+                    "dependency_verdict_depth": python_ladder.get("dependency_verdict_depth"),
+                    "vector_check": python_ladder.get("vector_check"),
+                    "marginal": python_ladder.get("marginal"),
+                },
+                "depths": {
+                    str(depth): {
+                        "total_median_us": python_medians.get(depth),
+                        "samples_us": python_samples[depth],
+                        **python_entries.get(depth, {}),
+                    }
+                    for depth in depths
+                },
+                "marginal": python_marginal,
+            },
+            "native": {
+                "depths": {
+                    str(depth): {
+                        "total_median_us": native_medians.get(depth),
+                        "samples_us": native_samples[depth],
+                        **native_entries.get(depth, {}),
+                    }
+                    for depth in depths
+                },
+                "marginal": native_marginal,
+            },
+        },
+        "provenance_match": match,
         "comparison": {
-            "python_us_per_step": python_marginal,
-            "native_us_per_step": native_marginal_us,
+            "python_us_per_step": python_us,
+            "native_us_per_step": native_us,
             "python_over_native": ratio,
-            "basis": "ladder slope over the same depths, same protocol, same payload",
+            "balanced_reps": args.reps,
+            "matched": matched,
+            "provisional": not matched,
+            "provisional_reason": (
+                None
+                if matched
+                else "unmatched: " + ", ".join(sorted(k for k, v in match.items() if not v))
+            ),
+            "basis": "both arms rerun in one session, same depths, same payload, "
+            "alternating order per repetition, ladder slope over the depth medians",
             "phase_counters_are_not_transferable": (
                 "earlier submission changes the exposed wait, so a phase that "
                 "shrinks in one arm can grow in the other; compare totals"
             ),
         },
+        "errors": errors,
     }
 
     text = json.dumps(report, indent=2, sort_keys=False) + "\n"
@@ -202,12 +477,15 @@ def main() -> int:
     else:
         print(text)
 
+    label = "matched" if matched else "PROVISIONAL"
     print(
-        f"python {python_marginal} us/step vs native {native_marginal_us} us/step"
-        + (f" -> {ratio:.3f}x" if ratio else ""),
+        f"[{label}] python {python_us and round(python_us, 2)} us/step vs "
+        f"native {native_us and round(native_us, 2)} us/step"
+        + (f" -> {ratio:.3f}x" if ratio else "")
+        + ("" if matched else f" ({report['comparison']['provisional_reason']})"),
         file=sys.stderr,
     )
-    return 0
+    return 0 if not errors else 1
 
 
 if __name__ == "__main__":

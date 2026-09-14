@@ -204,30 +204,72 @@ def test_dependent_chain_marginal_rejects_an_unknown_case(tmp_path: pathlib.Path
 
 
 def _native_ab_artifact(
-    path: pathlib.Path, *, marginal: float = 20.8, exact: bool = True
+    path: pathlib.Path,
+    *,
+    marginal: float = 20.5,
+    bounded_exact: bool = True,
+    sum_exact: bool = True,
+    sum_informative: bool = True,
+    saturation_expected: bool = False,
+    provisional: bool = False,
 ) -> pathlib.Path:
+    def verification() -> dict[str, object]:
+        return {
+            "bounded": {"exact": bounded_exact, "finite": True},
+            "sum": {
+                "informative": sum_informative,
+                "exact": sum_exact,
+                "finite": sum_informative,
+                "saturation_expected": saturation_expected,
+            },
+        }
+
     payload = {
         "kind": "tp2-staged-exchange-native-ab",
         "payload_bytes": 20480,
         "protocol": "batched: both D2H before either wait, no return wait",
-        "native_marginal": {"overall_us_per_step": marginal},
-        "native": {
-            "1": {"verification": {"exact": exact}},
-            "128": {"verification": {"exact": exact}},
+        "arms": {
+            "native": {
+                "marginal": {"overall_us_per_step": marginal},
+                # Depth 128 is the saturating case: the timed recurrence's closed
+                # form overflows fp32 there, which is reported rather than passed.
+                "depths": {
+                    "1": {"verification": verification()},
+                    "128": {
+                        "verification": {
+                            "bounded": {"exact": bounded_exact, "finite": True},
+                            "sum": {
+                                "informative": sum_informative,
+                                "exact": sum_exact,
+                                "finite": sum_informative,
+                                "saturation_expected": saturation_expected,
+                            },
+                        }
+                    },
+                },
+            }
         },
-        "comparison": {"python_us_per_step": 40.9, "python_over_native": 40.9 / marginal},
+        "provenance_match": {"balanced_repetitions": not provisional},
+        "provenance": {"git_commit": "deadbeef"},
+        "comparison": {
+            "python_us_per_step": 40.0,
+            "python_over_native": 40.0 / marginal,
+            "provisional": provisional,
+        },
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
 def test_native_ab_marginal_is_read_from_its_artifact(tmp_path: pathlib.Path, mod) -> None:
-    source = _native_ab_artifact(tmp_path / "native.json", marginal=20.8)
+    source = _native_ab_artifact(tmp_path / "native.json", marginal=20.5)
     record = mod.read_native_ab_marginal(source)
-    assert record["marginal_us_per_step"] == pytest.approx(20.8)
+    assert record["marginal_us_per_step"] == pytest.approx(20.5)
     assert record["depends_on_every_step"] is True
-    assert record["python_arm_us_per_step"] == pytest.approx(40.9)
+    assert record["python_arm_us_per_step"] == pytest.approx(40.0)
     assert record["payload_bytes"] == 20480
+    assert record["comparison_provisional"] is False
+    assert record["git_commit"] == "deadbeef"
 
 
 def test_native_ab_marginal_requires_every_depth_to_verify(
@@ -235,9 +277,42 @@ def test_native_ab_marginal_requires_every_depth_to_verify(
 ) -> None:
     """An unverified depth means the chain may not have compounded."""
 
-    source = _native_ab_artifact(tmp_path / "native.json", exact=False)
+    source = _native_ab_artifact(tmp_path / "native.json", bounded_exact=False)
     with pytest.raises(ValueError, match="did not verify"):
         mod.read_native_ab_marginal(source)
+
+
+def test_native_ab_marginal_rejects_a_failed_timed_recurrence(
+    tmp_path: pathlib.Path, mod
+) -> None:
+    """The bounded check passing is not enough: the timed path must hold too."""
+
+    source = _native_ab_artifact(
+        tmp_path / "native.json", sum_exact=False, saturation_expected=False
+    )
+    with pytest.raises(ValueError, match="did not verify"):
+        mod.read_native_ab_marginal(source)
+
+
+def test_native_ab_marginal_accepts_an_honest_saturation(tmp_path: pathlib.Path, mod) -> None:
+    """A depth whose closed form overflows fp32 is reported, not failed."""
+
+    source = _native_ab_artifact(
+        tmp_path / "native.json",
+        sum_informative=False,
+        sum_exact=False,
+        saturation_expected=True,
+    )
+    record = mod.read_native_ab_marginal(source)
+    assert record["marginal_us_per_step"] == pytest.approx(20.5)
+
+
+def test_native_ab_marginal_carries_the_provisional_flag(tmp_path: pathlib.Path, mod) -> None:
+    """An unmatched comparison must not be read as a matched one."""
+
+    source = _native_ab_artifact(tmp_path / "native.json", provisional=True)
+    record = mod.read_native_ab_marginal(source)
+    assert record["comparison_provisional"] is True
 
 
 def test_native_ab_marginal_rejects_another_artifact_kind(

@@ -81,6 +81,16 @@ def test_build_refuses_an_uncached_executable_when_required(tmp_path: pathlib.Pa
         mod._build(source, tmp_path / "build", "gfx1100", require_cached=True)
 
 
+def _native_source() -> str:
+    return (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "micro"
+        / "runners"
+        / "hip_staged_exchange.hip"
+    ).read_text(encoding="utf-8")
+
+
 def test_the_native_source_preserves_the_protocol() -> None:
     """The native arm must keep the batched protocol's completion boundaries.
 
@@ -90,16 +100,44 @@ def test_the_native_source_preserves_the_protocol() -> None:
     dropped one would make the comparison meaningless rather than merely slower.
     """
 
-    source = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "benchmarks"
-        / "micro"
-        / "runners"
-        / "hip_staged_exchange.hip"
-    ).read_text(encoding="utf-8")
-    body = source[source.index("  void step(int index, Phase* phase)") : source.index("  void drain()")]
+    source = _native_source()
+    body = source[source.index("  void step(int index, Recurrence") : source.index("  void drain()")]
     submits = body.index("hipMemcpyAsync")
     waits = body.index("hipStreamSynchronize")
     assert submits < waits, "the D2H copies must be submitted before the first wait"
     assert body.count("hipStreamSynchronize") == 2, "one wait per rank, no return wait"
-    assert "sum / world + 1" in source, "the bounded recurrence must be present"
+
+
+def test_verification_and_timing_share_one_step_implementation() -> None:
+    """A second copy of the step would verify code the timing run never uses."""
+
+    source = _native_source()
+    assert source.count("void step(") == 1, "exactly one step implementation"
+    assert "step_bounded" not in source, "the separate verification step must be gone"
+    # Every chain, timed or verified, goes through run_chain -> step.
+    run_chain = source[source.index("  void run_chain(") : source.index("  std::vector<float> read_rank(")]
+    assert "step(index, recurrence, phase)" in run_chain
+    verify = source[source.index("  Check verify(") : source.index("};\n\nArgs parse_args")]
+    assert "run_chain(depth, recurrence, nullptr)" in verify, "verification must run the chain"
+
+
+def test_verification_checks_both_ranks_and_rejects_nonfinite() -> None:
+    """Element zero of rank zero is not a correctness gate."""
+
+    source = _native_source()
+    verify = source[source.index("  Check verify(") : source.index("};\n\nArgs parse_args")]
+    assert "for (uint32_t rank = 0; rank < world; ++rank)" in verify
+    assert "read_rank(rank, depth)" in verify
+    assert "std::isfinite(value)" in verify, "NaN must be rejected explicitly"
+    assert "nonfinite" in verify
+    assert "elements_per_rank" in source
+
+
+def test_the_timed_recurrence_is_checked_where_it_is_representable() -> None:
+    """The timed path's own arithmetic must be verified, not only the bounded one."""
+
+    source = _native_source()
+    assert "Recurrence::kSum" in source
+    # Saturation is allowed only when the closed form itself overflows fp32.
+    assert "saturation_expected" in source
+    assert "closed form overflows fp32" in source

@@ -919,8 +919,8 @@ so these are per-layer costs rather than deferrable ones:
 | RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.74x |
 | RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.76x |
 | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 8.99 ms | 1.02x |
-| Host exchange, both ranks submitted before either is awaited | 40.9 us | 5.24 ms | 1.18x |
-| Host exchange, same protocol driven from a native C++ loop | **20.8 us** | **2.66 ms** | **1.33x** |
+| Host exchange, both ranks submitted before either is awaited | 40.0 us | 5.12 ms | 1.18x |
+| Host exchange, same protocol driven from a native C++ loop | **20.5 us** | **2.62 ms** | **1.33x** |
 
 The intermediate copy is worth **23.6 us per reduction**. Host submission is only
 **6.9 us** - that is what replaying the same device structure from a captured
@@ -928,20 +928,32 @@ graph removes - so RCCL's cost here is device-side protocol, not Python or ctype
 overhead. Collapsing N dependent reductions into one group saves 119.6 us, which
 is why that structure is fast and why it cannot carry a layer dependency.
 
-**Driving the same protocol natively is worth another 20.2 us per reduction.**
+**Driving the same protocol natively is worth another 19.6 us per reduction.**
 A standalone C++ runner (`benchmarks/micro/runners/hip_staged_exchange.hip`)
 implements the identical batched protocol - both device-to-host copies submitted
 before either wait, two host waits per reduction, host sum, no return wait, one
 drain per chain - with preallocated device buffers, pinned slots and sum scratch,
 and one `hipSetDevice` per operation instead of the Python runtime's
-get/set/restore around each call. Measured on the same depths and payload, the
-ladder slope is **20.8 us per reduction against Python's 40.9 us, a 1.97x
-reduction in transport cost**, and the native runner verifies its chain exactly
-at every depth it times. The terms do not transfer one for one: submission and
-device scoping collapse from 26.3 us to 3.6 us and the host sum from 6.6 us to
-2.0 us, but the **exposed wait grows from 8.9 us to 15.0 us**, because earlier
-submission changes what is exposed. The 20.2 us net gain is measured, not the sum
-of the terms that moved.
+get/set/restore around each call.
+
+**Both arms are rerun in one session over the same depth ladder, with alternating
+order per repetition, and the comparison is reported only after both arms agree on
+payload, depths, protocol, physical devices and repetition count**
+(`scripts/tp_staged_exchange_native_ab.py`; artifact
+`benchmarks/results/2026-09-14-w7900-tp2-staged-exchange-native-ab.json`). The
+ladder slope is **20.45 us per reduction against Python's 40.00 us, a 1.956x
+reduction in transport cost**. Both arms carry the same dependency gate: the
+Python arm's verdict comes from the deepest depth whose closed form is finite, and
+the native runner runs its timed and verified passes through one `step`
+implementation, checks the whole vector on both ranks, rejects nonfinite values
+explicitly, and exits non-zero when a check fails. Its timed recurrence
+(`seed * 2 ** depth`) verifies exactly at every depth through 64 and is reported
+as saturating fp32 at depth 128 rather than passed.
+
+The terms do not transfer one for one: submission and device scoping collapse
+from 26.3 us to 3.3 us and the host sum from 6.6 us to 2.0 us, but the **exposed
+wait grows from 8.9 us to 14.9 us**, because earlier submission changes what is
+exposed. The net gain is measured, not the sum of the terms that moved.
 
 **Host orchestration is worth 29.3 us per reduction in the Python arm, and the
 causal split is measured rather than inferred.** The serial exchange performs four host waits per
@@ -974,25 +986,29 @@ direction, which is why samples are kept per rank. Each staged byte crosses PCIe
 twice, so peer DMA would halve the copy term, and peer DMA is unavailable on this
 host.
 
-**The projection's fixed-cost share is now measured, and its 20% and 30% rows
-are above anything the measurements support.** A rocprofv3 attribution of the
-TP1 decode step at the same protocol on both cards puts attention, GDN, sampler
-and copy kernels together at **1.578 ms/step on the W7900 and 1.441 ms/step on
-the XTX** - 4.7% and 5.1% of each card's own token time. Adding every unnamed
-kernel in the trace's `other` family (norms, rope, residual, setup) reaches 11.9%
-and 12.9%. Weight-read kernels are 25.95 and 21.77 ms/step, 77% of the token time
-on both cards, and their 1.19x ratio matches the cards' bandwidth ratio and their
-1.20x TP1 token-rate ratio. So the compute saving lives in the weight read, the
-fixed share is small, and the 0-10% rows are the defensible ones.
+**A device-time profile of the TP1 step, which does not narrow the fixed-share
+range.** A rocprofv3 attribution of the decode step at the same protocol on both
+cards gives kernel-family device times: weight reads dominate at **25.95 ms/step
+on the W7900 and 21.77 ms/step on the XTX** (77% of each card's own token time),
+attention + GDN + sampler + copy are **1.578 and 1.441 ms/step** next to them, and
+the two cards' 1.19x weight-read ratio matches their 1.20x TP1 token-rate ratio.
 
-Each decode step also issues **~811 kernel launches**, and the trace shows a large
-interior GPU gap per step - 19.2 ms (W7900) and 22.6 ms (XTX), of which 15.3 and
-16.2 ms has no HIP API in flight. That harness reads back every token, so its gap
-split is not the tok/s protocol's and is recorded as a candidate missing term
-rather than as the projection's host cost. It matters because launch points are
-per rank and a TP2 group waits for the slower rank: halving the weight read cannot
-by itself take a step below its own host gap, and that gap has not been measured
-under TP2.
+Those family sums are **not additive and not a critical path**: dispatch intervals
+on this route overlap, and the harness reports a dispatch overlap ratio of 1.916
+and warns that per-family shares are shares of kernel time rather than of the
+device union. Summed family durations exceed the measured window (about 30 ms of
+totals plus 19.2 ms of interior gap inside a 34.9 ms window). Dividing them by a
+different protocol's token time would not establish a fixed-cost share, so **the
+projection's 0-30% sensitivity range is unchanged**: the fixed term stands for
+attention, GDN recurrence and launch/scheduling overhead, and launch and
+scheduling cost is precisely what this table does not measure.
+
+Two structural facts do come out of the trace. Each decode step issues **~811
+kernel launches**, which a TP2 group would carry on both ranks. And the step shows
+19.2 ms (W7900) and 22.6 ms (XTX) of interior GPU gap, 15.3 and 16.2 ms of it with
+no HIP API in flight - recorded as a candidate missing term rather than as the
+projection's host cost, because this harness reads back every token and the tok/s
+protocol amortizes that readback.
 
 **Break-even, measured on both sides, and negative for RCCL.** The two TP1 arms
 are measured on this host, one GPU at a time, on one revision and one protocol
