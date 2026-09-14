@@ -7598,3 +7598,26 @@ that already makes the kernel registry order-independent under
   in the scoreboard).
 - Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
   failure mode was silent drift, not a single large addition.
+
+## 2026-09-14 Single-group captured replay is opt-in and unsafe — open
+
+`scripts/tp_collective_bench.py` can capture a dependent reduction chain into a
+HIP graph. Capturing **one group per reduction** (`per_step_alternating_graph`,
+the dependency-bearing structure) works at 128 reductions: the graph holds 128
+nodes per rank, replay reproduces the closed form, and the `0xFF`-poisoned tail
+buffer proves the replay did the work. Capturing the **whole chain as a single
+group** (`single_group_alternating_graph`) faults the GPU at depth 32
+(`Memory access fault ... Page not present`) and is invalid anyway, because the
+reductions collapse instead of chaining. That mode is therefore in
+`OPT_IN_CHAIN_MODES` rather than `DEFAULT_CHAIN_MODES`, so a default benchmark
+run cannot reach it.
+
+Delete the single-group capture mode once the host exchange has a
+device-signalled protocol, or once the per-step replay path is the only captured
+structure anyone measures: it exists now only as the documented contrast case
+that shows why a single group cannot carry a dependency. If a future transport
+makes single-group capture safe, the mode still must not become a default
+without a passing dependency check, because the structure itself is wrong.
+
+The eager single-group structure keeps a separate reason to stay opt-in: it is
+the contrast case for `per_step`, and its marginal is not a per-layer cost.

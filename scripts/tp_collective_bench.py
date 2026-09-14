@@ -36,6 +36,7 @@ import json
 import statistics
 import sys
 import threading
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,6 +53,27 @@ DEFAULT_PREFILL_ROWS = (128, 512, 1024)
 DEFAULT_PEER_SIZES = (1 << 12, 1 << 20, 1 << 24, 1 << 26)
 DEFAULT_CHAIN_DEPTH = 4
 DEFAULT_DEPENDENT_DEPTHS = (1, 4, 16, 64, 128)
+
+#: Dependent-chain structures. ``per_step`` is the copy-bearing original,
+#: ``per_chain`` the single-group contrast case, and the alternating modes remove
+#: the copy and then the per-reduction host submission. Only ``per_step``,
+#: ``per_step_alternating`` and ``staged_exchange_host_sync`` pass the dependency
+#: check, so only those margins are per-layer costs.
+DEFAULT_CHAIN_MODES = (
+    "per_step",
+    "per_chain",
+    "per_step_alternating",
+    "single_group_alternating",
+    "per_step_alternating_graph",
+    "staged_exchange_host_sync",
+)
+
+#: Modes that are measured only when asked for. Capturing a single group for the
+#: whole chain faults the GPU at depth 32 (``Memory access fault ... Page not
+#: present``), and the structure is invalid anyway because the reductions
+#: collapse, so it is not part of a default run. The per-step capture, which is
+#: valid and dependency-verified, is a default.
+OPT_IN_CHAIN_MODES = ("single_group_alternating_graph",)
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +494,653 @@ def chain_marginal_ms(samples: Sequence[tuple[int, float]]) -> dict[str, Any]:
     }
 
 
+def _chain_final_buffer_index(depth: int) -> int:
+    """Which of the two alternating buffers holds the result after ``depth`` steps.
+
+    Step ``i`` reads buffer ``i % 2`` and writes buffer ``(i + 1) % 2``, so the
+    result of a ``depth``-step chain sits in buffer ``depth % 2``.
+    """
+
+    return int(depth) % 2
+
+
+#: Poison value for the alternating buffers. The chain's values are positive
+#: powers of the seed, so a graph that did nothing leaves this in place and fails
+#: the value check instead of passing on a previous iteration's result.
+CHAIN_POISON_VALUE = -1234567.0
+
+
+def _measure_alternating_chain(
+    *,
+    transport,
+    runtime,
+    case: Case,
+    buffers: Sequence[Sequence[Any]],
+    depths: Sequence[int],
+    iterations: int,
+    warmup: int,
+    seed: float,
+    timeout_s: float,
+    graph: bool,
+    group_boundary: str = "per_step",
+) -> dict[str, Any]:
+    """Measure a dependency chain that needs no copy between reductions.
+
+    The earlier protocol forced the dependency with a device-to-device copy: the
+    reduction wrote one buffer and a copy moved it into the next step's input.
+    Alternating the two buffers instead makes step ``i + 1`` read exactly what
+    step ``i`` wrote, so the chain is dependency-bound with zero extra traffic
+    and the measured cost is the collective sequence rather than the collective
+    sequence plus a copy that a real layer would not perform.
+
+    ``group_boundary`` selects where the transport's validation group is opened:
+
+    - ``per_step`` opens one group per reduction. This is the structure in which
+      each reduction is separately ordered after its predecessor, and it pays one
+      host submission per reduction.
+    - ``single`` puts the whole chain in one group. The reductions are still
+      stream-ordered on each rank - step ``i + 1`` reads the buffer step ``i``
+      wrote - so the dependency is carried by stream order rather than by the
+      group boundary, and only one host submission is paid for the chain. This is
+      also the only structure of the two that the transport can capture: opening
+      and closing a group repeatedly inside a capture fails with
+      ``HIP error 900: operation not permitted when stream is capturing``.
+
+    With ``graph=True`` the whole sequence is captured once per rank on that
+    rank's own stream and replayed. The result is checked against the eager
+    alternating chain and against the closed form, so a replay that lost the
+    dependency chain or did nothing at all is rejected rather than reported as a
+    fast number.
+    """
+
+    if group_boundary not in ("per_step", "single"):
+        raise ValueError("group_boundary must be 'per_step' or 'single'")
+
+    import numpy as np
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import HIP_GRAPH_CAPTURE_MODE_RELAXED
+    from hipengine.core.memory import copy_device_to_host, copy_host_array_to_device, host_array_ptr
+
+    world = transport.world_size
+    devices = transport.devices
+    nbytes = int(case.payload_bytes)
+    streams = [transport.stream(rank) for rank in range(world)]
+
+    def read_value(rank: int, buffer_index: int) -> float:
+        raw = np.empty(nbytes, dtype=np.uint8)
+        host = raw.view(np.float32) if case.dtype == "fp32" else raw.view(np.uint16)
+        with scoped_current_device(runtime, devices[rank].index):
+            copy_device_to_host(host_array_ptr(host), buffers[buffer_index][rank])
+        values = decode_values(host, case.dtype)
+        return float(np.asarray(values, dtype=np.float64)[0])
+
+    def seed_chain() -> None:
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                copy_host_array_to_device(
+                    buffers[0][rank], encode_values([float(seed)] * case.count, case.dtype)
+                )
+
+    def poison_tail() -> None:
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                copy_host_array_to_device(
+                    buffers[1][rank],
+                    encode_values([CHAIN_POISON_VALUE] * case.count, case.dtype),
+                )
+
+    def enqueue_chain(depth: int, *, sync: bool = True) -> None:
+        single = group_boundary == "single"
+        if single:
+            transport.group_start()
+        try:
+            for step in range(int(depth)):
+                source = buffers[step % 2]
+                destination = buffers[(step + 1) % 2]
+                if not single:
+                    transport.group_start()
+                try:
+                    for rank in range(world):
+                        with scoped_current_device(runtime, devices[rank].index):
+                            transport.all_reduce_sum(
+                                rank,
+                                source[rank].ptr,
+                                destination[rank].ptr,
+                                count=case.count,
+                                dtype=case.dtype,
+                            )
+                finally:
+                    if not single:
+                        transport.group_end()
+        finally:
+            if single:
+                transport.group_end()
+        # A stream synchronize is refused while the stream is capturing, so the
+        # capture path enqueues without waiting.
+        if sync:
+            transport.sync(timeout_s=timeout_s)
+
+    mode_report: dict[str, Any] = {
+        "group_boundary": (
+            "one native group per reduction" if group_boundary == "per_step"
+            else "one native group for the whole chain"
+        ),
+        "dependency_carried_by": (
+            "the group boundary and stream order" if group_boundary == "per_step"
+            else "stream order within one group"
+        ),
+        "consumes_predecessor_via": "alternating buffers",
+        "device_copy_per_reduction": False,
+        "graph_replay": bool(graph),
+        "depths": {},
+    }
+
+    if not graph:
+        for depth in depths:
+            depth = max(1, int(depth))
+            expected = dependent_chain_expected(
+                seed, world_size=world, depth=depth, dtype=case.dtype
+            )
+            seed_chain()
+            for _ in range(max(0, int(warmup))):
+                enqueue_chain(depth)
+            latencies: list[float] = []
+            per_rank_latencies: dict[int, list[float]] = {rank: [] for rank in range(world)}
+            for _ in range(max(1, int(iterations))):
+                seed_chain()
+                start_events: list[int] = []
+                end_events: list[int] = []
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        start_events.append(runtime.event_create())
+                        end_events.append(runtime.event_create())
+                        runtime.event_record(start_events[rank], streams[rank])
+                enqueue_chain(depth)
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        runtime.event_record(end_events[rank], streams[rank])
+                transport.sync(timeout_s=timeout_s)
+                per_rank: list[float] = []
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        per_rank.append(
+                            runtime.event_elapsed_time_ms(start_events[rank], end_events[rank])
+                        )
+                        runtime.event_destroy(start_events[rank])
+                        runtime.event_destroy(end_events[rank])
+                latencies.append(max(per_rank))
+                for rank, value in enumerate(per_rank):
+                    per_rank_latencies[rank].append(value)
+            final_index = _chain_final_buffer_index(depth)
+            observed = [read_value(rank, final_index) for rank in range(world)]
+            summary = summarize_samples(latencies)
+            mode_report["depths"][str(depth)] = {
+                **summary,
+                "expected_final_value": expected,
+                "observed_final_value": observed,
+                "final_value_matches": all(value == expected for value in observed),
+                # ``inf == inf`` proves nothing, so the verdict needs this flag.
+                "value_check_informative": math.isfinite(float(expected)),
+                "final_buffer": final_index,
+                "per_rank_p50_ms": {
+                    str(rank): percentile(values, 0.5)
+                    for rank, values in per_rank_latencies.items()
+                },
+                "per_step_us": summary["p50_ms"] * 1e3 / depth,
+            }
+    else:
+        mode_report["captured"] = False
+
+        def capture(depth: int) -> tuple[list[int], list[int], list[int]] | None:
+            """Capture one graph for one chain depth.
+
+            A separate graph per depth is required for the ladder to mean
+            anything: one deep graph replayed for every depth would report the
+            deepest chain's time divided by a depth it never ran.
+            """
+
+            graphs: list[int] = []
+            execs: list[int] = []
+            node_counts: list[int] = []
+            capturing: set[int] = set()
+            try:
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        runtime.stream_begin_capture(
+                            streams[rank], mode=HIP_GRAPH_CAPTURE_MODE_RELAXED
+                        )
+                        capturing.add(rank)
+                enqueue_chain(depth, sync=False)
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        graph_handle = runtime.stream_end_capture(streams[rank])
+                        capturing.discard(rank)
+                        graphs.append(graph_handle)
+                        node_counts.append(len(runtime.graph_nodes(graph_handle)))
+                        execs.append(runtime.graph_instantiate(graph_handle))
+            except Exception as error:  # noqa: BLE001 - capture support is the result
+                for rank in sorted(capturing):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        try:
+                            graphs.append(runtime.stream_end_capture(streams[rank]))
+                        except Exception:  # noqa: BLE001
+                            continue
+                for rank, exec_ in enumerate(execs):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        try:
+                            runtime.graph_exec_destroy(exec_)
+                        except Exception:  # noqa: BLE001
+                            pass
+                for handle in graphs:
+                    try:
+                        runtime.graph_destroy(handle)
+                    except Exception:  # noqa: BLE001
+                        pass
+                mode_report["error"] = f"depth {depth}: {type(error).__name__}: {error}"
+                return None
+            mode_report["captured"] = True
+            return graphs, execs, node_counts
+
+        def release(graphs: list[int], execs: list[int]) -> None:
+            for rank, exec_ in enumerate(execs):
+                with scoped_current_device(runtime, devices[rank].index):
+                    runtime.graph_exec_destroy(exec_)
+            for handle in graphs:
+                runtime.graph_destroy(handle)
+
+        for depth in depths:
+            depth = max(1, int(depth))
+            captured = capture(depth)
+            if captured is None:
+                # A failed capture can leave the transport unusable, so the rest
+                # of the ladder is abandoned rather than reported as measured.
+                break
+            graphs, execs, node_counts = captured
+
+            def launch_all() -> None:
+                for rank in range(world):
+                    with scoped_current_device(runtime, devices[rank].index):
+                        runtime.graph_launch(execs[rank], streams[rank])
+
+            try:
+                expected = dependent_chain_expected(
+                    seed, world_size=world, depth=depth, dtype=case.dtype
+                )
+                seed_chain()
+                poison_tail()
+                for _ in range(max(0, int(warmup))):
+                    seed_chain()
+                    poison_tail()
+                    launch_all()
+                    transport.sync(timeout_s=timeout_s)
+                latencies: list[float] = []
+                launch_ms: list[float] = []
+                per_rank_latencies: dict[int, list[float]] = {
+                    rank: [] for rank in range(world)
+                }
+                for _ in range(max(1, int(iterations))):
+                    seed_chain()
+                    poison_tail()
+                    start_events: list[int] = []
+                    end_events: list[int] = []
+                    for rank in range(world):
+                        with scoped_current_device(runtime, devices[rank].index):
+                            start_events.append(runtime.event_create())
+                            end_events.append(runtime.event_create())
+                            runtime.event_record(start_events[rank], streams[rank])
+                    host_start = time.perf_counter()
+                    launch_all()
+                    host_end = time.perf_counter()
+                    for rank in range(world):
+                        with scoped_current_device(runtime, devices[rank].index):
+                            runtime.event_record(end_events[rank], streams[rank])
+                    transport.sync(timeout_s=timeout_s)
+                    per_rank = []
+                    for rank in range(world):
+                        with scoped_current_device(runtime, devices[rank].index):
+                            per_rank.append(
+                                runtime.event_elapsed_time_ms(
+                                    start_events[rank], end_events[rank]
+                                )
+                            )
+                            runtime.event_destroy(start_events[rank])
+                            runtime.event_destroy(end_events[rank])
+                    latencies.append(max(per_rank))
+                    launch_ms.append((host_end - host_start) * 1e3)
+                    for rank, value in enumerate(per_rank):
+                        per_rank_latencies[rank].append(value)
+                final_index = _chain_final_buffer_index(depth)
+                observed = [read_value(rank, final_index) for rank in range(world)]
+                summary = summarize_samples(latencies)
+                summary["launch"] = summarize_samples(launch_ms)
+                mode_report["depths"][str(depth)] = {
+                    **summary,
+                    "expected_final_value": expected,
+                    "observed_final_value": observed,
+                    "final_value_matches": all(value == expected for value in observed),
+                    # ``inf == inf`` proves nothing, so the verdict needs this flag.
+                    "value_check_informative": math.isfinite(float(expected)),
+                    "final_buffer": final_index,
+                    "poison_value": CHAIN_POISON_VALUE,
+                    "graph_nodes": node_counts,
+                    "per_rank_p50_ms": {
+                        str(rank): percentile(values, 0.5)
+                        for rank, values in per_rank_latencies.items()
+                    },
+                    "per_step_us": summary["p50_ms"] * 1e3 / depth,
+                }
+            finally:
+                # One graph per depth, so each is released before the next is
+                # captured rather than accumulating handles across the ladder.
+                release(graphs, execs)
+
+    single_step_value = dependent_chain_expected(seed, world_size=world, depth=1, dtype=case.dtype)
+    mode_report["depends_on_every_step"], reason = _dependency_verdict(
+        mode_report["depths"], single_step_value=single_step_value
+    )
+    mode_report["dependency_verdict_depth"] = _deepest_informative_depth(mode_report["depths"])
+    if reason:
+        mode_report["dependency_verdict_reason"] = reason
+    mode_report["marginal"] = chain_marginal_ms(
+        [(int(depth), report["p50_ms"]) for depth, report in mode_report["depths"].items()]
+    )
+    return mode_report
+
+
+def _deepest_informative_depth(depths: dict[str, Any]) -> str | None:
+    """The deepest depth whose value check can still distinguish the chain.
+
+    ``seed * world ** depth`` leaves the fp32 range at depth 128, so both the
+    expected and the observed value are ``inf`` and the check passes trivially.
+    The verdict has to come from a depth where the closed form is finite.
+    """
+
+    usable = [key for key, entry in depths.items() if entry.get("value_check_informative")]
+    return max(usable, key=int) if usable else None
+
+
+def _dependency_verdict(
+    depths: dict[str, Any], *, single_step_value: float
+) -> tuple[bool, str | None]:
+    """Whether the deepest informative depth proves the chain compounded."""
+
+    deepest = _deepest_informative_depth(depths)
+    if deepest is None:
+        return False, "no depth has a finite expected value, so no check is informative"
+    values = depths[deepest]["observed_final_value"]
+    compounded = all(value != single_step_value for value in values)
+    matched = bool(depths[deepest]["final_value_matches"])
+    reason = None
+    if not matched:
+        reason = f"depth {deepest} did not reach the closed form"
+    elif not compounded:
+        reason = f"depth {deepest} returned the single-step value"
+    return bool(matched and compounded), reason
+
+
+def _measure_staged_exchange_chain(
+    *,
+    transport,
+    runtime,
+    case: Case,
+    buffers: Sequence[Sequence[Any]],
+    depths: Sequence[int],
+    iterations: int,
+    warmup: int,
+    seed: float,
+) -> dict[str, Any]:
+    """Measure a dependency-bound two-rank exchange that does not use RCCL.
+
+    This is the specialized-transport screen: the peer-access path is unavailable
+    on this host, so the alternative to RCCL is host staging. Each step moves the
+    rank's own partial to a page-locked host slot, the host accumulates the two
+    partials, and the result is copied back as the next step's input. Stream order
+    plus the host round trip make step ``i + 1`` consume step ``i``, and the value
+    check is the same closed form the RCCL chain uses, so a structure that does
+    not consume its predecessor is rejected here too.
+
+    The host round trip is inside the timed region on purpose: a host-synchronized
+    exchange pays it per reduction, and hiding it would report a number the
+    structure cannot deliver. The accumulation itself is a few microseconds of
+    host work on 20 KB, so the transport terms dominate; that is stated in the
+    report rather than netted out.
+    """
+
+    import ctypes
+
+    import numpy as np
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.memory import host_buffer_ptr
+    from hipengine.core.runtime import MemcpyKind
+
+    devices = tuple(getattr(transport, "devices", ()) or ())
+    world = int(len(devices))
+    if not world:
+        return {"skipped": "transport exposes no devices"}
+    nbytes = int(case.payload_bytes)
+    streams = [0 for _ in range(world)]
+    for rank in range(world):
+        with scoped_current_device(runtime, devices[rank].index):
+            streams[rank] = runtime.stream_create()
+
+    host_slots = [ctypes.create_string_buffer(nbytes) for _ in range(world)]
+    registered = False
+    try:
+        for slot in host_slots:
+            runtime.host_register(host_buffer_ptr(slot), nbytes)
+        registered = True
+    except Exception as error:  # noqa: BLE001 - the screen result is the failure
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.stream_destroy(streams[rank])
+        return {
+            "skipped": "host_register unavailable",
+            "error": f"{type(error).__name__}: {error}",
+        }
+
+    #: Per-phase host time, so the transport's cost can be attributed instead of
+    #: reported as one number. ``host_wait`` is the exposed cost of the host round
+    #: trip; a device-signalled protocol would replace it with device-side polling.
+    phases = {"d2h_us": 0.0, "host_wait_us": 0.0, "host_sum_us": 0.0, "h2d_us": 0.0, "steps": 0}
+
+    def staged_step(step: int) -> None:
+        source = buffers[step % 2]
+        destination = buffers[(step + 1) % 2]
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                started = time.perf_counter()
+                runtime.memcpy_async(
+                    host_buffer_ptr(host_slots[rank]),
+                    source[rank].ptr,
+                    nbytes,
+                    MemcpyKind.DEVICE_TO_HOST,
+                    streams[rank],
+                )
+                runtime.stream_synchronize(streams[rank])
+                phases["d2h_us"] += (time.perf_counter() - started) * 1e6
+                phases["host_wait_us"] += 0.0
+        # An all-reduce is elementwise, so the host accumulates the two partials
+        # position by position. Summing each whole slot instead would multiply the
+        # result by the element count. ``create_string_buffer`` exposes a writable
+        # buffer, so the slot is read and rewritten in place.
+        started = time.perf_counter()
+        partials = [np.frombuffer(slot, dtype=np.float32) for slot in host_slots]
+        reduced = partials[0].copy()
+        # The closed form leaves the fp32 range at depth 128; that saturation is
+        # expected and the value check reports it as uninformative there.
+        with np.errstate(over="ignore"):
+            for partial in partials[1:]:
+                reduced += partial
+        for rank in range(world):
+            partials[rank][:] = reduced
+        phases["host_sum_us"] += (time.perf_counter() - started) * 1e6
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                started = time.perf_counter()
+                runtime.memcpy_async(
+                    destination[rank].ptr,
+                    host_buffer_ptr(host_slots[rank]),
+                    nbytes,
+                    MemcpyKind.HOST_TO_DEVICE,
+                    streams[rank],
+                )
+                runtime.stream_synchronize(streams[rank])
+                phases["h2d_us"] += (time.perf_counter() - started) * 1e6
+        phases["steps"] += 1
+
+    def enqueue_chain(depth: int) -> None:
+        for step in range(int(depth)):
+            staged_step(step)
+
+    def read_value(rank: int, buffer_index: int) -> float:
+        from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+        host = np.zeros(int(case.count), dtype=np.float32)
+        with scoped_current_device(runtime, devices[rank].index):
+            copy_device_to_host(host_array_ptr(host), buffers[buffer_index][rank])
+        return float(np.asarray(host, dtype=np.float64)[0])
+
+    def seed_chain() -> None:
+        from hipengine.core.memory import copy_host_array_to_device
+
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                copy_host_array_to_device(
+                    buffers[0][rank], encode_values([float(seed)] * case.count, case.dtype)
+                )
+
+    report: dict[str, Any] = {
+        "transport": "page-locked host staging with host accumulation",
+        "group_boundary": "not applicable (no RCCL group)",
+        "dependency_carried_by": "stream order plus the host round trip",
+        "device_copy_per_reduction": True,
+        "host_round_trip_per_reduction": True,
+        "accumulation": "host",
+        "graph_replay": False,
+        "phase_attribution": (
+            "d2h_us and h2d_us are copy submission plus the host wait for that copy, "
+            "so they cover copy-engine transfer and the rank's exposed wait together; "
+            "host_sum_us is the elementwise accumulation. A device-signalled protocol "
+            "would move the exposed wait off the host, so this number is an upper bound "
+            "on a staged path rather than a floor."
+        ),
+        "depths": {},
+    }
+    try:
+        for depth in depths:
+            depth = max(1, int(depth))
+            expected = dependent_chain_expected(
+                seed, world_size=world, depth=depth, dtype=case.dtype
+            )
+            seed_chain()
+            for _ in range(max(0, int(warmup))):
+                enqueue_chain(depth)
+            latencies: list[float] = []
+            for _ in range(max(1, int(iterations))):
+                seed_chain()
+                start = time.perf_counter()
+                enqueue_chain(depth)
+                latencies.append((time.perf_counter() - start) * 1e3)
+            final_index = _chain_final_buffer_index(depth)
+            observed = [read_value(rank, final_index) for rank in range(world)]
+            summary = summarize_samples(latencies)
+            report["depths"][str(depth)] = {
+                **summary,
+                "expected_final_value": expected,
+                "observed_final_value": observed,
+                "final_value_matches": all(value == expected for value in observed),
+                # ``inf == inf`` proves nothing, so the verdict needs this flag.
+                "value_check_informative": math.isfinite(float(expected)),
+                "final_buffer": final_index,
+                "per_step_us": summary["p50_ms"] * 1e3 / depth,
+            }
+    finally:
+        if registered:
+            for slot in host_slots:
+                try:
+                    runtime.host_unregister(host_buffer_ptr(slot))
+                except Exception:  # noqa: BLE001 - teardown must not mask a result
+                    continue
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.stream_destroy(streams[rank])
+    single_step_value = dependent_chain_expected(seed, world_size=world, depth=1, dtype=case.dtype)
+    report["depends_on_every_step"], reason = _dependency_verdict(
+        report["depths"], single_step_value=single_step_value
+    )
+    report["dependency_verdict_depth"] = _deepest_informative_depth(report["depths"])
+    if reason:
+        report["dependency_verdict_reason"] = reason
+    report["marginal"] = chain_marginal_ms(
+        [(int(depth), entry["p50_ms"]) for depth, entry in report["depths"].items()]
+    )
+    steps = max(1, int(phases["steps"]))
+    report["phases_per_step_us"] = {
+        "d2h_us": phases["d2h_us"] / steps,
+        "host_sum_us": phases["host_sum_us"] / steps,
+        "h2d_us": phases["h2d_us"] / steps,
+    }
+    report["phases_per_step_us"]["copy_engine_and_wait_us"] = (
+        report["phases_per_step_us"]["d2h_us"] + report["phases_per_step_us"]["h2d_us"]
+    )
+    return report
+
+
+def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
+    """Split the per-reduction cost into copy, submission, and execution terms.
+
+    The structures differ by exactly one term each, so their marginals decompose
+    the cost: the original adds a device copy per reduction, the copy-free variant
+    removes it, and the single-group variant removes one host submission per
+    reduction. What remains in the captured replay is the collective itself plus
+    rank waiting.
+    """
+
+    def marginal_us(mode: str) -> float | None:
+        report = modes.get(mode) or {}
+        value = (report.get("marginal") or {}).get("overall_us_per_step")
+        return None if value is None else float(value)
+
+    copy_bearing = marginal_us("per_step")
+    copy_free = marginal_us("per_step_alternating")
+    single_group = marginal_us("single_group_alternating")
+    # Two different replays, and they answer different questions. The per-step
+    # replay keeps the dependency-bearing device structure and only removes host
+    # submission, so its delta is the host cost. The single-group replay removes
+    # the dependency as well, so its delta measures the device structure too and
+    # cannot be attributed to the host.
+    replayed_per_step = marginal_us("per_step_alternating_graph")
+    replayed_single_group = marginal_us("single_group_alternating_graph")
+    staged = marginal_us("staged_exchange_host_sync")
+    attribution: dict[str, Any] = {
+        "per_step_us": copy_bearing,
+        "copy_free_us": copy_free,
+        "single_group_us": single_group,
+        "graph_replay_per_step_us": replayed_per_step,
+        "graph_replay_single_group_us": replayed_single_group,
+        "staged_exchange_us": staged,
+    }
+    if copy_bearing is not None and copy_free is not None:
+        attribution["device_copy_us"] = copy_bearing - copy_free
+    if copy_free is not None and replayed_per_step is not None:
+        # Measured host submission: the same device structure, replayed.
+        attribution["host_submission_us"] = copy_free - replayed_per_step
+    if copy_free is not None and single_group is not None:
+        # Not a host cost: this is what collapsing N dependent reductions into one
+        # group saves on the device. It is reported because the difference is
+        # large enough to be mistaken for submission overhead.
+        attribution["per_step_over_single_group_us"] = copy_free - single_group
+    if single_group is not None and replayed_single_group is not None:
+        attribution["graph_launch_amortized_us"] = single_group - replayed_single_group
+    if replayed_per_step is not None:
+        attribution["collective_and_wait_us"] = replayed_per_step
+    if copy_free is not None and replayed_per_step is not None and replayed_per_step > 0:
+        attribution["per_step_over_graph_replay"] = copy_free / replayed_per_step
+    return attribution
+
+
 def _measure_dependent_chain(
     *,
     transport,
@@ -484,6 +1153,7 @@ def _measure_dependent_chain(
     warmup: int,
     seed: float,
     timeout_s: float,
+    modes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Measure a chain in which every reduction depends on the previous one.
 
@@ -605,7 +1275,9 @@ def _measure_dependent_chain(
         "group_boundary": "one native group per reduction",
         "modes": {},
     }
-    for group_mode in ("per_step", "per_chain"):
+    alternating_buffers = (work, scratch)
+    selected = tuple(modes) if modes else DEFAULT_CHAIN_MODES
+    for group_mode in [mode for mode in ("per_step", "per_chain") if mode in selected]:
         samples: list[tuple[int, float]] = []
         mode_report: dict[str, Any] = {
             "group_boundary": (
@@ -641,6 +1313,7 @@ def _measure_dependent_chain(
                 "expected_final_value": expected,
                 "observed_final_value": observed,
                 "final_value_matches": all(value == expected for value in observed),
+                "value_check_informative": math.isfinite(float(expected)),
                 "per_rank_p50_ms": {
                     str(rank): percentile(values, 0.5) for rank, values in per_rank_latencies.items()
                 },
@@ -649,13 +1322,54 @@ def _measure_dependent_chain(
 
         # A chain that ignores its predecessor returns the single-step value.
         single_step_value = dependent_chain_expected(seed, world_size=world, depth=1, dtype=case.dtype)
-        deepest = max(mode_report["depths"], key=int)
-        deepest_values = mode_report["depths"][deepest]["observed_final_value"]
-        mode_report["depends_on_every_step"] = all(
-            value != single_step_value for value in deepest_values
-        ) and mode_report["depths"][deepest]["final_value_matches"]
+        mode_report["depends_on_every_step"], reason = _dependency_verdict(
+            mode_report["depths"], single_step_value=single_step_value
+        )
+        mode_report["dependency_verdict_depth"] = _deepest_informative_depth(mode_report["depths"])
+        if reason:
+            mode_report["dependency_verdict_reason"] = reason
         mode_report["marginal"] = chain_marginal_ms(samples)
         report["modes"][group_mode] = mode_report
+    alternating_modes = (
+        ("per_step_alternating", False, "per_step"),
+        ("single_group_alternating", False, "single"),
+        # Captured replay runs last: a capture that fails part-way can leave the
+        # transport unusable, and the eager measurements above must not depend on
+        # whether capture worked. ``per_step`` captures the dependency-bearing
+        # structure, in which every reduction has its own group.
+        ("per_step_alternating_graph", True, "per_step"),
+        ("single_group_alternating_graph", True, "single"),
+    )
+    for key, graph, group_boundary in alternating_modes:
+        if key not in selected:
+            continue
+        report["modes"][key] = _measure_alternating_chain(
+            transport=transport,
+            runtime=runtime,
+            case=case,
+            buffers=alternating_buffers,
+            depths=depths,
+            iterations=iterations,
+            warmup=warmup,
+            seed=seed,
+            timeout_s=timeout_s,
+            graph=graph,
+            group_boundary=group_boundary,
+        )
+    if "staged_exchange_host_sync" in selected:
+        # The specialized-transport screen replaces RCCL entirely for the
+        # exchange, so it runs last and cannot perturb the RCCL measurements.
+        report["modes"]["staged_exchange_host_sync"] = _measure_staged_exchange_chain(
+            transport=transport,
+            runtime=runtime,
+            case=case,
+            buffers=alternating_buffers,
+            depths=depths,
+            iterations=iterations,
+            warmup=warmup,
+            seed=seed,
+        )
+    report["attribution"] = _chain_attribution(report["modes"])
     return report
 
 
@@ -1053,6 +1767,7 @@ def run_collective_bench(
     graph_chain_depths: Sequence[int] = (),
     graph_iterations: int = 20,
     dependent_depths: Sequence[int] = DEFAULT_DEPENDENT_DEPTHS,
+    dependent_modes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Measure broadcast/all-reduce for every case and enqueue mode."""
 
@@ -1146,6 +1861,7 @@ def run_collective_bench(
                             warmup=max(1, int(warmup) // 4),
                             seed=1.0,
                             timeout_s=float(timeout_s),
+                            modes=dependent_modes,
                         )
                     except Exception as error:  # noqa: BLE001
                         results["errors"].append(f"{case.key()} dependent chain: {error!r}")
@@ -1222,6 +1938,16 @@ def main() -> int:
             "(empty disables it)"
         ),
     )
+    parser.add_argument(
+        "--dependent-modes",
+        default=",".join(DEFAULT_CHAIN_MODES),
+        help=(
+            "Comma list of dependent-chain structures to measure. The single-group "
+            "modes fail the dependency check on this host, and a failed graph capture "
+            "can leave the transport unusable, so the safe subset is "
+            "per_step,per_chain,per_step_alternating,staged_exchange_host_sync"
+        ),
+    )
     parser.add_argument("--graph-iterations", type=int, default=20, help="Graph replay iterations per case")
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
@@ -1240,6 +1966,7 @@ def main() -> int:
     if not chain_depths or any(depth < 1 for depth in chain_depths):
         parser.error("--chain-depth entries must be positive integers")
     dependent_depths = [int(chunk) for chunk in str(args.dependent_depths).split(",") if chunk.strip()]
+    dependent_modes = tuple(chunk for chunk in str(args.dependent_modes).split(",") if chunk.strip())
     if any(depth < 1 for depth in dependent_depths):
         parser.error("--dependent-depths entries must be positive integers")
 
@@ -1273,6 +2000,7 @@ def main() -> int:
             graph_depths = [int(chunk) for chunk in str(args.graph_chain_depth).split(",") if chunk.strip()]
             artifact["modes"]["graph_chain_depth"] = graph_depths
             artifact["modes"]["dependent_depths"] = dependent_depths
+            artifact["modes"]["dependent_modes"] = list(dependent_modes or DEFAULT_CHAIN_MODES)
             with LinkSampler(link_paths) as sampler:
                 artifact["collective"] = run_collective_bench(
                     devices,
@@ -1286,6 +2014,7 @@ def main() -> int:
                     graph_chain_depths=graph_depths,
                     graph_iterations=int(args.graph_iterations),
                     dependent_depths=dependent_depths,
+                    dependent_modes=dependent_modes,
                 )
             artifact["pcie_under_load"] = sampler.to_dict()
     except Exception as error:  # noqa: BLE001 - artifact must record the failure
