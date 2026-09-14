@@ -7,7 +7,7 @@
     "weights": "Q4_K_M backbone (168 Q4_K + 28 Q6_K layer tensors), bf16 front-end + dense bf16 untied lm_head",
     "kernels": "gguf_q4_k_wmma_prefill_{bf16_f32,f32_f32}_out and gguf_q6_k_wmma_prefill_bf16_bf16_out read the unmodified GGUF block bytes; no repack, no fp16 weight copies, no extra resident memory",
     "workload": "89-row prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz, 5 repetitions after one warmup, both lanes batched via prefill_rows in one process",
-    "command": "python3 - <<'EOF' (load both lanes, time runtime.prefill_rows(buf, 89, 0) x5, then greedy_generate 16 tokens) EOF"
+    "command": "python3 scripts/vibevoice_asr_q4_prefill_bench.py --reps 5 --gguf /tmp/vibevoice-asr-q4km.gguf"
   },
   "results": {
     "prefill_s_89_rows_q4": 0.195,
@@ -62,8 +62,68 @@
     "Q4_K now runs at or faster than the dense bf16 lane on both stages under a matched protocol: prefill 0.195 vs 0.296 s and decode 48.1 vs 72.2 ms/token, at 6.10 GB of resident weights against 16.66 GB.",
     "Q6_K has no f32-output prefill entry point, so attn_v/ffn_down on half the layers land in a bf16 scratch and are widened once. Q6_K ffn_down is the slowest GEMM at 7.49 ms (21x over naive vs 107x for the Q4_K equivalent).",
     "o_proj keeps f32 activations and uses the f32/f32 variant; the bf16 lane stages fp16 for hipBLASLt, which the Q4 route does not need at all.",
-    "Prefill scratch is allocated per call and released in finally; the route runs once per request."
+    "Prefill scratch is allocated per call and released in finally; the route runs once per request.",
+    "Reproducible from the repo with scripts/vibevoice_asr_q4_prefill_bench.py; see the reproduction block for the observed run-to-run spread."
   ],
   "status": "accepted",
-  "supersedes": null
+  "supersedes": null,
+  "reproduction": {
+    "script": "scripts/vibevoice_asr_q4_prefill_bench.py",
+    "why": "the protocol.command field previously described an uncommitted heredoc, so the headline ratio could not be re-run from the repo",
+    "invocation": "python3 scripts/vibevoice_asr_q4_prefill_bench.py --reps 5",
+    "runs": [
+      {
+        "bf16_prefill_s": 0.335,
+        "q4_prefill_s": 0.237,
+        "prefill_speedup": 1.42,
+        "bf16_greedy_s": 1.501,
+        "q4_greedy_s": 1.057,
+        "greedy_speedup": 1.42
+      },
+      {
+        "bf16_prefill_s": 0.34,
+        "q4_prefill_s": 0.234,
+        "prefill_speedup": 1.45,
+        "bf16_greedy_s": 1.5,
+        "q4_greedy_s": 1.068,
+        "greedy_speedup": 1.4
+      },
+      {
+        "bf16_prefill_s": 0.338,
+        "q4_prefill_s": 0.236,
+        "prefill_speedup": 1.43,
+        "bf16_greedy_s": 1.488,
+        "q4_greedy_s": 1.069,
+        "greedy_speedup": 1.39
+      },
+      {
+        "bf16_prefill_s": 0.336,
+        "q4_prefill_s": 0.225,
+        "prefill_speedup": 1.49,
+        "bf16_greedy_s": 1.482,
+        "q4_greedy_s": 1.105,
+        "greedy_speedup": 1.34
+      },
+      {
+        "bf16_prefill_s": 0.337,
+        "q4_prefill_s": 0.24,
+        "prefill_speedup": 1.4,
+        "bf16_greedy_s": 1.502,
+        "q4_greedy_s": 1.09,
+        "greedy_speedup": 1.38,
+        "note": "verbatim run of protocol.command"
+      }
+    ],
+    "prefill_speedup_range": [
+      1.4,
+      1.49
+    ],
+    "greedy_speedup_range": [
+      1.34,
+      1.42
+    ],
+    "token_chains_identical_in_every_run": true,
+    "variance_note": "The original measurement above recorded 1.52x prefill (0.296 vs 0.195 s); the committed script reproduces 1.42-1.49x with both lanes about 15% slower in absolute terms. The zbook is power and thermal limited and other GPU work was running concurrently, so absolute values drift between sessions while the ratio and direction stay stable. Absolute numbers are not a publication figure: final measurements belong on the desktop gfx1151 under an idle GPU.",
+    "runs_count": 5
+  }
 }
