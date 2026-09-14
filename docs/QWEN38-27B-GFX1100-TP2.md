@@ -569,11 +569,20 @@ communication wrappers or treat estimated half-model time as measured evidence.
   **0.99-1.17x** (`.../tp2_break_even_staged_exchange_batched.json`) - above 1.0x
   at 0%, 10% and 20% fixed-cost share. Packet 3 does not start from the RCCL
   result; see "Measured status".
-- [ ] Measure the local segment costs that selective sharding needs, on both
-  cards: complete and shard-shaped MLP, attention and GDN segments with local
-  layout, output dtype, residual/norm boundaries and the relevant context, plus
+- [x] Measure the TP1 segment costs on both cards. A rocprofv3 attribution of the
+  same protocol puts attention + GDN + sampler + copy at **1.578 ms/step (W7900)
+  and 1.441 ms/step (XTX)**, 4.7% and 5.1% of each card's own token time, or 11.9%
+  and 12.9% including every unnamed kernel; weight reads are 77% of the token time
+  on both cards, so the fixed share is small and the projection's 20-30% rows are
+  unsupported. Each step issues ~811 launches, which is the per-rank term the
+  projection omits.
+- [ ] Measure the shard-shaped segments that selective sharding needs, on both
+  cards: half-intermediate MLP through the engine's own GEMV dispatch, plus
+  replicated and single-owner attention and GDN at full and half head counts, with
+  local layout, output dtype, residual/norm boundaries and the relevant context, and
   representative `compute -> exchange -> compute` sequences rather than an idle
-  buffer exchange. Sharding only the MLP halves the exposed reduction count but
+  buffer exchange. This needs a shard-shaped weight layout, which the engine does
+  not have yet. Sharding only the MLP halves the exposed reduction count but
   **restores the full attention and GDN work on each rank** relative to full TP,
   and the slower rank can determine that segment's completion time. Single-owner
   attention is not free either: it needs the corresponding result broadcast. The

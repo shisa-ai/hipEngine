@@ -20,7 +20,9 @@ from scripts.gguf_c1_decode_attribution import (
     REQUIRE_CACHED_BUILD_ENV,
     STEP_MARKER_PREFIX,
     _merge_intervals,
+    _observed_device,
     _union_ns,
+    _visible_card_index,
     classify_kernel,
     compare_api_to_copies,
     read_hip_api,
@@ -552,6 +554,49 @@ def test_trace_environment_rejects_an_empty_version_file(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="compiler version file is empty"):
         trace_environment(version_file, "hip_gfx1100")
+
+
+def test_visible_card_index_reads_the_first_visible_device() -> None:
+    assert _visible_card_index({"HIP_VISIBLE_DEVICES": "1"}) == 1
+    assert _visible_card_index({"HIP_VISIBLE_DEVICES": "0,1"}) == 0
+    assert _visible_card_index({"HIP_VISIBLE_DEVICES": " 2 "}) == 2
+    assert _visible_card_index({}) is None
+    # A UUID-style selection cannot be mapped to a card index here.
+    assert _visible_card_index({"HIP_VISIBLE_DEVICES": "GPU-abc"}) is None
+
+
+def test_observed_device_prefers_the_visible_card(monkeypatch, tmp_path: Path) -> None:
+    """The machine's first card is not the device a restricted run used.
+
+    Two gfx1100 cards report the same architecture, so a mislabelled product name
+    survives every other identity check in the artifact.
+    """
+
+    import json as _json
+    import subprocess as _subprocess
+
+    import scripts.gguf_c1_decode_attribution as module
+
+    payload = {
+        "card0": {"Card Series": "AMD Radeon Pro W7900"},
+        "card1": {"Card Series": "AMD Radeon RX 7900 XTX"},
+    }
+
+    class _Completed:
+        stdout = _json.dumps(payload)
+        returncode = 0
+
+    def fake_run(*args, **kwargs):
+        return _Completed()
+
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/rocm-smi")
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    assert _observed_device({"HIP_VISIBLE_DEVICES": "1"}) == "AMD Radeon RX 7900 XTX"
+    assert _observed_device({"HIP_VISIBLE_DEVICES": "0"}) == "AMD Radeon Pro W7900"
+    # Unrestricted runs keep the machine's first card, which is the previous
+    # behaviour and stays correct for single-card hosts.
+    assert _observed_device({}) == "AMD Radeon Pro W7900"
+    assert _subprocess is not None
 
 
 def test_no_script_uses_a_lookalike_cache_only_switch() -> None:

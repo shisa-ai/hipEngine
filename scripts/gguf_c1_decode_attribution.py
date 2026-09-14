@@ -977,7 +977,22 @@ def _single(root: Path, pattern: str) -> Path:
     return matches[0]
 
 
-def _observed_device() -> str:
+def _visible_card_index(environment: Mapping[str, str]) -> int | None:
+    """The physical card index the run is restricted to, when it is restricted.
+
+    ``HIP_VISIBLE_DEVICES`` renumbers the visible set, so device 0 inside the
+    process is not card 0 in the machine. Without this the recorded product name
+    is the machine's first card rather than the one the measurement ran on.
+    """
+
+    visible = str(environment.get("HIP_VISIBLE_DEVICES", "") or "").strip()
+    if not visible:
+        return None
+    first = visible.split(",")[0].strip()
+    return int(first) if first.isdigit() else None
+
+
+def _observed_device(environment: Mapping[str, str] | None = None) -> str:
     executable = shutil.which("rocm-smi")
     if executable is None:
         return "unavailable"
@@ -991,10 +1006,15 @@ def _observed_device() -> str:
         payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError:
         return "unavailable"
-    for card in payload.values():
+    environment = dict(os.environ) if environment is None else dict(environment)
+    index = _visible_card_index(environment)
+    keys = [f"card{index}"] if index is not None else []
+    keys.extend(key for key in payload if key not in keys)
+    for key in keys:
+        card = payload.get(key)
         if isinstance(card, Mapping):
-            for key in ("Card Series", "Card Model", "Card SKU"):
-                value = card.get(key)
+            for field in ("Card Series", "Card Model", "Card SKU"):
+                value = card.get(field)
                 if isinstance(value, str) and value.strip():
                     return value.strip()
     return "unavailable"
@@ -1214,7 +1234,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "host": {
-            "observed_device": _observed_device(),
+            "observed_device": _observed_device(environment),
             "target_arch": hip_target_arch_for_backend(backend),
             "hip_visible_devices": environment.get("HIP_VISIBLE_DEVICES", ""),
             "rocprofv3_version": _rocprofv3_version(),
