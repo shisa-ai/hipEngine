@@ -112,18 +112,41 @@ class RowSplitLayout:
 
     Every source row is cut into the same block-aligned column ranges, so the
     per-row byte segments are generated on demand instead of being stored.
+
+    ``byte_ranges`` are the physical ranges the loader reads, derived from the
+    logical ``ranges`` as ``column // block_size * type_size``. They are stored
+    rather than recomputed on every row iteration, so the constructor checks
+    that each pair actually corresponds - a layout whose physical ranges
+    disagree with its own logical ranges would materialize bytes it does not
+    describe. ``block_size`` and ``type_size`` are the quant geometry that
+    makes that correspondence checkable.
     """
 
     source_row_bytes: int
     local_row_bytes: int
     ranges: tuple[tuple[int, int], ...]
     byte_ranges: tuple[tuple[int, int], ...]
+    block_size: int
+    type_size: int
 
     def __post_init__(self) -> None:
         if self.source_row_bytes <= 0 or self.local_row_bytes <= 0:
             raise ShardPlanError("row split byte widths must be positive")
         if len(self.ranges) != len(self.byte_ranges):
             raise ShardPlanError("row split ranges and byte ranges must pair up")
+        if self.block_size <= 0 or self.type_size <= 0:
+            raise ShardPlanError("row split quant geometry must be positive")
+        for (start, stop), (byte_start, byte_stop) in zip(self.ranges, self.byte_ranges):
+            expected = (
+                int(start) // self.block_size * self.type_size,
+                int(stop) // self.block_size * self.type_size,
+            )
+            if (int(byte_start), int(byte_stop)) != expected:
+                raise ShardPlanError(
+                    f"row split byte range [{byte_start}, {byte_stop}) does not correspond to "
+                    f"column range [{start}, {stop}) under block size {self.block_size} and "
+                    f"type size {self.type_size}; expected [{expected[0]}, {expected[1]})"
+                )
 
     def iter_segments(self, rows: int) -> Iterator[ShardSegment]:
         for row in range(int(rows)):
@@ -281,6 +304,15 @@ class ShardManifest:
                             ),
                             "source_row_bytes": (
                                 None if slice_.row_split is None else slice_.row_split.source_row_bytes
+                            ),
+                            # The loader reads these physical ranges, so the
+                            # manifest identity must cover them: two layouts with
+                            # the same logical ranges and different physical
+                            # ranges otherwise hash identically.
+                            "byte_ranges": (
+                                None
+                                if slice_.row_split is None
+                                else [list(pair) for pair in slice_.row_split.byte_ranges]
                             ),
                             "segments": [
                                 {"source_offset": seg.source_offset, "nbytes": seg.nbytes}
@@ -694,6 +726,8 @@ def _resolve_tensor_shard_plan(
                         local_row_bytes=local_row_bytes,
                         ranges=ranges,
                         byte_ranges=byte_ranges,
+                        block_size=block_size,
+                        type_size=type_size,
                     ),
                 )
             )
