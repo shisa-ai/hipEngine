@@ -6,8 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from contextlib import contextmanager
-from functools import wraps
+from contextlib import contextmanager, ExitStack
 from types import SimpleNamespace
 
 import numpy as np
@@ -25,6 +24,7 @@ from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _host_metadata, _git_metadata,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 
 
 def resolve_allocation_profile():
@@ -184,25 +184,19 @@ def main():
         os.environ.update(overrides)
         outputs, states = [], []
         deterministic = True
-        dispatch_count = 0
-        dispatch_original = None
+        dispatch_stack = ExitStack()
+        counter = {"calls": 0, "shapes": {}}
         try:
             if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
                 generator.runner.configure_mmq_prefill_resources()
             spec = CANDIDATES[args.candidate]
-            if spec.count_registered_dispatch:
-                from hipengine.kernels.registry import KernelKey, register, resolve
-                key = KernelKey(*spec.candidate_key)
-                dispatch_original = resolve(backend=key.backend, layer=key.layer,
-                                            quant=key.quant, variant=key.variant)
-
-                @wraps(dispatch_original)
-                def counted(*a, **kw):
-                    nonlocal dispatch_count
-                    dispatch_count += 1
-                    return dispatch_original(*a, **kw)
-
-                register(key, counted, replace=True)
+            if spec.requires_dispatch_count:
+                from hipengine.kernels.registry import KernelKey
+                counter = dispatch_stack.enter_context(count_candidate_dispatch(
+                    key=KernelKey(*spec.candidate_key),
+                    direct_target=spec.direct_dispatch_target,
+                    direct_reference=spec.direct_dispatch_reference,
+                    shape_positions=spec.dispatch_shape_positions))
             for case in cases:
                 teacher = teachers[case["id"]]
                 reference = None
@@ -236,8 +230,16 @@ def main():
             report["deterministic"] = deterministic
             report["state_gate"] = _state_repeat_gate(
                 [strict_states[case["id"]] for case in cases], states)
-            report["candidate_dispatch_calls"] = dispatch_count
-            if spec.count_registered_dispatch and dispatch_count == 0:
+            report["candidate_dispatch_calls"] = counter["calls"]
+            report["candidate_dispatch_shapes"] = shape_records(counter)
+            report["candidate_dispatch_shape_positions"] = spec.dispatch_shape_positions
+            report["candidate_direct_dispatch_target"] = spec.direct_dispatch_target
+            report["candidate_direct_dispatch_reference"] = spec.direct_dispatch_reference
+            report["candidate_registered_key"] = spec.candidate_key
+            report["candidate_dispatch_mode"] = (
+                "direct_alias" if spec.direct_dispatch_target
+                else "registry" if spec.count_registered_dispatch else "not_counted")
+            if spec.requires_dispatch_count and counter["calls"] == 0:
                 raise ValueError("candidate never dispatched")
             report["status"] = "completed"
         finally:
@@ -246,9 +248,10 @@ def main():
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
-            generator.close()
-            if dispatch_original is not None:
-                register(key, dispatch_original, replace=True)
+            try:
+                generator.close()
+            finally:
+                dispatch_stack.close()
             report["lifecycle"]["candidate"] = memory_stats()
             args.output.write_text(json.dumps(report, indent=2) + "\n")
 
