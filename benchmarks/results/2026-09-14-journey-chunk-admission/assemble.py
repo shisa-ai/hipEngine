@@ -16,7 +16,8 @@ def assemble(root):
     packets, hashes = {}, {}
     for name in ("resume-chunk2048-allocation.json", "resume-chunk2048-lazy-allocation.json",
                  "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json",
-                 "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json"):
+                 "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json",
+                 "resume-chunk2048-native-c2-allocation.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -134,6 +135,34 @@ def assemble(root):
     )
     packets["resume-chunk2048-workspace-ab.json"] = {
         **ab, "samples": [{key: row[key] for key in compact_keys} for row in samples]}
+    native = packets["resume-chunk2048-native-c2-allocation.json"]
+    if (native["schema"] != 2 or native["status"] != "passed"
+            or not native["source"]["tracked_clean"]
+            or native["chunk_size"] != 2048 or native["prepared_context"] != 262144
+            or native["prepared_runners"] != 2
+            or native["model_identity"] != left["model_identity"]
+            or native["host"]["machine_id"] != left["host"]["machine_id"]
+            or native["manifest_sha256"] != left["manifest_sha256"]
+            or native["admission"]["plan"]["scratch_bytes"] != 8 * 1024**3
+            or native["admission"]["plan"]["reserve_bytes"] != 4 * 1024**3
+            or native["allocation_margins"]["scratch_margin_bytes"] < 0
+            or native["memory_after_close"]["current_allocated_bytes"]):
+        raise ValueError("invalid native c2 allocation")
+    groups = native["lazy_group_risk"]
+    if (len(groups) != 2 or {row["runner_index"] for row in groups} != {0, 1}
+            or any(len(row["queues"]) != 2
+                   or {queue["owner"] for queue in row["queues"]} != {
+                       "gdn_prefill_scratch", "qsa_prefill_scratch"}
+                   or any(queue["rows"] != 2048 for queue in row["queues"])
+                   for row in groups)):
+        raise ValueError("missing native c2 repair preparation")
+    lazy_bytes = sum(queue["nbytes"] for row in groups for queue in row["queues"])
+    if (native["prepared_memory"]["current_allocated_bytes"]
+            - native["before_lazy_memory"]["current_allocated_bytes"] != lazy_bytes):
+        raise ValueError("native lazy bytes do not reconcile")
+    if allocation_margins(native["admission"]["plan"],
+                          native["prepared_memory"]["current_allocated_bytes"]) != native["allocation_margins"]:
+        raise ValueError("native allocation margins do not reproduce")
     return dict(
         schema=1, performance_claim=True, promotion_claim=False,
         source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
