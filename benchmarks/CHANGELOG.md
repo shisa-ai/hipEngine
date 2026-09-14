@@ -1,5 +1,11 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 UTC**: Journey checkpoint records unpromoted multi-column GDN,
+  rejected/removed Q8 residual-weight down (top1587/594 and prefill mean fail),
+  cold/warm pread tradeoffs and chunk2048/4096 scratch-model failures.
+  Mapping advice and exact DPP defaults remain; no additional published rate
+  changes. [Measured checkpoint](results/2026-09-14-journey-progress/README.md).
+
 - **2026-09-14 JST**: Framework Flash-Next UD-Q4_K_XL/BF16 tiled-GDN suffix
   adopts exact DPP: warm PP295.765/312.115/286.962 ->
   296.136/312.942/287.713 tok/s (+0.125%/+0.265%/+0.262%);
