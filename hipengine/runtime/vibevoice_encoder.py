@@ -18,6 +18,7 @@ serving milestone).
 from __future__ import annotations
 
 import ctypes
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -106,13 +107,8 @@ class _ScratchPool:
         if self._arena is None:
             self.reset()
         assert self._arena is not None
-        try:
-            return self._arena.allocate(int(nbytes))
-        except MemoryError:
-            self._capacity = max(int(nbytes) * 2, self._capacity * 2)
-            self.reset()
-            assert self._arena is not None
-            return self._arena.allocate(int(nbytes))
+        # Growing here would invalidate every live view already issued.
+        return self._arena.allocate(int(nbytes))
 
     def take_u16(self, count: int) -> DeviceBuffer:
         return self.take(count * 2)
@@ -284,6 +280,22 @@ class VibevoiceFrontendRuntime:
         return self._ones_gamma
 
     # ------------------------------------------------------------------
+    def _prefix(self, state, key, x, rows, width, count, zero):
+        """Snapshot the incoming convolution tail before its scratch is reused."""
+        if state is None:
+            return zero
+        previous = state.get(key, np.zeros((count, width), dtype=np.uint16))
+        if previous.shape != (count, width) or previous.dtype != np.uint16:
+            raise ValueError(f'invalid convolution state for {key}')
+        prefix = self._scratch.take_u16(count * width)
+        copy_host_array_to_device(prefix, previous)
+        tail_rows = min(rows, count)
+        tail = np.empty((tail_rows, width),dtype=np.uint16)
+        view = DeviceBuffer(x.ptr + (rows-tail_rows)*width*2, tail.nbytes)
+        copy_device_to_host(host_array_ptr(tail), view)
+        state[key] = np.concatenate((previous[tail_rows:],tail),axis=0)
+        return prefix
+
     def _encoder_forward(
         self,
         tok: str,
@@ -297,9 +309,6 @@ class VibevoiceFrontendRuntime:
         stages = self.encoders[tok]
         blocks = self.blocks[tok]
 
-        spec = self.specs[tok]
-        stages = self.encoders[tok]
-        blocks = self.blocks[tok]
         pool = self._scratch
 
         # ping-pong row buffers sized for the widest stage product
@@ -317,27 +326,40 @@ class VibevoiceFrontendRuntime:
 
         rows_out = num_samples
         stem_w, stem_b = self.stems[tok]
+        prefix = self._prefix(chunk_tail, 'stem', pcm_u16, rows_out, 1,
+                              spec.kernel_size-1, self._stem_zero)
         vv_conv_gemm_bf16(
-            self._stem_zero.ptr, pcm_u16.ptr, stem_w.ptr, stem_b.ptr, buf_a.ptr,
+            prefix.ptr, pcm_u16.ptr, stem_w.ptr, stem_b.ptr, buf_a.ptr,
             spec.kernel_size - 1, rows_out, 1, spec.num_filters, spec.kernel_size, 1,
             library=self.library, runtime=self.runtime,
         )
         cur, other = buf_a, buf_b
-        for block in blocks[0]:
+        for b, block in enumerate(blocks[0]):
             cur, other = other, cur
-            self._run_block(other, cur, rows_out, block, scratch)
+            self._run_block(other, cur, rows_out, block, scratch, chunk_tail, f'0.{b}')
         width = spec.num_filters
         for s, stage in enumerate(stages):
             prefix_rows = stage.k_len - stage.stride
+            input_rows = rows_out
+            prefix = self._prefix(chunk_tail, f'down.{s}',cur,input_rows,stage.c_in,
+                                  prefix_rows,stage.prefix)
             rows_out = conv_rows_out(prefix_rows, rows_out, stage.k_len, stage.stride)
             flat_features = stage.c_in * stage.k_len
             if flat_features % 32 == 0 and stage.c_out % 128 == 0 and rows_out >= 1:
                 # im2col + bulk GEMM: weights stream once instead of once per
                 # 4-row tile (dominant cost of the deep stages)
                 im2col_buf = self._scratch.take_u16(rows_out * flat_features)
+                conv_input = cur
+                im2col_pad = prefix_rows
+                if chunk_tail is not None:
+                    conv_input = self._scratch.take_u16((prefix_rows+input_rows)*stage.c_in)
+                    self.runtime.memcpy(conv_input.ptr,prefix.ptr,prefix_rows*stage.c_in*2,MemcpyKind.DEVICE_TO_DEVICE)
+                    self.runtime.memcpy(conv_input.ptr+prefix_rows*stage.c_in*2,cur.ptr,
+                                        input_rows*stage.c_in*2,MemcpyKind.DEVICE_TO_DEVICE)
+                    im2col_pad = 0
                 vv_im2col_bf16(
-                    cur.ptr, im2col_buf.ptr, rows_out, stage.c_in, stage.k_len, stage.stride,
-                    prefix_rows, library=self.library, runtime=self.runtime,
+                    conv_input.ptr, im2col_buf.ptr, rows_out, stage.c_in, stage.k_len, stage.stride,
+                    im2col_pad, library=self.library, runtime=self.runtime,
                 )
                 _prefill_gemm(
                     im2col_buf.ptr, stage.conv_w_flat.ptr, other.ptr, rows_out,
@@ -349,21 +371,22 @@ class VibevoiceFrontendRuntime:
                 )
             else:
                 vv_conv_gemm_bf16(
-                    stage.prefix.ptr, cur.ptr, stage.conv_w_t.ptr, stage.conv_b.ptr, other.ptr,
+                    prefix.ptr, cur.ptr, stage.conv_w_t.ptr, stage.conv_b.ptr, other.ptr,
                     prefix_rows, rows_out, stage.c_in, stage.c_out, stage.k_len, stage.stride,
                     library=self.library, runtime=self.runtime,
                 )
             cur, other = other, cur
             width = stage.c_out
-            for block in blocks[s + 1]:
+            for b, block in enumerate(blocks[s + 1]):
                 cur, other = other, cur
-                self._run_block(other, cur, rows_out, block, scratch)
+                self._run_block(other, cur, rows_out, block, scratch,chunk_tail,f'{s+1}.{b}')
         head_w, head_b = self.heads[tok]
         head_prefix_rows = spec.kernel_size - 1
         frames = conv_rows_out(head_prefix_rows, rows_out, spec.kernel_size, 1)
         latents = pool.take_u16(frames * spec.hidden_size)
+        prefix = self._prefix(chunk_tail,'head',cur,rows_out,width,head_prefix_rows,self._head_zero[tok])
         vv_conv_gemm_bf16(
-            self._head_zero[tok].ptr, cur.ptr, head_w.ptr, head_b.ptr, latents.ptr,
+            prefix.ptr, cur.ptr, head_w.ptr, head_b.ptr, latents.ptr,
             head_prefix_rows, frames, width, spec.hidden_size, spec.kernel_size, 1,
             library=self.library, runtime=self.runtime,
         )
@@ -376,6 +399,8 @@ class VibevoiceFrontendRuntime:
         rows: int,
         block: _DeviceBlock,
         scratch: dict[str, DeviceBuffer],
+        state=None,
+        key='',
     ) -> None:
         """One ConvNeXt block: reads ``x`` (rows, width), writes ``out``."""
         width = block.width
@@ -384,8 +409,9 @@ class VibevoiceFrontendRuntime:
         mixed = scratch["mixed"]
         vv_rmsnorm_bf16(x.ptr, block.norm_w.ptr, normed.ptr, rows, width, 1e-5,
                         library=self.library, runtime=self.runtime)
+        prefix = self._prefix(state,key,normed,rows,width,6,self._mixer_zero)
         vv_depthwise_conv_bf16(
-            self._mixer_zero.ptr, normed.ptr, x.ptr, block.conv_w.ptr, block.conv_b.ptr,
+            prefix.ptr, normed.ptr, x.ptr, block.conv_w.ptr, block.conv_b.ptr,
             block.gamma.ptr, mixed.ptr, 6, rows, width, 7,
             library=self.library, runtime=self.runtime,
         )
@@ -415,61 +441,83 @@ class VibevoiceFrontendRuntime:
         )
 
     # ------------------------------------------------------------------
+    def encode(self, pcm: np.ndarray, *, chunk_samples: int = 1_440_000) -> dict[str, np.ndarray]:
+        """Encode one recording, carrying every convolution tail across chunks.
+
+        Pad only the final partial frame. State is private to this call and
+        released between recordings; sampling is deliberately not done here.
+        """
+        from numbers import Integral
+        pcm = np.asarray(pcm, dtype=np.float32)
+        if pcm.ndim != 1 or not pcm.size or not np.isfinite(pcm).all():
+            raise ValueError('PCM must be a nonempty finite mono waveform')
+        if (isinstance(chunk_samples, bool) or not isinstance(chunk_samples, Integral)
+                or chunk_samples <= 0 or chunk_samples % 3200):
+            raise ValueError('chunk_samples must be a positive multiple of 3200')
+        if pcm.size % 3200:
+            pcm = np.pad(pcm, (0, 3200 - pcm.size % 3200))
+        state = {'acoustic': {}, 'semantic': {}}
+        results = {name: [] for name in state}
+        for start in range(0, pcm.size, chunk_samples):
+            chunk = pcm[start:start+chunk_samples]
+            pcm_u16 = _upload_u16(f32_to_bf16_bits(chunk))
+            try:
+                for name in state:
+                    spec = self.specs[name]
+                    # One encoder pass at a time; returned latents are owned
+                    # host arrays, so resetting the arena cannot invalidate them.
+                    self._scratch.reset(capacity_bytes=24*chunk.size*spec.num_filters*2+(16 << 20))
+                    latent, frames = self._encoder_forward(name, pcm_u16, chunk.size,
+                        chunk_tail=state[name] if pcm.size > chunk_samples else None)
+                    host = np.empty((frames,spec.hidden_size),dtype=np.uint16)
+                    copy_device_to_host(host_array_ptr(host),latent)
+                    results[name].append((host.astype(np.uint32) << 16).view(np.float32))
+            finally:
+                free(pcm_u16)
+        return {name: np.concatenate(parts,axis=0) for name,parts in results.items()}
+
     def forward(
         self,
         pcm: np.ndarray,
         *,
         noise: np.ndarray | None = None,
         noise_scale: np.ndarray | None = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Full front-end: mono PCM fp32 (samples,) -> (latents, audio embeds).
+        chunk_samples: int = 1_440_000,
+    ) -> np.ndarray:
+        """Processed mono PCM -> summed connector embeddings.
 
-        ``latents`` are the raw acoustic latents fp32 (frames, hidden);
-        ``audio embeds`` are the summed connector outputs fp32
-        (frames, text_hidden). Supply the recorded acoustic sampling
-        ``noise`` (frames, hidden_ac) fp32 and ``noise_scale`` (1,) fp32 to
-        reproduce oracle sampling exactly; without them the acoustic path
-        uses the un-sampled latents.
+        Supply both recorded noise operands for sampled inference. Omitting
+        both requests the explicit mean-latent diagnostic path.
         """
-        samples = int(len(pcm))
-        unit_bytes = samples * 32 * 2  # widest stage buffer (stem product)
-        # 10 ping-pong/scratch units per encoder pass plus im2col staging for
-        # the six strided convs (sums to ~5.6 more units per encoder at the
-        # deep stages' K/C geometry); sized so no mid-pass growth can occur
-        self._scratch.reset(capacity_bytes=32 * unit_bytes + (16 << 20))
-        pcm_u16 = _upload_u16(f32_to_bf16_bits(pcm.astype(np.float32).reshape(-1, 1)))
-        try:
-            lat_ac, frames = self._encoder_forward("acoustic", pcm_u16, len(pcm))
-            lat_se, frames_se = self._encoder_forward("semantic", pcm_u16, len(pcm))
-        finally:
-            free(pcm_u16)
-        if frames != frames_se:
-            raise RuntimeError(f"encoder frame mismatch: {frames} != {frames_se}")
-
-        lat_ac_owned = False
-        if noise is not None and noise_scale is not None:
-            gn = _upload_u16(f32_to_bf16_bits(noise.reshape(-1)))
-            gs = malloc(4)
-            try:
-                copy_host_array_to_device(gs, np.asarray(noise_scale, dtype=np.float32).reshape(-1))
-                sampled = _alloc_u16(frames * self.specs["acoustic"].hidden_size)
+        if (noise is None) != (noise_scale is None):
+            raise ValueError('noise and noise_scale must be supplied together')
+        frames = (len(pcm) + 3199) // 3200
+        if noise is not None:
+            noise = np.asarray(noise,dtype=np.float32)
+            noise_scale = np.asarray(noise_scale,dtype=np.float32)
+            if noise.shape != (frames,self.specs['acoustic'].hidden_size):
+                raise ValueError('acoustic noise shape must match the joined recording')
+            if noise_scale.size != 1 or not np.isfinite(noise).all() or not np.isfinite(noise_scale).all():
+                raise ValueError('noise operands must be finite with one recording scale')
+        latents = self.encode(pcm,chunk_samples=chunk_samples)
+        with ExitStack() as owned:
+            def keep(buffer):
+                owned.callback(free, buffer)
+                return buffer
+            lat_ac = keep(_upload_u16(f32_to_bf16_bits(latents['acoustic'])))
+            lat_se = keep(_upload_u16(f32_to_bf16_bits(latents['semantic'])))
+            if noise is not None:
+                gn = keep(_upload_u16(f32_to_bf16_bits(noise.reshape(-1))))
+                gs = keep(malloc(4))
+                copy_host_array_to_device(gs, noise_scale.reshape(-1))
+                sampled = keep(_alloc_u16(frames * self.specs['acoustic'].hidden_size))
                 vv_add_scaled_noise_bf16(
-                    lat_ac.ptr, gs.ptr, gn.ptr, sampled.ptr, frames * self.specs["acoustic"].hidden_size,
-                    frames * self.specs["acoustic"].hidden_size,
+                    lat_ac.ptr, gs.ptr, gn.ptr, sampled.ptr, frames * self.specs['acoustic'].hidden_size,
+                    frames * self.specs['acoustic'].hidden_size,
                     library=self.library, runtime=self.runtime,
                 )
-            finally:
-                free(gn)
-                free(gs)
-            lat_ac = sampled
-            lat_ac_owned = True
-
-        emb = self._connector_sum(lat_ac, lat_se, frames)
-        # lat_ac/lat_se are arena views (or the sampled malloc); only free
-        # real allocations - arena views die with the next pool reset.
-        if lat_ac_owned:
-            free(lat_ac)
-        return emb
+                lat_ac = sampled
+            return self._connector_sum(lat_ac, lat_se, frames)
 
     def _connector_sum(self, lat_ac: DeviceBuffer, lat_se: DeviceBuffer, frames: int) -> np.ndarray:
         fc1w, fc1b, normw, fc2w, fc2b = self.connectors["acoustic"]
