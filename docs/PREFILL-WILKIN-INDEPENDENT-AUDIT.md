@@ -13,6 +13,16 @@ Q8 residual-weight down is rejected/removed, larger chunks exceed the current
 scratch model, and the incumbent numerical envelope still fails. The
 remaining inventory is not claimed complete.
 
+Arithmetic recovery update: Q8 selected-down/MMQ are causal leads in the
+current composition, and production-prefill state carries the large decode
+tail. A two-Q8 fallback passes automatic numerical limits but fails a
+predeclared factual task check. The conservative recovery matches strict
+on594 natural-prompt and780 canonical-depth rows. The UD-Q4_K_XL binder
+selects that recovery while exact PLE and grouped/register-state owners
+stay active; tiled GDN, including its DPP variant, is inactive pending
+composition requalification. See
+`benchmarks/results/2026-09-14-q8-prefill-numerics/README.md`.
+
 ## Separate The Two Workloads
 
 The dense Qwen3.8-27B Q4_K_M comparison and the Flash-Next UD-Q4_K_XL journey

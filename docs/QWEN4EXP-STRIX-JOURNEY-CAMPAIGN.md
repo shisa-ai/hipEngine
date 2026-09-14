@@ -15,14 +15,14 @@ failed candidates, and work not yet executed.
 
 | Work | State | Next evidence |
 | --- | --- | --- |
-| J2 named production versus strict | Measured failure | Full18/594 rows: max KL0.054642, prefill-last mean0.001475/p950.007070; no threshold change |
+| J2 named production versus strict | Conservative recovery validated | Prior composition fails; recovery exact on594 short and780 canonical-depth rows, repeat/state gates pass; cost measured separately |
 | J2 prefill/decode owner census | Measured four-category4K | MoE~6.1-6.3s, linear~3.46s, GR~1.46s, QSA~1.33s, GDN~0.79-0.85s; decode48 graphs |
 | J2 PLE/routing/repair census | Partial | PLE CPU/read evidence measured; real expert-population and repair telemetry remain |
 | J3 PLE sorted/deduplicated mmap | Screen in progress | Initial sorted-unique wins canonical rows but loses all-unique controls; test copy elision separately |
 | J3 bounded pread / persistent workers | Screened, unpromoted | Warm unique rows regress; workers improve cold unique gathers6.3-6.7x versus random mmap; no safe cache-state policy |
 | J3 copy elision / staging | Screened / pending | Copy-elision full12 one-pair model screen exact but timing mixed; async staging still pending |
 | J3 mapping-only random advice | Adopted | Exact72-sample cold/warm matrices, neutral five-pair warm replication; cold PP3.095/2.198/1.287x |
-| J4 GDN DPP suffix | Adopted | Full72 exact A/B, owner8-19% faster, weighted PP+0.125/+0.265/+0.262%; unchanged suffix |
+| J4 GDN DPP suffix | Exact kernel retained, suffix inactive | Full72 parent-exact A/B remains valid; tiled GDN disabled by arithmetic recovery pending complete-composition requalification |
 | J4 multi-column | Numerical blocker | Owner1.34-2.69x; full594-row Japanese/prefill scopes fail; deterministic, unpromoted |
 | J4 serial prefix | Pending | No blind all-layer widening; full numerical gates required |
 | J5 chunk2048/4096 | Admission blocker measured | At context4352/capacity1 allocate/close but exceed4GiB scratch by0.479/3.285GB |
@@ -34,21 +34,24 @@ failed candidates, and work not yet executed.
 | J9 batched MTP target verification | Pending | Rejection-depth/accepted-prefix state gates and full-suite true-AR economics |
 | J1 external compatibility gaps / J10 closure | Pending | No unchanged replay of known faults; final counterbalanced comparison |
 
-The current no-override production baseline at `6ba40769f` fails its
+The historical no-override production baseline at `6ba40769f` fails its
 numerical gate despite passing repeat determinism and teardown:
 [baseline evidence](../benchmarks/results/2026-09-14-journey-production-baseline/README.md).
 Overall mean KL0.000625/top1 590/594 passes, but max KL0.054642,
 prefill-last mean/p95 and Japanese mean fail. Four deterministic free32
 differences require task review rather than automatic semantic rejection.
 This is an incumbent failure, not a new candidate regression. Arithmetic
-promotion is blocked pending localization; exact-preserving screens may
-continue without certifying the incumbent envelope.
+promotion of that composition is blocked. Subsequent localization and recovery
+are recorded in `benchmarks/results/2026-09-14-q8-prefill-numerics/README.md`.
 
 The explicit Q8-down/GDN fallback also fails prefill-last scope despite
-lower maxKL0.024408; no default repair is claimed. Owner costs and graph
+lower maxKL0.024408. A separate two-Q8 fallback passes automatic numerical
+limits but fails the predeclared factual task check. Conservative recovery,
+retaining exact optimized owners, matches strict on1374 short/depth rows
+and is selected by the UD-Q4_K_XL production binder. Owner costs and graph
 gaps now come from four fresh4K category captures. Decode has48 graphs and
 ~1.3ms intra-graph gaps, not a measured PM4 speedup. PLE/mapping and exact
-DPP are the only adopted improvements in this execution segment.
+DPP are measured improvements; DPP's tiled suffix is inactive during recovery.
 
 Independent September 14 JST audit:
 [Prefill and Wilkin audit](PREFILL-WILKIN-INDEPENDENT-AUDIT.md).

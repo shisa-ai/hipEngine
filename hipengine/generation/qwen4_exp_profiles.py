@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from typing import Any
 
 from hipengine.execution_profiles import (
@@ -30,6 +31,16 @@ PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
     0, 2, 5, 6, 8, 9, 10, 11
 ) + tuple(range(13, 48))
+PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
+    "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+    "Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN",
+    "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
+    "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
+    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
+)
+_ARITHMETIC_RECOVERY_EVIDENCE = (
+    "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
+)
 _MOE_WMMA_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json"
@@ -276,8 +287,8 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
     )
 
 
-def _production_selections(*, dpp: bool = False) -> tuple[VariantSelection, ...]:
-    return (
+def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tuple[VariantSelection, ...]:
+    selections = (
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
             "qwen4exp_gdn_tiled16_dpp_prefill" if dpp else "qwen4exp_gdn_tiled16_prefill",
@@ -474,6 +485,44 @@ def _production_selections(*, dpp: bool = False) -> tuple[VariantSelection, ...]
             evidence=_DECODE_EVIDENCE,
         ),
     )
+    if not recovery:
+        return selections
+    # Scope identifiers are shared with strict and remain stable. Select the
+    # recovered owners while preserving the registered rollback contracts.
+    inactive = {
+        "qwen4exp_gdn_tiled16_dpp_prefill",
+        "qwen4exp_gdn_tiled16_prefill",
+        "qwen4exp_gdn_columnwarps_prefill",
+        "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
+        "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out",
+        "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out",
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+        "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        "strict_ordered_three_pass_v2_spans",
+    }
+    replacements = {
+        "strict_h256_head_quad_rows_spans": "strict_rows_spans",
+        "strict_ordered_three_pass_spans": "strict_spans",
+        "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out":
+            "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+    }
+    for selection in selections:
+        if selection.selected_variant not in inactive:
+            continue
+        if selection.layer == "gdn_recurrence_norm_gate":
+            replacements[selection.selected_variant] = "qwen4exp_sigmoid_wave_norm_prefill"
+        elif selection.selected_variant.startswith("mmq128_"):
+            replacements[selection.selected_variant] = "coltile8_rowbatch4_wave_scale_f32_f32_out"
+        else:
+            replacements[selection.selected_variant] = selection.strict_fallback_variant
+    return tuple(
+        replace(
+            selection,
+            selected_variant=replacements.get(selection.selected_variant, selection.selected_variant),
+            evidence_artifact=_ARITHMETIC_RECOVERY_EVIDENCE,
+        )
+        for selection in selections
+    )
 
 
 def _bind_default_chunk(generator: Any, *, production: bool) -> None:
@@ -496,8 +545,9 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         )
         table.configure_mapping_access(mode)
     os.environ[PRODUCTION_MOE_PREFILL_ENV] = "1" if production else "0"
-    # Freeze neighboring experiments and select only the complete certified
-    # WMMA-MoE27 prefill + Q8-MMQ dense + DP4A-decode + peer-GDN composition.
+    # Preserve the existing Q4_K_M plan and freeze neighboring experiments.
+    # UD-Q4_K_XL overrides its unqualified arithmetic below, before allocating
+    # profile resources; the exact optimized owners remain enabled.
     # The WMMA route covers MoE layers 27-47 via the backend capability
     # constant; the ds4-MMQ envs stay off so they cannot preempt it, and the
     # exact-grouped guards (`not production_grouped_moe`) keep layers 0-26 on
@@ -628,6 +678,9 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
     }.items():
         os.environ[key] = value
+    if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
+        for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
+            os.environ["HIPENGINE_QWEN4_EXP_" + flag] = "0"
     if production:
         configure = getattr(
             getattr(generator, "runner", None),
@@ -680,7 +733,10 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.PRODUCTION,
             plan=RuntimeProfilePlan(
-                selections=_production_selections(dpp=quant == "gguf_ud_q4_k_xl"),
+                selections=_production_selections(
+                    dpp=quant == "gguf_ud_q4_k_xl",
+                    recovery=quant == "gguf_ud_q4_k_xl",
+                ),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,

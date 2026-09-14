@@ -1,5 +1,26 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)
+
+- The gfx1151 production binder now selects conservative arithmetic while
+  retaining the exact grouped/iu8-repair, register-state GDN, wave-reduction
+  and mapping-only PLE owners. The prior composition fails the current
+  numerical envelope; disabling only Q8-down/MMQ passes automatic numerical
+  limits but introduces a factual task regression in the paired review.
+- Conservative recovery matches strict on594 natural-prompt rows and780
+  canonical512/1K/4K rows, with repeatability, state and teardown gates.
+  This is a measured recovery, not proof that every disabled family is faulty.
+- Approximate MoE/GR/Q8, tiled-GDN, ordered-QSA and DP4A variants remain
+  registered for independent experiments. Re-enable only with a complete
+  same-suite numerical/task/depth gate and accurate manifest. No production
+  override is added to bypass the recovery binder.
+- DPP itself is exact relative to its tiled parent and is not removed.
+  Its suffix is inactive while tiled GDN is disabled. Requalify that complete
+  composition before restoring it; do not infer DPP caused the failure.
+- Diagnostic layer/shape hooks live only in scripts and must clear both
+  graph and host dispatch caches. Remove the temporary hooks after the
+  remaining arithmetic families have been independently qualified.
+
 ## Journey Q8 Residual-Weight Candidate: Removed
 
 - Full594-row numerical gate fails top1 at587/594 and prefill-last mean
@@ -11,8 +32,8 @@
 
 - `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry
   `qwen4exp_gdn_tiled16_multi_prefill` are numerical candidates, not defaults.
-  Full profile gate owns promotion. The ordinary single-column DPP route
-  remains selected until the complete gate passes; remove the multi-column
+  Full profile gate owns promotion. Both tiled routes are inactive in the
+  recovered UD production profile; remove the multi-column
   path if the numerical or operation-complete performance gate rejects it.
 
   Current blocker: full594-row candidate passes overall maxKL0.048222 and
@@ -23,8 +44,9 @@
 ## Journey GDN DPP Experiment
 
 - The `qwen4_exp_gdn_dpp` build family and gfx1151
-  `qwen4exp_gdn_tiled16_dpp_prefill` key are promoted for the existing
-  UD-Q4_K_XL production suffix after full72-sample exact A/B. Ordinary tile16
+  `qwen4exp_gdn_tiled16_dpp_prefill` key passed the previous
+  UD-Q4_K_XL suffix full72-sample exact A/B. The suffix is now inactive
+  under arithmetic recovery, without rejecting DPP itself. Ordinary tile16
   and serial strict keys remain registered. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`
   is profile-owned; remove temporary experiment harness interception once
   final campaign ablations finish. Keep the ordinary key for strict/bisection.
