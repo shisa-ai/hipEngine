@@ -140,6 +140,39 @@ fragmentation; budget the real padded workload before claiming hour-long support
 
 ## Task and performance gates
 
+### Q4_K_M prefill arithmetic
+
+The Q4_K_M backbone's batched prefill reads the unmodified GGUF K-quant blocks
+and is dispatched by the resolved GGML type, so the arithmetic depends on the
+tensor's quant:
+
+- **Q4_K** (`q/k/v`, `o`, `gate/up`, and `ffn_down` on half the layers) runs a
+  native f32- or bf16-in / f32-out WMMA prefill kernel. `o_proj` keeps f32
+  activations and uses the f32/f32 variant.
+- **Q6_K** (`attn_v`, `ffn_down` on the other half) has no f32-output prefill
+  entry point. Its result is produced in bf16 and widened to f32 with a
+  `bf16_to_f32` pass. For a Q6_K `o_proj`, the f32 attention output is likewise
+  narrowed to bf16 before the kernel.
+
+That widening is a **real arithmetic change, not a reassociation**: the Q6_K
+path rounds through bf16 where the Q4_K path accumulates in f32. Top-1
+agreement alone is therefore insufficient evidence for the route, and the
+production gate in `docs/EXECUTION-PROFILES.md` section 6.1 is applied
+per prompt length as a scope (mean/p95/p99/max full-vocabulary row KL plus
+top-1), measured against the sequential row-by-row route as the strict parent.
+
+Two limits on that gate, both recorded rather than tuned around:
+
+- The batched and sequential routes are different **schedules**. Their
+  distribution-level agreement is well inside the envelope (mean KL ~7e-4), but
+  top-1 agreement lands near 95% because the rows that flip carry a model
+  decision margin of 0.006-0.039 nats against a 0.79 median. The dense bf16
+  lane, which this work does not touch, shows the same effect, so it is a
+  property of the schedule comparison rather than of the Q4 arithmetic.
+- `prefill_rows` overwrites its input buffer with its post-layer-stack result.
+  Any determinism or repeat-comparison check must re-upload the input before
+each run; reusing one buffer feeds the previous output back in as input.
+
 Use multi-speaker, overlapping speech, silence, noisy/far-field recordings,
 English, Japanese and code-switching cases, hotwords and held-out recordings.
 Measure WER/CER, speaker-attributed or concatenated-permutation WER, diarization

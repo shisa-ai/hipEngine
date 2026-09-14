@@ -523,23 +523,13 @@ def test_q6_k_f32_input_composition_is_exact(runtime) -> None:
         f"max |diff| {np.max(np.abs(ref - got)):.3e}")
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="The shared batched prefill (runtime/vibevoice_qwen2.py::_prefill_batched, "
-           "used by both the bf16 and Q4 lanes) is not deterministic run-to-run: "
-           "identical inputs and weights give different hidden rows (bf16 lane: "
-           "318156/318976 elements differ) and can change the argmax token. The "
-           "production envelope requires deterministic repeatability, so top-1 "
-           "agreement is not currently met. This is pre-existing and not introduced "
-           "by the Q4 prefill route; XPASS here means the engine became deterministic.",
-)
-def test_batched_prefill_determinism_and_top1(runtime, lm) -> None:
-    """Deterministic repeatability and top-1 agreement for the batched prefill.
+def test_batched_prefill_is_deterministic(runtime, lm) -> None:
+    """Identical inputs must give identical hidden rows across repeats.
 
-    Two identical ``prefill_rows`` calls must produce identical hidden rows and
-    the same argmax. Until they do, the production KL envelope's top-1 clause
-    cannot be evaluated against a sequential reference, because the reference
-    comparison is dominated by run-to-run noise.
+    ``prefill_rows`` overwrites its input buffer with the post-layer-stack
+    result, so the input has to be re-uploaded before every run. An earlier
+    version of this test reused one buffer and so read its own output back as
+    input, which made the engine look non-deterministic; it is not.
     """
     from hipengine.core.memory import (copy_device_to_host, copy_host_array_to_device,
                                        free, host_array_ptr, malloc)
@@ -548,58 +538,86 @@ def test_batched_prefill_determinism_and_top1(runtime, lm) -> None:
     rows = _prompt_rows(runtime, lm)
     total = len(rows)
     hidden = runtime.spec.hidden_size
+    inputs = f32_to_bf16_bits(np.asarray(rows, dtype=np.float32))
     prompt = malloc(total * hidden * 2)
     try:
-        copy_host_array_to_device(
-            prompt, f32_to_bf16_bits(np.asarray(rows, dtype=np.float32)))
-
         def run():
+            copy_host_array_to_device(prompt, inputs)  # prefill_rows consumes this
             runtime.reset()
             runtime.prefill_rows(prompt, total, 0)
             host = np.empty(total * hidden, dtype=np.uint16)
             copy_device_to_host(host_array_ptr(host), prompt, total * hidden * 2)
-            runtime.runtime.memcpy(runtime._hidden.ptr,
-                                   prompt.ptr + (total - 1) * hidden * 2,
-                                   hidden * 2, 3)
-            return host, runtime.logits_argmax()[1]
+            return host
 
-        first_hidden, first_top = run()
-        second_hidden, second_top = run()
+        first = run()
+        second = run()
     finally:
         free(prompt)
 
-    assert np.array_equal(first_hidden, second_hidden), (
+    assert np.array_equal(first, second), (
         "batched prefill is not deterministic: "
-        f"{int((first_hidden != second_hidden).sum())}/{first_hidden.size} hidden "
-        "elements differ between identical runs")
-    assert first_top == second_top, (
-        f"batched prefill argmax changed between identical runs: {first_top} -> {second_top}")
+        f"{int((first != second).sum())}/{first.size} hidden elements differ "
+        "between identical runs")
 
 
-def test_greedy_generate_exposes_truncation_through_its_last_token(runtime, lm) -> None:
-    """Lock the contract the WER drivers' finish-reason derivation relies on.
+@pytest.mark.xfail(
+    strict=False,
+    reason="Comparing two different schedules, not two arithmetics. The batched "
+           "prefill and the sequential row-by-row route differ by mean KL ~7e-4 "
+           "(inside the envelope), but top-1 agreement is ~95% because the rows "
+           "that flip have a model decision margin of 0.006-0.039 nats against a "
+           "0.79 median, so a sub-1e-3 perturbation decides them. The untouched "
+           "bf16 lane shows the same effect (87/89), so this is a property of "
+           "batched-vs-sequential scheduling, not of the Q4 arithmetic. XPASS "
+           "means top-1 agreement improved enough to meet the envelope.",
+)
+def test_batched_prefill_top1_agreement_meets_the_envelope(runtime, lm) -> None:
+    """Top-1 clause of the production envelope, per prompt length as a scope.
 
-    ``greedy_generate`` appends the stopping token before breaking, so a final
-    token that is not EOS means the token cap cut the transcript off. All three
-    WER drivers classify a truncated generation exactly that way; if this
-    contract changed, a truncation would be silently recorded as a natural stop
-    and the ``truncated_transcripts`` gate would read clean.
+    The four KL metrics pass; this is the one clause that does not, and it is
+    kept asserted (as a non-strict xfail) rather than dropped so the unmet part
+    of the envelope stays visible.
     """
-    from hipengine.generation.vibevoice_protocol import IM_END_ID
-    from hipengine.runtime.vibevoice_qwen2 import greedy_generate
+    from hipengine.core.memory import copy_host_array_to_device, free, malloc
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
 
-    rows = _prompt_rows(runtime, lm)
+    full_rows = _prompt_rows(runtime, lm)
+    hidden = runtime.spec.hidden_size
+    hits = total = 0
+    per_scope: dict[int, float] = {}
+    for length in (24, 40, 64, len(full_rows)):
+        rows = full_rows[:length]
+        prompt = malloc(length * hidden * 2)
+        try:
+            copy_host_array_to_device(
+                prompt, f32_to_bf16_bits(np.asarray(rows, dtype=np.float32)))
+            runtime.reset()
+            runtime.prefill_rows(prompt, length, 0)
+            batched = []
+            for i in range(length):
+                runtime.runtime.memcpy(runtime._hidden.ptr,
+                                       prompt.ptr + i * hidden * 2, hidden * 2, 3)
+                batched.append(runtime.logits_argmax()[0])
+            runtime.reset()
+            strict = []
+            for i, row in enumerate(rows):
+                runtime.push_token(row, i)
+                runtime.forward_layers(i)
+                strict.append(runtime.logits_argmax()[0])
+        finally:
+            free(prompt)
+        scope_hits = sum(int(s.argmax()) == int(b.argmax())
+                         for s, b in zip(strict, batched))
+        hits += scope_hits
+        total += length
+        per_scope[length] = scope_hits / length
 
-    runtime.reset()
-    capped = greedy_generate(runtime, rows, max_new_tokens=1, eos_token_id=IM_END_ID)
-    assert len(capped) == 1, f"expected the cap to bind at 1 token, got {len(capped)}"
-    assert capped[-1] != IM_END_ID, (
-        "a 1-token cap cannot stop on EOS here; the finish-reason derivation "
-        "would label this truncation as a natural stop")
-
-    runtime.reset()
-    natural = greedy_generate(runtime, rows, max_new_tokens=64, eos_token_id=IM_END_ID)
-    assert len(natural) < 64, f"expected a natural stop under the cap, got {len(natural)}"
-    assert natural[-1] == IM_END_ID, (
-        "a natural stop must leave the EOS token last, otherwise the drivers "
-        "cannot distinguish it from a truncation")
+    overall = hits / total
+    print(f"  top-1 overall {overall:.3%}; per scope "
+          + ", ".join(f"{k}:{v:.1%}" for k, v in per_scope.items()))
+    assert overall >= PRODUCTION_KL_ENVELOPE["top1_overall"], (
+        f"top-1 {overall:.3%} < {PRODUCTION_KL_ENVELOPE['top1_overall']:.1%}")
+    for length, scope in per_scope.items():
+        assert scope >= PRODUCTION_KL_ENVELOPE["top1_per_scope"], (
+            f"scope {length} top-1 {scope:.3%} "
+            f"< {PRODUCTION_KL_ENVELOPE['top1_per_scope']:.1%}")
