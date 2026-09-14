@@ -14,7 +14,8 @@ it is never silently accepted by this harness.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import wraps
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -59,6 +60,7 @@ class CandidateSpec:
     candidate_key: tuple[str, str, str, str] | None
     fallback_key: tuple[str, str, str, str] | None
     compact_output: bool = False
+    count_registered_dispatch: bool = False
 
 
 CONSERVATIVE_ARITHMETIC_FLAGS = (
@@ -70,6 +72,23 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 )
 
 CANDIDATES = {
+    "q8_blockscale": CandidateSpec(
+        name="q8_blockscale",
+        classification="T1",
+        mechanism="raw Q8 codes times original BF16 activations; FP32 block scales after WMMA",
+        environment={
+            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
+            "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT":
+                "selected_grouped_blockscale_prefill_bf16_bf16_out",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-q8-blockscale",
+        candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                       "selected_grouped_blockscale_prefill_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                      "selected_grouped_gemv_bf16_bf16_out"),
+        count_registered_dispatch=True,
+    ),
     "production_conservative": CandidateSpec(
         name="production_conservative",
         classification="diagnostic",
@@ -197,6 +216,31 @@ CANDIDATES = {
         ),
     ),
 }
+
+
+CANDIDATES["q8_blockscale_mmq"] = replace(
+    CANDIDATES["q8_blockscale"],
+    name="q8_blockscale_mmq", scenario_id="qwen4exp-q8-blockscale-mmq",
+    environment={**CANDIDATES["q8_blockscale"].environment,
+                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
+)
+CANDIDATES["q8_blockscale_guarded"] = replace(
+    CANDIDATES["q8_blockscale"], name="q8_blockscale_guarded",
+    scenario_id="qwen4exp-q8-blockscale-guarded",
+    environment={
+        **CANDIDATES["q8_blockscale"].environment,
+        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT":
+            "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+    },
+    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                   "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"),
+)
+CANDIDATES["q8_blockscale_guarded_mmq"] = replace(
+    CANDIDATES["q8_blockscale_guarded"], name="q8_blockscale_guarded_mmq",
+    scenario_id="qwen4exp-q8-blockscale-guarded-mmq",
+    environment={**CANDIDATES["q8_blockscale_guarded"].environment,
+                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
+)
 
 
 class GateError(RuntimeError):
@@ -605,7 +649,26 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         key: os.environ.get(key) for key in candidate_spec.environment
     }
     os.environ.update(candidate_spec.environment)
+    dispatch_count = 0
+    dispatch_original = None
+    dispatch_key = None
     try:
+        if candidate_spec.environment.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+            candidate_generator.runner.configure_mmq_prefill_resources()
+        if candidate_spec.count_registered_dispatch:
+            from hipengine.kernels.registry import KernelKey, register, resolve
+            dispatch_key = KernelKey(*candidate_spec.candidate_key)
+            dispatch_original = resolve(
+                backend=dispatch_key.backend, layer=dispatch_key.layer,
+                quant=dispatch_key.quant, variant=dispatch_key.variant)
+
+            @wraps(dispatch_original)
+            def counted(*a, **kw):
+                nonlocal dispatch_count
+                dispatch_count += 1
+                return dispatch_original(*a, **kw)
+
+            register(dispatch_key, counted, replace=True)
         for number, row in enumerate(prompt_rows, 1):
             prompt_id = str(row["id"])
             strict = strict_trajectories[prompt_id]
@@ -646,6 +709,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             else:
                 os.environ[key] = value
         candidate_generator.close()
+        if dispatch_original is not None:
+            register(dispatch_key, dispatch_original, replace=True)
     candidate_after_close = memory_stats()
 
     captures = tuple(
@@ -722,6 +787,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and teardown
         and state_gate["passed"]
         and (compact_state_gate is None or compact_state_gate["passed"])
+        and (not candidate_spec.count_registered_dispatch or dispatch_count > 0)
     )
     passed = bool(measurement_valid and numerical_pass and task_pass)
     status = (
@@ -738,6 +804,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "measurement_valid": measurement_valid,
+        "candidate_dispatch_calls": dispatch_count if candidate_spec.count_registered_dispatch else None,
         "source": source,
         "host": _host_metadata(),
         "command": list(command),
