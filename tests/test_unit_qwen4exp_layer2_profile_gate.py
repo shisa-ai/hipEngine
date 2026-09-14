@@ -174,6 +174,19 @@ def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
     assert candidate.compact_output is True
 
 
+def test_gdn_isolation_changes_only_gdn_over_strict() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["gdn_isolated"]
+    assert candidate.base_profile == "strict"
+    assert candidate.classification == "diagnostic"
+    assert all(key.startswith("HIPENGINE_QWEN4_EXP_GDN_")
+               for key in candidate.environment)
+    assert candidate.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == (
+        ",".join(map(str, range(27, 48)))
+    )
+    assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_dpp_prefill"
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]
