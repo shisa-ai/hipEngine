@@ -4,7 +4,7 @@ from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
 def test_gdn_restoration_is_isolated_and_counted():
     candidate = CANDIDATES["production_gdn_restore"]
     assert candidate.base_profile == "production"
-    assert candidate.classification == "T1"
+    assert candidate.classification == "T2"
     assert candidate.count_registered_dispatch
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_dpp_prefill"
     assert all(key.startswith("HIPENGINE_QWEN4_EXP_GDN_")
@@ -19,6 +19,7 @@ def test_multi_restoration_changes_only_the_gdn_variant():
     parent = CANDIDATES["production_gdn_restore"]
     candidate = CANDIDATES["production_gdn_multi_restore"]
     assert candidate.base_profile == "production"
+    assert candidate.classification == "T2"
     assert candidate.count_registered_dispatch
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_multi_prefill"
     assert candidate.environment == {
