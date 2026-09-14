@@ -4,8 +4,9 @@ Same signatures as the bf16 dense primitives the runtime already calls,
 so the runner is unchanged apart from weight content (raw Q4_K block
 bytes from the merged GGUF) and which kernels namespace is resolved.
 The fused gate+up dual GEMV is emulated as two Q4 GEMVs (f32 out) plus
-f32->bf16 casts into the fused dual layout silu_mul_dual consumes;
-its f32 scratch is cached per output width.
+f32->bf16 casts into the fused dual layout silu_mul_dual consumes; its
+f32 scratch is caller-owned (``scratch=(gate, up)``) so concurrent or
+interleaved requests on separate runners cannot overwrite each other.
 """
 
 from __future__ import annotations
@@ -51,22 +52,6 @@ def _pick_gemv(w_ptr, bf16_in, bf16_out):
     }[weight_type]
 from hipengine.loading.vibevoice_asr_gguf import GGUF_WEIGHT_TYPES
 
-_F32_SCRATCH: dict[int, object] = {}
-
-
-def _scratch_f32(key: tuple[int, int]):
-    buf = _F32_SCRATCH.get(key)
-    if buf is None:
-        buf = malloc(key[1] * 4)
-        _F32_SCRATCH[key] = buf
-    return buf
-
-
-def close_q4_scratch() -> None:
-    for buf in _F32_SCRATCH.values():
-        free(buf)
-    _F32_SCRATCH.clear()
-
 
 def q4_dense_gemv_bf16_f32_out(x_ptr, w_ptr, out_ptr, rows, in_features, out_features, **kwargs):
     _pick_gemv(w_ptr, bf16_in=True, bf16_out=False)(
@@ -94,23 +79,44 @@ def q4_dense_gemv_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_feature
 
 def q4_dense_dual_gemv_out_bf16(x_ptr, gate_w_ptr, up_w_ptr, out_ptr, rows,
                                 in_features, out_features, out_width, **kwargs):
-    """Two Q4 GEMVs + casts into the fused [gate | up] bf16 dual layout."""
+    """Two Q4 GEMVs + casts into the fused [gate | up] bf16 dual layout.
+
+    ``scratch`` is an optional ``(gate, up)`` pair of f32 device buffers
+    owned by the calling runner. Pass it: a process-global cache keyed by
+    width would let interleaved requests corrupt each other's
+    intermediates and would never be released by ``runner.close()``.
+    Without it, per-call buffers are allocated and freed (correct, but
+    it adds two allocations per layer per token).
+    """
     if rows != 1:
         raise ValueError("q4 dual gemv emulation is decode-only (rows=1)")
     runtime = kwargs.get("runtime") or get_hip_runtime()
     stream = kwargs.get("stream", 0)
-    gate_f32 = _scratch_f32((0, out_features))
-    up_f32 = _scratch_f32((1, out_features))
-    _pick_gemv(gate_w_ptr, bf16_in=True, bf16_out=False)(
-        x_ptr, gate_w_ptr, gate_f32.ptr, rows, in_features, out_features,
-        stream=stream, runtime=runtime,
-    )
-    _pick_gemv(up_w_ptr, bf16_in=True, bf16_out=False)(
-        x_ptr, up_w_ptr, up_f32.ptr, rows, in_features, out_features,
-        stream=stream, runtime=runtime,
-    )
-    f32_to_bf16(gate_f32.ptr, out_ptr, out_features, stream=stream, runtime=runtime)
-    f32_to_bf16(up_f32.ptr, out_ptr + out_features * 2, out_features, stream=stream, runtime=runtime)
+    scratch = kwargs.get("scratch")
+    if scratch is None:
+        gate_f32 = malloc(out_features * 4)
+        up_f32 = malloc(out_features * 4)
+        owned = True
+    else:
+        gate_f32, up_f32 = scratch
+        if gate_f32.nbytes < out_features * 4 or up_f32.nbytes < out_features * 4:
+            raise ValueError("q4 dual gemv scratch is too small for this width")
+        owned = False
+    try:
+        _pick_gemv(gate_w_ptr, bf16_in=True, bf16_out=False)(
+            x_ptr, gate_w_ptr, gate_f32.ptr, rows, in_features, out_features,
+            stream=stream, runtime=runtime,
+        )
+        _pick_gemv(up_w_ptr, bf16_in=True, bf16_out=False)(
+            x_ptr, up_w_ptr, up_f32.ptr, rows, in_features, out_features,
+            stream=stream, runtime=runtime,
+        )
+        f32_to_bf16(gate_f32.ptr, out_ptr, out_features, stream=stream, runtime=runtime)
+        f32_to_bf16(up_f32.ptr, out_ptr + out_features * 2, out_features, stream=stream, runtime=runtime)
+    finally:
+        if owned:
+            free(gate_f32)
+            free(up_f32)
 
 
 def q4_dense_gemv_f32_bf16w_f32_out(x_ptr, w_ptr, out_ptr, rows, in_features, out_features, **kwargs):

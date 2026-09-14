@@ -95,3 +95,96 @@ def test_weight_type_routing(runtime) -> None:
                           layer.gate_w, layer.up_w, layer.down_w)}
     assert routed <= {12, 13, 14}, routed
     assert 12 in routed  # Q4_K backbone present
+
+
+def test_weights_own_buffers_and_runners_borrow() -> None:
+    """Loader buffers are owned by the weights handle, not by a runner.
+
+    Previously every runner keep()ed the loader's buffers into its own
+    free list, so two runners over one weights object double-freed the
+    same device pointers (HIP error 1 on the second close).
+    """
+    from hipengine.loading.vibevoice_asr_gguf import load_vibevoice_qwen2_q4
+    from hipengine.runtime.vibevoice_qwen2_q4 import VibevoiceQwen2Q4Runtime
+
+    weights = load_vibevoice_qwen2_q4(Q4_GGUF)
+    try:
+        first = VibevoiceQwen2Q4Runtime(weights, max_context=128)
+        second = VibevoiceQwen2Q4Runtime(weights, max_context=128)
+        assert all(buf not in first._buffers for buf in weights.buffers)
+        assert all(buf not in second._buffers for buf in weights.buffers)
+        first.close()
+        second.close()  # must not free the other runner's weights
+        assert weights.buffers and not weights._closed
+    finally:
+        weights.close()
+        weights.close()  # idempotent
+
+
+def test_dual_gemv_scratch_is_per_runner() -> None:
+    """Emulated dual GEMV scratch must not be shared across runners."""
+    from hipengine.loading.vibevoice_asr_gguf import load_vibevoice_qwen2_q4
+    from hipengine.runtime.vibevoice_qwen2_q4 import VibevoiceQwen2Q4Runtime
+
+    weights = load_vibevoice_qwen2_q4(Q4_GGUF)
+    try:
+        first = VibevoiceQwen2Q4Runtime(weights, max_context=128)
+        second = VibevoiceQwen2Q4Runtime(weights, max_context=128)
+        need = weights.spec.intermediate_size * 4
+        for runner in (first, second):
+            gate, up = runner._dual_scratch
+            assert gate.nbytes >= need and up.nbytes >= need
+            # Runner-owned: released by runner.close().
+            assert gate in runner._buffers and up in runner._buffers
+        assert first._dual_scratch[0].ptr != second._dual_scratch[0].ptr
+        first.close()
+        second.close()
+    finally:
+        weights.close()
+
+
+def test_prefill_manifest_records_q4_quant() -> None:
+    """The execution manifest must not claim bf16 for a Q4 backbone."""
+    from hipengine.loading.vibevoice_asr_gguf import load_vibevoice_qwen2_q4
+    from hipengine.runtime.vibevoice_qwen2_q4 import VibevoiceQwen2Q4Runtime
+
+    weights = load_vibevoice_qwen2_q4(Q4_GGUF)
+    try:
+        runner = VibevoiceQwen2Q4Runtime(weights, max_context=128)
+        assert runner.quant_name == "q4_k_m"
+        from hipengine.core.memory import malloc, free
+
+        rows = 2
+        hidden = runner.spec.hidden_size
+        buf = malloc(rows * hidden * 2)
+        try:
+            runner.reset()
+            runner.prefill_rows(buf, rows, 0)
+            manifest = runner.variant_manifest
+            quant = manifest["quant"] if isinstance(manifest, dict) else manifest.quant
+            model = manifest["model"] if isinstance(manifest, dict) else manifest.model
+            assert quant == "q4_k_m", manifest
+            assert model == "vibevoice_asr"
+        finally:
+            free(buf)
+        runner.close()
+    finally:
+        weights.close()
+
+
+def test_loader_buffers_are_bf16_sized() -> None:
+    """Dense device buffers must be bf16-sized, not 4x oversized.
+
+    ``malloc(host_f32.nbytes * 2)`` allocated 8 bytes per element for a
+    buffer that holds 2, wasting ~6.5 GB on the embedding and lm_head.
+    """
+    from hipengine.loading.vibevoice_asr_gguf import load_vibevoice_qwen2_q4
+
+    weights = load_vibevoice_qwen2_q4(Q4_GGUF)
+    try:
+        exact = weights.spec.vocab_size * weights.spec.hidden_size * 2
+        assert weights.embed.nbytes == exact
+        assert weights.lm_head.nbytes == exact
+        assert weights.final_norm.nbytes == weights.spec.hidden_size * 2
+    finally:
+        weights.close()

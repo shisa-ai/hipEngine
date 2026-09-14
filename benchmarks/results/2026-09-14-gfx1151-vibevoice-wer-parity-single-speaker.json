@@ -10,11 +10,13 @@
     "resampling": "scipy resample_poly 16k->24k"
   },
   "results": {
-    "torch_bf16_wer_pct": 0.012244897959183673,
-    "hipengine_wer_pct": 0.007142857142857143,
     "transcripts_identical": false,
     "transcripts_differing": 20,
-    "per_clip_wer_diffs": 4
+    "per_clip_wer_diffs": 4,
+    "torch_bf16_wer_pct": 1.2244897959183674,
+    "torch_bf16_wer_fraction": 0.012244897959183673,
+    "hipengine_wer_pct": 0.7142857142857143,
+    "hipengine_wer_fraction": 0.007142857142857143
   },
   "caveats": [
     "all 50 clips are speaker 1089, one chapter, clean read speech - a parity check, not an accuracy gate vs the published multi-speaker 2.20% row",
@@ -74,5 +76,6 @@
     "1089-134691-0010",
     "1089-134691-0011"
   ],
-  "diff_analysis": "20/50 transcripts differ, all in punctuation, capitalization or possessive artifacts ('Shelley's's' vs 'Shelley's', comma placement); per-clip WER differs on 4/50 and in all four hipEngine is cleaner (torch made double-possessive and one wrong-word error, hip 0.0). Differences are bf16-vs-fp16 GEMM rounding divergence on ambiguous tokens; no systematic hipEngine degradation."
+  "diff_analysis": "20/50 transcripts differ, all in punctuation, capitalization or possessive artifacts ('Shelley's's' vs 'Shelley's', comma placement); per-clip WER differs on 4/50 and in all four hipEngine is cleaner (torch made double-possessive and one wrong-word error, hip 0.0). Differences are bf16-vs-fp16 GEMM rounding divergence on ambiguous tokens; no systematic hipEngine degradation.",
+  "corrections": "CORRECTION 2026-09-14: the *_wer_pct fields originally held jiwer fractions (0-1), not percentages; they are now the true percentages and the fractions are kept alongside as *_wer_fraction. The Q4-vs-bf16 equality and the hip-vs-torch ordering are unchanged; only the scale was wrong (100x)."
 }

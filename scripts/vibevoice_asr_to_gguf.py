@@ -116,17 +116,35 @@ def resolve_snapshot(model: str) -> Path:
     return Path(resolve_model_path(model))
 
 
+def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
+    return (bits.astype(np.uint32) << 16).view(np.float32)
+
+
+def _f32_to_bf16_bits(host: np.ndarray) -> np.ndarray:
+    """Round-to-nearest-even f32 -> bf16 bit patterns (uint16)."""
+    bits = np.asarray(host, dtype=np.float32).view(np.uint32)
+    rounded = (bits + np.uint32(0x7FFF) + ((bits >> 16) & 1)) & np.uint32(0xFFFF0000)
+    return (rounded >> 16).astype(np.uint16)
+
+
 def iter_tensors(snapshot: Path, dtype: str):
+    """Yield ``(name, array)`` already in the target storage encoding.
+
+    BF16 yields uint16 bit patterns, F16 yields float16. The previous
+    version fed bf16 *bit patterns* to ``astype(np.float16)``, which
+    reinterprets the integer as a value (0x3F80 -> 16256.0) instead of
+    converting the number, so every ``--dtype f16`` export was garbage.
+    """
     index = load_weight_index(snapshot)
     for name in sorted(index.names_with_prefix("")):
         info = index.require((name,))[0]
         payload = read_tensor_storage_bytes(info)
         if info.dtype == "BF16":
-            array = np.frombuffer(payload, dtype=np.uint16).reshape(info.shape)
+            bits = np.frombuffer(payload, dtype=np.uint16).reshape(info.shape)
+            array = bits if dtype == "bf16" else _bf16_bits_to_f32(bits).astype(np.float16)
         elif info.dtype == "F32":
-            array = np.frombuffer(payload, dtype=np.float32).reshape(info.shape)
-            if dtype == "f16":
-                array = array.astype(np.float16)
+            host = np.frombuffer(payload, dtype=np.float32).reshape(info.shape)
+            array = host.astype(np.float16) if dtype == "f16" else _f32_to_bf16_bits(host)
         else:
             raise SystemExit(f"unsupported checkpoint dtype {info.dtype!r} for {name!r}")
         yield name, array
@@ -221,13 +239,11 @@ def main() -> int:
         if gguf_name_.startswith(skip):
             continue
         max_name = max(max_name, len(gguf_name_))
-        if args.dtype == "bf16":
-            writer.add_tensor(gguf_name_, array, raw_dtype=gguf.GGMLQuantizationType.BF16)
-            total += array.nbytes
-        else:
-            payload = array.astype(np.float16)
-            writer.add_tensor(gguf_name_, payload, raw_dtype=gguf.GGMLQuantizationType.F16)
-            total += payload.nbytes
+        # iter_tensors already produced the target encoding.
+        raw_dtype = (gguf.GGMLQuantizationType.BF16 if args.dtype == "bf16"
+                     else gguf.GGMLQuantizationType.F16)
+        writer.add_tensor(gguf_name_, array, raw_dtype=raw_dtype)
+        total += array.nbytes
         count += 1
     print(f"longest gguf tensor name: {max_name} bytes")
 
