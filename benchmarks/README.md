@@ -115,9 +115,8 @@ host (8.6x the official torch reference there) and **0.062 s** on a Framework
 Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
 host power/thermal headroom, not a code change.
 
-**Speech transcription (VibeVoice-ASR 9B).** The torch-free implementation is
-**faster than torch end to end: 4.25 s vs 4.39 s for an 11-second clip
-(0.97x)** on Strix Halo.
+**VibeVoice-ASR 9B** runs torch-free on Strix Halo. Correctness and matched-input
+performance qualification are in progress; no speedup is claimed.
 [Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-e2e-faster-than-torch.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
