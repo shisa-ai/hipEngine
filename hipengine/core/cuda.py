@@ -33,6 +33,9 @@ class CudaError(RuntimeError):
 class CudaRuntime:
     """Loaded CUDA runtime library with the Moonshine lifecycle operations."""
 
+    #: Device kind this runtime allocates on; see ``core.memory`` attribution.
+    device_kind = "cuda"
+
     library: ctypes.CDLL
 
     @classmethod

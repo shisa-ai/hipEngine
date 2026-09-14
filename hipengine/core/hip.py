@@ -29,9 +29,14 @@ class HipDim3(ctypes.Structure):
 
 
 class HipUuid(ctypes.Structure):
-    """ctypes layout of HIP's 16-byte ``hipUUID`` value."""
+    """ctypes layout of HIP's 16-byte ``hipUUID`` value.
 
-    _fields_ = [("bytes", ctypes.c_char * 16)]
+    The field is an unsigned-byte array, not ``c_char * 16``: a UUID is binary
+    data, and a ``c_char`` array read as a Python value stops at the first NUL
+    byte, which real device UUIDs contain.
+    """
+
+    _fields_ = [("bytes", ctypes.c_ubyte * 16)]
 
 
 class HipKernelNodeParams(ctypes.Structure):
@@ -80,9 +85,35 @@ def format_hip_uuid(raw: bytes) -> str:
     return f"{hexstr[:8]}-{hexstr[8:12]}-{hexstr[12:16]}-{hexstr[16:20]}-{hexstr[20:]}"
 
 
+def decode_hip_uuid(raw: bytes) -> str:
+    """Return the device identity the runtime actually wrote into ``hipUUID``.
+
+    The field is 16 bytes but its content is not fixed across runtimes. ROCm
+    writes the device's ASCII unique ID - the same 16 hex characters
+    ``rocm-smi`` and ``/sys/class/drm/*/device/unique_id`` report - while
+    CUDA-compatibility paths write 16 raw bytes. Hex-encoding the ASCII form
+    yields a UUID-shaped value that matches no other tool and cannot be
+    compared against host inventory, so text is returned as text.
+
+    ``uuid_hex`` on :class:`HipDeviceInfo` keeps the exact raw bytes for
+    artifacts that need a lossless field.
+    """
+
+    if len(raw) != 16:
+        raise ValueError("hipUUID must contain exactly 16 bytes")
+    text = bytes(raw).split(b"\x00", 1)[0]
+    if text and all(0x20 <= byte < 0x7F for byte in text):
+        return text.decode("ascii")
+    return format_hip_uuid(raw)
+
+
 @dataclass
 class HipRuntime:
     """Loaded HIP runtime library with typed entry points."""
+
+    #: Device kind this runtime allocates on. Shared allocation helpers in
+    #: ``core.memory`` read it instead of assuming HIP.
+    device_kind = "hip"
 
     library: ctypes.CDLL
 
@@ -117,12 +148,17 @@ class HipRuntime:
         selected = self.get_device() if device is None else int(device)
         uuid = HipUuid()
         self.check(self.library.hipDeviceGetUuid(ctypes.byref(uuid), ctypes.c_int(selected)))
-        return bytes(uuid.bytes)
+        # Exactly 16 bytes, independent of any embedded NUL.
+        return ctypes.string_at(ctypes.addressof(uuid), 16)
 
     def device_get_uuid(self, device: int | None = None) -> str:
-        """Return the canonical UUID string for one device."""
+        """Return the device identity string for one device.
 
-        return format_hip_uuid(self.device_get_uuid_bytes(device))
+        See :func:`decode_hip_uuid`: this is the runtime's own identity text on
+        ROCm, or canonical hex when the field holds a binary UUID.
+        """
+
+        return decode_hip_uuid(self.device_get_uuid_bytes(device))
 
     def device_info(self, device: int | None = None) -> HipDeviceInfo:
         """Return one device's identity; never leaves the current device changed."""
@@ -133,7 +169,7 @@ class HipRuntime:
             index=selected,
             name=self.device_get_name(selected),
             uuid_hex=raw.hex(),
-            uuid=format_hip_uuid(raw),
+            uuid=decode_hip_uuid(raw),
             pci_bus_id=self.device_pci_bus_id(selected),
         )
 

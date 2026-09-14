@@ -9,10 +9,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import ctypes
+
 import pytest
 
 from hipengine.core.device import Device, scoped_current_device
-from hipengine.core.hip import format_hip_uuid
+from hipengine.core.hip import HipRuntime, decode_hip_uuid, format_hip_uuid
 from hipengine.core.memory import (
     DeviceBuffer,
     DeviceMemoryArena,
@@ -28,7 +30,13 @@ from hipengine.core.runtime import MemcpyKind
 
 
 class FakeDeviceRuntime:
-    """Minimal DeviceRuntime that records device selection and copy calls."""
+    """Minimal DeviceRuntime that records device selection and copy calls.
+
+    It stands in for a HIP runtime, so it declares the same device kind the real
+    one does; attribution is never guessed from a missing declaration.
+    """
+
+    device_kind = "hip"
 
     def __init__(self, *, current: int = 0) -> None:
         self._current = current
@@ -200,9 +208,17 @@ def test_device_arena_tags_owner_and_views() -> None:
     assert runtime.get_device() == 0
 
 
-def test_device_buffer_rejects_non_hip_device() -> None:
+def test_device_buffer_rejects_a_host_device() -> None:
+    """Only a device kind may own a device pointer.
+
+    This test previously asserted that a CUDA label was rejected. That encoded
+    the HIP-only assumption this module no longer makes: ``CudaRuntime``
+    allocates through the same helpers, so its buffers carry a CUDA label.
+    """
+
     with pytest.raises(ValueError):
-        DeviceBuffer(ptr=1, nbytes=8, device=Device("cuda", 0))
+        DeviceBuffer(ptr=1, nbytes=8, device=Device("cpu", 0))
+    assert DeviceBuffer(ptr=1, nbytes=8, device=Device("cuda", 0)).device == Device("cuda", 0)
 
 
 # -- Packet 1 ownership audit fence -----------------------------------------
@@ -407,3 +423,159 @@ def test_buffer_entry_points_tolerate_duck_typed_buffers() -> None:
     copy_device_to_host(0x9000, stand_in, 8, runtime=runtime)
     assert [entry[0] for entry in runtime.calls] == ["free", "memcpy", "memcpy"]
     assert runtime.get_device() == 0
+
+
+# -- backend-neutral attribution ---------------------------------------------
+
+
+def test_cuda_runtime_buffers_are_labelled_cuda_not_hip() -> None:
+    """Shared allocation helpers must not hardcode a HIP device label.
+
+    ``CudaRuntime`` exposes ``get_device`` and uses the same ``malloc``/``free``
+    helpers, so a hardcoded ``Device("hip", ...)`` mislabels every CUDA buffer -
+    and ``DeviceBuffer`` then refuses the correct CUDA label as well.
+    """
+
+    class CudaLikeRuntime(FakeDeviceRuntime):
+        device_kind = "cuda"
+
+    runtime = CudaLikeRuntime(current=0)
+    buffer = malloc(64, runtime=runtime)
+    assert buffer.device == Device("cuda", 0)
+
+    free(buffer, runtime=runtime)
+    assert runtime.get_device() == 0
+
+    explicit = malloc(64, runtime=runtime, device=Device("cuda", 0))
+    assert explicit.device == Device("cuda", 0)
+
+
+def test_device_buffer_accepts_a_cuda_label_and_refuses_a_cpu_one() -> None:
+    buffer = DeviceBuffer(ptr=1, nbytes=8, device=Device("cuda", 1))
+    assert buffer.device == Device("cuda", 1)
+    with pytest.raises(ValueError):
+        DeviceBuffer(ptr=1, nbytes=8, device=Device("cpu", 0))
+
+
+def test_runtime_without_a_declared_kind_stays_unattributed() -> None:
+    """An unknown runtime is left unattributed rather than labelled by guess."""
+
+    class AnonymousRuntime:
+        """A runtime with no declared device kind, and no inheritance to hide one."""
+
+        def __init__(self, current: int = 0) -> None:
+            self._current = current
+
+        def get_device(self) -> int:
+            return self._current
+
+        def set_device(self, device: int) -> None:
+            self._current = int(device)
+
+        def malloc(self, nbytes: int) -> int:
+            return 0x2000
+
+        def free(self, ptr: int) -> None:
+            return None
+
+    assert not hasattr(AnonymousRuntime, "device_kind")
+    runtime = AnonymousRuntime(current=1)
+    buffer = malloc(64, runtime=runtime)
+    assert buffer.device is None
+    free(buffer, runtime=runtime)
+
+
+def test_device_uuid_survives_embedded_nul_bytes() -> None:
+    """A ``hipUUID`` is 16 binary bytes, not a NUL-terminated C string.
+
+    ``HipUuid.bytes`` is a ``c_char`` array, so reading it as a Python value
+    truncates at the first zero byte. A real device UUID commonly starts with
+    one, which made ``device_get_uuid()`` raise instead of returning an identity.
+    """
+
+    class UuidLibrary:
+        def hipGetDevice(self, out) -> int:
+            out._obj.value = 0
+            return 0
+
+        def hipDeviceGetUuid(self, out, device) -> int:
+            target = getattr(out, "_obj", out)
+            ctypes.memmove(ctypes.addressof(target), bytes(range(16)), 16)
+            return 0
+
+        def hipGetErrorString(self, code) -> bytes:
+            return b"fake hip error"
+
+    runtime = HipRuntime(UuidLibrary())
+    raw = runtime.device_get_uuid_bytes()
+    assert len(raw) == 16
+    assert raw == bytes(range(16))
+    assert runtime.device_get_uuid() == "00010203-0405-0607-0809-0a0b0c0d0e0f"
+
+
+def test_device_uuid_text_form_is_not_double_encoded() -> None:
+    """ROCm writes the ASCII unique ID; hex-encoding it invents a fake UUID.
+
+    The raw bytes are ``e282895b62c2b295`` - the same value sysfs and rocm-smi
+    report. Hex-encoding those ASCII characters produced
+    ``65323832-3839-3562-3632-633262323935``, which matches no other tool.
+    """
+
+    raw = b"e282895b62c2b295"
+    assert decode_hip_uuid(raw) == "e282895b62c2b295"
+    assert format_hip_uuid(raw) == "65323832-3839-3562-3632-633262323935"
+
+
+def test_device_uuid_text_shorter_than_the_field_drops_nul_padding() -> None:
+    """A shorter unique ID is NUL-padded; the padding is not part of the ID."""
+
+    assert decode_hip_uuid(b"abc123" + b"\x00" * 10) == "abc123"
+
+
+def test_device_info_reports_the_real_device_identity() -> None:
+    """The identity snapshot must agree with what the runtime wrote."""
+
+    class UuidLibrary:
+        def hipGetDevice(self, out) -> int:
+            out._obj.value = 0
+            return 0
+
+        def hipDeviceGetUuid(self, out, device) -> int:
+            target = getattr(out, "_obj", out)
+            ctypes.memmove(ctypes.addressof(target), b"e282895b62c2b295", 16)
+            return 0
+
+        def hipDeviceGetName(self, out, length, device) -> int:
+            out.value = b"AMD Radeon Pro W7900"
+            return 0
+
+        def hipDeviceGetPCIBusId(self, out, length, device) -> int:
+            out.value = b"0000:0d:00.0"
+            return 0
+
+        def hipGetErrorString(self, code) -> bytes:
+            return b"fake hip error"
+
+    info = HipRuntime(UuidLibrary()).device_info(0)
+    assert info.uuid == "e282895b62c2b295"
+    assert info.uuid_hex == "65323832383935623632633262323935"
+    assert info.name == "AMD Radeon Pro W7900"
+    assert info.pci_bus_id == "0000:0d:00.0"
+
+
+def test_device_uuid_all_zero_bytes_are_a_valid_identity() -> None:
+    class UuidLibrary:
+        def hipGetDevice(self, out) -> int:
+            out._obj.value = 0
+            return 0
+
+        def hipDeviceGetUuid(self, out, device) -> int:
+            target = getattr(out, "_obj", out)
+            ctypes.memmove(ctypes.addressof(target), b"\x00" * 16, 16)
+            return 0
+
+        def hipGetErrorString(self, code) -> bytes:
+            return b"fake hip error"
+
+    runtime = HipRuntime(UuidLibrary())
+    assert runtime.device_get_uuid() == "00000000-0000-0000-0000-000000000000"
