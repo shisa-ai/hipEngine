@@ -187,6 +187,15 @@ def test_gdn_isolation_changes_only_gdn_over_strict() -> None:
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_dpp_prefill"
 
 
+def test_q8_fallback_preserves_other_production_choices() -> None:
+    candidate = _load_script().CANDIDATES["production_q8_fallback"]
+    assert candidate.base_profile == "production"
+    assert candidate.environment == {
+        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    }
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]

@@ -62,6 +62,19 @@ class CandidateSpec:
 
 
 CANDIDATES = {
+    "production_q8_fallback": CandidateSpec(
+        name="production_q8_fallback",
+        classification="diagnostic",
+        mechanism="strict Q8 selected-down and dense Q8 MMQ fallback; other production paths unchanged",
+        environment={
+            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-q8-fallback",
+        candidate_key=None,
+        fallback_key=None,
+    ),
     "gdn_isolated": CandidateSpec(
         name="gdn_isolated",
         classification="diagnostic",
