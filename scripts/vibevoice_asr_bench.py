@@ -135,9 +135,7 @@ def bench_hipengine(pcm: np.ndarray, duration: float, args) -> dict:
         )
     result["timings"] = timings
     result["tokens"] = gen
-    text = tokenizer.decode(input_ids + gen, skip_special_tokens=True)
-    if "assistant" in text:
-        text = text[text.rindex("assistant") + len("assistant"):].strip()
+    text = tokenizer.decode(gen, skip_special_tokens=True).strip()
     result["text"] = text
     frontend.close()
     runner.close()
@@ -184,9 +182,7 @@ def bench_torch_gpu(pcm: np.ndarray, duration: float, args) -> dict:
         timings.append(
             {"preprocess_s": t1 - t0, "model_s": t2 - t1, "total_s": t2 - t0, "tokens": int(generated.shape[1] - inputs["input_ids"].shape[1])}
         )
-    text = processor.decode(generated[0], skip_special_tokens=True)
-    if "assistant" in text:
-        text = text[text.rindex("assistant") + len("assistant"):].strip()
+    text = processor.decode(generated[0, input_ids.shape[1]:], skip_special_tokens=True).strip()
     result["timings"] = timings
     result["text"] = text
     return result
