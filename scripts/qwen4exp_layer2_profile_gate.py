@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
-from functools import wraps
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -38,6 +38,7 @@ from scripts.execution_profile_gdn_calibration import (
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import prompt_sha256
+from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 from scripts.qwen4exp_canonical_ar_bench import (
     _git_metadata,
     _host_metadata,
@@ -61,6 +62,13 @@ class CandidateSpec:
     fallback_key: tuple[str, str, str, str] | None
     compact_output: bool = False
     count_registered_dispatch: bool = False
+    direct_dispatch_target: tuple[str, str] | None = None
+    direct_dispatch_reference: tuple[str, str] | None = None
+    dispatch_shape_positions: tuple[int, ...] | None = None
+
+    @property
+    def requires_dispatch_count(self) -> bool:
+        return self.count_registered_dispatch or self.direct_dispatch_target is not None
 
 
 CONSERVATIVE_ARITHMETIC_FLAGS = (
@@ -287,6 +295,48 @@ CANDIDATES["production_gdn_multi_restore"] = replace(
     },
     candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                    "qwen4exp_gdn_tiled16_multi_prefill"),
+)
+CANDIDATES["production_gr_up_restore"] = CandidateSpec(
+    name="production_gr_up_restore", classification="T2",
+    mechanism="GR-up three-plane IU8 projection plus existing sigmoid/mean; dense and GR-down off",
+    environment={
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    },
+    base_profile="production", scenario_id="qwen4exp-gr-up-restoration",
+    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0", "iu8_wmma_prefill_f32_f32_out"),
+    fallback_key=("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                  "coltile2_branch4_rowbatch4_f32_exact"),
+    direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                            "gguf_q8_0_iu8_wmma_prefill_f32_f32"),
+    direct_dispatch_reference=("hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv",
+                               "gguf_q8_0_iu8_wmma_prefill_f32_f32"),
+    dispatch_shape_positions=(3, 4, 5),
+)
+CANDIDATES["production_gr_down_restore"] = replace(
+    CANDIDATES["production_gr_up_restore"], name="production_gr_down_restore",
+    mechanism="GR-down three-plane IU8 projection; dense and GR-up off",
+    scenario_id="qwen4exp-gr-down-restoration",
+    environment={
+        **CANDIDATES["production_gr_up_restore"].environment,
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
+    },
+    fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
+)
+CANDIDATES["production_dense_q8_restore"] = replace(
+    CANDIDATES["production_gr_up_restore"], name="production_dense_q8_restore",
+    mechanism="Generic dense Q8 IU8 routes, including eligible GR-down; dedicated GR flags off",
+    scenario_id="qwen4exp-dense-q8-restoration",
+    environment={
+        **CANDIDATES["production_gr_up_restore"].environment,
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
+    },
+    fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
+    direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
 )
 
 
@@ -696,26 +746,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         key: os.environ.get(key) for key in candidate_spec.environment
     }
     os.environ.update(candidate_spec.environment)
-    dispatch_count = 0
-    dispatch_original = None
-    dispatch_key = None
+    dispatch_stack = ExitStack()
+    counter = {"calls": 0, "shapes": {}}
     try:
         if candidate_spec.environment.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
             candidate_generator.runner.configure_mmq_prefill_resources()
-        if candidate_spec.count_registered_dispatch:
-            from hipengine.kernels.registry import KernelKey, register, resolve
-            dispatch_key = KernelKey(*candidate_spec.candidate_key)
-            dispatch_original = resolve(
-                backend=dispatch_key.backend, layer=dispatch_key.layer,
-                quant=dispatch_key.quant, variant=dispatch_key.variant)
-
-            @wraps(dispatch_original)
-            def counted(*a, **kw):
-                nonlocal dispatch_count
-                dispatch_count += 1
-                return dispatch_original(*a, **kw)
-
-            register(dispatch_key, counted, replace=True)
+        if candidate_spec.requires_dispatch_count:
+            from hipengine.kernels.registry import KernelKey
+            counter = dispatch_stack.enter_context(count_candidate_dispatch(
+                key=KernelKey(*candidate_spec.candidate_key),
+                direct_target=candidate_spec.direct_dispatch_target,
+                direct_reference=candidate_spec.direct_dispatch_reference,
+                shape_positions=candidate_spec.dispatch_shape_positions))
         for number, row in enumerate(prompt_rows, 1):
             prompt_id = str(row["id"])
             strict = strict_trajectories[prompt_id]
@@ -755,9 +797,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        candidate_generator.close()
-        if dispatch_original is not None:
-            register(dispatch_key, dispatch_original, replace=True)
+        try:
+            candidate_generator.close()
+        finally:
+            dispatch_stack.close()
     candidate_after_close = memory_stats()
 
     captures = tuple(
@@ -834,7 +877,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and teardown
         and state_gate["passed"]
         and (compact_state_gate is None or compact_state_gate["passed"])
-        and (not candidate_spec.count_registered_dispatch or dispatch_count > 0)
+        and (not candidate_spec.requires_dispatch_count or counter["calls"] > 0)
     )
     passed = bool(measurement_valid and numerical_pass and task_pass)
     status = (
@@ -851,7 +894,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "measurement_valid": measurement_valid,
-        "candidate_dispatch_calls": dispatch_count if candidate_spec.count_registered_dispatch else None,
+        "candidate_dispatch_calls": counter["calls"] if candidate_spec.requires_dispatch_count else None,
+        "candidate_dispatch_shapes": shape_records(counter),
         "source": source,
         "host": _host_metadata(),
         "command": list(command),
@@ -867,9 +911,20 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "environment": dict(candidate_spec.environment),
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
-            "candidate_kernel": getattr(candidate_kernel, "__name__", None),
+            "direct_dispatch_target": candidate_spec.direct_dispatch_target,
+            "direct_dispatch_reference": candidate_spec.direct_dispatch_reference,
+            "dispatch_shape_positions": candidate_spec.dispatch_shape_positions,
+            "candidate_kernel": (candidate_spec.direct_dispatch_target[1]
+                                 if candidate_spec.direct_dispatch_target is not None
+                                 else getattr(candidate_kernel, "__name__", None)),
+            "registered_candidate_callable": getattr(candidate_kernel, "__qualname__", None),
+            "dispatch_count_mode": ("direct_alias" if candidate_spec.direct_dispatch_target
+                                    else "registry" if candidate_spec.count_registered_dispatch
+                                    else "not_counted"),
             "strict_fallback": getattr(strict_fallback, "__name__", None),
-            "candidate_kernel_registered": candidate_kernel is not None,
+            "candidate_kernel_registered": (
+                candidate_kernel is not None and candidate_spec.direct_dispatch_target is None),
+            "related_registry_variant_available": candidate_kernel is not None,
             "strict_fallback_registered": strict_fallback is not None,
         },
         "profiles": {
