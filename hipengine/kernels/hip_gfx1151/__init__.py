@@ -3325,6 +3325,24 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
 
     for module_name in _GFX1100_MODULES:
         import_module(module_name)
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
+        gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out,
+        gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,
+    )
+    blockscale_key = KernelKey(
+        BACKEND, "linear", "gguf_q8_0",
+        "selected_grouped_blockscale_prefill_bf16_bf16_out",
+    )
+    if replace or not is_registered(blockscale_key):
+        register(blockscale_key, gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out,
+                 replace=replace)
+    guarded_key = KernelKey(
+        BACKEND, "linear", "gguf_q8_0",
+        "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+    )
+    if replace or not is_registered(guarded_key):
+        register(guarded_key, gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,
+                 replace=replace)
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         qwen4_exp_gdn_prefill_tiled16_dpp_f32,
         qwen4_exp_gdn_prefill_tiled16_multi_f32,

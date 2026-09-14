@@ -4436,12 +4436,21 @@ def run_qwen4_exp_moe(
                             "Qwen4Exp Q8_0 WMMA down tile row count is invalid"
                         )
             if q8_wmma_total > 0:
+                q8_variant = os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT",
+                    "selected_grouped_wmma_prefill_bf16_bf16_out")
                 q8_wmma_down = resolve(
                     backend=backend,
                     layer="linear",
                     quant=weights["expert_down"].spec.quant_key,
-                    variant="selected_grouped_wmma_prefill_bf16_bf16_out",
+                    variant=q8_variant,
                 )
+                q8_kwargs = {}
+                if q8_variant == "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out":
+                    count, indices = scratch.ensure_group_risk_buffers(
+                        compact_rows=compact, out_features_total=hidden)
+                    q8_kwargs = dict(risk_count_ptr=count.ptr, risk_indices_ptr=indices.ptr,
+                                     risk_capacity=compact * hidden)
                 q8_wmma_down(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
@@ -4454,6 +4463,7 @@ def run_qwen4_exp_moe(
                     ffn,
                     hidden,
                     q8_wmma_total,
+                    **q8_kwargs,
                     stream=stream,
                     runtime=active_runtime,
                 )

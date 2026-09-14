@@ -18,6 +18,7 @@ namespace {
 
 using half_t = _Float16;
 typedef half_t __attribute__((ext_vector_type(16))) half16_t;
+typedef uint16_t __attribute__((ext_vector_type(16))) bf16x16_t;
 typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 constexpr int Q8_0_BLOCK = 32;
@@ -482,7 +483,7 @@ int launch_gguf_q8_0_prefill_dual_wmma(
 // with row_bytes = (in_features / 32) * 34 (2-byte fp16 d + 32 int8 qs
 // per block, no min term).
 // -------------------------------------------------------------------------
-template <int TILE_M, int TILE_N>
+template <int TILE_M, int TILE_N, bool BLOCK_SCALE = false, bool GUARD = false>
 __launch_bounds__(32, 8)
 __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,            // [compact, in_features] bf16
@@ -495,7 +496,9 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
     int64_t num_experts,
     int64_t in_features,
     int64_t out_features,
-    int64_t row_bytes) {
+    int64_t row_bytes,
+    int* risk_count = nullptr,
+    int* risk_indices = nullptr) {
   constexpr int TM = TILE_M / 16;
   constexpr int TN = TILE_N / 16;
   const int tid = static_cast<int>(threadIdx.x);
@@ -524,17 +527,28 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
   }
 
   float8_t acc[TM][TN];
+  float8_t magnitude[TM][TN];
 #pragma unroll
   for (int tm = 0; tm < TM; ++tm) {
 #pragma unroll
     for (int tn = 0; tn < TN; ++tn) {
       acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+      if constexpr (GUARD) magnitude[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
     }
   }
   const int blocks_per_row = static_cast<int>(in_features / Q8_0_BLOCK);
   for (int blk = 0; blk < blocks_per_row; ++blk) {
     const uint8_t* block_ptr[TM];
     half_t d_h[TM];
+    float x_abs[TN] = {};
+    float8_t block_acc[TM][TN];
+    if constexpr (BLOCK_SCALE) {
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm)
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn)
+          block_acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
 #pragma unroll
     for (int tm = 0; tm < TM; ++tm) {
       block_ptr[tm] =
@@ -548,6 +562,7 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
       const int64_t k_base =
           static_cast<int64_t>(blk) * Q8_0_BLOCK + k_off;
       half16_t b_reg[TN];
+      bf16x16_t b_bits[TN];
 #pragma unroll
       for (int tn = 0; tn < TN; ++tn) {
         const int64_t bounded = local_row[tn] < expert_rows
@@ -555,23 +570,55 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
         const int64_t row = compact_start + bounded;
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
-          b_reg[tn][kk] = static_cast<half_t>(bf16_bits_to_float(
-              input[row * in_features + k_base + kk]));
+          if constexpr (BLOCK_SCALE) {
+            b_bits[tn][kk] = input[row * in_features + k_base + kk];
+            if constexpr (GUARD)
+              x_abs[tn] += fabsf(bf16_bits_to_float(b_bits[tn][kk]));
+          } else {
+            b_reg[tn][kk] = static_cast<half_t>(bf16_bits_to_float(
+                input[row * in_features + k_base + kk]));
+          }
         }
       }
 #pragma unroll
       for (int tm = 0; tm < TM; ++tm) {
         const int8_t* qs = reinterpret_cast<const int8_t*>(block_ptr[tm] + 2);
         half16_t a_reg;
+        bf16x16_t a_bits;
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
-          a_reg[kk] =
-              d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
+          if constexpr (BLOCK_SCALE) {
+            a_bits[kk] = float_to_bf16_bits(static_cast<float>(qs[k_off + kk]));
+          } else {
+            a_reg[kk] =
+                d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
+          }
         }
 #pragma unroll
         for (int tn = 0; tn < TN; ++tn) {
-          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-              a_reg, b_reg[tn], acc[tm][tn]);
+          if constexpr (BLOCK_SCALE) {
+            block_acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+                a_bits, b_bits[tn], block_acc[tm][tn]);
+          } else {
+            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg, b_reg[tn], acc[tm][tn]);
+          }
+        }
+      }
+    }
+    if constexpr (BLOCK_SCALE) {
+      // WMMA accumulator columns differ from A-fragment lane ownership.
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float scale = __shfl(static_cast<float>(d_h[tm]), 2 * j + (tid >> 4));
+#pragma unroll
+          for (int tn = 0; tn < TN; ++tn) {
+            acc[tm][tn][j] += block_acc[tm][tn][j] * scale;
+            if constexpr (GUARD)
+              magnitude[tm][tn][j] += x_abs[tn] * (127.0f * fabsf(scale));
+          }
         }
       }
     }
@@ -588,9 +635,58 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
         if (col < out_features) {
           output[out_row * out_features + col] =
               float_to_bf16_bits(static_cast<float>(acc[tm][tn][j]));
+          if constexpr (GUARD) {
+            const float value = acc[tm][tn][j];
+            const uint32_t mid_bits = (__float_as_uint(value) & 0xffff0000U) | 0x8000U;
+            const float distance = fabsf(value - __uint_as_float(mid_bits));
+            // Empirical rounding-risk screen; full profile gates remain binding.
+            const float error = 4.0f * 0x1p-23f * magnitude[tm][tn][j];
+            if (!isfinite(value) || distance <= error) {
+              const int slot = atomicAdd(risk_count, 1);
+              risk_indices[slot] = static_cast<int>(out_row * out_features + col);
+            }
+          }
         }
       }
     }
+  }
+}
+
+__global__ void q8_0_selected_sparse_repair_kernel(
+    const uint16_t* x, const int64_t* starts, const uint8_t* weights,
+    uint16_t* output, const int* count, const int* indices,
+    int capacity, int experts, int hidden, int outputs) {
+  __shared__ float sums[4];
+  const int total = min(*count, capacity);
+  for (int slot = blockIdx.x; slot < total; slot += gridDim.x) {
+    const int index = indices[slot];
+    const int row = index / outputs;
+    const int col = index % outputs;
+    int lo = 0, hi = experts;
+    while (lo + 1 < hi) {
+      const int mid = (lo + hi) / 2;
+      if (starts[mid] <= row) lo = mid;
+      else hi = mid;
+    }
+    const uint8_t* weight_row = weights +
+        (static_cast<int64_t>(lo) * outputs + col) * (hidden / 32) * 34;
+    float partial = 0.0f;
+    for (int k = threadIdx.x; k < hidden; k += 128) {
+      const uint8_t* block = weight_row + (k / 32) * 34;
+      const float weight = fp16_bytes_to_float(block) *
+          static_cast<float>(reinterpret_cast<const int8_t*>(block + 2)[k & 31]);
+      partial += bf16_bits_to_float(x[static_cast<int64_t>(row) * hidden + k]) * weight;
+    }
+    for (int offset = 16; offset > 0; offset >>= 1)
+      partial += __shfl_down(partial, offset);
+    if ((threadIdx.x & 31) == 0) sums[threadIdx.x >> 5] = partial;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float result = 0.0f;
+      for (int wave = 0; wave < 4; ++wave) result += sums[wave];
+      output[index] = float_to_bf16_bits(result);
+    }
+    __syncthreads();
   }
 }
 
@@ -639,6 +735,68 @@ extern "C" int hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf
       static_cast<const uint8_t*>(weights),
       static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out(
+    const void* input, const void* expert_start_compact,
+    const void* expert_start_wmma, const void* tile_expert,
+    const void* weights, void* output, int64_t compact_rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t wmma_total_rows, hipStream_t stream) {
+  if (!input || !expert_start_compact || !expert_start_wmma || !tile_expert ||
+      !weights || !output || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) || out_features <= 0 ||
+      wmma_total_rows <= 0 || (wmma_total_rows % 16))
+    return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(
+      (q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true>),
+      dim3(static_cast<uint32_t>((out_features + 31) / 32),
+           static_cast<uint32_t>(wmma_total_rows / 16)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features,
+      (in_features / 32) * Q8_0_BLOCK_BYTES);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_blockscale_guarded(
+    const void* input, const void* starts, const void* wmma_starts,
+    const void* tiles, const void* weights, void* output,
+    void* risk_count, void* risk_indices, int64_t capacity,
+    int64_t rows, int64_t experts, int64_t hidden, int64_t outputs,
+    int64_t total_rows, hipStream_t stream) {
+  if (!input || !starts || !wmma_starts || !tiles || !weights || !output ||
+      !risk_count || !risk_indices || rows <= 0 || experts <= 0 ||
+      hidden <= 0 || hidden % 32 || outputs <= 0 || total_rows <= 0 ||
+      total_rows % 16 || rows > INT32_MAX || experts > INT32_MAX ||
+      hidden > INT32_MAX || outputs > INT32_MAX || total_rows > INT32_MAX ||
+      capacity < rows * outputs || capacity > INT32_MAX)
+    return static_cast<int>(hipErrorInvalidValue);
+  hipError_t error = hipMemsetAsync(risk_count, 0, sizeof(int), stream);
+  if (error != hipSuccess) return static_cast<int>(error);
+  hipLaunchKernelGGL(
+      (q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>),
+      dim3(static_cast<uint32_t>((outputs + 31) / 32),
+           static_cast<uint32_t>(total_rows / 16)), dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),
+      static_cast<const int64_t*>(wmma_starts), static_cast<const int64_t*>(tiles),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      rows, experts, hidden, outputs, (hidden / 32) * 34,
+      static_cast<int*>(risk_count), static_cast<int*>(risk_indices));
+  error = hipGetLastError();
+  if (error != hipSuccess) return static_cast<int>(error);
+  hipLaunchKernelGGL(q8_0_selected_sparse_repair_kernel,
+      dim3(static_cast<uint32_t>(capacity < 4096 ? capacity : 4096)), dim3(128), 0, stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      static_cast<const int*>(risk_count), static_cast<const int*>(risk_indices),
+      static_cast<int>(capacity), static_cast<int>(experts),
+      static_cast<int>(hidden), static_cast<int>(outputs));
   return static_cast<int>(hipGetLastError());
 }
 

@@ -412,6 +412,7 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _entry: str = "hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
 ) -> None:
     """Run the grouped selected-expert Q8_0 down via WMMA tiles.
 
@@ -437,7 +438,7 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
         raise ValueError("wmma_total_rows must be divisible by 16")
     library = library or build_gguf_q8_0_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = library.hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out
+    fn = getattr(library, _entry)
     fn.argtypes = _GROUPED_WMMA_ARGTYPES
     fn.restype = ctypes.c_int
     err = fn(
@@ -456,6 +457,40 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out(*args, **kwargs):
+    """Multiply exact Q8 codes by BF16 activations, then apply FP32 block scales."""
+    return gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+        *args, **kwargs,
+        _entry="hipengine_gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out")
+
+
+def gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out(
+    input_ptr, starts_ptr, wmma_starts_ptr, tiles_ptr, weights_ptr, output_ptr,
+    rows, experts, hidden, outputs, total_rows, *, risk_count_ptr,
+    risk_indices_ptr, risk_capacity, stream=0, library=None, runtime=None,
+):
+    """Block-scale WMMA plus bounded sparse strict-order BF16 boundary repair."""
+    if (min(rows, experts, hidden, outputs, total_rows) <= 0 or hidden % 32
+            or total_rows % 16 or risk_capacity < rows * outputs
+            or max(rows, experts, hidden, outputs, total_rows, risk_capacity) > 2**31 - 1):
+        raise ValueError("invalid grouped block-scale shape or risk capacity")
+    pointers = (input_ptr, starts_ptr, wmma_starts_ptr, tiles_ptr,
+                weights_ptr, output_ptr, risk_count_ptr, risk_indices_ptr)
+    if not all(pointers):
+        raise ValueError("null pointer in grouped block-scale launch")
+    library = library or build_gguf_q8_0_prefill()
+    runtime = runtime or get_hip_runtime()
+    fn = library.hipengine_gguf_q8_0_selected_grouped_blockscale_guarded
+    fn.argtypes = [ctypes.c_void_p] * 8 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    error = fn(*(ctypes.c_void_p(p) for p in pointers),
+               *(ctypes.c_int64(v) for v in
+                 (risk_capacity, rows, experts, hidden, outputs, total_rows)),
+               ctypes.c_void_p(stream))
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
 
 
 _WRAPPERS = {
@@ -514,4 +549,6 @@ __all__ = [
     "gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out",
     "gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out",
     "gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
 ]

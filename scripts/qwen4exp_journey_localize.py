@@ -39,6 +39,9 @@ ARMS["all_numerics_strict"] = {
     for key, value in values.items()
 }
 ARMS["production_conservative"] = dict(CANDIDATES["production_conservative"].environment)
+for name in ("q8_blockscale", "q8_blockscale_mmq",
+             "q8_blockscale_guarded", "q8_blockscale_guarded_mmq"):
+    ARMS[name] = dict(CANDIDATES[name].environment)
 ARMS["all_flags_strict"] = {}
 ARMS["gdn_flags_strict"] = {}
 ARMS["base_plus_moe_flags"] = {}
@@ -225,6 +228,8 @@ def main():
                     else:
                         os.environ[key] = value
                 os.environ.update(ARMS[arm])
+                if os.environ.get(PREFIX + "Q8_MMQ_PREFILL") == "1":
+                    generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 for row in prompt_rows:
                     key = row["id"]

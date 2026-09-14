@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Q8 Block-Scale Correction Experiment
+
+- `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` is profile-owned and defaults to the
+  old variant while its admission flag is off in the recovery profile.
+  The block-scale candidate avoids FP16-rounded weights without doubling WMMA.
+  Keep it experimental until numerical/task/depth and complete-owner cost
+  gates pass. If admitted, select it directly in the profile; remove the
+  temporary selector when no longer needed for comparative qualification.
+
 ## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)
 
 - The gfx1151 production binder now selects conservative arithmetic while
