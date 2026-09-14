@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-14",
+  "model": "microsoft/VibeVoice-ASR-HF (front-end weights: microsoft/VibeVoice-ASR)",
+  "quant": "bf16 weights, fp32 accumulate",
+  "workload": {
+    "audio": "11.0 s mono 24 kHz real speech (JFK inaugural excerpt, openai/whisper test fixture, ffmpeg-resampled)",
+    "prompt": "processor-shaped transcription request, 146 prompt tokens, 83 audio frames",
+    "generation": "greedy, 49 new tokens to natural EOS (<|im_end|>)"
+  },
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X",
+  "protocol": "same-process lanes, 3 repetitions after warmup, best-of reported; both lanes use the identical normalized PCM and the identical RMS/dB/clip/pad preprocessing; torch lane is transformers eager-attention bf16 on cuda (sdpa unsupported by the tokenizer encoder)",
+  "commands": [
+    "python3 -u scripts/vibevoice_asr_bench.py --pcm-file <jfk24k.wav> --repeats 3 --max-new-tokens 128"
+  ],
+  "results": {
+    "hipengine_total_s": 4.549,
+    "hipengine_frontend_s": 0.348,
+    "hipengine_prompt_decode_s": 4.200,
+    "torch_total_s": 4.425,
+    "torch_model_s": 4.390,
+    "ratio_hipengine_over_torch": 1.03,
+    "hipengine_decode_ms_per_token": 66.0,
+    "torch_decode_ms_per_token": 81.0
+  },
+  "gates": {
+    "correctness": "greedy chain 16/16 equal to torch fixture (test_gpu_vibevoice_qwen2_runner); front-end parity rel 2.1e-3 vs fp32 CPU reference, rel <= 5e-2 vs torch-GPU bf16 fixture; 10/10 gpu-suite tests; E2E transcript content identical to torch (End timestamp 11.0 vs 11.07 - benign bf16 path divergence)"
+  },
+  "notes": [
+    "not yet faster than torch end to end (1.03x); hipEngine decode is already faster per token (66-78 ms vs ~81 ms), and the residual gap is prompt prefill (~0.7 s for 146 rows) and front-end (0.35 s vs ~0.30 s torch audio)",
+    "front-end optimization retained wins vs first working version: 0.92 s -> 0.35 s (scratch arena instead of per-call malloc, warp-per-row rmsnorm, A&S fast-erf gelu, WMMA bulk GEMM for FFN/connectors where tile-aligned, im2col+WMMA for the five large strided convs)",
+    "WMMA GEMV variants were tried for the decode path and measured slower (bulk-tile kernels, rows=1): 7.8 s vs 4.2 s prompt+decode; reverted to the scalar dense GEMV family",
+    "torch lane uses eager attention for the whole model because the HF tokenizer encoder does not support sdpa; transformers 5.15.0 get_audio_features crashes on 2-D input_values (upstream chunk-cache bug), worked around with 3-D input"
+  ]
+}

@@ -117,6 +117,17 @@ machines, so the gap is host power/thermal headroom, not a code change. The FP16
 production path is within 0.86% max error of the FP32 oracle (gate: 2%); a
 strict FP32 parity path is one flag away.
 
+**Speech transcription (VibeVoice-ASR 9B).** The first torch-free hipEngine
+implementation of VibeVoice-ASR (dual causal conv encoders, connectors,
+Qwen2-7B backbone, greedy transcription) runs end to end on the same Strix Halo
+host at **4.55 s for an 11-second real-speech clip, within 3% of the torch GPU
+lane (4.43 s)**, and its decode stage is already faster per token (66-78 ms vs
+~81 ms torch). Transcription content matches torch exactly; timestamps can
+differ in the last bf16 digit. Front-end embeddings match torch-GPU bf16
+fixtures within 5% relative and the fp32 CPU reference within 0.3%. Speed work
+continues on prompt prefill and the audio conv stack.
+[Results and protocol](results/2026-09-14-gfx1151-vibevoice-asr-e2e-vs-torch.json).
+
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
