@@ -22,6 +22,7 @@ from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profil
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
+from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -37,6 +38,7 @@ ARMS["all_numerics_strict"] = {
     key: value for name, values in ARMS.items() if name != "bound"
     for key, value in values.items()
 }
+ARMS["production_conservative"] = dict(CANDIDATES["production_conservative"].environment)
 ARMS["all_flags_strict"] = {}
 ARMS["gdn_flags_strict"] = {}
 ARMS["base_plus_moe_flags"] = {}
