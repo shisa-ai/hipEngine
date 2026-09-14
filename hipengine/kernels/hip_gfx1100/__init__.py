@@ -1611,4 +1611,9 @@ def register_vibevoice_kernels():
     register_shared('hip_gfx1100')
 
 
+def register_vibevoice_q4_kernels():
+    from hipengine.kernels.hip_gfx1100.vibevoice.q4 import register_vibevoice_q4_kernels as register_q4
+    register_q4('hip_gfx1100')
+
+
 register_vibevoice_kernels()

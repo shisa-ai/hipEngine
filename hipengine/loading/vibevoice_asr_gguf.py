@@ -89,12 +89,18 @@ class Qwen2Q4Weights:
     buffers: list[DeviceBuffer] = field(default_factory=list)
 
 
+GGUF_WEIGHT_TYPES: dict[int, int] = {}
+"""Device pointer -> GGML tensor type, published by the loader so the
+q4 linear wrappers can route Q4_K vs Q6_K blocks per weight."""
+
+
 def _upload(reader: GGUFReader, name: str, keep: list) -> DeviceBuffer:
     """Raw storage upload: BF16 as uint16, Q4_K/Q6_K as their byte blocks."""
     data = np.asarray(reader.tensor_data(name))
     buf = malloc(data.nbytes)
     copy_host_array_to_device(buf, data)
     keep.append(buf)
+    GGUF_WEIGHT_TYPES[buf.ptr] = int(reader.tensor_info(name).ggml_type)
     return buf
 
 
@@ -109,6 +115,15 @@ def load_vibevoice_qwen2_q4(gguf_path: str | Path) -> Qwen2Q4Weights:
 
     def up(name: str) -> DeviceBuffer:
         buf = _upload(reader, name, keep)
+        return buf
+
+    def up_f32(name: str) -> DeviceBuffer:
+        """BF16 storage widened to fp32 (biases are consumed as f32)."""
+        bits = np.asarray(reader.tensor_data(name)).reshape(-1)
+        data = _bf16_bits_to_f32(bits).astype(np.float32)
+        buf = malloc(data.nbytes)
+        copy_host_array_to_device(buf, data)
+        keep.append(buf)
         return buf
 
     def host_bf16(name: str) -> np.ndarray:
@@ -142,17 +157,17 @@ def load_vibevoice_qwen2_q4(gguf_path: str | Path) -> Qwen2Q4Weights:
         p = f"blk.{i}."
         for gemm in ("attn_q", "attn_k", "attn_v", "attn_output", "ffn_gate", "ffn_up", "ffn_down"):
             t = reader.tensor_info(p + gemm + ".weight")
-            if t.ggml_type not in (12, 14):  # Q4_K, Q6_K
+            if t.ggml_type not in (12, 13, 14):  # Q4_K, Q5_K, Q6_K
                 raise ValueError(f"{p}{gemm}.weight not quantized (type {t.ggml_type})")
         layers.append(
             Qwen2Q4Layer(
                 input_ln=up(p + "attn_norm.weight"),
                 q_w=up(p + "attn_q.weight"),
-                q_b=up(p + "attn_q.bias"),
+                q_b=up_f32(p + "attn_q.bias"),
                 k_w=up(p + "attn_k.weight"),
-                k_b=up(p + "attn_k.bias"),
+                k_b=up_f32(p + "attn_k.bias"),
                 v_w=up(p + "attn_v.weight"),
-                v_b=up(p + "attn_v.bias"),
+                v_b=up_f32(p + "attn_v.bias"),
                 o_w=up(p + "attn_output.weight"),
                 post_ln=up(p + "ffn_norm.weight"),
                 gate_w=up(p + "ffn_gate.weight"),
