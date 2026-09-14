@@ -3,7 +3,8 @@
 Source `f0b521468`, Framework machine `55ea6c509d0b49eea8de7094a1023668`,
 Radeon 8060S/gfx1151, Flash-Next UD-Q4_K_XL and BF16 KV, chunk 1024.
 Only the existing GDN/DPP suffix is restored over guarded Q8 and QSA.
-No default changes or performance claim yet.
+No default changes or performance claim. The measured composition fails the
+predeclared task criterion despite passing numerics.
 
 | Gate | Rows / top-1 | Mean KL | p95 KL | Maximum KL | Counted suffix calls |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -20,6 +21,27 @@ speculative-decoding explanation differs in wording, and both captured
 prefixes are incomplete. It requires complete paired task review, not
 automatic rejection for differing token IDs and not automatic acceptance.
 Canonical depth passes independently of that unresolved task decision.
+
+## Complete Task Review
+
+The targeted Japanese explanation reaches EOS at 1187 strict tokens and
+1121 candidate tokens, with two identical repeats per arm and zero teardown.
+Runtime source is unchanged between numerical and task capture revisions.
+
+The candidate newly attributes limited verification parallelism to
+causal-mask sequential dependence. Known draft tokens allow parallel
+target evaluation of their prefixes; this is a material error in the
+requested explanation of verification costs. Strict does not make that
+claim. The primary PMLR speculative-decoding paper and the exact review
+scope are recorded in `task-review.json`; the compact packet preserves
+both complete texts.
+
+**The composition is not promoted under the existing no-new-material-error
+per-prompt rule.** This is one observation, not evidence of lower expected
+quality or a blanket rejection of GDN. Strict also contains simplifications.
+No new criterion was added, and numerical thresholds were not widened.
+After this binding task failure, the remaining task prompts and performance
+comparison were not run. Multi-column GDN is a separate candidate.
 
 Commands, host/compiler identity, model fingerprint, overrides, full scoped
 metrics and raw hashes are in `artifact.json`. Reproduce the compact packet:

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "capture_sha256": "ca7776c6d4997eeb46b5347c9df61bfdc5b9eef7b8998e0c0c4305d29f89b0ab",
+  "candidate": "production_gdn_restore",
+  "prompt_id": "heldout_general_ja_speculative",
+  "scope": "One targeted complete-EOS prompt, two repeats per arm; not a complete task suite or statistical non-inferiority assessment.",
+  "predeclared_policy": "Each prompt must preserve requested facts, constraints, code behavior and language. No new material per-prompt degradation versus strict.",
+  "verdict": "reject_under_predeclared_task_rule",
+  "task_passed": false,
+  "strict_tokens": 1187,
+  "candidate_tokens": 1121,
+  "both_eos": true,
+  "both_repeat_exact": true,
+  "requirements": {
+    "japanese": "pass",
+    "acceptance_rate": "covered",
+    "verification_cost": "covered_with_new_material_error",
+    "memory_usage": "covered"
+  },
+  "finding": {
+    "location": "Candidate section 2, parallelism-limit bullet",
+    "candidate_excerpt_translation": "The verification step still has sequential dependencies (causal masks), so pure parallelization is limited.",
+    "reason": "Known draft tokens allow the target to evaluate the proposed prefixes in parallel with a causal mask. The mask does not impose the autoregressive token-generation dependency within that verification pass. Layer dependencies and hardware limits remain, but causal masking is not the claimed serial verification bottleneck.",
+    "materiality": "The user specifically requested a technical explanation of why speculative decoding may not accelerate inference. Giving an incorrect mechanism for verification parallelism is material to that requested explanation.",
+    "strict_comparison": "Strict describes parallel target verification and discusses resource, drafting and memory costs without this causal-mask sequential-dependency claim.",
+    "primary_reference": {
+      "title": "Fast Inference from Transformers via Speculative Decoding",
+      "authors": "Yaniv Leviathan, Matan Kalman, Yossi Matias",
+      "publication": "PMLR 202, 2023",
+      "url": "https://proceedings.mlr.press/v202/leviathan23a.html",
+      "location": "Abstract",
+      "excerpt": "running them in parallel on the outputs of the approximation models",
+      "verification": "Fetched the primary PMLR page directly after web-tool lookups returned no usable citation."
+    }
+  },
+  "limitations": [
+    "Strict is not a perfect factual oracle; both answers simplify acceptance and cache management.",
+    "Ambiguous batch-size and FLOP-versus-wall-time phrasing is not used as an additional rejection criterion.",
+    "One observed new error does not establish worse task quality in expectation.",
+    "This verdict rejects the measured composition under the existing rule, not the GDN kernel family in general.",
+    "Other task prompts and performance were not run after this binding failure."
+  ]
+}
