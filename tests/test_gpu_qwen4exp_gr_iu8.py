@@ -56,13 +56,26 @@ def _q8_0_pack(weights: np.ndarray) -> np.ndarray:
 
 @unittest.skipUnless(HIP_AVAILABLE, "HIP runtime unavailable")
 class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
+    def setUp(self):
+        from hipengine.core.memory import memory_stats
+        self._before_bytes = memory_stats()["current_allocated_bytes"]
+        self._allocations = []
+        self._runtime = None
+
+    def tearDown(self):
+        from hipengine.core.memory import free, memory_stats
+        for allocation in reversed(self._allocations):
+            free(allocation, runtime=self._runtime)
+        self.assertEqual(memory_stats()["current_allocated_bytes"], self._before_bytes)
+
     def _environment(self):
         from hipengine.core.hip import get_hip_runtime
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
             build_gguf_k_gemv,
             gguf_q8_0_iu8_wmma_prefill_f32_f32,
         )
-        return (get_hip_runtime(), build_gguf_k_gemv(load=True),
+        self._runtime = get_hip_runtime()
+        return (self._runtime, build_gguf_k_gemv(load=True),
                 gguf_q8_0_iu8_wmma_prefill_f32_f32)
 
     def test_wrapper_rejects_bad_geometry(self):
@@ -83,9 +96,9 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
         weights = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float32)
         x = rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
         raw = _q8_0_pack(weights)
-        dw = _upload(raw, runtime, [])
-        dx = _upload(x, runtime, [])
-        dout = _alloc(rows * out_features, np.float32, runtime, [])
+        dw = _upload(raw, runtime, self._allocations)
+        dx = _upload(x, runtime, self._allocations)
+        dout = _alloc(rows * out_features, np.float32, runtime, self._allocations)
         launch(dx.ptr, dw.ptr, dout.ptr, rows, in_features, out_features,
                library=library, runtime=runtime)
         runtime.device_synchronize()
@@ -117,11 +130,11 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
         weights = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float32)
         x = rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
         raw = _q8_0_pack(weights)
-        dw = _upload(raw, runtime, [])
-        dx = _upload(x, runtime, [])
+        dw = _upload(raw, runtime, self._allocations)
+        dx = _upload(x, runtime, self._allocations)
         outs = []
         for _ in range(2):
-            dout = _alloc(rows * out_features, np.float32, runtime, [])
+            dout = _alloc(rows * out_features, np.float32, runtime, self._allocations)
             launch(dx.ptr, dw.ptr, dout.ptr, rows, in_features, out_features,
                    library=library, runtime=runtime)
             runtime.device_synchronize()
@@ -135,9 +148,9 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
         weights = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float32)
         x = rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
         raw = _q8_0_pack(weights)
-        dw = _upload(raw, runtime, [])
-        dx = _upload(x, runtime, [])
-        dout = _alloc(rows * out_features, np.float32, runtime, [])
+        dw = _upload(raw, runtime, self._allocations)
+        dx = _upload(x, runtime, self._allocations)
+        dout = _alloc(rows * out_features, np.float32, runtime, self._allocations)
         launch(dx.ptr, dw.ptr, dout.ptr, rows, in_features, out_features,
                library=library, runtime=runtime)
         runtime.device_synchronize()
@@ -193,14 +206,15 @@ class Qwen4ExpQ8Iu8DenseDispatchTests(unittest.TestCase):
 
     def test_dense_dispatch_default_off_and_gated(self):
         import hipengine.runtime.gguf_linear as gl
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
+        register_gguf_k_gemv_kernels(replace=False)
         saved = os.environ.pop(self.FLAG, None)
         try:
             registered = gl.is_registered(
                 gl.KernelKey(
                     "hip_gfx1100", "linear", "gguf_q8_0",
                     "iu8_wmma_prefill_f32_f32_out"))
-            if not registered:
-                self.skipTest("iu8 dense variant not registered")
+            self.assertTrue(registered, "iu8 dense variant must register")
 
             class Spec:
                 layout = gl.LAYOUT_RAW_GGUF
