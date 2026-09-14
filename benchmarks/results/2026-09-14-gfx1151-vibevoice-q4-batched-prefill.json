@@ -16,25 +16,47 @@
     "prior_row_by_row_prefill_s_89_rows": 3.74,
     "speedup_vs_prior_row_by_row": 19.2,
     "greedy_16_tokens_s_q4": 0.995,
-    "greedy_16_tokens_s_bf16": 1.410,
+    "greedy_16_tokens_s_bf16": 1.41,
     "token_chains_identical": true,
     "decode_ms_per_token_q4": 48.1,
     "decode_ms_per_token_bf16": 72.2
   },
   "per_gemm_at_146_rows": {
     "note": "ms, raw-block WMMA prefill vs the naive raw-block prefill kernels on the same weights",
-    "ffn_gate_q4_k": {"naive": 170.2, "wmma": 1.92, "speedup": 88.4},
-    "attn_q_q4_k": {"naive": 27.1, "wmma": 0.35, "speedup": 77.2},
-    "ffn_down_q4_k": {"naive": 161.5, "wmma": 1.51, "speedup": 107.2},
-    "ffn_down_q6_k": {"naive": 159.8, "wmma": 7.49, "speedup": 21.3},
-    "attn_v_q6_k": {"naive": 3.0, "wmma": 0.51, "speedup": 5.8},
-    "dual_gate_up_q4_k": {"wmma_dual_2_gemms": 3.70},
+    "ffn_gate_q4_k": {
+      "naive": 170.2,
+      "wmma": 1.92,
+      "speedup": 88.4
+    },
+    "attn_q_q4_k": {
+      "naive": 27.1,
+      "wmma": 0.35,
+      "speedup": 77.2
+    },
+    "ffn_down_q4_k": {
+      "naive": 161.5,
+      "wmma": 1.51,
+      "speedup": 107.2
+    },
+    "ffn_down_q6_k": {
+      "naive": 159.8,
+      "wmma": 7.49,
+      "speedup": 21.3
+    },
+    "attn_v_q6_k": {
+      "naive": 3.0,
+      "wmma": 0.51,
+      "speedup": 5.8
+    },
+    "dual_gate_up_q4_k": {
+      "wmma_dual_2_gemms": 3.7
+    },
     "bf16_lane_reference": "~1.5 ms per GEMM average (196 GEMMs in ~0.30 s)"
   },
   "gates": {
     "gpu_suite": "8/8 tests/test_gpu_vibevoice_qwen2_q4_runner.py including the greedy chain 16/16 vs the torch fixture, first-position logits, and a new batched-vs-row-by-row prefill oracle",
     "prefill_numerics": "batched vs row-by-row post-prefill: top-1 identical, top-5 set identical, max logit drift 5.9e-3 relative to the logit scale, cosine 0.99991",
-    "wer_recheck": "20-clip Q4 lane with the batched prefill launched; the 50-clip gate and the 20-clip pack8-decode check are both 1.978% / 1.487% == bf16"
+    "wer_recheck": "20-clip Q4 lane with the batched prefill: WER 1.486988847583643% (0.01486988847583643 fraction), identical to the bf16 lane and to the pack8-decode Q4 lane on the same 20 clips; 0/20 per-clip differences"
   },
   "notes": [
     "Q4_K now runs at or faster than the dense bf16 lane on both stages under a matched protocol: prefill 0.195 vs 0.296 s and decode 48.1 vs 72.2 ms/token, at 6.10 GB of resident weights against 16.66 GB.",
