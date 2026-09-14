@@ -27,6 +27,23 @@ from scripts.qwen4exp_canonical_ar_bench import (
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
+def resolve_allocation_profile():
+    from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
+    # Import the same kernel families as generator construction before resolving.
+    from hipengine.generation import qwen4_exp_gguf
+    from hipengine.generation.qwen4_exp_profiles import (
+        QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, QWEN4_EXP_QUANTS,
+        register_qwen4_exp_gfx1151_profiles,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels()
+    register_qwen4_exp_gfx1151_profiles()
+    return resolve_runtime_profile(
+        model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
+        quant=QWEN4_EXP_QUANTS[1], profile=ExecutionProfile.PRODUCTION)
+
+
 def validate_chunk_allocation(packet, *, chunk, context, manifest, host, model):
     if (packet.get("schema", 0) < 2 or packet["status"] != "passed"
             or not packet["source"]["tracked_clean"]
@@ -105,13 +122,7 @@ def main():
         host, model = _host_metadata(), model_identity(args.model_root)
         allocation = None
         if args.allocation_evidence is not None:
-            from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
-            from hipengine.generation.qwen4_exp_profiles import (
-                QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, QWEN4_EXP_QUANTS,
-            )
-            resolved = resolve_runtime_profile(
-                model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
-                quant=QWEN4_EXP_QUANTS[1], profile=ExecutionProfile.PRODUCTION)
+            resolved = resolve_allocation_profile()
             allocation = json.loads(args.allocation_evidence.read_bytes())
             validate_chunk_allocation(
                 allocation, chunk=args.prefill_chunk_size, context=args.max_sequence_length,
