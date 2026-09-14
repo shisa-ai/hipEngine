@@ -5,6 +5,7 @@ from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profi
 from hipengine.generation.qwen4_exp_profiles import (
     QWEN4_EXP_BACKEND, QWEN4_EXP_MODEL, register_qwen4_exp_gfx1151_profiles,
     PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
+    PRODUCTION_Q8_QSA_RESTORED_FLAGS,
 )
 from scripts.qwen4exp_layer2_profile_gate import CONSERVATIVE_ARITHMETIC_FLAGS
 from hipengine.runtime import qwen4_exp_runner
@@ -25,7 +26,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     profile = resolve("gguf_ud_q4_k_xl")
     profile.binder(SimpleNamespace(), profile)
     for flag in CONSERVATIVE_ARITHMETIC_FLAGS:
-        assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
+        assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == (
+            PRODUCTION_Q8_QSA_RESTORED_FLAGS.get(flag, "0"))
     for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
                  "GDN_WAVE_NORM", "FORKB_GROUPED_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"

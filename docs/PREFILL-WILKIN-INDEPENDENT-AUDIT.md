@@ -13,12 +13,22 @@ Q8 residual-weight down is rejected/removed, larger chunks exceed the current
 scratch model, and the incumbent numerical envelope still fails. The
 remaining inventory is not claimed complete.
 
+September 15 JST closeout: the prior incumbent above has been replaced.
+Guarded Q8 block-scale down and qualified QSA prefill/ordered decode are
+now defaults, recovering 4.34/4.73/38.48% PP at 512/1K/4K versus the
+same-session conservative recovery. See the
+[restoration review](../benchmarks/results/2026-09-15-q8-blockscale-restoration/README.md).
+The screen is empirical; short/depth parity is not complete-EOS factual
+certification. Dense MMQ fails depth, dense/GR fails as a combination,
+and disabled GDN/MoE families are not individually proven faulty. Remaining
+matrix/fusion/PM4/MTP experiments are open, not part of this closeout.
+
 Arithmetic recovery update: Q8 selected-down/MMQ are causal leads in the
 current composition, and production-prefill state carries the large decode
 tail. A two-Q8 fallback passes automatic numerical limits but fails a
 predeclared factual task check. The conservative recovery matches strict
 on594 natural-prompt and780 canonical-depth rows. The UD-Q4_K_XL binder
-selects that recovery while exact PLE and grouped/register-state owners
+initially selected that recovery while exact PLE and grouped/register-state owners
 stay active; tiled GDN, including its DPP variant, is inactive pending
 composition requalification. See
 `benchmarks/results/2026-09-14-q8-prefill-numerics/README.md`.

@@ -41,6 +41,17 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
 _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
+PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
+    "Q8_0_SELECTED_WMMA_DOWN": "1",
+    "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+    "QSA_H256_WAVE_PREFILL": "page256",
+    "QSA_HEAD_PAIR": "quad",
+    "QSA_ORDERED_DECODE": "1",
+    "QSA_ORDERED_DECODE_V2": "1",
+}
+_Q8_QSA_RESTORATION_EVIDENCE = (
+    "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json"
+)
 _MOE_WMMA_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json"
@@ -498,11 +509,8 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
         "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out",
         "selected_dual_wmma_prefill_compact_bf16_bf16_out",
         "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
-        "strict_ordered_three_pass_v2_spans",
     }
     replacements = {
-        "strict_h256_head_quad_rows_spans": "strict_rows_spans",
-        "strict_ordered_three_pass_spans": "strict_spans",
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out":
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
     }
@@ -515,14 +523,28 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
             replacements[selection.selected_variant] = "coltile8_rowbatch4_wave_scale_f32_f32_out"
         else:
             replacements[selection.selected_variant] = selection.strict_fallback_variant
-    return tuple(
-        replace(
+    restored_q8_scopes = {
+        "grouped_prefill_rows_lt512_q8_0_expert_down",
+        "grouped_prefill_rows_ge512_q8_0_expert_down",
+    }
+    restored_qsa = {
+        "strict_h256_head_quad_rows_spans", "strict_ordered_three_pass_spans",
+        "strict_ordered_three_pass_v2_spans",
+    }
+    result = []
+    for selection in selections:
+        variant = replacements.get(selection.selected_variant, selection.selected_variant)
+        restored = selection.selected_variant in restored_qsa
+        if selection.scope in restored_q8_scopes:
+            variant = "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"
+            restored = True
+        result.append(replace(
             selection,
-            selected_variant=replacements.get(selection.selected_variant, selection.selected_variant),
-            evidence_artifact=_ARITHMETIC_RECOVERY_EVIDENCE,
-        )
-        for selection in selections
-    )
+            selected_variant=variant,
+            evidence_artifact=(_Q8_QSA_RESTORATION_EVIDENCE if restored
+                               else _ARITHMETIC_RECOVERY_EVIDENCE),
+        ))
+    return tuple(result)
 
 
 def _bind_default_chunk(generator: Any, *, production: bool) -> None:
@@ -682,6 +704,8 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
             os.environ["HIPENGINE_QWEN4_EXP_" + flag] = "0"
+        for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items():
+            os.environ["HIPENGINE_QWEN4_EXP_" + flag] = value
     if production:
         configure = getattr(
             getattr(generator, "runner", None),
