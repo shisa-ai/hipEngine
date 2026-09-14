@@ -1,3 +1,5 @@
+- **2026-09-14** — VibeVoice-ASR 9B first torch-free hipEngine implementation on zbook / Radeon 8060S (gfx1151): **E2E greedy transcription of an 11 s real-speech clip in 4.549 s vs torch GPU 4.425 s (1.03x)**, with the decode stage faster per token than torch (66-78 ms vs ~81 ms) and the remaining gap in prompt prefill and the audio front-end; front-end E2E optimization 0.92 -> 0.35 s (scratch arena, warp-per-row RMSNorm, fast-erf GELU, WMMA bulk GEMMs, im2col+WMMA strided convs); all correctness gates green (torch CPU fp32 fixture parity 5/5, torch GPU bf16 parity 7/7, Qwen2 runner 3/3, transcript content equal to torch). [Artifact](results/2026-09-14-gfx1151-vibevoice-asr-e2e-vs-torch.json).
+
 # hipEngine Benchmark Changelog
 
 - **2026-09-14** — Surya/main integration: no new speed measurement or headline change. Post-rebase Surya acceptance passes 415 tests without skips; unit tier 8,893 passed / 21 skipped, shared integration 607 passed, focused GPU checks 52 passed. Suites overlap. [Validation](results/2026-09-14-surya-main-integration-validation.json), [integration decisions](../docs/SURYA-MAIN-INTEGRATION.md).
