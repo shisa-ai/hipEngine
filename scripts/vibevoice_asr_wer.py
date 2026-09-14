@@ -231,32 +231,44 @@ def main() -> int:
     for system in args.systems:
         lane = bench.bench_torch_gpu if system == "torch" else bench.bench_hipengine
         hyps = []
+        finish_reasons = []
         for i, clip in enumerate(clips):
             pcm = np.load(clip["wav"])
             out = lane(pcm, clip["seconds"], bench_args)
             hyps.append(_transcription_only(out["text"]))
+            # The bench already records whether the generation stopped on EOS;
+            # surface it here so a token-cap truncation is distinguishable from
+            # a schema failure instead of being invisible in the artifact.
+            natural_eos = bool(out.get("timings", [{}])[-1].get("natural_eos", False))
+            finish_reasons.append("eos" if natural_eos else "length")
             print(f"[{system} {i+1}/{len(clips)}] {hyps[-1][:60]!r}")
         malformed = [clip["clip_id"] for clip, hyp in zip(clips, hyps)
                      if parse_transcript(hyp)[1] != "ok"]
+        truncated = [clip["clip_id"] for clip, reason in zip(clips, finish_reasons)
+                     if reason == "length"]
         wer = _wer(refs, hyps)
         per_clip = []
-        for clip, hyp in zip(clips, hyps):
+        for clip, hyp, reason in zip(clips, hyps, finish_reasons):
             content, status = parse_transcript(hyp)
             per_clip.append({"clip_id": clip["clip_id"],
                              "wer_fraction": _wer([clip["text"]], [content]),
                              "parse_status": status,
+                             "finish_reason": reason,
                              "hyp": hyp})
         results["systems"][system] = {
             "wer_fraction": wer,
             "wer_pct": 100.0 * wer,
             "malformed_transcripts": malformed,
+            "truncated_transcripts": truncated,
             "ref_texts": refs,
             "hypotheses": hyps,
             "per_clip": per_clip,
         }
         print(f"{system} WER: {100.0 * wer:.2f}%"
               + (f"  [{len(malformed)} malformed transcript(s): {malformed}]"
-                 if malformed else ""))
+                 if malformed else "")
+              + (f"  [{len(truncated)} hit the {args.max_new_tokens}-token cap]"
+                 if truncated else ""))
 
     results["protocol"] = {
         "dataset": "openslr/librispeech_asr clean/test",

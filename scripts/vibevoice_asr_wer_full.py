@@ -198,9 +198,14 @@ def run_lane_worker(args, wer) -> int:
                     rows[j] = row
                 gen = greedy_generate(runner, rows, max_new_tokens=args.max_new_tokens,
                                       eos_token_id=args.im_end_id)
+                # greedy_generate appends the stopping token before breaking, so a
+                # last token that is not EOS means the token cap cut the answer off.
+                finish_reason = ("eos" if gen and gen[-1] == args.im_end_id
+                                 else "length")
                 timings.append({"frontend_s": t_front,
                                 "seconds": time.perf_counter() - t0,
-                                "tokens": len(gen)})
+                                "tokens": len(gen),
+                                "finish_reason": finish_reason})
                 hyps.append(tokenizer.decode(gen, skip_special_tokens=True).strip())
                 print(f"[{lane} {i+1}/{len(clips)}] {timings[-1]['seconds']:.2f}s", flush=True)
         finally:
@@ -229,6 +234,8 @@ def run_lane_worker(args, wer) -> int:
         "timings": timings,
         "warmup_clips": args.warmup,
         "malformed_transcripts": malformed,
+        "truncated_transcripts": [c["clip_id"] for c, t in zip(clips, timings)
+                                  if t.get("finish_reason") == "length"],
         "clips_scored_for_wer": len(ok_hyps),
         "wer_excludes_malformed": bool(malformed),
         "wer_fraction": wer._wer(ok_refs, ok_hyps) if ok_hyps else None,
@@ -238,8 +245,10 @@ def run_lane_worker(args, wer) -> int:
         "clips_scored_for_timing": len(scored),
     }
     Path(args.lane_out).write_text(json.dumps(record, indent=2))
+    n_trunc = len(record["truncated_transcripts"])
     print(f"{lane} WER: {record['wer_pct']:.3f}% over {len(ok_hyps)}/{len(clips)} clips"
-          + (f"  [{len(malformed)} malformed excluded: {malformed}]" if malformed else ""))
+          + (f"  [{len(malformed)} malformed excluded: {malformed}]" if malformed else "")
+          + (f"  [{n_trunc} hit the token cap]" if n_trunc else ""))
     return 0
 
 
@@ -315,17 +324,37 @@ def main() -> int:
     for lane, data in results["systems"].items():
         n_ok = data.get("clips_scored_for_wer")
         mal = data.get("malformed_transcripts") or []
+        trunc = data.get("truncated_transcripts") or []
         wer_txt = ("n/a" if data["wer_pct"] is None
                    else f"{data['wer_pct']:.3f}%")
         print(f"{lane} WER: {wer_txt} over {n_ok}/{results['clips']} clips  "
               f"mean {data['mean_seconds_excl_warmup']:.2f} s/clip "
               f"(excl. {data['warmup_clips']} warmup)"
-              + (f"  [{len(mal)} malformed excluded]" if mal else ""))
+              + (f"  [{len(mal)} malformed excluded]" if mal else "")
+              + (f"  [{len(trunc)} hit the token cap]" if trunc else ""))
     total_malformed = sum(len(d.get("malformed_transcripts") or [])
                           for d in results["systems"].values())
     results["malformed_transcripts_total"] = total_malformed
+    # Excluding malformed outputs per lane independently lets the lanes be scored
+    # over different clip sets, so their WERs stop being directly comparable.
+    # The scores above stay as diagnostics; qualification is a separate verdict.
+    results["qualification"] = {
+        "rule": "every lane scored the same clips and no lane emitted a malformed transcript",
+        "malformed_transcripts_total": total_malformed,
+        "scored_clip_counts": {lane: d.get("clips_scored_for_wer")
+                               for lane, d in results["systems"].items()},
+        "same_clip_set": len({d.get("clips_scored_for_wer")
+                              for d in results["systems"].values()}) == 1,
+        "passed": total_malformed == 0,
+    }
     Path(args.out).write_text(json.dumps(results, indent=2))
     print(f"wrote {args.out}  (malformed transcripts across lanes: {total_malformed})")
+    if total_malformed:
+        print(f"QUALIFICATION FAILED: {total_malformed} malformed transcript(s); the "
+              f"lanes above were scored over different clip sets and their WERs "
+              f"are not directly comparable", file=sys.stderr)
+        return 1
+    print("qualification passed: all lanes scored the same clips with no malformed output")
     return 0
 
 

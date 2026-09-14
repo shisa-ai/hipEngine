@@ -574,3 +574,32 @@ def test_batched_prefill_determinism_and_top1(runtime, lm) -> None:
         "elements differ between identical runs")
     assert first_top == second_top, (
         f"batched prefill argmax changed between identical runs: {first_top} -> {second_top}")
+
+
+def test_greedy_generate_exposes_truncation_through_its_last_token(runtime, lm) -> None:
+    """Lock the contract the WER drivers' finish-reason derivation relies on.
+
+    ``greedy_generate`` appends the stopping token before breaking, so a final
+    token that is not EOS means the token cap cut the transcript off. All three
+    WER drivers classify a truncated generation exactly that way; if this
+    contract changed, a truncation would be silently recorded as a natural stop
+    and the ``truncated_transcripts`` gate would read clean.
+    """
+    from hipengine.generation.vibevoice_protocol import IM_END_ID
+    from hipengine.runtime.vibevoice_qwen2 import greedy_generate
+
+    rows = _prompt_rows(runtime, lm)
+
+    runtime.reset()
+    capped = greedy_generate(runtime, rows, max_new_tokens=1, eos_token_id=IM_END_ID)
+    assert len(capped) == 1, f"expected the cap to bind at 1 token, got {len(capped)}"
+    assert capped[-1] != IM_END_ID, (
+        "a 1-token cap cannot stop on EOS here; the finish-reason derivation "
+        "would label this truncation as a natural stop")
+
+    runtime.reset()
+    natural = greedy_generate(runtime, rows, max_new_tokens=64, eos_token_id=IM_END_ID)
+    assert len(natural) < 64, f"expected a natural stop under the cap, got {len(natural)}"
+    assert natural[-1] == IM_END_ID, (
+        "a natural stop must leave the EOS token last, otherwise the drivers "
+        "cannot distinguish it from a truncation")
