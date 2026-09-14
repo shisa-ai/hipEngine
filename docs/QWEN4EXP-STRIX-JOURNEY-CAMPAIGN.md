@@ -1,7 +1,8 @@
 # Flash-Next Strix Journey Campaign
 
 Date: September 13, 2026 UTC (runs span September 13-14 JST).
-Status: execution authorized September 14 JST; J2 numerical/owner refresh in progress.
+Status: September 15 JST recovery review complete; guarded Q8/QSA restored.
+Remaining optimization experiments are open and were not rerun for this review.
 
 ### Active Execution
 
@@ -15,7 +16,7 @@ failed candidates, and work not yet executed.
 
 | Work | State | Next evidence |
 | --- | --- | --- |
-| J2 named production versus strict | Conservative recovery validated | Prior composition fails; recovery exact on594 short and780 canonical-depth rows, repeat/state gates pass; cost measured separately |
+| J2 named production versus strict | Guarded Q8/QSA restoration validated | 594 short, 780 canonical-base and 516 overlapping sparse-decode rows match strict; short task/repeat/state gates pass; no complete-EOS certification |
 | J2 prefill/decode owner census | Measured four-category4K | MoE~6.1-6.3s, linear~3.46s, GR~1.46s, QSA~1.33s, GDN~0.79-0.85s; decode48 graphs |
 | J2 PLE/routing/repair census | Partial | PLE CPU/read evidence measured; real expert-population and repair telemetry remain |
 | J3 PLE sorted/deduplicated mmap | Screen in progress | Initial sorted-unique wins canonical rows but loses all-unique controls; test copy elision separately |
@@ -27,9 +28,10 @@ failed candidates, and work not yet executed.
 | J4 serial prefix | Pending | No blind all-layer widening; full numerical gates required |
 | J5 chunk2048/4096 | Admission blocker measured | At context4352/capacity1 allocate/close but exceed4GiB scratch by0.479/3.285GB |
 | J5 Q8 residual-weight down | Rejected/removed | Model top1 587/594 and prefill-last mean fail despite better weight MSE |
+| J5 guarded Q8 block-scale down | Adopted | FP32 block scales plus empirical sparse repair; same-session combined Q8/QSA PP +4.34/+4.73/+38.48% |
 | J5 other mixed-quant matrix / routing | Pending | Real expert populations and repair costs, complete-owner comparisons |
 | J6 HC/BF16/conv/gather fusions | Pending | Last-reader census and operation-complete gates |
-| J7 QSA indexer/top-k/packing/attention | Pending | Ordered BF16 selected-position gates and depth-specific cost |
+| J7 QSA indexer/top-k/packing/attention | Quad prefill and ordered/v2 decode restored; other work pending | 780-row base plus targeted 516-row gate; complete requests improve, individual decode categories mixed |
 | J8 graph/PM4 transport | Pending | Exposed submission bound, exact runtime-pin review, isolated qualification if justified |
 | J9 batched MTP target verification | Pending | Rejection-depth/accepted-prefix state gates and full-suite true-AR economics |
 | J1 external compatibility gaps / J10 closure | Pending | No unchanged replay of known faults; final counterbalanced comparison |
@@ -48,10 +50,20 @@ The explicit Q8-down/GDN fallback also fails prefill-last scope despite
 lower maxKL0.024408. A separate two-Q8 fallback passes automatic numerical
 limits but fails the predeclared factual task check. Conservative recovery,
 retaining exact optimized owners, matches strict on1374 short/depth rows
-and is selected by the UD-Q4_K_XL production binder. Owner costs and graph
+and was initially selected by the UD-Q4_K_XL production binder. Owner costs and graph
 gaps now come from four fresh4K category captures. Decode has48 graphs and
 ~1.3ms intra-graph gaps, not a measured PM4 speedup. PLE/mapping and exact
 DPP are measured improvements; DPP's tiled suffix is inactive during recovery.
+
+The [September 15 JST restoration](../benchmarks/results/2026-09-15-q8-blockscale-restoration/README.md)
+now selects corrected guarded Q8 and verified QSA paths. Dense MMQ fails
+canonical depth; dense/GR restoration fails as a combination, not an
+individual attribution. Tiled GDN and other disabled MoE paths are not
+thereby proven defective. The earlier factual task failure stands; neither
+short exact outputs nor depth parity establish complete-EOS reliability.
+Final timing uses 108 unique samples/36 warmups with shared unchanged
+decode graphs and no overlapping tests. The earlier cost timings are not
+used as its denominator.
 
 Independent September 14 JST audit:
 [Prefill and Wilkin audit](PREFILL-WILKIN-INDEPENDENT-AUDIT.md).

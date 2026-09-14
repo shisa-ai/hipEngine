@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-15 JST (September 14 UTC)**: Framework Flash-Next UD-Q4_K_XL/BF16
+  guarded Q8 selected-down and qualified QSA become production defaults.
+  Same-residency shared-graph 512/1K/4K PP 170.108/177.803/128.991 ->
+  177.488/186.219/178.630 tok/s (+4.34/+4.73/+38.48%);
+  TG 17.505/16.748/10.710 -> 17.497/16.731/10.861
+  (-0.04/-0.10/+1.41%). All 12 complete requests improve; individual
+  4K decode categories are mixed. Short/depth strict-logit, repeat/state
+  and 18-prompt short task gates pass; no complete-EOS quality claim.
+  [Evidence](results/2026-09-15-q8-blockscale-restoration/README.md).
+
 - **2026-09-14 UTC/JST**: Framework Flash-Next UD-Q4_K_XL/BF16 production
   recovers strict arithmetic with exact optimized owners:1374 short/depth
   rows match strict; old composition fails numerics and two-Q8 fallback

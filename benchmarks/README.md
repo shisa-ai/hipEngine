@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-14 JST (2026-09-14 UTC)**
+Last updated: **2026-09-15 JST (2026-09-14 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -610,28 +610,35 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
 
-Production UD-Q4_K_XL now uses conservative arithmetic with exact optimized
-owners. It matches strict logits on594 natural-prompt rows and780
-canonical512/1K/4K rows, with deterministic repeats, state and teardown
-checks passing. The earlier composition fails the current numerical gate;
-the narrower two-Q8 fallback passes automatic numerical limits but fails
-the predeclared paired factual task check.
-[Recovery evidence](results/2026-09-14-q8-prefill-numerics/README.md).
+Production UD-Q4_K_XL uses guarded Q8 block-scale selected-down, four-head
+QSA prefill and ordered QSA decode, with conservative arithmetic elsewhere.
+Guarded Q8 matches strict on 594 natural-prompt rows; the QSA-prefill
+combination matches on 780 canonical 512/1K/4K rows, and ordered decode
+matches on 516 overlapping 4K rows. Repeatability, state and teardown pass.
+Short free outputs match strict on 18 prompts; complete-EOS factual quality
+has not been compared symmetrically. The Q8 repair screen is empirical,
+not a universal bit-identity guarantee.
+[Correction and evidence](results/2026-09-15-q8-blockscale-restoration/README.md).
 MTP and multimodal performance are not requalified by these text-AR runs.
 
-Same-host counterbalanced recovery cost, four categories, three pairs,
-1024-token chunks, BF16 KV, one residency:
+Same-host counterbalanced comparison, four categories, three repeats,
+1024-token chunks, BF16 KV, 128 decode steps, one residency with shared
+unchanged decode graphs:
 
 | Arithmetic configuration | 512 PP / TG | 1K PP / TG | 4K PP / TG |
 | --- | ---: | ---: | ---: |
-| Previous configuration, quality gate failed | 292.70 / 20.17 | 309.27 / 19.43 | 285.79 / 18.06 |
-| Conservative recovery | 172.87 / 17.63 | 179.72 / 17.01 | 129.95 / 11.40 |
+| Conservative recovery | 170.11 / 17.50 | 177.80 / 16.75 | 128.99 / 10.71 |
+| Guarded Q8 + QSA production | 177.49 / 17.50 | 186.22 / 16.73 | 178.63 / 10.86 |
 
-Weighted tok/s;72 measured samples and24 warmups. Within-arm outputs repeat.
-This is a measured recovery cost, not a speedup claim. The previous
-configuration's rates are diagnostic, not quality-qualified production
-results. The recovery's separate numerical/state gates cover1374 rows;
-its short free-output gate matches strict on all18 prompts.
+Weighted tok/s; 108 unique measured samples and 36 warmups across three
+arms, including a prefill-only intermediate. Prefill improves
+**4.34% / 4.73% / 38.48%**. Complete requests improve in all 12 cases.
+Short decode is effectively flat; weighted 4K decode improves 1.41%, but
+English/Japanese/mixed decode individually regress versus recovery.
+All measured arms match in output IDs, final logits and state.
+The older failed-composition comparison and its CPU-overlap timing caveat
+are preserved in the [recovery record](results/2026-09-14-q8-prefill-numerics/README.md);
+those rates are not this comparison's denominator.
 
 Exact DPP reductions improved the previously active tiled-GDN prefill suffix:
 matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s

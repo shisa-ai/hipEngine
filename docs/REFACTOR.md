@@ -1,17 +1,22 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Q8 Block-Scale Correction Experiment
+## Q8 Block-Scale Restoration
 
-- `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` is profile-owned and defaults to the
-  old variant while its admission flag is off in the recovery profile.
-  The block-scale candidate avoids FP16-rounded weights without doubling WMMA.
-  Keep it experimental until numerical/task/depth and complete-owner cost
-  gates pass. If admitted, select it directly in the profile; remove the
-  temporary selector when no longer needed for comparative qualification.
+- UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned
+  `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`. Raw integer codes avoid FP16-rounded
+  weights; an empirical screen queues sparse strict-order corrections.
+  Full short/depth gates and the shared-graph model comparison qualify the
+  restoration. QSA-prefill grouping and ordered decode are restored too.
+- Keep the unguarded entry only for risk-screen diagnostics, not production.
+  Remove the environment selector when profile plans supply variant keys
+  directly; retain the registered strict fallback and other-quant legacy path.
+- Dense MMQ and dense/GR iu8 restoration attempts fail canonical numerical
+  gates and remain disabled. Do not infer their admission from the corrected
+  selected-down kernel or from short-prompt gates.
 
 ## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)
 
-- The gfx1151 production binder now selects conservative arithmetic while
+- The September14 recovery selected conservative arithmetic while
   retaining the exact grouped/iu8-repair, register-state GDN, wave-reduction
   and mapping-only PLE owners. The prior composition fails the current
   numerical envelope; disabling only Q8-down/MMQ passes automatic numerical
@@ -19,7 +24,8 @@
 - Conservative recovery matches strict on594 natural-prompt rows and780
   canonical512/1K/4K rows, with repeatability, state and teardown gates.
   This is a measured recovery, not proof that every disabled family is faulty.
-- Approximate MoE/GR/Q8, tiled-GDN, ordered-QSA and DP4A variants remain
+- The subsequent Q8/QSA restoration above supersedes those portions of the
+  rollback. Approximate MoE/GR/dense-Q8, tiled-GDN and DP4A remain
   registered for independent experiments. Re-enable only with a complete
   same-suite numerical/task/depth gate and accurate manifest. No production
   override is added to bypass the recovery binder.
