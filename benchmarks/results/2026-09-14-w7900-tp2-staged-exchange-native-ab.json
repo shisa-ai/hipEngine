@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "kind": "tp2-staged-exchange-native-ab",
+  "generated_at": "2026-09-14T20:21:16Z",
+  "protocol": "batched: both D2H before either wait, no return wait, one drain per chain",
+  "count": 5120,
+  "payload_bytes": 20480,
+  "depths": [
+    1,
+    4,
+    16,
+    32,
+    64,
+    128
+  ],
+  "iterations": 30,
+  "warmup": 10,
+  "arch": "gfx1100",
+  "native": {
+    "1": {
+      "depth": 1,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 28.24023438,
+      "single_step_median_us": 27.99023438,
+      "per_step_us": null,
+      "per_step_phases_us": 15.82324219,
+      "phases_us": {
+        "submit_d2h": 2.009765625,
+        "wait_d2h": 9.801757812,
+        "host_sum": 2.100585938,
+        "submit_h2d": 1.911132812
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    },
+    "4": {
+      "depth": 4,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 104.9824219,
+      "single_step_median_us": 27.51953125,
+      "per_step_us": 25.82096354,
+      "per_step_phases_us": 23.53710938,
+      "phases_us": {
+        "submit_d2h": 1.727050781,
+        "wait_d2h": 17.89282227,
+        "host_sum": 2.037109375,
+        "submit_h2d": 1.880126953
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    },
+    "16": {
+      "depth": 16,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 387.7763672,
+      "single_step_median_us": 23.3203125,
+      "per_step_us": 24.29707031,
+      "per_step_phases_us": 20.44354248,
+      "phases_us": {
+        "submit_d2h": 1.542724609,
+        "wait_d2h": 15.10534668,
+        "host_sum": 1.98626709,
+        "submit_h2d": 1.809204102
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    },
+    "32": {
+      "depth": 32,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 722.5341797,
+      "single_step_median_us": 22.95019531,
+      "per_step_us": 22.5672253,
+      "per_step_phases_us": 21.67462158,
+      "phases_us": {
+        "submit_d2h": 1.517181396,
+        "wait_d2h": 16.32318115,
+        "host_sum": 2.022827148,
+        "submit_h2d": 1.811431885
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    },
+    "64": {
+      "depth": 64,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 1387.086914,
+      "single_step_median_us": 22.53125,
+      "per_step_us": 21.65961372,
+      "per_step_phases_us": 20.30439758,
+      "phases_us": {
+        "submit_d2h": 1.600845337,
+        "wait_d2h": 14.69364929,
+        "host_sum": 2.120101929,
+        "submit_h2d": 1.889801025
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    },
+    "128": {
+      "depth": 128,
+      "count": 5120,
+      "payload_bytes": 20480,
+      "iterations": 30,
+      "warmup": 10,
+      "total_median_us": 2665.270508,
+      "single_step_median_us": 22.18945312,
+      "per_step_us": 20.81166185,
+      "per_step_phases_us": 20.50183105,
+      "phases_us": {
+        "submit_d2h": 1.658744812,
+        "wait_d2h": 14.94649506,
+        "host_sum": 2.007919312,
+        "submit_h2d": 1.888671875
+      },
+      "verification": {
+        "recurrence": "sum / world + 1",
+        "expected": "6 * (j + 1) + depth",
+        "max_abs_error": 0,
+        "exact": true
+      },
+      "protocol": "batched: both D2H submitted before either wait, no return wait"
+    }
+  },
+  "native_marginal": {
+    "from_depth": 1,
+    "to_depth": 128,
+    "overall_us_per_step": 20.764017902519686
+  },
+  "python_arm": {
+    "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
+    "marginal_us_per_step": 40.94985761041716,
+    "instrumented_marginal_us_per_step": 43.052160657766294,
+    "phases_per_step_us": {
+      "accounted_us": 41.94787862634628,
+      "d2h_scope_us": 9.962169059115102,
+      "d2h_submit_us": 4.7066300033534665,
+      "d2h_wait_us": 8.884286246623615,
+      "h2d_scope_us": 5.8302460998600845,
+      "h2d_submit_us": 5.798580063202856,
+      "h2d_wait_us": 0.18170531078868982,
+      "host_sum_us": 6.584261843402471,
+      "loop_us": 44.25650196416037,
+      "unaccounted_us": 2.3086233378140903
+    },
+    "vector_check": {
+      "depth": 128,
+      "elements": 5120,
+      "full_vector_matches": true,
+      "max_abs_error": 0.0,
+      "rank_seeds_differ": true,
+      "ranks_agree": true,
+      "recurrence": "host writes sum / world + 1; expected = mean_r(seed_r[j]) + depth",
+      "stream_syncs": 258
+    },
+    "copy_probe": {
+      "note": "probe observations, not a DMA critical path: the single-copy form can absorb host submission gaps and the prequeued form measures throughput with the host removed from the interval",
+      "per_rank": {
+        "prequeued": {
+          "d2h_us": {
+            "0": 8.298,
+            "1": 9.228
+          },
+          "h2d_us": {
+            "0": 8.983,
+            "1": 9.923
+          }
+        },
+        "single": {
+          "d2h_us": {
+            "0": 14.92,
+            "1": 14.48
+          },
+          "h2d_us": {
+            "0": 15.36,
+            "1": 15.201
+          }
+        }
+      },
+      "prequeued": {
+        "d2h_us_us": 8.729,
+        "h2d_us_us": 9.418
+      },
+      "prequeued_copies_per_sample": 16,
+      "single": {
+        "d2h_us_us": 14.58,
+        "h2d_us_us": 15.34
+      }
+    }
+  },
+  "comparison": {
+    "python_us_per_step": 40.94985761041716,
+    "native_us_per_step": 20.764017902519686,
+    "python_over_native": 1.9721548017663744,
+    "basis": "ladder slope over the same depths, same protocol, same payload",
+    "phase_counters_are_not_transferable": "earlier submission changes the exposed wait, so a phase that shrinks in one arm can grow in the other; compare totals"
+  }
+}

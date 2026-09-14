@@ -203,6 +203,65 @@ def test_dependent_chain_marginal_rejects_an_unknown_case(tmp_path: pathlib.Path
         mod.read_dependent_chain_marginal(source, case_key="all_reduce:rows99:fp32")
 
 
+def _native_ab_artifact(
+    path: pathlib.Path, *, marginal: float = 20.8, exact: bool = True
+) -> pathlib.Path:
+    payload = {
+        "kind": "tp2-staged-exchange-native-ab",
+        "payload_bytes": 20480,
+        "protocol": "batched: both D2H before either wait, no return wait",
+        "native_marginal": {"overall_us_per_step": marginal},
+        "native": {
+            "1": {"verification": {"exact": exact}},
+            "128": {"verification": {"exact": exact}},
+        },
+        "comparison": {"python_us_per_step": 40.9, "python_over_native": 40.9 / marginal},
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_native_ab_marginal_is_read_from_its_artifact(tmp_path: pathlib.Path, mod) -> None:
+    source = _native_ab_artifact(tmp_path / "native.json", marginal=20.8)
+    record = mod.read_native_ab_marginal(source)
+    assert record["marginal_us_per_step"] == pytest.approx(20.8)
+    assert record["depends_on_every_step"] is True
+    assert record["python_arm_us_per_step"] == pytest.approx(40.9)
+    assert record["payload_bytes"] == 20480
+
+
+def test_native_ab_marginal_requires_every_depth_to_verify(
+    tmp_path: pathlib.Path, mod
+) -> None:
+    """An unverified depth means the chain may not have compounded."""
+
+    source = _native_ab_artifact(tmp_path / "native.json", exact=False)
+    with pytest.raises(ValueError, match="did not verify"):
+        mod.read_native_ab_marginal(source)
+
+
+def test_native_ab_marginal_rejects_another_artifact_kind(
+    tmp_path: pathlib.Path, mod
+) -> None:
+    source = _chain_artifact(tmp_path / "chain.json")
+    with pytest.raises(ValueError, match="not a native A/B artifact"):
+        mod.read_native_ab_marginal(source)
+
+
+def test_native_mode_is_not_readable_from_the_chain_artifact(mod) -> None:
+    """The native marginal lives in the A/B artifact, not the chain artifact."""
+
+    assert "native_staged_exchange_batched" in mod.DEPENDENT_CHAIN_MODES
+    assert "native_staged_exchange_batched" in mod.NATIVE_AB_MODES
+
+
+def test_native_ab_selects_the_native_arm(tmp_path: pathlib.Path, mod) -> None:
+    source = _native_ab_artifact(tmp_path / "native.json", marginal=20.8)
+    record = mod.read_native_ab_marginal(source)
+    assert record["mode"] == "native_staged_exchange_batched"
+    assert record["world_size"] == 2
+
+
 def test_per_chain_mode_is_not_selectable(mod) -> None:
     """Only the per-step structure can carry a layer dependency."""
 
