@@ -319,3 +319,269 @@ def test_capture_failure_ends_only_streams_still_capturing(mod, stub_snapshot) -
     assert len(runtime.ended_streams) == len(set(runtime.ended_streams)), (
         "cleanup ended an already-ended capture"
     )
+
+
+# -- R3: the dependent reduction chain ----------------------------------------
+
+
+def test_dependent_chain_expected_value_grows_with_depth(mod) -> None:
+    """Each step reduces the previous result, so the value scales per step."""
+
+    assert mod.dependent_chain_expected(1.0, world_size=2, depth=1) == 2.0
+    assert mod.dependent_chain_expected(1.0, world_size=2, depth=8) == 256.0
+    assert mod.dependent_chain_expected(1.0, world_size=4, depth=3) == 64.0
+
+
+def test_chain_marginal_divides_by_the_depth_difference(mod) -> None:
+    """A fixed per-measurement overhead must cancel in the marginal."""
+
+    report = mod.chain_marginal_ms([(1, 0.400), (16, 0.850), (64, 2.650)])
+    segments = report["segments"]
+    assert segments[0]["from_depth"] == 1 and segments[0]["to_depth"] == 16
+    assert segments[0]["marginal_us_per_step"] == pytest.approx((0.850 - 0.400) * 1e3 / 15)
+    assert report["overall_us_per_step"] == pytest.approx((2.650 - 0.400) * 1e3 / 63)
+    assert mod.chain_marginal_ms([(4, 0.5)])["marginal_us_per_step"] is None
+
+
+class _ShadowChainTransport:
+    """A transport that reduces host-side shadow buffers instead of device ones.
+
+    The device pointers the benchmark passes index into the runtime's per-rank
+    work and scratch arrays, so the chain's arithmetic can be checked on CPU.
+    """
+
+    algorithm = "rccl"
+
+    def __init__(self, *, world_size: int, runtime) -> None:
+        from hipengine.core.device import Device
+
+        self.world_size = int(world_size)
+        self.devices = tuple(Device("hip", rank) for rank in range(self.world_size))
+        self.runtime = runtime
+        self.groups: list[tuple[int, int]] = []
+        self._open = 0
+        self._group_id = 0
+
+    def stream(self, rank: int) -> int:
+        return 0x10 + int(rank)
+
+    def group_start(self) -> None:
+        self._open += 1
+        self._group_id += 1
+        # A real reduction reads every rank's contribution simultaneously, so
+        # snapshot the buffers at the group boundary instead of letting one
+        # rank's result feed the next rank's sum.
+        self._snapshots = {
+            "work": [row[0] for row in self.runtime.work],
+            "scratch": [row[0] for row in self.runtime.scratch],
+        }
+
+    def group_end(self) -> None:
+        self._open -= 1
+        if self._open < 0:
+            raise AssertionError("group_end without group_start")
+
+    def all_reduce_sum(self, rank, send_ptr, recv_ptr, *, count, dtype) -> None:
+        if self._open <= 0:
+            raise AssertionError("collective issued outside a group")
+        self.groups.append((self._group_id, int(rank)))
+        kind = "scratch" if int(send_ptr) >= _ShadowChainRuntime.SCRATCH_BASE else "work"
+        total = float(sum(self._snapshots[kind]))
+        self.runtime.target_for(int(recv_ptr))[int(rank)][0] = total
+
+    def sync(self, *, timeout_s=None) -> None:
+        return None
+
+
+class _ShadowChainRuntime:
+    """Runtime stand-in with per-rank shadow memory and no device calls."""
+
+    device_kind = "hip"
+    WORK_BASE = 0x2000
+    SCRATCH_BASE = 0x4000
+    STRIDE = 4096
+
+    def __init__(self, *, world_size: int, count: int, consume_previous: bool = True) -> None:
+        self.world_size = int(world_size)
+        self.count = int(count)
+        self.consume_previous = consume_previous
+        self.work = [[0.0] * self.count for _ in range(self.world_size)]
+        self.scratch = [[0.0] * self.count for _ in range(self.world_size)]
+        self.seed_value = 1.0
+        self.current = 0
+        self.copies = 0
+        self.events = 0
+
+    def slot(self, ptr: int) -> tuple[list, int]:
+        if self.WORK_BASE <= ptr < self.SCRATCH_BASE:
+            return self.work, (ptr - self.WORK_BASE) // self.STRIDE
+        return self.scratch, (ptr - self.SCRATCH_BASE) // self.STRIDE
+
+    def source_for(self, ptr: int) -> list:
+        """The buffer a collective reads, for every rank."""
+
+        return self.scratch if ptr >= self.SCRATCH_BASE else self.work
+
+    def target_for(self, ptr: int) -> list:
+        return self.scratch if ptr >= self.SCRATCH_BASE else self.work
+
+    def get_device(self) -> int:
+        return self.current
+
+    def set_device(self, device: int) -> None:
+        self.current = int(device)
+
+    def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+        self.copies += 1
+        target, target_index = self.slot(int(dst))
+        if not self.consume_previous:
+            # The old ladder re-read an unchanged input: the consumer never
+            # consumes the reduction result.
+            target[target_index][0] = self.seed_value
+            return
+        _, source_index = self.slot(int(src))
+        source = self.work
+        target[target_index][0] = source[source_index][0]
+
+    def event_create(self) -> int:
+        self.events += 1
+        return self.events
+
+    def event_record(self, event, stream) -> None:
+        return None
+
+    def event_elapsed_time_ms(self, start, end) -> float:
+        return 0.5
+
+    def event_destroy(self, event) -> None:
+        return None
+
+
+def _shadow_chain_case(mod):
+    class _Case:
+        op = "all_reduce"
+        dtype = "fp32"
+        rows = 1
+        count = 4
+        payload_bytes = 16
+
+    return _Case()
+
+
+def _shadow_chain_args(mod, *, world_size=2, consume_previous=True):
+    from hipengine.core.device import Device
+
+    case = _shadow_chain_case(mod)
+    runtime = _ShadowChainRuntime(
+        world_size=world_size, count=case.count, consume_previous=consume_previous
+    )
+    transport = _ShadowChainTransport(world_size=world_size, runtime=runtime)
+
+    class _Buffer:
+        def __init__(self, ptr: int) -> None:
+            self.ptr = ptr
+            self.nbytes = case.payload_bytes
+
+    work = [_Buffer(0x2000 + 4096 * rank) for rank in range(world_size)]
+    scratch = [_Buffer(0x4000 + 4096 * rank) for rank in range(world_size)]
+    return {
+        "transport": transport,
+        "runtime": runtime,
+        "case": case,
+        "work": work,
+        "scratch": scratch,
+        "depths": (1, 4),
+        "iterations": 2,
+        "warmup": 0,
+        "seed": 1.0,
+        "timeout_s": 1.0,
+    }
+
+
+def _stub_chain_memory(mod, monkeypatch, kwargs) -> None:
+    """Point the chain's device read/write helpers at the shadow arrays.
+
+    ``_measure_dependent_chain`` uses the real host/device copy helpers; the
+    shadow runtime owns no device memory, so they are redirected to the shadow
+    buffers keyed by the same pointers.
+    """
+
+    runtime = kwargs["runtime"]
+
+    def copy_host_array_to_device(buffer, array, nbytes=None, **call_kwargs):
+        target, index = runtime.slot(int(buffer.ptr))
+        target[index][0] = float(array[0])
+
+    def copy_device_to_host(host_ptr, buffer, nbytes=None, **call_kwargs):
+        source, index = runtime.slot(int(buffer.ptr))
+        host_ptr[0] = source[index][0]
+
+    monkeypatch.setattr(mod, "decode_values", lambda host, dtype: list(host))
+    monkeypatch.setattr(mod, "encode_values", lambda values, dtype: values)
+    from hipengine.core import memory as memory_module
+
+    monkeypatch.setattr(memory_module, "copy_host_array_to_device", copy_host_array_to_device)
+    monkeypatch.setattr(memory_module, "copy_device_to_host", copy_device_to_host)
+    monkeypatch.setattr(memory_module, "host_array_ptr", lambda array: array)
+
+
+def test_dependent_chain_runs_one_group_per_reduction(mod, monkeypatch) -> None:
+    """Every reduction gets its own native group.
+
+    One group for the whole ladder let RCCL aggregate the reductions, which is
+    why the previous marginal latency could not be read as a per-layer cost.
+    """
+
+    kwargs = _shadow_chain_args(mod)
+    monkeypatch.setattr(mod, "decode_values", lambda host, dtype: list(host.view("float32")))
+    monkeypatch.setattr(mod, "encode_values", lambda values, dtype: values)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+
+    report = mod._measure_dependent_chain(**kwargs)
+    # depth 1 -> one group per rank; depth 4 -> four groups per rank, per
+    # measurement iteration, in both modes; per_chain adds one enclosing group.
+    assert report["modes"]["per_step"]["group_boundary"] == "one native group per reduction"
+    world = kwargs["transport"].world_size
+    iterations = int(kwargs["iterations"])
+    assert len(kwargs["transport"].groups) == 2 * (1 + 4) * world * iterations
+    counts: dict[int, int] = {}
+    for group_id, _rank in kwargs["transport"].groups:
+        counts[group_id] = counts.get(group_id, 0) + 1
+    ordered = [counts[group_id] for group_id in sorted(counts)]
+    # per_step runs first: one group per reduction, each holding exactly one
+    # collective per rank - the boundary the previous ladder did not have.
+    per_step_groups = (1 + 4) * iterations
+    assert ordered[:per_step_groups] == [world] * per_step_groups
+    # per_chain then batches each whole chain into a single group: the depth-1
+    # chain holds one collective per rank, the depth-4 chain four.
+    assert ordered[per_step_groups:] == [world] * iterations + [4 * world] * iterations
+
+
+def test_dependent_chain_accepts_a_chain_that_consumes_its_predecessor(mod, monkeypatch) -> None:
+    kwargs = _shadow_chain_args(mod)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    per_step = report["modes"]["per_step"]
+    assert per_step["depths"]["1"]["final_value_matches"] is True
+    assert per_step["depths"]["4"]["final_value_matches"] is True
+    assert per_step["depths"]["4"]["observed_final_value"] == [16.0, 16.0]
+    assert per_step["depends_on_every_step"] is True
+
+
+def test_dependent_chain_rejects_a_chain_that_ignores_its_predecessor(mod, monkeypatch) -> None:
+    """A ladder over unchanged inputs must fail the check, not pass quietly."""
+
+    kwargs = _shadow_chain_args(mod, consume_previous=False)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    per_step = report["modes"]["per_step"]
+    assert per_step["depths"]["4"]["final_value_matches"] is False
+    assert per_step["depths"]["4"]["observed_final_value"] == [2.0, 2.0]
+    assert per_step["depends_on_every_step"] is False
+
+
+def test_dependent_chain_is_skipped_for_non_reductions(mod, monkeypatch) -> None:
+    kwargs = _shadow_chain_args(mod)
+    kwargs["case"].op = "broadcast"
+    report = mod._measure_dependent_chain(**kwargs)
+    assert "skipped" in report
