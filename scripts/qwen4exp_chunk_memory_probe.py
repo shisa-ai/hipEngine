@@ -29,6 +29,21 @@ def resolve_context_length(requested, native):
     return value
 
 
+def prepare_lazy_group_risk(runner):
+    """Reserve each shared repair queue for the largest gate/up/down output."""
+    cfg = runner.config
+    rows = min(runner.prefill_chunk_size, runner.max_sequence_length)
+    compact = rows * cfg.expert_used_count
+    width = max(cfg.hidden_size, 2 * cfg.expert_feed_forward_length)
+    records = []
+    for name in ("gdn_prefill_scratch", "qsa_prefill_scratch"):
+        count, indices = getattr(runner, name).moe.ensure_group_risk_buffers(
+            compact_rows=compact, out_features_total=width)
+        records.append(dict(owner=name, rows=rows, compact_rows=compact,
+                            output_width=width, nbytes=count.nbytes + indices.nbytes))
+    return records
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model-root",type=Path,required=True)
@@ -68,13 +83,14 @@ def main():
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     plugin = resolve_model(index.architecture or "")
     context_length = resolve_context_length(args.context_length, plugin.native_context_length)
-    report = dict(schema=1,status="running",performance_claim=False,source=source,
+    report = dict(schema=2,status="running",performance_claim=False,source=source,
                   host=_host_metadata(),model_identity=identity,command=sys.argv,
                   chunk_size=args.chunk_size,resident_capacity=args.capacity,
                   requested_context_length=context_length,
                   manifest_sha256=profile.manifest_sha256,
-                  limits="Allocation/admission only,no native-length inference or throughput claim. "
-                         "Tracked allocator excludes driver-owned memory;existing reserve remains.")
+                  limits="Allocation/admission only; constructor and worst-case grouped repair queues. "
+                         "No inference, hidden-seed export, graph capture or driver-owned scratch certificate. "
+                         "Existing reserve remains.")
     generator = None
     start = time.monotonic()
     try:
@@ -88,6 +104,10 @@ def main():
         context = serving.prepare()
         assert context == context_length
         assert len(serving._all_runners) == args.capacity
+        report["before_lazy_memory"] = memory_stats()
+        report["lazy_group_risk"] = [
+            dict(runner_index=i, queues=prepare_lazy_group_risk(runner))
+            for i, runner in enumerate(serving._all_runners)]
         report["prepared_context"] = context
         report["prepared_runners"] = len(serving._all_runners)
         report["prepared_memory"] = memory_stats()
