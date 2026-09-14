@@ -533,22 +533,37 @@ def _capture_graph_probe(
     graphs: list[int] = []
     execs: list[int] = []
     node_counts: list[int] = []
+    capturing: set[int] = set()
     try:
         for rank in range(world):
             with scoped_current_device(runtime, devices[rank].index):
                 runtime.stream_begin_capture(streams[rank], mode=HIP_GRAPH_CAPTURE_MODE_RELAXED)
+                capturing.add(rank)
         enqueue_group()
         for rank in range(world):
             with scoped_current_device(runtime, devices[rank].index):
                 graph = runtime.stream_end_capture(streams[rank])
+                capturing.discard(rank)
                 graphs.append(graph)
                 node_counts.append(len(runtime.graph_nodes(graph)))
                 execs.append(runtime.graph_instantiate(graph))
     except Exception as error:  # noqa: BLE001 - capture support is the result
-        for rank in range(world):
+        # Release every handle this probe created, in reverse creation order: an
+        # executable references its graph, so the graph cannot be destroyed
+        # first, and a partial failure leaves the ranks that already succeeded
+        # holding live handles. A stream whose capture already ended must not be
+        # ended again, so only still-capturing streams are closed here.
+        for rank in sorted(capturing):
             with scoped_current_device(runtime, devices[rank].index):
                 try:
-                    runtime.stream_end_capture(streams[rank])
+                    pending = runtime.stream_end_capture(streams[rank])
+                except Exception:  # noqa: BLE001
+                    continue
+                graphs.append(pending)
+        for rank, exec_ in enumerate(execs):
+            with scoped_current_device(runtime, devices[rank].index):
+                try:
+                    runtime.graph_exec_destroy(exec_)
                 except Exception:  # noqa: BLE001
                     pass
         for graph in graphs:

@@ -151,3 +151,171 @@ def test_link_sampler_records_transitions(mod, tmp_path: pathlib.Path) -> None:
         time.sleep(0.03)
     payload = sampler.to_dict()
     assert payload["rank0"]["last_observed"] == {"current_width_lanes": 16, "current_speed": "16.0 GT/s PCIe"}
+
+
+# -- R9: partial graph capture must release every handle it created -------------
+
+
+class _FakeCaptureRuntime:
+    """Runtime stand-in that records graph/executable lifecycle and can fail.
+
+    Only the surface ``_capture_graph_probe`` uses is implemented, so a leak is
+    visible as a created handle with no matching destroy call.
+    """
+
+    def __init__(self, *, fail_instantiate_at: int | None = None) -> None:
+        self.fail_instantiate_at = fail_instantiate_at
+        self.created_graphs: list[int] = []
+        self.destroyed_graphs: list[int] = []
+        self.created_execs: list[int] = []
+        self.destroyed_execs: list[int] = []
+        self.ended_streams: list[int] = []
+        self.instantiate_calls = 0
+        self._next = 0x100
+        self.current = 0
+
+    # device selection
+    def get_device(self) -> int:
+        return self.current
+
+    def set_device(self, device: int) -> None:
+        self.current = int(device)
+
+    # enqueue path
+    def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
+        return None
+
+    # capture
+    def stream_begin_capture(self, stream: int, mode: int | None = None) -> None:
+        return None
+
+    def stream_end_capture(self, stream: int) -> int:
+        if stream in self.ended_streams:
+            raise RuntimeError("stream is not capturing")
+        self.ended_streams.append(stream)
+        self._next += 1
+        self.created_graphs.append(self._next)
+        return self._next
+
+    def graph_nodes(self, graph: int):
+        return [graph]
+
+    def graph_instantiate(self, graph: int) -> int:
+        call = self.instantiate_calls
+        self.instantiate_calls += 1
+        if self.fail_instantiate_at is not None and call == self.fail_instantiate_at:
+            raise RuntimeError("hipGraphInstantiate failed")
+        self._next += 1
+        self.created_execs.append(self._next)
+        return self._next
+
+    def graph_destroy(self, graph: int) -> None:
+        self.destroyed_graphs.append(graph)
+
+    def graph_exec_destroy(self, exec_: int) -> None:
+        self.destroyed_execs.append(exec_)
+
+
+def _capture_probe_kwargs(mod, runtime):
+    """Minimal real arguments for ``_capture_graph_probe``."""
+
+    from hipengine.core.device import Device
+
+    class _Transport:
+        """Enough transport for the enqueue path: a group, streams, a no-op sum."""
+
+        world_size = 2
+        devices = (Device("hip", 0), Device("hip", 1))
+
+        def stream(self, rank: int) -> int:
+            return 0x10 + rank
+
+        def group_start(self) -> None:
+            return None
+
+        def group_end(self) -> None:
+            return None
+
+        def all_reduce_sum(self, rank, send_ptr, recv_ptr, *, count, dtype) -> None:
+            return None
+
+        def sync(self, *, timeout_s=None) -> None:
+            return None
+
+    class _Case:
+        op = "all_reduce"
+        payload_bytes = 64
+        count = 16
+        dtype = "fp32"
+
+    class _Buffer:
+        def __init__(self, ptr: int) -> None:
+            self.ptr = ptr
+            self.nbytes = 64
+
+    buffers = [_Buffer(0x1000), _Buffer(0x2000)]
+    return {
+        "transport": _Transport(),
+        "runtime": runtime,
+        "case": _Case(),
+        "send": buffers,
+        "recv": buffers,
+        "producer": buffers,
+        "consumer": buffers,
+        "iterations": 1,
+        "warmup": 0,
+        "chain_depth": 1,
+        "timeout_s": 1.0,
+    }
+
+
+@pytest.fixture
+def stub_snapshot(monkeypatch):
+    """Keep the eager reference read CPU-only.
+
+    ``_snapshot_recv`` copies from device buffers with the default HIP runtime;
+    this probe test owns no device memory, so the read-back is stubbed.
+    """
+
+    from hipengine.core import memory as memory_module
+
+    monkeypatch.setattr(
+        memory_module,
+        "copy_device_to_host",
+        lambda host_ptr, buffer, nbytes=None, runtime=None: None,
+    )
+    monkeypatch.setattr(
+        memory_module,
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes=None, runtime=None: None,
+    )
+    return None
+
+
+def test_partial_capture_failure_destroys_graphs_and_executables(mod, stub_snapshot) -> None:
+    """A failure while instantiating rank 1 must not leak rank 0's executable."""
+
+    runtime = _FakeCaptureRuntime(fail_instantiate_at=1)
+    kwargs = _capture_probe_kwargs(mod, runtime)
+    # The enqueue path needs a transport it can issue on; the capture of rank 0
+    # is what matters here, so a no-op group is enough.
+    result = mod._capture_graph_probe(**kwargs)
+    assert result["captured"] is False
+    assert runtime.created_execs, "rank 0's executable must have been created"
+    assert sorted(runtime.destroyed_execs) == sorted(runtime.created_execs), (
+        "every created executable must be destroyed on the failure path"
+    )
+    assert sorted(runtime.destroyed_graphs) == sorted(runtime.created_graphs), (
+        "every created graph must be destroyed on the failure path"
+    )
+
+
+def test_capture_failure_ends_only_streams_still_capturing(mod, stub_snapshot) -> None:
+    """Cleanup must not re-end a stream whose capture already ended."""
+
+    runtime = _FakeCaptureRuntime(fail_instantiate_at=1)
+    kwargs = _capture_probe_kwargs(mod, runtime)
+    mod._capture_graph_probe(**kwargs)
+    assert len(runtime.ended_streams) == len(set(runtime.ended_streams)), (
+        "cleanup ended an already-ended capture"
+    )
