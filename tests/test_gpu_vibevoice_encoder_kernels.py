@@ -193,7 +193,7 @@ def frontend():
 def test_frontend_e2e_matches_cpu_reference(frontend) -> None:
     runtime, specs, conns = frontend
     rng = np.random.default_rng(5)
-    pcm = (0.1 * rng.standard_normal(12000)).astype(np.float32)
+    pcm = np.pad((0.1 * rng.standard_normal(12000)).astype(np.float32), (0, 800))
     got = runtime.forward(pcm)
     lat_ac = vibevoice_tokenizer_encoder_forward(specs["acoustic"][0], specs["acoustic"][1], pcm)
     lat_se = vibevoice_tokenizer_encoder_forward(specs["semantic"][0], specs["semantic"][1], pcm)
@@ -212,6 +212,10 @@ def test_frontend_matches_torch_gpu_bf16(frontend) -> None:
     with np.load(GPU_FIXTURE) as data:
         fx = {k: data[k] for k in data.files}
     pcm = fx["pcm_short"].astype(np.float32)
+    # This legacy fixture captures bare encoders without processor padding,
+    # so it contains only complete frames. Its unused causal tail contributes
+    # no outputs. Final partial-frame behavior has its own boundary tests.
+    pcm = pcm[:(len(pcm) // 3200) * 3200]
     hidden_ac = specs["acoustic"][0].hidden_size
     noise = fx["acoustic_noise"].astype(np.float32).reshape(-1, hidden_ac)
     scale = fx["acoustic_noise_scale"].astype(np.float32).reshape(1)
