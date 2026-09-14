@@ -201,6 +201,7 @@ DEPENDENT_CHAIN_MODES = (
     "per_step_alternating",
     "per_step_alternating_graph",
     "staged_exchange_host_sync",
+    "staged_exchange_batched",
 )
 
 
@@ -217,8 +218,9 @@ def read_dependent_chain_marginal(
     ``per_step_alternating`` removes the artificial device copy between
     reductions, ``per_step_alternating_graph`` replays the same structure from a
     captured graph, and ``staged_exchange_host_sync`` replaces the collective
-    with a page-locked host exchange. A ``per_chain`` or single-group marginal
-    describes
+    with a page-locked host exchange (``staged_exchange_host_sync`` one rank at a
+    time, ``staged_exchange_batched`` both ranks submitted before either is
+    awaited). A ``per_chain`` or single-group marginal describes
     a group in which the collectives are deferred or collapsed, so it cannot
     carry a layer dependency; the recorded ``depends_on_every_step`` flag is
     checked here rather than trusted from the mode name.

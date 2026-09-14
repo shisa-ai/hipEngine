@@ -66,6 +66,7 @@ DEFAULT_CHAIN_MODES = (
     "single_group_alternating",
     "per_step_alternating_graph",
     "staged_exchange_host_sync",
+    "staged_exchange_batched",
 )
 
 #: Modes that are measured only when asked for. Capturing a single group for the
@@ -889,22 +890,49 @@ def _measure_staged_exchange_chain(
     iterations: int,
     warmup: int,
     seed: float,
+    protocol: str = "serial",
 ) -> dict[str, Any]:
     """Measure a dependency-bound two-rank exchange that does not use RCCL.
 
     This is the specialized-transport screen: the peer-access path is unavailable
     on this host, so the alternative to RCCL is host staging. Each step moves the
     rank's own partial to a page-locked host slot, the host accumulates the two
-    partials, and the result is copied back as the next step's input. Stream order
-    plus the host round trip make step ``i + 1`` consume step ``i``, and the value
+    partials, and the result is copied back as the next step's input. The value
     check is the same closed form the RCCL chain uses, so a structure that does
     not consume its predecessor is rejected here too.
 
+    Two orchestration protocols are measured, because they differ only in host
+    submission structure and that structure is the thing under test:
+
+    ``serial``
+        For each rank in turn: submit the device-to-host copy and wait for it.
+        Then accumulate on the host, then for each rank in turn submit the
+        host-to-device copy and wait for it. Four host waits per reduction, and
+        the two transfers of a pair never overlap.
+    ``batched``
+        Submit both device-to-host copies before waiting for either, wait for
+        both, accumulate, then submit both host-to-device copies and wait for
+        neither. Two host waits per reduction, and the paired transfers overlap.
+
+    The batched form is correct without the host-to-device waits, and that is
+    worth stating because dropping them looks like removing a dependency:
+
+    * the host-to-device copy for step ``i`` and the device-to-host copy for step
+      ``i + 1`` read and write different device buffers and run on the same rank
+      stream, so stream order orders them;
+    * the host write into a staging slot for step ``i + 1`` must not race the
+      host-to-device copy that read that slot at step ``i``. It cannot: the slot
+      is reused two steps later, the device-to-host copy for that step is
+      enqueued after that host-to-device copy on the same stream, and the host
+      waits for the device-to-host copy before accumulating. The wait the host
+      already performs is therefore also the slot-reuse guard, so the extra
+      host-to-device wait buys no ordering.
+
+    A drain wait at the end of the chain covers the final host-to-device copy.
+
     The host round trip is inside the timed region on purpose: a host-synchronized
     exchange pays it per reduction, and hiding it would report a number the
-    structure cannot deliver. The accumulation itself is a few microseconds of
-    host work on 20 KB, so the transport terms dominate; that is stated in the
-    report rather than netted out.
+    structure cannot deliver.
     """
 
     import ctypes
@@ -914,6 +942,9 @@ def _measure_staged_exchange_chain(
     from hipengine.core.device import scoped_current_device
     from hipengine.core.memory import host_buffer_ptr
     from hipengine.core.runtime import MemcpyKind
+
+    if protocol not in ("serial", "batched"):
+        raise ValueError(f"unknown staged protocol {protocol!r}")
 
     devices = tuple(getattr(transport, "devices", ()) or ())
     world = int(len(devices))
@@ -925,11 +956,19 @@ def _measure_staged_exchange_chain(
         with scoped_current_device(runtime, devices[rank].index):
             streams[rank] = runtime.stream_create()
 
-    host_slots = [ctypes.create_string_buffer(nbytes) for _ in range(world)]
+    # One slot per rank for the serial protocol; two per rank for the batched
+    # protocol, because a slot cannot be rewritten until the copy that read it has
+    # completed and the batched form defers that check by one step.
+    slot_count = 1 if protocol == "serial" else 2
+    host_slots = [
+        [ctypes.create_string_buffer(nbytes) for _ in range(slot_count)]
+        for _ in range(world)
+    ]
     registered = False
     try:
-        for slot in host_slots:
-            runtime.host_register(host_buffer_ptr(slot), nbytes)
+        for slots in host_slots:
+            for slot in slots:
+                runtime.host_register(host_buffer_ptr(slot), nbytes)
         registered = True
     except Exception as error:  # noqa: BLE001 - the screen result is the failure
         for rank in range(world):
@@ -940,33 +979,51 @@ def _measure_staged_exchange_chain(
             "error": f"{type(error).__name__}: {error}",
         }
 
-    #: Per-phase host time, so the transport's cost can be attributed instead of
-    #: reported as one number. ``host_wait`` is the exposed cost of the host round
-    #: trip; a device-signalled protocol would replace it with device-side polling.
-    phases = {"d2h_us": 0.0, "host_wait_us": 0.0, "host_sum_us": 0.0, "h2d_us": 0.0, "steps": 0}
+    #: Host-side phase counters, separated so submission cost and exposed wait are
+    #: not reported as one number. ``device`` terms come from a separate event
+    #: probe rather than from these.
+    phases = {
+        "d2h_submit_us": 0.0,
+        "d2h_wait_us": 0.0,
+        "h2d_submit_us": 0.0,
+        "h2d_wait_us": 0.0,
+        "host_sum_us": 0.0,
+        "steps": 0,
+    }
 
-    def staged_step(step: int) -> None:
+    def submit_d2h_rank(rank: int, step: int, slot: int) -> None:
         source = buffers[step % 2]
-        destination = buffers[(step + 1) % 2]
+        with scoped_current_device(runtime, devices[rank].index):
+            started = time.perf_counter()
+            runtime.memcpy_async(
+                host_buffer_ptr(host_slots[rank][slot]),
+                source[rank].ptr,
+                nbytes,
+                MemcpyKind.DEVICE_TO_HOST,
+                streams[rank],
+            )
+            phases["d2h_submit_us"] += (time.perf_counter() - started) * 1e6
+
+    def submit_d2h(step: int, slot: int) -> None:
         for rank in range(world):
-            with scoped_current_device(runtime, devices[rank].index):
-                started = time.perf_counter()
-                runtime.memcpy_async(
-                    host_buffer_ptr(host_slots[rank]),
-                    source[rank].ptr,
-                    nbytes,
-                    MemcpyKind.DEVICE_TO_HOST,
-                    streams[rank],
-                )
-                runtime.stream_synchronize(streams[rank])
-                phases["d2h_us"] += (time.perf_counter() - started) * 1e6
-                phases["host_wait_us"] += 0.0
-        # An all-reduce is elementwise, so the host accumulates the two partials
-        # position by position. Summing each whole slot instead would multiply the
-        # result by the element count. ``create_string_buffer`` exposes a writable
-        # buffer, so the slot is read and rewritten in place.
+            submit_d2h_rank(rank, step, slot)
+
+    def wait_rank(rank: int, *, d2h: bool) -> None:
+        key = "d2h_wait_us" if d2h else "h2d_wait_us"
+        with scoped_current_device(runtime, devices[rank].index):
+            started = time.perf_counter()
+            runtime.stream_synchronize(streams[rank])
+            phases[key] += (time.perf_counter() - started) * 1e6
+
+    def wait_streams(*, d2h: bool) -> None:
+        for rank in range(world):
+            wait_rank(rank, d2h=d2h)
+
+    def accumulate(slot: int) -> None:
         started = time.perf_counter()
-        partials = [np.frombuffer(slot, dtype=np.float32) for slot in host_slots]
+        partials = [
+            np.frombuffer(host_slots[rank][slot], dtype=np.float32) for rank in range(world)
+        ]
         reduced = partials[0].copy()
         # The closed form leaves the fp32 range at depth 128; that saturation is
         # expected and the value check reports it as uninformative there.
@@ -976,23 +1033,53 @@ def _measure_staged_exchange_chain(
         for rank in range(world):
             partials[rank][:] = reduced
         phases["host_sum_us"] += (time.perf_counter() - started) * 1e6
+
+    def submit_h2d_rank(rank: int, step: int, slot: int) -> None:
+        destination = buffers[(step + 1) % 2]
+        with scoped_current_device(runtime, devices[rank].index):
+            started = time.perf_counter()
+            runtime.memcpy_async(
+                destination[rank].ptr,
+                host_buffer_ptr(host_slots[rank][slot]),
+                nbytes,
+                MemcpyKind.HOST_TO_DEVICE,
+                streams[rank],
+            )
+            phases["h2d_submit_us"] += (time.perf_counter() - started) * 1e6
+
+    def submit_h2d(step: int, slot: int) -> None:
         for rank in range(world):
-            with scoped_current_device(runtime, devices[rank].index):
-                started = time.perf_counter()
-                runtime.memcpy_async(
-                    destination[rank].ptr,
-                    host_buffer_ptr(host_slots[rank]),
-                    nbytes,
-                    MemcpyKind.HOST_TO_DEVICE,
-                    streams[rank],
-                )
-                runtime.stream_synchronize(streams[rank])
-                phases["h2d_us"] += (time.perf_counter() - started) * 1e6
+            submit_h2d_rank(rank, step, slot)
+
+    def staged_step(step: int) -> None:
+        if protocol == "serial":
+            # One rank at a time: submit and wait, so the two ranks' transfers of a
+            # pair never overlap. This is the orchestration structure under test,
+            # so each wait is for the rank that was just submitted, not for all
+            # ranks on every iteration.
+            for rank in range(world):
+                submit_d2h_rank(rank, step, 0)
+                wait_rank(rank, d2h=True)
+            accumulate(0)
+            for rank in range(world):
+                submit_h2d_rank(rank, step, 0)
+                wait_rank(rank, d2h=False)
+            phases["steps"] += 1
+            return
+        slot = step % slot_count
+        submit_d2h(step, slot)
+        # This wait is the slot-reuse guard as well as the accumulation barrier.
+        wait_streams(d2h=True)
+        accumulate(slot)
+        # No host-to-device wait: see the docstring for why stream order covers it.
+        submit_h2d(step, slot)
         phases["steps"] += 1
 
     def enqueue_chain(depth: int) -> None:
         for step in range(int(depth)):
             staged_step(step)
+        if protocol == "batched":
+            wait_streams(d2h=False)
 
     def read_value(rank: int, buffer_index: int) -> float:
         from hipengine.core.memory import copy_device_to_host, host_array_ptr
@@ -1011,20 +1098,74 @@ def _measure_staged_exchange_chain(
                     buffers[0][rank], encode_values([float(seed)] * case.count, case.dtype)
                 )
 
+    def device_probe(steps: int = 3) -> dict[str, Any]:
+        """Measure the transfer itself with events, on the first staging slot.
+
+        The host-side counters above time submission and waiting, which includes
+        driver overhead and scheduling, so they cannot say how long the copy took.
+        This probe records an event around one copy per direction per rank and
+        reports the device-side elapsed time.
+        """
+
+        probe_slot = 0
+        samples: dict[str, list[float]] = {"d2h_us": [], "h2d_us": []}
+        for step in range(max(1, int(steps))):
+            per_rank: dict[str, list[float]] = {"d2h_us": [], "h2d_us": []}
+            for rank in range(world):
+                with scoped_current_device(runtime, devices[rank].index):
+                    start = runtime.event_create()
+                    end = runtime.event_create()
+                    runtime.event_record(start, streams[rank])
+                    runtime.memcpy_async(
+                        host_buffer_ptr(host_slots[rank][probe_slot]),
+                        buffers[step % 2][rank].ptr,
+                        nbytes,
+                        MemcpyKind.DEVICE_TO_HOST,
+                        streams[rank],
+                    )
+                    runtime.event_record(end, streams[rank])
+                    runtime.stream_synchronize(streams[rank])
+                    per_rank["d2h_us"].append(runtime.event_elapsed_time_ms(start, end) * 1e3)
+                    runtime.event_destroy(start)
+                    runtime.event_destroy(end)
+            accumulate(probe_slot)
+            for rank in range(world):
+                with scoped_current_device(runtime, devices[rank].index):
+                    start = runtime.event_create()
+                    end = runtime.event_create()
+                    runtime.event_record(start, streams[rank])
+                    runtime.memcpy_async(
+                        buffers[(step + 1) % 2][rank].ptr,
+                        host_buffer_ptr(host_slots[rank][probe_slot]),
+                        nbytes,
+                        MemcpyKind.HOST_TO_DEVICE,
+                        streams[rank],
+                    )
+                    runtime.event_record(end, streams[rank])
+                    runtime.stream_synchronize(streams[rank])
+                    per_rank["h2d_us"].append(runtime.event_elapsed_time_ms(start, end) * 1e3)
+                    runtime.event_destroy(start)
+                    runtime.event_destroy(end)
+            for key, values in per_rank.items():
+                samples[key].extend(values)
+        return {
+            key: round(float(np.median(values)), 3) if values else None
+            for key, values in samples.items()
+        }
+
     report: dict[str, Any] = {
         "transport": "page-locked host staging with host accumulation",
+        "protocol": protocol,
         "group_boundary": "not applicable (no RCCL group)",
         "dependency_carried_by": "stream order plus the host round trip",
         "device_copy_per_reduction": True,
         "host_round_trip_per_reduction": True,
+        "host_waits_per_reduction": 4 if protocol == "serial" else 2,
         "accumulation": "host",
         "graph_replay": False,
         "phase_attribution": (
-            "d2h_us and h2d_us are copy submission plus the host wait for that copy, "
-            "so they cover copy-engine transfer and the rank's exposed wait together; "
-            "host_sum_us is the elementwise accumulation. A device-signalled protocol "
-            "would move the exposed wait off the host, so this number is an upper bound "
-            "on a staged path rather than a floor."
+            "host-side counters separate submission from exposed wait; the "
+            "transfer itself is measured separately by device_probe with events"
         ),
         "depths": {},
     }
@@ -1056,13 +1197,15 @@ def _measure_staged_exchange_chain(
                 "final_buffer": final_index,
                 "per_step_us": summary["p50_ms"] * 1e3 / depth,
             }
+        report["device_probe"] = device_probe()
     finally:
         if registered:
-            for slot in host_slots:
-                try:
-                    runtime.host_unregister(host_buffer_ptr(slot))
-                except Exception:  # noqa: BLE001 - teardown must not mask a result
-                    continue
+            for slots in host_slots:
+                for slot in slots:
+                    try:
+                        runtime.host_unregister(host_buffer_ptr(slot))
+                    except Exception:  # noqa: BLE001 - teardown must not mask a result
+                        continue
         for rank in range(world):
             with scoped_current_device(runtime, devices[rank].index):
                 runtime.stream_destroy(streams[rank])
@@ -1078,12 +1221,17 @@ def _measure_staged_exchange_chain(
     )
     steps = max(1, int(phases["steps"]))
     report["phases_per_step_us"] = {
-        "d2h_us": phases["d2h_us"] / steps,
-        "host_sum_us": phases["host_sum_us"] / steps,
-        "h2d_us": phases["h2d_us"] / steps,
+        key: phases[key] / steps
+        for key in (
+            "d2h_submit_us",
+            "d2h_wait_us",
+            "h2d_submit_us",
+            "h2d_wait_us",
+            "host_sum_us",
+        )
     }
-    report["phases_per_step_us"]["copy_engine_and_wait_us"] = (
-        report["phases_per_step_us"]["d2h_us"] + report["phases_per_step_us"]["h2d_us"]
+    report["phases_per_step_us"]["host_total_us"] = sum(
+        report["phases_per_step_us"].values()
     )
     return report
 
@@ -1114,6 +1262,7 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
     replayed_per_step = marginal_us("per_step_alternating_graph")
     replayed_single_group = marginal_us("single_group_alternating_graph")
     staged = marginal_us("staged_exchange_host_sync")
+    staged_batched = marginal_us("staged_exchange_batched")
     attribution: dict[str, Any] = {
         "per_step_us": copy_bearing,
         "copy_free_us": copy_free,
@@ -1121,6 +1270,7 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
         "graph_replay_per_step_us": replayed_per_step,
         "graph_replay_single_group_us": replayed_single_group,
         "staged_exchange_us": staged,
+        "staged_exchange_batched_us": staged_batched,
     }
     if copy_bearing is not None and copy_free is not None:
         attribution["device_copy_us"] = copy_bearing - copy_free
@@ -1138,6 +1288,8 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
         attribution["collective_and_wait_us"] = replayed_per_step
     if copy_free is not None and replayed_per_step is not None and replayed_per_step > 0:
         attribution["per_step_over_graph_replay"] = copy_free / replayed_per_step
+    if staged is not None and staged_batched is not None:
+        attribution["staged_host_orchestration_us"] = staged - staged_batched
     return attribution
 
 
@@ -1356,10 +1508,15 @@ def _measure_dependent_chain(
             graph=graph,
             group_boundary=group_boundary,
         )
-    if "staged_exchange_host_sync" in selected:
-        # The specialized-transport screen replaces RCCL entirely for the
-        # exchange, so it runs last and cannot perturb the RCCL measurements.
-        report["modes"]["staged_exchange_host_sync"] = _measure_staged_exchange_chain(
+    # The specialized-transport screen replaces RCCL entirely for the exchange, so
+    # it runs last and cannot perturb the RCCL measurements.
+    for mode, protocol in (
+        ("staged_exchange_host_sync", "serial"),
+        ("staged_exchange_batched", "batched"),
+    ):
+        if mode not in selected:
+            continue
+        report["modes"][mode] = _measure_staged_exchange_chain(
             transport=transport,
             runtime=runtime,
             case=case,
@@ -1368,6 +1525,7 @@ def _measure_dependent_chain(
             iterations=iterations,
             warmup=warmup,
             seed=seed,
+            protocol=protocol,
         )
     report["attribution"] = _chain_attribution(report["modes"])
     return report

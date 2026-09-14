@@ -16,15 +16,15 @@
       "tp2_rank_weights_gib": 7.009
     }
   ],
-  "collective_ms_expected_from_count": 9.105,
+  "collective_ms_expected_from_count": 9.172,
   "collective_ms_per_token": [
-    9.105
+    9.172
   ],
   "collective_source": {
     "case": "all_reduce:rows1:fp32",
     "depends_on_every_step": true,
     "group_boundary": "not applicable (no RCCL group)",
-    "marginal_us_per_step": 71.1353642382021,
+    "marginal_us_per_step": 71.65629255372708,
     "mode": "staged_exchange_host_sync",
     "payload_bytes": 20480,
     "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
@@ -50,10 +50,10 @@
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 9.60696106069933,
-      "collective_ms_per_token": 9.105,
+      "collective_ms_per_token": 9.172,
       "fixed_group_ms_per_token": 0.0,
       "fixed_share": 0.0,
-      "headroom_factor": 1.0551302647665382,
+      "headroom_factor": 1.0474227061381738,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -76,21 +76,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 1.0180674737457616,
+      "projected_speedup": 1.0156182261369349,
       "rank_weight_group_ms_per_token": 18.677581436825776,
-      "required_improvement_factor": 0.9477502763331915,
-      "speedup_if_rank_weights_were_free": 3.1064846235612413,
-      "tp2_group_ms_per_token": 27.782581436825776,
-      "tp2_tok_s": 35.99377553428139
+      "required_improvement_factor": 0.9547243859997839,
+      "speedup_if_rank_weights_were_free": 3.0837922478767013,
+      "tp2_group_ms_per_token": 27.849581436825776,
+      "tp2_tok_s": 35.90718238507133
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 8.09348505391699,
-      "collective_ms_per_token": 9.105,
+      "collective_ms_per_token": 9.172,
       "fixed_group_ms_per_token": 3.3812341504649197,
       "fixed_share": 0.1,
-      "headroom_factor": 0.8889055523247654,
+      "headroom_factor": 0.8824122387611196,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -113,21 +113,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9654726596563352,
+      "projected_speedup": 0.9632696646745897,
       "rank_weight_group_ms_per_token": 16.809823293143197,
-      "required_improvement_factor": 1.1249789107343158,
-      "speedup_if_rank_weights_were_free": 3.1064846235612413,
-      "tp2_group_ms_per_token": 29.296057443608117,
-      "tp2_tok_s": 34.134285882149726
+      "required_improvement_factor": 1.1332571739983686,
+      "speedup_if_rank_weights_were_free": 3.0837922478767013,
+      "tp2_group_ms_per_token": 29.363057443608117,
+      "tp2_tok_s": 34.05639899457012
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 6.580009047134649,
-      "collective_ms_per_token": 9.105,
+      "collective_ms_per_token": 9.172,
       "fixed_group_ms_per_token": 6.762468300929839,
       "fixed_share": 0.2,
-      "headroom_factor": 0.7226808398829927,
+      "headroom_factor": 0.7174017713840655,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -150,21 +150,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9180451415490892,
+      "projected_speedup": 0.9160530453643728,
       "rank_weight_group_ms_per_token": 14.942065149460618,
-      "required_improvement_factor": 1.3837366992625781,
-      "speedup_if_rank_weights_were_free": 3.1064846235612413,
-      "tp2_group_ms_per_token": 30.809533450390457,
-      "tp2_tok_s": 32.457485979468046
+      "required_improvement_factor": 1.3939190560830717,
+      "speedup_if_rank_weights_were_free": 3.0837922478767013,
+      "tp2_group_ms_per_token": 30.876533450390458,
+      "tp2_tok_s": 32.3870554188574
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 5.066533040352306,
-      "collective_ms_per_token": 9.105,
+      "collective_ms_per_token": 9.172,
       "fixed_group_ms_per_token": 10.14370245139476,
       "fixed_share": 0.3,
-      "headroom_factor": 0.5564561274412198,
+      "headroom_factor": 0.5523913040070111,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -187,27 +187,27 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.8750590669783218,
+      "projected_speedup": 0.8732489731107957,
       "rank_weight_group_ms_per_token": 13.07430700577804,
-      "required_improvement_factor": 1.7970868693608433,
-      "speedup_if_rank_weights_were_free": 3.1064846235612413,
-      "tp2_group_ms_per_token": 32.3230094571728,
-      "tp2_tok_s": 30.937713313018566
+      "required_improvement_factor": 1.8103109023369197,
+      "speedup_if_rank_weights_were_free": 3.0837922478767013,
+      "tp2_group_ms_per_token": 32.390009457172795,
+      "tp2_tok_s": 30.87371744433218
     }
   ],
   "verdict": {
-    "best_case_speedup": 1.0180674737457616,
+    "best_case_speedup": 1.0156182261369349,
     "certified": false,
-    "maximum_required_improvement_factor": 1.7970868693608433,
-    "minimum_headroom_factor": 0.5564561274412198,
+    "maximum_required_improvement_factor": 1.8103109023369197,
+    "minimum_headroom_factor": 0.5523913040070111,
     "optimistic_bound_clears_target": true,
-    "optimistic_bound_speedup": 3.1064846235612413,
+    "optimistic_bound_speedup": 3.0837922478767013,
     "passes_target_in_every_row": false,
     "target_speedup": 1.3,
     "withheld_reasons": [
       "the pre-Packet-3 shard-kernel gate has no recorded evidence",
       "a row projects below the 1.3x target"
     ],
-    "worst_case_speedup": 0.8750590669783218
+    "worst_case_speedup": 0.8732489731107957
   }
 }
