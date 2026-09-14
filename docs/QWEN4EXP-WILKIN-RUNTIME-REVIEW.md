@@ -3,6 +3,12 @@
 Source review: September 6, 2026. No custom runtime installed, no external
 benchmark reproduced, and no new hipEngine performance claim.
 
+Execution resumed September 15, 2026 JST after the Q8/QSA recovery.
+The [remaining inventory](QWEN4EXP-JOURNEY-REMAINING.md) tracks graph census,
+private ordinary-AQL/PM4/merge arms, UMA ownership, semantic-safe TOP_K,
+and their quality/engagement prerequisites. The frozen-source review below
+is historical evidence, not a claim these runtime candidates are installed.
+
 ## Frozen Sources
 
 | Source | Reviewed revision | Relevant paths |
