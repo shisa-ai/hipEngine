@@ -34,9 +34,12 @@ def register_vibevoice_kernels(backend):
     modules=(encoder,cast,paro_silu,dense_gemv,qwen35_rotary)
     for name in PRIMITIVES:
         fn=next(getattr(module,name) for module in modules if hasattr(module,name))
+        if name == 'vv_depthwise_conv_bf16':
+            fn=encoder.vv_depthwise_unfused_bf16
         key=KernelKey(backend,name,'bf16','strict')
         if not is_registered(key):register(key,fn)
     for layer,variant,fn in (
+        ('vv_depthwise_conv_bf16','fused',encoder.vv_depthwise_conv_bf16),
         ('vibevoice_frontend_gemm','wmma',frontend_gemm),
         ('vibevoice_frontend_gemm','strict',frontend_gemm_strict),
         ('vibevoice_prefill','strict',incremental_prefill),

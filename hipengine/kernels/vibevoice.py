@@ -5,6 +5,7 @@ from hipengine.kernels.registry import resolve,KernelKey,is_registered,MissingKe
 
 PRIMITIVES = (
     'build_vibevoice_encoder','vv_add_bias_bf16','vv_add_bias_f32','vv_rmsnorm_bf16',
+    'vv_depthwise_accumulate_f32','vv_depthwise_residual_bf16',
     'vv_gelu_bf16','vv_scale_residual_bf16','vv_depthwise_conv_bf16','vv_conv_gemm_bf16',
     'vv_im2col_bf16','vv_add_scaled_noise_bf16','vv_rope_positions_f32',
     'vv_kv_write_spans','vv_attention_spans','bf16_to_f32','bf16_to_fp16','f32_to_bf16','f32_to_fp16',
@@ -26,6 +27,8 @@ def resolve_vibevoice_kernels(backend='auto',*,frontend_variant='wmma'):
     package=load_backend_kernel_package(backend)
     package.register_vibevoice_kernels()
     ops={name:resolve_vibevoice_kernel(backend,name) for name in PRIMITIVES}
+    if frontend_variant != 'strict':
+        ops['vv_depthwise_conv_bf16']=resolve_vibevoice_kernel(backend,'vv_depthwise_conv_bf16','fused')
     ops['frontend_gemm']=resolve_vibevoice_kernel(backend,'vibevoice_frontend_gemm',frontend_variant)
     return SimpleNamespace(backend=backend,**ops)
 

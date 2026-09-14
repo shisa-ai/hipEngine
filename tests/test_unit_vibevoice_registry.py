@@ -29,3 +29,11 @@ def test_no_lt_capability_uses_registered_fallback():
     assert r.prefill_fallback_reason == 'missing library'
     assert r.variant_manifest['execution_profile']=='strict'
     assert len(r.variant_manifest_sha256)==64
+
+
+def test_frontend_variant_selects_callable_depthwise_fallback():
+    strict=resolve_vibevoice_kernels('hip_gfx1151',frontend_variant='strict')
+    candidate=resolve_vibevoice_kernels('hip_gfx1151',frontend_variant='wmma')
+    assert strict.vv_depthwise_conv_bf16 is resolve_vibevoice_kernel('hip_gfx1151','vv_depthwise_conv_bf16','strict')
+    assert candidate.vv_depthwise_conv_bf16 is resolve_vibevoice_kernel('hip_gfx1151','vv_depthwise_conv_bf16','fused')
+    assert strict.vv_depthwise_conv_bf16 is not candidate.vv_depthwise_conv_bf16
