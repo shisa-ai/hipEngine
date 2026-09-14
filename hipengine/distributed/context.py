@@ -84,6 +84,52 @@ class RankRuntime:
             return self.runtime.mem_get_info()
 
 
+def _validate_transport_identity(
+    plan: DistributedPlan,
+    transport: CollectiveTransport,
+    runtime: HipRuntime,
+) -> None:
+    """A transport must describe the same ranks, devices, runtime, and algorithm.
+
+    A world-size check alone accepts a transport built for the same *number* of
+    ranks in a different order, which pairs a rank's allocations with another
+    rank's communicator and stream. Nothing downstream can detect that, because
+    every rank still holds a plausible buffer and every collective still
+    completes.
+
+    A transport that exposes no device list is a mock or an opaque stand-in; that
+    is allowed only when the plan itself declares the mock algorithm, so
+    substituting one for a real transport is an explicit choice.
+    """
+
+    declared = getattr(transport, "algorithm", None)
+    if declared is not None and str(declared) != plan.algorithm:
+        raise TransportStateError(
+            f"transport algorithm {declared!r} does not match plan algorithm {plan.algorithm!r}"
+        )
+    devices = getattr(transport, "devices", None)
+    if devices is None:
+        if plan.algorithm != "mock":
+            raise TransportStateError(
+                f"transport for algorithm {plan.algorithm!r} must declare its ordered devices; "
+                "only a mock plan may use an opaque transport"
+            )
+        return
+    plan_devices = tuple(spec.device for spec in plan.ranks)
+    transport_devices = tuple(devices)
+    if transport_devices != plan_devices:
+        raise TransportStateError(
+            f"transport devices {[str(device) for device in transport_devices]} do not match "
+            f"plan devices {[str(device) for device in plan_devices]}"
+        )
+    transport_runtime = getattr(transport, "runtime", None)
+    if transport_runtime is not None and transport_runtime is not runtime:
+        raise TransportStateError(
+            "transport runtime is not the context runtime; one rank binding must not select "
+            "devices through two runtimes"
+        )
+
+
 @dataclass
 class DistributedContext:
     """Resolved plan plus rank runtimes and (for N>1) one collective transport."""
@@ -136,6 +182,11 @@ class DistributedContext:
             raise TransportStateError(
                 f"transport world size {getattr(transport, 'world_size', None)} does not match plan degree {plan.world_size}"
             )
+        try:
+            _validate_transport_identity(plan, transport, selected_runtime)
+        except TransportStateError:
+            transport.close()
+            raise
         return cls(plan=plan, ranks=ranks, transport=transport)
 
     # -- accessors ----------------------------------------------------------
