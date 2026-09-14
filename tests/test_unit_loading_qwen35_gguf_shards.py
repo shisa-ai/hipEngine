@@ -18,6 +18,8 @@ a plan that cuts the right bytes but the wrong heads.
 from __future__ import annotations
 
 import ctypes
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -456,6 +458,8 @@ def test_unit_shards_row_split_layout_rejects_bad_widths():
             local_row_bytes=8,
             ranges=((0, 8),),
             byte_ranges=((0, 8),),
+            block_size=1,
+            type_size=4,
         )
     with pytest.raises(ShardPlanError, match="must pair up"):
         RowSplitLayout(
@@ -463,6 +467,8 @@ def test_unit_shards_row_split_layout_rejects_bad_widths():
             local_row_bytes=8,
             ranges=((0, 8),),
             byte_ranges=(),
+            block_size=1,
+            type_size=4,
         )
 
 
@@ -1485,3 +1491,119 @@ def test_unit_fixture_gdn_snapshot_restore_replays_exactly():
         assert len(local_k) <= head_map.local_k_heads
         for v in range(head_map.local_v_heads):
             assert 0 <= head_map.local_k_head(v) < k_heads
+
+
+# -- R8: manifest identity must cover the bytes the loader actually reads ------
+
+
+def _row_split_manifest():
+    """A two-rank row-split manifest, plus the plan it was built from."""
+
+    plan, _source = _make_plan(
+        name="blk.0.ffn_down.weight",
+        shape=(4, 512),
+        quant=(12, "Q4_K", 256, 144),
+        rule=TensorShardRule(kind=ROW, axis=1),
+        world_size=2,
+    )
+    return _manifest_for(plan), plan
+
+
+def test_unit_shards_row_split_serializes_physical_byte_ranges():
+    """``materialize_slice`` reads ``byte_ranges``; the identity must cover them.
+
+    A row split stores its column ranges compactly and generates the physical
+    per-row byte segments on demand, so those byte ranges never appeared in the
+    serialized manifest. Two layouts with the same logical ranges and different
+    physical ranges then hashed identically while materializing different bytes.
+    """
+
+    manifest, plan = _row_split_manifest()
+    payload = manifest.to_dict()
+    row_slices = [
+        entry
+        for tensor in payload["tensors"]
+        for entry in tensor["slices"]
+        if entry["source_row_bytes"] is not None
+    ]
+    assert row_slices, "fixture must contain a row split"
+    for entry in row_slices:
+        assert "byte_ranges" in entry, "physical row byte ranges must be serialized"
+        assert [list(pair) for pair in entry["byte_ranges"]]
+
+
+def test_unit_shards_manifest_hash_changes_with_physical_row_ranges():
+    """Swapping the physical ranges of two ranks must change the identity."""
+
+    manifest, _plan = _row_split_manifest()
+    payload = manifest.to_dict()
+    mutated = json.loads(json.dumps(payload))
+    for tensor in mutated["tensors"]:
+        if tensor["name"] != "blk.0.ffn_down.weight":
+            continue
+        slices = tensor["slices"]
+        first, second = slices[0]["byte_ranges"], slices[1]["byte_ranges"]
+        assert first != second, "fixture must give the ranks different byte ranges"
+        slices[0]["byte_ranges"], slices[1]["byte_ranges"] = second, first
+    before = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    after = hashlib.sha256(
+        json.dumps(mutated, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    assert before != after, "physical row byte ranges must be part of the manifest identity"
+
+
+def test_unit_shards_row_split_rejects_ranges_that_do_not_correspond():
+    """The physical ranges must be the ones the logical ranges derive to.
+
+    Row splits derive bytes as ``column // block_size * type_size``. A layout
+    whose stored byte ranges disagree with that derivation would materialize
+    bytes its own descriptor does not describe.
+    """
+
+    with pytest.raises(ShardPlanError, match="byte range"):
+        RowSplitLayout(
+            source_row_bytes=288,
+            local_row_bytes=144,
+            ranges=((0, 256),),
+            byte_ranges=((144, 288),),
+            block_size=256,
+            type_size=144,
+        )
+    with pytest.raises(ShardPlanError, match="byte range"):
+        RowSplitLayout(
+            source_row_bytes=288,
+            local_row_bytes=144,
+            ranges=((0, 256),),
+            byte_ranges=((0, 143),),
+            block_size=256,
+            type_size=144,
+        )
+
+
+def test_unit_shards_row_split_accepts_its_derived_ranges():
+    layout = RowSplitLayout(
+        source_row_bytes=288,
+        local_row_bytes=144,
+        ranges=((0, 256),),
+        byte_ranges=((0, 144),),
+        block_size=256,
+        type_size=144,
+    )
+    assert layout.local_row_bytes == sum(stop - start for start, stop in layout.byte_ranges)
+
+
+def test_unit_shards_built_row_split_round_trips_after_validation():
+    """The real builder's layouts must satisfy the correspondence rule."""
+
+    manifest, plan = _row_split_manifest()
+    validate_plan_coverage(plan)
+    payload = manifest.to_dict()
+    for tensor in payload["tensors"]:
+        for entry in tensor["slices"]:
+            if entry["byte_ranges"] is None:
+                continue
+            assert entry["local_row_bytes"] == sum(
+                stop - start for start, stop in entry["byte_ranges"]
+            )
