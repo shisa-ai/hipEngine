@@ -33,6 +33,7 @@ from hipengine.runtime.vibevoice_qwen2 import (
 
 
 class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
+    quant_name = 'q4_k_m'
     """Dense-KV Qwen2 runner over Q4_K_M GGUF block weights."""
 
     def __init__(
@@ -78,9 +79,12 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         self.embed_host_bf16 = f32_to_bf16_bits(embed_host).reshape(
             int(embed_host.shape[0]) // hidden, hidden
         )
-        self.embed = keep(q4_weights.embed)
-        self.final_ln = keep(q4_weights.final_norm)
-        self.lm_head = keep(q4_weights.lm_head)
+        # Borrowed from the weights handle: it owns these allocations and
+        # frees them in Qwen2Q4Weights.close(). Keeping them here would let
+        # two runtimes over one weights object double-free the same pointers.
+        self.embed = q4_weights.embed
+        self.final_ln = q4_weights.final_norm
+        self.lm_head = q4_weights.lm_head
         self._ones_hidden = keep(_upload(f32_to_bf16_bits(np.ones(hidden, dtype=np.float32))))
 
         cos, sin = _cos_sin_tables(max_context, head_dim, spec.rope_theta)
@@ -96,18 +100,18 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         for layer in q4_weights.layers:
             self.layers.append(
                 _LayerBuffers(
-                    input_ln=keep(layer.input_ln),
-                    q_w=keep(layer.q_w),
-                    q_b=keep(layer.q_b),
-                    k_w=keep(layer.k_w),
-                    k_b=keep(layer.k_b),
-                    v_w=keep(layer.v_w),
-                    v_b=keep(layer.v_b),
-                    o_w=keep(layer.o_w),
-                    post_ln=keep(layer.post_ln),
-                    gate_w=keep(layer.gate_w),
-                    up_w=keep(layer.up_w),
-                    down_w=keep(layer.down_w),
+                    input_ln=layer.input_ln,
+                    q_w=layer.q_w,
+                    q_b=layer.q_b,
+                    k_w=layer.k_w,
+                    k_b=layer.k_b,
+                    v_w=layer.v_w,
+                    v_b=layer.v_b,
+                    o_w=layer.o_w,
+                    post_ln=layer.post_ln,
+                    gate_w=layer.gate_w,
+                    up_w=layer.up_w,
+                    down_w=layer.down_w,
                     q_w16=empty, k_w16=empty, v_w16=empty, o_w16=empty,
                     gate_w16=empty, up_w16=empty, down_w16=empty,
                     k_cache=_alloc(kv_bytes),
@@ -137,6 +141,9 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         self._o_f32 = _alloc(hidden * 4)
         self._o_bf16 = _alloc(hidden * 2)
         self._gate_up = _alloc(2 * ffn * 2)
+        # Caller-owned f32 scratch for the emulated dual gate/up GEMV; kept
+        # per runner (not process-global) so runners stay isolated.
+        self._dual_scratch = (keep(_alloc(ffn * 4)), keep(_alloc(ffn * 4)))
         self._silu = _alloc(ffn * 2)
         self._down_f32 = _alloc(hidden * 4)
         self._down_bf16 = _alloc(hidden * 2)
@@ -164,6 +171,10 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         return host, int(host.argmax())
 
     def close(self) -> None:
-        # The loader's device buffers were keep()ed into _buffers, so the
-        # base close frees them exactly once; nothing else to release.
+        """Release runtime-owned buffers.
+
+        Weight buffers are owned by the ``Qwen2Q4Weights`` handle and are
+        released by ``Qwen2Q4Weights.close()``; closing a runner must not
+        free memory another runner over the same weights is still using.
+        """
         super().close()
