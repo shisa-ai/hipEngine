@@ -162,9 +162,17 @@ def parse_lspci_tree(text: str) -> list[dict[str, Any]]:
 def parse_acs_entries(lspci_verbose: str, slots: Sequence[str]) -> dict[str, Any]:
     """Extract ACS capability/control for the requested slots from ``lspci -vv``.
 
-    ``SrcValid+``, ``TransBlk+``, ``ReqRedir+``, ``CmpltRedir+``, or
-    ``UpstreamFwd+`` in ``ACSCtl`` force peer TLPs up to the root complex and
-    therefore block peer-to-peer DMA between endpoints below that bridge.
+    ``ReqRedir+``, ``CmpltRedir+``, or ``UpstreamFwd+`` in ``ACSCtl`` send peer
+    TLPs to the root complex instead of forwarding them between endpoints, so
+    those three decide ``blocks_peer_dma``. ``SrcValid`` and ``TransBlk``
+    influence peer routing in specific cases and ``DirectTrans`` is a capability
+    for translated requests, not a redirect, so they are reported separately
+    rather than folded into the same verdict.
+
+    These are raw register controls. They do not by themselves prove that a
+    given pair of endpoints cannot reach each other, because the root complex
+    may still forward the transaction; treat the verdict as one input to a
+    routing question, not as a measurement of it.
     """
 
     result: dict[str, Any] = {}
@@ -192,14 +200,42 @@ def parse_acs_entries(lspci_verbose: str, slots: Sequence[str]) -> dict[str, Any
         enabled: list[str] = []
         for line in block.get("control_lines", []):
             for token in line.split():
-                if token.endswith("+") and token[:-1] in _ACS_BLOCKING_BITS:
+                if token.endswith("+") and token[:-1] in _ACS_KNOWN_BITS:
                     enabled.append(token[:-1])
-        block["blocking_bits_enabled"] = sorted(set(enabled))
-        block["blocks_peer_dma"] = bool(enabled)
+        enabled_set = set(enabled)
+        block["enabled_bits"] = sorted(enabled_set)
+        # Only these three force a peer TLP up to the root complex. The PCIe
+        # spec defines them as P2P request redirect, P2P completion redirect,
+        # and upstream forwarding, and they are the bits the kernel's P2P
+        # support treats as blockers.
+        block["redirect_bits_enabled"] = sorted(enabled_set & _ACS_REDIRECT_BITS)
+        block["blocks_peer_dma"] = bool(enabled_set & _ACS_REDIRECT_BITS)
+        # Source validation and translation blocking influence peer routing in
+        # specific cases, and direct translated P2P is a capability for
+        # translated requests rather than a redirect. None of the three is
+        # evidence of a blanket block, so they are reported but not counted.
+        block["other_bits_enabled"] = sorted(enabled_set - _ACS_REDIRECT_BITS)
+        block["direct_translated_p2p_enabled"] = "DirectTrans" in enabled_set
+        block["routing_note"] = (
+            "redirect bits force peer TLPs to the root complex"
+            if enabled_set & _ACS_REDIRECT_BITS
+            else "no redirect bit is enabled in ACSCtl"
+        )
     return result
 
 
-_ACS_BLOCKING_BITS = {"SrcValid", "TransBlk", "ReqRedir", "CmpltRedir", "UpstreamFwd", "DirectTrans"}
+_ACS_KNOWN_BITS = {
+    "SrcValid",
+    "TransBlk",
+    "ReqRedir",
+    "CmpltRedir",
+    "UpstreamFwd",
+    "EgressCtrl",
+    "DirectTrans",
+}
+
+#: Bits that send a peer TLP up to the root complex instead of peer forwarding.
+_ACS_REDIRECT_BITS = {"ReqRedir", "CmpltRedir", "UpstreamFwd"}
 
 
 def merged_has_acs(blocks: Sequence[str]) -> bool:
@@ -566,14 +602,32 @@ def summarize_device(
     }
 
 
+def arch_for_device(per_device_arches: Sequence[str], index: int) -> str | None:
+    """Return the architecture reported for one HIP device index.
+
+    The probe prints one entry per visible device in HIP device order, so the
+    index is the HIP device index - not the rank position in a plan, and not a
+    position in a deduplicated list. A device the probe did not cover reports
+    ``None`` rather than borrowing another device's architecture.
+    """
+
+    if 0 <= int(index) < len(per_device_arches):
+        return str(per_device_arches[int(index)])
+    return None
+
+
 def collect_devices(indices: Sequence[int]) -> tuple[list[dict[str, Any]], list[str]]:
     errors: list[str] = []
     from hipengine.core.device import Device, scoped_current_device
     from hipengine.core.hip import get_hip_runtime
-    from hipengine.kernels.backends import detect_hip_target_arches
+    from hipengine.kernels.backends import detect_hip_target_arches, detect_hip_target_arches_per_device
 
     runtime = get_hip_runtime()
     arches = tuple(dict.fromkeys(detect_hip_target_arches()))
+    # Per-device arches, indexed by HIP device index rather than rank position:
+    # a deduplicated list assigned by rank mislabels every device on a host
+    # whose probe order or device selection does not match the plan order.
+    per_device_arches = detect_hip_target_arches_per_device()
     smi_cards: dict[str, Any] = {}
     smi = _run(["rocm-smi", "--showtemp", "--showpower", "--showclocks", "--showproductname", "--showbus", "--json"])
     if smi.get("available") and smi.get("returncode") == 0 and smi.get("stdout"):
@@ -603,12 +657,18 @@ def collect_devices(indices: Sequence[int]) -> tuple[list[dict[str, Any]], list[
             if key == str(index) or (pci_field and pci_field in info.pci_bus_id.lower()):
                 smi_entry = value
                 break
+        arch = arch_for_device(per_device_arches, int(index))
+        if arch is None:
+            errors.append(
+                f"device {index}: no architecture was reported for this HIP device index "
+                f"(probe returned {len(per_device_arches)} entries)"
+            )
         entry.update(
             summarize_device(
                 rank=rank,
                 index=int(index),
                 name=info.name,
-                arch=arches[rank] if rank < len(arches) else (arches[0] if arches else None),
+                arch=arch,
                 uuid=info.uuid,
                 uuid_hex=info.uuid_hex,
                 pci_bus_id=info.pci_bus_id,
@@ -619,6 +679,11 @@ def collect_devices(indices: Sequence[int]) -> tuple[list[dict[str, Any]], list[
                 smi=smi_entry,
             )
         )
+        entry["arch_probe"] = {
+            "per_device_arches": list(per_device_arches),
+            "reported_for_index": int(index),
+            "all_detected": list(arches),
+        }
         entry["driver"] = {
             "amdgpu_version": read_text(Path("/sys/module/amdgpu/version")),
             "vbios": read_text(sysfs / "vbios_version") if sysfs else None,
@@ -678,12 +743,15 @@ def collect_display_load(
         else []
     )
     openers: dict[str, list[dict[str, Any]]] = {name: [] for name in devices}
+    unreadable: list[int] = []
     if not devices:
         return {
             "devices": [],
             "openers": {},
             "session": os.environ.get("XDG_SESSION_TYPE") or os.environ.get("WAYLAND_DISPLAY") or None,
             "busy": False,
+            "unreadable_fd_tables": [],
+            "visibility_complete": True,
         }
     targets = {str(drm_root / name): name for name in devices}
     for entry in sorted(proc_root.glob("[0-9]*")):
@@ -695,7 +763,11 @@ def collect_display_load(
         try:
             fds = list(fd_dir.iterdir())
         except (PermissionError, FileNotFoundError, OSError):
+            # A process whose fd table cannot be read may hold the device open.
+            # An empty result then means "no opener observed", not "no opener".
+            unreadable.append(pid)
             continue
+        seen_this_process: set[str] = set()
         for fd in fds:
             try:
                 target = os.readlink(fd)
@@ -706,14 +778,21 @@ def collect_display_load(
                 continue
             if pid == os.getpid():
                 continue
+            if name in seen_this_process:
+                continue
+            # Record every DRM node a process holds, not just the first: a
+            # compositor can hold both cards, and stopping at one node would
+            # report the other as idle.
+            seen_this_process.add(name)
             openers[name].append({"pid": pid, "comm": read_text(entry / "comm") or "?"})
-            break
     session = os.environ.get("XDG_SESSION_TYPE") or os.environ.get("WAYLAND_DISPLAY") or None
     return {
         "devices": devices,
         "openers": openers,
         "session": session,
         "busy": any(entries for entries in openers.values()),
+        "unreadable_fd_tables": sorted(unreadable),
+        "visibility_complete": not unreadable,
     }
 
 

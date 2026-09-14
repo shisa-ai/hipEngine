@@ -108,24 +108,27 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
 `benchmarks/results/tp2_*.json`; the numbers and their scope are in
 `benchmarks/README.md` and the worklog entry for the unit.
 
-- **Peer DMA is unavailable on this host, for two independent reasons.**
-  `hipDeviceCanAccessPeer` is false in both directions and
-  `hipDeviceEnablePeerAccess` fails with HIP error 101: both cards expose a
-  256 MB BAR even though the kernel advertises a resize attribute
-  (`resource0_resize`). Independently, every bridge between the two cards — the
-  CPU root ports `00:03.1`/`00:03.2` and the downstream bridges `0c:00.0`/
-  `0f:00.0` — has ACS redirection enabled (`ACSCtl` sets `SrcValid+`,
-  `ReqRedir+`, `CmpltRedir+`, `UpstreamFwd+`), which sends peer TLPs to the root
-  complex instead of forwarding them. Both cards are trained at PCIe 4.0 x16
-  (`LnkSta: Speed 16GT/s, Width x16`; `pp_dpm_pcie`'s `x8` is a DPM capability
-  table, not the live link), so link width is not the limiter. Collectives
-  therefore host-stage at ~8 GB/s of payload.
-  **Host-level action**: peer DMA needs Resizable BAR / Above 4G Decoding in
-  firmware *and* ACS redirection turned off on the path between the cards; the
-  second is an IOMMU-isolation tradeoff and is the human lead's call, not a
-  benchmark-time change. Until both are in place the peer-copy path in "Runtime
-  and communication" is not a candidate and bf16 transport is the prefill
-  default (2.593 -> 1.309 ms per 1024-row all-reduce).
+- **Peer DMA is unavailable on this host.** `hipDeviceCanAccessPeer` is false in
+  both directions and `hipDeviceEnablePeerAccess` fails with HIP error 101. Both
+  cards expose a 256 MB BAR even though the kernel advertises a resize attribute
+  (`resource0_resize`), and every bridge between the two cards — the CPU root
+  ports `00:03.1`/`00:03.2` and the downstream bridges `0c:00.0`/`0f:00.0` — has
+  ACS redirect bits set (`ACSCtl` reads `SrcValid+ TransBlk- ReqRedir+
+  CmpltRedir+ UpstreamFwd+ EgressCtrl- DirectTrans-`), which redirects peer TLPs
+  to the root complex instead of forwarding them. Both cards are trained at PCIe
+  4.0 x16 (`LnkSta: Speed 16GT/s, Width x16`; `pp_dpm_pcie`'s `x8` is a DPM
+  capability table, not the live link), so link width is not the limiter.
+  Collectives therefore host-stage at ~8 GB/s of payload.
+  **Host-level action**: these two observations are consistent with the failure,
+  but neither is a proven cause and their sufficiency is unverified — the root
+  complex can forward a transaction even with ACS redirect bits set, and a
+  resized BAR alone does not establish a working cross-root-port path. Changing
+  either one means changing firmware or IOMMU isolation on a shared host, so it
+  is the human lead's call and not a benchmark-time change. Until such a change
+  is measured, the peer-copy path in "Runtime and communication" is not a
+  candidate, and the bf16 transport measurements below (2.593 -> 1.309 ms per
+  1024-row all-reduce) are transport-level diagnostics rather than a qualified
+  model-level prefill default.
 - **Collective latency is the binding constraint for decode.** A 20 KB
   all-reduce costs 28-35 us marginal inside one group, and the shard inventory
   fixes the count at **128 row-split tensors per token** (two per transformer

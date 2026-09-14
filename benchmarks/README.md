@@ -876,21 +876,26 @@ Both GPUs are idle and unclaimed while these numbers are taken: no process holds
 `card0`/`card1`/`renderD128`/`renderD129` open on a Wayland session, so no
 compositor shares either device.
 
-**Peer DMA is unavailable on this host, for two independent reasons.**
-`hipDeviceCanAccessPeer` returns false in both directions and
-`hipDeviceEnablePeerAccess` fails with HIP error 101, because both cards expose a
-256 MB BAR while the kernel offers a resize attribute (`resource0_resize`
-`0x1ff00` and `0xff00`). Separately, every bridge between the cards has ACS
-redirection enabled - the CPU root ports `00:03.1`/`00:03.2` and the downstream
-bridges `0c:00.0`/`0f:00.0` all set `SrcValid+ ReqRedir+ CmpltRedir+
-UpstreamFwd+` in `ACSCtl`, which redirects peer TLPs to the root complex. Both
-cards are trained at PCIe 4.0 x16 (`LnkSta: Speed 16GT/s, Width x16`; the `x8`
-in `pp_dpm_pcie` is a DPM capability table, not the live link), so link width is
-not the limiter. Collectives host-stage at about 8 GB/s of payload instead of
-direct peer bandwidth; a 1 MiB peer copy measures 5.89 GB/s bidirectional.
-Resizable BAR / Above 4G Decoding in firmware *and* ACS redirection disabled on
-the path between the cards would both be needed to change this; the second is an
-IOMMU-isolation tradeoff and has not been changed.
+**Peer DMA is unavailable on this host.** `hipDeviceCanAccessPeer` returns false
+in both directions and `hipDeviceEnablePeerAccess` fails with HIP error 101,
+because both cards expose a 256 MB BAR while the kernel offers a resize attribute
+(`resource0_resize` `0x1ff00` and `0xff00`). Every bridge between the cards - the
+CPU root ports `00:03.1`/`00:03.2` and the downstream bridges `0c:00.0`/`0f:00.0`
+- also has ACS redirect bits set: `ACSCtl` reads `SrcValid+ TransBlk- ReqRedir+
+CmpltRedir+ UpstreamFwd+ EgressCtrl- DirectTrans-`, and the three redirect bits
+send peer TLPs to the root complex instead of forwarding them. Both cards are
+trained at PCIe 4.0 x16 (`LnkSta: Speed 16GT/s, Width x16`; the `x8` in
+`pp_dpm_pcie` is a DPM capability table, not the live link), so link width is not
+the limiter. Collectives host-stage at about 8 GB/s of payload instead of direct
+peer bandwidth; a 1 MiB peer copy measures 5.89 GB/s bidirectional.
+
+Those two observations are consistent with the failure, but neither is a proven
+cause and their sufficiency is unverified: a root complex can forward a
+transaction even with ACS redirect bits set, and a resized BAR alone does not
+establish a working cross-root-port path. Changing either means changing firmware
+or IOMMU isolation, which has not been done on this host. The bf16 transport
+numbers here (2.593 -> 1.309 ms per 1024-row all-reduce) are therefore
+transport-level diagnostics, not a qualified model-level prefill default.
 
 A direct chain ladder pins the per-token cost better than a two-point marginal:
 one 20 KB fp32 all-reduce chain measures 398 us at depth 1, 827 us at depth 16

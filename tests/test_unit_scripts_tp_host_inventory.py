@@ -111,7 +111,8 @@ c3:00.0 VGA compatible controller: AMD/ATI Navi 31
     # test slot disables every one of them.
     assert block["capability_lines"] == ["SrcValid+ TransBlk+ ReqRedir+ CmpltRedir+ UpstreamFwd+ EgressCtrl+ DirectTrans+"]
     assert block["control_lines"] == ["SrcValid- TransBlk- ReqRedir- CmpltRedir- UpstreamFwd- EgressCtrl- DirectTrans-"]
-    assert block["blocking_bits_enabled"] == []
+    assert block["enabled_bits"] == []
+    assert block["redirect_bits_enabled"] == []
     assert block["blocks_peer_dma"] is False
 
 
@@ -130,13 +131,17 @@ def test_parse_acs_entries_flags_bridge_redirection(mod) -> None:
 """
     entries = mod.parse_acs_entries(text, ["0c:00.0", "0d:00.0"])
     assert entries["0c:00.0"]["blocks_peer_dma"] is True
-    assert entries["0c:00.0"]["blocking_bits_enabled"] == [
+    # Only the three bits that redirect peer TLPs upstream decide the verdict.
+    assert entries["0c:00.0"]["redirect_bits_enabled"] == [
         "CmpltRedir",
         "ReqRedir",
-        "SrcValid",
-        "TransBlk",
         "UpstreamFwd",
     ]
+    # Source validation and translation blocking are reported, not counted:
+    # they affect peer routing in specific cases rather than redirecting TLPs.
+    assert entries["0c:00.0"]["other_bits_enabled"] == ["SrcValid", "TransBlk"]
+    # DirectTrans- in ACSCtl is a disabled capability, never a blocker.
+    assert entries["0c:00.0"]["direct_translated_p2p_enabled"] is False
     assert entries["0d:00.0"]["blocks_peer_dma"] is False
 
 
@@ -296,3 +301,122 @@ def test_collect_display_load_handles_missing_drm(tmp_path: pathlib.Path, mod) -
     state = mod.collect_display_load(proc_root=tmp_path / "proc", drm_root=tmp_path / "dri")
     assert state["devices"] == []
     assert state["busy"] is False
+
+
+def test_acs_direct_translated_p2p_is_not_a_blocker(mod) -> None:
+    """DirectTrans+ enables translated peer requests; it is not a redirect.
+
+    Treating it as a blanket blocker would report a P2P-capable bridge as
+    blocking on the strength of a capability bit.
+    """
+
+    text = """\
+0c:00.0 PCI bridge: Advanced Micro Devices, Inc. [AMD/ATI] Device 1478
+        Capabilities: [2a0 v1] Access Control Services
+                ACSCap: SrcValid+ TransBlk+ ReqRedir+ CmpltRedir+ UpstreamFwd+ EgressCtrl- DirectTrans+
+                ACSCtl: SrcValid- TransBlk- ReqRedir- CmpltRedir- UpstreamFwd- EgressCtrl- DirectTrans+
+"""
+    block = mod.parse_acs_entries(text, ["0c:00.0"])["0c:00.0"]
+    assert block["direct_translated_p2p_enabled"] is True
+    assert block["blocks_peer_dma"] is False
+    assert block["redirect_bits_enabled"] == []
+
+
+def test_display_load_records_every_drm_node_a_process_holds(tmp_path: pathlib.Path, mod) -> None:
+    """A compositor holding both cards must not hide one of them.
+
+    Stopping at the first DRM file descriptor of each process reported the
+    second card as idle.
+    """
+
+    proc = tmp_path / "proc"
+    drm = tmp_path / "dri"
+    drm.mkdir()
+    for name in ("card0", "card1"):
+        (drm / name).write_text("", encoding="utf-8")
+    pid_dir = proc / "4242"
+    (pid_dir / "fd").mkdir(parents=True)
+    (pid_dir / "comm").write_text("compositor\n", encoding="utf-8")
+    (pid_dir / "fd" / "3").symlink_to(str(drm / "card0"))
+    (pid_dir / "fd" / "4").symlink_to(str(drm / "card1"))
+
+    # ``is_char_device`` is only true for real device nodes, so exercise the
+    # opener scan with a monkeypatched predicate rather than a fake node.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(mod.Path, "is_char_device", lambda self: True, raising=False)
+    try:
+        record = mod.collect_display_load(proc_root=proc, drm_root=drm)
+    finally:
+        monkeypatch.undo()
+
+    assert record["openers"]["card0"] == [{"pid": 4242, "comm": "compositor"}]
+    assert record["openers"]["card1"] == [{"pid": 4242, "comm": "compositor"}]
+    assert record["busy"] is True
+    assert record["visibility_complete"] is True
+    assert record["unreadable_fd_tables"] == []
+
+
+def test_display_load_records_incomplete_visibility(tmp_path: pathlib.Path, mod) -> None:
+    """An unreadable fd table means no opener observed, not no opener.
+
+    The screen must not present an empty result as proof that no compositor
+    shares either card.
+    """
+
+    proc = tmp_path / "proc"
+    drm = tmp_path / "dri"
+    drm.mkdir()
+    (drm / "card0").write_text("", encoding="utf-8")
+    (proc / "9999").mkdir(parents=True)  # no fd directory at all
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(mod.Path, "is_char_device", lambda self: True, raising=False)
+    try:
+        record = mod.collect_display_load(proc_root=proc, drm_root=drm)
+    finally:
+        monkeypatch.undo()
+
+    assert record["openers"]["card0"] == []
+    assert record["busy"] is False
+    assert record["visibility_complete"] is False
+    assert record["unreadable_fd_tables"] == [9999]
+
+
+# -- per-device architecture attribution --------------------------------------
+
+
+def test_per_device_arch_probe_keeps_one_entry_per_gpu() -> None:
+    """Deduplicating the probe output destroys the per-device information.
+
+    ``amdgpu-arch`` prints one architecture per visible GPU in HIP device order.
+    A deduplicated list indexed by rank position mislabels every device on a
+    mixed-architecture host or a reordered device selection.
+    """
+
+    from hipengine.kernels.backends import _parse_arches, _parse_arches_per_device
+
+    text = "gfx1100\ngfx1030\ngfx1100\n"
+    assert _parse_arches(text) == ("gfx1100", "gfx1030")
+    assert _parse_arches_per_device(text) == ("gfx1100", "gfx1030", "gfx1100")
+
+
+def test_device_arch_is_selected_by_hip_index_not_rank(mod) -> None:
+    """The index is the HIP device index, not a position in a rank list."""
+
+    per_device = ("gfx1030", "gfx1100")
+    assert mod.arch_for_device(per_device, 0) == "gfx1030"
+    assert mod.arch_for_device(per_device, 1) == "gfx1100"
+    # A plan may order devices [1, 0]: rank 0 is then HIP device 1.
+    plan_order = [1, 0]
+    assert [mod.arch_for_device(per_device, index) for index in plan_order] == [
+        "gfx1100",
+        "gfx1030",
+    ]
+
+
+def test_device_arch_is_unknown_when_the_probe_did_not_cover_it(mod) -> None:
+    """A device the probe missed reports nothing instead of another device's arch."""
+
+    assert mod.arch_for_device(("gfx1100",), 3) is None
+    assert mod.arch_for_device((), 0) is None
+    assert mod.arch_for_device(("gfx1100",), -1) is None

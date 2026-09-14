@@ -307,6 +307,45 @@ def _parse_arches(text: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(arch for arch in arches if arch))
 
 
+def _parse_arches_per_device(text: str) -> tuple[str, ...]:
+    """Parse one architecture per device, preserving probe order.
+
+    ``amdgpu-arch`` and ``rocm_agent_enumerator`` print one line per visible
+    GPU in HIP device order, so the duplicates are meaningful: a mixed-arch host
+    must not be reduced to a set and then indexed by rank position.
+    """
+
+    arches = [_normalize_arch(match.group(0)) for match in _ARCH_PATTERN.finditer(text)]
+    return tuple(arch for arch in arches if arch)
+
+
+def detect_hip_target_arches_per_device() -> tuple[str, ...]:
+    """Detect one target architecture per visible HIP device, in device order.
+
+    Returns an empty tuple when no probe is available, so a caller must decide
+    what to record rather than falling back to a guessed architecture.
+    """
+
+    for command in _ARCH_COMMANDS:
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0:
+            continue
+        arches = _parse_arches_per_device(result.stdout)
+        if arches:
+            return arches
+    return ()
+
+
 def _normalize_arch(value: str) -> str:
     match = _ARCH_PATTERN.search(value.strip())
     if match is None:

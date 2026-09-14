@@ -633,6 +633,51 @@ def report_unstaged_entries() -> None:
             print(f"note: unstaged entry is not part of this commit: {path}", file=sys.stderr)
 
 
+def base_commit_exists(base_commit: str) -> bool:
+    """Report whether a recorded ``base_commit`` names a real commit.
+
+    The schema check only proves the value looks like a hash. Three committed
+    entries carried a correct short prefix with an invented tail, which passed
+    validation and silently broke provenance. This is reported rather than
+    enforced: a committed entry is immutable, so a hard failure here would leave
+    no in-tree remedy. Correct it with a new entry that names the real commit.
+    """
+
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{base_commit}^{{commit}}"],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def report_base_commit_provenance(
+    parsed: list[tuple[Path, dict[str, str], str]],
+    *,
+    verbose: bool = False,
+) -> int:
+    """Report entries whose ``base_commit`` is not in this repository."""
+
+    missing: list[tuple[str, str]] = []
+    seen: dict[str, bool] = {}
+    for path, fields, _text in parsed:
+        base_commit = fields.get("base_commit", "")
+        if base_commit not in seen:
+            seen[base_commit] = base_commit_exists(base_commit)
+        if not seen[base_commit]:
+            missing.append((path.name, base_commit))
+    if verbose:
+        for name, base_commit in missing:
+            print(
+                f"note: {name} records base_commit {base_commit}, which is not a commit "
+                "in this repository; provenance is unverifiable",
+                file=sys.stderr,
+            )
+    return len(missing)
+
+
 def check_entries(args: argparse.Namespace) -> int:
     parsed = validate_entries(enforce_append_only=not args.allow_modified)
     if args.include_unstaged:
@@ -640,7 +685,16 @@ def check_entries(args: argparse.Namespace) -> int:
             [*parsed, *validate_unstaged_entries()],
             key=lambda item: (item[1]["timestamp"], item[0].name),
         )
-    print(f"worklog: {len(parsed)} valid entr{'y' if len(parsed) == 1 else 'ies'}")
+    missing_base_commits = report_base_commit_provenance(
+        parsed, verbose=bool(getattr(args, "provenance", False))
+    )
+    summary = f"worklog: {len(parsed)} valid entr{'y' if len(parsed) == 1 else 'ies'}"
+    if missing_base_commits:
+        summary += (
+            f" ({missing_base_commits} with a base_commit not in this repository; "
+            "run with --provenance to list them)"
+        )
+    print(summary)
     if not args.include_unstaged:
         report_unstaged_entries()
     return 0
@@ -799,6 +853,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-unstaged",
         action="store_true",
         help="also validate entries that exist only in the working tree",
+    )
+    check_parser.add_argument(
+        "--provenance",
+        action="store_true",
+        help="list every entry whose base_commit is not a commit in this repository",
     )
     check_parser.set_defaults(func=check_entries)
 

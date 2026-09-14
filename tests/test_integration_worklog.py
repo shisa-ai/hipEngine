@@ -497,3 +497,46 @@ def test_commit_succeeds_with_unfinished_unstaged_entry_present(tmp_path: Path) 
     assert _git(repo, "ls-files", "--others", "--exclude-standard").stdout.strip() == str(
         wip.relative_to(repo)
     )
+
+
+# -- base_commit provenance ---------------------------------------------------
+
+
+def test_check_reports_a_base_commit_that_is_not_a_commit(tmp_path: Path) -> None:
+    """A hash-shaped value is not proof of provenance.
+
+    Three entries in this repository recorded a correct short prefix with an
+    invented tail. Format validation accepted them, so the defect survived until
+    a reviewer resolved every hash against the object database. The check now
+    counts and names them without failing, because a committed entry is
+    immutable and there is no in-tree remedy for a historical one.
+    """
+
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    text = entry.read_text(encoding="utf-8")
+    real = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    invented = real[:8] + "0" * 32
+    entry.write_text(
+        text.replace(f"base_commit: {real}", f"base_commit: {invented}"), encoding="utf-8"
+    )
+    _commit_entry(repo, entry)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 0, result.stderr
+    assert "1 with a base_commit not in this repository" in result.stdout
+
+    verbose = _tool(repo, "check", "--provenance", check=False)
+    assert verbose.returncode == 0
+    assert invented in verbose.stderr
+    assert entry.name in verbose.stderr
+
+
+def test_check_does_not_report_a_real_base_commit(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    _commit_entry(repo, entry)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 0, result.stderr
+    assert "not in this repository" not in result.stdout
