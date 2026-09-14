@@ -270,7 +270,7 @@ CANDIDATES["q8_blockscale_guarded_ordered"] = replace(
 CANDIDATES["production_gdn_restore"] = replace(
     CANDIDATES["gdn_isolated"],
     name="production_gdn_restore",
-    classification="T1",
+    classification="T2",
     mechanism="restore the existing GDN/DPP suffix over corrected Q8/QSA production",
     base_profile="production",
     scenario_id="qwen4exp-production-gdn-restoration",

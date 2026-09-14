@@ -70,3 +70,9 @@ rows, so that natural suite cannot exercise those optimizations, even with
 long free completions. R04-R06 need counted canonical-depth execution and
 task prompts whose prefill actually enters the candidate. An unchanged
 short-task pass is an inactive-path control, not active-path qualification.
+
+R01/R02 restoration declarations are T2 relative to the strict fallback:
+the column-warp recurrence changes reduction association.
+Earlier captures preserve their original T1 metadata for provenance. This
+classification correction changes no numerical limit, recorded result or
+task verdict; both classes require the full production gate.
