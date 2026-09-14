@@ -112,7 +112,12 @@ def test_gpu_distributed_kv_claim_allocates_and_rolls_back_on_device() -> None:
     from hipengine.core.device import Device
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import free, malloc
-    from hipengine.distributed.kv import claim_all, resolve_kv_claims, resolve_kv_geometry
+    from hipengine.distributed.kv import (
+        KvSpansLayout,
+        claim_all,
+        resolve_kv_claims,
+        resolve_kv_geometry,
+    )
     from hipengine.distributed.plan import DistributedPlan
 
     runtime = get_hip_runtime()
@@ -120,9 +125,12 @@ def test_gpu_distributed_kv_claim_allocates_and_rolls_back_on_device() -> None:
         layer_types=tuple("full_attention" if index % 4 == 3 else "linear_attention" for index in range(64)),
         head_count_kv=4,
         key_length=256,
+        value_length=256,
     )
     resolved = DistributedPlan.resolve(_devices(), hidden_size=5120)
-    geometry = resolve_kv_geometry(config, world_size=2, context_tokens=8192)
+    geometry = resolve_kv_geometry(
+        config, spans=KvSpansLayout.dense_policy(), world_size=2, context_tokens=8192
+    )
     claims = resolve_kv_claims(resolved, geometry)
     live: list[object] = []
     released: list[int] = []
@@ -152,6 +160,66 @@ def test_gpu_distributed_kv_claim_allocates_and_rolls_back_on_device() -> None:
 
     # The happy path allocates on both ranks and releases cleanly.
     buffers = claim_all(claims, lambda claim: malloc(claim.total_bytes, device=Device("hip", claim.rank)), lambda buffer: free(buffer, runtime=runtime))
+    assert len(buffers) == 2
+    for buffer in buffers:
+        free(buffer, runtime=runtime)
+
+
+@needs_two_gpus
+def test_gpu_distributed_kv_group_reservation_is_ledger_owned() -> None:
+    """The scheduler's ledgers hold the group, and the device path runs after."""
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.distributed.kv import (
+        KvSpansLayout,
+        build_group_kv_plan,
+        plane_pool_id,
+        reserve_group_kv,
+        resolve_kv_claims,
+        resolve_kv_geometry,
+    )
+    from hipengine.distributed.plan import DistributedPlan
+    from hipengine.kvcache.ledger import ResourceLedger
+
+    runtime = get_hip_runtime()
+    config = SimpleNamespace(
+        layer_types=tuple(
+            "full_attention" if index % 4 == 3 else "linear_attention" for index in range(64)
+        ),
+        head_count_kv=4,
+        key_length=256,
+        value_length=256,
+    )
+    resolved = DistributedPlan.resolve(_devices(), hidden_size=5120)
+    geometry = resolve_kv_geometry(
+        config, spans=KvSpansLayout.dense_policy(), world_size=2, context_tokens=2048
+    )
+    claims = resolve_kv_claims(resolved, geometry)
+    rank_plans = build_group_kv_plan(
+        claims, backend_fingerprint="gpu-test", generation=1
+    )
+    ledgers = [ResourceLedger(plan.plan) for plan in rank_plans]
+
+    reservation = reserve_group_kv(rank_plans, ledgers=ledgers, group_id="gpu-test")
+    for ledger in ledgers:
+        assert ledger.snapshot()["provisional_reservations"] == 1
+    reservation.commit()
+    for index, ledger in enumerate(ledgers):
+        assert ledger.has_owner(f"{reservation.owner_id}:rank{index}")
+        ledger.assert_conserved()
+
+    # A second group over the same rank pools cannot also reserve them.
+    with pytest.raises(Exception) as error:
+        reserve_group_kv(rank_plans, ledgers=ledgers)
+    assert plane_pool_id(0) in str(error.value)
+
+    # The device buffers follow the committed ledger, one per rank.
+    buffers = [
+        malloc(rank_plans[rank].geometry_bytes, device=Device("hip", rank))
+        for rank in range(2)
+    ]
     assert len(buffers) == 2
     for buffer in buffers:
         free(buffer, runtime=runtime)

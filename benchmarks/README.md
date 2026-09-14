@@ -974,10 +974,16 @@ dequantize or requantize step in the path.
 
 Each rank also owns only its own KV planes: at 8192 context a TP2 rank holds
 **258 MiB** against 514 MiB for the whole pool (16 full-attention layers, 2 of
-the 4 KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans` metadata), and at
-32768 context 1032 MiB against 2056 MiB. A group is admitted only when every
-rank can claim its share; N=3 is refused for the same reason the weight planner
-refuses it.
+the 4 KV heads, 32 KiB per token from the declared 256-wide K and V planes, plus
+**2 MiB** of `KVLiveSpans` metadata under the dense-policy layout of four 32-bit
+fields per token per layer), and at 32768 context 1032 MiB against 2056 MiB. The
+K and V head widths are read separately from the model config, and the metadata
+footprint follows a declared `KVLiveSpans` mode rather than a fixed per-token
+figure, so a paged block table, a per-head-variable policy, and a token-granular
+ring each account for their own tensors. A group is admitted only when every
+rank can claim its share; the claim is reserved in the scheduler's resource
+ledger per rank and committed for all ranks together, and N=3 is refused for the
+same reason the weight planner refuses it.
 
 The loader path streams one tensor at a time (`iter_rank_payloads`), so a rank
 never needs a full model copy: streaming rank 1's 7.01 GiB shard set at N=2 grows
