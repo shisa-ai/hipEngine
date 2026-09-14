@@ -103,6 +103,8 @@ def build_report(
     *,
     collective_ms: tuple[float, ...],
     fixed_shares: tuple[float, ...] = DEFAULT_FIXED_SHARES,
+    reduction_points: int | None = None,
+    marginal_us: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "kind": "tp2_break_even",
@@ -113,9 +115,30 @@ def build_report(
             "projection is reported across a range of shares"
         ),
         "collective_ms_measured": list(collective_ms),
+        "collective_ms_source": (
+            "reduction_points x measured marginal per collective; the count comes from the "
+            "shard manifest (tp2_shard_plan_report.json reduction_points), the marginal from "
+            "the collective chain ladder, not from an assumed layer count"
+        ),
         "devices": [],
         "errors": [],
     }
+    if reduction_points is not None:
+        report["reduction_points_per_token"] = int(reduction_points)
+    if reduction_points is not None and marginal_us is not None:
+        expected = (
+            int(reduction_points) * float(marginal_us[0]) / 1000.0,
+            int(reduction_points) * float(marginal_us[1]) / 1000.0,
+        )
+        report["collective_ms_expected_from_count"] = [round(value, 3) for value in expected]
+        if any(
+            value < expected[0] * 0.98 or value > expected[1] * 1.02 for value in collective_ms
+        ):
+            report["errors"].append(
+                f"collective budget {list(collective_ms)} does not match "
+                f"{int(reduction_points)} reduction points x {list(marginal_us)} us "
+                f"= {[round(v, 3) for v in expected]} ms"
+            )
     for device in devices:
         entry: dict[str, Any] = {
             "device": device["name"],
@@ -162,6 +185,17 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(str(share) for share in DEFAULT_FIXED_SHARES),
         help="assumed fixed-cost share of the TP1 token time, comma list",
     )
+    parser.add_argument(
+        "--reduction-points",
+        type=int,
+        default=None,
+        help="per-token cross-rank reductions, from the shard manifest (row-split tensor count)",
+    )
+    parser.add_argument(
+        "--marginal-us",
+        default="28.6,35",
+        help="measured marginal cost per collective in microseconds, comma pair",
+    )
     parser.add_argument("--json", type=Path, default=None, help="write the JSON artifact here")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
@@ -169,7 +203,18 @@ def main(argv: list[str] | None = None) -> int:
     devices = [parse_tp1(spec) for spec in args.tp1]
     collective_ms = tuple(float(chunk) for chunk in args.collective_ms.split(",") if chunk.strip())
     fixed_shares = tuple(float(chunk) for chunk in args.fixed_share.split(",") if chunk.strip())
-    report = build_report(devices, collective_ms=collective_ms, fixed_shares=fixed_shares)
+    marginal_us = tuple(float(chunk) for chunk in args.marginal_us.split(",") if chunk.strip())
+    if len(marginal_us) != 2:
+        raise SystemExit("--marginal-us needs exactly two values")
+    report = build_report(
+        devices,
+        collective_ms=collective_ms,
+        fixed_shares=fixed_shares,
+        reduction_points=args.reduction_points,
+        marginal_us=(marginal_us[0], marginal_us[1]),
+    )
+    for error in report["errors"]:
+        print(f"error: {error}", file=sys.stderr)
 
     if not args.quiet:
         print(f"{'device':8s} {'fixed':>6s} {'coll_ms':>8s} {'tp2_ms':>8s} {'speedup':>8s} {'break_even':>10s} {'headroom':>9s}")

@@ -284,8 +284,15 @@ def test_unit_shards_partition_groups_replicates_when_ranks_exceed_groups():
     segment = AxisSegment(0, 4 * 256, 256)
     ranges = partition_groups(segment, 8)
     assert len(ranges) == 8
-    assert ranges[:4] == [(0, 256), (256, 512), (512, 768), (768, 1024)]
-    assert ranges[4:] == ranges[:4]
+    # Block replication: consecutive ranks share a group, because the consumer
+    # axis (query heads) is also split into consecutive blocks. Round-robin
+    # would give rank 1 a different KV head than its own queries attend to.
+    assert ranges == [(0, 256), (0, 256), (256, 512), (256, 512),
+                      (512, 768), (512, 768), (768, 1024), (768, 1024)]
+    # A group count that cannot be replicated uniformly is refused outright
+    # rather than handed out unevenly.
+    with pytest.raises(ShardPlanError):
+        partition_groups(AxisSegment(0, 4 * 256, 256), 6)
     plan, source = _make_plan(
         name="attn_k.weight",
         shape=(4 * 256, 512),
@@ -297,6 +304,55 @@ def test_unit_shards_partition_groups_replicates_when_ranks_exceed_groups():
         assert shard_slice.local_shape == (256, 512)
     # Uniform replication is legal; the source payload still round trips.
     _round_trip(plan, source)
+
+
+def _kv_head_correspondence(config, world_size: int) -> list[tuple[int, int]]:
+    """Return, per rank, the KV head range its own query heads require."""
+
+    q_heads = int(config.head_count)
+    kv_heads = int(config.head_count_kv)
+    per_kv = q_heads // kv_heads
+    q_per_rank = q_heads // int(world_size)
+    required = []
+    for rank in range(int(world_size)):
+        start = rank * q_per_rank
+        stop = start + q_per_rank
+        required.append((start // per_kv, -(-stop // per_kv)))
+    return required
+
+
+def test_unit_shards_kv_heads_follow_the_query_heads_they_serve():
+    """A rank's KV heads must be exactly the ones its queries attend to.
+
+    This is the invariant, not the mechanism: it holds at every degree where the
+    plan is accepted, and it is the property that round-robin replication broke
+    whenever the group exceeded the KV-head count.
+    """
+
+    for world_size in (1, 2, 4, 8):
+        config = SimpleNamespace(
+            head_count=24,
+            head_count_kv=4,
+            key_length=256,
+            value_length=256,
+        )
+        q_rule = shard_rule_for_tensor("blk.0.attn_q.weight", config=config)
+        k_rule = shard_rule_for_tensor("blk.0.attn_k.weight", config=config)
+        q_ranges = partition_groups(q_rule.segments[0], world_size)
+        k_ranges = partition_groups(k_rule.segments[0], world_size)
+        per_kv = int(config.head_count // config.head_count_kv)
+        head_dim = int(config.key_length)
+        for rank, (q_start, q_stop) in enumerate(q_ranges):
+            # attn_q rows are [q_head, gate_head] pairs, so one head is 2*dim.
+            q_head_start = q_start // (2 * head_dim)
+            q_head_stop = q_stop // (2 * head_dim)
+            needed = (q_head_start // per_kv, -(-q_head_stop // per_kv))
+            kv_start, kv_stop = k_ranges[rank]
+            owned = (kv_start // head_dim, kv_stop // head_dim)
+            assert owned == needed, (
+                f"degree {world_size} rank {rank} owns KV heads {owned} but its "
+                f"query heads {q_head_start}..{q_head_stop} need {needed}"
+            )
 
 
 def test_unit_shards_coverage_rejects_gap_overlap_and_ragged_replication():

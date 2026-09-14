@@ -40,6 +40,26 @@ from hipengine.loading.qwen35_gguf_shards import (  # noqa: E402
 GIB = 1024**3
 
 
+def _count_by_suffix(plans: list) -> dict[str, int]:
+    """Count reduction points by tensor suffix, so a breakdown is inspectable."""
+
+    counts: dict[str, int] = {}
+    for plan in plans:
+        suffix = plan.name.split(".", 2)[2] if plan.name.count(".") >= 2 else plan.name
+        counts[suffix] = counts.get(suffix, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _reductions_per_block(plans: list) -> dict[str, int]:
+    """Count reduction points per transformer block."""
+
+    per_block: dict[str, int] = {}
+    for plan in plans:
+        block = plan.name.split(".", 2)[1] if plan.name.startswith("blk.") else "other"
+        per_block[block] = per_block.get(block, 0) + 1
+    return dict(sorted(per_block.items(), key=lambda item: (item[0] != "other", item[0])))
+
+
 def file_sha256(path: Path, *, chunk_bytes: int = 8 << 20) -> str:
     """Stream a file hash so binding the manifest to the artifact is cheap."""
 
@@ -125,6 +145,14 @@ def main(argv: list[str] | None = None) -> int:
             continue
         entry["manifest_hash"] = manifest.manifest_hash()
         entry["tensor_count"] = len(manifest.tensors)
+        # Every row-split (input-axis) tensor is one cross-rank reduction in a
+        # forward pass, so this count is the per-token collective budget the
+        # break-even projection must use. Deriving it from the manifest keeps a
+        # claimed budget from drifting away from the model inventory.
+        reduction_points = [plan for plan in manifest.tensors if plan.kind == "row"]
+        entry["reduction_points"] = len(reduction_points)
+        entry["reduction_points_by_suffix"] = _count_by_suffix(reduction_points)
+        entry["reduction_points_per_block"] = _reductions_per_block(reduction_points)
         entry["rank_bytes"] = [manifest.rank_bytes(rank) for rank in range(degree)]
         entry["rank_gib"] = [round(manifest.rank_bytes(rank) / GIB, 3) for rank in range(degree)]
         entry["rank_bytes_by_kind"] = [manifest.rank_summary(rank) for rank in range(degree)]

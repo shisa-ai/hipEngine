@@ -148,12 +148,25 @@ def malloc(
     return buffer
 
 
+def _buffer_device(buffer: object) -> Device | None:
+    """Return a buffer's owning device, tolerating unattributed stand-ins.
+
+    ``DeviceBuffer`` has carried ``device`` since multi-rank allocation was
+    added, but callers and tests also pass duck-typed buffers that expose only
+    ``ptr``/``nbytes``. Those predate attribution and keep the previous
+    current-device semantics instead of raising ``AttributeError``.
+    """
+
+    return getattr(buffer, "device", None)
+
+
 def free(buffer: DeviceBuffer, *, runtime: DeviceRuntime | None = None) -> None:
     runtime = runtime or get_hip_runtime()
-    if buffer.device is None:
+    device = _buffer_device(buffer)
+    if device is None:
         runtime.free(buffer.ptr)
     else:
-        with scoped_current_device(runtime, buffer.device.index):
+        with scoped_current_device(runtime, device.index):
             runtime.free(buffer.ptr)
     _MEMORY_STATS.record_free(buffer)
 
@@ -223,16 +236,18 @@ def copy_device_to_device(
     """
 
     runtime = runtime or get_hip_runtime()
-    if dst.device is None or src.device is None:
+    dst_device = _buffer_device(dst)
+    src_device = _buffer_device(src)
+    if dst_device is None or src_device is None:
         raise ValueError("device-to-device copy requires attributed device buffers")
-    if dst.device != src.device:
+    if dst_device != src_device:
         raise ValueError(
-            f"device-to-device copy requires one device; got dst={dst.device} src={src.device}"
+            f"device-to-device copy requires one device; got dst={dst_device} src={src_device}"
         )
     count = dst.nbytes if nbytes is None else nbytes
     _check_copy_size(count, dst.nbytes)
     _check_copy_size(count, src.nbytes)
-    with scoped_current_device(runtime, dst.device.index):
+    with scoped_current_device(runtime, dst_device.index):
         runtime.memcpy(dst.ptr, src.ptr, count, MemcpyKind.DEVICE_TO_DEVICE)
 
 

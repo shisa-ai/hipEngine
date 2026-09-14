@@ -894,18 +894,24 @@ IOMMU-isolation tradeoff and has not been changed.
 
 A direct chain ladder pins the per-token cost better than a two-point marginal:
 one 20 KB fp32 all-reduce chain measures 398 us at depth 1, 827 us at depth 16
-(28.6 us per op) and 1388 us at depth 32, so 36 collectives per token is about
-1.3-1.5 ms.
+(28.6 us per op) and 1388 us at depth 32. The shard inventory fixes the count:
+**128 row-split tensors**, two per transformer block across 64 autoregressive
+blocks (64 MLP down projections, 48 GDN state-output projections, 16 attention
+output projections), so a decode token spends **3.66-4.48 ms** in exposed
+collectives - about 11-13% of the 33.5-35.8 ms single-GPU token time.
 
 **Break-even, measured on both sides.** Taking the same-host TP1 rows (W7900
 27.9 tok/s, XTX 29.82 tok/s at 8192 context) and the measured collective cost,
 TP2 wins while its per-token collective time stays under
 `(1 - fixed_share) * T1 * (1 - rank_weight_fraction)`: **11.2-16.0 ms** on the
-W7900 and 13.0-18.5 ms on the XTX for fixed-cost shares of 0-30%, so the measured
-1.3-1.5 ms is **7.5-14x below the budget** and every row clears the plan's 1.3x
-target (projected 1.37-1.70x on the W7900, 1.52-2.06x on the XTX). This is a
-projection from measured collective latency and an explicit fixed-cost
-assumption, not a measured engine result.
+W7900 and 13.0-18.5 ms on the XTX for fixed-cost shares of 0-30%. The measured
+3.66-4.48 ms leaves **2.5-5.1x** of headroom, and the projection clears the
+plan's 1.3x target in 14 of 16 rows: **1.23-1.53x** on the W7900 and
+**1.34-1.80x** on the XTX. Both misses are the W7900 at a 30% fixed-cost share
+(1.23x and 1.27x), so the W7900 result is marginal rather than comfortable and
+the exposed collective count is the binding constraint. This is a projection
+from measured collective latency and an explicit fixed-cost assumption, not a
+measured engine result.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
@@ -925,8 +931,8 @@ against 219-334 us eager):
 | 24 | 49 | 1046-1194 us | 724-880 us | -26 to -39% |
 
 Capture size is bounded: 49 nodes captures and replays, while a 32-op chain at 65
-nodes faults the device with a memory access error, so a decode step's 36
-collectives must be split across at least two graphs.
+nodes faults the device with a memory access error, so a decode step's 128
+collectives must be split across several graphs rather than captured as one.
 
 Shard plan for Qwen3.8-27B `Q4_K_M`: 851 autoregressive tensors, 15.65 GiB, MTP
 block excluded from the AR set. Every degree round-trips every tensor payload

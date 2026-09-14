@@ -450,6 +450,14 @@ def partition_groups(segment: AxisSegment, world_size: int) -> list[tuple[int, i
     that every rank still owns whole groups; the caller's coverage check
     accepts that only when the replication is uniform. Uneven splits are
     rejected because they would give ranks different local geometry.
+
+    Replication is *block* replication - consecutive ranks share a group - not
+    round robin. The axis being split here is a consumer axis whose grouping is
+    fixed by a sibling axis: rank ``r`` owns query heads
+    ``[r * q_per_rank, (r + 1) * q_per_rank)``, and the KV heads covering those
+    queries are the ones it must load. Round-robin assignment would hand rank 1
+    KV head 1 while its queries attend to KV head 0, which is silent wrong
+    attention rather than a refusal.
     """
 
     if int(world_size) < 1:
@@ -458,10 +466,16 @@ def partition_groups(segment: AxisSegment, world_size: int) -> list[tuple[int, i
     if groups < 1:
         raise ShardPlanError(f"segment [{segment.start}, {segment.stop}) has no complete groups")
     if groups < int(world_size):
-        per_rank = 1
+        if int(world_size) % groups:
+            raise ShardPlanError(
+                f"segment [{segment.start}, {segment.stop}) holds {groups} groups, which cannot be "
+                f"replicated uniformly across {world_size} ranks; every rank must own whole groups "
+                f"and share its group with the same number of neighbours"
+            )
+        ranks_per_group = int(world_size) // groups
         ranges: list[tuple[int, int]] = []
         for rank in range(int(world_size)):
-            group = rank % groups
+            group = rank // ranks_per_group
             start = segment.start + group * segment.group
             ranges.append((start, start + segment.group))
         return ranges
