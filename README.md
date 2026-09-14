@@ -135,9 +135,9 @@ host (8.6x the official torch reference there) and **0.062 s** on a Framework
 Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
 host power/thermal headroom, not a code change.
 
-**VibeVoice-ASR 9B** runs torch-free on Strix Halo. Q4_K_M decode is **1.50x** faster than
-dense bf16 (48.1 vs 72.2 ms/token) at 6.10 GB, WER unchanged; prefill is not competitive.
-[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-pack8-decode.json).
+**VibeVoice-ASR 9B** runs torch-free on Strix Halo. Its Q4_K_M backbone beats bf16 on both
+stages — **1.52x** prompt prefill, **1.50x** decode — at 6.10 GB vs 16.66 GB, WER unchanged.
+[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-batched-prefill.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
