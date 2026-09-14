@@ -3,18 +3,20 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from scripts.qwen4exp_chunk_memory_probe import allocation_margins
+from scripts.qwen4exp_conservative_cost import summarize_cost
 
 
 def assemble(root):
     packets, hashes = {}, {}
     for name in ("resume-chunk2048-allocation.json", "resume-chunk2048-lazy-allocation.json",
                  "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json",
-                 "resume-chunk-workspace-check.json"):
+                 "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -89,14 +91,70 @@ def assemble(root):
         description = workspace["workspaces"][arm]
         if any(description[key] != size for key in ("chunk_size", "token_capacity", "metadata_rows")):
             raise ValueError("workspace is not correctly sized")
+    ab = packets["resume-chunk2048-workspace-ab.json"]
+    samples = ab["samples"]
+    expected_samples = {(case, arm, repeat) for case in expected_cases
+                        for arm in ("before", "production_baseline") for repeat in range(3)}
+    if (ab["status"] != "completed" or not ab["source"]["tracked_clean"]
+            or len(samples) != 72
+            or {(r["case_id"], r["arm"], r["repetition"]) for r in samples} != expected_samples
+            or not ab["protocol"]["shared_decode_graphs"]
+            or ab["protocol"]["chunk_by_arm"] != {"before": 1024, "production_baseline": 2048}
+            or ab["arm_overrides"] != {"before": {}, "production_baseline": {}}
+            or ab["after_close"]["current_allocated_bytes"]
+            or any(value for group in ab["donor_graph_stats"].values() for value in group.values())):
+        raise ValueError("invalid chunk performance comparison")
+    request_speedups = {}
+    for case in sorted(expected_cases):
+        rows = [row for row in samples if row["case_id"] == case]
+        for key in ("output_token_ids_sha256", "logits_sha256", "state_sha256"):
+            if len({row[key] for row in rows}) != 1:
+                raise ValueError("chunk comparison output or state mismatch")
+        for row in rows:
+            size = 1024 if row["arm"] == "before" else 2048
+            tokens = case_tokens[case]
+            if (row["active_chunk_size"] != size or row["prompt_tokens"] != tokens
+                    or row["prefill_chunks"] != [min(size, tokens - start)
+                                                for start in range(0, tokens, size)]
+                    or row["decode_transitions"] != 128 or not row["finite"]
+                    or any(not math.isfinite(row[key]) or row[key] <= 0
+                           for key in ("prefill_ms", "decode_ms", "client_wall_s"))):
+                raise ValueError("wrong timed chunk workload")
+        walls = {arm: sum(row["client_wall_s"] for row in rows if row["arm"] == arm)
+                 for arm in ("before", "production_baseline")}
+        request_speedups[case] = walls["before"] / walls["production_baseline"]
+    summary = summarize_cost(samples, 3)
+    if summary != ab["comparisons"]["production_baseline"]:
+        raise ValueError("timing summary does not reproduce")
+    compact_keys = (
+        "case_id", "category", "prompt_tokens", "repetition", "arm", "mode",
+        "sequence_slot", "prefill_ms", "decode_ms", "client_wall_s", "active_chunk_size",
+        "prefill_chunks", "decode_transitions", "output_token_count",
+        "output_token_ids_sha256", "logits_sha256", "state_sha256", "finite", "memory_delta",
+    )
+    packets["resume-chunk2048-workspace-ab.json"] = {
+        **ab, "samples": [{key: row[key] for key in compact_keys} for row in samples]}
     return dict(
-        schema=1, performance_claim=False, promotion_claim=False,
-        inference_scope="Canonical 512/1K/4K,64 teacher-forced decode steps,three repeats only",
-        status="2048_numerical_pass_task_performance_pending_4096_accounting_blocker",
+        schema=1, performance_claim=True, promotion_claim=False,
+        source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
+        execution_profile="production", quant="UD-Q4_K_XL", kv="BF16",
+        environment={
+            "HIPENGINE_HIP_ARCH": "gfx1151", "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+            "GPU_MAX_HW_QUEUES": "2", "PYTHONPATH": ".",
+            "PATH": "/home/lhl/miniforge3/envs/therock/bin:/usr/bin:/bin",
+            "LD_LIBRARY_PATH": ":".join(
+                "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/"
+                "_rocm_sdk_devel/" + suffix for suffix in ("lib", "lib64", "lib/llvm/lib")),
+        },
+        inference_scope="Canonical c1 512/1K/4K:64 teacher-forced steps/three repeats; "
+                        "performance128 AR transitions/three pairs",
+        status="2048_measured_tradeoff_further_admission_pending_4096_accounting_blocker",
+        performance_summary=summary, complete_request_speedups=request_speedups,
         raw_sha256=hashes, captures=packets,
         limits=[
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
-            "2048 passes bounded numerics; performance/task/isolation and wider admission remain.",
+            "2048 improves measured 4K performance but has small short-prompt costs; default remains1024.",
+            "Active-shape task/isolation and wider admission remain; no universal speedup or new default claim.",
             "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
             "No hidden-seed export, graph capture, driver scratch, native-depth or c2 inference claim.",
         ],

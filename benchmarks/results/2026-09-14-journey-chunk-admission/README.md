@@ -3,7 +3,8 @@
 Framework machine `55ea6c509d0b49eea8de7094a1023668`, Radeon 8060S/gfx1151,
 Flash-Next UD-Q4_K_XL/BF16, c1/context 4352. Source `9ce67327a`.
 Chunk 1024 remains the default. Allocation and bounded numerical results
-are recorded below; no performance or native-context inference claim.
+are recorded below, followed by the bounded performance comparison.
+No native-context inference or new-default claim.
 
 Both probes allocate worst-case grouped repair queues for the GDN and QSA
 scratch owners, not just constructor memory. Queue width covers the largest
@@ -39,7 +40,7 @@ All48 case/arm/repeat chunk records are checked. The strict reference's chunk
 size did not move with the candidate.
 
 This passes the production numerical envelope, without changing its limits.
-Performance, active-shape task/isolation and wider admission remain before
+Active-shape task/isolation and wider admission remain before
 default promotion. Native-context, c2, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
@@ -54,6 +55,30 @@ The timed comparison can therefore use correctly sized prefill workspaces
 while keeping active decode graphs, recurrent state and KV ownership shared.
 Maximum-size PLE staging and unused donor non-prefill allocations remain
 common to both arms; this is not a cold-start allocation-cost comparison.
+
+## Measured Performance
+
+Clean `958f2d2d0`, same physical host/model/BF16 configuration, three pairs
+per case, 72 measured samples and 24 warmups, 128 decode transitions.
+No tests, builds or other model workloads overlapped timing.
+
+| Chunk | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| 1024 | 185.008 / 17.504 | 190.334 / 16.731 | 182.802 / 10.075 |
+| 2048 | 184.374 / 17.505 | 189.997 / 16.732 | 187.042 / 10.198 |
+| PP delta | -0.34% | -0.18% | +2.32% |
+| TG delta | +0.005% | +0.005% | +1.22% |
+
+All 4K complete requests improve1.52-2.14%. Short complete-request changes
+range from0.40% lower throughput to0.25% higher. These small costs are not
+discarded or relabeled as wins. All72 samples match IDs/final logits/sampled
+state across arms and repeats, teardown is zero, and the donor executes no
+graphs or eager graph-cache calls during timing.
+
+This is a measured workload tradeoff, not a universal speedup. The active
+decode owners/graphs are shared; observed TG movement is not attributed
+to a changed decode kernel or an independently measured frequency mechanism.
+Chunk1024 remains default while remaining admission checks are completed.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
