@@ -88,6 +88,7 @@ def main() -> int:
     runner = VibevoiceQwen2Q4Runtime(weights, max_context=1024)
 
     hyps = []
+    finish_reasons: list[str] = []
     verified_requests: set[str] = set()
     gguf_sha256 = _file_sha256(args.gguf)
     timings = []
@@ -125,6 +126,9 @@ def main() -> int:
             elapsed = time.perf_counter() - t0
         text = tokenizer.decode(ids, skip_special_tokens=True).strip()
         timings.append(elapsed)
+        # greedy_generate appends the stopping token before breaking, so a last
+        # token that is not EOS means the token cap cut the transcript off.
+        finish_reasons.append("eos" if ids and ids[-1] == IM_END_ID else "length")
         hyps.append(text)
         print(f"[q4 {i+1}/{len(clips)}] {elapsed:.2f}s {hyps[-1][:60]!r}")
 
@@ -134,10 +138,13 @@ def main() -> int:
     malformed = [c["clip_id"] for c, h in zip(clips, hyps)
                  if wer.parse_transcript(h)[1] != "ok"]
     total_wer = wer._wer(refs, hyps)
+    truncated = [c["clip_id"] for c, fr in zip(clips, finish_reasons) if fr == "length"]
     print(f"hipEngine-Q4 WER: {100.0 * total_wer:.2f}% "
           f"(mean {np.mean(timings):.2f} s/clip)"
           + (f"  [{len(malformed)} malformed transcript(s): {malformed}]"
-             if malformed else ""))
+             if malformed else "")
+          + (f"  [{len(truncated)} hit the {args.max_new_tokens}-token cap]"
+             if truncated else ""))
 
     out = {
         "systems": {
@@ -145,13 +152,16 @@ def main() -> int:
                 "wer_fraction": total_wer,
                 "wer_pct": 100.0 * total_wer,
                 "malformed_transcripts": malformed,
+                "truncated_transcripts": truncated,
                 "hypotheses": hyps,
                 "per_clip": [
                     {"clip_id": c["clip_id"],
                      "wer_fraction": wer._wer_content(
                          [c["text"]], [wer.parse_transcript(h)[0]]),
-                     "seconds": elapsed}
-                    for c, h, elapsed in zip(clips, hyps, timings)
+                     "seconds": elapsed,
+                     "finish_reason": finish_reason}
+                    for c, h, elapsed, finish_reason
+                    in zip(clips, hyps, timings, finish_reasons)
                 ],
             }
         },
