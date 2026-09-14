@@ -4,6 +4,7 @@ Production arithmetic candidates remain available in the low-level benchmark
 runtimes. This adapter does not certify them without the production task gate.
 """
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from threading import RLock
 import json
@@ -26,7 +27,7 @@ class VibeVoiceASRGenerator:
     supports_audio = True
     max_active_requests = 1
 
-    def __init__(self, model_path, *, max_sequence_length=4096):
+    def __init__(self, model_path, *, max_sequence_length=4096, backend="auto"):
         from tokenizers import Tokenizer
         from hipengine.loading.vibevoice_asr import load_vibevoice_encoder, load_vibevoice_connector, load_vibevoice_qwen2
         from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
@@ -43,10 +44,10 @@ class VibeVoiceASRGenerator:
         self.vae_std = specs['acoustic'][0].vae_std
         self.frontend = VibevoiceFrontendRuntime(*specs['acoustic'], *specs['semantic'],
             load_vibevoice_connector(str(path),'acoustic'), load_vibevoice_connector(str(path),'semantic'),
-            frontend_variant='strict')
+            frontend_variant='strict',backend=backend)
         try:
             self.runner = VibevoiceQwen2Runtime(load_vibevoice_qwen2(str(path)),
-                max_context=self.max_context, prefill_variant='strict')
+                max_context=self.max_context, prefill_variant='strict',backend=backend)
         except BaseException:
             self.frontend.close()
             raise
@@ -99,8 +100,8 @@ class VibeVoiceASRGenerator:
                 self._closed = True
 
 
-def make_vibevoice_generator(*, model_path, weight_index, model_plugin, max_sequence_length=None):
-    return VibeVoiceASRGenerator(model_path,max_sequence_length=max_sequence_length)
+def make_vibevoice_generator(*, model_path, weight_index, model_plugin, max_sequence_length=None, backend="auto"):
+    return VibeVoiceASRGenerator(model_path,max_sequence_length=max_sequence_length,backend=backend)
 
 for _backend in ('hip_gfx1100','hip_gfx1151'):
-    register_text_generator(model='vibevoice_asr',backend=_backend,quant='bf16',factory=make_vibevoice_generator)
+    register_text_generator(model='vibevoice_asr',backend=_backend,quant='bf16',factory=partial(make_vibevoice_generator,backend=_backend))
