@@ -446,6 +446,19 @@ class LLM:
         output = detailed(str(prompt), image, request)
         return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
 
+    def transcribe(self, audio, *, sample_rate=24000, context="", max_new_tokens=256, seed=20260914):
+        """Transcribe mono PCM through a model-owned audio generator.
+
+        Returns raw text, validated segments (or None), token IDs and finish
+        reason. Context supplies hotwords or other transcription guidance.
+        """
+        generator = self._get_text_generator()
+        transcribe = getattr(generator, "transcribe", None)
+        if not callable(transcribe):
+            raise NotImplementedError("audio transcription is not supported")
+        return transcribe(audio, sample_rate=sample_rate, context=context,
+                          max_new_tokens=max_new_tokens, seed=seed)
+
     @property
     def supports_vision(self) -> bool:
         generator = self._text_generator
