@@ -25,14 +25,8 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-AUDIO_TOKEN = "<|box_start|>"
-AUDIO_BOS = "<|object_ref_start|>"
-AUDIO_EOS = "<|object_ref_end|>"
-AUDIO_TOKEN_ID = 151648
-IM_END_ID = 151645
-SYSTEM_PROMPT = (
-    "You are a helpful assistant that transcribes audio input into text "
-    "output in JSON format."
+from hipengine.generation.vibevoice_protocol import (
+    AUDIO_TOKEN_ID, IM_END_ID, build_prompt, parse_transcript, preprocess_audio,
 )
 
 
@@ -49,135 +43,38 @@ def synth_pcm(seconds: float, seed: int) -> np.ndarray:
     return sig.astype(np.float32)
 
 
-def build_prompt(duration: float, frames: int, *, context: str | None = None) -> str:
-    """Hand-rolled chat template matching the processor's transcription request."""
-    audio_block = f"{AUDIO_BOS}{AUDIO_TOKEN * frames}{AUDIO_EOS}\n"
-    if context:
-        info = (
-            f"This is a {duration:.2f} seconds audio, with extra info: {context}\n\n"
-            "Please transcribe it with these keys: Start time, End time, Speaker ID, Content"
-        )
-    else:
-        info = (
-            f"This is a {duration:.2f} seconds audio, please transcribe it with "
-            "these keys: Start time, End time, Speaker ID, Content"
-        )
-    return (
-        f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-        f"<|im_start|>user\n{audio_block}{info}<|im_end|>\n"
-        "<|im_start|>assistant\n"
-    )
-
-
-def parse_transcript(text: str) -> list[dict] | None:
-    stripped = text.strip()
-    if stripped.startswith("assistant"):
-        stripped = stripped[len("assistant"):].strip()
-    if not stripped.startswith("["):
-        return None
-    try:
-        segments = json.loads(stripped)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(segments, list):
-        return None
-    for segment in segments:
-        if not isinstance(segment, dict) or not {"Start", "End", "Speaker", "Content"} <= segment.keys():
-            return None
-        times = (segment["Start"], segment["End"])
-        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in times):
-            return None
-        if not 0 <= times[0] <= times[1] or not isinstance(segment["Content"], str):
-            return None
-        if isinstance(segment["Speaker"], bool) or not isinstance(segment["Speaker"], (int, str)):
-            return None
-    return segments
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seconds", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default="microsoft/VibeVoice-ASR-HF")
-    parser.add_argument("--weights", default="microsoft/VibeVoice-ASR", help="front-end weights artifact")
+    parser.add_argument("--weights", default=None, help="front-end artifact (defaults to --model)")
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--noise-seed", type=int, default=None, help="acoustic sampling seed")
     parser.add_argument("--pcm-file", type=Path, default=None, help="mono 24 kHz wav")
     args = parser.parse_args()
 
-    from tokenizers import Tokenizer
-
-    from hipengine.loading.vibevoice_asr import (
-        load_vibevoice_connector,
-        load_vibevoice_encoder,
-        load_vibevoice_qwen2,
-    )
-    from hipengine.loading.hf_cache import resolve_model_path
-    from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
-    from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime, greedy_generate
-
     if args.pcm_file is not None:
         import wave
 
         with wave.open(str(args.pcm_file), "rb") as fh:
-            if fh.getframerate() != 24_000 or fh.getnchannels() != 1:
+            if (fh.getframerate(), fh.getnchannels(), fh.getsampwidth()) != (24000, 1, 2):
                 raise SystemExit("pcm file must be mono 24 kHz")
             pcm = np.frombuffer(fh.readframes(fh.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
         duration = len(pcm) / 24_000
     else:
         pcm = synth_pcm(args.seconds, args.seed)
         duration = args.seconds
-    # processor contract: RMS-normalize then clip (feature extractor)
-    rms = float(np.sqrt(np.mean(pcm.astype(np.float64) ** 2)))
-    if rms > 0:
-        pcm = pcm * (10 ** (-25.0 / 20)) / (rms + 1e-8)
-        peak = float(np.abs(pcm).max())
-        if peak > 1.0:
-            pcm = pcm / (peak + 1e-8)
-    # mandatory: pad to a multiple of the 3200 hop
-    if len(pcm) % 3200:
-        pcm = np.pad(pcm, (0, 3200 - len(pcm) % 3200))
-
-    print("loading front-end weights ...")
-    specs, conns = {}, {}
-    for tok in ("acoustic", "semantic"):
-        specs[tok] = load_vibevoice_encoder(args.weights, tok)
-        conns[tok] = load_vibevoice_connector(args.weights, tok)
-    frontend = VibevoiceFrontendRuntime(
-        specs["acoustic"][0], specs["acoustic"][1],
-        specs["semantic"][0], specs["semantic"][1],
-        conns["acoustic"], conns["semantic"],
-    )
-    frames = specs["acoustic"][0].frame_count(len(pcm))
-    rng = np.random.default_rng(args.noise_seed if args.noise_seed is not None else 20260914)
-    noise = rng.standard_normal((1, frames, specs["acoustic"][0].hidden_size)).astype(np.float32)
-    scale = (specs["acoustic"][0].vae_std * rng.standard_normal(1)).astype(np.float32)
-    audio_embeds = frontend.forward(pcm, noise=noise[0], noise_scale=scale[0])
-    frontend.close()
-    print(f"audio frames: {frames}, embeds {audio_embeds.shape}")
-
-    print("loading Qwen2 backbone ...")
-    lm_path = resolve_model_path(args.model)
-    lm_weights = load_vibevoice_qwen2(str(lm_path))
-    runner = VibevoiceQwen2Runtime(lm_weights, max_context=max(frames + 64 + args.max_new_tokens, 1024))
-
-    tok_path = Path(str(lm_path)) / "tokenizer.json"
-    tokenizer = Tokenizer.from_file(str(tok_path))
-    prompt = build_prompt(duration, frames)
-    ids = tokenizer.encode(prompt, add_special_tokens=False)
-    input_ids = ids.ids
-
-    rows = [runner.embed_row(int(t)) for t in input_ids]
-    placeholder_positions = [i for i, t in enumerate(input_ids) if t == AUDIO_TOKEN_ID]
-    if len(placeholder_positions) != frames:
-        raise SystemExit(f"template frames {len(placeholder_positions)} != front-end frames {frames}")
-    for j, p in enumerate(placeholder_positions):
-        rows[p] = audio_embeds[j].astype(np.float32)
-
-    print(f"prompt tokens: {len(input_ids)}, decoding ...")
-    generated = greedy_generate(runner, rows, max_new_tokens=args.max_new_tokens, eos_token_id=IM_END_ID)
-    text = tokenizer.decode(generated, skip_special_tokens=True).strip()
-    runner.close()
+    from hipengine import LLM
+    if args.weights is not None and args.weights != args.model:
+        raise SystemExit("use one HF checkpoint for the complete pipeline (--model)")
+    engine = LLM(args.model, max_sequence_length=4096)
+    try:
+        result = engine.transcribe(pcm, max_new_tokens=args.max_new_tokens,
+            seed=args.noise_seed if args.noise_seed is not None else 20260914)
+    finally:
+        engine.close()
+    text = result.text
 
     print("--- raw ---")
     print(text)

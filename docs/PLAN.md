@@ -1033,6 +1033,17 @@ Build system: **no `torch.utils.cpp_extension`**. hipEngine's own build layer (`
 
 `hipengine/kernels/cpu_reference/` holds a torch-free numpy implementation of every `layer` key registered by any hardware backend. This is the correctness oracle: when a new gfx1100 kernel is ported, the test suite runs the same inputs through the CPU reference and asserts KL ≤ 0.05 / top-1 ≥ 90%. The reference backend also lets hipEngine run on machines without a GPU for CI and for architecture bring-up (develop a new model plugin on CPU first, then port its kernels to gfx1100).
 
+### VibeVoice ASR integration (2026-09-14)
+
+The `vibevoice_asr` model/generator plugins expose `LLM.transcribe` for the HF
+checkpoint. Model-owned audio preprocessing and causal chunk carry feed the
+registered frontend and Qwen2 primitives on both HIP peer backends. Attention
+and KV writes consume uniform block-size-one `KVLiveSpans`; the current cache
+limit is 16000 tokens. An initialized generator serializes audio requests.
+The public path selects strict frontend GEMM and incremental prefill; optimized
+variants have no certified production plan yet. See
+[MODEL-VIBEVOICE-ASR.md](MODEL-VIBEVOICE-ASR.md) for API and qualification status.
+
 ## Extensibility Design
 
 hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implementations; the engine composes concrete instances at load time from the user's choice.
