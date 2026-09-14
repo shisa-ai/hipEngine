@@ -1,0 +1,56 @@
+{
+ "date": "2026-09-14",
+ "purpose": "VibeVoice-ASR prefill: reuse the per-call scratch buffers through a per-runner arena instead of malloc/free per call",
+ "host": "zbook",
+ "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+ "protocol": {
+  "weights": "Q4_K_M backbone via /tmp/vibevoice-asr-q4km.gguf for the q4 route; the shared change also covers the dense bf16 route used by the strict/hipblaslt variants",
+  "change": "Both prefill routes allocated ~20 scratch buffers with individual malloc calls and freed them in a finally block. They now take aligned views from a per-runner DeviceMemoryArena that is rewound on reuse and replaced only when a larger row count needs more room, so repeated prefill calls allocate nothing. positions/counts are taken from the same arena instead of being uploaded separately.",
+  "workload": "89-row prompt, one batched prefill per timed pass",
+  "method": "in-process rotating A/B: a shim that reproduces the previous behaviour (one malloc per buffer per call, freed on the next call) alternates with the arena across 8 timed passes each; plus separate-process before/after runs with 5 warmup and 7 timed passes",
+  "command": "python3 /tmp/prefill_scratch_ab.py (A/B), python3 /tmp/prefill_hash.py (before/after and output hash), python3 /tmp/prefill_arena_count.py (allocation accounting)"
+ },
+ "results": {
+  "in_process_rotating_ab": {
+   "per_call_malloc_ms": 223.8,
+   "per_call_malloc_trials": [224.0, 224.0, 226.0, 220.9, 223.9, 221.5, 222.6, 223.7],
+   "reused_arena_ms": 216.8,
+   "reused_arena_trials": [215.6, 215.2, 217.0, 217.1, 220.0, 220.4, 216.7, 215.0],
+   "delta_ms": 7.0,
+   "delta_pct": 3.22
+  },
+  "separate_process_before_after": {
+   "before_ms_median": 223.8,
+   "before_trials": [221.2, 222.8, 221.8, 227.5, 223.8, 227.4, 231.1],
+   "after_ms_median": 214.6,
+   "after_trials": [218.0, 219.7, 213.9, 216.0, 214.6, 214.6, 214.2],
+   "delta_pct": 4.11
+  },
+  "allocation_accounting": {
+   "before_device_allocations_per_prefill": 22,
+   "before_allocation_sizes_bytes": [712, 712, 637952, 1275904, 1275904, 182272, 182272, 182272, 91136, 91136, 1275904, 1275904, 637952, 6744064, 6744064, 3372032, 3372032, 3372032, 3372032, 637952, 1275904, 637952],
+   "after_device_allocations_over_6_repeated_prefills": 0,
+   "scratch_bytes": 36600000,
+   "arena_capacity_bytes": 36700160,
+   "direct_malloc_free_cost_ms": 4.22,
+   "direct_malloc_free_share_of_prefill_pct": 1.92
+  },
+  "output_bit_identity": {
+   "hidden_rows_sha256": "bf9411ca4f20af0b4ca45e357490f94acf6520b4b16c86837509db8d4d62ae1f",
+   "logits_sha256": "8f28f15f22869bc4767278f88e8b3ecd997e6149a3b31b2bf7a4a57334dec4cc",
+   "logits_sum": -279604.0,
+   "argmax_token": 151644,
+   "verdict": "identical between revisions, and the hidden hash is stable across all 7 timed trials"
+  }
+ },
+ "gates": {
+  "gpu_suite": "75 passed, 1 xfailed across tests/test_gpu_vibevoice_qwen2_q4_runner.py, tests/test_gpu_vibevoice_qwen2_runner.py, tests/test_unit_vibevoice_q4_evidence.py, tests/test_unit_vibevoice_frontend_contract.py and tests/test_gpu_vibevoice_encoder_kernels.py",
+  "new_reuse_gate": "test_prefill_scratch_is_reused_across_calls patches HipRuntime.malloc (the single choke point for every allocation path) and requires a second same-size prefill to allocate nothing. RED on the parent revision with 22 device allocations, GREEN after with 0.",
+  "free_path": "the arena is released only through the base close(), which is also what frees it for Q4 runners via super().close(); the arena views are never freed individually, so there is one free path and no double free"
+ },
+ "notes": [
+  "The two protocols disagree on magnitude (3.22% in-process vs 4.11% separate-process) because the separate-process runs drift upward across trials; the in-process rotating number is the one quoted. The direct measurement of the removed malloc/free calls is 4.22 ms of a 220.2 ms prefill (1.92%), so the A/B figure is the more complete one: removing the calls also avoids the driver-side disruption they cause beyond their own call time.",
+  "An earlier version of the output-hash probe re-uploaded nothing between prefills, so each pass consumed the previous pass's output as input and the hash depended on the iteration count. The probe now restores the input buffer before every pass; the before/after hashes above come from the corrected probe.",
+  "Scoped to prefill; no end-to-end claim. Prefill is about 0.2 s of a roughly 4.3 s pipeline for an 11 s clip."
+ ]
+}
