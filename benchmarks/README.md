@@ -919,7 +919,8 @@ so these are per-layer costs rather than deferrable ones:
 | RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.74x |
 | RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.76x |
 | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 8.99 ms | 1.02x |
-| Host exchange, both ranks submitted before either is awaited | **40.9 us** | **5.24 ms** | **1.18x** |
+| Host exchange, both ranks submitted before either is awaited | 40.9 us | 5.24 ms | 1.18x |
+| Host exchange, same protocol driven from a native C++ loop | **20.8 us** | **2.66 ms** | **1.33x** |
 
 The intermediate copy is worth **23.6 us per reduction**. Host submission is only
 **6.9 us** - that is what replaying the same device structure from a captured
@@ -927,8 +928,23 @@ graph removes - so RCCL's cost here is device-side protocol, not Python or ctype
 overhead. Collapsing N dependent reductions into one group saves 119.6 us, which
 is why that structure is fast and why it cannot carry a layer dependency.
 
-**Host orchestration is worth 29.3 us per reduction, and the causal split is
-measured rather than inferred.** The serial exchange performs four host waits per
+**Driving the same protocol natively is worth another 20.2 us per reduction.**
+A standalone C++ runner (`benchmarks/micro/runners/hip_staged_exchange.hip`)
+implements the identical batched protocol - both device-to-host copies submitted
+before either wait, two host waits per reduction, host sum, no return wait, one
+drain per chain - with preallocated device buffers, pinned slots and sum scratch,
+and one `hipSetDevice` per operation instead of the Python runtime's
+get/set/restore around each call. Measured on the same depths and payload, the
+ladder slope is **20.8 us per reduction against Python's 40.9 us, a 1.97x
+reduction in transport cost**, and the native runner verifies its chain exactly
+at every depth it times. The terms do not transfer one for one: submission and
+device scoping collapse from 26.3 us to 3.6 us and the host sum from 6.6 us to
+2.0 us, but the **exposed wait grows from 8.9 us to 15.0 us**, because earlier
+submission changes what is exposed. The 20.2 us net gain is measured, not the sum
+of the terms that moved.
+
+**Host orchestration is worth 29.3 us per reduction in the Python arm, and the
+causal split is measured rather than inferred.** The serial exchange performs four host waits per
 reduction and never overlaps the two transfers of a pair. A third arm keeps the
 batching and restores the return-copy wait, so the two changes separate:
 **rank batching is 17.7 us and dropping the return wait is 11.6 us**. Together
@@ -966,23 +982,26 @@ synchronized group, so its time is the sum of `max` over ranks at each dependenc
 boundary - `max(fixed) + max(rank weight reads) + collective` - compared against
 the *faster* arm:
 
-| Fixed-cost share | Baseline (faster TP1) | TP2 group (RCCL) | Projected speedup | TP2 group (batched exchange) | Projected speedup | Break-even collective |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0% | 28.28 ms | 41.61 ms | 0.68x | 23.92 ms | 1.18x | 9.36 ms |
-| 10% | 28.28 ms | 43.12 ms | 0.66x | 25.43 ms | 1.11x | 7.85 ms |
-| 20% | 28.28 ms | 44.64 ms | 0.63x | 26.94 ms | 1.05x | 6.34 ms |
-| 30% | 28.28 ms | 46.15 ms | 0.61x | 28.45 ms | 0.99x | 4.83 ms |
+| Fixed-cost share | Baseline (faster TP1) | TP2 group (RCCL) | Projected speedup | TP2 group (batched exchange) | Projected speedup | TP2 group (native) | Projected speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0% | 28.28 ms | 41.61 ms | 0.68x | 23.92 ms | 1.18x | 21.34 ms | **1.33x** |
+| 10% | 28.28 ms | 43.12 ms | 0.66x | 25.43 ms | 1.11x | 22.85 ms | 1.24x |
+| 20% | 28.28 ms | 44.64 ms | 0.63x | 26.94 ms | 1.05x | 24.36 ms | 1.16x |
+| 30% | 28.28 ms | 46.15 ms | 0.61x | 28.45 ms | 0.99x | 25.88 ms | 1.09x |
 
-RCCL's collective is 2.2-4.5x over budget in every row. The batched exchange is
-within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at 30%. These
-are **conditional projections from measured collective latency and an explicit
-fixed-cost assumption**, not a qualified model result: the break-even artifact
-records `certified: false` and no shard-kernel evidence, and no local shard
-kernel, state trajectory, production numerical gate or end-to-end TP latency has
-been measured. The design's 1.3x is an aspiration rather than an admission bar,
-and it accepts smaller qualified wins; whether the exchange can supply one is
-undecided, because the terms that make up the current 40.9 us are not yet
-separated into ones that can move and ones that cannot.
+RCCL's collective is 2.2-4.5x over budget in every row. The Python batched
+exchange is within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at
+30%; the native arm is within budget at every row and clears the design's 1.3x
+target at 0% fixed share. All of these are **conditional projections from
+measured transport latency and an explicit fixed-cost assumption**, not a
+qualified model result: the break-even artifacts record `certified: false` with
+no shard-kernel evidence, no local shard kernel, state trajectory, production
+numerical gate or end-to-end TP latency has been measured, and the native runner
+is a standalone program rather than engine code, so it measures what the protocol
+costs when driven natively and not what the engine currently does. The 0% row is
+also the optimistic end of the fixed-cost assumption, which is itself unmeasured.
+The exchange is therefore a viable transport candidate with a measured budget, not
+a delivered speedup.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its

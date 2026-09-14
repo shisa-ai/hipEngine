@@ -203,7 +203,54 @@ DEPENDENT_CHAIN_MODES = (
     "staged_exchange_host_sync",
     "staged_exchange_batched_return_wait",
     "staged_exchange_batched",
+    # The same batched protocol driven from a native loop instead of Python. Its
+    # marginal comes from the A/B driver, not from the chain artifact, so
+    # ``read_dependent_chain_marginal`` rejects it and
+    # ``read_native_ab_marginal`` reads it.
+    "native_staged_exchange_batched",
 )
+
+#: Modes whose marginal is read from the native A/B artifact instead.
+NATIVE_AB_MODES = ("native_staged_exchange_batched",)
+
+
+def read_native_ab_marginal(path: Path) -> dict[str, Any]:
+    """Read the native arm's per-step marginal out of the A/B artifact.
+
+    The native runner verifies the chain's dependency at the same depth it times
+    with a bounded recurrence and fails its process if the check is not exact, so
+    an artifact that reports ``exact`` here has already proved that every step
+    consumed its predecessor.
+    """
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if payload.get("kind") != "tp2-staged-exchange-native-ab":
+        raise ValueError(f"{path}: not a native A/B artifact")
+    marginal = payload.get("native_marginal", {}).get("overall_us_per_step")
+    if marginal is None:
+        raise ValueError(f"{path}: the native arm has no overall marginal")
+    depths = payload.get("native", {})
+    unverified = [
+        depth
+        for depth, entry in depths.items()
+        if not (entry.get("verification") or {}).get("exact")
+    ]
+    if unverified:
+        raise ValueError(
+            f"{path}: depths {sorted(unverified, key=int)} did not verify their chain, "
+            "so the marginal is not a per-layer cost"
+        )
+    return {
+        "marginal_us_per_step": float(marginal),
+        "source": str(path),
+        "mode": "native_staged_exchange_batched",
+        "depends_on_every_step": True,
+        "payload_bytes": payload.get("payload_bytes"),
+        "world_size": 2,
+        "group_boundary": payload.get("protocol"),
+        "python_arm_us_per_step": payload.get("comparison", {}).get("python_us_per_step"),
+        "python_over_native": payload.get("comparison", {}).get("python_over_native"),
+    }
 
 
 def read_dependent_chain_marginal(
@@ -236,6 +283,11 @@ def read_dependent_chain_marginal(
     chain = cases[case_key].get("dependent_chain")
     if not isinstance(chain, dict) or "modes" not in chain:
         raise ValueError(f"{path}: case {case_key!r} has no dependent chain report")
+    if mode in NATIVE_AB_MODES:
+        raise ValueError(
+            f"{mode!r} is measured by the native A/B driver; pass its artifact to "
+            "--native-ab-artifact instead"
+        )
     if mode not in chain["modes"]:
         raise ValueError(f"{path}: case {case_key!r} has no {mode!r} mode")
     mode_report = chain["modes"][mode]
@@ -425,6 +477,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--native-ab-artifact",
+        type=Path,
+        default=None,
+        help=(
+            "artifact from scripts/tp_staged_exchange_native_ab.py; selects the native "
+            "arm of the same batched protocol as the per-reduction cost"
+        ),
+    )
+    parser.add_argument(
         "--marginal-us",
         default=None,
         help="measured per-collective cost in microseconds when no artifact is given",
@@ -443,7 +504,9 @@ def main(argv: list[str] | None = None) -> int:
     fixed_shares = tuple(float(chunk) for chunk in args.fixed_share.split(",") if chunk.strip())
 
     collective_source: dict[str, Any] | None = None
-    if args.dependent_chain_artifact is not None:
+    if args.native_ab_artifact is not None:
+        collective_source = read_native_ab_marginal(args.native_ab_artifact)
+    elif args.dependent_chain_artifact is not None:
         collective_source = read_dependent_chain_marginal(
             args.dependent_chain_artifact,
             case_key=str(args.dependent_chain_case),

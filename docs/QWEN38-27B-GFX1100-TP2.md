@@ -158,7 +158,8 @@ per-step groups do not.
   | RCCL, one group per reduction, copy removed | 153.9 us | 19.70 ms | 0.738x |
   | RCCL, copy removed, replayed from a captured graph | 147.0 us | 18.82 ms | 0.757x |
   | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 9.00 ms | 1.022x |
-  | Host exchange, both ranks submitted before either is awaited | **40.9 us** | **5.24 ms** | **1.182x** |
+  | Host exchange, both ranks submitted before either is awaited | 40.9 us | 5.24 ms | 1.182x |
+  | Host exchange, same protocol driven from a native C++ loop | **20.8 us** | **2.66 ms** | **1.326x** |
 
   The intermediate device copy costs **23.6 us per reduction**, so the copy-free
   protocol is the right default for any RCCL-based chain. Host submission is only
@@ -192,10 +193,18 @@ per-step groups do not.
   staged byte crosses PCIe twice, so a peer-DMA path would halve the copy term,
   and peer DMA is unavailable on this host.
 
-  The projection clears 1.0x at 0%, 10% and 20% fixed-cost share and reaches
-  0.994x at 30%, as a **conditional projection**: the artifact records
-  `certified: false` with no shard-kernel evidence, so this is not a qualified
-  model result. The 1.3x target is an aspiration, and the design accepts smaller
+  The Python arm's projection clears 1.0x at 0%, 10% and 20% fixed-cost share and
+  reaches 0.994x at 30%. Driving the identical protocol from a native C++ loop
+  costs **20.8 us per reduction instead of 40.9**, and its projection clears 1.0x
+  in every row and reaches **1.326x at 0% fixed share**, above the design's 1.3x
+  target. The term-by-term picture is not a simple subtraction: submission and
+  device scoping fall from 26.3 to 3.6 us and the host sum from 6.6 to 2.0 us, but
+  the exposed wait **rises** from 8.9 to 15.0 us because earlier submission changes
+  what is exposed. These are still **conditional projections**: the artifacts
+  record `certified: false` with no shard-kernel evidence, the native runner is a
+  standalone program rather than engine code, and the fixed-cost share is an
+  assumption. The transport budget is now measured as affordable; nothing here is
+  a qualified model result. The 1.3x target is an aspiration, and the design accepts smaller
   qualified wins; whether the exchange can supply one is undecided until the local
   segments and an in-chain copy trace exist. The full-vector check runs through
   the same batched protocol at the maximum timed depth with a distinct seed per

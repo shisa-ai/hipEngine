@@ -1,0 +1,105 @@
+"""Unit tests for the native/Python staged-exchange A/B driver."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import pathlib
+import stat
+import sys
+
+import pytest
+
+
+def _load():
+    path = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "tp_staged_exchange_native_ab.py"
+    spec = importlib.util.spec_from_file_location("tp_staged_exchange_native_ab", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def mod():
+    return _load()
+
+
+def _fake_runner(tmp_path: pathlib.Path, *, payload: dict, exit_code: int = 0) -> pathlib.Path:
+    script = tmp_path / "fake_runner.sh"
+    script.write_text(
+        "#!/bin/sh\n" + f"cat <<'EOF'\n{json.dumps(payload)}\nEOF\n" + f"exit {exit_code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    return script
+
+
+def test_marginal_is_a_ladder_slope_not_a_single_point(mod) -> None:
+    """The marginal must divide by the depth difference, like the chain report."""
+
+    report = mod._marginal([(1, 100.0), (128, 100.0 + 20.8 * 127)])
+    assert report["from_depth"] == 1
+    assert report["to_depth"] == 128
+    assert report["overall_us_per_step"] == pytest.approx(20.8)
+
+
+def test_marginal_requires_two_depths(mod) -> None:
+    assert mod._marginal([(4, 100.0)])["overall_us_per_step"] is None
+    assert mod._marginal([])["overall_us_per_step"] is None
+
+
+def test_run_native_parses_the_runner_report(tmp_path: pathlib.Path, mod) -> None:
+    payload = {
+        "depth": 16,
+        "total_median_us": 390.5,
+        "per_step_us": 24.47,
+        "verification": {"exact": True},
+    }
+    exe = _fake_runner(tmp_path, payload=payload)
+    result = mod._run_native(exe, depth=16, count=5120, iterations=2, warmup=1)
+    assert result["total_median_us"] == pytest.approx(390.5)
+    assert result["verification"]["exact"] is True
+
+
+def test_run_native_reports_a_failed_verification_as_an_error(tmp_path: pathlib.Path, mod) -> None:
+    """The runner exits non-zero when the chain's value check fails."""
+
+    exe = _fake_runner(tmp_path, payload={"verification": {"exact": False}}, exit_code=1)
+    result = mod._run_native(exe, depth=16, count=5120, iterations=1, warmup=0)
+    assert "error" in result
+    assert "exit 1" in result["error"]
+
+
+def test_build_refuses_an_uncached_executable_when_required(tmp_path: pathlib.Path, mod) -> None:
+    """A profiled run must not compile inside the profiler."""
+
+    source = tmp_path / "source.hip"
+    source.write_text("// placeholder\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="require_cached"):
+        mod._build(source, tmp_path / "build", "gfx1100", require_cached=True)
+
+
+def test_the_native_source_preserves_the_protocol() -> None:
+    """The native arm must keep the batched protocol's completion boundaries.
+
+    Both device-to-host copies are submitted before either stream is waited on,
+    the return copies are not awaited per step, and there is exactly one drain
+    per chain. These are the properties the A/B compares, so a source edit that
+    dropped one would make the comparison meaningless rather than merely slower.
+    """
+
+    source = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "micro"
+        / "runners"
+        / "hip_staged_exchange.hip"
+    ).read_text(encoding="utf-8")
+    body = source[source.index("  void step(int index, Phase* phase)") : source.index("  void drain()")]
+    submits = body.index("hipMemcpyAsync")
+    waits = body.index("hipStreamSynchronize")
+    assert submits < waits, "the D2H copies must be submitted before the first wait"
+    assert body.count("hipStreamSynchronize") == 2, "one wait per rank, no return wait"
+    assert "sum / world + 1" in source, "the bounded recurrence must be present"
