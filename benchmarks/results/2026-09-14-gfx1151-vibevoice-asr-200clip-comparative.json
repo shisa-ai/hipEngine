@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-14",
+  "purpose": "VibeVoice-ASR 9B comparative WER at a sample size with a usable confidence interval: torch-GPU bf16 reference vs hipEngine dense bf16 vs hipEngine Q4_K_M, 200 LibriSpeech test-clean clips",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+  "protocol": {
+    "clips": "200 LibriSpeech test-clean utterances, round-robin across all 40 speakers and their chapters, 1744.4 s of audio",
+    "systems": "torch-GPU bf16 (transformers reference), hipEngine dense bf16 (hipBLASLt prefill), hipEngine Q4_K_M (raw-block WMMA prefill + pack8 decode)",
+    "scoring": "Whisper EnglishTextNormalizer + jiwer, micro-average (total errors / total reference words), greedy decoding in every lane, identical 24 kHz PCM per clip",
+    "isolation": "one subprocess per lane; the HIP lanes assert torch was never imported",
+    "command": "python3 scripts/vibevoice_asr_wer_full.py --num-clips 200 --lanes torch hip hipq4 --request-cache /tmp/librispeech-requests --gguf /tmp/vibevoice-asr-q4km.gguf",
+    "caveat": "a fixed 200-clip subset, not the full 2620-utterance test-clean, so absolute WER differs from the published row by subset variance"
+  },
+  "results": {
+    "torch_bf16_wer_pct": 2.808,
+    "torch_bf16_clips_scored": 197,
+    "torch_bf16_malformed": 3,
+    "hip_bf16_wer_pct": 2.097,
+    "hip_bf16_clips_scored": 200,
+    "hip_bf16_malformed": 0,
+    "hip_q4_km_wer_pct": 2.011,
+    "hip_q4_km_clips_scored": 200,
+    "hip_q4_km_malformed": 0,
+    "mean_s_per_clip_torch": 4.349,
+    "mean_s_per_clip_hip_bf16": 4.707,
+    "mean_s_per_clip_hip_q4_km": 3.477,
+    "published_model_card_librispeech_test_clean": 2.20
+  },
+  "significance": {
+    "method": "paired per-clip WER over the 200 clips both hipEngine lanes scored, 20000-sample bootstrap",
+    "paired_mean_diff_q4_minus_bf16_pp": -0.343,
+    "bootstrap_95ci_pp": [-0.964, 0.048],
+    "includes_zero": true,
+    "clips_identical": 190,
+    "clips_q4_worse": 3,
+    "clips_q4_better": 7,
+    "conclusion": "Q4_K_M is statistically indistinguishable from dense bf16 at 200 clips; the paired interval includes zero and 190/200 clips are bit-identical in WER."
+  },
+  "schema_compliance": {
+    "note": "the strict evaluator refuses to score a transcript that violates the engine's schema, and reports it per lane instead of aborting the run",
+    "torch_failures": [
+      {"clip": "1284-1181-0000", "kind": "missing array opener", "raw_prefix": "assistantContent\":\"Ojo examined this curious contrivance with wonder.\"},{\"Start\":0.0,\"End\":3.96,\"Speaker\":0,\"Content\":\"...\"}]"},
+      {"clip": "260-123440-0000", "kind": "missing array opener", "raw_prefix": "assistant2.17,\"End\":2.17,\"Speaker\":0,\"Content\":\"And how odd the directions will look.\"}]"},
+      {"clip": "5105-28241-0001", "kind": "truncated at the 256-token cap", "raw_prefix": "assistant\\n[{\"Start\":0.0,\"End\":20.52,\"Speaker\":0,\"Content\":\"After an apprenticeship on a merchant ship, he had entered the Imperial Navy, and had already reached the rank of lieuten"}
+    ],
+    "hip_engine_failures": 0
+  },
+  "gates": {
+    "comparability": "torch's 2.808% is over 197 clips while both hipEngine lanes are over 200; excluding its malformed clips if anything flatters the torch lane, so the ordering is safe but the exact gap is not a like-for-like 200-clip comparison",
+    "prior_subsets": "20-clip and 50-clip subsets agreed with this run on the ordering and on Q4/bf16 equivalence"
+  },
+  "status": "accepted",
+  "supersedes": null
+}
