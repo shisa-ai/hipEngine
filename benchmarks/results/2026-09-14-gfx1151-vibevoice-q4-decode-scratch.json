@@ -1,0 +1,48 @@
+{
+ "date": "2026-09-14",
+ "purpose": "VibeVoice-ASR Q4_K_M decode: pass the o_proj decode GEMV a caller-owned bf16 scratch instead of allocating one per layer per token",
+ "host": "zbook",
+ "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+ "protocol": {
+  "weights": "Q4_K_M backbone (168 Q4_K + 28 Q6_K layer tensors) via /tmp/vibevoice-asr-q4km.gguf; dense bf16 lane via microsoft/VibeVoice-ASR-HF",
+  "change": "q4_dense_gemv_f32_bf16w_f32_out already accepted an x_bf16_scratch buffer, but its caller in forward_layers never supplied one, so the wrapper called malloc(7168)/free once per layer (28 pairs per decoded token). The runner now allocates one 7168-byte bf16 scratch at construction and passes it. No arithmetic changes: the same f32_to_bf16 narrowing and the same pack8 GEMV run on the same values.",
+  "workload": "89-row prompt, batched prefill, then 40 decoded tokens per timed trial at context 89-129; 2 warmup runs per lane before timing",
+  "method": "all lanes measured in one process with the same loop, fixture and prompt rows, rotating lane order every trial so host drift cannot favour a lane; the two Q4 lanes differ only in where the o_proj input scratch comes from",
+  "command": "python3 scripts/vibevoice_asr_q4_decode_scratch_bench.py --steps 40 --trials 4 --compare-bf16 --json <artifact>"
+ },
+ "results": {
+  "q4_persistent_scratch_ms_per_token": 48.24,
+  "q4_persistent_scratch_trials": [48.14, 48.1, 48.34, 49.77],
+  "q4_fresh_malloc_ms_per_token": 53.74,
+  "q4_fresh_malloc_trials": [55.14, 53.69, 53.79, 52.9],
+  "bf16_dense_ms_per_token": 74.75,
+  "bf16_dense_trials": [74.77, 74.68, 74.74, 75.14],
+  "scratch_delta_ms_per_token": 5.5,
+  "scratch_speedup": 1.114,
+  "q4_vs_bf16_decode_speedup_matched": 1.5495,
+  "q4_fresh_vs_bf16_decode_speedup_matched": 1.391,
+  "repeat_runs": [
+   {"q4_fresh": 53.74, "q4_scratch": 49.05, "delta_pct": 9.56, "bf16": null},
+   {"q4_fresh": 52.92, "q4_scratch": 48.22, "delta_pct": 9.75, "bf16": null},
+   {"q4_fresh": 51.88, "q4_scratch": 48.09, "delta_pct": 7.88, "bf16": 74.75,
+    "q4_vs_bf16": 1.5544},
+   {"q4_fresh": 53.74, "q4_scratch": 48.24, "delta_pct": 11.4, "bf16": 74.75,
+    "q4_vs_bf16": 1.5495}
+  ],
+  "delta_pct_median_across_4_runs": 9.66,
+  "o_proj_scratch_bytes": 7168,
+  "q4_layers": 28,
+  "malloc_free_pairs_removed_per_token": 28
+ },
+ "gates": {
+  "arithmetic_identity": "bit-identical: q4 logits checksum relative difference 0.000e+00 between the two Q4 lanes, and the same 40-token chain",
+  "gpu_suite_q4": "13 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py), unchanged from before the change",
+  "gpu_suite_bf16": "8 passed (tests/test_gpu_vibevoice_qwen2_runner.py); the shared forward_layers passes the kwarg only when the runner owns a scratch, so the dense lane is byte-for-byte unaffected"
+ },
+ "notes": [
+  "The 28 malloc/free pairs per token cost 3.8-5.5 ms/token, far more than the 7 KiB copy would suggest; hipMalloc/hipFree in the per-layer loop disrupts the launch pipeline rather than merely adding allocation work.",
+  "Removing them also cuts variance: across four runs the persistent-scratch lane held 48.1-49.1 ms/token while the per-layer-malloc lane ranged 51.9-55.1 ms/token.",
+  "The previously recorded 48.1 ms/token (artifact 2026-09-14-gfx1151-vibevoice-q4-pack8-decode.json) was measured with the same per-layer malloc, in a session whose dense bf16 lane measured 72.2 vs 74.75 ms/token here. The recorded absolute rate is therefore not comparable to this session's per-layer-malloc lane, and this artifact does not claim an old-to-new absolute improvement; the claim is the in-process A/B delta and the matched same-process ratio.",
+  "Matched in one process this session, Q4_K_M decode is 1.55x the dense bf16 lane (48.24 vs 74.75 ms/token), against 1.39x for the same Q4 lane with per-layer malloc."
+ ]
+}
