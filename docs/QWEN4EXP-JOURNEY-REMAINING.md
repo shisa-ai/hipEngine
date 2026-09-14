@@ -36,7 +36,7 @@ improvements require the applicable unchanged production quality gates.
 | R18 | QSA indexer/packing/attention | Full BF16 selected-position owner at 2051/2052, 4096/4097 and tails |
 | R19 | Multi-CTA QSA threshold + stable compaction | 513-65536 pooled blocks; ties, tails, finite domain, extra scratch/launch cost |
 | R20 | MoE top10 and vocabulary top1 | Distinct tie/output contracts; measure complete owners before port |
-| R21 | Host dispatch and backend refresh overhead | Default-off cache prepared; 79 CPU and 4 GPU tests pass; uncontended canonical A/B next |
+| R21 | Host dispatch and backend refresh overhead | Stable-generation cache adopted; PP +3.29/+1.59/+1.88%, all complete requests improve; TG lower, explicitly scoped ([evidence](../benchmarks/results/2026-09-14-journey-backend-cache/README.md)) |
 | R22 | Current graph/submission census | Separate prefill/decode, updates, cold capture and exposed wall |
 | R23 | Private runtime ordinary AQL versus current AQL | Exact pinned runtime source, compatible private build, loaded DSO identities |
 | R24 | Private retained PM4 versus its ordinary AQL | Engagement logging without activity tracing, dependency/scratch/in-flight/c2/lifecycle gates |

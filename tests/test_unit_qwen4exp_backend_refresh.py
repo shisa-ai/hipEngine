@@ -6,7 +6,6 @@ from hipengine.runtime import qwen4_exp_runner as runner
 @pytest.fixture
 def registry(monkeypatch):
     state = {"generation": 10, "calls": []}
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE", "1")
     monkeypatch.setattr(runner, "_MOE_BACKEND_REGISTRY_GENERATIONS", {})
     monkeypatch.setattr(runner, "_registry_generation", lambda: state["generation"])
 
@@ -58,17 +57,16 @@ def test_failed_refresh_is_not_cached(registry, monkeypatch):
     assert runner._MOE_BACKEND_REGISTRY_GENERATIONS == {}
 
 
-def test_opt_out_keeps_original_refresh_behavior(registry, monkeypatch):
+def test_retired_flag_does_not_disable_the_qualified_cache(registry, monkeypatch):
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE", "0")
     runner._ensure_qwen4_exp_moe_backend("hip_gfx1151")
     runner._ensure_qwen4_exp_moe_backend("hip_gfx1151")
-    assert registry["calls"] == ["hip_gfx1151", "hip_gfx1151"]
+    assert registry["calls"] == ["hip_gfx1151"]
 
 
 def test_real_registry_restores_missing_key_without_overwriting_wrapper(monkeypatch):
     from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE", "1")
     monkeypatch.setattr(runner, "_MOE_BACKEND_REGISTRY_GENERATIONS", {})
     key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
                     "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")

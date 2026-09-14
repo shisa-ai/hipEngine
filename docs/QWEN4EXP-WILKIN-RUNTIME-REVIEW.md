@@ -9,6 +9,12 @@ private ordinary-AQL/PM4/merge arms, UMA ownership, semantic-safe TOP_K,
 and their quality/engagement prerequisites. The frozen-source review below
 is historical evidence, not a claim these runtime candidates are installed.
 
+The first host-path improvement caches unchanged MoE backend registrations:
+same-host PP improves 3.29/1.59/1.88% at 512/1K/4K, with exact sampled outputs
+and state and positive complete-request gains. Decode is lower by up to1.36%;
+this is neither PM4 engagement nor a decode speedup.
+[Evidence](../benchmarks/results/2026-09-14-journey-backend-cache/README.md).
+
 ## Frozen Sources
 
 | Source | Reviewed revision | Relevant paths |

@@ -288,14 +288,6 @@ CANDIDATES["production_gdn_multi_restore"] = replace(
     candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                    "qwen4exp_gdn_tiled16_multi_prefill"),
 )
-CANDIDATES["production_moe_backend_cache"] = replace(
-    CANDIDATES["production_baseline"],
-    name="production_moe_backend_cache",
-    classification="T0",
-    mechanism="skip redundant MoE backend registration until registry generation changes",
-    scenario_id="qwen4exp-moe-backend-cache",
-    environment={"HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE": "1"},
-)
 
 
 class GateError(RuntimeError):

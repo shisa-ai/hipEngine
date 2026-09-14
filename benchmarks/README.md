@@ -623,22 +623,22 @@ MTP and multimodal performance are not requalified by these text-AR runs.
 
 Same-host counterbalanced comparison, four categories, three repeats,
 1024-token chunks, BF16 KV, 128 decode steps, one residency with shared
-unchanged decode graphs:
+unchanged decode graphs. Both arms use the same guarded Q8/QSA arithmetic;
+the production host path now caches unchanged backend registrations:
 
-| Arithmetic configuration | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| Configuration | 512 PP / TG | 1K PP / TG | 4K PP / TG |
 | --- | ---: | ---: | ---: |
-| Conservative recovery | 170.11 / 17.50 | 177.80 / 16.75 | 128.99 / 10.71 |
-| Guarded Q8 + QSA production | 177.49 / 17.50 | 186.22 / 16.73 | 178.63 / 10.86 |
+| Without host registration cache | 177.70 / 17.52 | 186.19 / 16.75 | 178.41 / 10.16 |
+| Production with host cache | 183.55 / 17.49 | 189.15 / 16.72 | 181.76 / 10.02 |
 
-Weighted tok/s; 108 unique measured samples and 36 warmups across three
-arms, including a prefill-only intermediate. Prefill improves
-**4.34% / 4.73% / 38.48%**. Complete requests improve in all 12 cases.
-Short decode is effectively flat; weighted 4K decode improves 1.41%, but
-English/Japanese/mixed decode individually regress versus recovery.
-All measured arms match in output IDs, final logits and state.
-The older failed-composition comparison and its CPU-overlap timing caveat
-are preserved in the [recovery record](results/2026-09-14-q8-prefill-numerics/README.md);
-those rates are not this comparison's denominator.
+Weighted tok/s; 72 measured samples and 24 warmups. Prefill improves
+**3.29% / 1.59% / 1.88%**. Every complete request improves, by 0.22-1.54%.
+Decode is lower by 0.16% / 0.17% / 1.36%; this is not a decode-speed claim
+or a measured benefit at arbitrary output lengths. All measured arms match
+in output IDs, final logits and state, with zero teardown allocations.
+[Host-cache evidence](results/2026-09-14-journey-backend-cache/README.md).
+The earlier Q8/QSA restoration and failed-composition recovery comparisons
+remain in their linked records; their rates are not this comparison's denominator.
 
 Exact DPP reductions improved the previously active tiled-GDN prefill suffix:
 matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s
