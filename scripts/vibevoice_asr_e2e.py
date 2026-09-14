@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -77,21 +78,19 @@ def parse_transcript(text: str) -> list[dict] | None:
     try:
         segments = json.loads(stripped)
     except json.JSONDecodeError:
-        # tolerate truncation: keep the last complete objects
-        depth = 0
-        for i, ch in enumerate(stripped):
-            if ch == "[":
-                depth += 1
-            elif ch == "]":
-                depth -= 1
-                if depth == 0 and i + 1 < len(stripped):
-                    try:
-                        return json.loads(stripped[: i + 1])
-                    except json.JSONDecodeError:
-                        continue
         return None
     if not isinstance(segments, list):
         return None
+    for segment in segments:
+        if not isinstance(segment, dict) or not {"Start", "End", "Speaker", "Content"} <= segment.keys():
+            return None
+        times = (segment["Start"], segment["End"])
+        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in times):
+            return None
+        if not 0 <= times[0] <= times[1] or not isinstance(segment["Content"], str):
+            return None
+        if isinstance(segment["Speaker"], bool) or not isinstance(segment["Speaker"], (int, str)):
+            return None
     return segments
 
 
@@ -177,11 +176,7 @@ def main() -> None:
 
     print(f"prompt tokens: {len(input_ids)}, decoding ...")
     generated = greedy_generate(runner, rows, max_new_tokens=args.max_new_tokens, eos_token_id=IM_END_ID)
-    out_ids = input_ids + generated
-    text = tokenizer.decode(out_ids, skip_special_tokens=True)
-    # strip everything before the assistant turn
-    if "assistant" in text:
-        text = text[text.rindex("assistant") + len("assistant"):].strip()
+    text = tokenizer.decode(generated, skip_special_tokens=True).strip()
     runner.close()
 
     print("--- raw ---")

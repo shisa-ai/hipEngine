@@ -19,6 +19,7 @@ fused QKV) is the follow-up optimization once this path is parity-proven.
 from __future__ import annotations
 
 import ctypes
+from numbers import Integral
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -154,6 +155,8 @@ class VibevoiceQwen2Runtime:
         max_context: int = 8192,
         library: ctypes.CDLL | None = None,
     ) -> None:
+        if isinstance(max_context, bool) or not isinstance(max_context, Integral) or max_context <= 0:
+            raise ValueError("max_context must be a positive integer")
         spec = weights.spec
         self.spec = spec
         self.max_context = max_context
@@ -253,6 +256,7 @@ class VibevoiceQwen2Runtime:
 
     def push_token(self, token_or_embed: np.ndarray, position: int) -> None:
         """Stage one token's input row (fp32 hidden, shape (hidden,)) at position."""
+        self._validate_position(position)
         row = np.ascontiguousarray(token_or_embed, dtype=np.float32).reshape(-1)
         if row.shape[0] != self.spec.hidden_size:
             raise ValueError("token row must be hidden-sized fp32")
@@ -263,6 +267,7 @@ class VibevoiceQwen2Runtime:
 
     def forward_layers(self, position: int) -> None:
         """Run the staged hidden row through all layers; result in ``_hidden``."""
+        self._validate_position(position)
         spec = self.spec
         hidden = spec.hidden_size
         heads = spec.num_attention_heads
@@ -356,6 +361,11 @@ class VibevoiceQwen2Runtime:
     def reset(self) -> None:
         self._ctx_len_host[0] = 0
 
+    def _validate_position(self, position: int) -> None:
+        if (isinstance(position, bool) or not isinstance(position, Integral)
+                or not 0 <= position < self.max_context):
+            raise ValueError(f"position must be an integer in [0, {self.max_context})")
+
     # ------------------------------------------------------------------
     def prefill_rows(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int) -> None:
         """Batched causal prefill of ``rows`` hidden rows at ``start_pos``.
@@ -364,6 +374,11 @@ class VibevoiceQwen2Runtime:
         post-layer-stack result. Audio-embed rows must already be staged by
         the caller (row p uses absolute position ``start_pos + p``).
         """
+        self._validate_position(start_pos)
+        if isinstance(rows, bool) or not isinstance(rows, Integral) or rows <= 0:
+            raise ValueError("prefill rows must be a positive integer")
+        if start_pos + rows > self.max_context:
+            raise ValueError("prefill exceeds max_context")
         spec = self.spec
         hidden = spec.hidden_size
         heads = spec.num_attention_heads
@@ -494,11 +509,18 @@ def greedy_generate(
     """Batched prefill of the prompt rows, then greedy decode."""
     from hipengine.kernels.hip_gfx1100.vibevoice.encoder import f32_to_bf16_bits as _bits
 
-    runtime.reset()
     generated: list[int] = []
     total = len(input_rows)
     if total == 0:
         raise ValueError("empty prompt")
+    if (isinstance(max_new_tokens, bool) or not isinstance(max_new_tokens, Integral)
+            or max_new_tokens < 0):
+        raise ValueError("max_new_tokens must be a nonnegative integer")
+    if total + max(max_new_tokens - 1, 0) > runtime.max_context:
+        raise ValueError("prompt and generation exceed max_context")
+    if max_new_tokens == 0:
+        return generated
+    runtime.reset()
 
     rows_bf16 = _bits(np.asarray(input_rows, dtype=np.float32))  # (total, hidden) uint16
     prompt_buf = _upload(rows_bf16)
@@ -516,7 +538,7 @@ def greedy_generate(
         free(prompt_buf)
     for step in range(max_new_tokens):
         generated.append(token)
-        if eos_token_id is not None and token == eos_token_id:
+        if step + 1 == max_new_tokens or (eos_token_id is not None and token == eos_token_id):
             break
         pos = total + step
         runtime.push_token(runtime.embed_row(token), pos)
