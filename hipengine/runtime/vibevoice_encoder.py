@@ -68,6 +68,13 @@ class _ScratchPool:
     (hundreds of allocations per forward); this pool hands out aligned
     views into one device allocation and resets between calls, growing
     when a larger workload arrives.
+
+    Resetting rewinds the arena when it is already large enough. It used to
+    free and reallocate it on every reset, which charged each encoder pass a
+    ``hipMalloc``/``hipFree`` pair for the whole arena (tens of MB to a few GB
+    at full chunk size). The arena is replaced only when a request does not
+    fit, so a capacity that varies between passes never shrinks back into
+    churn.
     """
 
     def __init__(self, capacity_bytes: int = 64 << 20) -> None:
@@ -75,10 +82,16 @@ class _ScratchPool:
         self._capacity = max(int(capacity_bytes), 1 << 20)
 
     def reset(self, capacity_bytes: int | None = None) -> None:
-        if capacity_bytes is not None:
-            self._capacity = max(int(capacity_bytes), 1 << 20)
-        if self._arena is not None:
-            self._arena.close()
+        """Start a new bump region, reusing the arena when it is large enough."""
+        wanted = (self._capacity if capacity_bytes is None
+                  else max(int(capacity_bytes), 1 << 20))
+        self._capacity = wanted
+        arena = self._arena
+        if arena is not None and not arena.closed and wanted <= arena.capacity_bytes:
+            arena.rewind()
+            return
+        if arena is not None:
+            arena.close()
         self._arena = DeviceMemoryArena.create(self._capacity)
 
     def take(self, nbytes: int) -> DeviceBuffer:
