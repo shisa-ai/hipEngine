@@ -1,0 +1,38 @@
+{
+  "date": "2026-09-14",
+  "purpose": "VibeVoice-ASR Q4_K_M decode: route rows=1 through the raw-block pack8 decode GEMV families",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+  "protocol": {
+    "weights": "Q4_K_M backbone (168 Q4_K + 28 Q6_K layer tensors), bf16 front-end + dense bf16 untied lm_head",
+    "kernels": "gguf_q4_k_pack8_gemv_decode_* / gguf_q6_k_pack8_gemv_decode_* read the unmodified GGUF block bytes on device; no repack, no sidecar, no extra resident memory",
+    "workload": "Qwen2 backbone decode at ~150-token context, 3 warmup steps, 3 timed trials of 40 steps",
+    "command": "python3 - <<'EOF' (load /tmp/vibevoice-asr-q4km.gguf, prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz, time push_token+forward_layers+logits_argmax loops) EOF"
+  },
+  "results": {
+    "decode_ms_per_token_layers": 44.4,
+    "decode_ms_per_token_incl_lm_head": 49.4,
+    "trials_ms_per_token": [49.4, 50.1, 51.1],
+    "prior_naive_ms_per_token": 122.6,
+    "speedup_vs_naive": 2.48,
+    "dense_bf16_ms_per_token": 66.0,
+    "speedup_vs_dense_bf16": 1.34,
+    "microbenchmark_projection_ms_per_token": 39.1,
+    "projection_optimism_factor": 1.26,
+    "resident_weight_bytes": 6103000000,
+    "per_token_weight_stream_gb": 5.012
+  },
+  "gates": {
+    "gpu_suite": "7/7 tests/test_gpu_vibevoice_qwen2_q4_runner.py incl. greedy chain 16/16 vs torch fixture and first-position logits top-1",
+    "weight_type_routing": "all 196 layer GEMM weights still route to K-quant blocks the kernels own",
+    "wer_recheck": "20-clip Q4 WER lane in flight at time of writing; the 50-clip gate remains 1.978% == bf16 1.978%"
+  },
+  "notes": [
+    "The naive per-column raw-block GEMVs run at 18-60 GB/s; the pack8 decode families reach 107-132 GB/s, which is the bandwidth wall for these shapes (dense bf16 streams 14.15 GB/token in 66 ms = 214 GB/s).",
+    "The 5.01 GB/token stream is 3.92 GB of layer GEMM weights plus a 1.09 GB dense bf16 lm_head; the lm_head is 6.6 ms of the 49.4 ms and already runs at ~210 GB/s.",
+    "A single-GEMV speedup does not transfer one-for-one: the microbenchmark projected 39.1 ms/token and the integrated decode measures 49.4 ms. The difference is the per-token non-GEMM work (196 GEMM launches plus ~336 norm/rotary/KV/attention/residual/silu launches per token) and context-dependent attention.",
+    "Prefill is unchanged and remains the dominant cost: 89 rows through the row-by-row path measured 3.80 s (~43 ms/row)."
+  ],
+  "status": "accepted",
+  "supersedes": null
+}
