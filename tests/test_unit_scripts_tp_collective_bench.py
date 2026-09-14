@@ -6,6 +6,7 @@ import ctypes
 import importlib.util
 import pathlib
 import sys
+from dataclasses import dataclass
 
 import numpy as np
 import pytest
@@ -355,7 +356,8 @@ class _ShadowChainTransport:
     * non-collective work enqueued inside a group runs *before* every collective
       in that group, so it becomes visible only to the next group's collectives;
     * collectives inside a group execute in call order on one stream, so each
-      reads what the previous one wrote;
+      reads what the previous one wrote, and each runs after the work already
+      queued on its ranks' streams;
     * a collective issued outside a group is an error, as on the real transport.
     """
 
@@ -402,6 +404,10 @@ class _ShadowChainTransport:
         self._calls_this_group += 1
         if self._calls_this_group % self.world_size:
             return
+        # A collective executes after everything its ranks already enqueued on
+        # their streams, so queued copies have run by the time it reads. Without
+        # this the shadow would read a buffer the protocol had not yet filled.
+        self.runtime.drain_all()
         kind = "scratch" if int(send_ptr) >= _ShadowChainRuntime.SCRATCH_BASE else "work"
         total = float(sum(row[0] for row in getattr(self.runtime, kind)))
         if self.stale_snapshot:
@@ -410,7 +416,22 @@ class _ShadowChainTransport:
             row[0] = total
 
     def sync(self, *, timeout_s=None) -> None:
+        # A transport-wide barrier completes every rank, so it drains each rank's
+        # queued work. It is not a host wait on one stream, so it is not counted
+        # as one.
+        self.runtime.drain_all()
         return None
+
+
+@dataclass(frozen=True)
+class _QueuedOp:
+    """One submitted copy, held until its stream is synchronized."""
+
+    stream: int
+    dst: int
+    src: int
+    nbytes: int
+    kind: object
 
 
 class _ShadowChainRuntime:
@@ -437,8 +458,27 @@ class _ShadowChainRuntime:
         self.group_depth = 0
         self._staged: list[tuple[list, int, float]] = []
         self.streams = 0
+        self.created_streams: list[int] = []
+        self.destroyed_streams: list[int] = []
         self.syncs = 0
         self.registered_host: set[int] = set()
+        # Nothing in this queue executes until its stream is synchronized.
+        self.queue: list[_QueuedOp] = []
+        # When set, that many submissions succeed and the next one raises, so a
+        # failure path can be exercised without a device.
+        self.fail_after_ops: int | None = None
+        self._submitted_ops = 0
+
+    def work_ptr(self, rank: int) -> int:
+        return self.WORK_BASE + self.STRIDE * int(rank)
+
+    def scratch_ptr(self, rank: int) -> int:
+        return self.SCRATCH_BASE + self.STRIDE * int(rank)
+
+    def queue_device_copy(self, *, dst: int, src: int, stream: int) -> None:
+        from hipengine.core.runtime import MemcpyKind
+
+        self.memcpy_async(dst, src, self.count * 4, MemcpyKind.DEVICE_TO_DEVICE, stream)
 
     def slot(self, ptr: int) -> tuple[list, int]:
         if self.WORK_BASE <= ptr < self.SCRATCH_BASE:
@@ -466,14 +506,42 @@ class _ShadowChainRuntime:
 
     def stream_create(self) -> int:
         self.streams += 1
+        self.created_streams.append(self.streams)
         return self.streams
 
     def stream_destroy(self, stream) -> None:
-        return None
+        self.destroyed_streams.append(int(stream))
 
     def stream_synchronize(self, stream) -> None:
-        # Counted so a test can check how many host waits a protocol performs.
+        # Counted so a test can check how many host waits a protocol performs, and
+        # the point at which that stream's queued work actually executes.
         self.syncs += 1
+        self.drain(int(stream))
+
+    def drain(self, stream: int) -> None:
+        """Execute one stream's queued operations in submission order.
+
+        Nothing runs at submission time. That is what makes this an ownership
+        oracle rather than a copy: a host-to-device read that is still queued sees
+        whatever the host slot holds when the stream is finally drained, so a
+        premature host write into a slot whose read is outstanding corrupts the
+        device value instead of passing silently. Per-stream queues also give rank
+        skew for free, because one rank's queue runs only when its own stream is
+        synchronized.
+        """
+
+        stream = int(stream)
+        remaining: list[_QueuedOp] = []
+        for op in self.queue:
+            if op.stream == stream:
+                self._execute(op)
+            else:
+                remaining.append(op)
+        self.queue = remaining
+
+    def drain_all(self) -> None:
+        for stream in sorted({op.stream for op in self.queue}):
+            self.drain(stream)
 
     def host_register(self, ptr: int, nbytes: int) -> None:
         self.registered_host.add(int(ptr))
@@ -482,11 +550,26 @@ class _ShadowChainRuntime:
         self.registered_host.discard(int(ptr))
 
     def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+        self._submitted_ops += 1
+        if self.fail_after_ops is not None and self._submitted_ops > self.fail_after_ops:
+            raise RuntimeError("injected copy failure")
+        self.queue.append(
+            _QueuedOp(
+                stream=int(stream),
+                dst=int(dst),
+                src=int(src),
+                nbytes=int(nbytes),
+                kind=kind,
+            )
+        )
+
+    def _execute(self, op: "_QueuedOp") -> None:
         from hipengine.core.runtime import MemcpyKind
 
+        dst, src, nbytes, kind = op.dst, op.src, op.nbytes, op.kind
         if kind in (MemcpyKind.HOST_TO_DEVICE, MemcpyKind.DEVICE_TO_HOST):
             # Host staging is real memory: the staged path sums the pinned slot,
-            # so the shadow has to move actual bytes through it.
+            # so the shadow has to move actual bytes through it, at drain time.
             if kind == MemcpyKind.DEVICE_TO_HOST:
                 buffer, row = self.slot(int(src))
                 payload = np.zeros(self.count, dtype=np.float32)
@@ -501,14 +584,15 @@ class _ShadowChainRuntime:
                     self.count - int(payload.size)
                 )
             return
+        dst, src, nbytes = int(dst), int(src), int(nbytes)
         self.copies += 1
-        target, target_index = self.slot(int(dst))
+        target, target_index = self.slot(dst)
         if not self.consume_previous:
             # The old ladder re-read an unchanged input: the consumer never
             # consumes the reduction result.
             value = self.seed_value
         else:
-            _, source_index = self.slot(int(src))
+            _, source_index = self.slot(src)
             value = self.work[source_index][0]
         if self.group_depth:
             self._staged.append((target, target_index, value))
@@ -580,13 +664,20 @@ def _stub_chain_memory(mod, monkeypatch, kwargs) -> None:
 
     runtime = kwargs["runtime"]
 
+    # Width-aware: a scalar-only stub cannot tell a full vector from its first
+    # element, which is what the rank-distinct vector check exists to test.
     def copy_host_array_to_device(buffer, array, nbytes=None, **call_kwargs):
         target, index = runtime.slot(int(buffer.ptr))
-        target[index][0] = float(array[0])
+        values = np.asarray(array, dtype=np.float32).reshape(-1)
+        row = target[index]
+        row[: values.size] = [float(value) for value in values]
+        for extra in range(values.size, len(row)):
+            row[extra] = 0.0
 
     def copy_device_to_host(host_ptr, buffer, nbytes=None, **call_kwargs):
         source, index = runtime.slot(int(buffer.ptr))
-        host_ptr[0] = source[index][0]
+        values = np.asarray(host_ptr, dtype=np.float32).reshape(-1)
+        values[:] = np.asarray(source[index][: values.size], dtype=np.float32)
 
     monkeypatch.setattr(mod, "decode_values", lambda host, dtype: list(host))
     monkeypatch.setattr(mod, "encode_values", lambda values, dtype: values)
@@ -895,6 +986,129 @@ def test_opt_in_modes_stay_out_of_a_default_run(mod) -> None:
     assert "single_group_alternating_graph" in mod.OPT_IN_CHAIN_MODES
     assert "per_step_alternating_graph" in mod.DEFAULT_CHAIN_MODES
     assert "staged_exchange_host_sync" in mod.DEFAULT_CHAIN_MODES
+def _shadow_runtime(mod, *, count: int = 4):
+    return _ShadowChainRuntime(world_size=2, count=count, consume_previous=True)
+
+
+def test_queued_host_reads_execute_at_sync_not_at_submission(mod) -> None:
+    """The ownership oracle must be able to see a premature host-slot write.
+
+    ``memcpy_async`` queues; nothing moves until the stream is synchronized. A
+    host-to-device read that is still queued therefore observes whatever the host
+    slot holds when the stream is finally drained. This test pins that property
+    directly, because it is the only reason the protocol tests below can catch a
+    slot being rewritten while a read of it is outstanding.
+    """
+
+    import ctypes
+
+    from hipengine.core.memory import host_buffer_ptr
+    from hipengine.core.runtime import MemcpyKind
+
+    runtime = _shadow_runtime(mod)
+    slot = ctypes.create_string_buffer(4 * 4)
+    runtime.work = [[0.0, 0.0, 0.0, 0.0] for _ in range(2)]
+    runtime.scratch = [[0.0, 0.0, 0.0, 0.0] for _ in range(2)]
+    # A host-to-device read of the slot, then a host write into that slot before
+    # the stream is drained.
+    runtime.memcpy_async(
+        runtime.work_ptr(0),
+        host_buffer_ptr(slot),
+        16,
+        MemcpyKind.HOST_TO_DEVICE,
+        stream=1,
+    )
+    assert runtime.queue, "the copy must be queued, not executed"
+    np.frombuffer(slot, dtype=np.float32)[:] = np.float32(7.0)
+    runtime.stream_synchronize(1)
+    # The read ran at drain time, so it consumed the write that happened after
+    # submission. That is exactly how a premature slot write becomes visible: a
+    # protocol that rewrites a slot whose read is still queued lands here with
+    # the new contents and produces the wrong value instead of passing silently.
+    assert runtime.work[0][0] == 7.0
+    assert not runtime.queue
+
+
+def test_streams_queue_independently_so_rank_skew_is_modelled(mod) -> None:
+    """One rank's queued work must not run when the other rank synchronizes."""
+
+    runtime = _shadow_runtime(mod)
+    runtime.work = [[float(rank + 1), 0.0, 0.0, 0.0] for rank in range(2)]
+    runtime.scratch = [[0.0, 0.0, 0.0, 0.0] for _ in range(2)]
+    runtime.queue_device_copy(
+        dst=runtime.scratch_ptr(0), src=runtime.work_ptr(0), stream=0x10
+    )
+    runtime.queue_device_copy(
+        dst=runtime.scratch_ptr(1), src=runtime.work_ptr(1), stream=0x11
+    )
+    runtime.stream_synchronize(0x10)
+    assert runtime.scratch[0][0] == 1.0, "rank 0's queued copy must have run"
+    assert runtime.scratch[1][0] == 0.0, "rank 1's copy must still be queued"
+    assert [op.stream for op in runtime.queue] == [0x11]
+    runtime.stream_synchronize(0x11)
+    assert runtime.scratch[1][0] == 2.0
+    assert not runtime.queue
+
+
+@pytest.mark.parametrize("depth", [3, 4, 10])
+def test_staged_chain_validates_at_odd_even_and_reused_slots(mod, monkeypatch, depth) -> None:
+    """Odd and even depths, with more slot reuse than the ladder covers."""
+
+    kwargs = _shadow_chain_args(mod)
+    kwargs["depths"] = (depth,)
+    kwargs["iterations"] = 2
+    kwargs["warmup"] = 0
+    kwargs["modes"] = ("staged_exchange_batched",)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    entry = report["modes"]["staged_exchange_batched"]
+    assert entry["depths"][str(depth)]["final_value_matches"] is True
+    assert entry["depends_on_every_step"] is True
+    runtime = kwargs["runtime"]
+    assert not runtime.queue, "the chain must drain every queued copy"
+    assert not runtime.registered_host, "every host slot must be unregistered"
+
+
+def test_staged_chain_releases_slots_and_streams_when_a_copy_fails(
+    mod, monkeypatch
+) -> None:
+    """A mid-chain failure must not leak registrations or streams."""
+
+    kwargs = _shadow_chain_args(mod)
+    kwargs["depths"] = (4,)
+    kwargs["iterations"] = 1
+    kwargs["warmup"] = 0
+    kwargs["modes"] = ("staged_exchange_batched",)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    runtime = kwargs["runtime"]
+    runtime.fail_after_ops = 3
+    with pytest.raises(RuntimeError, match="injected copy failure"):
+        mod._measure_dependent_chain(**kwargs)
+    assert not runtime.registered_host, "a failed chain must unregister its slots"
+    assert sorted(runtime.destroyed_streams) == sorted(runtime.created_streams), (
+        "a failed chain must destroy every stream it created"
+    )
+
+
+def test_full_vector_check_is_rank_distinct_and_bounded(mod, monkeypatch) -> None:
+    """The vector check must cover every element with distinct rank inputs."""
+
+    kwargs = _shadow_chain_args(mod)
+    kwargs["depths"] = (4,)
+    kwargs["iterations"] = 1
+    kwargs["warmup"] = 0
+    kwargs["modes"] = ("staged_exchange_batched",)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    check = report["modes"]["staged_exchange_batched"]["vector_check"]
+    assert check["elements"] == kwargs["case"].count > 1, "element zero is not a vector"
+    assert check["rank_seeds_differ"] is True
+    assert check["ranks_agree"] is True
+    assert check["full_vector_matches"] is True
+    assert check["max_abs_error"] == 0.0
+    assert check["depth"] == 4
+
+
 def test_batched_staging_drops_the_host_to_device_waits(mod, monkeypatch) -> None:
     """The batched protocol must submit both ranks before waiting, and skip the
     host-to-device waits entirely.
@@ -919,13 +1133,18 @@ def test_batched_staging_drops_the_host_to_device_waits(mod, monkeypatch) -> Non
         entry = report["modes"][mode]
         assert entry["depths"][str(depth)]["final_value_matches"] is True
         assert entry["depends_on_every_step"] is True
-        counts[mode] = kwargs["runtime"].syncs
         if mode == "staged_exchange_batched":
             assert entry["protocol"] == "batched"
             assert entry["host_waits_per_reduction"] == 2
         else:
             assert entry["protocol"] == "serial"
             assert entry["host_waits_per_reduction"] == 4
+        # The full-vector check runs through the same batched protocol and has its
+        # own waits; they are a separate population from the ladder's, so they are
+        # subtracted rather than left inside the protocol's count.
+        counts[mode] = kwargs["runtime"].syncs - entry.get("vector_check", {}).get(
+            "stream_syncs", 0
+        )
 
     steps = depth * chains
     # Serial: four waits per step. Batched: two per step plus one drain per chain.

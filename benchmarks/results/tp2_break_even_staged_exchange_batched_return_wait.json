@@ -16,16 +16,16 @@
       "tp2_rank_weights_gib": 7.009
     }
   ],
-  "collective_ms_expected_from_count": 8.995,
+  "collective_ms_expected_from_count": 6.731,
   "collective_ms_per_token": [
-    8.995
+    6.731
   ],
   "collective_source": {
     "case": "all_reduce:rows1:fp32",
     "depends_on_every_step": true,
     "group_boundary": "not applicable (no RCCL group)",
-    "marginal_us_per_step": 70.27162854948382,
-    "mode": "staged_exchange_host_sync",
+    "marginal_us_per_step": 52.58363854932034,
+    "mode": "staged_exchange_batched_return_wait",
     "payload_bytes": 20480,
     "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
     "world_size": 2
@@ -50,10 +50,10 @@
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 9.60696106069933,
-      "collective_ms_per_token": 8.995,
+      "collective_ms_per_token": 6.731,
       "fixed_group_ms_per_token": 0.0,
       "fixed_share": 0.0,
-      "headroom_factor": 1.0680334697831386,
+      "headroom_factor": 1.427270994012677,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -76,21 +76,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 1.0221143467260685,
+      "projected_speedup": 1.1131885724454917,
       "rank_weight_group_ms_per_token": 18.677581436825776,
-      "required_improvement_factor": 0.9363002455372934,
-      "speedup_if_rank_weights_were_free": 3.144473874099512,
-      "tp2_group_ms_per_token": 27.672581436825773,
-      "tp2_tok_s": 36.13685272850015
+      "required_improvement_factor": 0.7006377935199024,
+      "speedup_if_rank_weights_were_free": 4.202130812290166,
+      "tp2_group_ms_per_token": 25.408581436825777,
+      "tp2_tok_s": 39.35678197881035
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 8.09348505391699,
-      "collective_ms_per_token": 8.995,
+      "collective_ms_per_token": 6.731,
       "fixed_group_ms_per_token": 3.3812341504649197,
       "fixed_share": 0.1,
-      "headroom_factor": 0.8997759926533618,
+      "headroom_factor": 1.2024194107735833,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -113,21 +113,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9691114516640396,
+      "projected_speedup": 1.050608504077777,
       "rank_weight_group_ms_per_token": 16.809823293143197,
-      "required_improvement_factor": 1.111387732241095,
-      "speedup_if_rank_weights_were_free": 3.144473874099512,
-      "tp2_group_ms_per_token": 29.186057443608114,
-      "tp2_tok_s": 34.26293537358212
+      "required_improvement_factor": 0.8316565676169885,
+      "speedup_if_rank_weights_were_free": 4.202130812290166,
+      "tp2_group_ms_per_token": 26.922057443608118,
+      "tp2_tok_s": 37.144263661669804
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 6.580009047134649,
-      "collective_ms_per_token": 8.995,
+      "collective_ms_per_token": 6.731,
       "fixed_group_ms_per_token": 6.762468300929839,
       "fixed_share": 0.2,
-      "headroom_factor": 0.7315185155235853,
+      "headroom_factor": 0.9775678275344895,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -150,21 +150,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9213346040985312,
+      "projected_speedup": 0.994690060830799,
       "rank_weight_group_ms_per_token": 14.942065149460618,
-      "required_improvement_factor": 1.3670193970199767,
-      "speedup_if_rank_weights_were_free": 3.144473874099512,
-      "tp2_group_ms_per_token": 30.699533450390454,
-      "tp2_tok_s": 32.57378492790357
+      "required_improvement_factor": 1.0229469217722584,
+      "speedup_if_rank_weights_were_free": 4.202130812290166,
+      "tp2_group_ms_per_token": 28.43553345039046,
+      "tp2_tok_s": 35.167267100672895
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 5.066533040352306,
-      "collective_ms_per_token": 8.995,
+      "collective_ms_per_token": 6.731,
       "fixed_group_ms_per_token": 10.14370245139476,
       "fixed_share": 0.3,
-      "headroom_factor": 0.5632610383938084,
+      "headroom_factor": 0.7527162442953954,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -187,27 +187,27 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.8780471919312417,
+      "projected_speedup": 0.9444233051504461,
       "rank_weight_group_ms_per_token": 13.07430700577804,
-      "required_improvement_factor": 1.7753757704448965,
-      "speedup_if_rank_weights_were_free": 3.144473874099512,
-      "tp2_group_ms_per_token": 32.213009457172795,
-      "tp2_tok_s": 31.043358470729046
+      "required_improvement_factor": 1.3285218800294163,
+      "speedup_if_rank_weights_were_free": 4.202130812290166,
+      "tp2_group_ms_per_token": 29.9490094571728,
+      "tp2_tok_s": 33.390085953594024
     }
   ],
   "verdict": {
-    "best_case_speedup": 1.0221143467260685,
+    "best_case_speedup": 1.1131885724454917,
     "certified": false,
-    "maximum_required_improvement_factor": 1.7753757704448965,
-    "minimum_headroom_factor": 0.5632610383938084,
+    "maximum_required_improvement_factor": 1.3285218800294163,
+    "minimum_headroom_factor": 0.7527162442953954,
     "optimistic_bound_clears_target": true,
-    "optimistic_bound_speedup": 3.144473874099512,
+    "optimistic_bound_speedup": 4.202130812290166,
     "passes_target_in_every_row": false,
     "target_speedup": 1.3,
     "withheld_reasons": [
       "the pre-Packet-3 shard-kernel gate has no recorded evidence",
       "a row projects below the 1.3x target"
     ],
-    "worst_case_speedup": 0.8780471919312417
+    "worst_case_speedup": 0.9444233051504461
   }
 }

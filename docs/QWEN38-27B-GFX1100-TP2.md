@@ -142,8 +142,10 @@ Against the faster matched single-GPU arm (35.36 tok/s, 28.28 ms/token) that is
 lands at **0.61-0.68x** - TP2 slower than one GPU, not faster. RCCL's per-step
 groups must get **2.4-4.5x cheaper** for the eager path to break even. A
 two-rank host-staged exchange with batched submission reaches **42.9 us** and
-projects **0.99-1.17x**, so the qualified win the design accepts is reachable
-there and not through RCCL.
+projects **0.99-1.17x**; that projection is conditional - the artifact is
+uncertified and no local shard kernel or model-level measurement backs it - but
+it is the only structure measured here that reaches 1.0x at all, and RCCL's
+per-step groups do not.
 
   **Four transport levers are now measured, and the host orchestration of the
   exchange is the largest single one.** Every structure below reproduces the
@@ -152,11 +154,11 @@ there and not through RCCL.
 
   | Per-reduction structure | Cost | 128 reductions | Speedup at 0% fixed share |
   | --- | ---: | ---: | ---: |
-  | RCCL, one group per reduction, with an intermediate device copy | 177.3 us | 22.69 ms | 0.680x |
-  | RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.738x |
-  | RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.757x |
-  | Host exchange, one rank at a time (submit, wait, submit, wait) | 71.7 us | 9.17 ms | 1.016x |
-  | Host exchange, both ranks submitted before either is awaited | **42.9 us** | **5.49 ms** | **1.170x** |
+  | RCCL, one group per reduction, with an intermediate device copy | 177.6 us | 22.73 ms | 0.680x |
+  | RCCL, one group per reduction, copy removed | 153.9 us | 19.70 ms | 0.738x |
+  | RCCL, copy removed, replayed from a captured graph | 147.0 us | 18.82 ms | 0.757x |
+  | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 9.00 ms | 1.022x |
+  | Host exchange, both ranks submitted before either is awaited | **40.9 us** | **5.24 ms** | **1.182x** |
 
   The intermediate device copy costs **23.6 us per reduction**, so the copy-free
   protocol is the right default for any RCCL-based chain. Host submission is only
@@ -176,22 +178,29 @@ there and not through RCCL.
   enqueued after the return copy that read the same staging slot on that rank's
   stream, so the wait the host already performs is also the slot-reuse guard.
 
-  The batched exchange's measured per-reduction budget is **4.7 us to submit the
-  device-to-host copies, 9.4 us waiting for them, 5.7 us to submit the return
-  copies, 0.2 us of return-copy wait, and 6.5 us of host accumulation**, against
-  **15.4 us per copy measured on the device with events**. So the copies (30.8 us
-  for the pair) now overlap the host work (26.4 us) rather than sitting beside
-  it, and the copy time - not the host wait - is the term that binds. Each
-  staged byte crosses PCIe twice, so a peer-DMA path would halve that, and peer
-  DMA is unavailable on this host.
+  Host orchestration is worth **29.3 us per reduction**, split by a third arm
+  that keeps the batching and restores the return wait: **17.7 us is rank
+  batching and 11.6 us is dropping the return wait**. The instrumented arm's wall
+  clock and phases cover the same steps, and they account for 41.9 of 44.3 us, so
+  the residual is 2.3 us of helper and loop overhead rather than a missing phase.
+  The phases now name a **15.2 us device-context entry/exit term** that earlier
+  counters omitted entirely - more than either copy submission - so no native
+  ceiling follows from subtracting phases. Copies are probed per rank: 13.6-15.1 us
+  for a single copy on an idle stream, 8.2-9.9 us per copy when 16 are submitted
+  back to back inside one event pair. Both are probe observations, not a trace of
+  the chain's critical path, and rank 1 is consistently the slower card. Each
+  staged byte crosses PCIe twice, so a peer-DMA path would halve the copy term,
+  and peer DMA is unavailable on this host.
 
-  The 9.4 us of exposed device-to-host wait is what a device-signalled protocol
-  would remove, and the ceiling for that work is therefore ~33 us per reduction.
-  Reaching 1.3x at zero fixed share would need ~24 us, which is below the
-  measured cost of the two copies alone, so 1.3x is not reachable through
-  transport work on this host. A **1.04-1.17x qualified win is reachable**, which
-  the design accepts: it projects above 1.0x at 0%, 10% and 20% fixed-cost share
-  and reaches 0.985x at 30%.
+  The projection clears 1.0x at 0%, 10% and 20% fixed-cost share and reaches
+  0.994x at 30%, as a **conditional projection**: the artifact records
+  `certified: false` with no shard-kernel evidence, so this is not a qualified
+  model result. The 1.3x target is an aspiration, and the design accepts smaller
+  qualified wins; whether the exchange can supply one is undecided until the local
+  segments and an in-chain copy trace exist. The full-vector check runs through
+  the same batched protocol at the maximum timed depth with a distinct seed per
+  rank and a bounded recurrence, so every element and both ranks are covered
+  rather than element zero of a scalar seed: 5120 elements, exact, ranks agree.
 
   Capturing the dependency-bearing chain works: 128 reductions, one native group
   each, captured into a HIP graph and replayed, with the closed form reproduced
@@ -551,20 +560,25 @@ communication wrappers or treat estimated half-model time as measured evidence.
   **0.99-1.17x** (`.../tp2_break_even_staged_exchange_batched.json`) - above 1.0x
   at 0%, 10% and 20% fixed-cost share. Packet 3 does not start from the RCCL
   result; see "Measured status".
-- [ ] Measure the local segment costs that selective sharding needs: MLP versus
-  attention/GDN time per layer on one GPU. Sharding only the MLP reduces the
-  exposed reduction count without restoring replicated attention or GDN work, and
-  the decision rule is `TP1 segment time > slowest shard time + exposed
-  communication` per segment, with the slower participating card accounted for
-  when attention is replicated. The transport numbers above say what the exposed
-  communication term is; the segment times are not yet measured.
-- [ ] Optional: move the batched exchange into a native C++ loop with
-  preallocated pinned buffers and accumulation scratch, and compare against
-  Python with identical dependencies and completion boundaries. The ceiling is
-  the ~10.2 us of ctypes submission plus the ~6.5 us of host accumulation per
-  reduction, because the ~9.4 us exposed wait and the 30.8 us of copy time are
-  unchanged by it. This is worth doing only if the submission term matters after
-  the segment measurement decides whether the exchange is on the critical path.
+- [ ] Measure the local segment costs that selective sharding needs, on both
+  cards: complete and shard-shaped MLP, attention and GDN segments with local
+  layout, output dtype, residual/norm boundaries and the relevant context, plus
+  representative `compute -> exchange -> compute` sequences rather than an idle
+  buffer exchange. Sharding only the MLP halves the exposed reduction count but
+  **restores the full attention and GDN work on each rank** relative to full TP,
+  and the slower rank can determine that segment's completion time. Single-owner
+  attention is not free either: it needs the corresponding result broadcast. The
+  decision rule is per segment, `TP1 segment time > slowest shard time + exposed
+  communication`, and one global fixed-cost share cannot resolve it.
+- [ ] Run a native C++ A/B of the exact batched protocol with preallocated
+  pinned slots, views/descriptors and sum scratch, preserving ordering, device
+  ownership and numerical semantics, and compare against the Python arm on total
+  latency. The Python phase counters do not bound the native benefit: they start
+  inside the device-scope helper, exclude context entry/exit and other Python
+  work, and cover a different population from the ladder slope. Earlier
+  submission can also change the exposed wait, so that term is not constant
+  across implementations. The benefit is unmeasured, not bounded by a
+  subtraction.
 - [ ] Use Tier-1 allocation probes before full-prompt capacity testing. Record
   actual TP1 HIP/PM4 submission transport and resolved profile; measure local
   shard-shaped kernels and rank enqueue skew before extrapolating.

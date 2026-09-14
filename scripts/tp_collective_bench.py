@@ -67,6 +67,8 @@ DEFAULT_CHAIN_MODES = (
     "per_step_alternating_graph",
     "staged_exchange_host_sync",
     "staged_exchange_batched",
+    "staged_exchange_batched_return_wait",
+    "staged_exchange_instrumented",
 )
 
 #: Modes that are measured only when asked for. Capturing a single group for the
@@ -891,6 +893,7 @@ def _measure_staged_exchange_chain(
     warmup: int,
     seed: float,
     protocol: str = "serial",
+    instrumented: bool = False,
 ) -> dict[str, Any]:
     """Measure a dependency-bound two-rank exchange that does not use RCCL.
 
@@ -913,6 +916,11 @@ def _measure_staged_exchange_chain(
         Submit both device-to-host copies before waiting for either, wait for
         both, accumulate, then submit both host-to-device copies and wait for
         neither. Two host waits per reduction, and the paired transfers overlap.
+    ``batched_return_wait``
+        The same structure with the per-step host-to-device wait restored, as the
+        causal control for dropping it. Without this arm, the difference between
+        ``serial`` and ``batched`` mixes two changes: how the ranks are batched
+        and whether the return copies are awaited.
 
     The batched form is correct without the host-to-device waits, and that is
     worth stating because dropping them looks like removing a dependency:
@@ -940,10 +948,11 @@ def _measure_staged_exchange_chain(
     import numpy as np
 
     from hipengine.core.device import scoped_current_device
+    from hipengine.core.memory import copy_device_to_host, copy_host_array_to_device, host_array_ptr
     from hipengine.core.memory import host_buffer_ptr
     from hipengine.core.runtime import MemcpyKind
 
-    if protocol not in ("serial", "batched"):
+    if protocol not in ("serial", "batched", "batched_return_wait"):
         raise ValueError(f"unknown staged protocol {protocol!r}")
 
     devices = tuple(getattr(transport, "devices", ()) or ())
@@ -979,22 +988,39 @@ def _measure_staged_exchange_chain(
             "error": f"{type(error).__name__}: {error}",
         }
 
-    #: Host-side phase counters, separated so submission cost and exposed wait are
-    #: not reported as one number. ``device`` terms come from a separate event
-    #: probe rather than from these.
+    #: Host-side phase counters. They are only maintained when the arm is
+    #: instrumented, so a performance arm runs with no ``perf_counter`` calls in
+    #: its hot path. ``scope_us`` is the part of a rank's block that is neither the
+    #: copy call nor the wait - device-context entry and exit, pointer preparation
+    #: and the helper call itself - because a counter that starts inside the device
+    #: scope cannot be reconciled against wall time.
     phases = {
         "d2h_submit_us": 0.0,
+        "d2h_scope_us": 0.0,
         "d2h_wait_us": 0.0,
         "h2d_submit_us": 0.0,
+        "h2d_scope_us": 0.0,
         "h2d_wait_us": 0.0,
         "host_sum_us": 0.0,
+        "loop_us": 0.0,
         "steps": 0,
     }
 
     def submit_d2h_rank(rank: int, step: int, slot: int) -> None:
         source = buffers[step % 2]
+        if not instrumented:
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.memcpy_async(
+                    host_buffer_ptr(host_slots[rank][slot]),
+                    source[rank].ptr,
+                    nbytes,
+                    MemcpyKind.DEVICE_TO_HOST,
+                    streams[rank],
+                )
+            return
+        block_started = time.perf_counter()
         with scoped_current_device(runtime, devices[rank].index):
-            started = time.perf_counter()
+            scope_entered = time.perf_counter()
             runtime.memcpy_async(
                 host_buffer_ptr(host_slots[rank][slot]),
                 source[rank].ptr,
@@ -1002,7 +1028,10 @@ def _measure_staged_exchange_chain(
                 MemcpyKind.DEVICE_TO_HOST,
                 streams[rank],
             )
-            phases["d2h_submit_us"] += (time.perf_counter() - started) * 1e6
+            submitted = time.perf_counter()
+        finished = time.perf_counter()
+        phases["d2h_submit_us"] += (submitted - scope_entered) * 1e6
+        phases["d2h_scope_us"] += ((scope_entered - block_started) + (finished - submitted)) * 1e6
 
     def submit_d2h(step: int, slot: int) -> None:
         for rank in range(world):
@@ -1010,16 +1039,37 @@ def _measure_staged_exchange_chain(
 
     def wait_rank(rank: int, *, d2h: bool) -> None:
         key = "d2h_wait_us" if d2h else "h2d_wait_us"
+        scope_key = "d2h_scope_us" if d2h else "h2d_scope_us"
+        if not instrumented:
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.stream_synchronize(streams[rank])
+            return
+        block_started = time.perf_counter()
         with scoped_current_device(runtime, devices[rank].index):
-            started = time.perf_counter()
+            scope_entered = time.perf_counter()
             runtime.stream_synchronize(streams[rank])
-            phases[key] += (time.perf_counter() - started) * 1e6
+            waited = time.perf_counter()
+        finished = time.perf_counter()
+        phases[key] += (waited - scope_entered) * 1e6
+        phases[scope_key] += ((scope_entered - block_started) + (finished - waited)) * 1e6
 
     def wait_streams(*, d2h: bool) -> None:
         for rank in range(world):
             wait_rank(rank, d2h=d2h)
 
     def accumulate(slot: int) -> None:
+        if not instrumented:
+            partials = [
+                np.frombuffer(host_slots[rank][slot], dtype=np.float32)
+                for rank in range(world)
+            ]
+            reduced = partials[0].copy()
+            with np.errstate(over="ignore"):
+                for partial in partials[1:]:
+                    reduced += partial
+            for rank in range(world):
+                partials[rank][:] = reduced
+            return
         started = time.perf_counter()
         partials = [
             np.frombuffer(host_slots[rank][slot], dtype=np.float32) for rank in range(world)
@@ -1036,8 +1086,19 @@ def _measure_staged_exchange_chain(
 
     def submit_h2d_rank(rank: int, step: int, slot: int) -> None:
         destination = buffers[(step + 1) % 2]
+        if not instrumented:
+            with scoped_current_device(runtime, devices[rank].index):
+                runtime.memcpy_async(
+                    destination[rank].ptr,
+                    host_buffer_ptr(host_slots[rank][slot]),
+                    nbytes,
+                    MemcpyKind.HOST_TO_DEVICE,
+                    streams[rank],
+                )
+            return
+        block_started = time.perf_counter()
         with scoped_current_device(runtime, devices[rank].index):
-            started = time.perf_counter()
+            scope_entered = time.perf_counter()
             runtime.memcpy_async(
                 destination[rank].ptr,
                 host_buffer_ptr(host_slots[rank][slot]),
@@ -1045,13 +1106,92 @@ def _measure_staged_exchange_chain(
                 MemcpyKind.HOST_TO_DEVICE,
                 streams[rank],
             )
-            phases["h2d_submit_us"] += (time.perf_counter() - started) * 1e6
+            submitted = time.perf_counter()
+        finished = time.perf_counter()
+        phases["h2d_submit_us"] += (submitted - scope_entered) * 1e6
+        phases["h2d_scope_us"] += ((scope_entered - block_started) + (finished - submitted)) * 1e6
 
     def submit_h2d(step: int, slot: int) -> None:
         for rank in range(world):
             submit_h2d_rank(rank, step, slot)
 
+    def vector_check(depth: int) -> dict[str, Any]:
+        """Verify full vectors with rank-distinct finite inputs.
+
+        The ladder's check reads element zero of a scalar seed and grows the value
+        as ``seed * world ** depth``, which saturates fp32 long before depth 128.
+        This check runs the same batched protocol over the whole vector with a
+        distinct seed per rank and a bounded recurrence instead: the host writes
+        ``sum / world + 1``, so after ``d`` steps every element holds
+        ``mean_r(seed_r[j]) + d``. That stays exact and informative at any depth,
+        and because the rank seeds differ, a reduction that dropped one rank's
+        contribution would land on a different value than the sum of both.
+        """
+
+        import numpy as np
+
+        base = 4.0
+        count = int(case.count)
+        depth = max(1, int(depth))
+        # seed_r[j] = base * (r + 1) * (j + 1): distinct per rank and per element,
+        # and with base = 4 the mean over two ranks is an exact integer.
+        seeds = [
+            np.array(
+                [base * (rank + 1) * (index + 1) for index in range(count)],
+                dtype=np.float32,
+            )
+            for rank in range(world)
+        ]
+        expected = np.sum(np.stack(seeds), axis=0) / world + float(depth)
+        for rank in range(world):
+            with scoped_current_device(runtime, devices[rank].index):
+                copy_host_array_to_device(buffers[0][rank], seeds[rank])
+        for step in range(depth):
+            slot = step % slot_count
+            submit_d2h(step, slot)
+            wait_streams(d2h=True)
+            partials = [
+                np.frombuffer(host_slots[rank][slot], dtype=np.float32) for rank in range(world)
+            ]
+            reduced = partials[0].copy()
+            with np.errstate(over="ignore"):
+                for partial in partials[1:]:
+                    reduced += partial
+            reduced = reduced / world + np.float32(1.0)
+            for rank in range(world):
+                partials[rank][:] = reduced
+            submit_h2d(step, slot)
+        wait_streams(d2h=False)
+        observed = []
+        for rank in range(world):
+            host = np.empty(count, dtype=np.float32)
+            with scoped_current_device(runtime, devices[rank].index):
+                copy_device_to_host(host_array_ptr(host), buffers[depth % 2][rank])
+            observed.append(host)
+        rank_seeds_differ = bool(np.any(seeds[0] != seeds[1])) if world > 1 else False
+        ranks_agree = all(
+            bool(np.array_equal(observed[0], other)) for other in observed[1:]
+        )
+        return {
+            "depth": depth,
+            "elements": count,
+            "rank_seeds_differ": rank_seeds_differ,
+            "ranks_agree": ranks_agree,
+            "full_vector_matches": all(
+                bool(np.array_equal(host, expected)) for host in observed
+            ),
+            "max_abs_error": float(
+                max(float(np.max(np.abs(host - expected))) for host in observed)
+            ),
+            "recurrence": "host writes sum / world + 1; expected = mean_r(seed_r[j]) + depth",
+            # Reported so a host-wait count can separate this diagnostic from the
+            # protocol it is checking: one device-to-host wait per rank per step,
+            # plus one drain per rank at the end.
+            "stream_syncs": world * (depth + 1),
+        }
+
     def staged_step(step: int) -> None:
+        step_started = time.perf_counter() if instrumented else 0.0
         if protocol == "serial":
             # One rank at a time: submit and wait, so the two ranks' transfers of a
             # pair never overlap. This is the orchestration structure under test,
@@ -1064,21 +1204,28 @@ def _measure_staged_exchange_chain(
             for rank in range(world):
                 submit_h2d_rank(rank, step, 0)
                 wait_rank(rank, d2h=False)
+        else:
+            slot = step % slot_count
+            submit_d2h(step, slot)
+            # This wait is the slot-reuse guard as well as the accumulation
+            # barrier, which is why the return copies below do not need one.
+            wait_streams(d2h=True)
+            accumulate(slot)
+            submit_h2d(step, slot)
+            if protocol == "batched_return_wait":
+                # Causal control: the same batching, with the return wait kept.
+                wait_streams(d2h=False)
+        if instrumented:
+            # Wall time and phases cover the same steps, so the residual is a
+            # reconciliation rather than a comparison of two populations.
+            phases["loop_us"] += (time.perf_counter() - step_started) * 1e6
             phases["steps"] += 1
-            return
-        slot = step % slot_count
-        submit_d2h(step, slot)
-        # This wait is the slot-reuse guard as well as the accumulation barrier.
-        wait_streams(d2h=True)
-        accumulate(slot)
-        # No host-to-device wait: see the docstring for why stream order covers it.
-        submit_h2d(step, slot)
-        phases["steps"] += 1
 
     def enqueue_chain(depth: int) -> None:
         for step in range(int(depth)):
             staged_step(step)
-        if protocol == "batched":
+        if protocol != "serial":
+            # One drain per chain covers the final return copy.
             wait_streams(d2h=False)
 
     def read_value(rank: int, buffer_index: int) -> float:
@@ -1098,59 +1245,120 @@ def _measure_staged_exchange_chain(
                     buffers[0][rank], encode_values([float(seed)] * case.count, case.dtype)
                 )
 
-    def device_probe(steps: int = 3) -> dict[str, Any]:
-        """Measure the transfer itself with events, on the first staging slot.
+    def copy_probe(*, steps: int = 3, prequeued: int = 16) -> dict[str, Any]:
+        """Observe one copy and a prequeued run of copies, per rank and direction.
 
-        The host-side counters above time submission and waiting, which includes
-        driver overhead and scheduling, so they cannot say how long the copy took.
-        This probe records an event around one copy per direction per rank and
-        reports the device-side elapsed time.
+        Neither is a trace of the chain's critical path. The single-copy form
+        records an event, submits one copy from Python and records the end event,
+        so the interval it reports can absorb the submission gap and any
+        scheduling before the copy starts. The prequeued form submits ``prequeued``
+        copies back to back between the two events, which removes the host from
+        the interval and divides the result by the copy count, so the two
+        together bracket the per-copy cost: the single-copy number is an upper
+        bound that includes host starvation, and the prequeued number approaches
+        the transfer plus per-launch cost. Samples stay per rank rather than
+        pooled, because the two cards are separate lanes.
         """
 
-        probe_slot = 0
-        samples: dict[str, list[float]] = {"d2h_us": [], "h2d_us": []}
-        for step in range(max(1, int(steps))):
-            per_rank: dict[str, list[float]] = {"d2h_us": [], "h2d_us": []}
-            for rank in range(world):
-                with scoped_current_device(runtime, devices[rank].index):
-                    start = runtime.event_create()
-                    end = runtime.event_create()
-                    runtime.event_record(start, streams[rank])
+        def run_one(rank: int, direction: str, step: int) -> float:
+            with scoped_current_device(runtime, devices[rank].index):
+                start = runtime.event_create()
+                end = runtime.event_create()
+                runtime.event_record(start, streams[rank])
+                if direction == "d2h":
                     runtime.memcpy_async(
-                        host_buffer_ptr(host_slots[rank][probe_slot]),
+                        host_buffer_ptr(host_slots[rank][0]),
                         buffers[step % 2][rank].ptr,
                         nbytes,
                         MemcpyKind.DEVICE_TO_HOST,
                         streams[rank],
                     )
-                    runtime.event_record(end, streams[rank])
-                    runtime.stream_synchronize(streams[rank])
-                    per_rank["d2h_us"].append(runtime.event_elapsed_time_ms(start, end) * 1e3)
-                    runtime.event_destroy(start)
-                    runtime.event_destroy(end)
-            accumulate(probe_slot)
-            for rank in range(world):
-                with scoped_current_device(runtime, devices[rank].index):
-                    start = runtime.event_create()
-                    end = runtime.event_create()
-                    runtime.event_record(start, streams[rank])
+                else:
                     runtime.memcpy_async(
                         buffers[(step + 1) % 2][rank].ptr,
-                        host_buffer_ptr(host_slots[rank][probe_slot]),
+                        host_buffer_ptr(host_slots[rank][0]),
                         nbytes,
                         MemcpyKind.HOST_TO_DEVICE,
                         streams[rank],
                     )
-                    runtime.event_record(end, streams[rank])
-                    runtime.stream_synchronize(streams[rank])
-                    per_rank["h2d_us"].append(runtime.event_elapsed_time_ms(start, end) * 1e3)
-                    runtime.event_destroy(start)
-                    runtime.event_destroy(end)
-            for key, values in per_rank.items():
-                samples[key].extend(values)
+                runtime.event_record(end, streams[rank])
+                runtime.stream_synchronize(streams[rank])
+                elapsed = runtime.event_elapsed_time_ms(start, end) * 1e3
+                runtime.event_destroy(start)
+                runtime.event_destroy(end)
+            return elapsed
+
+        def run_prequeued(rank: int, direction: str, step: int) -> float:
+            with scoped_current_device(runtime, devices[rank].index):
+                start = runtime.event_create()
+                end = runtime.event_create()
+                runtime.event_record(start, streams[rank])
+                for _ in range(int(prequeued)):
+                    if direction == "d2h":
+                        runtime.memcpy_async(
+                            host_buffer_ptr(host_slots[rank][0]),
+                            buffers[step % 2][rank].ptr,
+                            nbytes,
+                            MemcpyKind.DEVICE_TO_HOST,
+                            streams[rank],
+                        )
+                    else:
+                        runtime.memcpy_async(
+                            buffers[(step + 1) % 2][rank].ptr,
+                            host_buffer_ptr(host_slots[rank][0]),
+                            nbytes,
+                            MemcpyKind.HOST_TO_DEVICE,
+                            streams[rank],
+                        )
+                runtime.event_record(end, streams[rank])
+                runtime.stream_synchronize(streams[rank])
+                elapsed = runtime.event_elapsed_time_ms(start, end) * 1e3 / int(prequeued)
+                runtime.event_destroy(start)
+                runtime.event_destroy(end)
+            return elapsed
+
+        samples: dict[str, dict[str, list[float]]] = {
+            "single": {"d2h_us": [], "h2d_us": []},
+            "prequeued": {"d2h_us": [], "h2d_us": []},
+        }
+        per_rank: dict[str, dict[str, dict[str, list[float]]]] = {
+            "single": {"d2h_us": {}, "h2d_us": {}},
+            "prequeued": {"d2h_us": {}, "h2d_us": {}},
+        }
+        for step in range(max(1, int(steps))):
+            for rank in range(world):
+                for direction in ("d2h", "h2d"):
+                    for name, runner in (("single", run_one), ("prequeued", run_prequeued)):
+                        elapsed = runner(rank, direction, step)
+                        samples[name][f"{direction}_us"].append(elapsed)
+                        per_rank[name][f"{direction}_us"].setdefault(str(rank), []).append(
+                            elapsed
+                        )
         return {
-            key: round(float(np.median(values)), 3) if values else None
-            for key, values in samples.items()
+            "prequeued_copies_per_sample": int(prequeued),
+            "note": (
+                "probe observations, not a DMA critical path: the single-copy form "
+                "can absorb host submission gaps and the prequeued form measures "
+                "throughput with the host removed from the interval"
+            ),
+            **{
+                name: {
+                    f"{direction}_us": round(float(np.median(values)), 3)
+                    for direction, values in directions.items()
+                    if values
+                }
+                for name, directions in samples.items()
+            },
+            "per_rank": {
+                name: {
+                    direction: {
+                        rank: round(float(np.median(values)), 3)
+                        for rank, values in per_rank_values.items()
+                    }
+                    for direction, per_rank_values in directions.items()
+                }
+                for name, directions in per_rank.items()
+            },
         }
 
     report: dict[str, Any] = {
@@ -1160,12 +1368,20 @@ def _measure_staged_exchange_chain(
         "dependency_carried_by": "stream order plus the host round trip",
         "device_copy_per_reduction": True,
         "host_round_trip_per_reduction": True,
-        "host_waits_per_reduction": 4 if protocol == "serial" else 2,
+        "host_waits_per_reduction": {"serial": 4, "batched": 2, "batched_return_wait": 4}[
+            protocol
+        ],
         "accumulation": "host",
         "graph_replay": False,
+        "instrumented": bool(instrumented),
         "phase_attribution": (
-            "host-side counters separate submission from exposed wait; the "
-            "transfer itself is measured separately by device_probe with events"
+            "counters separate submission, device-scope overhead and exposed wait, "
+            "and loop_us is the same population as the ladder slope, so "
+            "unaccounted_us reconciles the two. Copies are probed separately; the "
+            "probe is an observation, not a DMA critical path"
+            if instrumented
+            else "not instrumented: this arm is a performance measurement, so no "
+            "perf_counter runs in its hot path"
         ),
         "depths": {},
     }
@@ -1197,7 +1413,13 @@ def _measure_staged_exchange_chain(
                 "final_buffer": final_index,
                 "per_step_us": summary["p50_ms"] * 1e3 / depth,
             }
-        report["device_probe"] = device_probe()
+        report["copy_probe"] = copy_probe()
+        # The vector check runs while the streams and slots are still live, and it
+        # is a correctness diagnostic rather than part of the timed ladder, so the
+        # phases are snapshotted first and its copies stay out of them.
+        phase_snapshot = dict(phases)
+        if protocol != "serial" and int(max(depths)) >= 1:
+            report["vector_check"] = vector_check(int(max(depths)))
     finally:
         if registered:
             for slots in host_slots:
@@ -1219,20 +1441,26 @@ def _measure_staged_exchange_chain(
     report["marginal"] = chain_marginal_ms(
         [(int(depth), entry["p50_ms"]) for depth, entry in report["depths"].items()]
     )
-    steps = max(1, int(phases["steps"]))
-    report["phases_per_step_us"] = {
-        key: phases[key] / steps
-        for key in (
+    if instrumented and phase_snapshot["steps"]:
+        steps = int(phase_snapshot["steps"])
+        phase_keys = (
             "d2h_submit_us",
+            "d2h_scope_us",
             "d2h_wait_us",
             "h2d_submit_us",
+            "h2d_scope_us",
             "h2d_wait_us",
             "host_sum_us",
         )
-    }
-    report["phases_per_step_us"]["host_total_us"] = sum(
-        report["phases_per_step_us"].values()
-    )
+        report["phases_per_step_us"] = {key: phase_snapshot[key] / steps for key in phase_keys}
+        accounted = sum(report["phases_per_step_us"].values())
+        report["phases_per_step_us"]["accounted_us"] = accounted
+        # loop_us and the phases cover the same steps, so this residual is the
+        # helper/loop overhead the phases do not name, not a missing population.
+        report["phases_per_step_us"]["unaccounted_us"] = (
+            phase_snapshot["loop_us"] / steps - accounted
+        )
+        report["phases_per_step_us"]["loop_us"] = phase_snapshot["loop_us"] / steps
     return report
 
 
@@ -1263,6 +1491,7 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
     replayed_single_group = marginal_us("single_group_alternating_graph")
     staged = marginal_us("staged_exchange_host_sync")
     staged_batched = marginal_us("staged_exchange_batched")
+    staged_batched_return_wait = marginal_us("staged_exchange_batched_return_wait")
     attribution: dict[str, Any] = {
         "per_step_us": copy_bearing,
         "copy_free_us": copy_free,
@@ -1271,6 +1500,7 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
         "graph_replay_single_group_us": replayed_single_group,
         "staged_exchange_us": staged,
         "staged_exchange_batched_us": staged_batched,
+        "staged_exchange_batched_return_wait_us": staged_batched_return_wait,
     }
     if copy_bearing is not None and copy_free is not None:
         attribution["device_copy_us"] = copy_bearing - copy_free
@@ -1289,7 +1519,14 @@ def _chain_attribution(modes: dict[str, Any]) -> dict[str, Any]:
     if copy_free is not None and replayed_per_step is not None and replayed_per_step > 0:
         attribution["per_step_over_graph_replay"] = copy_free / replayed_per_step
     if staged is not None and staged_batched is not None:
+        # Two changes separate these arms, so the causal split is reported as
+        # well: rank batching (serial -> batched_return_wait) and dropping the
+        # return wait (batched_return_wait -> batched).
         attribution["staged_host_orchestration_us"] = staged - staged_batched
+    if staged is not None and staged_batched_return_wait is not None:
+        attribution["staged_rank_batching_us"] = staged - staged_batched_return_wait
+    if staged_batched_return_wait is not None and staged_batched is not None:
+        attribution["staged_return_wait_us"] = staged_batched_return_wait - staged_batched
     return attribution
 
 
@@ -1510,9 +1747,13 @@ def _measure_dependent_chain(
         )
     # The specialized-transport screen replaces RCCL entirely for the exchange, so
     # it runs last and cannot perturb the RCCL measurements.
-    for mode, protocol in (
-        ("staged_exchange_host_sync", "serial"),
-        ("staged_exchange_batched", "batched"),
+    for mode, protocol, instrumented in (
+        ("staged_exchange_host_sync", "serial", False),
+        ("staged_exchange_batched_return_wait", "batched_return_wait", False),
+        ("staged_exchange_batched", "batched", False),
+        # The attribution arm is instrumented, so its own ladder slope is slower
+        # than the performance arm's and is not a performance number.
+        ("staged_exchange_instrumented", "batched", True),
     ):
         if mode not in selected:
             continue
@@ -1526,6 +1767,7 @@ def _measure_dependent_chain(
             warmup=warmup,
             seed=seed,
             protocol=protocol,
+            instrumented=instrumented,
         )
     report["attribution"] = _chain_attribution(report["modes"])
     return report
