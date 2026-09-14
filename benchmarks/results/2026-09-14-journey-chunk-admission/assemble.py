@@ -13,7 +13,7 @@ from scripts.qwen4exp_chunk_memory_probe import allocation_margins
 def assemble(root):
     packets, hashes = {}, {}
     for name in ("resume-chunk2048-allocation.json", "resume-chunk2048-lazy-allocation.json",
-                 "resume-chunk4096-lazy-allocation.json"):
+                 "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -48,13 +48,42 @@ def assemble(root):
             or any(packet["admission"]["plan"]["scratch_bytes"] != 4 * 1024**3
                    for packet in (left, right))):
         raise ValueError("allocation probes use different lanes or allowances")
+    depth = packets["resume-chunk2048-depth.json"]
+    if (depth["status"] != "completed" or not depth["source"]["tracked_clean"]
+            or not depth["quality"]["hard_gates_passed"]
+            or depth["quality"]["summary"]["rows"] != 780
+            or depth["quality"]["summary"]["max_abs_logit_delta"] != 0
+            or not depth["deterministic"] or not depth["state_gate"]["passed"]
+            or not all(row["strict_candidate_state_exact"] for row in depth["state_gate"]["prompts"])
+            or depth["protocol"]["chunk"] != 2048 or depth["protocol"]["strict_chunk"] != 1024
+            or depth["protocol"]["repeats"] != 3 or depth["protocol"]["decode_steps"] != 64
+            or depth["model"] != left["model_identity"]
+            or depth["host"]["machine_id"] != left["host"]["machine_id"]
+            or depth["production_base_manifest"] != left["manifest_sha256"]
+            or depth["allocation_evidence"] != left
+            or any(row["current_allocated_bytes"] for row in depth["lifecycle"].values())):
+        raise ValueError("invalid 2048 numerical gate")
+    case_tokens = {f"{category}-p{size}": size for category in (
+        "code", "general_en", "general_ja", "mixed_ja_en") for size in (512, 1024, 4096)}
+    expected_cases = set(case_tokens)
+    expected = {(case, "strict", 0) for case in expected_cases} | {
+        (case, "candidate", repeat) for case in expected_cases for repeat in range(3)}
+    traces = depth["chunk_dispatches"]
+    if len(traces) != 48 or {(r["case_id"], r["arm"], r["repeat"]) for r in traces} != expected:
+        raise ValueError("incomplete chunk dispatch evidence")
+    for trace in traces:
+        tokens = case_tokens[trace["case_id"]]
+        size = 1024 if trace["arm"] == "strict" else 2048
+        if trace["chunks"] != [min(size, tokens - start) for start in range(0, tokens, size)]:
+            raise ValueError("wrong executed chunk split")
     return dict(
-        schema=1, performance_claim=False, inference_claim=False,
-        status="2048_prepared_admission_pass_4096_accounting_blocker",
+        schema=1, performance_claim=False, promotion_claim=False,
+        inference_scope="Canonical 512/1K/4K,64 teacher-forced decode steps,three repeats only",
+        status="2048_numerical_pass_task_performance_pending_4096_accounting_blocker",
         raw_sha256=hashes, captures=packets,
         limits=[
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
-            "2048 is eligible for bounded numerical testing, not a new default.",
+            "2048 passes bounded numerics; performance/task/isolation and wider admission remain.",
             "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
             "No hidden-seed export, graph capture, driver scratch, native-depth or c2 inference claim.",
         ],
