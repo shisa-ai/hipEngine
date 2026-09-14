@@ -16,7 +16,7 @@ improvements require the applicable unchanged production quality gates.
 
 | ID | Concrete experiment | State / prerequisite |
 | --- | --- | --- |
-| R01 | Existing tiled GDN/DPP suffix on corrected production | Short/depth/task composition gate first |
+| R01 | Existing tiled GDN/DPP suffix on corrected production | Short594 and canonical780 numerical/state gates pass; Japanese complete task review and perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
 | R02 | Multi-column GDN on corrected production | Previous old-stack failure preserved; isolate after R01 |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
 | R04 | Dense Q8 iu8 independently | Count actual projection dispatch; short and canonical depth gates |

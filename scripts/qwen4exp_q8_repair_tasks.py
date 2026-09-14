@@ -23,6 +23,24 @@ from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
+def task_candidate(name):
+    spec = CANDIDATES[name]
+    return ("q8_fallback" if name == "production_q8_fallback" else name), spec
+
+
+def select_task_prompts(prompts, requested):
+    if requested is None:
+        return prompts, True
+    if len(set(requested)) != len(requested):
+        raise ValueError("duplicate task prompt")
+    if not set(requested) <= {row["id"] for row in prompts}:
+        raise ValueError("unknown task prompt")
+    selected = [row for row in prompts if row["id"] in requested]
+    if not selected:
+        raise ValueError("empty task prompt selection")
+    return selected, len(selected) == len(prompts)
+
+
 def completion(runner, tokenizer, ids, max_tokens):
     runner.reset()
     result = runner.prefill(ids)
@@ -46,8 +64,14 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument("--candidate", choices=tuple(CANDIDATES),
+                        default="production_q8_fallback")
+    parser.add_argument("--prompt-id", action="append")
     args = parser.parse_args()
     check_host()
+    source = _git_metadata(ROOT)
+    if not source["tracked_clean"]:
+        parser.error("task capture requires a clean committed tracked tree")
     if args.max_tokens <= 0:
         parser.error("max-tokens must be positive")
     args.prefill_chunk_size = 1024
@@ -63,19 +87,25 @@ def main():
         register_gfx1151_kernels(replace=True)
         register_qwen4_exp_gfx1151_profiles()
         reset_memory_stats()
-        prompts = _load_suites(DEFAULT_PROMPTS)
-        report = dict(status="running", command=sys.argv, source=_git_metadata(ROOT),
+        prompts, complete_suite = select_task_prompts(
+            _load_suites(DEFAULT_PROMPTS), args.prompt_id)
+        candidate_name, candidate = task_candidate(args.candidate)
+        report = dict(status="running", command=sys.argv, source=source,
                       host=_host_metadata(), model=model_identity(args.model_root),
                       protocol=__doc__, prompts=prompts, arms={}, lifecycle={},
+                      candidate=args.candidate, complete_suite=complete_suite,
+                      max_tokens=args.max_tokens, repeats=2,
                       performance_claim=False, task_passed=False)
-        for name, profile in (("strict", "strict"), ("q8_fallback", "production")):
+        for name, profile in (("strict", "strict"), (candidate_name, candidate.base_profile)):
             generator, resolved, _ = _make_generator(args, profile)
-            overrides = CANDIDATES["production_q8_fallback"].environment if name != "strict" else {}
+            overrides = candidate.environment if name != "strict" else {}
             previous = {key: os.environ.get(key) for key in overrides}
             os.environ.update(overrides)
             report["arms"][name] = dict(manifest=resolved.manifest_sha256,
                                        overrides=dict(overrides), cases=[])
             try:
+                if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+                    generator.runner.configure_mmq_prefill_resources()
                 for prompt in prompts:
                     ids = build_chat_prompt(generator.tokenizer, prompt["prompt"])
                     repeats = []
@@ -88,6 +118,10 @@ def main():
                     args.output.write_text(json.dumps(report, indent=2) + "\n")
                     print(name, prompt["id"], len(repeats[0]["ids"]),
                           repeats[0]["finish_reason"], flush=True)
+            except Exception as error:
+                report["status"] = "failed"
+                report["error"] = f"{type(error).__name__}: {error}"
+                raise
             finally:
                 for key, value in previous.items():
                     if value is None:
@@ -96,8 +130,14 @@ def main():
                         os.environ[key] = value
                 generator.close()
                 report["lifecycle"][name] = memory_stats()
+                args.output.write_text(json.dumps(report, indent=2) + "\n")
         report["status"] = "captured_requires_manual_review"
+        if (_git_metadata(ROOT) != source
+                or any(value["current_allocated_bytes"] for value in report["lifecycle"].values())):
+            report["status"] = "invalid_source_or_lifecycle"
         args.output.write_text(json.dumps(report, indent=2) + "\n")
+        if report["status"] == "invalid_source_or_lifecycle":
+            raise RuntimeError(report["status"])
 
 
 if __name__ == "__main__":
