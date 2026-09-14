@@ -38,7 +38,7 @@ from hipengine.core.runtime import MemcpyKind
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_decode_context_bf16,
 )
-from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, bf16_to_fp16, f32_to_bf16, f32_to_fp16
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_separate_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_dual_gemv_out_bf16,
@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_gemv_f32_bf16w_f32_out,
     dense_gemv_out_bf16,
 )
+from hipengine.core.hipblaslt import HipblasLt, HIP_R_16F
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_prefill_gemm_out_bf16, dense_prefill_wmma_out_bf16
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_partial_rotary_f32,
@@ -70,6 +71,29 @@ def _prefill_gemm(x_ptr, w_ptr, out_ptr, rows, in_features, out_features, *, run
     else:
         dense_prefill_gemm_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_features,
                                     stream=0, runtime=runtime)
+
+
+def _prefill_gemm_lt(runner, x16_ptr, w16_ptr, out_f32_ptr, rows, in_features, out_features):
+    """fp16-in/f32-out hipBLASLt GEMM (fp32 accumulate; same arithmetic class as
+    the WMMA chain, which stages fp16 operands with f32 accumulation)."""
+    if runner._lt is None:
+        runner._lt = HipblasLt()
+    shape = (rows, in_features, out_features)
+    problem = runner._lt_problems.get(shape)
+    if problem is None:
+        problem = runner._lt.problem(rows, in_features, out_features, 0)
+        algos = problem.algorithms(16)
+        zero = [a for a in algos if a.workspace_size == 0]
+        algo = zero[0] if zero else algos[0]
+        runner._lt_problems[shape] = problem
+        runner._lt_algos[shape] = algo
+    problem.launch(runner._lt_algos[shape], x16_ptr, w16_ptr, out_f32_ptr, stream=0)
+
+
+def _bf16_bits_to_fp16_bits(host_bf16: np.ndarray) -> np.ndarray:
+    """bf16 bit patterns -> fp16 bit patterns (exact numeric value)."""
+    f32 = (np.asarray(host_bf16, dtype=np.uint16).astype(np.uint32) << 16).view(np.float32)
+    return np.ascontiguousarray(f32.astype(np.float16).view(np.uint16))
 
 
 def _upload(host: np.ndarray) -> DeviceBuffer:
@@ -109,6 +133,13 @@ class _LayerBuffers:
     gate_w: DeviceBuffer
     up_w: DeviceBuffer
     down_w: DeviceBuffer
+    q_w16: DeviceBuffer
+    k_w16: DeviceBuffer
+    v_w16: DeviceBuffer
+    o_w16: DeviceBuffer
+    gate_w16: DeviceBuffer
+    up_w16: DeviceBuffer
+    down_w16: DeviceBuffer
     k_cache: DeviceBuffer
     v_cache: DeviceBuffer
 
@@ -152,8 +183,18 @@ class VibevoiceQwen2Runtime:
         self._sin = keep(_upload(sin))
 
         self.layers: list[_LayerBuffers] = []
+        self._lt = None  # hipBLASLt prefill route, created lazily
+        self._lt_problems: dict[tuple[int, int, int], object] = {}
+        self._lt_algos: dict[tuple[int, int, int], object] = {}
         kv_bytes = max_context * kv_heads * head_dim * 2
         for layer in weights.layers:
+            q_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.q_weight, dtype=np.float32).reshape(-1)))
+            k_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.k_weight, dtype=np.float32).reshape(-1)))
+            v_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.v_weight, dtype=np.float32).reshape(-1)))
+            o_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.o_weight, dtype=np.float32).reshape(-1)))
+            gate_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.gate_proj, dtype=np.float32).reshape(-1)))
+            up_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.up_proj, dtype=np.float32).reshape(-1)))
+            down_w16 = _bf16_bits_to_fp16_bits(f32_to_bf16_bits(np.asarray(layer.down_proj, dtype=np.float32).reshape(-1)))
             self.layers.append(
                 _LayerBuffers(
                     input_ln=keep(_upload(f32_to_bf16_bits(layer.input_layernorm))),
@@ -168,6 +209,13 @@ class VibevoiceQwen2Runtime:
                     gate_w=keep(_upload(f32_to_bf16_bits(np.asarray(layer.gate_proj, dtype=np.float32).reshape(-1)))),
                     up_w=keep(_upload(f32_to_bf16_bits(np.asarray(layer.up_proj, dtype=np.float32).reshape(-1)))),
                     down_w=keep(_upload(f32_to_bf16_bits(np.asarray(layer.down_proj, dtype=np.float32).reshape(-1)))),
+                    q_w16=keep(_upload(q_w16)),
+                    k_w16=keep(_upload(k_w16)),
+                    v_w16=keep(_upload(v_w16)),
+                    o_w16=keep(_upload(o_w16)),
+                    gate_w16=keep(_upload(gate_w16)),
+                    up_w16=keep(_upload(up_w16)),
+                    down_w16=keep(_upload(down_w16)),
                     k_cache=_alloc(kv_bytes),
                     v_cache=_alloc(kv_bytes),
                 )
@@ -332,42 +380,37 @@ class VibevoiceQwen2Runtime:
         kv_w = rows * kv_heads * head_dim * 4
         scratch: list[DeviceBuffer] = [
             _alloc(rows * hidden * 2),  # normed
+            _alloc(rows * hidden * 2),  # normed fp16 (hipBLASLt input)
             _alloc(qkv_w), _alloc(qkv_w),  # q f32, q_out f32
             _alloc(kv_w), _alloc(kv_w), _alloc(kv_w),  # k, v, k_out f32
             _alloc(rows * kv_heads * head_dim * 2),  # k bf16
             _alloc(rows * kv_heads * head_dim * 2),  # v bf16
             _alloc(qkv_w),  # attn out f32
+            _alloc(rows * hidden * 2),  # attn fp16
             _alloc(rows * hidden * 4),  # o f32
-            _alloc(rows * hidden * 2),  # o bf16
             _alloc(rows * hidden * 2),  # normed2
-            _alloc(rows * ffn * 2), _alloc(rows * ffn * 2),  # gate, up
-            _alloc(rows * ffn * 2),  # silu out
+            _alloc(rows * hidden * 2),  # normed2 fp16
+            _alloc(rows * ffn * 4), _alloc(rows * ffn * 4),  # gate f32, up f32
+            _alloc(rows * ffn * 2), _alloc(rows * ffn * 2),  # gate bf16, up bf16
+            _alloc(rows * ffn * 2),  # silu out bf16
+            _alloc(rows * ffn * 2),  # act fp16
+            _alloc(rows * hidden * 4),  # down f32
             _alloc(rows * hidden * 2),  # down bf16
         ]
-        (normed, q_f32, q_out, k_f32, v_f32, k_out, k_bf16, v_bf16, attn,
-         o_f32, o_bf16, normed2, gate, up, act, down_bf16) = scratch
+        (normed, normed16, q_f32, q_out, k_f32, v_f32, k_out, k_bf16, v_bf16,
+         attn, attn16, o_f32, normed2, normed216, gate_f32, up_f32, gate,
+         up, act, act16, down_f32, down_bf16) = scratch
         kv_row_bytes = kv_heads * head_dim * 2
         try:
             for layer in self.layers:
                 vv_rmsnorm_bf16(hidden_rows.ptr, layer.input_ln.ptr, normed.ptr,
                                 rows, hidden, spec.rms_norm_eps,
                                 library=self.library, runtime=self.runtime)
-                # q/k/v projections: bf16 GEMM, widen, fp32 bias, fp32 rope
-                qb16 = _alloc(rows * hidden * 2)
-                kb16 = _alloc(rows * kv_heads * head_dim * 2)
-                vb16 = _alloc(rows * kv_heads * head_dim * 2)
-                try:
-                    _prefill_gemm(normed.ptr, layer.q_w.ptr, qb16.ptr, rows, hidden, hidden,
-                                                runtime=self.runtime)
-                    _prefill_gemm(normed.ptr, layer.k_w.ptr, kb16.ptr, rows, hidden, kv_heads * head_dim,
-                                                runtime=self.runtime)
-                    _prefill_gemm(normed.ptr, layer.v_w.ptr, vb16.ptr, rows, hidden, kv_heads * head_dim,
-                                                runtime=self.runtime)
-                    bf16_to_f32(qb16.ptr, q_f32.ptr, rows * hidden, stream=0, runtime=self.runtime)
-                    bf16_to_f32(kb16.ptr, k_f32.ptr, rows * kv_heads * head_dim, stream=0, runtime=self.runtime)
-                    bf16_to_f32(vb16.ptr, v_f32.ptr, rows * kv_heads * head_dim, stream=0, runtime=self.runtime)
-                finally:
-                    free(qb16); free(kb16); free(vb16)
+                # q/k/v projections: hipBLASLt fp16 GEMM -> f32, fp32 bias, fp32 rope
+                bf16_to_fp16(normed.ptr, normed16.ptr, rows * hidden, stream=0, runtime=self.runtime)
+                _prefill_gemm_lt(self, normed16.ptr, layer.q_w16.ptr, q_f32.ptr, rows, hidden, hidden)
+                _prefill_gemm_lt(self, normed16.ptr, layer.k_w16.ptr, k_f32.ptr, rows, hidden, kv_heads * head_dim)
+                _prefill_gemm_lt(self, normed16.ptr, layer.v_w16.ptr, v_f32.ptr, rows, hidden, kv_heads * head_dim)
                 vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
                                 library=self.library, runtime=self.runtime)
                 vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_heads * head_dim, kv_heads * head_dim,
@@ -389,26 +432,28 @@ class VibevoiceQwen2Runtime:
                                          positions.ptr, attn.ptr, rows, heads, kv_heads, head_dim,
                                          max_ctx, self._scale,
                                          stream=0, runtime=self.runtime)
-                # o projection: cast attention output to bf16, bf16 GEMM
-                f32_to_bf16(attn.ptr, o_bf16.ptr, rows * heads * head_dim,
+                # o projection: f32 -> fp16, hipBLASLt GEMM -> f32 -> bf16
+                f32_to_fp16(attn.ptr, attn16.ptr, rows * heads * head_dim,
                             stream=0, runtime=self.runtime)
-                _prefill_gemm(o_bf16.ptr, layer.o_w.ptr, down_bf16.ptr,
-                                            rows, heads * head_dim, hidden,
-                                            runtime=self.runtime)
+                _prefill_gemm_lt(self, attn16.ptr, layer.o_w16.ptr, o_f32.ptr, rows, heads * head_dim, hidden)
+                f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
+                           stream=0, runtime=self.runtime)
                 vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
                                        hidden_rows.ptr, rows * hidden, hidden,
                                        library=self.library, runtime=self.runtime)
                 vv_rmsnorm_bf16(hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr,
                                 rows, hidden, spec.rms_norm_eps,
                                 library=self.library, runtime=self.runtime)
-                _prefill_gemm(normed2.ptr, layer.gate_w.ptr, gate.ptr, rows, hidden, ffn,
-                                            runtime=self.runtime)
-                _prefill_gemm(normed2.ptr, layer.up_w.ptr, up.ptr, rows, hidden, ffn,
-                                            runtime=self.runtime)
+                bf16_to_fp16(normed2.ptr, normed216.ptr, rows * hidden, stream=0, runtime=self.runtime)
+                _prefill_gemm_lt(self, normed216.ptr, layer.gate_w16.ptr, gate_f32.ptr, rows, hidden, ffn)
+                _prefill_gemm_lt(self, normed216.ptr, layer.up_w16.ptr, up_f32.ptr, rows, hidden, ffn)
+                f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=0, runtime=self.runtime)
+                f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=0, runtime=self.runtime)
                 silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
                                            stream=0, runtime=self.runtime)
-                _prefill_gemm(act.ptr, layer.down_w.ptr, down_bf16.ptr, rows, ffn, hidden,
-                                            runtime=self.runtime)
+                bf16_to_fp16(act.ptr, act16.ptr, rows * ffn, stream=0, runtime=self.runtime)
+                _prefill_gemm_lt(self, act16.ptr, layer.down_w16.ptr, down_f32.ptr, rows, ffn, hidden)
+                f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden, stream=0, runtime=self.runtime)
                 vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
                                        hidden_rows.ptr, rows * hidden, hidden,
                                        library=self.library, runtime=self.runtime)
@@ -417,8 +462,12 @@ class VibevoiceQwen2Runtime:
         finally:
             for buf in scratch:
                 free(buf)
+            free(positions)
 
     def close(self) -> None:
+        if self._lt is not None:
+            self._lt.close()
+            self._lt = None
         for attr in ("_hidden", "_normed", "_q", "_k", "_v", "_q_out", "_k_out",
                      "_k_bf16", "_v_bf16", "_attn", "_o_f32", "_o_bf16", "_gate_up",
                      "_silu", "_down_f32", "_down_bf16", "_logits_bf16", "_logits_f32",

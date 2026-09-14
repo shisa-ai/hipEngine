@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-14",
+  "model": "microsoft/VibeVoice-ASR-HF (front-end weights: microsoft/VibeVoice-ASR)",
+  "quant": "bf16 weights (decode) + fp16 GEMM weight copies (prefill), fp32 accumulate",
+  "workload": {
+    "audio": "11.0 s mono 24 kHz real speech (JFK inaugural excerpt, openai/whisper test fixture, ffmpeg-resampled)",
+    "prompt": "processor-shaped transcription request, 146 prompt tokens, 83 audio frames",
+    "generation": "greedy, 49 new tokens to natural EOS (<|im_end|>)"
+  },
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+  "protocol": "same-process lanes, 3 repetitions after warmup, best-of reported; both lanes use the identical normalized PCM and identical preprocessing; torch lane is transformers eager-attention bf16 on cuda; multiple independent runs (ratios 0.98x and 0.97x)",
+  "commands": [
+    "python3 -u scripts/vibevoice_asr_bench.py --pcm-file <jfk24k.wav> --repeats 3 --max-new-tokens 128"
+  ],
+  "results": {
+    "hipengine_total_s": 4.249,
+    "hipengine_frontend_s": 0.345,
+    "hipengine_prompt_decode_s": 3.902,
+    "torch_total_s": 4.392,
+    "ratio_hipengine_over_torch": 0.97,
+    "hipengine_decode_ms_per_token": 66.0,
+    "torch_decode_ms_per_token": 81.0,
+    "prefill_ms_146_rows": 300
+  },
+  "gates": {
+    "correctness": "greedy chain 16/16 equal to torch fixture (test_gpu_vibevoice_qwen2_runner); front-end rel <= 5e-2 vs torch-GPU bf16 fixture; 10/10 gpu-suite tests; E2E transcript content identical to torch (End timestamp 11.0 vs 11.07, benign bf16 path divergence)"
+  },
+  "notes": [
+    "hipEngine is now FASTER than the torch GPU lane end to end (0.97x torch total). Change vs the prior artifact: prompt prefill GEMMs route through hipBLASLt fp16-in/f32-out (numerics class identical to the prior WMMA chain, which staged fp16 operands with f32 accumulation); persistent fp16 copies of the 6 GEMM weight sets per layer (+9.2 GB on the 133 GB unified memory)",
+    "hipBLASLt bf16 heuristics are NOT_SUPPORTED on this ROCm build (recorded in the prefill-probe worklog entry); fp16 with f32 accumulate is the route",
+    "decode remains the bandwidth-bound floor (14.6 GB of weights per token at ~256 GB/s LPDDR5X); front-end residual vs torch is 0.345 s vs ~0.30 s",
+    "prior negative result kept: WMMA GEMV variants on rows=1 decode are slower (bulk-tile kernels)"
+  ]
+}
