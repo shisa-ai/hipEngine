@@ -8,7 +8,8 @@
     "resume-chunk2048-allocation.json": "f0a546a40550e6b625dd50acaf266e119548fd8ce79e7cf001fc51118bcd0e91",
     "resume-chunk2048-lazy-allocation.json": "2d0b6b6675aaaf664c8e4829a153cedeb2073b4231756ba5beea651d6dc1694e",
     "resume-chunk4096-lazy-allocation.json": "768a94337434eb4bae94d026643288de6befd3979ccfad0cb0d2884b4a988a93",
-    "resume-chunk2048-depth.json": "53e9702c4d3cc4401c314685ce42d2d677d3a8718159e5b6445903b8ca29d545"
+    "resume-chunk2048-depth.json": "53e9702c4d3cc4401c314685ce42d2d677d3a8718159e5b6445903b8ca29d545",
+    "resume-chunk-workspace-check.json": "c4e5073ef16200b302e2b243eaa07808bc2e8e22e699c9f7d2aa60c6e244bc11"
   },
   "captures": {
     "resume-chunk2048-allocation.json": {
@@ -1491,6 +1492,322 @@
         ]
       },
       "candidate_dispatch_calls": 0
+    },
+    "resume-chunk-workspace-check.json": {
+      "status": "workspace_check_passed",
+      "command": [
+        "scripts/qwen4exp_prefill_restore_ab.py",
+        "--candidate",
+        "production_baseline",
+        "--candidate-chunk-size",
+        "2048",
+        "--allocation-evidence",
+        "/tmp/hipengine-journey-execute-20260914/resume-chunk2048-lazy-allocation.json",
+        "--shared-decode-graphs",
+        "--workspace-check-only",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-journey-hipcc-version-20260913.txt",
+        "--output",
+        "/tmp/hipengine-journey-execute-20260914/resume-chunk-workspace-check.json"
+      ],
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "8ad5fae51e046c854f3d5314c8dbd903830f42a3",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.1.6-1-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "model": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+      "samples": [],
+      "performance_claim": false,
+      "candidates": [
+        "production_baseline"
+      ],
+      "protocol": {
+        "pairs": 3,
+        "warmups": 1,
+        "chunk": 1024,
+        "kv": "BF16",
+        "shared_decode_graphs": true,
+        "chunk_by_arm": {
+          "before": 1024,
+          "production_baseline": 2048
+        },
+        "workspace_ownership": "Validation-only: donor executed as independent reference; active runner then borrowed donor prefill buffers with its own decode state."
+      },
+      "arm_overrides": {
+        "before": {},
+        "production_baseline": {}
+      },
+      "allocation_evidence": {
+        "schema": 2,
+        "status": "passed",
+        "performance_claim": false,
+        "source": {
+          "path": "/home/lhl/hipEngine",
+          "head": "9ce67327ad161370d697c5da2385854fd4c5cb4b",
+          "tracked_clean": true
+        },
+        "host": {
+          "hostname": "gfx1151",
+          "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+          "kernel": "7.1.6-1-cachyos",
+          "tuned_active": "Current active profile: accelerator-performance",
+          "cpu_governors": {
+            "performance": 32
+          },
+          "gpu_clock_policies": {
+            "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+          },
+          "rocm_platform": "10.0.0",
+          "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+        },
+        "model_identity": {
+          "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+          "fingerprint": {
+            "algorithm": "sha256-directory-manifest-v1",
+            "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+            "size_bytes": 111334654784,
+            "sampled_bytes": 12582912,
+            "file_count": 4,
+            "exists": true,
+            "path_type": "directory"
+          }
+        },
+        "command": [
+          "scripts/qwen4exp_chunk_memory_probe.py",
+          "--model-root",
+          "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--compiler-version-file",
+          "/tmp/hipengine-journey-hipcc-version-20260913.txt",
+          "--chunk-size",
+          "2048",
+          "--capacity",
+          "1",
+          "--context-length",
+          "4352",
+          "--output",
+          "/tmp/hipengine-journey-execute-20260914/resume-chunk2048-lazy-allocation.json"
+        ],
+        "chunk_size": 2048,
+        "resident_capacity": 1,
+        "requested_context_length": 4352,
+        "manifest_sha256": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+        "limits": "Allocation/admission only; constructor and worst-case grouped repair queues. No inference, hidden-seed export, graph capture or driver-owned scratch certificate. Existing reserve remains.",
+        "admission": {
+          "mode": "explicit",
+          "device_free_bytes": 128844787712,
+          "device_total_bytes": 128849018880,
+          "vision_weight_reserve_bytes": 0,
+          "plan": {
+            "available_device_bytes": 128844787712,
+            "required_bytes": 91415892912,
+            "device_weight_bytes": 82523491840,
+            "staging_bytes": 41943040,
+            "kv_bytes": 106954752,
+            "index_bytes": 34035120,
+            "runtime_state_bytes": 119533568,
+            "scratch_bytes": 4294967296,
+            "reserve_bytes": 4294967296,
+            "context_tokens": 4352,
+            "resident_capacity": 1
+          },
+          "scratch_policy": "4GiB per runner includes current MMQ sidecars and prefill scratch"
+        },
+        "first_runner_memory": {
+          "current_allocated_bytes": 85635370752,
+          "peak_allocated_bytes": 85635370752,
+          "total_allocated_bytes": 85635370752,
+          "total_freed_bytes": 0,
+          "active_allocations": 1617,
+          "peak_allocations": 1617
+        },
+        "before_lazy_memory": {
+          "current_allocated_bytes": 85635370752,
+          "peak_allocated_bytes": 85635370752,
+          "total_allocated_bytes": 85635370752,
+          "total_freed_bytes": 0,
+          "active_allocations": 1617,
+          "peak_allocations": 1617
+        },
+        "lazy_group_risk": [
+          {
+            "runner_index": 0,
+            "queues": [
+              {
+                "owner": "gdn_prefill_scratch",
+                "rows": 2048,
+                "compact_rows": 20480,
+                "output_width": 2560,
+                "nbytes": 209715204
+              },
+              {
+                "owner": "qsa_prefill_scratch",
+                "rows": 2048,
+                "compact_rows": 20480,
+                "output_width": 2560,
+                "nbytes": 209715204
+              }
+            ]
+          }
+        ],
+        "prepared_context": 4352,
+        "prepared_runners": 1,
+        "prepared_memory": {
+          "current_allocated_bytes": 86054801160,
+          "peak_allocated_bytes": 86054801160,
+          "total_allocated_bytes": 86054801160,
+          "total_freed_bytes": 0,
+          "active_allocations": 1621,
+          "peak_allocations": 1621
+        },
+        "allocation_margins": {
+          "explicit_components_bytes": 82825958320,
+          "observed_remainder_bytes": 3228842840,
+          "scratch_allowance_bytes": 4294967296,
+          "scratch_margin_bytes": 1066124456,
+          "including_reserve_margin_bytes": 5361091752
+        },
+        "memory_after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 86054801160,
+          "total_allocated_bytes": 86054801160,
+          "total_freed_bytes": 86054801160,
+          "active_allocations": 0,
+          "peak_allocations": 1621
+        },
+        "elapsed_seconds": 48.519366569351405
+      },
+      "workspaces": {
+        "before": {
+          "chunk_size": 1024,
+          "token_capacity": 1024,
+          "metadata_rows": 1024,
+          "gdn_tile_capacity": 1120,
+          "qsa_tile_capacity": 1120
+        },
+        "production_baseline": {
+          "chunk_size": 2048,
+          "token_capacity": 2048,
+          "metadata_rows": 2048,
+          "gdn_tile_capacity": 1760,
+          "qsa_tile_capacity": 1760
+        }
+      },
+      "prepared_memory": {
+        "current_allocated_bytes": 87950047568,
+        "peak_allocated_bytes": 87950047568,
+        "total_allocated_bytes": 87950047568,
+        "total_freed_bytes": 0,
+        "active_allocations": 2019,
+        "peak_allocations": 2019
+      },
+      "workspace_memory_guard": {
+        "free_before_donor": 42247000064,
+        "extra_runner_bound": 4555490736,
+        "free_after_setup": 40248414208,
+        "reserve_bytes": 4294967296
+      },
+      "workspace_check": {
+        "case_id": "code-p4096",
+        "rows": 5,
+        "logits_exact": true,
+        "reference_profile": "production",
+        "state_exact": true,
+        "native_chunks": [
+          1024,
+          1024,
+          1024,
+          1024
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1024,
+          1024
+        ]
+      },
+      "graph_stats": {
+        "before": {
+          "moe_graph_cache": {
+            "capture": 48,
+            "replay": 144,
+            "eager": 0,
+            "reject": 0
+          },
+          "layer_graph_cache": {
+            "capture": 0,
+            "replay": 0,
+            "eager": 432,
+            "reject": 0
+          }
+        },
+        "production_baseline": {
+          "moe_graph_cache": {
+            "capture": 48,
+            "replay": 144,
+            "eager": 0,
+            "reject": 0
+          },
+          "layer_graph_cache": {
+            "capture": 0,
+            "replay": 0,
+            "eager": 432,
+            "reject": 0
+          }
+        }
+      },
+      "donor_graph_stats": {
+        "moe": {
+          "capture": 48,
+          "replay": 144,
+          "eager": 0,
+          "reject": 0
+        },
+        "layer": {
+          "capture": 0,
+          "replay": 0,
+          "eager": 432,
+          "reject": 0
+        }
+      },
+      "after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 87950047568,
+        "total_allocated_bytes": 87950047568,
+        "total_freed_bytes": 87950047568,
+        "active_allocations": 0,
+        "peak_allocations": 2019
+      },
+      "base_manifest": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565"
     }
   },
   "limits": [

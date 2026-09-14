@@ -44,6 +44,17 @@ default promotion. Native-context, c2, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
 
+## Performance Harness Check
+
+At clean `8ad5fae51`, native production chunk1024 and the active runner
+borrowing those same prefill buffers match all five scored4K logit rows
+and sampled state, with zero teardown allocations. Recorded metadata/token
+capacities are1024 versus2048, and map capacities1120 versus1760.
+The timed comparison can therefore use correctly sized prefill workspaces
+while keeping active decode graphs, recurrent state and KV ownership shared.
+Maximum-size PLE staging and unused donor non-prefill allocations remain
+common to both arms; this is not a cold-start allocation-cost comparison.
+
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
   --raw-root /tmp/hipengine-journey-execute-20260914
