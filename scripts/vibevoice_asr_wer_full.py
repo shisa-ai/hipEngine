@@ -252,6 +252,29 @@ def run_lane_worker(args, wer) -> int:
     return 0
 
 
+def qualify_lanes(systems: dict) -> dict:
+    """Verdict on whether the lane WERs may be compared.
+
+    Malformed generations are excluded from WER per lane independently, which
+    lets different lanes be scored over different clip sets. The per-lane
+    scores stay in the artifact as diagnostics; this is the separate admission
+    decision, and it fails whenever any lane dropped a clip. A lane that emits
+    garbage must not look better by having those clips quietly removed.
+    """
+    total_malformed = sum(len(d.get("malformed_transcripts") or [])
+                          for d in systems.values())
+    counts = {lane: d.get("clips_scored_for_wer")
+              for lane, d in systems.items()}
+    return {
+        "rule": "every lane scored the same clips and no lane emitted a "
+                "malformed transcript",
+        "malformed_transcripts_total": total_malformed,
+        "scored_clip_counts": counts,
+        "same_clip_set": len(set(counts.values())) == 1,
+        "passed": total_malformed == 0,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-clips", type=int, default=500)
@@ -335,18 +358,7 @@ def main() -> int:
     total_malformed = sum(len(d.get("malformed_transcripts") or [])
                           for d in results["systems"].values())
     results["malformed_transcripts_total"] = total_malformed
-    # Excluding malformed outputs per lane independently lets the lanes be scored
-    # over different clip sets, so their WERs stop being directly comparable.
-    # The scores above stay as diagnostics; qualification is a separate verdict.
-    results["qualification"] = {
-        "rule": "every lane scored the same clips and no lane emitted a malformed transcript",
-        "malformed_transcripts_total": total_malformed,
-        "scored_clip_counts": {lane: d.get("clips_scored_for_wer")
-                               for lane, d in results["systems"].items()},
-        "same_clip_set": len({d.get("clips_scored_for_wer")
-                              for d in results["systems"].values()}) == 1,
-        "passed": total_malformed == 0,
-    }
+    results["qualification"] = qualify_lanes(results["systems"])
     Path(args.out).write_text(json.dumps(results, indent=2))
     print(f"wrote {args.out}  (malformed transcripts across lanes: {total_malformed})")
     if total_malformed:
