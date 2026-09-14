@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Isolated GR-Up IU8
+
+- The unchanged `GR_IU8` restoration independently fails the780-row
+  production numerical gate: meanKL0.0014024, p950.0074015,
+  top1772/780. Actual direct calls are exclusively K320/N10240.
+- Keep this arithmetic off. Revisit only after actual-input projection/
+  sigmoid/mean boundary localization and a new correction, not an unchanged
+  flag retry. Related exact fusions and GR-down are separate decisions.
+  Evidence: `benchmarks/results/2026-09-15-journey-gr-up/`.
+
 ## MoE Backend Refresh Cache
 
 - Stable-generation MoE backend caching is unconditional after its exact
