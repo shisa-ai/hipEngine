@@ -181,7 +181,12 @@ def copy_host_to_device(
     runtime = runtime or get_hip_runtime()
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
-    runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
+    device = _buffer_device(buffer)
+    if device is None:
+        runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
+    else:
+        with scoped_current_device(runtime, device.index):
+            runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
 
 
 def copy_host_array_to_device(
@@ -218,7 +223,12 @@ def copy_device_to_host(
     runtime = runtime or get_hip_runtime()
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
-    runtime.memcpy(host_ptr, buffer.ptr, count, MemcpyKind.DEVICE_TO_HOST)
+    device = _buffer_device(buffer)
+    if device is None:
+        runtime.memcpy(host_ptr, buffer.ptr, count, MemcpyKind.DEVICE_TO_HOST)
+    else:
+        with scoped_current_device(runtime, device.index):
+            runtime.memcpy(host_ptr, buffer.ptr, count, MemcpyKind.DEVICE_TO_HOST)
 
 
 def copy_device_to_device(
