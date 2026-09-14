@@ -25,6 +25,7 @@ from hipengine.kernels.vibevoice import (
 from hipengine.runtime.vibevoice_qwen2 import (
     VibevoiceQwen2Runtime,
     _LayerBuffers,
+    _PrefillScratchArena,
     _alloc,
     _cos_sin_tables,
     _upload,
@@ -155,6 +156,9 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         self._logits_bf16 = _alloc(spec.vocab_size * 2)
         self._logits_f32 = _alloc(spec.vocab_size * 4)
         self._scale = 1.0 / float(np.sqrt(head_dim))
+        # Per-call prefill scratch, reused across prefill calls on this runner.
+        # Released by the base close(), which is the only free path for it.
+        self._prefill_scratch = _PrefillScratchArena(self.runtime)
 
     def logits_argmax(self) -> tuple[np.ndarray, int]:
         """Final norm + dense bf16 lm head + host argmax (lm_head stays dense)."""
