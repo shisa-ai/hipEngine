@@ -1,0 +1,50 @@
+{
+ "date": "2026-09-14",
+ "purpose": "VibeVoice-ASR front-end: stop freeing and reallocating the scratch arena on every encoder pass",
+ "host": "zbook",
+ "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+ "protocol": {
+  "weights": "microsoft/VibeVoice-ASR-HF acoustic and semantic tokenizer encoders + connectors, frontend_variant=wmma",
+  "change": "_ScratchPool.reset() used to close the DeviceMemoryArena and create a new one on every call, so each encoder pass paid a hipMalloc/hipFree pair for the whole arena. It now rewinds the bump pointer when the existing arena is already large enough and only replaces it when a request does not fit. DeviceMemoryArena gains a rewind() method; the change is purely additive there.",
+  "why_it_matters": "reset() runs once per encoder pass, so a forward is two resets. The requested capacity is 24 * chunk_samples * num_filters * 2 + 16 MiB, which is 287 MB for an 11 s clip, 754 MB for 30 s and 2.23 GB for 90 s (both encoders have num_filters=32). All resets within a forward request the same capacity, so reuse applies from the first pass onward.",
+  "method_primary": "in-process rotating A/B: the same frontend alternates between the previous reset and the rewind reset, 2 warmup passes each, then 6 timed passes per lane alternating, so host drift cannot favour a lane",
+  "method_secondary": "separate-process before/after on the same host, 1 warmup plus 4 timed passes per revision",
+  "command": "python3 /tmp/frontend_ab.py (primary) and python3 /tmp/frontend_bench.py (secondary), run against HEAD and against the change"
+ },
+ "results": {
+  "in_process_rotating_ab": {
+   "11s_audio": {"old_ms": 290.2, "new_ms": 280.6, "delta_ms": 9.6, "delta_pct": 3.42,
+                 "old_trials": [293.3, 290.5, 292.1, 289.5, 289.9, 288.4],
+                 "new_trials": [281.8, 280.2, 275.7, 280.7, 280.9, 280.4]},
+   "30s_audio": {"old_ms": 594.9, "new_ms": 529.7, "delta_ms": 65.2, "delta_pct": 12.31,
+                 "old_trials": [594.0, 594.0, 595.8, 600.2, 590.2, 597.4],
+                 "new_trials": [523.8, 529.1, 530.9, 533.7, 529.5, 529.8]},
+   "90s_audio": {"old_ms": 1657.7, "new_ms": 1441.9, "delta_ms": 215.7, "delta_pct": 14.96,
+                 "old_trials": [1680.0, 1674.3, 1655.1, 1654.1, 1660.2, 1652.8],
+                 "new_trials": [1444.9, 1429.4, 1438.7, 1439.0, 1473.9, 1475.5]}
+  },
+  "separate_process_before_after": {
+   "11s_audio": {"old_ms": 294.5, "new_ms": 274.3, "delta_pct": 6.9},
+   "30s_audio": {"old_ms": 600.1, "new_ms": 525.3, "delta_pct": 12.5}
+  },
+  "arena_capacity_bytes": {"11s": 287113216, "30s": 754974720, "90s": 2231369728},
+  "resets_per_forward": 2,
+  "saving_scales_with_arena_size": "9.6 ms at 287 MB, 65.2 ms at 754 MB, 215.7 ms at 2.23 GB; the freed and reallocated bytes per forward are twice the arena size",
+  "output_bit_identity": {
+   "11s_chunk_1440000": "d120e4b35cc484535c0c642ab76987c0",
+   "30s_chunk_160000": "c5cff17f76d13a19aafd1bb8ca88ee04",
+   "30s_chunk_1440000": "f950be75d44b19f24a6ad03340b1e43c",
+   "verdict": "identical between revisions for all three configurations, and identical across four repeated calls in each configuration, so reuse does not expose stale arena contents"
+  }
+ },
+ "gates": {
+  "arena_users": "34 passed (tests/test_unit_vibevoice_frontend_contract.py, tests/test_gpu_memory_stats.py, tests/test_unit_loading_materialize.py, tests/test_gpu_vibevoice_encoder_kernels.py)",
+  "new_reuse_gates": "3 new unit tests: a fitting reset must rewind and not close; a larger request must replace the arena while a later smaller one must reuse it; repeated resets must rewind every time. All three are RED on the parent revision and GREEN after.",
+  "embedding_identity": "front-end embeddings are bit-identical before and after across 11 s single-chunk, 30 s multi-chunk (chunk_samples=160000) and 30 s single-chunk, and stable across repeated calls"
+ },
+ "notes": [
+  "The multi-chunk case (30 s at chunk_samples=160000, three chunks) exercises six resets in one forward and still matches bit for bit, which is the case where a stale arena would show up.",
+  "Scoped to the front-end encode stage. In end-to-end terms an 11 s clip saves about 10 ms of a roughly 4.5 s pipeline, so no end-to-end claim is made.",
+  "benchmarks/README.md has no front-end stage row, so only the artifact and the changelog line are updated."
+ ]
+}

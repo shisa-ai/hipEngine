@@ -99,6 +99,20 @@ class DeviceMemoryArena:
         if expected is not None and expected != int(buffer.nbytes):
             raise ValueError("device arena view size does not match its allocation")
 
+    def rewind(self) -> None:
+        """Reuse the allocation from the start, invalidating every live view.
+
+        Keeps the same HIP owner instead of freeing and reallocating it, which
+        is what makes a per-call bump region cheap. Only valid when the caller
+        holds no outstanding views from the previous region.
+        """
+        if self.closed:
+            raise RuntimeError("device arena is closed")
+        self._offset = 0
+        self.requested_bytes = 0
+        self.allocation_count = 0
+        self._active.clear()
+
     def close(self) -> None:
         if self.closed:
             return
