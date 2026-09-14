@@ -248,6 +248,18 @@ CANDIDATES["q8_blockscale_guarded_quad"] = replace(
                  "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256",
                  "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad"},
 )
+CANDIDATES["q8_blockscale_guarded_restore"] = replace(
+    CANDIDATES["q8_blockscale_guarded_quad"], name="q8_blockscale_guarded_restore",
+    scenario_id="qwen4exp-q8-blockscale-guarded-dense-qsa",
+    environment={
+        **CANDIDATES["q8_blockscale_guarded_quad"].environment,
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
+        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
+        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1",
+    },
+)
 
 
 class GateError(RuntimeError):
