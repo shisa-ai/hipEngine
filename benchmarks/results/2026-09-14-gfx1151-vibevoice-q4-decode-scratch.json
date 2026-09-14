@@ -12,22 +12,57 @@
  },
  "results": {
   "q4_persistent_scratch_ms_per_token": 48.24,
-  "q4_persistent_scratch_trials": [48.14, 48.1, 48.34, 49.77],
+  "q4_persistent_scratch_trials": [
+   48.14,
+   48.1,
+   48.34,
+   49.77
+  ],
   "q4_fresh_malloc_ms_per_token": 53.74,
-  "q4_fresh_malloc_trials": [55.14, 53.69, 53.79, 52.9],
+  "q4_fresh_malloc_trials": [
+   55.14,
+   53.69,
+   53.79,
+   52.9
+  ],
   "bf16_dense_ms_per_token": 74.75,
-  "bf16_dense_trials": [74.77, 74.68, 74.74, 75.14],
+  "bf16_dense_trials": [
+   74.77,
+   74.68,
+   74.74,
+   75.14
+  ],
   "scratch_delta_ms_per_token": 5.5,
   "scratch_speedup": 1.114,
   "q4_vs_bf16_decode_speedup_matched": 1.5495,
   "q4_fresh_vs_bf16_decode_speedup_matched": 1.391,
   "repeat_runs": [
-   {"q4_fresh": 53.74, "q4_scratch": 49.05, "delta_pct": 9.56, "bf16": null},
-   {"q4_fresh": 52.92, "q4_scratch": 48.22, "delta_pct": 9.75, "bf16": null},
-   {"q4_fresh": 51.88, "q4_scratch": 48.09, "delta_pct": 7.88, "bf16": 74.75,
-    "q4_vs_bf16": 1.5544},
-   {"q4_fresh": 53.74, "q4_scratch": 48.24, "delta_pct": 11.4, "bf16": 74.75,
-    "q4_vs_bf16": 1.5495}
+   {
+    "q4_fresh": 53.74,
+    "q4_scratch": 49.05,
+    "delta_pct": 9.56,
+    "bf16": null
+   },
+   {
+    "q4_fresh": 52.92,
+    "q4_scratch": 48.22,
+    "delta_pct": 9.75,
+    "bf16": null
+   },
+   {
+    "q4_fresh": 51.88,
+    "q4_scratch": 48.09,
+    "delta_pct": 7.88,
+    "bf16": 74.75,
+    "q4_vs_bf16": 1.5544
+   },
+   {
+    "q4_fresh": 53.74,
+    "q4_scratch": 48.24,
+    "delta_pct": 11.4,
+    "bf16": 74.75,
+    "q4_vs_bf16": 1.5495
+   }
   ],
   "delta_pct_median_across_4_runs": 9.66,
   "o_proj_scratch_bytes": 7168,
@@ -35,12 +70,17 @@
   "malloc_free_pairs_removed_per_token": 28
  },
  "gates": {
-  "arithmetic_identity": "bit-identical: q4 logits checksum relative difference 0.000e+00 between the two Q4 lanes, and the same 40-token chain",
-  "gpu_suite_q4": "13 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py), unchanged from before the change",
+  "arithmetic_identity": "bit-identical: every decoded token's full logits vector is byte-identical between the two Q4 lanes (SHA-256 per token, 40 tokens, 6,082,560 logits, first mismatch none), and the same 40-token chain. The comparison is per token over raw logits bytes, not a sum, because a sum can match while individual elements differ. Negative control: the dense bf16 lane's per-token logits differ from the Q4 lane on 40/40 tokens, so the comparison is demonstrably sensitive.",
+  "gpu_suite_q4": "16 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py), unchanged from before the change",
   "gpu_suite_bf16": "8 passed (tests/test_gpu_vibevoice_qwen2_runner.py); the shared forward_layers passes the kwarg only when the runner owns a scratch, so the dense lane is byte-for-byte unaffected"
  },
+ "profile": {
+  "arithmetic": "strict",
+  "why": "the change is byte-exact on the affected surface (per-token logits identical), so it meets the strict arithmetic contract, which is stronger than production requires.",
+  "not_claimed": "this artifact is not a full production qualification. Production promotion additionally requires the calibrated mean/p95/p99/max KL envelope, top-1 by category/shape, same-schedule determinism, isolation, BF16-relative and task-quality gates per docs/EXECUTION-PROFILES.md section 6, which were not run for this artifact."
+ },
  "notes": [
-  "The 28 malloc/free pairs per token cost 3.8-5.5 ms/token, far more than the 7 KiB copy would suggest; hipMalloc/hipFree in the per-layer loop disrupts the launch pipeline rather than merely adding allocation work.",
+  "The 28 malloc/free pairs per token cost 3.8-5.5 ms/token, far more than the 7 KiB copy would suggest. Why is not measured here: the plausible reading is that hipMalloc/hipFree interleaved in the per-layer loop stalls the launch pipeline rather than merely adding allocation work, but this artifact measures the A/B delta, not the mechanism.",
   "Removing them also cuts variance: across four runs the persistent-scratch lane held 48.1-49.1 ms/token while the per-layer-malloc lane ranged 51.9-55.1 ms/token.",
   "The previously recorded 48.1 ms/token (artifact 2026-09-14-gfx1151-vibevoice-q4-pack8-decode.json) was measured with the same per-layer malloc, in a session whose dense bf16 lane measured 72.2 vs 74.75 ms/token here. The recorded absolute rate is therefore not comparable to this session's per-layer-malloc lane, and this artifact does not claim an old-to-new absolute improvement; the claim is the in-process A/B delta and the matched same-process ratio.",
   "Matched in one process this session, Q4_K_M decode is 1.55x the dense bf16 lane (48.24 vs 74.75 ms/token), against 1.39x for the same Q4 lane with per-layer malloc."

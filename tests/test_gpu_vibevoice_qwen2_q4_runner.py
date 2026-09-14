@@ -293,6 +293,15 @@ def test_batched_prefill_refuses_unsupported_quant_types(runtime, lm, monkeypatc
 
 
 # docs/EXECUTION-PROFILES.md "Calibrated production envelope" (section 6.1).
+#
+# Profile note. Both the KL metrics and the top-1 metrics here compare the
+# batched prefill against the row-by-row route, which is this model's registered
+# strict parent, so they are cross-schedule comparisons. Under section 4.2 and
+# the `production` profile row, cross-width generated-ID equality is diagnostic
+# rather than a promotion requirement: the KL clauses are the binding
+# production drift bound, and the top-1 clauses are diagnostic. Nothing in this
+# file is a full production qualification, which additionally needs isolation,
+# BF16-relative and task-quality gates that live elsewhere.
 PRODUCTION_KL_ENVELOPE = {
     "mean": 1e-3,
     "p95": 5e-3,
@@ -383,11 +392,13 @@ def test_batched_prefill_meets_the_production_kl_envelope(runtime, lm) -> None:
     assert stats["p95"] <= env["p95"], f"p95 KL {stats['p95']:.3e} > {env['p95']:.3e}"
     assert stats["p99"] <= env["p99"], f"p99 KL {stats['p99']:.3e} > {env['p99']:.3e}"
     assert stats["max"] <= env["max"], f"max KL {stats['max']:.3e} > {env['max']:.3e}"
-    # The top-1 part of the envelope is asserted by
-    # test_batched_prefill_determinism_and_top1, which is expected to fail for a
-    # reason outside the Q4 route: the shared batched prefill is not
-    # deterministic run-to-run in *either* lane, so top-1 agreement against a
-    # separate sequential run measures that noise as much as the arithmetic.
+    # The top-1 clauses are asserted by
+    # test_batched_prefill_top1_agreement_meets_the_envelope, which is a
+    # non-strict xfail. The batched prefill is deterministic (see
+    # test_batched_prefill_is_deterministic); what the top-1 clauses measure is
+    # agreement between two different schedules, and the untouched bf16 lane
+    # shows the same shortfall, so they are diagnostic under section 4.2 rather
+    # than a production promotion requirement.
 
 
 def test_q6_k_o_proj_route_is_reachable(runtime, lm, monkeypatch) -> None:
@@ -731,21 +742,34 @@ def test_prefill_scratch_is_reused_across_calls(runtime, lm, monkeypatch) -> Non
 
 @pytest.mark.xfail(
     strict=False,
-    reason="Comparing two different schedules, not two arithmetics. The batched "
-           "prefill and the sequential row-by-row route differ by mean KL ~7e-4 "
-           "(inside the envelope), but top-1 agreement is ~95% because the rows "
-           "that flip have a model decision margin of 0.006-0.039 nats against a "
-           "0.79 median, so a sub-1e-3 perturbation decides them. The untouched "
-           "bf16 lane shows the same effect (87/89), so this is a property of "
-           "batched-vs-sequential scheduling, not of the Q4 arithmetic. XPASS "
-           "means top-1 agreement improved enough to meet the envelope.",
+    reason="Cross-schedule diagnostic clause, not a production promotion "
+           "requirement: the batched prefill and the sequential row-by-row "
+           "route are two different schedules, and section 4.2 of "
+           "docs/EXECUTION-PROFILES.md makes cross-width generated-ID equality "
+           "diagnostic. They differ by mean KL ~7e-4 (inside the envelope), but "
+           "top-1 agreement is ~95% because the rows that flip have a model "
+           "decision margin of 0.006-0.039 nats against a 0.79 median, so a "
+           "sub-1e-3 perturbation decides them. The untouched bf16 lane shows "
+           "the same effect (87/89), so this is a property of "
+           "batched-vs-sequential scheduling, not of the Q4 arithmetic. Kept "
+           "asserted so the unmet clause stays visible; XPASS means top-1 "
+           "agreement improved enough to meet the envelope.",
 )
 def test_batched_prefill_top1_agreement_meets_the_envelope(runtime, lm) -> None:
-    """Top-1 clause of the production envelope, per prompt length as a scope.
+    """Top-1 clause of the envelope, per prompt length as a scope.
 
-    The four KL metrics pass; this is the one clause that does not, and it is
-    kept asserted (as a non-strict xfail) rather than dropped so the unmet part
-    of the envelope stays visible.
+    Profile: this is a **cross-schedule diagnostic** clause. It compares the
+    batched prefill against the row-by-row route, and section 4.2 of
+    docs/EXECUTION-PROFILES.md makes cross-width generated-ID equality
+    diagnostic rather than a production promotion requirement. The four KL
+    clauses in test_batched_prefill_meets_the_production_kl_envelope are the
+    binding production drift bound and they pass; this clause does not, and it
+    is kept asserted (as a non-strict xfail) rather than dropped so the unmet
+    part of the envelope stays visible.
+
+    A green run of this file therefore means the KL drift bound, the strict
+    fallback and the ownership/reuse gates pass. It does not by itself certify
+    the model for production.
     """
     from hipengine.core.memory import copy_host_array_to_device, free, malloc
     from hipengine.loading.vibevoice_layout import f32_to_bf16_bits

@@ -8,18 +8,38 @@
   "change": "q4_prefill's gemm_bf16_f32 helper gained an optional bf16_out target. ffn_down feeds the bf16 residual with no intervening op, so a Q6_K down projection now writes the WMMA kernel's bf16 output directly into the residual buffer, dropping the bf16->f32 widening and the f32->bf16 narrowing that immediately followed it. Q4_K down projections still narrow from f32, since that route has only an f32 output.",
   "exactness": "bf16->f32 widening is exact and narrowing an exactly-representable value back to bf16 is the identity, so the skipped pair changes no value. Verified over the full 16-bit bf16 pattern space (1048576 patterns including subnormals, +/-0, +/-inf and NaN): 0 mismatches.",
   "workload": "89-row prompt, one batched q4 prefill per trial, 3 warmup runs then 5 timed trials",
-  "command": "python3 /tmp/prefill_hash.py and python3 /tmp/prefill_launches.py (load /tmp/vibevoice-asr-q4km.gguf, prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz), run against HEAD and against the change"
+  "command": "python3 scripts/vibevoice_q4_prefill_launches.py --route q4 --repeat --json <artifact> (loads /tmp/vibevoice-asr-q4km.gguf, prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz), run against HEAD and against the change. It reports the conversion launches as bf16_to_f32 + f32_to_bf16: 196 on HEAD (28 + 168) and 168 with the change (14 + 154)."
  },
  "results": {
-  "conversion_launches_before": {"f32_to_bf16": 168, "bf16_to_f32": 28, "total": 196},
-  "conversion_launches_after": {"f32_to_bf16": 154, "bf16_to_f32": 14, "total": 168},
+  "conversion_launches_before": {
+   "f32_to_bf16": 168,
+   "bf16_to_f32": 28,
+   "total": 196
+  },
+  "conversion_launches_after": {
+   "f32_to_bf16": 154,
+   "bf16_to_f32": 14,
+   "total": 168
+  },
   "conversion_launches_removed": 28,
   "launches_removed_breakdown": "14 Q6_K ffn_down layers x 2 (one bf16_to_f32 widening, one f32_to_bf16 narrowing)",
   "remaining_bf16_to_f32": "14, one per Q6_K attn_v, which does need f32 for its bias add",
   "prefill_ms_median_before": 221.286,
-  "prefill_ms_trials_before": [231.283, 227.218, 221.286, 220.038, 220.424],
+  "prefill_ms_trials_before": [
+   231.283,
+   227.218,
+   221.286,
+   220.038,
+   220.424
+  ],
   "prefill_ms_median_after": 222.298,
-  "prefill_ms_trials_after": [235.729, 225.457, 218.001, 219.016, 222.298],
+  "prefill_ms_trials_after": [
+   235.729,
+   225.457,
+   218.001,
+   219.016,
+   222.298
+  ],
   "prefill_wall_time_change": "none measurable: 221.3 vs 222.3 ms median, inside a 5-8% run-to-run spread. The 28 removed launches move roughly 53 MB less data (about 0.35 ms at these shapes) and are about 0.3% of prefill, so no wall-time claim is made.",
   "output_bit_identity": {
    "hidden_rows_sha256_before": "82f99a8d2883e3da96b457c5bcff111603b952203257fe52ad499d8ddbffd215",
@@ -30,12 +50,27 @@
    "logits_sum_after": -419841.25,
    "argmax_token_before": 11,
    "argmax_token_after": 11
+  },
+  "reproduction_with_committed_harness": {
+   "command": "python3 scripts/vibevoice_q4_prefill_launches.py --route q4 --repeat",
+   "conversion_launches": 168,
+   "bf16_to_f32": 14,
+   "f32_to_bf16": 154,
+   "wrapper_calls_per_prefill": 476,
+   "device_allocations_on_repeat": 0,
+   "hidden_rows_sha256": "bf9411ca4f20af0b4ca45e357490f94acf6520b4b16c86837509db8d4d62ae1f",
+   "note": "the committed harness reproduces the after-change conversion counts exactly (14 + 154 = 168) and reports a stable output hash. Its hash witness covers the prompt buffer after prefill_rows has written the post-layer-stack rows, which is a different buffer from the one the original probe hashed, so the two hash values are not comparable. The before-change counts come from the parent revision measured with the original probe; on the current revision, restoring the round trip would add one bf16_to_f32 and one f32_to_bf16 per Q6_K ffn_down (14 each), giving 196."
   }
  },
  "gates": {
-  "gpu_suite": "54 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py, tests/test_unit_vibevoice_q4_evidence.py, tests/test_gpu_vibevoice_qwen2_runner.py)",
+  "gpu_suite": "55 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py, tests/test_unit_vibevoice_q4_evidence.py, tests/test_gpu_vibevoice_qwen2_runner.py)",
   "new_launch_count_gate": "test_q6_k_down_proj_skips_the_round_trip is RED on HEAD (28 bf16_to_f32 launches, expected 14) and GREEN with the change",
   "new_exactness_gate": "test_q6_k_down_proj_direct_bf16_matches_the_round_trip compares the direct route against the widen/narrow round trip on a real Q6_K ffn_down weight and requires bit-identical bf16 bytes"
+ },
+ "profile": {
+  "arithmetic": "strict",
+  "why": "the change is byte-exact on the affected surface (identical output hash before and after), so it meets the strict arithmetic contract, which is stronger than production requires.",
+  "not_claimed": "this artifact is not a full production qualification. Production promotion additionally requires the calibrated mean/p95/p99/max KL envelope, top-1 by category/shape, same-schedule determinism, isolation, BF16-relative and task-quality gates per docs/EXECUTION-PROFILES.md section 6, which were not run here."
  },
  "notes": [
   "Retained as a launch-count and memory-traffic reduction with bit-identical output, not as a speed win. AGENTS.md allows launch-count and verified sub-window reductions to be retained when same-session variance hides the headline ratio; this artifact states plainly that prefill wall time is unchanged.",
