@@ -28,7 +28,6 @@ from pathlib import Path
 
 import numpy as np
 
-import gguf
 
 from hipengine.loading.safetensors import load_weight_index, read_tensor_storage_bytes
 from hipengine.loading.hf_cache import resolve_model_path
@@ -116,6 +115,14 @@ def resolve_snapshot(model: str) -> Path:
     return Path(resolve_model_path(model))
 
 
+def _gguf():
+    """Import the gguf writer lazily so this module is importable (and its
+    helpers testable) in environments where the writer is not installed."""
+    import gguf
+
+    return gguf
+
+
 def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
     return (bits.astype(np.uint32) << 16).view(np.float32)
 
@@ -150,7 +157,7 @@ def iter_tensors(snapshot: Path, dtype: str):
         yield name, array
 
 
-def add_metadata(writer: gguf.GGUFWriter, config: dict) -> None:
+def add_metadata(writer: _gguf().GGUFWriter, config: dict) -> None:
     writer.add_architecture()
     writer.add_string("vibevoice.model_type", str(config.get("model_type", "vibevoice_asr")))
     writer.add_uint32("vibevoice.audio_token_id", int(config["audio_token_id"]))
@@ -180,7 +187,7 @@ def add_metadata(writer: gguf.GGUFWriter, config: dict) -> None:
     writer.add_float32("vibevoice.text.rope_theta", float(text["rope_parameters"]["rope_theta"]))
 
 
-def add_llama_metadata(writer: gguf.GGUFWriter, config: dict) -> None:
+def add_llama_metadata(writer: _gguf().GGUFWriter, config: dict) -> None:
     """llama.cpp KV keys so llama-quantize accepts the backbone."""
     text = config["text_config"]
     writer.add_uint32("llama.context_length", int(text["max_position_embeddings"]))
@@ -225,7 +232,7 @@ def main() -> int:
     if args.llama_names:
         arch = "llama"
         name_fn = llama_name
-    writer = gguf.GGUFWriter(path=args.out, arch=arch)
+    writer = _gguf().GGUFWriter(path=args.out, arch=arch)
     add_metadata(writer, config)
     if args.llama_names:
         add_llama_metadata(writer, config)
@@ -240,8 +247,8 @@ def main() -> int:
             continue
         max_name = max(max_name, len(gguf_name_))
         # iter_tensors already produced the target encoding.
-        raw_dtype = (gguf.GGMLQuantizationType.BF16 if args.dtype == "bf16"
-                     else gguf.GGMLQuantizationType.F16)
+        raw_dtype = (_gguf().GGMLQuantizationType.BF16 if args.dtype == "bf16"
+                     else _gguf().GGMLQuantizationType.F16)
         writer.add_tensor(gguf_name_, array, raw_dtype=raw_dtype)
         total += array.nbytes
         count += 1
