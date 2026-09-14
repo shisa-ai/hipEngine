@@ -224,6 +224,15 @@ class VibevoiceQwen2Runtime:
         # Caller-owned scratch for emulated dual GEMVs (Q4). Left None for
         # fused dense kernels that need no intermediate f32 buffer.
         self._dual_scratch = None
+        # Caller-owned bf16 scratch for the Q4 o_proj decode GEMV. Left None
+        # for the dense implementation, which takes keyword-only arguments and
+        # would reject the extra one. Allocating it per call instead costs a
+        # malloc/free pair on every layer of every decoded token.
+        #
+        # Deliberately NOT in close()'s attribute list: that list and
+        # self._buffers are two independent free paths, so a buffer that is
+        # keep()ed here must be released only through self._buffers.
+        self._o_proj_x_bf16 = None
         self._silu = _alloc(ffn * 2)
         self._down_f32 = _alloc(hidden * 4)
         self._down_bf16 = _alloc(hidden * 2)
@@ -292,8 +301,12 @@ class VibevoiceQwen2Runtime:
                               spans,1,kv_heads,head_dim,library=self.library,runtime=self.runtime)
             self.kernels.vv_attention_spans(self._q_out.ptr,layer.k_cache.ptr,layer.v_cache.ptr,self._attn.ptr,
                                spans,1,heads,kv_heads,head_dim,self._scale,library=self.library,runtime=self.runtime)
-            self.kernels.dense_gemv_f32_bf16w_f32_out(self._attn.ptr, layer.o_w.ptr, self._o_f32.ptr,
-                                         1, heads * head_dim, hidden, stream=0, runtime=self.runtime)
+            self.kernels.dense_gemv_f32_bf16w_f32_out(
+                self._attn.ptr, layer.o_w.ptr, self._o_f32.ptr,
+                1, heads * head_dim, hidden, stream=0, runtime=self.runtime,
+                **({"x_bf16_scratch": self._o_proj_x_bf16}
+                   if self._o_proj_x_bf16 else {}),
+            )
             self.kernels.f32_to_bf16(self._o_f32.ptr, self._o_bf16.ptr, hidden,
                         stream=0, runtime=self.runtime)
             self.kernels.vv_scale_residual_bf16(self._hidden.ptr, self._o_bf16.ptr, self._ones_hidden.ptr,
