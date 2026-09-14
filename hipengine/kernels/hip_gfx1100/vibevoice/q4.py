@@ -212,8 +212,10 @@ def q4_prefill(runner, hidden_rows, rows, start):
     naive raw-block prefill kernels.
 
     Q6_K has no f32-output prefill entry point, so those tensors
-    (attn_v/ffn_down on half the layers) land in a bf16 scratch and are
-    widened once. Scratch is allocated per call and released in ``finally``.
+    (attn_v/ffn_down on half the layers) land in a bf16 scratch. ffn_down
+    feeds the bf16 residual directly, so its Q6_K result is written straight
+    into the residual buffer; the other Q6_K tensors are widened once.
+    Scratch is allocated per call and released in ``finally``.
     """
     from numbers import Integral
 
@@ -251,8 +253,12 @@ def q4_prefill(runner, hidden_rows, rows, start):
             )
         return weight_type
 
-    def gemm_bf16_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, bf16_scratch, role):
-        """bf16 activations x raw K-quant blocks -> f32.
+    def gemm_bf16_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, bf16_scratch, role,
+                      bf16_out=None):
+        """bf16 activations x raw K-quant blocks.
+
+        Returns the buffer holding the result: ``out_ptr`` (f32) normally, or
+        ``bf16_out`` when Q6_K produced bf16 straight into it.
 
         Only the types with a WMMA prefill kernel are routed; anything else
         fails loudly instead of falling through to the Q4_K decoder.
@@ -261,18 +267,28 @@ def q4_prefill(runner, hidden_rows, rows, start):
         if weight_type == GGML_Q4_K:
             _q4_prefill_bf16_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
                                  stream=stream, runtime=runtime)
-        elif weight_type == GGML_Q6_K:
-            # Q6_K has no f32-output prefill entry point: widen once.
+            return out_ptr
+        if weight_type == GGML_Q6_K:
+            # Q6_K has no f32-output prefill entry point, so its bf16 result is
+            # either widened once into out_ptr, or -- when the consumer wants
+            # bf16 anyway -- written straight into bf16_out. Widening to f32
+            # and narrowing back to bf16 is bit-exact (verified over the full
+            # 16-bit bf16 pattern space, subnormals and NaNs included), so
+            # skipping the pair changes no value.
+            if bf16_out is not None:
+                _q6_prefill_bf16_bf16(x_ptr, w_ptr, bf16_out.ptr, rows, in_f, out_f,
+                                      stream=stream, runtime=runtime)
+                return bf16_out
             _q6_prefill_bf16_bf16(x_ptr, w_ptr, bf16_scratch.ptr, rows, in_f, out_f,
                                   stream=stream, runtime=runtime)
             bf16_to_f32(bf16_scratch.ptr, out_ptr, rows * out_f, stream=stream, runtime=runtime)
-        else:
-            raise ValueError(
-                f"batched prefill: no WMMA prefill kernel for GGML type "
-                f"{weight_type} ({role}); this route wires Q4_K and Q6_K. Q5_K has "
-                f"only the naive raw-block prefill (~100x slower) and the other "
-                f"types have none, so routing them here would mis-decode."
-            )
+            return out_ptr
+        raise ValueError(
+            f"batched prefill: no WMMA prefill kernel for GGML type "
+            f"{weight_type} ({role}); this route wires Q4_K and Q6_K. Q5_K has "
+            f"only the naive raw-block prefill (~100x slower) and the other "
+            f"types have none, so routing them here would mis-decode."
+        )
 
     def gemm_f32_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, role, bf16_in_scratch):
         """f32 activations x raw K-quant blocks -> f32 (o_proj keeps f32).
@@ -373,9 +389,16 @@ def q4_prefill(runner, hidden_rows, rows, start):
             runner.kernels.f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=stream, runtime=runtime)
             runner.kernels.silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
                                                      stream=stream, runtime=runtime)
-            gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden, q6_scratch, "down_proj")
-            runner.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden,
-                                       stream=stream, runtime=runtime)
+            # ffn_down feeds the bf16 residual with nothing in between. A Q6_K
+            # down projection already produces bf16, so target the residual
+            # buffer directly and drop the widen-to-f32/narrow-back-to-bf16
+            # pair (two launches on each of this model's 14 Q6_K down
+            # projections). Q4_K has only an f32 output, so it still narrows.
+            down = gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden,
+                                 q6_scratch, "down_proj", bf16_out=down_bf16)
+            if down is not down_bf16:
+                runner.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden,
+                                           stream=stream, runtime=runtime)
             runner.kernels.vv_scale_residual_bf16(
                 hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
                 rows * hidden, hidden, library=runner.library, runtime=runtime)
