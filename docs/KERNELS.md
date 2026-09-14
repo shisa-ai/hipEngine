@@ -134,7 +134,7 @@ Unless a row says otherwise, source is under `hipengine/kernels/hip_gfx1100/`, r
 
 | Family | Source / registry | Contract |
 | --- | --- | --- |
-| Causal encoders and connectors | `vibevoice/encoder.{hip,py}`, `vibevoice/registered.py` | BF16 storage, FP32 accumulation; explicit convolution prefixes. Frontend GEMM has `wmma` and `strict` variants. |
+| Causal encoders and connectors | `vibevoice/encoder.{hip,py}`, `vibevoice/registered.py` | BF16 storage, FP32 accumulation; explicit convolution prefixes. Frontend GEMM has `wmma` and `strict` variants. Depthwise `fused` has a registered `strict` FP32-accumulate/residual chain with no intermediate BF16 rounding; its two primitives are separately registered. |
 | Qwen2 attention and KV write | `vibevoice/encoder.{hip,py}` (`vv_attention_spans`, `vv_kv_write_spans`) | Uniform `KVLiveSpans`, block size one; logical-to-physical slot mapping, int64 per-row live counts/positions, physical token positions and eviction masks. Maximum capacity 16,000 slots. |
 | Decoder prefill | `vibevoice/registered.py` (`vibevoice_prefill`) | `hipblaslt` capability negotiation precedes device mutation; registered `strict` incremental chain is the fallback. Launch failures are propagated. |
 

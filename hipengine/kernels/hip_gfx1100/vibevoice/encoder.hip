@@ -114,6 +114,7 @@ __global__ void vv_depthwise_conv_kernel(
     const uint16_t* __restrict__ b,
     const uint16_t* __restrict__ gamma,
     uint16_t* __restrict__ out,
+    float* __restrict__ accumulator,
     int64_t prefix_rows,
     int64_t rows,
     int64_t c,
@@ -141,8 +142,17 @@ __global__ void vv_depthwise_conv_kernel(
     }
     acc = fmaf(bf16_bits_to_float(src[base]), bf16_bits_to_float(wrow[k]), acc);
   }
+  if (accumulator) { accumulator[idx] = acc; return; }
   const float scaled = fmaf(acc, bf16_bits_to_float(gamma[ch]), bf16_bits_to_float(resid[idx]));
   out[idx] = float_to_bf16_bits(scaled);
+}
+
+__global__ void vv_depthwise_residual_kernel(
+    const float* acc, const uint16_t* resid, const uint16_t* gamma,
+    uint16_t* out, int64_t total, int64_t channels) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < total) out[idx] = float_to_bf16_bits(
+      fmaf(acc[idx], bf16_bits_to_float(gamma[idx % channels]), bf16_bits_to_float(resid[idx])));
 }
 
 // Strided causal pointwise conv as a per-thread dot product.
@@ -488,7 +498,7 @@ extern "C" int hipengine_vv_depthwise_conv_bf16(
   const int64_t blocks = (total + 255) / 256;
   hipLaunchKernelGGL(
       vv_depthwise_conv_kernel, dim3(static_cast<unsigned int>(blocks)), dim3(256),
-      0, stream, prefix, normed, resid, w, b, gamma, out, prefix_rows, rows, c, k_len);
+      0, stream, prefix, normed, resid, w, b, gamma, out, nullptr, prefix_rows, rows, c, k_len);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -653,4 +663,23 @@ extern "C" int hipengine_vv_attention_spans(
     (capacity+256)*sizeof(float), stream, query, key_cache, value_cache, row_positions, out,
     rows, q_heads, kv_heads, head_dim, capacity, scale, base_offsets, live_counts, token_positions, evict_mask);
   return int(hipGetLastError());
+}
+
+extern "C" int hipengine_vv_depthwise_accumulate_f32(
+    const uint16_t* prefix, const uint16_t* normed, const uint16_t* w,
+    const uint16_t* b, float* acc, int64_t prefix_rows, int64_t rows,
+    int64_t c, int64_t k_len, hipStream_t stream) {
+  if (rows <= 0 || c <= 0 || k_len <= 0 || prefix_rows != k_len - 1)
+    return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(vv_depthwise_conv_kernel, dim3((rows*c+255)/256), dim3(256),
+      0, stream, prefix, normed, nullptr, w, b, nullptr, nullptr, acc, prefix_rows, rows, c, k_len);
+  return static_cast<int>(hipGetLastError());
+}
+extern "C" int hipengine_vv_depthwise_residual_bf16(
+    const float* acc, const uint16_t* resid, const uint16_t* gamma,
+    uint16_t* out, int64_t rows, int64_t c, hipStream_t stream) {
+  if (rows <= 0 || c <= 0) return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(vv_depthwise_residual_kernel, dim3((rows*c+255)/256),dim3(256),
+      0,stream,acc,resid,gamma,out,rows*c,c);
+  return static_cast<int>(hipGetLastError());
 }

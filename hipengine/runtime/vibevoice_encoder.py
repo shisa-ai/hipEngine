@@ -152,7 +152,9 @@ class VibevoiceFrontendRuntime:
         self.variant_manifest=build_variant_manifest(
             profile='strict' if frontend_variant == 'strict' else 'production',
             backend=self.backend,model='vibevoice_asr',quant='bf16',kv_policy='causal_chunk_tails',graph_policy='eager',
-            selections=[VariantSelection(name,'frontend','strict','strict') for name in FRONTEND_PRIMITIVES]
+            selections=[VariantSelection(name,'frontend',
+                'fused' if name == 'vv_depthwise_conv_bf16' and frontend_variant != 'strict' else 'strict',
+                'strict') for name in FRONTEND_PRIMITIVES]
               + [VariantSelection('vibevoice_frontend_gemm','frontend',frontend_variant,'strict')])
         self.variant_manifest_sha256=manifest_sha256(self.variant_manifest)
         self.runtime = get_hip_runtime()
