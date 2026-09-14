@@ -140,9 +140,11 @@ def run_lane(args):
         from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime, greedy_generate
         specs = {k: load_vibevoice_encoder(meta['model'], k) for k in ('acoustic','semantic')}
         frontend = VibevoiceFrontendRuntime(*specs['acoustic'], *specs['semantic'],
-            load_vibevoice_connector(meta['model'],'acoustic'), load_vibevoice_connector(meta['model'],'semantic'))
+            load_vibevoice_connector(meta['model'],'acoustic'), load_vibevoice_connector(meta['model'],'semantic'),
+            frontend_variant='strict' if args.hip_variant == 'strict' else 'wmma')
         weights = load_vibevoice_qwen2(meta['model'])
-        runner = VibevoiceQwen2Runtime(weights, max_context=len(input_ids)+args.max_new_tokens)
+        runner = VibevoiceQwen2Runtime(weights, max_context=len(input_ids)+args.max_new_tokens,
+            prefill_variant='strict' if args.hip_variant == 'strict' else 'hipblaslt')
         del weights, specs
         tokenizer = Tokenizer.from_file(str(Path(meta['model'])/'tokenizer.json'))
         def infer():
@@ -160,6 +162,7 @@ def run_lane(args):
         def decode(ids):
             return tokenizer.decode(ids, skip_special_tokens=True).strip()
         versions = {'numpy': np.__version__}
+        manifest = None
     else:
         import torch
         import transformers
@@ -184,6 +187,7 @@ def run_lane(args):
         def close():
             pass
         versions = {'torch':torch.__version__, 'transformers':transformers.__version__}
+        manifest = {'dtype':'bf16','attention':'eager'}
     try:
         for repeat in range(args.warmup + args.repeats):
             t0 = time.perf_counter()
@@ -196,7 +200,10 @@ def run_lane(args):
     finally:
         close()
     result = dict(lane=args.lane, versions=versions, request=meta, timings=timings,
-                  torch_imported='torch' in sys.modules)
+                  torch_imported='torch' in sys.modules,variant_manifest=(
+                      {'frontend':frontend.variant_manifest,'decoder':runner.variant_manifest}
+                      if args.lane == 'hip' else manifest),
+                  status='diagnostic-unqualified')
     if args.lane == 'hip' and result['torch_imported']:
         raise RuntimeError('torch imported in HIP lane')
     args.output.write_text(json.dumps(result,indent=2)+'\n')
@@ -211,6 +218,7 @@ def main():
     p.add_argument('--warmup',type=int,default=1)
     p.add_argument('--seed',type=int,default=20260914)
     p.add_argument('--context',default='')
+    p.add_argument('--hip-variant',choices=['strict','candidate'],default='strict')
     p.add_argument('--model',default='microsoft/VibeVoice-ASR-HF')
     p.add_argument('--max-new-tokens',type=int,default=256)
     p.add_argument('--output',type=Path,default=Path('/tmp/vibevoice-matched-benchmark.json'))
@@ -226,7 +234,7 @@ def main():
         run_lane(args)
         return
     with tempfile.TemporaryDirectory(prefix='vibevoice-bench-') as directory:
-        request = Path(directory)/'request.npz'
+        request = args.request or Path(directory)/'request.npz'
         cmd = [sys.executable,str(Path(__file__).resolve()),*sys.argv[1:], '--request',str(request)]
         subprocess.run([*cmd,'--lane','prepare'],check=True)
         lanes = {}
