@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "kind": "tp2-tp1-segment-attribution",
+  "generated_at": "2026-09-14T20:37:00Z",
+  "purpose": "Replace the break-even projection's assumed fixed-cost share with a measured per-segment breakdown on the TP1 arm, and record the host-side term the projection omits.",
+  "protocol": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv": "int8_per_token_head + fp32 scales",
+    "prompt_rows": 512,
+    "decode_tokens": 128,
+    "warmup_steps": 8,
+    "sampler": "greedy",
+    "harness": "scripts/gguf_c1_decode_attribution.py",
+    "note": "the harness reads back every token, so its window per step includes a sampler readback the tok/s protocol amortizes; kernel-family times are device time and are unaffected"
+  },
+  "cards": [
+    {
+      "device": "AMD Radeon Pro W7900",
+      "hip_visible_devices": "0",
+      "tp1_tok_s": 29.575,
+      "tp1_ms_per_token": 33.8123415046492,
+      "measured_steps": 127,
+      "window_ms_per_step": 34.89,
+      "launches_per_step": 811.72,
+      "gpu_duty_cycle": 0.4456,
+      "kernel_ms_per_step": {
+        "gguf_q4_k_t16_gemv_rowtile": 18.7532,
+        "gguf_q6_k_t16_gemv_rowtile": 7.2014,
+        "other": 2.4603,
+        "gdn_linear_attention": 0.9609,
+        "paged_full_attn_decode": 0.598,
+        "rocclr_copy": 0.0097,
+        "sampler_top1": 0.0094
+      },
+      "weight_read_ms_per_step": 25.9546,
+      "attention_gdn_sampler_copy_ms_per_step": 1.578,
+      "other_ms_per_step": 2.4603,
+      "interior_gap_ms_per_step": 19.196,
+      "interior_gap_with_api_ms_per_step": 3.875,
+      "interior_gap_without_api_ms_per_step": 15.321,
+      "host_gap_share_of_token": 0.5677,
+      "fixed_share_of_own_token_pure": 0.0467,
+      "fixed_share_of_own_token_with_other": 0.1194,
+      "fixed_share_of_faster_token_with_other": 0.1428,
+      "weight_read_share_of_own_token": 0.7676
+    },
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "hip_visible_devices": "1",
+      "tp1_tok_s": 35.355,
+      "tp1_ms_per_token": 28.284542497525106,
+      "measured_steps": 127,
+      "window_ms_per_step": 29.435,
+      "launches_per_step": 811.3,
+      "gpu_duty_cycle": 0.1903,
+      "kernel_ms_per_step": {
+        "gguf_q4_k_t16_gemv_rowtile": 15.5183,
+        "gguf_q6_k_t16_gemv_rowtile": 6.225,
+        "other": 2.1807,
+        "gdn_linear_attention": 0.8659,
+        "paged_full_attn_decode": 0.5462,
+        "rocclr_copy": 0.0089,
+        "sampler_top1": 0.0082
+      },
+      "weight_read_ms_per_step": 21.7433,
+      "attention_gdn_sampler_copy_ms_per_step": 1.4293,
+      "other_ms_per_step": 2.1807,
+      "interior_gap_ms_per_step": 22.609,
+      "interior_gap_with_api_ms_per_step": 5.857,
+      "interior_gap_without_api_ms_per_step": 16.752,
+      "host_gap_share_of_token": 0.7993,
+      "fixed_share_of_own_token_pure": 0.0505,
+      "fixed_share_of_own_token_with_other": 0.1276,
+      "fixed_share_of_faster_token_with_other": 0.1276,
+      "weight_read_share_of_own_token": 0.7687
+    }
+  ],
+  "findings": [
+    "Attention, GDN, sampler and copy kernels together are 1.578 ms/step on the W7900 and 1.441 ms/step on the XTX. That is 4.7% and 5.1% of each card's own TP1 token time, and 5.6% / 5.1% of the faster arm's token time that the projection actually compares against. Even adding every unnamed kernel in the 'other' family (norms, rope, residual, setup) only reaches 11.9% and 12.9% of each card's own token time. The projection's 20% and 30% rows therefore sit above anything these measurements support; the 0-10% rows are the defensible range, and the exchange's projection is inside budget there too.",
+    "The weight-read kernels are 25.95 ms/step (W7900) and 21.77 ms/step (XTX) - 77% and 77% of each card's own token time - and their 1.19x ratio matches the two cards' bandwidth ratio and their 1.20x TP1 token-rate ratio. Sharding the weight read is where the compute saving is, and it is also why the fixed share is small.",
+    "Each decode step issues ~811 kernel launches. That is the number that decides whether a sharded rank can stay inside its budget, because launch points are per rank and the group waits for the slower rank.",
+    "The harness's window also contains a per-token sampler readback (about 9 ms/step of hipMemcpy API time) that the tok/s protocol amortizes, so its interior-gap split is not the tok/s protocol's. It is recorded as a candidate missing term rather than as the projection's host cost: 19.2 ms (W7900) and 22.2 ms (XTX) of interior gap per step, of which 15.3 and 16.2 ms has no HIP API in flight. A trace of the tok/s protocol itself, or an in-engine launch-gap counter, is what would settle it."
+  ],
+  "sources": {
+    "w7900": "rocprofv3 kernel/marker/HIP/memory-copy trace of the R0 resident session, 512 prompt rows, 128 decode tokens, HIP_VISIBLE_DEVICES=0",
+    "xtx": "same protocol with HIP_VISIBLE_DEVICES=1"
+  },
+  "limitations": [
+    "Kernel-family attribution is device time from a rocprofv3 trace of the R0 resident session. It is not a shard-shaped segment measurement: no shard-shaped weight layout exists in the engine, so the sharded MLP/attention/GDN segment times the decision rule needs are still unmeasured.",
+    "The interior-gap split is specific to this harness, which reads back every token; the tok/s protocol amortizes that readback. Gap numbers are indicative of the launch structure, not exact for the tok/s protocol.",
+    "No compute -> exchange -> compute sequence has been measured.",
+    "Both cards are gfx1100 and were measured in the same session with the same protocol, so the two columns are comparable to each other."
+  ],
+  "next_measurements": [
+    "A shard-shaped MLP segment: build a half-intermediate Q4_K weight layout and time the engine's own GEMV dispatch on it, on both cards, so the compute saving is measured rather than assumed.",
+    "Replicated versus single-owner attention and GDN segment times at full and half head counts.",
+    "Representative compute -> exchange -> compute sequences using the native transport, at the measured per-reduction cost.",
+    "A launch-gap measurement on the tok/s protocol path, so the projection's omitted host term is bounded."
+  ]
+}

@@ -974,6 +974,26 @@ direction, which is why samples are kept per rank. Each staged byte crosses PCIe
 twice, so peer DMA would halve the copy term, and peer DMA is unavailable on this
 host.
 
+**The projection's fixed-cost share is now measured, and its 20% and 30% rows
+are above anything the measurements support.** A rocprofv3 attribution of the
+TP1 decode step at the same protocol on both cards puts attention, GDN, sampler
+and copy kernels together at **1.578 ms/step on the W7900 and 1.441 ms/step on
+the XTX** - 4.7% and 5.1% of each card's own token time. Adding every unnamed
+kernel in the trace's `other` family (norms, rope, residual, setup) reaches 11.9%
+and 12.9%. Weight-read kernels are 25.95 and 21.77 ms/step, 77% of the token time
+on both cards, and their 1.19x ratio matches the cards' bandwidth ratio and their
+1.20x TP1 token-rate ratio. So the compute saving lives in the weight read, the
+fixed share is small, and the 0-10% rows are the defensible ones.
+
+Each decode step also issues **~811 kernel launches**, and the trace shows a large
+interior GPU gap per step - 19.2 ms (W7900) and 22.6 ms (XTX), of which 15.3 and
+16.2 ms has no HIP API in flight. That harness reads back every token, so its gap
+split is not the tok/s protocol's and is recorded as a candidate missing term
+rather than as the projection's host cost. It matters because launch points are
+per rank and a TP2 group waits for the slower rank: halving the weight read cannot
+by itself take a step below its own host gap, and that gap has not been measured
+under TP2.
+
 **Break-even, measured on both sides, and negative for RCCL.** The two TP1 arms
 are measured on this host, one GPU at a time, on one revision and one protocol
 (512-prompt / 128-decode / INT8 per-token-head KV / eager decode / persistent
