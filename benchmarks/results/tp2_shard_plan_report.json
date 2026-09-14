@@ -10,7 +10,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "e73622ab8cb6c3534c02292380aa4b71dbcbd61a3361ca01b14d2184a81144ff",
+        "manifest_hash": "bbe45250d652cbc109ca47520c32887708a6bc14652e4f0e7b08b949239d877a",
         "mismatches": [],
         "rank_bytes": [
           16806250496
@@ -19,8 +19,8 @@
         "tensors_checked": 851,
         "world_size": 1
       },
-      "byte_check_seconds": 40.6,
-      "manifest_hash": "e73622ab8cb6c3534c02292380aa4b71dbcbd61a3361ca01b14d2184a81144ff",
+      "byte_check_seconds": 40.23,
+      "manifest_hash": "bbe45250d652cbc109ca47520c32887708a6bc14652e4f0e7b08b949239d877a",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -126,7 +126,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "7fc6cbf4251e0b8c68cc4852c8030ec1507db566966a79ee9617b7c52dab670a",
+        "manifest_hash": "1c3c50975a2c7b5f28da614bbea75da23931c0c5224e50c80955e5ea5f2c73c4",
         "mismatches": [],
         "rank_bytes": [
           9283527680,
@@ -136,8 +136,8 @@
         "tensors_checked": 851,
         "world_size": 2
       },
-      "byte_check_seconds": 50.29,
-      "manifest_hash": "7fc6cbf4251e0b8c68cc4852c8030ec1507db566966a79ee9617b7c52dab670a",
+      "byte_check_seconds": 47.5,
+      "manifest_hash": "1c3c50975a2c7b5f28da614bbea75da23931c0c5224e50c80955e5ea5f2c73c4",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -239,15 +239,15 @@
         "9": 2
       },
       "streaming_rank": {
-        "anonymous_growth_bytes": 37974016,
-        "baseline_anonymous_bytes": 61538304,
+        "anonymous_growth_bytes": 37904384,
+        "baseline_anonymous_bytes": 169725952,
         "full_model_copy_bytes": 7525422080,
         "largest_tensor_bytes": 36556800,
         "local_bytes": 7525422080,
-        "peak_anonymous_bytes": 99512320,
-        "peak_rss_bytes": 194166784,
+        "peak_anonymous_bytes": 207630336,
+        "peak_rss_bytes": 302514176,
         "rank": 1,
-        "seconds": 4.62,
+        "seconds": 4.1,
         "streaming": true,
         "tensors": 851,
         "world_size": 2
@@ -266,7 +266,7 @@
           "replicated": 2699264,
           "row": 5265162240
         },
-        "manifest_hash": "9feb21f5419f56ff9f9077583c3df6a3b046241d85f0d4a010822e5eea4b31e6",
+        "manifest_hash": "1b7828af61afe0101df2719364ca0807f9be087e4ce54523b01158bf93364714",
         "mismatches": [],
         "rank_bytes": [
           5522166272,
@@ -278,8 +278,8 @@
         "tensors_checked": 851,
         "world_size": 4
       },
-      "byte_check_seconds": 60.73,
-      "manifest_hash": "9feb21f5419f56ff9f9077583c3df6a3b046241d85f0d4a010822e5eea4b31e6",
+      "byte_check_seconds": 62.27,
+      "manifest_hash": "1b7828af61afe0101df2719364ca0807f9be087e4ce54523b01158bf93364714",
       "notes": [
         "excluded 15 MTP/NextN tensors from the AR shard set",
         "architecture=qwen35 blocks=64"
@@ -399,15 +399,15 @@
         "9": 2
       },
       "streaming_rank": {
-        "anonymous_growth_bytes": 39354368,
-        "baseline_anonymous_bytes": 119779328,
+        "anonymous_growth_bytes": 39243776,
+        "baseline_anonymous_bytes": 118358016,
         "full_model_copy_bytes": 3764060672,
         "largest_tensor_bytes": 18278400,
         "local_bytes": 3764060672,
-        "peak_anonymous_bytes": 159133696,
-        "peak_rss_bytes": 253702144,
+        "peak_anonymous_bytes": 157601792,
+        "peak_rss_bytes": 252485632,
         "rank": 1,
-        "seconds": 3.36,
+        "seconds": 3.51,
         "streaming": true,
         "tensors": 851,
         "world_size": 4
@@ -417,7 +417,7 @@
       "world_size": 4
     }
   },
-  "elapsed_seconds": 171.63,
+  "elapsed_seconds": 166.62,
   "kind": "tp_shard_plan_report",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_bytes": 17106773984,
