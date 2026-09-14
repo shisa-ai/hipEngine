@@ -38,6 +38,16 @@ def _load_wer_module():
     return module
 
 
+def _file_sha256(path: str) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 22), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-clips", type=int, default=50)
@@ -78,6 +88,8 @@ def main() -> int:
     runner = VibevoiceQwen2Q4Runtime(weights, max_context=1024)
 
     hyps = []
+    verified_requests: set[str] = set()
+    gguf_sha256 = _file_sha256(args.gguf)
     timings = []
     for i, clip in enumerate(clips):
         pcm = np.load(clip["wav"])
@@ -93,6 +105,7 @@ def main() -> int:
             )
             from scripts.vibevoice_asr_bench import _read_request
             arrays, meta = _read_request(root / "request.npz")
+            verified_requests.add(clip["clip_id"])
             input_ids = arrays["input_ids"][0].tolist()
             if len(input_ids) + args.max_new_tokens > runner.max_context:
                 raise ValueError("clip exceeds runner max_context")
@@ -112,24 +125,31 @@ def main() -> int:
             elapsed = time.perf_counter() - t0
         text = tokenizer.decode(ids, skip_special_tokens=True).strip()
         timings.append(elapsed)
-        hyps.append(wer._transcription_only(text))
+        hyps.append(text)
         print(f"[q4 {i+1}/{len(clips)}] {elapsed:.2f}s {hyps[-1][:60]!r}")
 
     runner.close()
     frontend.close()
     refs = [c["text"] for c in clips]
+    malformed = [c["clip_id"] for c, h in zip(clips, hyps)
+                 if wer.parse_transcript(h)[1] != "ok"]
     total_wer = wer._wer(refs, hyps)
-    print(f"hipEngine-Q4 WER: {total_wer:.2f}% "
-          f"(mean {np.mean(timings):.2f} s/clip)")
+    print(f"hipEngine-Q4 WER: {100.0 * total_wer:.2f}% "
+          f"(mean {np.mean(timings):.2f} s/clip)"
+          + (f"  [{len(malformed)} malformed transcript(s): {malformed}]"
+             if malformed else ""))
 
     out = {
         "systems": {
             "hip_q4": {
-                "wer": total_wer,
+                "wer_fraction": total_wer,
+                "wer_pct": 100.0 * total_wer,
+                "malformed_transcripts": malformed,
                 "hypotheses": hyps,
                 "per_clip": [
                     {"clip_id": c["clip_id"],
-                     "wer": wer._wer([c["text"]], [h]),
+                     "wer_fraction": wer._wer([c["text"]],
+                                              [wer.parse_transcript(h)[0]]),
                      "seconds": elapsed}
                     for c, h, elapsed in zip(clips, hyps, timings)
                 ],
@@ -140,7 +160,10 @@ def main() -> int:
         "ref_texts": refs,
         "protocol": {
             "gguf": args.gguf,
+            "gguf_sha256": gguf_sha256,
             "matched_request": "bench prepare subprocess, fixed seed",
+            "request_hashes_verified": sorted(verified_requests),
+            "request_hash_source": "bench _read_request (per-array sha256 of request.npz)",
             "frontend": "bf16 dense (unchanged)",
         },
     }

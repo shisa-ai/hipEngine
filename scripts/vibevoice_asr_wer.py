@@ -48,23 +48,53 @@ def _normalizer():
     return EnglishTextNormalizer({})
 
 
-def _transcription_only(text: str) -> str:
-    """Extract the spoken text from VibeVoice's structured output."""
+def parse_transcript(text: str) -> tuple[str, str]:
+    """Split a VibeVoice transcript into (spoken text, status).
+
+    The model emits a JSON array of segments. Status is ``"ok"`` for a
+    well-formed array, ``"no_json"`` when no array is present, and
+    ``"bad_json"`` when an array is present but does not parse. Callers
+    must treat anything other than ``"ok"`` as a malformed generation:
+    scoring the raw body silently turns a schema failure into a word
+    error and hides it from the quality gate.
+    """
     import json as _json
 
     body = text.strip()
     start = body.find("[")
     end = body.rfind("]")
-    if start >= 0 and end > start:
-        try:
-            segments = _json.loads(body[start:end + 1])
-            return " ".join(str(s.get("Content", "")) for s in segments)
-        except Exception:
-            pass
-    return body
+    if start < 0:
+        return body, "no_json"
+    if end <= start:
+        return body, "bad_json"
+    try:
+        segments = _json.loads(body[start:end + 1])
+    except Exception:
+        return body, "bad_json"
+    if not isinstance(segments, list):
+        return body, "bad_json"
+    return " ".join(str(s.get("Content", "")) for s in segments), "ok"
+
+
+def _transcription_only(text: str, *, strict: bool = True) -> str:
+    """Extract the spoken text from VibeVoice's structured output.
+
+    ``strict`` (default) raises on malformed output so a schema failure
+    can never be scored as an ordinary transcription error.
+    """
+    content, status = parse_transcript(text)
+    if strict and status != "ok":
+        raise ValueError(f"malformed VibeVoice transcript ({status}): {text[:200]!r}")
+    return content
 
 
 def _wer(refs: list[str], hyps: list[str]) -> float:
+    """Word error rate as a **fraction** in [0, 1] (jiwer convention).
+
+    Use :func:`_wer_pct` for the percentage form. Mixing the two is a
+    100x error, so call sites that print or store a summary must use the
+    ``_pct`` helper and label the field accordingly.
+    """
     from jiwer import process_words
 
     hyps = [_transcription_only(h) for h in hyps]
@@ -74,6 +104,11 @@ def _wer(refs: list[str], hyps: list[str]) -> float:
     pairs = [(r, h) for r, h in zip(ref_t, hyp_t) if r]
     score = process_words([r for r, _ in pairs], [h for _, h in pairs])
     return score.wer
+
+
+def _wer_pct(refs: list[str], hyps: list[str]) -> float:
+    """Word error rate in percent (``_wer`` scaled by 100)."""
+    return 100.0 * _wer(refs, hyps)
 
 
 def _load_clips(num_clips: int, cache_dir: Path,
@@ -142,7 +177,10 @@ def _load_clips(num_clips: int, cache_dir: Path,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-clips", type=int, default=50)
-    parser.add_argument("--systems", nargs="+", default=["torch", "hip"])
+    parser.add_argument("--systems", nargs="+", default=["torch", "hip"],
+                        choices=["torch", "hip"],
+                        help="lane to score; unknown names are rejected rather "
+                             "than silently mapped onto a default lane")
     parser.add_argument("--cache-dir", default="/tmp/librispeech-clean-cache")
     parser.add_argument("--out", default=None, help="JSON artifact path")
     parser.add_argument("--max-new-tokens", type=int, default=256)
@@ -174,18 +212,27 @@ def main() -> int:
             out = lane(pcm, clip["seconds"], bench_args)
             hyps.append(_transcription_only(out["text"]))
             print(f"[{system} {i+1}/{len(clips)}] {hyps[-1][:60]!r}")
+        malformed = [clip["clip_id"] for clip, hyp in zip(clips, hyps)
+                     if parse_transcript(hyp)[1] != "ok"]
         wer = _wer(refs, hyps)
         per_clip = []
         for clip, hyp in zip(clips, hyps):
-            single = _wer([clip["text"]], [hyp])
-            per_clip.append({"clip_id": clip["clip_id"], "wer": single, "hyp": hyp})
+            content, status = parse_transcript(hyp)
+            per_clip.append({"clip_id": clip["clip_id"],
+                             "wer_fraction": _wer([clip["text"]], [content]),
+                             "parse_status": status,
+                             "hyp": hyp})
         results["systems"][system] = {
-            "wer": wer,
+            "wer_fraction": wer,
+            "wer_pct": 100.0 * wer,
+            "malformed_transcripts": malformed,
             "ref_texts": refs,
             "hypotheses": hyps,
             "per_clip": per_clip,
         }
-        print(f"{system} WER: {wer:.2f}%")
+        print(f"{system} WER: {100.0 * wer:.2f}%"
+              + (f"  [{len(malformed)} malformed transcript(s): {malformed}]"
+                 if malformed else ""))
 
     results["protocol"] = {
         "dataset": "openslr/librispeech_asr clean/test",

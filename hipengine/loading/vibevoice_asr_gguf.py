@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device, malloc
+from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device, free, malloc
 from hipengine.loading.gguf import GGUFReader, scan_gguf
 
 
@@ -87,6 +87,21 @@ class Qwen2Q4Weights:
     lm_head_host_bf16: np.ndarray
     layers: list[Qwen2Q4Layer]
     buffers: list[DeviceBuffer] = field(default_factory=list)
+    _closed: bool = False
+
+    def close(self) -> None:
+        """Free every device buffer this handle owns (idempotent).
+
+        Runtimes built over these weights borrow the buffers, so the
+        weights handle is the single owner and the single release point.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        for buf in self.buffers:
+            GGUF_WEIGHT_TYPES.pop(buf.ptr, None)
+            free(buf)
+        self.buffers.clear()
 
 
 GGUF_WEIGHT_TYPES: dict[int, int] = {}
@@ -135,17 +150,17 @@ def load_vibevoice_qwen2_q4(gguf_path: str | Path) -> Qwen2Q4Weights:
     embed_info = reader.tensor_info("token_embd.weight")
     if embed_info.ggml_type != 30:
         embed_host = np.asarray(reader.dequantize_tensor("token_embd.weight")).reshape(-1)
-    embed_buf = malloc(embed_host.nbytes * 2)
+    embed_buf = malloc(embed_host.size * 2)
     copy_host_array_to_device(embed_buf, _f32_to_bf16_bits(embed_host))
     keep.append(embed_buf)
 
     final_host = host_bf16("output_norm.weight")
-    final_buf = malloc(final_host.nbytes * 2)
+    final_buf = malloc(final_host.size * 2)
     copy_host_array_to_device(final_buf, _f32_to_bf16_bits(final_host))
     keep.append(final_buf)
 
     lm_host = host_bf16("output.weight")
-    lm_buf = malloc(lm_host.nbytes * 2)
+    lm_buf = malloc(lm_host.size * 2)
     copy_host_array_to_device(lm_buf, _f32_to_bf16_bits(lm_host))
     keep.append(lm_buf)
 

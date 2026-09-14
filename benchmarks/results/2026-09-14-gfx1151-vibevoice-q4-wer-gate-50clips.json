@@ -10,16 +10,19 @@
     "clips": "identical 50-clip 23-speaker subset"
   },
   "results": {
-    "hipengine_q4_wer_pct": 0.019784172661870502,
-    "hipengine_bf16_wer_pct": 0.019784172661870502,
-    "torch_bf16_wer_pct": 0.045863309352517985,
     "transcripts_identical_to_bf16": 43,
-    "per_clip_wer_diffs_vs_bf16": 2
+    "per_clip_wer_diffs_vs_bf16": 2,
+    "hipengine_q4_wer_pct": 1.9784172661870503,
+    "hipengine_q4_wer_fraction": 0.019784172661870502,
+    "hipengine_bf16_wer_pct": 1.9784172661870503,
+    "hipengine_bf16_wer_fraction": 0.019784172661870502,
+    "torch_bf16_wer_pct": 4.586330935251799,
+    "torch_bf16_wer_fraction": 0.045863309352517985
   },
   "gates": {
     "greedy_chain": "16/16 exact vs torch fixture (tests/test_gpu_vibevoice_qwen2_q4_runner.py)",
     "first_position_logits": "rel 4.7e-2, top-1 match",
-    "wer_acceptance": "Q4 0.020% == bf16 0.020% aggregate; 2/50 per-clip diffs split 1-for-1, no systematic degradation; PASS (within +0.2 absolute trivially)"
+    "wer_acceptance": "Q4 1.978% == bf16 1.978% aggregate (delta 0.000 percentage points); 2/50 per-clip diffs split 1-for-1, no systematic degradation; PASS against the +0.2 percentage-point absolute bound. NOTE: the original text stated the bound as '+0.2 absolute' while quoting fractions, which made it trivially true; the bound is now stated in percentage points."
   },
   "notes": [
     "decode speed is NOT yet won: naive per-column Q4 GEMV decode measured 114 ms/token vs dense bf16 66; the pack8 route (prototype 5.7x per GEMV, rel 3e-7) is the identified fix - see the decode-speed worklog entry",
@@ -78,5 +81,6 @@
     "5105-28240-0000",
     "5105-28241-0000"
   ],
-  "supersedes": null
+  "supersedes": null,
+  "corrections": "CORRECTION 2026-09-14: the *_wer_pct fields originally held jiwer fractions (0-1), not percentages; they are now the true percentages and the fractions are kept alongside as *_wer_fraction. The Q4-vs-bf16 equality and the hip-vs-torch ordering are unchanged; only the scale was wrong (100x)."
 }
