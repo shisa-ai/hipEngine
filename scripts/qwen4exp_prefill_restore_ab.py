@@ -18,23 +18,53 @@ from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _hipengine_case_sample, _host_metadata, _git_metadata,
 )
 from scripts.qwen4exp_conservative_cost import summarize_cost
-from scripts.qwen4exp_ple_gather_ab import pair_sequence
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary, CANDIDATES
 from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
+SHARED_DECODE_SAFE_FLAGS = frozenset(
+    "HIPENGINE_QWEN4_EXP_" + flag for flag in (
+        "Q8_0_SELECTED_WMMA_DOWN", "Q8_DOWN_VARIANT",
+        "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR",
+        "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
+    )
+)
+
+
+def validate_shared_graphs(environments):
+    # These switches affect prefill or uncaptured QSA attention, not the
+    # captured GDN and MoE decode units or their graph keys.
+    changed = {key for env in environments for key in env}
+    if not changed <= SHARED_DECODE_SAFE_FLAGS:
+        raise ValueError("candidate can change captured decode units")
+
+
+def round_order(case_index, arms, repetition):
+    order = list(arms)
+    if case_index % 2:
+        order.reverse()
+    offset = repetition % len(order)
+    return order[offset:] + order[:offset]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--candidate", choices=tuple(CANDIDATES), required=True)
+    parser.add_argument("--candidate", choices=tuple(CANDIDATES), required=True, action="append")
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--pairs", type=int, default=3)
+    parser.add_argument("--shared-decode-graphs", action="store_true")
     args = parser.parse_args()
     check_host()
     if args.pairs < 3:
         parser.error("at least three pairs required")
+    if len(set(args.candidate)) != len(args.candidate):
+        parser.error("duplicate candidates")
+    candidate_envs = {name: dict(CANDIDATES[name].environment) for name in args.candidate}
+    if args.shared_decode_graphs:
+        validate_shared_graphs(candidate_envs.values())
     args.prefill_chunk_size = 1024
     args.max_sequence_length = 4096 + 128 + 8
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
@@ -54,21 +84,25 @@ def main():
         report = dict(status="running", command=sys.argv, source=_git_metadata(ROOT),
                       host=_host_metadata(), model=model_identity(args.model_root),
                       fixture_sha256=digest, samples=[], performance_claim=False,
-                      candidate=args.candidate,
-                      protocol=dict(pairs=args.pairs, warmups=1, chunk=1024, kv="BF16"))
+                      candidates=args.candidate,
+                      protocol=dict(pairs=args.pairs, warmups=1, chunk=1024, kv="BF16",
+                                    shared_decode_graphs=args.shared_decode_graphs))
         generator, profile, _ = _make_generator(args, "production")
         runner = generator.runner
-        overrides = dict(CANDIDATES[args.candidate].environment)
-        previous = {key: os.environ.get(key) for key in overrides}
-        report["arm_overrides"] = {"before": previous, "after": overrides}
+        controlled = {key for env in candidate_envs.values() for key in env}
+        previous = {key: os.environ.get(key) for key in controlled}
+        arm_envs = {"before": previous}
+        arm_envs.update({name: {**previous, **env} for name, env in candidate_envs.items()})
+        report["arm_overrides"] = arm_envs
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
         caches = {"before": {name: getattr(runner, name) for name in names}}
-        caches["after"] = {
-            name: MoeGraphCache(runner.runtime, enabled=cache.enabled)
-            for name, cache in caches["before"].items()
-        }
+        for candidate in args.candidate:
+            caches[candidate] = caches["before"] if args.shared_decode_graphs else {
+                name: MoeGraphCache(runner.runtime, enabled=cache.enabled)
+                for name, cache in caches["before"].items()
+            }
 
         def step(*a, **kw):
             result = original_step(*a, **kw)
@@ -77,12 +111,12 @@ def main():
 
         runner.step = step
 
-        def sample(mode, case, rep):
+        def sample(arm, case, rep):
             runner.runtime.device_synchronize()
-            for name, cache in caches[mode].items():
+            for name, cache in caches[arm].items():
                 setattr(runner, name, cache)
             clear_gguf_linear_dispatch_cache()
-            set_flags(previous if mode == "before" else overrides)
+            set_flags(arm_envs[arm])
             if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
                 runner.configure_mmq_prefill_resources()
             row = _hipengine_case_sample(
@@ -91,36 +125,45 @@ def main():
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:
                 raise ValueError("nonfinite logits/state")
-            row.update(mode=mode, finite=True,
+            row.update(arm=arm, mode="before" if arm == "before" else "after", finite=True,
                        logits_sha256=hashlib.sha256(logits.tobytes()).hexdigest(),
                        state_sha256=state["state_sha256"])
             return row
 
         try:
             for index, case in enumerate(fixture["cases"]):
-                for mode in ("before", "after"):
-                    sample(mode, case, -1)
-                counters = {"before": 0, "after": 0}
-                for slot, mode in enumerate(pair_sequence(index, args.pairs)):
-                    row = sample(mode, case, counters[mode])
-                    counters[mode] += 1
-                    row["sequence_slot"] = slot
-                    report["samples"].append(row)
-                    args.output.write_text(json.dumps(report, indent=2) + "\n")
-                    print(case["id"], mode, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
-            report["summary"] = summarize_cost(report["samples"], args.pairs)
+                arms = tuple(arm_envs)
+                for arm in arms:
+                    sample(arm, case, -1)
+                for repetition in range(args.pairs):
+                    for slot, arm in enumerate(round_order(index, arms, repetition)):
+                        row = sample(arm, case, repetition)
+                        row["sequence_slot"] = repetition * len(arms) + slot
+                        report["samples"].append(row)
+                        args.output.write_text(json.dumps(report, indent=2) + "\n")
+                        print(case["id"], arm, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
+            report["comparisons"] = {
+                candidate: summarize_cost(
+                    [row for row in report["samples"] if row["arm"] in ("before", candidate)],
+                    args.pairs)
+                for candidate in args.candidate
+            }
             for case in fixture["cases"]:
-                for mode in ("before", "after"):
+                for arm in arm_envs:
                     rows = [r for r in report["samples"] if
-                            r["case_id"] == case["id"] and r["mode"] == mode]
+                            r["case_id"] == case["id"] and r["arm"] == arm]
                     for field in ("logits_sha256", "state_sha256"):
                         if len({row[field] for row in rows}) != 1:
-                            raise ValueError(f"nonrepeatable {field}: {case['id']} {mode}")
+                            raise ValueError(f"nonrepeatable {field}: {case['id']} {arm}")
             report["status"] = "completed"
         finally:
             set_flags(previous)
             runner.step = original_step
             runner.runtime.device_synchronize()
+            report["graph_stats"] = {
+                arm: {name: cache.stats for name, cache in arm_caches.items()}
+                for arm, arm_caches in caches.items()
+            }
             for mode_caches in caches.values():
                 for name, cache in mode_caches.items():
                     if cache is not getattr(runner, name):
