@@ -470,6 +470,8 @@ def _make_generator(args: argparse.Namespace, profile: str):
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not args.model_root.is_dir():
         raise GateError(f"model root does not exist: {args.model_root}")
+    if not _git_metadata(ROOT)["tracked_clean"]:
+        raise GateError("profile qualification requires a clean committed tracked tree")
     if args.decode_steps <= 0 or args.repeat_runs < 3 or args.free_runs < 2:
         raise GateError("decode steps must be positive; candidate repeats >=3; free runs >=2")
     prompt_rows = _load_suites(args.prompts)

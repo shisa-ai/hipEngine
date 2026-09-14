@@ -119,6 +119,15 @@ Test all output tokens, carried state, tails 15/16/17, chunk boundaries and
 full production numerical/task gates. Non-bit-identical candidates receive
 production review, not automatic rejection.
 
+September14 reverse-isolation follow-up: current admitted GDN over strict
+non-GDN arithmetic passes all numerical/scoped gates on594 rows
+(mean KL0.0000643436,max0.003782627,top1 593/594), with deterministic
+repeats and clean lifecycle. One free trajectory requires task review.
+This does not repair or qualify the full production composition, whose large
+tail also persists with GDN disabled. Do not attribute that failure solely to
+GDN or promote multi-column from its50-row isolated screen.
+See `benchmarks/results/2026-09-14-gdn-numerical-isolation/README.md`.
+
 ### MMB Matrix Kernels And Mixed-Quant Prefill
 
 Integration `mmb.cu::ggml_cuda_mmb_supported_mmid` accepts IQ4_NL only.
