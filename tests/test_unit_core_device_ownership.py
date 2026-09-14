@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hipengine.core.device import Device, scoped_current_device
@@ -15,8 +16,12 @@ from hipengine.core.hip import format_hip_uuid
 from hipengine.core.memory import (
     DeviceBuffer,
     DeviceMemoryArena,
+    copy_device_to_host,
     copy_device_to_device,
+    copy_host_array_to_device,
+    copy_host_to_device,
     free,
+    host_buffer_ptr,
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
@@ -302,3 +307,103 @@ def test_free_accepts_unattributed_and_duck_typed_buffers() -> None:
             _StandIn(ptr=1, nbytes=8), DeviceBuffer(ptr=2, nbytes=8, device=Device("hip", 0)),
             runtime=runtime,
         )
+
+
+def test_every_buffer_entry_point_handles_both_attribution_states() -> None:
+    """One table over the whole buffer-taking surface of ``core.memory``.
+
+    The ``free`` regression happened because a single function grew a
+    ``buffer.device`` read and only a caller's test noticed. This covers the
+    surface systematically: every entry point that takes a buffer must accept an
+    unattributed one (old current-device semantics), and every entry point that
+    touches device memory must select the owning device when the buffer is
+    attributed. ``host_buffer_ptr`` is listed as device-agnostic because it only
+    returns an address.
+    """
+
+    import inspect
+
+    from hipengine.core import memory as memory_module
+
+    def call_free(buffer, runtime):
+        free(buffer, runtime=runtime)
+
+    def call_h2d(buffer, runtime):
+        copy_host_to_device(buffer, 0x9000, 8, runtime=runtime)
+
+    def call_h2d_array(buffer, runtime):
+        copy_host_array_to_device(buffer, np.zeros(2, dtype=np.float32), runtime=runtime)
+
+    def call_d2h(buffer, runtime):
+        copy_device_to_host(0x9000, buffer, 8, runtime=runtime)
+
+    def call_d2d(buffer, runtime):
+        copy_device_to_device(
+            DeviceBuffer(ptr=0x7000, nbytes=8, device=Device("hip", 1)),
+            buffer,
+            runtime=runtime,
+        )
+
+    # entry point -> (call, selects the owning device?)
+    cases = {
+        "free": (call_free, True),
+        "copy_host_to_device": (call_h2d, True),
+        "copy_host_array_to_device": (call_h2d_array, True),
+        "copy_device_to_host": (call_d2h, True),
+    }
+    # A device-to-device copy cannot infer a device from two unattributed
+    # buffers, so it refuses instead of guessing.
+    attribution_required = {"copy_device_to_device": call_d2d}
+    # Host-side helpers whose parameter happens to be named ``buffer``: these
+    # take a ctypes array and never touch device memory.
+    host_side = {"host_buffer_ptr"}
+
+    # Every public function that takes a buffer by name is in the table above.
+    taken = set()
+    for name, function in vars(memory_module).items():
+        if name.startswith("_") or not inspect.isfunction(function):
+            continue
+        parameters = set(inspect.signature(function).parameters)
+        if parameters & {"buffer", "dst", "src"}:
+            taken.add(name)
+    expected = set(cases) | set(attribution_required) | host_side
+    assert taken == expected, f"buffer-taking entry points changed: {sorted(taken ^ expected)}"
+
+    for name, (call, selects_device) in cases.items():
+        unattributed = FakeDeviceRuntime(current=0)
+        call(DeviceBuffer(ptr=0x1000, nbytes=8), unattributed)
+        assert unattributed.get_device() == 0, f"{name} left the current device changed"
+
+        attributed = FakeDeviceRuntime(current=0)
+        call(DeviceBuffer(ptr=0x2000, nbytes=8, device=Device("hip", 1)), attributed)
+        assert attributed.get_device() == 0, f"{name} left the current device changed"
+        used = {entry[1][-1] for entry in attributed.calls if entry[1]}
+        if selects_device:
+            assert used == {1}, f"{name} did not select the owning device: {attributed.calls}"
+    for name, call in attribution_required.items():
+        unattributed = FakeDeviceRuntime(current=0)
+        with pytest.raises(ValueError):
+            call(DeviceBuffer(ptr=0x1000, nbytes=8), unattributed)
+        attributed = FakeDeviceRuntime(current=0)
+        call(DeviceBuffer(ptr=0x2000, nbytes=8, device=Device("hip", 1)), attributed)
+        assert attributed.get_device() == 0, f"{name} left the current device changed"
+        assert {entry[1][-1] for entry in attributed.calls if entry[1]} == {1}, name
+
+
+def test_buffer_entry_points_tolerate_duck_typed_buffers() -> None:
+    """A stand-in exposing only ptr/nbytes must not raise AttributeError."""
+
+    from hipengine.core.memory import copy_host_to_device, copy_device_to_host
+
+    class _StandIn:
+        def __init__(self, ptr: int, nbytes: int) -> None:
+            self.ptr = ptr
+            self.nbytes = nbytes
+
+    runtime = FakeDeviceRuntime(current=0)
+    stand_in = _StandIn(ptr=0x3000, nbytes=8)
+    free(stand_in, runtime=runtime)
+    copy_host_to_device(stand_in, 0x9000, 8, runtime=runtime)
+    copy_device_to_host(0x9000, stand_in, 8, runtime=runtime)
+    assert [entry[0] for entry in runtime.calls] == ["free", "memcpy", "memcpy"]
+    assert runtime.get_device() == 0

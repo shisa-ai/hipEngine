@@ -228,6 +228,7 @@ class RcclTransport:
         self._runtime = runtime or get_hip_runtime()
         self._poisoned = False
         self._closed = False
+        self._aborted = False
         self._sequence = 0
         self._group_lock = threading.Lock()
         #: sequence -> {rank: shape}. A group is validated as soon as every rank
@@ -237,8 +238,14 @@ class RcclTransport:
         self._local = threading.local()
         self._streams: list[int] = []
         self._comms: list[int] = []
-        self._create_streams()
-        self._init_communicators(timeout_s=init_timeout_s)
+        # The constructor cannot hand a half-built transport back to a caller, so
+        # every failure path tears down what it created before raising.
+        try:
+            self._create_streams()
+            self._init_communicators(timeout_s=init_timeout_s)
+        except BaseException:
+            self._teardown_streams()
+            raise
 
     # -- properties ---------------------------------------------------------
 
@@ -336,6 +343,7 @@ class RcclTransport:
         shapes = set(bucket.values())
         if len(shapes) != 1:
             self._poison("collective group shape mismatch across ranks")
+            self._abort_communicators()
             raise TransportStateError(
                 "every rank must enqueue the same collective sequence; got "
                 + ", ".join(f"rank{rank}={shape}" for rank, shape in sorted(bucket.items()))
@@ -355,6 +363,7 @@ class RcclTransport:
             incomplete = {sequence: sorted(bucket) for sequence, bucket in self._group_shapes.items()}
         if incomplete:
             self._poison(f"incomplete collective group at sync: {incomplete}")
+            self._abort_communicators()
             raise TransportStateError(
                 f"collective group did not register every rank before sync: {incomplete}"
             )
@@ -392,6 +401,10 @@ class RcclTransport:
         for rank, comm in enumerate(comms):
             try:
                 with scoped_current_device(self._runtime, self._devices[rank].index):
+                    if self._aborted:
+                        # A shape mismatch already aborted every communicator;
+                        # aborting twice is not a defined RCCL operation.
+                        continue
                     if self._poisoned:
                         self._binding.comm_abort(comm)
                     else:
@@ -416,8 +429,42 @@ class RcclTransport:
 
     def _create_streams(self) -> None:
         for device in self._devices:
-            with scoped_current_device(self._runtime, device.index):
-                self._streams.append(self._runtime.stream_create(nonblocking=True))
+            try:
+                with scoped_current_device(self._runtime, device.index):
+                    self._streams.append(self._runtime.stream_create(nonblocking=True))
+            except BaseException:
+                self._teardown_streams()
+                raise
+
+    def _teardown_streams(self) -> None:
+        """Destroy every stream created so far; safe to call repeatedly."""
+
+        streams = list(self._streams)
+        self._streams = []
+        for rank, stream in enumerate(streams):
+            try:
+                with scoped_current_device(self._runtime, self._devices[rank].index):
+                    self._runtime.stream_destroy(stream)
+            except Exception:  # noqa: BLE001 - teardown must attempt every rank
+                pass
+
+    def _destroy_partial_comms(self, comms: Sequence[int | None]) -> None:
+        """Destroy the communicators a failed initialization did create.
+
+        A communicator that came up while its peer did not is still holding
+        device resources; destroying it here is what keeps a failed init from
+        leaking, since the constructor never returns and no caller can call
+        :meth:`close`.
+        """
+
+        for rank, comm in enumerate(comms):
+            if comm is None:
+                continue
+            try:
+                with scoped_current_device(self._runtime, self._devices[rank].index):
+                    self._binding.comm_destroy(int(comm))
+            except Exception:  # noqa: BLE001 - teardown must attempt every rank
+                pass
 
     def _init_communicators(self, *, timeout_s: float) -> None:
         unique_id = self._binding.unique_id()
@@ -448,9 +495,11 @@ class RcclTransport:
             thread.join(timeout=max(1.0, float(timeout_s)))
         for rank, error in enumerate(errors):
             if error is not None:
+                self._destroy_partial_comms(comms)
                 raise TransportUnavailableError(f"communicator init failed on rank {rank}: {error!r}") from error
         missing = [rank for rank, comm in enumerate(comms) if comm is None]
         if missing:
+            self._destroy_partial_comms(comms)
             raise TransportUnavailableError(f"communicator init did not complete on ranks {missing}")
         self._comms = [int(comm) for comm in comms if comm is not None]
         try:
@@ -474,12 +523,30 @@ class RcclTransport:
             time.sleep(0.001)
 
     def _enqueue(self, request: CollectiveRequest) -> None:
+        """Validate a collective, then issue it.
+
+        Ordering matters on the real transport: an operation handed to RCCL is
+        queued, so a rank that issues a different sequence than its peer hangs or
+        corrupts instead of failing. The request is therefore recorded and
+        compared against every other rank's request at the same position *before*
+        it reaches RCCL, which is the discipline ``MockTransport`` specifies.
+        """
+
         self._require_live()
         group = self._thread_group()
         if group is None:
             raise TransportStateError("collectives must be enqueued inside group_start/group_end")
         request.validate(world_size=self.world_size, sequence=self._sequence)
         rank = request.rank
+        requests: dict[int, list[CollectiveRequest]] = group["requests"]
+        rank_requests = requests.setdefault(rank, [])
+        index = len(rank_requests)
+        mismatch = self._compare_against_peers(requests, rank=rank, index=index, request=request)
+        if mismatch is not None:
+            self._poison(mismatch)
+            self._abort_communicators()
+            raise TransportStateError(mismatch)
+        rank_requests.append(request)
         with scoped_current_device(self._runtime, self._devices[rank].index):
             if request.kind is CollectiveKind.ALL_REDUCE_SUM:
                 self._binding.all_reduce(
@@ -502,7 +569,49 @@ class RcclTransport:
                 )
             else:  # pragma: no cover - enum is exhaustive
                 raise TransportStateError(f"unsupported collective kind {request.kind}")
-        group["requests"].setdefault(rank, []).append(request)
+
+    def _compare_against_peers(
+        self,
+        requests: dict[int, list[CollectiveRequest]],
+        *,
+        rank: int,
+        index: int,
+        request: CollectiveRequest,
+    ) -> str | None:
+        """Return a mismatch description, or ``None`` when the op matches."""
+
+        shape = _request_shape(request)
+        for other_rank in sorted(requests):
+            if other_rank == rank:
+                continue
+            other_requests = requests[other_rank]
+            if index >= len(other_requests):
+                continue
+            other_shape = _request_shape(other_requests[index])
+            if other_shape != shape:
+                return (
+                    f"rank {rank} enqueued {shape} at position {index} while rank {other_rank} "
+                    f"enqueued {other_shape}; every rank must enqueue the same collective sequence"
+                )
+        return None
+
+    def _abort_communicators(self) -> None:
+        """Abort every communicator, so queued work cannot block a later wait.
+
+        A shape mismatch means one rank has a collective queued that its peer will
+        never match. Leaving that in the communicator would hang ``sync`` forever,
+        so the failure is made explicit instead.
+        """
+
+        if self._aborted:
+            return
+        self._aborted = True
+        for rank, comm in enumerate(self._comms):
+            try:
+                with scoped_current_device(self._runtime, self._devices[rank].index):
+                    self._binding.comm_abort(comm)
+            except Exception:  # noqa: BLE001 - abort must attempt every rank
+                pass
 
     def _thread_group(self) -> dict | None:
         return getattr(self._local, "group", None)
@@ -527,6 +636,12 @@ class RcclTransport:
             raise TransportStateError("transport is closed")
         if self._poisoned:
             raise CommunicatorAbortedError(f"communicator group is poisoned: {getattr(self, '_poison_reason', 'unknown')}")
+
+
+def _request_shape(request: CollectiveRequest) -> tuple:
+    """The part of a request every rank must agree on at the same position."""
+
+    return (request.kind, int(request.count), str(request.dtype), request.root)
 
 
 def record_enqueue(recorder: EnqueueRecorder, rank: int, start: float, end: float) -> None:

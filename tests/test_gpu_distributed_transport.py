@@ -177,3 +177,46 @@ def test_gpu_distributed_peer_access_screen_is_recorded() -> None:
     # must report false; a host that enables it reports true. Either way the
     # probe must answer rather than raise.
     assert len(observed) == 2
+
+
+@needs_two_gpus
+def test_gpu_distributed_mismatched_group_fails_fast_on_real_communicators() -> None:
+    """A real mismatched group must raise and abort, never hang.
+
+    This is the failure path the CPU suite could only reach through the mock.
+    With real RCCL communicators the difference matters: an operation that
+    reaches RCCL is queued, so a rank that issues a different sequence would
+    block its peer forever rather than report an error. The transport must
+    detect the mismatch before issuing the second rank's operation and abort the
+    communicators so nothing is left waiting.
+    """
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.distributed.plan import DistributedPlan
+    from hipengine.distributed.rccl import RcclTransport
+    from hipengine.distributed.transport import TransportError, TransportStateError
+
+    runtime = get_hip_runtime()
+    resolved = DistributedPlan.resolve(_devices(), hidden_size=5120, algorithm="rccl")
+    transport = RcclTransport([spec.device for spec in resolved.ranks], runtime=runtime, init_timeout_s=120.0)
+    send = [malloc(4096, device=Device("hip", rank)) for rank in range(2)]
+    recv = [malloc(4096, device=Device("hip", rank)) for rank in range(2)]
+    try:
+        transport.group_start()
+        transport.all_reduce_sum(0, send[0].ptr, recv[0].ptr, count=1024, dtype="fp32")
+        # Rank 1 declares a different payload size: a mismatch, detected before
+        # rank 1's operation reaches the communicator.
+        with pytest.raises(TransportStateError):
+            transport.all_reduce_sum(1, send[1].ptr, recv[1].ptr, count=2048, dtype="fp32")
+        assert transport.poisoned is True
+        # The communicators were aborted, so a later sync cannot wait forever:
+        # it reports the poisoned group instead of blocking on a collective its
+        # peer will never issue.
+        with pytest.raises(TransportError):
+            transport.sync(timeout_s=5.0)
+    finally:
+        for buffer in (*send, *recv):
+            free(buffer, runtime=runtime)
+        transport.close()
