@@ -106,33 +106,36 @@ def _load_clips(num_clips: int, cache_dir: Path,
         )
     # <root>/<spk>/<chap>/<uttr>.flac, <root>/<spk>/<chap>/<spk>-<chap>.trans.txt
     if len(clips) < num_clips:
+        # spread across chapters/speakers: one utterance per chapter per
+        # round, so a gate subset is not a single-speaker read
+        chapter_uttrs = {}
         for trans in sorted(root.glob("*/*/*.trans.txt")):
-            for line in open(trans):
-                uttr_id, text = line.strip().split(" ", 1)
-                if uttr_id in done:
-                    continue
-                # LibriSpeech layout: root/<spk>/<chap>/<uttr>.flac
-                spk, chap = uttr_id.split("-")[:2]
-                flac = root / spk / chap / f"{uttr_id}.flac"
-                audio, rate = sf.read(flac, dtype="float32")
-                if rate != 24000:
-                    audio = resample_poly(audio, 24000, rate).astype(np.float32)
-                wav_path = cache_dir / f"{uttr_id}.f32.npy"
-                np.save(wav_path, audio)
-                entry = {
-                    "clip_id": uttr_id,
-                    "wav": str(wav_path),
-                    "text": text,
-                    "seconds": len(audio) / 24000.0,
-                }
-                clips.append(entry)
-                done.add(uttr_id)
-                with open(manifest_path, "a") as fh:
-                    fh.write(json.dumps(entry) + "\n")
-                if len(clips) >= num_clips:
-                    break
-            if len(clips) >= num_clips:
-                break
+            entries = [ln.strip().split(" ", 1) for ln in open(trans)]
+            chapter_uttrs[trans] = [e for e in entries if e[0] not in done]
+        round_robin = []
+        while any(chapter_uttrs.values()):
+            for trans in sorted(chapter_uttrs):
+                if chapter_uttrs[trans]:
+                    round_robin.append((trans, chapter_uttrs[trans].pop(0)))
+        for trans, (uttr_id, text) in [(t, u) for t, u in round_robin][: max(0, num_clips - len(clips))]:
+            spk, chap = uttr_id.split("-")[:2]
+            flac = root / spk / chap / f"{uttr_id}.flac"
+            audio, rate = sf.read(flac, dtype="float32")
+            if rate != 24000:
+                audio = resample_poly(audio, 24000, rate).astype(np.float32)
+            wav_path = cache_dir / f"{uttr_id}.f32.npy"
+            np.save(wav_path, audio)
+            entry = {
+                "clip_id": uttr_id,
+                "wav": str(wav_path),
+                "text": text,
+                "seconds": len(audio) / 24000.0,
+            }
+            clips.append(entry)
+            done.add(uttr_id)
+            with open(manifest_path, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        return clips[:num_clips]
     return clips[:num_clips]
 
 
@@ -160,28 +163,29 @@ def main() -> int:
     print(f"loaded {len(clips)} clips, total "
           f"{sum(c['seconds'] for c in clips):.1f} s audio")
 
-    results = {"systems": {}, "clips": len(clips)}
+    results = {"systems": {}, "clips": len(clips),
+               "clip_ids": [c["clip_id"] for c in clips]}
     refs = [c["text"] for c in clips]
-    if "torch" in args.systems:
+    for system in args.systems:
+        lane = bench.bench_torch_gpu if system == "torch" else bench.bench_hipengine
         hyps = []
         for i, clip in enumerate(clips):
             pcm = np.load(clip["wav"])
-            out = bench.bench_torch_gpu(pcm, clip["seconds"], bench_args)
-            hyps.append(out["text"])
-            print(f"[torch {i+1}/{len(clips)}] {out['text'][:60]!r}")
+            out = lane(pcm, clip["seconds"], bench_args)
+            hyps.append(_transcription_only(out["text"]))
+            print(f"[{system} {i+1}/{len(clips)}] {hyps[-1][:60]!r}")
         wer = _wer(refs, hyps)
-        results["systems"]["torch"] = {"wer": wer}
-        print(f"torch WER: {wer:.2f}%")
-    if "hip" in args.systems:
-        hyps = []
-        for i, clip in enumerate(clips):
-            pcm = np.load(clip["wav"])
-            out = bench.bench_hipengine(pcm, clip["seconds"], bench_args)
-            hyps.append(out["text"])
-            print(f"[hip {i+1}/{len(clips)}] {out['text'][:60]!r}")
-        wer = _wer(refs, hyps)
-        results["systems"]["hip"] = {"wer": wer}
-        print(f"hipEngine WER: {wer:.2f}%")
+        per_clip = []
+        for clip, hyp in zip(clips, hyps):
+            single = _wer([clip["text"]], [hyp])
+            per_clip.append({"clip_id": clip["clip_id"], "wer": single, "hyp": hyp})
+        results["systems"][system] = {
+            "wer": wer,
+            "ref_texts": refs,
+            "hypotheses": hyps,
+            "per_clip": per_clip,
+        }
+        print(f"{system} WER: {wer:.2f}%")
 
     results["protocol"] = {
         "dataset": "openslr/librispeech_asr clean/test",
