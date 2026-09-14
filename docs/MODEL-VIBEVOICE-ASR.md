@@ -1,7 +1,24 @@
 # MODEL-VIBEVOICE-ASR.md — VibeVoice ASR on hipEngine
 
-Status: **reviewed; implementation pending** (2026-09-11; reuse/dtype amendments
-2026-09-14).
+Status: **native implementation available; production qualification incomplete**
+(2026-09-14). The gfx1151 lane has CPU/GPU fixture checks, stateful 60-second
+encoder chunks and a torch-free public transcription smoke through content and
+EOS. gfx1100 hardware execution is unverified. Earlier faster-than-torch numbers
+were withdrawn because the input/timing protocol differed between lanes.
+
+Use `LLM("microsoft/VibeVoice-ASR-HF").transcribe(pcm, sample_rate=24000,
+context="hotwords", max_new_tokens=256, seed=20260914)`. Input is finite mono
+24 kHz floating PCM; other rates must be resampled by the caller. Normalization
+and the template follow the HF processor. Duration uses the original sample
+count; the encoder pads the final partial frame. Each result exposes raw text,
+validated segments (or `None`), token IDs and `eos`/`length` finish status.
+Requests on one initialized generator serialize access to scratch and KV.
+The default context capacity is 4096 tokens (configurable up to 16000).
+The public adapter uses strict GEMM and incremental prefill fallbacks; optimized
+arithmetic remains a low-level qualification candidate. No production profile
+is registered for this model yet. Multi-category quality, full-logit production
+envelopes, sustained concurrency and same-protocol speed remain qualification
+work; the initial short greedy fixture proves only the JSON prefix.
 
 The new work is a pair of causal audio encoders, their embedding connectors,
 and audio-aware Qwen2 generation. There is no vision tower and no synthesis

@@ -1,6 +1,7 @@
 """Model plugins and registry."""
 
 from hipengine.models.base import ModelPlugin
+from hipengine.models.vibevoice_asr import VIBEVOICE_ASR, VibeVoiceASRModel
 from hipengine.models.kv_capabilities import (
     KVCapabilityEvidence,
     KVCapabilityKey,
