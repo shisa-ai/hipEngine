@@ -17,7 +17,7 @@ improvements require the applicable unchanged production quality gates.
 | ID | Concrete experiment | State / prerequisite |
 | --- | --- | --- |
 | R01 | Existing tiled GDN/DPP suffix on corrected production | Numerical/state pass; targeted EOS task fails predeclared no-new-material-error rule; not promoted ([evidence](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
-| R02 | Multi-column GDN on corrected production | Previous old-stack failure preserved; isolate after R01 |
+| R02 | Multi-column GDN on corrected production | Counted isolated candidate prepared; previous old-stack failure preserved |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
 | R04 | Dense Q8 iu8 independently | Count actual projection dispatch; short and canonical depth gates |
 | R05 | GR iu8 up independently | Same-input boundary and short/depth/task gates |
@@ -61,3 +61,12 @@ improvements require the applicable unchanged production quality gates.
   prerequisite and artifact. An untested row is open, never complete.
 - Re-rank from current owner costs after each adoption. Do not multiply
   historical gains or attribute all disabled families to Q8.
+
+## Gate Engagement
+
+The 18 natural category/heldout task prompts in the R01 capture are only
+39-71 tokens. Dense Q8 iu8 and GR iu8 up/down require more than 256 prefill
+rows, so that natural suite cannot exercise those optimizations, even with
+long free completions. R04-R06 need counted canonical-depth execution and
+task prompts whose prefill actually enters the candidate. An unchanged
+short-task pass is an inactive-path control, not active-path qualification.

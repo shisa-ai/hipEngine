@@ -276,6 +276,18 @@ CANDIDATES["production_gdn_restore"] = replace(
     scenario_id="qwen4exp-production-gdn-restoration",
     count_registered_dispatch=True,
 )
+CANDIDATES["production_gdn_multi_restore"] = replace(
+    CANDIDATES["production_gdn_restore"],
+    name="production_gdn_multi_restore",
+    mechanism="multi-column GDN suffix over corrected Q8/QSA production",
+    scenario_id="qwen4exp-production-gdn-multi-restoration",
+    environment={
+        **CANDIDATES["production_gdn_restore"].environment,
+        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
+    },
+    candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                   "qwen4exp_gdn_tiled16_multi_prefill"),
+)
 
 
 class GateError(RuntimeError):
