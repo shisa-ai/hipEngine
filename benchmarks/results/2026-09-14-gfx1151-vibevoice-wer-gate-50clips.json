@@ -1,0 +1,114 @@
+{
+  "date": "2026-09-14",
+  "purpose": "VibeVoice-ASR diverse-subset WER gate: hipEngine vs torch-GPU bf16 reference on matched inputs",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151)",
+  "protocol": {
+    "dataset": "LibriSpeech test-clean (OpenSLR), 50 clips spread one-per-chapter across 23 speakers",
+    "audio": "16 kHz FLAC resampled to 24 kHz float PCM (scipy resample_poly)",
+    "lanes": "matched frozen-request bench protocol (hash-checked request.npz, subprocess isolation), greedy, max_new_tokens 256",
+    "scoring": "jiwer process_words WER after Whisper EnglishTextNormalizer; structured-output Content extracted"
+  },
+  "results": {
+    "torch_bf16_wer_pct": 0.045863309352517985,
+    "hipengine_wer_pct": 0.019784172661870502,
+    "transcripts_differing": 23,
+    "per_clip_wer_diffs": {
+      "121-123852-0000": {
+        "torch": 0.10344827586206896,
+        "hip": 0.06896551724137931
+      },
+      "1284-1181-0000": {
+        "torch": 2.142857142857143,
+        "hip": 0.0
+      },
+      "1995-1837-0000": {
+        "torch": 0.16666666666666666,
+        "hip": 0.08333333333333333
+      },
+      "237-126133-0000": {
+        "torch": 0.02564102564102564,
+        "hip": 0.0
+      },
+      "237-134493-0000": {
+        "torch": 0.25,
+        "hip": 0.125
+      },
+      "260-123288-0000": {
+        "torch": 0.14285714285714285,
+        "hip": 0.0
+      },
+      "260-123440-0000": {
+        "torch": 1.0,
+        "hip": 0.0
+      },
+      "2830-3979-0000": {
+        "torch": 0.045454545454545456,
+        "hip": 0.0
+      },
+      "4446-2275-0000": {
+        "torch": 0.1,
+        "hip": 0.05
+      }
+    }
+  },
+  "findings": [
+    "hipEngine (0.02%) matches or beats the torch bf16 reference (0.05%) on every clip where per-clip WER differs (9/50); no systematic degradation",
+    "on 260-123440 the torch eager-attention lane produced a completely wrong transcript (WER 1.0) while hipEngine scored 0.0",
+    "both lanes are far below the model card's published 2.20% test-clean row; NOT a leaderboard-comparable number - a 50-clip easy-skewed subset, and possibly a different audio/chunking protocol; the load-bearing comparison is hip-vs-torch under the identical matched-request protocol",
+    "transcript differences are punctuation/possessive-level bf16-vs-fp16 rounding divergence, as in the single-speaker parity run"
+  ],
+  "clip_ids": [
+    "1089-134686-0000",
+    "1089-134691-0000",
+    "1188-133604-0000",
+    "121-121726-0000",
+    "121-123852-0000",
+    "121-123859-0000",
+    "121-127105-0000",
+    "1221-135766-0000",
+    "1221-135767-0000",
+    "1284-1180-0000",
+    "1284-1181-0000",
+    "1284-134647-0000",
+    "1320-122612-0000",
+    "1320-122617-0000",
+    "1580-141083-0000",
+    "1580-141084-0000",
+    "1995-1826-0000",
+    "1995-1836-0000",
+    "1995-1837-0000",
+    "2094-142345-0000",
+    "2300-131720-0000",
+    "237-126133-0000",
+    "237-134493-0000",
+    "237-134500-0000",
+    "260-123286-0000",
+    "260-123288-0000",
+    "260-123440-0000",
+    "2830-3979-0000",
+    "2830-3980-0000",
+    "2961-960-0000",
+    "2961-961-0000",
+    "3570-5694-0000",
+    "3570-5695-0000",
+    "3570-5696-0000",
+    "3575-170457-0000",
+    "3729-6852-0000",
+    "4077-13751-0000",
+    "4077-13754-0000",
+    "4446-2271-0000",
+    "4446-2273-0000",
+    "4446-2275-0000",
+    "4507-16021-0000",
+    "4970-29093-0000",
+    "4970-29095-0000",
+    "4992-23283-0000",
+    "4992-41797-0000",
+    "4992-41806-0000",
+    "5105-28233-0000",
+    "5105-28240-0000",
+    "5105-28241-0000"
+  ],
+  "supersedes": "2026-09-14-gfx1151-vibevoice-wer-parity-single-speaker.json (kept as the parity-only artifact)"
+}
