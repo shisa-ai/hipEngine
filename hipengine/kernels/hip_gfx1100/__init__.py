@@ -1604,3 +1604,11 @@ __all__ = [
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
 ]
+
+
+def register_vibevoice_kernels():
+    from hipengine.kernels.hip_gfx1100.vibevoice.registered import register_vibevoice_kernels as register_shared
+    register_shared('hip_gfx1100')
+
+
+register_vibevoice_kernels()

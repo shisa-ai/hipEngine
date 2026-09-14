@@ -12,6 +12,7 @@ import ctypes
 from pathlib import Path
 
 import numpy as np
+from hipengine.loading.vibevoice_layout import f32_to_bf16_bits, conv_rows_out, transpose_conv_weight_t
 
 from hipengine.core.build import BuildArtifact, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -83,12 +84,6 @@ def _library() -> ctypes.CDLL:
     return library
 
 
-def f32_to_bf16_bits(host: np.ndarray) -> np.ndarray:
-    """FP32 host array -> BF16 bits (uint16), round-to-nearest-even."""
-    array = np.ascontiguousarray(host, dtype=np.float32)
-    bits = array.view(np.uint32)
-    rounded = (bits + np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))) & np.uint32(0xFFFF0000)
-    return (rounded >> np.uint32(16)).astype(np.uint16)
 
 
 def vv_add_bias_f32(
@@ -214,12 +209,6 @@ def vv_depthwise_conv_bf16(
         runtime.check(int(err))
 
 
-def conv_rows_out(prefix_rows: int, length: int, k_len: int, stride: int) -> int:
-    """Valid causal outputs for a pass over ``length`` rows plus prefix."""
-    padded = prefix_rows + length
-    if padded < k_len:
-        return 0
-    return (padded - k_len) // stride + 1
 
 
 def vv_conv_gemm_bf16(
@@ -347,9 +336,39 @@ def vv_add_scaled_noise_bf16(
         runtime.check(int(err))
 
 
-def transpose_conv_weight_t(w: np.ndarray) -> np.ndarray:
-    """nn.Conv1d weight [C_out, C_in, K] -> kernel layout [K, C_in, C_out] bf16 bits."""
-    array = np.asarray(w)
-    if array.ndim != 3:
-        raise ValueError("conv weight must be [C_out, C_in, K]")
-    return f32_to_bf16_bits(np.ascontiguousarray(array.transpose(2, 1, 0)))
+
+
+def _span_arguments(spans, rows):
+    from hipengine.core.dtype import DType
+    if (spans.spans_mode != 'uniform' or spans.storage_dtype != DType.BF16
+            or spans.live_counts.dtype != DType.INT64 or spans.live_counts.numel != rows
+            or spans.token_positions is None or spans.evict_mask is None or spans.row_positions is None
+            or spans.token_positions.dtype != DType.INT64 or spans.row_positions.dtype != DType.INT64
+            or spans.row_positions.numel != rows or spans.max_live_count != spans.base_offsets.numel
+            or spans.token_positions.numel != spans.max_live_count or spans.evict_mask.numel != spans.max_live_count
+            or not 0 < spans.max_live_count <= 16000):
+        raise ValueError('VibeVoice requires uniform BF16 block-size-one spans with complete position/mask metadata')
+    return (spans.base_offsets.ptr,spans.live_counts.ptr,spans.token_positions.ptr,
+            spans.evict_mask.ptr,spans.row_positions.ptr)
+
+
+def vv_kv_write_spans(key_ptr,value_ptr,key_cache_ptr,value_cache_ptr,spans,rows,kv_heads,head_dim,
+                      *,stream=0,library=None,runtime=None):
+    metadata = _span_arguments(spans,rows)
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library,'hipengine_vv_kv_write_spans',(_P,)*9+(_I,)*3+(_S,),ctypes.c_int)
+    err = fn(key_ptr,value_ptr,key_cache_ptr,value_cache_ptr,*metadata,rows,kv_heads*head_dim,spans.max_live_count,stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def vv_attention_spans(query_ptr,key_cache_ptr,value_cache_ptr,out_ptr,spans,rows,q_heads,kv_heads,head_dim,scale,
+                       *,stream=0,library=None,runtime=None):
+    metadata = _span_arguments(spans,rows)
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library,'hipengine_vv_attention_spans',(_P,)*9+(_I,)*5+(_F,_S),ctypes.c_int)
+    err = fn(query_ptr,key_cache_ptr,value_cache_ptr,out_ptr,*metadata,rows,q_heads,kv_heads,head_dim,spans.max_live_count,scale,stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
