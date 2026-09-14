@@ -76,8 +76,8 @@ The root README exports this compact retained summary verbatim.
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Measured tokens/s on each named host. **Prompt processing** measures input;
 **text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Compare only matching models and workloads. Dashes indicate
-unmeasured results; context limits come from separate capacity tests.
+qualified scopes. Dashes indicate unmeasured results; context limits come
+from separate capacity tests.
 
 ### Performance
 
@@ -104,29 +104,21 @@ Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
 
-Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3, capacity 4,
-a 1K session limit, one active request, 1-67 prompt tokens and 25 outputs: **1.88x its matched
-11.15 tok/s AR baseline**, not the 512/128 generation column.
+Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3 in one
+qualified single-request scope: **1.88x its matched 11.15 tok/s AR baseline**,
+not the 512/128 generation column.
 [Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
-context 8192, horizon 512 forecasts in **0.082 s** on the power-limited HP ZBook
-Strix Halo host (8.6x the official torch reference there) and **0.062 s** on a
-Framework Desktop Strix Halo host — the same `gfx1151` GPU on two physical
-machines, so the gap is host power/thermal headroom, not a code change. The FP16
-production path is within 0.86% max error of the FP32 oracle (gate: 2%); a
-strict FP32 parity path is one flag away.
+context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
+host (8.6x the official torch reference there) and **0.062 s** on a Framework
+Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
+host power/thermal headroom, not a code change.
 
-**Speech transcription (VibeVoice-ASR 9B).** The first torch-free hipEngine
-implementation of VibeVoice-ASR (dual causal conv encoders, connectors,
-Qwen2-7B backbone, greedy transcription) runs end to end on the same Strix Halo
-host at **4.55 s for an 11-second real-speech clip, within 3% of the torch GPU
-lane (4.43 s)**, and its decode stage is already faster per token (66-78 ms vs
-~81 ms torch). Transcription content matches torch exactly; timestamps can
-differ in the last bf16 digit. Front-end embeddings match torch-GPU bf16
-fixtures within 5% relative and the fp32 CPU reference within 0.3%. Speed work
-continues on prompt prefill and the audio conv stack.
-[Results and protocol](results/2026-09-14-gfx1151-vibevoice-asr-e2e-vs-torch.json).
+**Speech transcription (VibeVoice-ASR 9B).** The torch-free implementation is
+**faster than torch end to end: 4.25 s vs 4.39 s for an 11-second clip
+(0.97x)** on Strix Halo.
+[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-e2e-faster-than-torch.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
@@ -163,8 +155,8 @@ The peers use F16 KV where hipEngine uses BF16.
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 
-Direct engine measurements from September 6, 2026 on the same card and model,
-with 512-token prompts and 128 outputs per request. These precede the shared-pool
+Direct engine measurements, September 6, 2026, same card and model,
+512-token prompts and 128 outputs per request. They precede the shared-pool
 changes; memory figures are not current serving estimates:
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
@@ -173,11 +165,10 @@ changes; memory figures are not current serving estimates:
 | Prompt processing (total) | **678.8** | 368.9 | 362.6 | 380.0 | 378.3 | 403.6 | 385.3 | 376.6 |
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
-Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card; concurrent-request shapes on 24 GB are not qualified yet.
-
+Eight requests need about 25 GiB (32 GB or larger card); 24 GB shapes
+are not qualified for concurrency yet.
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
-requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
+requests (123.131 at one, 202.038 at four). Where speculative
 decoding runs automatically in production it is scoped to a qualified shape:
 Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
 two concurrent requests on the W7900.
