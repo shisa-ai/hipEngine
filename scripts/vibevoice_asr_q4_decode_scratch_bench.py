@@ -8,9 +8,12 @@ Q4-vs-bf16 decode ratio can be restated from one session rather than compared
 against a number recorded in an earlier session.
 
 Every lane runs the identical loop, fixture and prompt rows in one process,
-rotating lane order per trial so host drift cannot favour any lane. The Q4
-lanes must produce the same token chain and bit-identical logits; the only
-difference between them is where the o_proj input scratch comes from.
+rotating lane order per trial so host drift cannot favour any lane. The two Q4
+lanes must produce the same token chain *and* byte-identical logits for every
+decoded token; the run fails otherwise. Logits are compared per token by
+SHA-256 over the raw bytes rather than by a sum, because a sum can match while
+individual elements differ, and a token-chain comparison only fails once a
+difference is large enough to move an argmax.
 
 Usage:
     python3 scripts/vibevoice_asr_q4_decode_scratch_bench.py [--steps N] [--trials N]
@@ -20,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import statistics
 import time
@@ -64,19 +68,25 @@ def _prefill(runner, rows) -> None:
         free(prompt_buf)
 
 
-def _run(runner, rows, steps: int, scratch) -> tuple[float, list[int], float]:
+def _run(runner, rows, steps: int, scratch) -> tuple[float, list[int], list[str]]:
     """Prefill the prompt, then decode ``steps`` tokens.
 
     ``scratch`` is the caller-owned o_proj bf16 buffer to pass, or None to
     make the wrapper allocate one per layer. Returns (ms per decode step,
-    generated token ids, logits checksum).
+    generated token ids, one SHA-256 per decoded token over the raw logits
+    bytes).
+
+    The per-token digests exist so two lanes can be compared on every element
+    of every logit vector. A summed logits value cannot do that: two lanes can
+    differ elementwise and still sum to the same float, and a token-chain
+    comparison only fails once a difference is large enough to move an argmax.
     """
     runner._o_proj_x_bf16 = scratch
     runner.reset()
     _prefill(runner, rows)
 
     tokens: list[int] = []
-    checksum = 0.0
+    digests: list[str] = []
     position = len(rows)
     # First token comes from the prompt's own logits, outside the timed region.
     _, token = runner.logits_argmax()
@@ -86,11 +96,11 @@ def _run(runner, rows, steps: int, scratch) -> tuple[float, list[int], float]:
         runner.push_token(runner.embed_row(token), position)
         runner.forward_layers(position)
         logits, token = runner.logits_argmax()
-        checksum += float(logits.sum())
+        digests.append(hashlib.sha256(np.ascontiguousarray(logits).tobytes()).hexdigest())
         tokens.append(token)
         position += 1
     elapsed = time.perf_counter() - start
-    return elapsed * 1000.0 / steps, tokens, checksum
+    return elapsed * 1000.0 / steps, tokens, digests
 
 
 def _stats(values: list[float]) -> dict[str, object]:
@@ -152,7 +162,7 @@ def main() -> int:
         order = list(lanes)
         samples: dict[str, list[float]] = {k: [] for k in order}
         tokens_out: dict[str, list[int]] = {}
-        checksums: dict[str, float] = {}
+        digests_out: dict[str, list[str]] = {}
 
         for _ in range(args.warmup):
             for label in order:
@@ -163,10 +173,10 @@ def main() -> int:
             rotation = order[trial % len(order):] + order[:trial % len(order)]
             for label in rotation:
                 runner, rows, scratch_arg = lanes[label]
-                ms, tokens, checksum = _run(runner, rows, args.steps, scratch_arg)
+                ms, tokens, digests = _run(runner, rows, args.steps, scratch_arg)
                 samples[label].append(ms)
                 tokens_out[label] = tokens
-                checksums[label] = checksum
+                digests_out[label] = digests
     finally:
         if bf16 is not None:
             bf16.close()
@@ -188,11 +198,18 @@ def main() -> int:
     print(f"{'scratch delta':24s}: {fresh - reused:+.2f} ms/token "
           f"({(speedup - 1.0) * 100:+.2f}%)  speedup {speedup:.4f}x")
 
-    identical = tokens_out["q4_fresh_malloc"] == tokens_out["q4_persistent_scratch"]
-    rel_checksum = (abs(checksums["q4_fresh_malloc"] - checksums["q4_persistent_scratch"])
-                    / max(abs(checksums["q4_fresh_malloc"]), 1e-9))
-    print(f"{'q4 token chain identical':24s}: {identical}")
-    print(f"{'q4 logits checksum rel':24s}: {rel_checksum:.3e}")
+    # Every element of every decoded token's logits, not a summary of them.
+    fresh_digests = digests_out["q4_fresh_malloc"]
+    reused_digests = digests_out["q4_persistent_scratch"]
+    mismatches = [i for i, (a, b) in enumerate(zip(fresh_digests, reused_digests))
+                  if a != b]
+    logits_identical = not mismatches and len(fresh_digests) == len(reused_digests)
+    chain_identical = tokens_out["q4_fresh_malloc"] == tokens_out["q4_persistent_scratch"]
+    elements = len(fresh_digests) * q4.spec.vocab_size
+    print(f"{'q4 logits identical':24s}: {logits_identical} "
+          f"({len(fresh_digests)} tokens, {elements} logits, "
+          f"first mismatch {mismatches[0] if mismatches else None})")
+    print(f"{'q4 token chain identical':24s}: {chain_identical}")
 
     payload = {
         "steps_per_trial": args.steps,
@@ -204,22 +221,41 @@ def main() -> int:
         "lanes": results,
         "scratch_delta_ms_per_token": round(fresh - reused, 2),
         "scratch_speedup": round(speedup, 4),
-        "q4_token_chain_identical": identical,
-        "q4_logits_checksum_rel_diff": rel_checksum,
+        "q4_token_chain_identical": chain_identical,
+        "q4_per_token_logits_identical": logits_identical,
+        "q4_tokens_compared": len(fresh_digests),
+        "q4_logits_elements_compared": elements,
+        "q4_first_differing_token": mismatches[0] if mismatches else None,
     }
     if args.compare_bf16:
         bf16_med = results["bf16_dense"]["median"]
         payload["q4_vs_bf16_decode_speedup"] = round(bf16_med / reused, 4)
         payload["q4_fresh_vs_bf16_decode_speedup"] = round(bf16_med / fresh, 4)
+        # Negative control: the bf16 lane is a different arithmetic, so its
+        # per-token logits must differ. If they did not, the comparison above
+        # would be vacuous.
+        bf16_differs = sum(
+            1 for a, b in zip(digests_out["bf16_dense"], reused_digests) if a != b)
+        payload["bf16_tokens_differing_from_q4"] = bf16_differs
         print(f"{'q4 scratch vs bf16':24s}: {bf16_med / reused:.4f}x "
               f"(was {bf16_med / fresh:.4f}x with per-layer malloc)")
+        print(f"{'bf16 differs from q4':24s}: {bf16_differs}/{len(reused_digests)} "
+              f"tokens (negative control)")
+        if bf16_differs == 0:
+            raise SystemExit(
+                "FAIL: the bf16 lane matched the Q4 lane bit for bit, so the "
+                "per-token logits comparison cannot be detecting anything")
 
     if args.json is not None:
         args.json.write_text(json.dumps(payload, indent=1) + "\n")
         print(f"wrote {args.json}")
 
-    if not identical:
-        raise SystemExit("FAIL: the Q4 lanes produced different token chains")
+    if not (logits_identical and chain_identical):
+        raise SystemExit(
+            "FAIL: the two Q4 lanes are not bit-identical "
+            f"(logits identical={logits_identical}, "
+            f"first differing token={mismatches[0] if mismatches else None}, "
+            f"token chain identical={chain_identical})")
     return 0
 
 

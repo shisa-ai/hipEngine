@@ -161,17 +161,42 @@ production gate in `docs/EXECUTION-PROFILES.md` section 6.1 is applied
 per prompt length as a scope (mean/p95/p99/max full-vocabulary row KL plus
 top-1), measured against the sequential row-by-row route as the strict parent.
 
-Two limits on that gate, both recorded rather than tuned around:
+### Which profile each clause belongs to
 
-- The batched and sequential routes are different **schedules**. Their
-  distribution-level agreement is well inside the envelope (mean KL ~7e-4), but
-  top-1 agreement lands near 95% because the rows that flip carry a model
-  decision margin of 0.006-0.039 nats against a 0.79 median. The dense bf16
-  lane, which this work does not touch, shows the same effect, so it is a
-  property of the schedule comparison rather than of the Q4 arithmetic.
-- `prefill_rows` overwrites its input buffer with its post-layer-stack result.
-  Any determinism or repeat-comparison check must re-upload the input before
-each run; reusing one buffer feeds the previous output back in as input.
+The batched prefill and the sequential row-by-row route are two different
+**schedules**. Under `docs/EXECUTION-PROFILES.md` section 4.2 and the
+`production` profile row, cross-width generated-ID equality is diagnostic
+rather than a promotion requirement. So the two clause families in that gate are
+not the same kind of evidence:
+
+- The four **KL** clauses are the binding production drift bound for this route.
+  They pass, with mean KL ~7e-4 against an envelope mean of 1e-3.
+- The **top-1 against the sequential route** clause is a cross-schedule
+  diagnostic. It lands near 95% against a 0.99 envelope because the rows that
+  flip carry a model decision margin of 0.006-0.039 nats against a 0.79 median,
+  so a sub-1e-3 perturbation decides them. The dense bf16 lane, which this work
+  does not touch, shows the same effect (87/89), so it is a property of the
+  schedule comparison rather than of the Q4 arithmetic. It stays asserted as a
+  non-strict xfail so the unmet clause remains visible.
+
+A green run of the runner suite therefore means the KL drift bound, the strict
+fallback and the ownership/reuse gates pass. It does not certify the model for
+production: that additionally needs isolation, BF16-relative and task-quality
+gates, which are tracked separately in this document.
+
+The scratch-allocation work on this model (prefill scratch arena, front-end
+arena rewind, decode `o_proj` scratch, Q6_K `ffn_down` direct bf16) is
+**byte-exact** on its affected surface, so it meets the `strict` arithmetic
+contract, which is stronger than `production` requires. It changes no values and
+needs no numerical re-qualification.
+
+### One measured trap
+
+`prefill_rows` overwrites its input buffer with its post-layer-stack result.
+Any determinism or repeat-comparison check must re-upload the input before
+each run; reusing one buffer feeds the previous output back in as input, which
+looks exactly like run-to-run non-determinism. The batched prefill is
+deterministic in both lanes once the input is restored.
 
 Use multi-speaker, overlapping speech, silence, noisy/far-field recordings,
 English, Japanese and code-switching cases, hotwords and held-out recordings.
