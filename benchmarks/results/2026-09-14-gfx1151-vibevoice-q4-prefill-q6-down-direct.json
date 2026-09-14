@@ -1,0 +1,44 @@
+{
+ "date": "2026-09-14",
+ "purpose": "VibeVoice-ASR Q4_K_M batched prefill: write a Q6_K ffn_down result straight into the bf16 residual instead of widening it to f32 and narrowing it straight back",
+ "host": "zbook",
+ "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+ "protocol": {
+  "weights": "Q4_K_M backbone via /tmp/vibevoice-asr-q4km.gguf; the llama-quantize Q4_K_M ruleset upgrades attn_v and ffn_down to Q6_K on 14 of the 28 layers",
+  "change": "q4_prefill's gemm_bf16_f32 helper gained an optional bf16_out target. ffn_down feeds the bf16 residual with no intervening op, so a Q6_K down projection now writes the WMMA kernel's bf16 output directly into the residual buffer, dropping the bf16->f32 widening and the f32->bf16 narrowing that immediately followed it. Q4_K down projections still narrow from f32, since that route has only an f32 output.",
+  "exactness": "bf16->f32 widening is exact and narrowing an exactly-representable value back to bf16 is the identity, so the skipped pair changes no value. Verified over the full 16-bit bf16 pattern space (1048576 patterns including subnormals, +/-0, +/-inf and NaN): 0 mismatches.",
+  "workload": "89-row prompt, one batched q4 prefill per trial, 3 warmup runs then 5 timed trials",
+  "command": "python3 /tmp/prefill_hash.py and python3 /tmp/prefill_launches.py (load /tmp/vibevoice-asr-q4km.gguf, prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz), run against HEAD and against the change"
+ },
+ "results": {
+  "conversion_launches_before": {"f32_to_bf16": 168, "bf16_to_f32": 28, "total": 196},
+  "conversion_launches_after": {"f32_to_bf16": 154, "bf16_to_f32": 14, "total": 168},
+  "conversion_launches_removed": 28,
+  "launches_removed_breakdown": "14 Q6_K ffn_down layers x 2 (one bf16_to_f32 widening, one f32_to_bf16 narrowing)",
+  "remaining_bf16_to_f32": "14, one per Q6_K attn_v, which does need f32 for its bias add",
+  "prefill_ms_median_before": 221.286,
+  "prefill_ms_trials_before": [231.283, 227.218, 221.286, 220.038, 220.424],
+  "prefill_ms_median_after": 222.298,
+  "prefill_ms_trials_after": [235.729, 225.457, 218.001, 219.016, 222.298],
+  "prefill_wall_time_change": "none measurable: 221.3 vs 222.3 ms median, inside a 5-8% run-to-run spread. The 28 removed launches move roughly 53 MB less data (about 0.35 ms at these shapes) and are about 0.3% of prefill, so no wall-time claim is made.",
+  "output_bit_identity": {
+   "hidden_rows_sha256_before": "82f99a8d2883e3da96b457c5bcff111603b952203257fe52ad499d8ddbffd215",
+   "hidden_rows_sha256_after": "82f99a8d2883e3da96b457c5bcff111603b952203257fe52ad499d8ddbffd215",
+   "logits_sha256_before": "659f1944e6e1d0a740c5c74854d6af2ba7165dbf4428528b4aaa18987c0b4c6d",
+   "logits_sha256_after": "659f1944e6e1d0a740c5c74854d6af2ba7165dbf4428528b4aaa18987c0b4c6d",
+   "logits_sum_before": -419841.25,
+   "logits_sum_after": -419841.25,
+   "argmax_token_before": 11,
+   "argmax_token_after": 11
+  }
+ },
+ "gates": {
+  "gpu_suite": "54 passed, 1 xfailed (tests/test_gpu_vibevoice_qwen2_q4_runner.py, tests/test_unit_vibevoice_q4_evidence.py, tests/test_gpu_vibevoice_qwen2_runner.py)",
+  "new_launch_count_gate": "test_q6_k_down_proj_skips_the_round_trip is RED on HEAD (28 bf16_to_f32 launches, expected 14) and GREEN with the change",
+  "new_exactness_gate": "test_q6_k_down_proj_direct_bf16_matches_the_round_trip compares the direct route against the widen/narrow round trip on a real Q6_K ffn_down weight and requires bit-identical bf16 bytes"
+ },
+ "notes": [
+  "Retained as a launch-count and memory-traffic reduction with bit-identical output, not as a speed win. AGENTS.md allows launch-count and verified sub-window reductions to be retained when same-session variance hides the headline ratio; this artifact states plainly that prefill wall time is unchanged.",
+  "The Q6_K o_proj branch in gemm_f32_f32 has the same shape of redundancy (bf16 -> f32 -> bf16), but o_proj is Q4_K on every layer of this model, so that branch is not exercised and was deliberately left alone rather than changed untested."
+ ]
+}
