@@ -1,5 +1,20 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## VibeVoice ASR prefill and legacy dense attention
+
+- `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic
+  candidates to the production evaluator. Keep their registered strict chains
+  as debugging oracles. Bind the public production profile only after the full
+  model-specific numerical/task gate; remove standalone candidate-selection
+  plumbing when profile construction owns that selection.
+- The old raw `vv_prefill_attention_f32` wrapper remains for parent comparison.
+  Runtime attention and KV writes now use `KVLiveSpans`. Remove the raw wrapper
+  after profile qualification and migration of any external diagnostic caller;
+  do not reintroduce it as an implicit fallback.
+- Convolution tails currently use owned host snapshots at chunk boundaries.
+  Replace these with device-resident tails only after the same whole/chunk,
+  60-second transition, recording-reset and post-join-noise tests pass.
+
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 
 - Three profile modules are named after models but register architecture-scoped

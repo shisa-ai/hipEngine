@@ -35,36 +35,14 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
+from hipengine.kernels.vibevoice import resolve_vibevoice_kernels,FRONTEND_PRIMITIVES
+from hipengine.execution_profiles import build_variant_manifest,VariantSelection,manifest_sha256
+from hipengine.loading.vibevoice_layout import f32_to_bf16_bits,conv_rows_out,transpose_conv_weight_t
 from hipengine.kernels.cpu_reference.vibevoice_asr import (
     VibevoiceConnectorWeights,
     VibevoiceTokenizerEncoderSpec,
     VibevoiceTokenizerEncoderWeights,
 )
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_prefill_gemm_out_bf16, dense_prefill_wmma_out_bf16
-from hipengine.kernels.hip_gfx1100.vibevoice.encoder import (
-    vv_im2col_bf16,
-    build_vibevoice_encoder,
-    conv_rows_out,
-    f32_to_bf16_bits,
-    transpose_conv_weight_t,
-    vv_add_bias_bf16,
-    vv_add_scaled_noise_bf16,
-    vv_conv_gemm_bf16,
-    vv_depthwise_conv_bf16,
-    vv_gelu_bf16,
-    vv_rmsnorm_bf16,
-    vv_scale_residual_bf16,
-)
-
-
-def _prefill_gemm(x_ptr, w_ptr, out_ptr, rows, in_features, out_features, *, runtime):
-    """WMMA bulk GEMM when tile-aligned, else the naive dense prefill GEMM."""
-    if out_features % 128 == 0 and in_features % 32 == 0 and rows >= 1:
-        dense_prefill_wmma_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_features,
-                                    stream=0, runtime=runtime)
-    else:
-        dense_prefill_gemm_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_features,
-                                    stream=0, runtime=runtime)
 
 
 def _upload_u16(host_u16: np.ndarray) -> DeviceBuffer:
@@ -166,9 +144,19 @@ class VibevoiceFrontendRuntime:
         semantic_connector: VibevoiceConnectorWeights,
         *,
         library: ctypes.CDLL | None = None,
+        backend: str = "auto",
+        frontend_variant: str = "wmma",
     ) -> None:
+        self.kernels = resolve_vibevoice_kernels(backend,frontend_variant=frontend_variant)
+        self.backend = self.kernels.backend
+        self.variant_manifest=build_variant_manifest(
+            profile='strict' if frontend_variant == 'strict' else 'production',
+            backend=self.backend,model='vibevoice_asr',quant='bf16',kv_policy='causal_chunk_tails',graph_policy='eager',
+            selections=[VariantSelection(name,'frontend','strict','strict') for name in FRONTEND_PRIMITIVES]
+              + [VariantSelection('vibevoice_frontend_gemm','frontend',frontend_variant,'strict')])
+        self.variant_manifest_sha256=manifest_sha256(self.variant_manifest)
         self.runtime = get_hip_runtime()
-        self.library = library or build_vibevoice_encoder()
+        self.library = library or self.kernels.build_vibevoice_encoder()
         self.text_hidden = int(acoustic_connector.fc1_weight.shape[0])
         self._buffers: list[DeviceBuffer] = []
         self._ones_gamma: DeviceBuffer | None = None
@@ -328,7 +316,7 @@ class VibevoiceFrontendRuntime:
         stem_w, stem_b = self.stems[tok]
         prefix = self._prefix(chunk_tail, 'stem', pcm_u16, rows_out, 1,
                               spec.kernel_size-1, self._stem_zero)
-        vv_conv_gemm_bf16(
+        self.kernels.vv_conv_gemm_bf16(
             prefix.ptr, pcm_u16.ptr, stem_w.ptr, stem_b.ptr, buf_a.ptr,
             spec.kernel_size - 1, rows_out, 1, spec.num_filters, spec.kernel_size, 1,
             library=self.library, runtime=self.runtime,
@@ -357,20 +345,20 @@ class VibevoiceFrontendRuntime:
                     self.runtime.memcpy(conv_input.ptr+prefix_rows*stage.c_in*2,cur.ptr,
                                         input_rows*stage.c_in*2,MemcpyKind.DEVICE_TO_DEVICE)
                     im2col_pad = 0
-                vv_im2col_bf16(
+                self.kernels.vv_im2col_bf16(
                     conv_input.ptr, im2col_buf.ptr, rows_out, stage.c_in, stage.k_len, stage.stride,
                     im2col_pad, library=self.library, runtime=self.runtime,
                 )
-                _prefill_gemm(
+                self.kernels.frontend_gemm(
                     im2col_buf.ptr, stage.conv_w_flat.ptr, other.ptr, rows_out,
                     flat_features, stage.c_out, runtime=self.runtime,
                 )
-                vv_add_bias_bf16(
+                self.kernels.vv_add_bias_bf16(
                     other.ptr, stage.conv_b.ptr, other.ptr, rows_out * stage.c_out, stage.c_out,
                     library=self.library, runtime=self.runtime,
                 )
             else:
-                vv_conv_gemm_bf16(
+                self.kernels.vv_conv_gemm_bf16(
                     prefix.ptr, cur.ptr, stage.conv_w_t.ptr, stage.conv_b.ptr, other.ptr,
                     prefix_rows, rows_out, stage.c_in, stage.c_out, stage.k_len, stage.stride,
                     library=self.library, runtime=self.runtime,
@@ -385,7 +373,7 @@ class VibevoiceFrontendRuntime:
         frames = conv_rows_out(head_prefix_rows, rows_out, spec.kernel_size, 1)
         latents = pool.take_u16(frames * spec.hidden_size)
         prefix = self._prefix(chunk_tail,'head',cur,rows_out,width,head_prefix_rows,self._head_zero[tok])
-        vv_conv_gemm_bf16(
+        self.kernels.vv_conv_gemm_bf16(
             prefix.ptr, cur.ptr, head_w.ptr, head_b.ptr, latents.ptr,
             head_prefix_rows, frames, width, spec.hidden_size, spec.kernel_size, 1,
             library=self.library, runtime=self.runtime,
@@ -407,35 +395,35 @@ class VibevoiceFrontendRuntime:
         total = rows * width
         normed = scratch["normed"]
         mixed = scratch["mixed"]
-        vv_rmsnorm_bf16(x.ptr, block.norm_w.ptr, normed.ptr, rows, width, 1e-5,
+        self.kernels.vv_rmsnorm_bf16(x.ptr, block.norm_w.ptr, normed.ptr, rows, width, 1e-5,
                         library=self.library, runtime=self.runtime)
         prefix = self._prefix(state,key,normed,rows,width,6,self._mixer_zero)
-        vv_depthwise_conv_bf16(
+        self.kernels.vv_depthwise_conv_bf16(
             prefix.ptr, normed.ptr, x.ptr, block.conv_w.ptr, block.conv_b.ptr,
             block.gamma.ptr, mixed.ptr, 6, rows, width, 7,
             library=self.library, runtime=self.runtime,
         )
         # ffn
         ffn_normed = scratch["ffn_normed"]
-        vv_rmsnorm_bf16(mixed.ptr, block.ffn_norm_w.ptr, ffn_normed.ptr, rows, width, 1e-5,
+        self.kernels.vv_rmsnorm_bf16(mixed.ptr, block.ffn_norm_w.ptr, ffn_normed.ptr, rows, width, 1e-5,
                          library=self.library, runtime=self.runtime)
         h = scratch["h"]
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             ffn_normed.ptr, block.ffn_w1.ptr, h.ptr, rows, width, 4 * width,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(h.ptr, block.ffn_b1.ptr, h.ptr, rows * 4 * width, 4 * width,
+        self.kernels.vv_add_bias_bf16(h.ptr, block.ffn_b1.ptr, h.ptr, rows * 4 * width, 4 * width,
                          library=self.library, runtime=self.runtime)
-        vv_gelu_bf16(h.ptr, h.ptr, rows * 4 * width, library=self.library, runtime=self.runtime)
+        self.kernels.vv_gelu_bf16(h.ptr, h.ptr, rows * 4 * width, library=self.library, runtime=self.runtime)
         y = scratch["y"]
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             h.ptr, block.ffn_w2.ptr, y.ptr, rows, 4 * width, width,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(y.ptr, block.ffn_b2.ptr, y.ptr, total, width,
+        self.kernels.vv_add_bias_bf16(y.ptr, block.ffn_b2.ptr, y.ptr, total, width,
                          library=self.library, runtime=self.runtime)
         # out = mixed + y * ffn_gamma (in-place on mixed is safe elementwise)
-        vv_scale_residual_bf16(
+        self.kernels.vv_scale_residual_bf16(
             mixed.ptr, y.ptr, block.ffn_gamma.ptr, out.ptr, total, width,
             library=self.library, runtime=self.runtime,
         )
@@ -511,7 +499,7 @@ class VibevoiceFrontendRuntime:
                 gs = keep(malloc(4))
                 copy_host_array_to_device(gs, noise_scale.reshape(-1))
                 sampled = keep(_alloc_u16(frames * self.specs['acoustic'].hidden_size))
-                vv_add_scaled_noise_bf16(
+                self.kernels.vv_add_scaled_noise_bf16(
                     lat_ac.ptr, gs.ptr, gn.ptr, sampled.ptr, frames * self.specs['acoustic'].hidden_size,
                     frames * self.specs['acoustic'].hidden_size,
                     library=self.library, runtime=self.runtime,
@@ -522,44 +510,44 @@ class VibevoiceFrontendRuntime:
     def _connector_sum(self, lat_ac: DeviceBuffer, lat_se: DeviceBuffer, frames: int) -> np.ndarray:
         fc1w, fc1b, normw, fc2w, fc2b = self.connectors["acoustic"]
         h_ac = _alloc_u16(frames * self.text_hidden)
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             lat_ac.ptr, fc1w.ptr, h_ac.ptr, frames, self.specs["acoustic"].hidden_size, self.text_hidden,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(h_ac.ptr, fc1b.ptr, h_ac.ptr, frames * self.text_hidden, self.text_hidden,
+        self.kernels.vv_add_bias_bf16(h_ac.ptr, fc1b.ptr, h_ac.ptr, frames * self.text_hidden, self.text_hidden,
                          library=self.library, runtime=self.runtime)
-        vv_rmsnorm_bf16(h_ac.ptr, normw.ptr, h_ac.ptr, frames, self.text_hidden, 1e-6,
+        self.kernels.vv_rmsnorm_bf16(h_ac.ptr, normw.ptr, h_ac.ptr, frames, self.text_hidden, 1e-6,
                         library=self.library, runtime=self.runtime)
         emb_ac = _alloc_u16(frames * self.text_hidden)
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             h_ac.ptr, fc2w.ptr, emb_ac.ptr, frames, self.text_hidden, self.text_hidden,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(emb_ac.ptr, fc2b.ptr, emb_ac.ptr, frames * self.text_hidden, self.text_hidden,
+        self.kernels.vv_add_bias_bf16(emb_ac.ptr, fc2b.ptr, emb_ac.ptr, frames * self.text_hidden, self.text_hidden,
                          library=self.library, runtime=self.runtime)
         free(h_ac)
 
         fc1w, fc1b, normw, fc2w, fc2b = self.connectors["semantic"]
         h_se = _alloc_u16(frames * self.text_hidden)
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             lat_se.ptr, fc1w.ptr, h_se.ptr, frames, self.specs["semantic"].hidden_size, self.text_hidden,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(h_se.ptr, fc1b.ptr, h_se.ptr, frames * self.text_hidden, self.text_hidden,
+        self.kernels.vv_add_bias_bf16(h_se.ptr, fc1b.ptr, h_se.ptr, frames * self.text_hidden, self.text_hidden,
                          library=self.library, runtime=self.runtime)
-        vv_rmsnorm_bf16(h_se.ptr, normw.ptr, h_se.ptr, frames, self.text_hidden, 1e-6,
+        self.kernels.vv_rmsnorm_bf16(h_se.ptr, normw.ptr, h_se.ptr, frames, self.text_hidden, 1e-6,
                         library=self.library, runtime=self.runtime)
         emb_se = _alloc_u16(frames * self.text_hidden)
-        _prefill_gemm(
+        self.kernels.frontend_gemm(
             h_se.ptr, fc2w.ptr, emb_se.ptr, frames, self.text_hidden, self.text_hidden,
             runtime=self.runtime,
         )
-        vv_add_bias_bf16(emb_se.ptr, fc2b.ptr, emb_se.ptr, frames * self.text_hidden, self.text_hidden,
+        self.kernels.vv_add_bias_bf16(emb_se.ptr, fc2b.ptr, emb_se.ptr, frames * self.text_hidden, self.text_hidden,
                          library=self.library, runtime=self.runtime)
         free(h_se)
 
         ones = self._ones()
-        vv_scale_residual_bf16(
+        self.kernels.vv_scale_residual_bf16(
             emb_ac.ptr, emb_se.ptr, ones.ptr, emb_ac.ptr, frames * self.text_hidden, self.text_hidden,
             library=self.library, runtime=self.runtime,
         )

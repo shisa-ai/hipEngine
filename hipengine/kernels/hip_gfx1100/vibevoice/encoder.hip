@@ -237,13 +237,16 @@ __global__ void vv_prefill_attention_kernel(
     int64_t num_kv_heads,
     int64_t head_dim,
     int64_t max_ctx,
-    float scale) {
+    float scale,
+    const int32_t* base_offsets, const int64_t* live_counts,
+    const int64_t* token_positions, const bool* evict_mask) {
   const int64_t row = blockIdx.y;
   const int64_t q_head = blockIdx.x;
   if (row >= rows || q_head >= num_q_heads) {
     return;
   }
-  const int64_t ctx = positions[row] + 1;
+  const int64_t requested = positions[row] + 1;
+  const int64_t ctx = live_counts ? min(min(requested, live_counts[row]), max_ctx) : requested;
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
   const float* q_row = q + (row * num_q_heads + q_head) * head_dim;
@@ -252,7 +255,13 @@ __global__ void vv_prefill_attention_kernel(
   float* partial = scores + max_ctx;   // blockDim floats at a fixed offset
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = threadIdx.x; token < ctx; token += blockDim.x) {
-    const int64_t k_off = (token * num_kv_heads + kv_head) * head_dim;
+    const int64_t slot = base_offsets ? base_offsets[token] : token;
+    if (base_offsets && (slot < 0 || slot >= max_ctx || evict_mask[slot]
+                         || token_positions[slot] < 0 || token_positions[slot] > positions[row])) {
+      scores[token] = -INFINITY;
+      continue;
+    }
+    const int64_t k_off = (slot * num_kv_heads + kv_head) * head_dim;
     float acc = 0.0f;
     for (int64_t d = 0; d < head_dim; ++d) {
       acc = fmaf(q_row[d], bf16_bits_to_float(key_cache[k_off + d]), acc);
@@ -283,7 +292,7 @@ __global__ void vv_prefill_attention_kernel(
     }
     __syncthreads();
   }
-  const float inv_sum = 1.0f / partial[0];
+  const float inv_sum = partial[0] > 0.0f ? 1.0f / partial[0] : 0.0f;
   // normalized attention weights live in shared so the value pass reads
   // them instead of recomputing expf per (dim, token) pair
   for (int64_t token = threadIdx.x; token < ctx; token += blockDim.x) {
@@ -294,7 +303,9 @@ __global__ void vv_prefill_attention_kernel(
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
     for (int64_t token = 0; token < ctx; ++token) {
-      const int64_t v_off = (token * num_kv_heads + kv_head) * head_dim + d;
+      if (base_offsets && scores[token] == 0.0f) continue;
+      const int64_t slot = base_offsets ? base_offsets[token] : token;
+      const int64_t v_off = (slot * num_kv_heads + kv_head) * head_dim + d;
       acc = fmaf(scores[token], bf16_bits_to_float(value_cache[v_off]), acc);
     }
     out_row[d] = acc;
@@ -558,7 +569,7 @@ extern "C" int hipengine_vv_prefill_attention_f32(
       dim3(256),
       static_cast<unsigned int>(shared_bytes),
       stream, q, key_cache, value_cache, positions, out,
-      rows, num_q_heads, num_kv_heads, head_dim, max_ctx, scale);
+      rows, num_q_heads, num_kv_heads, head_dim, max_ctx, scale, nullptr, nullptr, nullptr, nullptr);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -598,4 +609,48 @@ extern "C" int hipengine_vv_add_scaled_noise_bf16(
       vv_add_scaled_noise_kernel, dim3(static_cast<unsigned int>(blocks)), dim3(256),
       0, stream, lat, scale, noise, out, total, frames_x_hidden);
   return static_cast<int>(hipGetLastError());
+}
+
+// Uniform KVLiveSpans, block size one: base_offsets maps logical to physical
+// slots; token_positions and eviction masks belong to physical slots.
+__global__ void vv_kv_write_spans_kernel(
+    const uint16_t* key, const uint16_t* value, uint16_t* key_cache, uint16_t* value_cache,
+    const int32_t* base_offsets, const int64_t* live_counts,
+    const int64_t* token_positions, const bool* evict_mask, const int64_t* rows_positions,
+    int64_t rows, int64_t width, int64_t capacity) {
+  const int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= rows * width) return;
+  const int64_t row = i / width, pos = rows_positions[row];
+  if (pos < 0 || pos >= capacity || pos >= live_counts[row]) return;
+  const int64_t slot = base_offsets[pos];
+  if (slot < 0 || slot >= capacity || evict_mask[slot] || token_positions[slot] != pos) return;
+  const int64_t dest = slot * width + i % width;
+  key_cache[dest] = key[i];
+  value_cache[dest] = value[i];
+}
+
+extern "C" int hipengine_vv_kv_write_spans(
+    const uint16_t* key, const uint16_t* value, uint16_t* key_cache, uint16_t* value_cache,
+    const int32_t* base_offsets, const int64_t* live_counts,
+    const int64_t* token_positions, const bool* evict_mask, const int64_t* row_positions,
+    int64_t rows, int64_t width, int64_t capacity, hipStream_t stream) {
+  if (rows <= 0 || width <= 0 || capacity <= 0) return int(hipErrorInvalidValue);
+  hipLaunchKernelGGL(vv_kv_write_spans_kernel, dim3((rows * width + 255)/256), dim3(256), 0, stream,
+    key, value, key_cache, value_cache, base_offsets, live_counts, token_positions, evict_mask,
+    row_positions, rows, width, capacity);
+  return int(hipGetLastError());
+}
+
+extern "C" int hipengine_vv_attention_spans(
+    const float* query, const uint16_t* key_cache, const uint16_t* value_cache, float* out,
+    const int32_t* base_offsets, const int64_t* live_counts,
+    const int64_t* token_positions, const bool* evict_mask, const int64_t* row_positions,
+    int64_t rows, int64_t q_heads, int64_t kv_heads, int64_t head_dim, int64_t capacity,
+    float scale, hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads || head_dim <= 0
+      || capacity <= 0 || capacity > 16000 || scale <= 0) return int(hipErrorInvalidValue);
+  hipLaunchKernelGGL(vv_prefill_attention_kernel, dim3(q_heads,rows), dim3(256),
+    (capacity+256)*sizeof(float), stream, query, key_cache, value_cache, row_positions, out,
+    rows, q_heads, kv_heads, head_dim, capacity, scale, base_offsets, live_counts, token_positions, evict_mask);
+  return int(hipGetLastError());
 }

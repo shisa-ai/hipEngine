@@ -36,58 +36,20 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
-from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
-    qwen35_full_attn_decode_context_bf16,
-)
-from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, bf16_to_fp16, f32_to_bf16, f32_to_fp16
-from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_separate_out_bf16
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
-    dense_dual_gemv_out_bf16,
-    dense_gemv_bf16_f32_out,
-    dense_gemv_f32_bf16w_f32_out,
-    dense_gemv_out_bf16,
-)
+from hipengine.kernels.vibevoice import resolve_vibevoice_kernels,resolve_vibevoice_kernel,DECODER_PRIMITIVES
+from hipengine.execution_profiles import build_variant_manifest,VariantSelection,manifest_sha256
+from hipengine.loading.vibevoice_layout import f32_to_bf16_bits,conv_rows_out,transpose_conv_weight_t
+from hipengine.core.device import Device
+from hipengine.core.tensor import Tensor
+from hipengine.kvcache import KVLiveSpans
 from hipengine.core.hipblaslt import HipblasLt, HIP_R_16F
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_prefill_gemm_out_bf16, dense_prefill_wmma_out_bf16
-from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
-    qwen35_partial_rotary_f32,
-)
-from hipengine.kernels.hip_gfx1100.vibevoice.encoder import (
-    build_vibevoice_encoder,
-    f32_to_bf16_bits,
-    vv_add_bias_bf16,
-    vv_add_bias_f32,
-    vv_prefill_attention_f32,
-    vv_rmsnorm_bf16,
-    vv_rope_positions_f32,
-    vv_scale_residual_bf16,
-)
-
-
-def _prefill_gemm(x_ptr, w_ptr, out_ptr, rows, in_features, out_features, *, runtime):
-    """WMMA bulk GEMM when tile-aligned, else the naive dense prefill GEMM."""
-    if out_features % 128 == 0 and in_features % 32 == 0 and rows >= 1:
-        dense_prefill_wmma_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_features,
-                                    stream=0, runtime=runtime)
-    else:
-        dense_prefill_gemm_out_bf16(x_ptr, w_ptr, out_ptr, rows, in_features, out_features,
-                                    stream=0, runtime=runtime)
 
 
 def _prefill_gemm_lt(runner, x16_ptr, w16_ptr, out_f32_ptr, rows, in_features, out_features):
     """fp16-in/f32-out hipBLASLt GEMM (fp32 accumulate; same arithmetic class as
     the WMMA chain, which stages fp16 operands with f32 accumulation)."""
-    if runner._lt is None:
-        runner._lt = HipblasLt()
-    shape = (rows, in_features, out_features)
-    problem = runner._lt_problems.get(shape)
-    if problem is None:
-        problem = runner._lt.problem(rows, in_features, out_features, 0)
-        algos = problem.algorithms(16)
-        zero = [a for a in algos if a.workspace_size == 0]
-        algo = zero[0] if zero else algos[0]
-        runner._lt_problems[shape] = problem
-        runner._lt_algos[shape] = algo
+    shape = (rows,in_features,out_features)
+    problem = runner._lt_problems[shape]
     problem.launch(runner._lt_algos[shape], x16_ptr, w16_ptr, out_f32_ptr, stream=0)
 
 
@@ -154,14 +116,24 @@ class VibevoiceQwen2Runtime:
         *,
         max_context: int = 8192,
         library: ctypes.CDLL | None = None,
+        backend: str = "auto",
+        prefill_variant: str = "hipblaslt",
     ) -> None:
-        if isinstance(max_context, bool) or not isinstance(max_context, Integral) or max_context <= 0:
-            raise ValueError("max_context must be a positive integer")
+        if isinstance(max_context, bool) or not isinstance(max_context, Integral) or not 0 < max_context <= 16000:
+            raise ValueError("max_context must be an integer in [1, 16000]")
+        if prefill_variant not in {'strict','hipblaslt'}:
+            raise ValueError('prefill_variant must be strict or hipblaslt')
+        self.prefill_variant = prefill_variant
+        self.prefill_fallback_reason = None
         spec = weights.spec
         self.spec = spec
         self.max_context = max_context
+        self.kernels = resolve_vibevoice_kernels(backend)
+        self.backend = self.kernels.backend
+        self._prefill_routes = {variant: resolve_vibevoice_kernel(self.backend,'vibevoice_prefill',variant)
+                                for variant in ('strict','hipblaslt')}
         self.runtime = get_hip_runtime()
-        self.library = library or build_vibevoice_encoder()
+        self.library = library or self.kernels.build_vibevoice_encoder()
         self._buffers: list[DeviceBuffer] = []
         self._scratch: dict[str, DeviceBuffer] = {}
 
@@ -226,6 +198,10 @@ class VibevoiceQwen2Runtime:
 
         self._ctx_len = _alloc(8)
         self._ctx_len_host = np.zeros(1, dtype=np.int64)
+        self._slot_map = keep(_upload(np.arange(max_context,dtype=np.int32)))
+        self._slot_positions = keep(_upload(np.arange(max_context,dtype=np.int64)))
+        self._evicted = keep(_upload(np.zeros(max_context,dtype=np.bool_)))
+        self._row_position = keep(_upload(np.zeros(1,dtype=np.int64)))
 
         # fp32 / bf16 scratch (one token)
         self._hidden = _alloc(hidden * 2)
@@ -251,7 +227,7 @@ class VibevoiceQwen2Runtime:
 
     # ------------------------------------------------------------------
     def _bias_add(self, out_ptr: int, x_ptr: int, b_ptr: int, width: int) -> None:
-        vv_add_bias_f32(x_ptr, b_ptr, out_ptr, width, width,
+        self.kernels.vv_add_bias_f32(x_ptr, b_ptr, out_ptr, width, width,
                         library=self.library, runtime=self.runtime)
 
     def push_token(self, token_or_embed: np.ndarray, position: int) -> None:
@@ -275,16 +251,20 @@ class VibevoiceQwen2Runtime:
         head_dim = spec.head_dim
         ffn = spec.intermediate_size
         ctx = position + 1
+        self._ctx_len_host[0] = ctx
+        copy_host_array_to_device(self._ctx_len,self._ctx_len_host)
+        copy_host_array_to_device(self._row_position,np.array([position],dtype=np.int64))
+        spans = self._spans(self._row_position,self._ctx_len,1)
 
         for layer in self.layers:
-            vv_rmsnorm_bf16(self._hidden.ptr, layer.input_ln.ptr, self._normed.ptr,
+            self.kernels.vv_rmsnorm_bf16(self._hidden.ptr, layer.input_ln.ptr, self._normed.ptr,
                             1, hidden, spec.rms_norm_eps,
                             library=self.library, runtime=self.runtime)
-            dense_gemv_bf16_f32_out(self._normed.ptr, layer.q_w.ptr, self._q.ptr,
+            self.kernels.dense_gemv_bf16_f32_out(self._normed.ptr, layer.q_w.ptr, self._q.ptr,
                                     1, hidden, hidden, stream=0, runtime=self.runtime)
-            dense_gemv_bf16_f32_out(self._normed.ptr, layer.k_w.ptr, self._k.ptr,
+            self.kernels.dense_gemv_bf16_f32_out(self._normed.ptr, layer.k_w.ptr, self._k.ptr,
                                     1, hidden, kv_heads * head_dim, stream=0, runtime=self.runtime)
-            dense_gemv_bf16_f32_out(self._normed.ptr, layer.v_w.ptr, self._v.ptr,
+            self.kernels.dense_gemv_bf16_f32_out(self._normed.ptr, layer.v_w.ptr, self._v.ptr,
                                     1, hidden, kv_heads * head_dim, stream=0, runtime=self.runtime)
             self._bias_add(self._q.ptr, self._q.ptr, layer.q_b.ptr, hidden)
             self._bias_add(self._k.ptr, self._k.ptr, layer.k_b.ptr, kv_heads * head_dim)
@@ -292,51 +272,40 @@ class VibevoiceQwen2Runtime:
 
             cos_ptr = self._cos.ptr + position * head_dim * 4
             sin_ptr = self._sin.ptr + position * head_dim * 4
-            qwen35_partial_rotary_f32(
+            self.kernels.qwen35_partial_rotary_f32(
                 self._q.ptr, self._k.ptr, cos_ptr, sin_ptr,
                 self._q_out.ptr, self._k_out.ptr, heads, kv_heads, head_dim, head_dim,
                 stream=0, runtime=self.runtime,
             )
 
-            f32_to_bf16(self._k_out.ptr, self._k_bf16.ptr, kv_heads * head_dim,
+            self.kernels.f32_to_bf16(self._k_out.ptr, self._k_bf16.ptr, kv_heads * head_dim,
                         stream=0, runtime=self.runtime)
-            f32_to_bf16(self._v.ptr, self._v_bf16.ptr, kv_heads * head_dim,
+            self.kernels.f32_to_bf16(self._v.ptr, self._v_bf16.ptr, kv_heads * head_dim,
                         stream=0, runtime=self.runtime)
-            kv_row_bytes = kv_heads * head_dim * 2
-            self.runtime.memcpy(
-                layer.k_cache.ptr + position * kv_row_bytes, self._k_bf16.ptr,
-                kv_row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
-            )
-            self.runtime.memcpy(
-                layer.v_cache.ptr + position * kv_row_bytes, self._v_bf16.ptr,
-                kv_row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
-            )
-
-            qwen35_full_attn_decode_context_bf16(
-                self._q_out.ptr, layer.k_cache.ptr, layer.v_cache.ptr, self._attn.ptr,
-                self._ctx_len.ptr, ctx, heads, kv_heads, head_dim, self._scale,
-                stream=0, runtime=self.runtime,
-            )
-            dense_gemv_f32_bf16w_f32_out(self._attn.ptr, layer.o_w.ptr, self._o_f32.ptr,
+            self.kernels.vv_kv_write_spans(self._k_bf16.ptr,self._v_bf16.ptr,layer.k_cache.ptr,layer.v_cache.ptr,
+                              spans,1,kv_heads,head_dim,library=self.library,runtime=self.runtime)
+            self.kernels.vv_attention_spans(self._q_out.ptr,layer.k_cache.ptr,layer.v_cache.ptr,self._attn.ptr,
+                               spans,1,heads,kv_heads,head_dim,self._scale,library=self.library,runtime=self.runtime)
+            self.kernels.dense_gemv_f32_bf16w_f32_out(self._attn.ptr, layer.o_w.ptr, self._o_f32.ptr,
                                          1, heads * head_dim, hidden, stream=0, runtime=self.runtime)
-            f32_to_bf16(self._o_f32.ptr, self._o_bf16.ptr, hidden,
+            self.kernels.f32_to_bf16(self._o_f32.ptr, self._o_bf16.ptr, hidden,
                         stream=0, runtime=self.runtime)
-            vv_scale_residual_bf16(self._hidden.ptr, self._o_bf16.ptr, self._ones_hidden.ptr,
+            self.kernels.vv_scale_residual_bf16(self._hidden.ptr, self._o_bf16.ptr, self._ones_hidden.ptr,
                                   self._hidden.ptr, hidden, hidden,
                                   library=self.library, runtime=self.runtime)
 
-            vv_rmsnorm_bf16(self._hidden.ptr, layer.post_ln.ptr, self._normed.ptr,
+            self.kernels.vv_rmsnorm_bf16(self._hidden.ptr, layer.post_ln.ptr, self._normed.ptr,
                             1, hidden, spec.rms_norm_eps,
                             library=self.library, runtime=self.runtime)
-            dense_dual_gemv_out_bf16(
+            self.kernels.dense_dual_gemv_out_bf16(
                 self._normed.ptr, layer.gate_w.ptr, layer.up_w.ptr, self._gate_up.ptr,
                 1, hidden, ffn, ffn, stream=0, runtime=self.runtime,
             )
-            silu_mul_dual_out_bf16(self._gate_up.ptr, self._silu.ptr, 1, ffn,
+            self.kernels.silu_mul_dual_out_bf16(self._gate_up.ptr, self._silu.ptr, 1, ffn,
                                    stream=0, runtime=self.runtime)
-            dense_gemv_out_bf16(self._silu.ptr, layer.down_w.ptr, self._down_bf16.ptr,
+            self.kernels.dense_gemv_out_bf16(self._silu.ptr, layer.down_w.ptr, self._down_bf16.ptr,
                                 1, ffn, hidden, stream=0, runtime=self.runtime)
-            vv_scale_residual_bf16(self._hidden.ptr, self._down_bf16.ptr, self._ones_hidden.ptr,
+            self.kernels.vv_scale_residual_bf16(self._hidden.ptr, self._down_bf16.ptr, self._ones_hidden.ptr,
                                   self._hidden.ptr, hidden, hidden,
                                   library=self.library, runtime=self.runtime)
 
@@ -344,10 +313,10 @@ class VibevoiceQwen2Runtime:
         """Final norm + lm head + host argmax over the staged hidden row."""
         spec = self.spec
         hidden = spec.hidden_size
-        vv_rmsnorm_bf16(self._hidden.ptr, self.final_ln.ptr, self._normed.ptr,
+        self.kernels.vv_rmsnorm_bf16(self._hidden.ptr, self.final_ln.ptr, self._normed.ptr,
                         1, hidden, spec.rms_norm_eps,
                         library=self.library, runtime=self.runtime)
-        dense_gemv_bf16_f32_out(self._normed.ptr, self.lm_head.ptr, self._logits_f32.ptr,
+        self.kernels.dense_gemv_bf16_f32_out(self._normed.ptr, self.lm_head.ptr, self._logits_f32.ptr,
                                 1, hidden, spec.vocab_size, stream=0, runtime=self.runtime)
         host = np.empty(spec.vocab_size, dtype=np.float32)
         copy_device_to_host(host_array_ptr(host), self._logits_f32, spec.vocab_size * 4)
@@ -361,13 +330,66 @@ class VibevoiceQwen2Runtime:
     def reset(self) -> None:
         self._ctx_len_host[0] = 0
 
+    def _spans(self, positions, counts, rows):
+        def tensor(buf,shape,dtype):
+            return Tensor.from_handle(buf.ptr,shape,dtype,Device('hip'))
+        return KVLiveSpans(
+            tensor(self._slot_map,(self.max_context,),'int32'),
+            tensor(counts,(rows,),'int64'), self.max_context,
+            tensor(self._slot_positions,(self.max_context,),'int64'),
+            tensor(self._evicted,(self.max_context,),'bool'), 'bf16',
+            row_positions=tensor(positions,(rows,),'int64'),
+            span_role='decode' if rows == 1 else 'prefill')
+
     def _validate_position(self, position: int) -> None:
         if (isinstance(position, bool) or not isinstance(position, Integral)
                 or not 0 <= position < self.max_context):
             raise ValueError(f"position must be an integer in [0, {self.max_context})")
 
     # ------------------------------------------------------------------
+    def _prepare_lt(self, rows):
+        if self._lt is None:
+            self._lt = HipblasLt()
+        h, f = self.spec.hidden_size, self.spec.intermediate_size
+        kv = self.spec.num_key_value_heads*self.spec.head_dim
+        for inputs,outputs in ((h,h),(h,kv),(h,f),(f,h)):
+            shape=(rows,inputs,outputs)
+            if shape in self._lt_problems:
+                continue
+            problem=self._lt.problem(rows,inputs,outputs,0)
+            algorithms=[a for a in problem.algorithms(16) if a.workspace_size == 0]
+            if not algorithms:
+                raise RuntimeError(f'no zero-workspace hipBLASLt algorithm for {shape}')
+            self._lt_problems[shape]=problem
+            self._lt_algos[shape]=algorithms[0]
+
     def prefill_rows(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int) -> None:
+        self._validate_position(start_pos)
+        if isinstance(rows,bool) or not isinstance(rows,Integral) or rows <= 0:
+            raise ValueError('prefill rows must be a positive integer')
+        if start_pos+rows > self.max_context or hidden_rows.nbytes < rows*self.spec.hidden_size*2:
+            raise ValueError('prefill exceeds cache or input buffer capacity')
+        selected = self.prefill_variant
+        self.prefill_fallback_reason = None
+        if selected == 'hipblaslt':
+            try:
+                self._prepare_lt(rows)
+            except (OSError,RuntimeError) as exc:
+                # Capability negotiation is before any cache/hidden mutation.
+                # Launch errors never fall back part way through a layer stack.
+                selected = 'strict'
+                self.prefill_fallback_reason = str(exc)
+        call = self._prefill_routes[selected]
+        self.variant_manifest = build_variant_manifest(
+            profile='strict' if selected == 'strict' else 'production',
+            backend=self.backend,model='vibevoice_asr',quant='bf16',
+            kv_policy='uniform_block1_spans',graph_policy='eager',
+            selections=[VariantSelection(name,'decoder','strict','strict') for name in DECODER_PRIMITIVES]
+                + [VariantSelection('vibevoice_prefill','decoder',selected,'strict')])
+        self.variant_manifest_sha256 = manifest_sha256(self.variant_manifest)
+        call(self,hidden_rows,rows,start_pos)
+
+    def _prefill_batched(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int) -> None:
         """Batched causal prefill of ``rows`` hidden rows at ``start_pos``.
 
         ``hidden_rows`` is (rows, hidden) bf16 and is overwritten with the
@@ -391,6 +413,8 @@ class VibevoiceQwen2Runtime:
 
         pos_host = np.arange(start_pos, start_pos + rows, dtype=np.int64)
         positions = _upload(pos_host)
+        counts = _upload(pos_host + 1)
+        spans = self._spans(positions,counts,rows)
         qkv_w = rows * (heads * head_dim) * 4
         kv_w = rows * kv_heads * head_dim * 4
         scratch: list[DeviceBuffer] = [
@@ -418,58 +442,54 @@ class VibevoiceQwen2Runtime:
         kv_row_bytes = kv_heads * head_dim * 2
         try:
             for layer in self.layers:
-                vv_rmsnorm_bf16(hidden_rows.ptr, layer.input_ln.ptr, normed.ptr,
+                self.kernels.vv_rmsnorm_bf16(hidden_rows.ptr, layer.input_ln.ptr, normed.ptr,
                                 rows, hidden, spec.rms_norm_eps,
                                 library=self.library, runtime=self.runtime)
                 # q/k/v projections: hipBLASLt fp16 GEMM -> f32, fp32 bias, fp32 rope
-                bf16_to_fp16(normed.ptr, normed16.ptr, rows * hidden, stream=0, runtime=self.runtime)
+                self.kernels.bf16_to_fp16(normed.ptr, normed16.ptr, rows * hidden, stream=0, runtime=self.runtime)
                 _prefill_gemm_lt(self, normed16.ptr, layer.q_w16.ptr, q_f32.ptr, rows, hidden, hidden)
                 _prefill_gemm_lt(self, normed16.ptr, layer.k_w16.ptr, k_f32.ptr, rows, hidden, kv_heads * head_dim)
                 _prefill_gemm_lt(self, normed16.ptr, layer.v_w16.ptr, v_f32.ptr, rows, hidden, kv_heads * head_dim)
-                vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
+                self.kernels.vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
                                 library=self.library, runtime=self.runtime)
-                vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_heads * head_dim, kv_heads * head_dim,
+                self.kernels.vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_heads * head_dim, kv_heads * head_dim,
                                 library=self.library, runtime=self.runtime)
-                vv_add_bias_f32(v_f32.ptr, layer.v_b.ptr, v_f32.ptr, rows * kv_heads * head_dim, kv_heads * head_dim,
+                self.kernels.vv_add_bias_f32(v_f32.ptr, layer.v_b.ptr, v_f32.ptr, rows * kv_heads * head_dim, kv_heads * head_dim,
                                 library=self.library, runtime=self.runtime)
-                vv_rope_positions_f32(q_f32.ptr, k_f32.ptr, self._cos.ptr, self._sin.ptr,
+                self.kernels.vv_rope_positions_f32(q_f32.ptr, k_f32.ptr, self._cos.ptr, self._sin.ptr,
                                       positions.ptr, q_out.ptr, k_out.ptr, rows, heads, kv_heads, head_dim,
                                       stream=0, runtime=self.runtime)
-                f32_to_bf16(k_out.ptr, k_bf16.ptr, rows * kv_heads * head_dim,
+                self.kernels.f32_to_bf16(k_out.ptr, k_bf16.ptr, rows * kv_heads * head_dim,
                             stream=0, runtime=self.runtime)
-                f32_to_bf16(v_f32.ptr, v_bf16.ptr, rows * kv_heads * head_dim,
+                self.kernels.f32_to_bf16(v_f32.ptr, v_bf16.ptr, rows * kv_heads * head_dim,
                             stream=0, runtime=self.runtime)
-                self.runtime.memcpy(layer.k_cache.ptr + start_pos * kv_row_bytes, k_bf16.ptr,
-                                     rows * kv_row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
-                self.runtime.memcpy(layer.v_cache.ptr + start_pos * kv_row_bytes, v_bf16.ptr,
-                                     rows * kv_row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
-                vv_prefill_attention_f32(q_out.ptr, layer.k_cache.ptr, layer.v_cache.ptr,
-                                         positions.ptr, attn.ptr, rows, heads, kv_heads, head_dim,
-                                         max_ctx, self._scale,
-                                         stream=0, runtime=self.runtime)
+                self.kernels.vv_kv_write_spans(k_bf16.ptr,v_bf16.ptr,layer.k_cache.ptr,layer.v_cache.ptr,
+                                  spans,rows,kv_heads,head_dim,library=self.library,runtime=self.runtime)
+                self.kernels.vv_attention_spans(q_out.ptr,layer.k_cache.ptr,layer.v_cache.ptr,attn.ptr,
+                                   spans,rows,heads,kv_heads,head_dim,self._scale,library=self.library,runtime=self.runtime)
                 # o projection: f32 -> fp16, hipBLASLt GEMM -> f32 -> bf16
-                f32_to_fp16(attn.ptr, attn16.ptr, rows * heads * head_dim,
+                self.kernels.f32_to_fp16(attn.ptr, attn16.ptr, rows * heads * head_dim,
                             stream=0, runtime=self.runtime)
                 _prefill_gemm_lt(self, attn16.ptr, layer.o_w16.ptr, o_f32.ptr, rows, heads * head_dim, hidden)
-                f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
+                self.kernels.f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
                            stream=0, runtime=self.runtime)
-                vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
+                self.kernels.vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
                                        hidden_rows.ptr, rows * hidden, hidden,
                                        library=self.library, runtime=self.runtime)
-                vv_rmsnorm_bf16(hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr,
+                self.kernels.vv_rmsnorm_bf16(hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr,
                                 rows, hidden, spec.rms_norm_eps,
                                 library=self.library, runtime=self.runtime)
-                bf16_to_fp16(normed2.ptr, normed216.ptr, rows * hidden, stream=0, runtime=self.runtime)
+                self.kernels.bf16_to_fp16(normed2.ptr, normed216.ptr, rows * hidden, stream=0, runtime=self.runtime)
                 _prefill_gemm_lt(self, normed216.ptr, layer.gate_w16.ptr, gate_f32.ptr, rows, hidden, ffn)
                 _prefill_gemm_lt(self, normed216.ptr, layer.up_w16.ptr, up_f32.ptr, rows, hidden, ffn)
-                f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=0, runtime=self.runtime)
-                f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=0, runtime=self.runtime)
-                silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
+                self.kernels.f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=0, runtime=self.runtime)
+                self.kernels.f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=0, runtime=self.runtime)
+                self.kernels.silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
                                            stream=0, runtime=self.runtime)
-                bf16_to_fp16(act.ptr, act16.ptr, rows * ffn, stream=0, runtime=self.runtime)
+                self.kernels.bf16_to_fp16(act.ptr, act16.ptr, rows * ffn, stream=0, runtime=self.runtime)
                 _prefill_gemm_lt(self, act16.ptr, layer.down_w16.ptr, down_f32.ptr, rows, ffn, hidden)
-                f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden, stream=0, runtime=self.runtime)
-                vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
+                self.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden, stream=0, runtime=self.runtime)
+                self.kernels.vv_scale_residual_bf16(hidden_rows.ptr, down_bf16.ptr, self._ones_hidden.ptr,
                                        hidden_rows.ptr, rows * hidden, hidden,
                                        library=self.library, runtime=self.runtime)
             self._ctx_len_host[0] = start_pos + rows
@@ -478,12 +498,16 @@ class VibevoiceQwen2Runtime:
             for buf in scratch:
                 free(buf)
             free(positions)
+            free(counts)
 
     def close(self) -> None:
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         if self._lt is not None:
             self._lt.close()
             self._lt = None
-        for attr in ("_hidden", "_normed", "_q", "_k", "_v", "_q_out", "_k_out",
+        for attr in ("_hidden", "_normed", "_qkv_bf16", "_q", "_k", "_v", "_q_out", "_k_out",
                      "_k_bf16", "_v_bf16", "_attn", "_o_f32", "_o_bf16", "_gate_up",
                      "_silu", "_down_f32", "_down_bf16", "_logits_bf16", "_logits_f32",
                      "_ctx_len"):
@@ -507,7 +531,7 @@ def greedy_generate(
     eos_token_id: int | None = None,
 ) -> list[int]:
     """Batched prefill of the prompt rows, then greedy decode."""
-    from hipengine.kernels.hip_gfx1100.vibevoice.encoder import f32_to_bf16_bits as _bits
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits as _bits
 
     generated: list[int] = []
     total = len(input_rows)

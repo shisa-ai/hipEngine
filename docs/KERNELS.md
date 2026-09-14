@@ -130,6 +130,20 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 
 Unless a row says otherwise, source is under `hipengine/kernels/hip_gfx1100/`, registration is for `hip_gfx1100`, and the independently allowed subset is aliased under `hip_gfx1151`.
 
+### VibeVoice ASR
+
+| Family | Source / registry | Contract |
+| --- | --- | --- |
+| Causal encoders and connectors | `vibevoice/encoder.{hip,py}`, `vibevoice/registered.py` | BF16 storage, FP32 accumulation; explicit convolution prefixes. Frontend GEMM has `wmma` and `strict` variants. |
+| Qwen2 attention and KV write | `vibevoice/encoder.{hip,py}` (`vv_attention_spans`, `vv_kv_write_spans`) | Uniform `KVLiveSpans`, block size one; logical-to-physical slot mapping, int64 per-row live counts/positions, physical token positions and eviction masks. Maximum capacity 16,000 slots. |
+| Decoder prefill | `vibevoice/registered.py` (`vibevoice_prefill`) | `hipblaslt` capability negotiation precedes device mutation; registered `strict` incremental chain is the fallback. Launch failures are propagated. |
+
+Both gfx1100 and gfx1151 backend packages install these registrations. Runtime
+construction resolves primitives once through `kernels/vibevoice.py`; host
+tensor-layout helpers live in `loading/vibevoice_layout.py`. Physical gfx1100
+qualification is separate from gfx1151 evidence. Variant manifests identify
+selected arithmetic and fallbacks; a manifest alone is not production approval.
+
 ### Shared Qwen / PARO path
 
 These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attention, linear-attention, MoE, and common runtime glue. Some are also reused by GGUF paths.

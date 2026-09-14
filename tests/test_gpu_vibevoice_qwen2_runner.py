@@ -47,9 +47,12 @@ def runtime():
     runner.close()
 
 
-@pytest.fixture(scope="module")
-def lm() -> dict[str, np.ndarray]:
-    with np.load(LM_FIXTURE) as data:
+@pytest.fixture(scope="module", params=['vibevoice_asr','vibevoice_asr_gpu'])
+def lm(request) -> dict[str, np.ndarray]:
+    path=LM_FIXTURE.parent.parent/request.param/LM_FIXTURE.name
+    if not path.is_file():
+        pytest.skip(f'{request.param} LM fixture unavailable')
+    with np.load(path) as data:
         return {k: data[k] for k in data.files}
 
 
@@ -76,9 +79,16 @@ def test_first_position_logits(runtime, lm) -> None:
     assert int(logits.argmax()) == int(ref.argmax())
 
 
-def test_greedy_chain_matches_torch(runtime, lm) -> None:
+@pytest.mark.parametrize('variant',['strict','hipblaslt'])
+def test_greedy_chain_matches_torch(runtime, lm, variant) -> None:
+    """Prefix regression only: these fixtures end before Content, not a task gate."""
     rows = _prompt_rows(runtime, lm)
-    generated = greedy_generate(runtime, rows, max_new_tokens=16)
+    previous=runtime.prefill_variant
+    runtime.prefill_variant=variant
+    try:
+        generated = greedy_generate(runtime, rows, max_new_tokens=16)
+    finally:
+        runtime.prefill_variant=previous
     fixture = [int(t) for t in np.asarray(lm["greedy_tokens"])]
     assert generated == fixture, f"{generated} != {fixture}"
 

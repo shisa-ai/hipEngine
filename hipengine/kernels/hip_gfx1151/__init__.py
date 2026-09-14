@@ -3789,3 +3789,11 @@ __all__ = [
     "register_backend_kernels",
     "register_gfx1151_kernels",
 ]
+
+
+def register_vibevoice_kernels():
+    from hipengine.kernels.hip_gfx1100.vibevoice.registered import register_vibevoice_kernels as register_shared
+    register_shared('hip_gfx1151')
+
+
+register_vibevoice_kernels()
