@@ -75,3 +75,14 @@ def test_generator_serializes_and_closes(monkeypatch):
     owner.close(); owner.close()
     with pytest.raises(RuntimeError,match='closed'):
         owner.transcribe(np.zeros(3200))
+
+
+@pytest.mark.parametrize('backend',['hip_gfx1100','hip_gfx1151'])
+def test_registered_factory_preserves_backend(monkeypatch,backend):
+    import hipengine.generation.vibevoice_asr as module
+    from hipengine.generation.registry import resolve_text_generator
+    seen={}
+    monkeypatch.setattr(module,'VibeVoiceASRGenerator',lambda path,**kw:seen.update(kw))
+    factory=resolve_text_generator(model='vibevoice_asr',backend=backend,quant='bf16')
+    factory(model_path='fixture',weight_index=None,model_plugin=None,max_sequence_length=1000)
+    assert seen == dict(max_sequence_length=1000,backend=backend)
