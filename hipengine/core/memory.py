@@ -32,8 +32,11 @@ class DeviceBuffer:
             raise ValueError("device pointer must be non-negative")
         if self.nbytes < 0:
             raise ValueError("buffer size must be non-negative")
-        if self.device is not None and self.device.kind != "hip":
-            raise ValueError("DeviceBuffer device must be a hip device")
+        if self.device is not None and self.device.kind == "cpu":
+            # A host device cannot own a device pointer, but the runtime's own
+            # kind is not this module's business: HIP and CUDA both allocate
+            # through these helpers.
+            raise ValueError("DeviceBuffer device must be a device kind, not cpu")
 
 
 class DeviceMemoryArena:
@@ -143,7 +146,9 @@ def malloc(
         index = _device_index(device)
         with scoped_current_device(runtime, index):
             ptr = runtime.malloc(nbytes)
-        buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes, device=Device("hip", index))
+        kind = getattr(runtime, "device_kind", None)
+        device_label = Device(kind, index) if isinstance(kind, str) and kind else None
+        buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes, device=device_label)
     _MEMORY_STATS.record_malloc(buffer)
     return buffer
 
@@ -396,8 +401,8 @@ _MEMORY_STATS = _MemoryStatsTracker()
 
 def _device_index(device: Device | int) -> int:
     if isinstance(device, Device):
-        if device.kind != "hip":
-            raise ValueError("HIP allocation requires a hip device")
+        if device.kind == "cpu":
+            raise ValueError("device allocation requires a device kind, not cpu")
         return device.index
     index = int(device)
     if index < 0:
@@ -406,13 +411,22 @@ def _device_index(device: Device | int) -> int:
 
 
 def _runtime_device(runtime: DeviceRuntime) -> Device | None:
-    """Best-effort current-device attribution for runtimes that expose it."""
+    """Best-effort current-device attribution for runtimes that declare a kind.
 
+    The kind comes from the runtime, never from a guess: these helpers are shared
+    with the CUDA backend, so hardcoding ``hip`` would mislabel every CUDA
+    buffer. A runtime that does not declare ``device_kind`` stays unattributed
+    and keeps the previous current-device semantics.
+    """
+
+    kind = getattr(runtime, "device_kind", None)
+    if not isinstance(kind, str) or not kind:
+        return None
     get_device = getattr(runtime, "get_device", None)
     if not callable(get_device):
         return None
     try:
-        return Device("hip", int(get_device()))
+        return Device(kind, int(get_device()))
     except Exception:  # pragma: no cover - defensive: attribution must never break allocation
         return None
 
