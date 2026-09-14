@@ -1,6 +1,13 @@
-"""CPU-only tests for scripts/tp_break_even.py arithmetic and verdicts.
+"""CPU-only tests for scripts/tp_break_even.py group model and guards.
 
-No HIP/ROCm is touched: the projection is pure arithmetic over measured inputs.
+The model under test is one *synchronized* TP2 group time:
+
+    T2 = max_rank(fixed) + max_rank(rank weights) + collective
+
+compared against the faster matched TP1 arm. The earlier version projected a
+complete TP2 time per rank and compared each against its own TP1 row, which
+counted one group as two independent results and let the faster arm's projection
+ignore the slower rank it would wait for.
 """
 
 from __future__ import annotations
@@ -29,78 +36,370 @@ def mod():
     return _load()
 
 
-def test_parse_tp1_accepts_named_triples(mod) -> None:
-    device = mod.parse_tp1("W7900=27.9:15.652:8.646")
-    assert device == {"name": "W7900", "tok_s": 27.9, "tp1_gib": 15.652, "rank_gib": 8.646}
+# -- baseline parsing ---------------------------------------------------------
 
 
-def test_parse_tp1_rejects_malformed_specs(mod) -> None:
-    with pytest.raises(ValueError):
-        mod.parse_tp1("27.9:15.652:8.646")
-    with pytest.raises(ValueError):
-        mod.parse_tp1("W7900=27.9:15.652")
-    with pytest.raises(ValueError):
-        mod.parse_tp1("=27.9:15.652:8.646")
-    with pytest.raises(ValueError):
-        mod.parse_tp1("W7900=0:15.652:8.646")
-    with pytest.raises(ValueError):
-        mod.parse_tp1("W7900=27.9:15.652:20.0")
+def test_parse_tp1_accepts_named_quadruples(mod) -> None:
+    device = mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")
+    assert device == {
+        "name": "W7900",
+        "tok_s": 27.9,
+        "tp1_gib": 15.652,
+        "rank_gib": 8.646,
+        "protocol": "512/128/int8-kv",
+    }
 
 
-def test_project_reproduces_the_hand_computed_row(mod) -> None:
-    device = mod.parse_tp1("W7900=25.0:16.0:8.0")
-    row = mod.project(device, collective_ms=1.0, fixed_share=0.0)
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "W7900",  # no values
+        "W7900=27.9:15.652",  # missing rank shard and protocol
+        "W7900=27.9:15.652:8.646",  # protocol omitted: arms cannot be matched
+        "W7900=27.9:15.652:8.646:",  # empty protocol
+        "=27.9:15.652:8.646:512",  # no device name
+        "W7900=0:15.652:8.646:512",  # non-positive rate
+        "W7900=27.9:15.652:20.0:512",  # shard larger than the model
+    ],
+)
+def test_parse_tp1_rejects_malformed_specs(mod, spec: str) -> None:
+    with pytest.raises(ValueError):
+        mod.parse_tp1(spec)
+
+
+# -- one rank's contribution --------------------------------------------------
+
+
+def test_rank_projection_reproduces_the_hand_computed_row(mod) -> None:
+    device = mod.parse_tp1("W7900=25.0:16.0:8.0:512/128/int8-kv")
+    row = mod.rank_projection(device, fixed_share=0.0)
     assert row["tp1_ms_per_token"] == pytest.approx(40.0)
-    assert row["rank_weight_fraction"] == pytest.approx(0.5)
+    # 16 GiB in 40 ms is the bandwidth the TP1 row implies.
+    assert row["implied_bandwidth_gbs"] == pytest.approx(400.0)
     assert row["rank_weight_ms_per_token"] == pytest.approx(20.0)
-    assert row["tp2_ms_per_token"] == pytest.approx(21.0)
-    assert row["projected_speedup"] == pytest.approx(40.0 / 21.0)
-    assert row["break_even_collective_ms"] == pytest.approx(20.0)
+    assert row["fixed_ms_per_token"] == pytest.approx(0.0)
 
 
-def test_project_hits_break_even_exactly_at_the_budget(mod) -> None:
-    device = mod.parse_tp1("W7900=25.0:16.0:8.0")
-    budget = mod.project(device, collective_ms=1.0, fixed_share=0.25)["break_even_collective_ms"]
-    row = mod.project(device, collective_ms=budget, fixed_share=0.25)
+def test_implied_bandwidth_divides_by_the_weight_share(mod) -> None:
+    """``bandwidth = weights / ((1 - fixed_share) * T1)``.
+
+    The share divides. Multiplying it understated the bandwidth (and therefore
+    overstated the rank-weight time) by the square of the share.
+    """
+
+    device = mod.parse_tp1("W7900=25.0:16.0:8.0:512/128/int8-kv")
+    row = mod.rank_projection(device, fixed_share=0.25)
+    # 16 GiB over 75% of a 40 ms token.
+    assert row["implied_bandwidth_gbs"] == pytest.approx(16.0 / (0.75 * 0.040))
+    assert row["implied_bandwidth_gbs"] == pytest.approx(533.3333, rel=1e-4)
+    assert row["rank_weight_ms_per_token"] == pytest.approx(8.0 / 533.3333 * 1000.0)
+    assert row["fixed_ms_per_token"] == pytest.approx(10.0)
+
+
+# -- the synchronized group ---------------------------------------------------
+
+
+def test_project_group_takes_maxima_and_the_faster_baseline(mod) -> None:
+    """One group waits for its slowest rank and is one result, not two.
+
+    W7900 is the slower arm but has the larger shard; XTX is the faster arm and
+    the baseline. The group pays the W7900 shard and is compared against the XTX
+    token time.
+    """
+
+    devices = [
+        mod.parse_tp1("W7900=25.0:16.0:8.0:512/128/int8-kv"),
+        mod.parse_tp1("XTX=40.0:16.0:7.0:512/128/int8-kv"),
+    ]
+    row = mod.project_group(devices, collective_ms=1.0, fixed_share=0.0)
+    assert row["limiting_rank_weight"] == "W7900"
+    assert row["baseline_device"] == "XTX"
+    assert row["baseline_tp1_ms_per_token"] == pytest.approx(25.0)
+    assert row["rank_weight_group_ms_per_token"] == pytest.approx(20.0)
+    assert row["tp2_group_ms_per_token"] == pytest.approx(21.0)
+    assert row["projected_speedup"] == pytest.approx(25.0 / 21.0)
+    assert row["break_even_collective_ms"] == pytest.approx(5.0)
+    assert [entry["device"] for entry in row["per_rank"]] == ["W7900", "XTX"]
+
+
+def test_project_group_hits_break_even_exactly_at_the_budget(mod) -> None:
+    devices = [
+        mod.parse_tp1("W7900=25.0:16.0:8.0:512/128/int8-kv"),
+        mod.parse_tp1("XTX=40.0:16.0:7.0:512/128/int8-kv"),
+    ]
+    budget = mod.project_group(devices, collective_ms=1.0, fixed_share=0.25)[
+        "break_even_collective_ms"
+    ]
+    row = mod.project_group(devices, collective_ms=budget, fixed_share=0.25)
     assert row["projected_speedup"] == pytest.approx(1.0, abs=1e-9)
 
 
-def test_project_moves_the_right_way(mod) -> None:
-    device = mod.parse_tp1("W7900=25.0:16.0:8.0")
-    cheap = mod.project(device, collective_ms=1.0, fixed_share=0.0)
-    expensive = mod.project(device, collective_ms=8.0, fixed_share=0.0)
+def test_project_group_moves_the_right_way(mod) -> None:
+    devices = [mod.parse_tp1("W7900=25.0:16.0:8.0:512/128/int8-kv")]
+    cheap = mod.project_group(devices, collective_ms=1.0, fixed_share=0.0)
+    expensive = mod.project_group(devices, collective_ms=8.0, fixed_share=0.0)
     assert cheap["projected_speedup"] > expensive["projected_speedup"]
-    more_fixed = mod.project(device, collective_ms=1.0, fixed_share=0.4)
+    more_fixed = mod.project_group(devices, collective_ms=1.0, fixed_share=0.4)
     assert more_fixed["projected_speedup"] < cheap["projected_speedup"]
     assert more_fixed["break_even_collective_ms"] < cheap["break_even_collective_ms"]
+    assert cheap["required_improvement_factor"] == pytest.approx(1.0 / 20.0)
 
 
-def test_implied_bandwidth_matches_the_tp1_row(mod) -> None:
-    device = mod.parse_tp1("W7900=27.9:15.652:8.646")
-    row = mod.project(device, collective_ms=1.3, fixed_share=0.0)
-    # 15.652 GiB in the TP1 token time is the bandwidth the model implies.
-    assert row["implied_bandwidth_gbs"] == pytest.approx(15.652 / (row["tp1_ms_per_token"] / 1000.0))
+# -- measured collective input ------------------------------------------------
 
 
-def test_build_report_verdict_and_serializability(mod) -> None:
-    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646"), mod.parse_tp1("XTX=29.82:15.652:7.009")]
-    report = mod.build_report(devices, collective_ms=(1.3, 1.5), fixed_shares=(0.0, 0.3))
-    assert report["verdict"]["passes_target_in_every_row"] is True
-    assert report["verdict"]["collective_would_have_to_be_worse_by"] > 1.0
-    assert len(report["devices"]) == 2
-    for entry in report["devices"]:
-        assert len(entry["rows"]) == 4
-        assert entry["worst_case_speedup"] <= entry["best_case_speedup"]
+def _chain_artifact(path: pathlib.Path, *, marginal: float = 177.8, depends: bool = True) -> pathlib.Path:
+    payload = {
+        "collective": {
+            "cases": {
+                "all_reduce:rows1:fp32": {
+                    "dependent_chain": {
+                        "payload_bytes": 20480,
+                        "world_size": 2,
+                        "modes": {
+                            "per_step": {
+                                "group_boundary": "one native group per reduction",
+                                "depends_on_every_step": depends,
+                                "marginal": {"overall_us_per_step": marginal},
+                            },
+                            "per_chain": {
+                                "group_boundary": "one native group for the whole chain",
+                                "depends_on_every_step": False,
+                                "marginal": {"overall_us_per_step": 36.1},
+                            },
+                        },
+                    }
+                }
+            }
+        }
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_dependent_chain_marginal_is_read_from_the_artifact(tmp_path: pathlib.Path, mod) -> None:
+    source = _chain_artifact(tmp_path / "chain.json", marginal=177.8)
+    record = mod.read_dependent_chain_marginal(source, case_key="all_reduce:rows1:fp32")
+    assert record["marginal_us_per_step"] == pytest.approx(177.8)
+    assert record["mode"] == "per_step"
+    assert record["depends_on_every_step"] is True
+    assert record["payload_bytes"] == 20480
+    assert record["source"] == str(source)
+
+
+def test_dependent_chain_marginal_rejects_a_failed_dependency_check(
+    tmp_path: pathlib.Path, mod
+) -> None:
+    """A marginal whose chain did not consume its predecessor is not a cost."""
+
+    source = _chain_artifact(tmp_path / "chain.json", depends=False)
+    with pytest.raises(ValueError, match="dependency check"):
+        mod.read_dependent_chain_marginal(source, case_key="all_reduce:rows1:fp32")
+
+
+def test_dependent_chain_marginal_rejects_an_unknown_case(tmp_path: pathlib.Path, mod) -> None:
+    source = _chain_artifact(tmp_path / "chain.json")
+    with pytest.raises(ValueError, match="no case"):
+        mod.read_dependent_chain_marginal(source, case_key="all_reduce:rows99:fp32")
+
+
+def test_per_chain_mode_is_not_selectable(mod) -> None:
+    """Only the per-step structure can carry a layer dependency."""
+
+    with pytest.raises(SystemExit):
+        mod.main(
+            [
+                "--tp1",
+                "W7900=27.9:15.652:8.646:512/128/int8-kv",
+                "--marginal-us",
+                "30",
+                "--dependent-chain-mode",
+                "per_chain",
+            ]
+        )
+
+
+# -- report guards ------------------------------------------------------------
+
+
+def test_build_report_withholds_certification_on_mismatched_protocols(mod) -> None:
+    """A 512-prompt INT8-KV arm and an 8192-token BF16 arm are not a pair."""
+
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:8192/8/bf16-kv"),
+    ]
+    report = mod.build_report(devices, collective_ms=(1.0,), fixed_shares=(0.0,))
+    assert report["protocol_match"]["matched"] is False
+    assert report["verdict"]["certified"] is False
+    assert any("different protocols" in reason for reason in report["verdict"]["withheld_reasons"])
+
+
+def test_build_report_withholds_certification_without_the_gate(mod) -> None:
+    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")]
+    report = mod.build_report(devices, collective_ms=(1.0,), fixed_shares=(0.0,))
+    assert report["pre_packet3_gate"]["satisfied"] is False
+    assert report["verdict"]["certified"] is False
+    assert any("shard-kernel gate" in reason for reason in report["verdict"]["withheld_reasons"])
+
+    with_evidence = mod.build_report(
+        devices,
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+    )
+    assert with_evidence["pre_packet3_gate"]["satisfied"] is True
+    assert with_evidence["verdict"]["certified"] is True
+    assert with_evidence["verdict"]["passes_target_in_every_row"] is True
+
+
+def test_build_report_records_the_collective_source(mod) -> None:
+    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")]
+    report = mod.build_report(
+        devices,
+        collective_ms=(22.758,),
+        fixed_shares=(0.0,),
+        reduction_points=128,
+        collective_source={
+            "marginal_us_per_step": 177.8,
+            "source": "benchmarks/results/chain.json",
+            "mode": "per_step",
+            "depends_on_every_step": True,
+        },
+    )
+    assert report["collective_source"]["source"] == "benchmarks/results/chain.json"
+    assert report["collective_ms_expected_from_count"] == pytest.approx(22.758)
+    assert report["errors"] == []
+
+
+def test_build_report_flags_a_budget_that_contradicts_the_count(mod) -> None:
+    """A budget inconsistent with the reduction count is an error, not a pass."""
+
+    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")]
+    source = {
+        "marginal_us_per_step": 177.8,
+        "source": "benchmarks/results/chain.json",
+        "mode": "per_step",
+        "depends_on_every_step": True,
+    }
+    # 3.66 ms is 128 reductions at the superseded 28.6 us marginal.
+    wrong = mod.build_report(
+        devices,
+        collective_ms=(3.66,),
+        reduction_points=128,
+        collective_source=source,
+    )
+    assert wrong["errors"], "a budget built from the superseded marginal was accepted"
+    assert "does not match" in wrong["errors"][0]
+
+    right = mod.build_report(
+        devices,
+        collective_ms=(22.758,),
+        reduction_points=128,
+        collective_source=source,
+    )
+    assert right["errors"] == []
+
+
+def test_build_report_reports_a_losing_projection(mod) -> None:
+    """The measured dependent cost at the decode shape loses on the eager path."""
+
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
+    ]
+    report = mod.build_report(
+        devices,
+        collective_ms=(22.758,),
+        fixed_shares=(0.0,),
+        reduction_points=128,
+        collective_source={
+            "marginal_us_per_step": 177.8,
+            "source": "benchmarks/results/chain.json",
+            "mode": "per_step",
+            "depends_on_every_step": True,
+        },
+    )
+    assert report["verdict"]["passes_target_in_every_row"] is False
+    assert report["verdict"]["certified"] is False
+    row = report["rows"][0]
+    assert row["projected_speedup"] < 1.0
+    assert row["required_improvement_factor"] > 1.0
     assert json.loads(json.dumps(report))["kind"] == "tp2_break_even"
 
 
-def test_build_report_flags_a_losing_projection(mod) -> None:
-    # A 1 tok/s baseline with a huge collective budget cannot reach 1.3x.
-    devices = [mod.parse_tp1("slow=1.0:16.0:8.0")]
-    report = mod.build_report(devices, collective_ms=(800.0,), fixed_shares=(0.0,))
-    assert report["verdict"]["passes_target_in_every_row"] is False
-    assert report["verdict"]["collective_would_have_to_be_worse_by"] < 1.0
-    assert report["devices"][0]["rows"][0]["projected_speedup"] < 1.0
+def test_build_report_is_json_serializable_across_the_share_range(mod) -> None:
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
+    ]
+    report = mod.build_report(
+        devices,
+        collective_ms=(1.3, 1.5),
+        fixed_shares=(0.0, 0.2),
+        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+    )
+    assert len(report["rows"]) == 4
+    assert report["verdict"]["worst_case_speedup"] <= report["verdict"]["best_case_speedup"]
+    assert json.loads(json.dumps(report))["verdict"]["certified"] is True
+
+
+def test_build_report_pins_the_share_sensitivity_of_the_matched_pair(mod) -> None:
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
+    ]
+    passing = mod.build_report(devices, collective_ms=(1.3,), fixed_shares=(0.0, 0.2))
+    assert passing["verdict"]["passes_target_in_every_row"] is True
+    dipping = mod.build_report(devices, collective_ms=(1.3,), fixed_shares=(0.3,))
+    assert dipping["verdict"]["passes_target_in_every_row"] is False
+    assert dipping["rows"][0]["projected_speedup"] == pytest.approx(1.294, abs=0.005)
+
+
+def test_build_report_reports_an_optimistic_bound_that_clears_the_target(mod) -> None:
+    """A cheap collective leaves room even with free rank-weight reads."""
+
+    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")]
+    report = mod.build_report(devices, collective_ms=(1.3,), fixed_shares=(0.0,))
+    verdict = report["verdict"]
+    # 35.84 ms baseline over a 1.3 ms collective.
+    assert verdict["optimistic_bound_speedup"] == pytest.approx(35.842 / 1.3, rel=1e-4)
+    assert verdict["optimistic_bound_clears_target"] is True
+
+
+def test_optimistic_bound_decides_a_losing_projection_without_shard_kernels(mod) -> None:
+    """The matched pair's lower bound misses the target, so no kernel rescues it.
+
+    This is the plan's own stop rule. With free rank-weight reads the group would
+    still pay the measured collective, and that alone already exceeds the faster
+    TP1 token time divided by the target.
+    """
+
+    devices = [
+        mod.parse_tp1("W7900=29.575:15.652:8.646:512-128-int8kv-eager"),
+        mod.parse_tp1("XTX=35.355:15.652:7.009:512-128-int8kv-eager"),
+    ]
+    report = mod.build_report(
+        devices,
+        collective_ms=(22.758,),
+        fixed_shares=(0.0,),
+        reduction_points=128,
+        collective_source={
+            "marginal_us_per_step": 177.8,
+            "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
+            "mode": "per_step",
+            "depends_on_every_step": True,
+        },
+    )
+    verdict = report["verdict"]
+    assert verdict["optimistic_bound_speedup"] == pytest.approx(28.284 / 22.758, rel=1e-4)
+    assert verdict["optimistic_bound_clears_target"] is False
+    assert any("optimistic bound" in reason for reason in verdict["withheld_reasons"])
+    assert verdict["certified"] is False
+    assert report["errors"] == []
+
+
+# -- CLI ----------------------------------------------------------------------
 
 
 def test_main_writes_the_artifact(tmp_path: pathlib.Path, mod, capsys) -> None:
@@ -108,9 +407,11 @@ def test_main_writes_the_artifact(tmp_path: pathlib.Path, mod, capsys) -> None:
     exit_code = mod.main(
         [
             "--tp1",
-            "W7900=27.9:15.652:8.646",
-            "--collective-ms",
-            "1.3",
+            "W7900=27.9:15.652:8.646:512/128/int8-kv",
+            "--marginal-us",
+            "177.8",
+            "--reduction-points",
+            "128",
             "--fixed-share",
             "0.2",
             "--json",
@@ -119,73 +420,45 @@ def test_main_writes_the_artifact(tmp_path: pathlib.Path, mod, capsys) -> None:
     )
     assert exit_code == 0
     payload = json.loads(output.read_text(encoding="utf-8"))
-    assert payload["devices"][0]["rows"][0]["collective_ms_per_token"] == pytest.approx(1.3)
+    assert payload["rows"][0]["collective_ms_per_token"] == pytest.approx(22.758)
+    assert payload["collective_source"]["source"] == "command line"
     assert "verdict" in capsys.readouterr().out
 
 
-# -- inventory-derived collective budget -------------------------------------
+def test_main_requires_a_measured_collective_source(mod) -> None:
+    """No default marginal: the input must name where it came from."""
 
-
-def test_collective_budget_is_derived_from_the_shard_inventory(mod) -> None:
-    """The per-token collective budget must come from the manifest, not a guess.
-
-    The first version of this projection used a hand-written "36 collectives per
-    token" while the shard inventory held 128 row-split tensors. Nothing tied the
-    two together, so the budget was 3.6x too small and the verdict read as a
-    comfortable pass. This test derives the count from the committed shard report
-    and checks the committed break-even artifact against it.
-    """
-
-    root = pathlib.Path(__file__).resolve().parents[1]
-    shard_report = json.loads(
-        (root / "benchmarks" / "results" / "tp2_shard_plan_report.json").read_text(encoding="utf-8")
-    )
-    break_even = json.loads(
-        (root / "benchmarks" / "results" / "tp2_break_even.json").read_text(encoding="utf-8")
-    )
-
-    degrees = shard_report["degrees"]
-    counts = {degree: entry["reduction_points"] for degree, entry in degrees.items()}
-    assert counts, "shard report carries no reduction_points"
-    assert len(set(counts.values())) == 1, f"reduction count varies by degree: {counts}"
-    count = next(iter(counts.values()))
-
-    # Every block contributes exactly two reductions (attention/state output and
-    # the MLP down projection), which is what makes the count checkable.
-    per_block = degrees[next(iter(degrees))]["reduction_points_per_block"]
-    assert set(per_block.values()) == {2}, per_block
-    assert count == 2 * len(per_block)
-
-    assert break_even["reduction_points_per_token"] == count
-    expected = break_even["collective_ms_expected_from_count"]
-    for value in break_even["collective_ms_measured"]:
-        assert expected[0] * 0.98 <= value <= expected[1] * 1.02, (
-            f"budget {value} ms does not match {count} reduction points x marginal "
-            f"{expected} ms"
+    with pytest.raises(SystemExit):
+        mod.main(
+            [
+                "--tp1",
+                "W7900=27.9:15.652:8.646:512/128/int8-kv",
+                "--reduction-points",
+                "128",
+            ]
         )
-    assert break_even["errors"] == []
 
 
-def test_build_report_flags_a_budget_that_contradicts_the_count(mod) -> None:
-    """A budget inconsistent with the reduction count is an error, not a pass."""
-
-    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646")]
-    # 36 collectives is the wrong count for this model; the budget built from it
-    # must be reported as inconsistent with 128 reduction points.
-    wrong = mod.build_report(
-        devices,
-        collective_ms=(1.03, 1.25),
-        reduction_points=128,
-        marginal_us=(28.6, 35.0),
+def test_main_reads_the_marginal_from_a_chain_artifact(tmp_path: pathlib.Path, mod) -> None:
+    source = _chain_artifact(tmp_path / "chain.json", marginal=177.8)
+    output = tmp_path / "break_even.json"
+    exit_code = mod.main(
+        [
+            "--tp1",
+            "W7900=27.9:15.652:8.646:512/128/int8-kv",
+            "--dependent-chain-artifact",
+            str(source),
+            "--dependent-chain-case",
+            "all_reduce:rows1:fp32",
+            "--reduction-points",
+            "128",
+            "--json",
+            str(output),
+            "--quiet",
+        ]
     )
-    assert wrong["errors"], "an understated budget was accepted"
-    assert "does not match" in wrong["errors"][0]
-    assert wrong["verdict"]["passes_target_in_every_row"] is True  # the *wrong* input still passes
-
-    right = mod.build_report(
-        devices,
-        collective_ms=(3.66, 4.48),
-        reduction_points=128,
-        marginal_us=(28.6, 35.0),
-    )
-    assert right["errors"] == []
+    assert exit_code == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["collective_ms_per_token"] == [pytest.approx(22.758)]
+    assert payload["collective_source"]["mode"] == "per_step"
+    assert payload["collective_source"]["case"] == "all_reduce:rows1:fp32"

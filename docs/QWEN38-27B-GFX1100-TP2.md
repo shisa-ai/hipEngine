@@ -129,17 +129,36 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   candidate, and the bf16 transport measurements below (2.593 -> 1.309 ms per
   1024-row all-reduce) are transport-level diagnostics rather than a qualified
   model-level prefill default.
-- **Collective latency is the binding constraint for decode.** A 20 KB
-  all-reduce costs 28-35 us marginal inside one group, and the shard inventory
-  fixes the count at **128 row-split tensors per token** (two per transformer
-  block across 64 autoregressive blocks: 64 MLP down projections, 48 GDN
-  state-output projections, 16 attention output projections), so a decode token
-  spends **3.66-4.48 ms** in exposed collectives against 33.5-35.8 ms/token of
-  single-GPU decode - 11-13%, not the 3-6% an earlier 36-collective estimate
-  implied. Group enqueue already satisfies the "first rank's collective must not
-  block the second rank's enqueue" requirement, and threaded enqueue is
-  measurably worse, so no host threads are needed for enqueue. Reducing the
-  *number* of exposed collectives is the highest-value Packet 3/4 lever.
+- **Collective latency is the binding constraint for decode, and it is currently
+too expensive for the eager path.** The shard inventory fixes the count at
+**128 row-split tensors per token** (two per transformer block across 64
+autoregressive blocks: 64 MLP down projections, 48 GDN state-output
+projections, 16 attention output projections). In a *dependent* chain, where
+each reduction runs in its own group and its result feeds the next layer, a
+20 KB fp32 all-reduce costs **177.8 us per reduction**, so a decode token spends
+**22.76 ms** in exposed collectives
+(`benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json`).
+Against the faster matched single-GPU arm (35.36 tok/s, 28.28 ms/token) that is
+80% of a whole token before any weight is read, and the break-even projection
+lands at **0.62-0.68x** - TP2 slower than one GPU, not faster. The optimistic
+bound is decisive on its own: even if rank-local weight reads cost nothing, the
+group would still pay 22.76 ms against a 28.28 ms baseline, or **1.24x**, below
+the plan's 1.3x target. No shard kernel can close that gap, so the
+pre-Packet-3 gate does not need to be satisfied to decide the question. The
+exposed collectives must get **2.2-4.5x cheaper** for the eager path to break
+even; the levers are fewer exposed collectives, cheaper per-reduction groups, or
+overlapping the reduction with independent work.
+
+  An earlier estimate of 3.66-4.48 ms (11-13% of a token) used a marginal
+  measured from collectives that were *not* dependent: a group in which the
+  reduction is deferred past its consumer costs 37.3 us per step, but that
+  structure cannot carry a layer dependency. The per-step structure, which can,
+  costs 177.8 us - 4.8x more. The earlier figure is superseded, not merely
+  refined.
+
+  Group enqueue already satisfies the "first rank's collective must not block
+the second rank's enqueue" requirement, and threaded enqueue is measurably
+worse, so no host threads are needed for enqueue.
 - **A TP2 rank holds half the KV pool.** At 8192 context a rank claims 258 MiB
   of KV against 514 MiB for the whole pool (16 full-attention layers, 2 of the 4
   KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans`), and 1032 against 2056
@@ -440,7 +459,14 @@ communication wrappers or treat estimated half-model time as measured evidence.
 - [ ] Measure matched TP1 AR and engaged TP1 MTP on each GPU, one at a time on
   this host, using the full category suite. Profile per-layer and head time.
   Do not substitute a result from another host, even with the same GPU model.
-- [ ] Write a break-even artifact and a go/no-go decision before Packet 3.
+- [x] Write a break-even artifact and a go/no-go decision before Packet 3.
+  **Decision: no-go on the eager path.** `benchmarks/results/tp2_break_even.json`
+  projects 0.62-0.68x against the faster matched TP1 arm, and the optimistic
+  bound with free rank-weight reads is 1.24x, below the 1.3x target. The
+  collective budget is the binding term: 128 exposed reductions at 177.8 us in a
+  dependent chain is 22.76 ms/token. Packet 3 (full-model integration) does not
+  start from this result. What can change the answer is a cheaper or fewer
+  exposed collectives, not a faster shard kernel; see "Measured status".
 - [ ] Use Tier-1 allocation probes before full-prompt capacity testing. Record
   actual TP1 HIP/PM4 submission transport and resolved profile; measure local
   shard-shaped kernels and rank enqueue skew before extrapolating.
