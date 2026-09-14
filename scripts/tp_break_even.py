@@ -201,6 +201,7 @@ DEPENDENT_CHAIN_MODES = (
     "per_step_alternating",
     "per_step_alternating_graph",
     "staged_exchange_host_sync",
+    "staged_exchange_batched_return_wait",
     "staged_exchange_batched",
 )
 

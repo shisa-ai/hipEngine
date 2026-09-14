@@ -918,8 +918,8 @@ so these are per-layer costs rather than deferrable ones:
 | RCCL, one group per reduction, with an intermediate device copy | 177.3 us | 22.69 ms | 0.68x |
 | RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.74x |
 | RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.76x |
-| Host exchange, one rank at a time (submit, wait, submit, wait) | 71.7 us | 9.17 ms | 1.02x |
-| Host exchange, both ranks submitted before either is awaited | **42.9 us** | **5.49 ms** | **1.17x** |
+| Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 8.99 ms | 1.02x |
+| Host exchange, both ranks submitted before either is awaited | **40.9 us** | **5.24 ms** | **1.18x** |
 
 The intermediate copy is worth **23.6 us per reduction**. Host submission is only
 **6.9 us** - that is what replaying the same device structure from a captured
@@ -927,22 +927,36 @@ graph removes - so RCCL's cost here is device-side protocol, not Python or ctype
 overhead. Collapsing N dependent reductions into one group saves 119.6 us, which
 is why that structure is fast and why it cannot carry a layer dependency.
 
-**Host orchestration is worth 28.8 us per reduction on its own.** The serial
-exchange performs four host waits per reduction and never overlaps the two
-transfers of a pair. Submitting both device-to-host copies before awaiting
-either, and not awaiting the return copies at all, costs two waits per reduction
-and moves the projection from 0.87-1.02x to **0.99-1.17x**. The return copies
+**Host orchestration is worth 29.3 us per reduction, and the causal split is
+measured rather than inferred.** The serial exchange performs four host waits per
+reduction and never overlaps the two transfers of a pair. A third arm keeps the
+batching and restores the return-copy wait, so the two changes separate:
+**rank batching is 17.7 us and dropping the return wait is 11.6 us**. Together
+they move the projection from 0.88-1.02x to **0.99-1.18x**. The return copies
 need no host wait: the device-to-host copy for a step is enqueued after the
 return copy that read the same staging slot on that rank's stream, so the wait
 the host already performs is also the slot-reuse guard.
 
-The batched exchange's per-reduction budget is 4.7 us to submit the
-device-to-host copies, 9.4 us waiting for them, 5.7 us to submit the return
-copies, 0.2 us of return-copy wait and 6.5 us of host accumulation, against
-**15.4 us per copy measured on the device with events**. The copies (30.8 us for
-the pair) now overlap the host work (26.4 us) instead of sitting beside it, and
-copy time rather than host wait is the binding term. Each staged byte crosses
-PCIe twice, so peer DMA would halve it, and peer DMA is unavailable on this host.
+The batched exchange's per-reduction host budget, from an instrumented arm whose
+wall clock and phases cover the *same* steps, is 4.6 us to submit the
+device-to-host copies, 9.6 us of device-context entry and exit around them,
+8.8 us waiting for them, 5.6 us to submit the return copies, 5.6 us of context
+around those, 0.2 us of return-copy wait and 6.3 us of host accumulation -
+**41.9 us accounted against 44.3 us of loop wall time, leaving 2.3 us of helper
+and loop overhead**. The context term is larger than either copy submission and
+was absent from earlier counters, so no native-implementation ceiling follows
+from subtracting phases. Performance arms are uninstrumented, so no
+`perf_counter` call runs in their hot path.
+
+The copies are probed separately, per rank. A single copy between an event pair
+on an idle stream observes **13.6-15.1 us**, and 16 copies submitted back to back
+between one event pair - which removes the host from the interval - observe
+**8.2-9.9 us per copy**. Both are probe observations rather than a trace of the
+chain's DMA critical path, and the two bracket how much host starvation the
+single-copy form absorbs. Rank 1 is consistently the slower of the two on every
+direction, which is why samples are kept per rank. Each staged byte crosses PCIe
+twice, so peer DMA would halve the copy term, and peer DMA is unavailable on this
+host.
 
 **Break-even, measured on both sides, and negative for RCCL.** The two TP1 arms
 are measured on this host, one GPU at a time, on one revision and one protocol
@@ -954,19 +968,21 @@ the *faster* arm:
 
 | Fixed-cost share | Baseline (faster TP1) | TP2 group (RCCL) | Projected speedup | TP2 group (batched exchange) | Projected speedup | Break-even collective |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0% | 28.28 ms | 41.61 ms | 0.68x | 24.17 ms | 1.17x | 9.61 ms |
-| 10% | 28.28 ms | 43.12 ms | 0.66x | 25.68 ms | 1.10x | 8.09 ms |
-| 20% | 28.28 ms | 44.64 ms | 0.63x | 27.19 ms | 1.04x | 6.58 ms |
-| 30% | 28.28 ms | 46.15 ms | 0.61x | 28.71 ms | 0.99x | 5.07 ms |
+| 0% | 28.28 ms | 41.61 ms | 0.68x | 23.92 ms | 1.18x | 9.36 ms |
+| 10% | 28.28 ms | 43.12 ms | 0.66x | 25.43 ms | 1.11x | 7.85 ms |
+| 20% | 28.28 ms | 44.64 ms | 0.63x | 26.94 ms | 1.05x | 6.34 ms |
+| 30% | 28.28 ms | 46.15 ms | 0.61x | 28.45 ms | 0.99x | 4.83 ms |
 
 RCCL's collective is 2.2-4.5x over budget in every row. The batched exchange is
-within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at 30%. This is
-a projection from measured collective latency and an explicit fixed-cost
-assumption, not a measured engine result. Reaching the plan's 1.3x at zero fixed
-share would need ~24 us per reduction, which is below the measured 30.8 us cost
-of the two copies alone, so 1.3x is not reachable through transport work on this
-host; the 1.04-1.17x qualified win the design accepts is what the exchange
-delivers.
+within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at 30%. These
+are **conditional projections from measured collective latency and an explicit
+fixed-cost assumption**, not a qualified model result: the break-even artifact
+records `certified: false` and no shard-kernel evidence, and no local shard
+kernel, state trajectory, production numerical gate or end-to-end TP latency has
+been measured. The design's 1.3x is an aspiration rather than an admission bar,
+and it accepts smaller qualified wins; whether the exchange can supply one is
+undecided, because the terms that make up the current 40.9 us are not yet
+separated into ones that can move and ones that cannot.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
