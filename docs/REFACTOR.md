@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## MoE Backend Refresh Cache Experiment
+
+- `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` is default-off while R21 checks
+  exact registration behavior and complete-request cost. It skips repeated
+  refresh only at a stable registry generation, preserving mutation and
+  failed-registration behavior.
+- If the measured exact path wins, make it unconditional and remove the
+  experiment flag after the paired comparison; retain generation invalidation.
+  No kernel variant, graph packet, allocation or arithmetic changes.
+
 ## Q8 Block-Scale Restoration
 
 - UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned

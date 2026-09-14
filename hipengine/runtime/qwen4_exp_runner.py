@@ -181,6 +181,7 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
     qsa_select_positions,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.kernels.registry import generation as _registry_generation
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
@@ -3484,6 +3485,26 @@ def qwen4_exp_q51_pair_prefill_selected(
     )
 
 
+_MOE_BACKEND_REGISTRY_GENERATIONS: dict[str, int] = {}
+
+
+def _ensure_qwen4_exp_moe_backend(backend: str) -> None:
+    if os.environ.get("HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE", "0") in {
+        "", "0", "false", "False",
+    }:
+        load_backend_kernel_package(backend)
+        return
+    generation = _registry_generation()
+    if _MOE_BACKEND_REGISTRY_GENERATIONS.get(backend) == generation:
+        return
+    load_backend_kernel_package(backend)
+    # Do not certify a generation that changed during the refresh.
+    if _registry_generation() == generation:
+        _MOE_BACKEND_REGISTRY_GENERATIONS[backend] = generation
+    else:
+        _MOE_BACKEND_REGISTRY_GENERATIONS.pop(backend, None)
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -3550,7 +3571,7 @@ def run_qwen4_exp_moe(
     if missing:
         raise ValueError("missing Qwen4Exp MoE weights: " + ", ".join(missing))
     backend = str(weights["expert_gate"].backend)
-    load_backend_kernel_package(backend)
+    _ensure_qwen4_exp_moe_backend(backend)
     router_tile4 = _qwen4_exp_router_f32_tile4_enabled(rows)
     if router_tile4:
         router_logits = resolve(
