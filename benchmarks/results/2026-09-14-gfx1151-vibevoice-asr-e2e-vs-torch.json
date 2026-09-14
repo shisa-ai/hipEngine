@@ -16,9 +16,9 @@
   "results": {
     "hipengine_total_s": 4.549,
     "hipengine_frontend_s": 0.348,
-    "hipengine_prompt_decode_s": 4.200,
+    "hipengine_prompt_decode_s": 4.2,
     "torch_total_s": 4.425,
-    "torch_model_s": 4.390,
+    "torch_model_s": 4.39,
     "ratio_hipengine_over_torch": 1.03,
     "hipengine_decode_ms_per_token": 66.0,
     "torch_decode_ms_per_token": 81.0
@@ -31,5 +31,11 @@
     "front-end optimization retained wins vs first working version: 0.92 s -> 0.35 s (scratch arena instead of per-call malloc, warp-per-row rmsnorm, A&S fast-erf gelu, WMMA bulk GEMM for FFN/connectors where tile-aligned, im2col+WMMA for the five large strided convs)",
     "WMMA GEMV variants were tried for the decode path and measured slower (bulk-tile kernels, rows=1): 7.8 s vs 4.2 s prompt+decode; reverted to the scalar dense GEMV family",
     "torch lane uses eager attention for the whole model because the HF tokenizer encoder does not support sdpa; transformers 5.15.0 get_audio_features crashes on 2-D input_values (upstream chunk-cache bug), worked around with 3-D input"
-  ]
+  ],
+  "status": "invalid-comparison",
+  "audit_correction": {
+    "date": "2026-09-14",
+    "reason": "Lanes used different acoustic noise and duration prompt IDs; timing boundaries differed. Prefix fixture checks did not establish production correctness. Historical timing rows are diagnostic only, not a validated speedup.",
+    "source": "worklog/entries/20260914T062401.248622Z-lhl-vibevoice-asr-completion-audit-7eb56c.md"
+  }
 }
