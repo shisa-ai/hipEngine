@@ -115,9 +115,9 @@ host (8.6x the official torch reference there) and **0.062 s** on a Framework
 Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
 host power/thermal headroom, not a code change.
 
-**VibeVoice-ASR 9B** runs torch-free on Strix Halo. Its Q4_K_M backbone beats bf16 on both
-stages — **1.52x** prompt prefill, **1.50x** decode — at 6.10 GB vs 16.66 GB, WER unchanged.
-[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-batched-prefill.json).
+**VibeVoice-ASR 9B** runs torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x** prefill,
+**1.50x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.10% on 200 clips (torch 2.81%).
+[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-200clip-comparative.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
