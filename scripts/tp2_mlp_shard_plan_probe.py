@@ -13,6 +13,8 @@ evidence rather than assumption:
      alignment the t16 repack requires?
   3. Does the engine's linear dispatch resolve for a shard-shaped weight, and does
      it resolve to the same kernel as the TP1 shape?
+  4. Does the t16 repack commute with the split, so a rank can repack its own
+     local slice instead of needing the full tensor?
 
 Question 3 is the one that decides whether a shard segment needs a new kernel.
 The dispatch key is ``(layout, activation, output, quant_key, variant_for_rows)``
@@ -33,6 +35,8 @@ import argparse
 import json
 import sys
 import time
+
+import numpy as np
 from pathlib import Path
 from typing import Any
 
@@ -45,13 +49,18 @@ from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata  # no
 from hipengine.loading.qwen35_gguf_consumer_surface import (  # noqa: E402
     resolve_linear_consumer_contract,
 )
-from hipengine.loading.qwen35_gguf_materialize import _planned_t16_nbytes  # noqa: E402
+from hipengine.loading.qwen35_gguf_materialize import (  # noqa: E402
+    LAYOUT_GGUF_Q4_K_T16,
+    _planned_t16_nbytes,
+)
 from hipengine.loading.qwen35_gguf_shards import (  # noqa: E402
     build_shard_manifest,
     materialize_slice,
     reconstruct_tensor,
     source_payload,
 )
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16  # noqa: E402
+from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16  # noqa: E402
 from hipengine.quant.gguf_t16 import GGUF_T16_COLS  # noqa: E402
 from hipengine.runtime.gguf_linear import resolve_gguf_linear_dispatch  # noqa: E402
 
@@ -102,6 +111,23 @@ def _resident_layout(quant_type_name: str) -> tuple[str, str]:
     if name in RAW_LINEAR_SOURCE_QUANT_KEYS:
         return LAYOUT_RAW_GGUF, RAW_LINEAR_SOURCE_QUANT_KEYS[name]
     raise ValueError(f"no resident layout is recorded for source quant {name!r}")
+
+
+def _t16_repack_tiles(payload: Any, *, rows: int, bytes_per_row: int, quant_type: str) -> Any:
+    """Repack one rank-local (or full) slice into its t16 tile array.
+
+    ``repack_gguf_q4_k_tile16`` and ``repack_gguf_q6_k_tile16`` take rank-3
+    expert byte shapes, so the rank-2 payload is viewed as one expert.
+    """
+
+    # Refuse an unsupported type before touching the payload, so the error names
+    # the quant type rather than whatever the reshape happened to fail on.
+    if quant_type not in ("Q4_K", "Q6_K"):
+        raise ValueError(f"no t16 repack is recorded for source quant {quant_type!r}")
+    expert = np.asarray(payload, dtype=np.uint8).reshape(1, int(rows), int(bytes_per_row))
+    if quant_type == "Q4_K":
+        return np.asarray(repack_gguf_q4_k_tile16(expert).tiles)
+    return np.asarray(repack_gguf_q6_k_tile16(expert).tiles)
 
 
 def _t16_admissible(*, out_features: int, bytes_per_row: int, block_bytes: int) -> dict[str, Any]:
@@ -157,6 +183,8 @@ def probe(
     all_exact = True
     all_admissible = True
     all_dispatch_match = True
+    all_repack_commutes = True
+    repack_checked: list[str] = []
     tp1_bytes = 0
     shard_bytes = 0
 
@@ -235,6 +263,38 @@ def probe(
             }
             shard_bytes += int(shard.local_nbytes)
 
+        # Does the t16 repack commute with the split? Only for the t16 layouts;
+        # the raw Q6_K down projection is used as source bytes and needs no
+        # repack. A rank that had to see the whole tensor to repack its own slice
+        # would defeat the point of a shard-local materializer, and a non-tile
+        # aligned split would make the local repack differ from the global one
+        # while still producing plausible numbers.
+        if layout == LAYOUT_GGUF_Q4_K_T16:
+            full_tiles = _t16_repack_tiles(
+                source, rows=plan.source_shape[0], bytes_per_row=bytes_per_row, quant_type=str(tensor.ggml_type_name)
+            )
+            commutes = True
+            for shard in plan.slices:
+                axis_start, axis_stop = shard.axis_ranges[0]
+                local = materialize_slice(source, shard)
+                local_tiles = _t16_repack_tiles(
+                    local,
+                    rows=int(axis_stop - axis_start),
+                    bytes_per_row=bytes_per_row,
+                    quant_type=str(tensor.ggml_type_name),
+                )
+                tile_start = int(axis_start) // GGUF_T16_COLS
+                tile_stop = int(axis_stop) // GGUF_T16_COLS
+                same = bool(np.array_equal(local_tiles[0], full_tiles[0, tile_start:tile_stop]))
+                entry["ranks"][str(shard.rank)]["repack_commutes_with_split"] = same
+                commutes = commutes and same
+            entry["repack_commutes_with_split"] = commutes
+            all_repack_commutes = all_repack_commutes and commutes
+            repack_checked.append(name)
+            del full_tiles
+        else:
+            entry["repack_commutes_with_split"] = None
+
         rebuilt = reconstruct_tensor(manifest, name, payloads)
         exact = bool(rebuilt.tobytes() == bytes(source))
         all_exact = all_exact and exact
@@ -263,6 +323,17 @@ def probe(
         "local_shapes_are_layout_admissible": {
             "answer": bool(all_admissible),
             "evidence": "the t16 repack's own divisibility test applied to each local shape",
+        },
+        "t16_repack_commutes_with_the_split": {
+            "answer": bool(all_repack_commutes),
+            "evidence": (
+                "repack of each rank-local slice equals the corresponding tile range of the "
+                "full-tensor repack, so a rank repacks its own slice"
+            ),
+            "tensors_checked": repack_checked,
+            "not_applicable": [
+                name for name in names if name not in repack_checked
+            ],
         },
         "shard_dispatch_needs_no_new_kernel": {
             "answer": bool(all_dispatch_match),
