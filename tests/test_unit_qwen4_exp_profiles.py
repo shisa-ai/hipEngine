@@ -83,7 +83,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
 
 
-def _resolve(profile: ExecutionProfile, *, quant: str = QWEN4_EXP_QUANTS[1]):
+def _resolve(profile: ExecutionProfile, *, quant: str = QWEN4_EXP_QUANTS[0]):
     return resolve_runtime_profile(
         model=QWEN4_EXP_MODEL,
         backend=QWEN4_EXP_BACKEND,

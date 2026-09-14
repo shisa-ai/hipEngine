@@ -1,0 +1,30 @@
+{
+  "candidate": "production_q8_fallback",
+  "status": "rejected_for_default_promotion",
+  "task_passed": false,
+  "criterion": "Predeclared per-prompt non-inferiority in requested facts, constraints, code behavior and language; no new material factual error.",
+  "capture_status": "stopped_after_observed_failure",
+  "capture_complete": false,
+  "strict_cases_completed": 18,
+  "candidate_cases_completed": 6,
+  "strict_truncated_cases": ["general_ja_plan"],
+  "failure": {
+    "prompt_id": "general_en_explain",
+    "candidate_claim": "Llama-2-7B uses GQA, reducing KV cache size by 4x compared to MHA.",
+    "strict_claim_present": false,
+    "reason": "The candidate introduces an incorrect model-specific example of a throughput mechanism.",
+    "reference": {
+      "url": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama2/MODEL_CARD.md",
+      "retrieved_date": "2026-09-14",
+      "sha256": "2fb1088542ff963db5b2e248e73a2d1fcb029f5e772ed09aed10f47e562c64a9",
+      "finding": "The model table marks GQA absent for 7B and 13B and present for 70B."
+    }
+  },
+  "limitations": [
+    "This is a failure of the predeclared task criterion on the observed paired outputs, not proof that the candidate is worse in expectation on all tasks.",
+    "Strict itself contains factual simplifications and an incomplete rollback plan; it is not an infallible task oracle.",
+    "The remaining candidate tasks were not run after the disqualifying observation.",
+    "The interrupted in-progress capture retains its original running status and is not relabeled a completed suite.",
+    "No production default changed."
+  ]
+}

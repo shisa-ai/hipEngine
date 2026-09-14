@@ -27,6 +27,11 @@ from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
+def summarize_cost(samples, pairs):
+    return summarize_campaign_ab(samples, repetitions_per_mode=pairs,
+                                 allow_cross_mode_drift=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -106,8 +111,7 @@ def main():
                     report["samples"].append(row)
                     args.output.write_text(json.dumps(report, indent=2) + "\n")
                     print(case["id"], mode, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
-            report["summary"] = summarize_campaign_ab(
-                report["samples"], repetitions_per_mode=args.pairs)
+            report["summary"] = summarize_cost(report["samples"], args.pairs)
             report["status"] = "completed"
         finally:
             set_flags(previous)

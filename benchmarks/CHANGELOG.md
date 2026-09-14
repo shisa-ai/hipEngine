@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 UTC/JST**: Framework Flash-Next UD-Q4_K_XL/BF16 production
+  recovers strict arithmetic with exact optimized owners:1374 short/depth
+  rows match strict; old composition fails numerics and two-Q8 fallback
+  fails paired task review. Matched512/1K/4K PP292.70/309.27/285.79 ->
+  172.87/179.72/129.95 tok/s (-40.94/-41.89/-54.53%);
+  TG20.17/19.43/18.06 ->17.63/17.01/11.40 (-12.60/-12.43/-36.88%).
+  This is a correctness-recovery cost, not a speedup.
+  [Evidence](results/2026-09-14-q8-prefill-numerics/README.md).
+
 - **2026-09-14 UTC**: Journey checkpoint records unpromoted multi-column GDN,
   rejected/removed Q8 residual-weight down (top1587/594 and prefill mean fail),
   cold/warm pread tradeoffs and chunk2048/4096 scratch-model failures.

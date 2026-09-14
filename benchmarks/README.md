@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-14 JST (2026-09-13 UTC)**
+Last updated: **2026-09-14 JST (2026-09-14 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -610,10 +610,34 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next on Framework (gfx1151)
 
-Exact DPP reductions improve the admitted tiled-GDN prefill suffix:
+Production UD-Q4_K_XL now uses conservative arithmetic with exact optimized
+owners. It matches strict logits on594 natural-prompt rows and780
+canonical512/1K/4K rows, with deterministic repeats, state and teardown
+checks passing. The earlier composition fails the current numerical gate;
+the narrower two-Q8 fallback passes automatic numerical limits but fails
+the predeclared paired factual task check.
+[Recovery evidence](results/2026-09-14-q8-prefill-numerics/README.md).
+MTP and multimodal performance are not requalified by these text-AR runs.
+
+Same-host counterbalanced recovery cost, four categories, three pairs,
+1024-token chunks, BF16 KV, one residency:
+
+| Arithmetic configuration | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| Previous configuration, quality gate failed | 292.70 / 20.17 | 309.27 / 19.43 | 285.79 / 18.06 |
+| Conservative recovery | 172.87 / 17.63 | 179.72 / 17.01 | 129.95 / 11.40 |
+
+Weighted tok/s;72 measured samples and24 warmups. Within-arm outputs repeat.
+This is a measured recovery cost, not a speedup claim. The previous
+configuration's rates are diagnostic, not quality-qualified production
+results. The recovery's separate numerical/state gates cover1374 rows;
+its short free-output gate matches strict on all18 prompts.
+
+Exact DPP reductions improved the previously active tiled-GDN prefill suffix:
 matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s
 at512/1K/4K (+0.125%/+0.265%/+0.262%). Full72-sample output/state A/B is
 exact; no decode speedup or broader numerical qualification is claimed.
+The DPP kernel is retained, but the tiled suffix is inactive during recovery.
 [DPP evidence](results/2026-09-14-journey-gdn-dpp/README.md).
 
 Mapping-only random advice for sparse PLE reads is now the gfx1151 production
@@ -624,13 +648,16 @@ default. In the matched file-scoped cold-cache protocol, all-category
 Warm throughput is approximately neutral. Both72-sample matrices preserve
 generated IDs, final logits/state and zero teardown; this is not a new
 strict-teacher numerical certificate.
+Those paired rates use the earlier arithmetic composition, not the recovered
+profile's current end-to-end throughput.
 [Cold/warm evidence and commands](results/2026-09-14-journey-ple/README.md).
 
-September 14 JST numerical refresh: the current production profile on
+September 14 numerical refresh of the previous production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
 gate (max KL0.054642; prefill-last mean/p95 also fail), while deterministic
 repeats and teardown pass. The throughput rows below are not a fresh quality
-certificate. No numerical limit or runtime default was changed.
+certificate. Numerical limits are unchanged; the recovery above replaces
+that arithmetic composition.
 [Evidence](results/2026-09-14-journey-production-baseline/README.md).
 
 September 5 Framework `gfx1151` screen, UD-Q4_K_XL/BF16 KV,
