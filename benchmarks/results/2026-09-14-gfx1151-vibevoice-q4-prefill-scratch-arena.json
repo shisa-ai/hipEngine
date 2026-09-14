@@ -8,27 +8,84 @@
   "change": "Both prefill routes allocated ~20 scratch buffers with individual malloc calls and freed them in a finally block. They now take aligned views from a per-runner DeviceMemoryArena that is rewound on reuse and replaced only when a larger row count needs more room, so repeated prefill calls allocate nothing. positions/counts are taken from the same arena instead of being uploaded separately.",
   "workload": "89-row prompt, one batched prefill per timed pass",
   "method": "in-process rotating A/B: a shim that reproduces the previous behaviour (one malloc per buffer per call, freed on the next call) alternates with the arena across 8 timed passes each; plus separate-process before/after runs with 5 warmup and 7 timed passes",
-  "command": "python3 /tmp/prefill_scratch_ab.py (A/B), python3 /tmp/prefill_hash.py (before/after and output hash), python3 /tmp/prefill_arena_count.py (allocation accounting)"
+  "command": "python3 scripts/vibevoice_q4_prefill_scratch_ab.py --trials 8 --json <artifact> (A/B, allocation accounting and output hash in one run), and python3 scripts/vibevoice_q4_prefill_launches.py --route q4 --repeat for the wrapper-call count. The A/B substitutes a PerCallScratch shim for the removed legacy code: take() frees the previous call's batch then allocates the new one, so a timed call contains one malloc-batch and one free-batch, the same work the legacy path did inside its own timed region. The first timed call has no preceding batch to free, so the legacy cost is underestimated and the delta is conservative."
  },
  "results": {
   "in_process_rotating_ab": {
    "per_call_malloc_ms": 223.8,
-   "per_call_malloc_trials": [224.0, 224.0, 226.0, 220.9, 223.9, 221.5, 222.6, 223.7],
+   "per_call_malloc_trials": [
+    224.0,
+    224.0,
+    226.0,
+    220.9,
+    223.9,
+    221.5,
+    222.6,
+    223.7
+   ],
    "reused_arena_ms": 216.8,
-   "reused_arena_trials": [215.6, 215.2, 217.0, 217.1, 220.0, 220.4, 216.7, 215.0],
+   "reused_arena_trials": [
+    215.6,
+    215.2,
+    217.0,
+    217.1,
+    220.0,
+    220.4,
+    216.7,
+    215.0
+   ],
    "delta_ms": 7.0,
    "delta_pct": 3.22
   },
   "separate_process_before_after": {
    "before_ms_median": 223.8,
-   "before_trials": [221.2, 222.8, 221.8, 227.5, 223.8, 227.4, 231.1],
+   "before_trials": [
+    221.2,
+    222.8,
+    221.8,
+    227.5,
+    223.8,
+    227.4,
+    231.1
+   ],
    "after_ms_median": 214.6,
-   "after_trials": [218.0, 219.7, 213.9, 216.0, 214.6, 214.6, 214.2],
+   "after_trials": [
+    218.0,
+    219.7,
+    213.9,
+    216.0,
+    214.6,
+    214.6,
+    214.2
+   ],
    "delta_pct": 4.11
   },
   "allocation_accounting": {
    "before_device_allocations_per_prefill": 22,
-   "before_allocation_sizes_bytes": [712, 712, 637952, 1275904, 1275904, 182272, 182272, 182272, 91136, 91136, 1275904, 1275904, 637952, 6744064, 6744064, 3372032, 3372032, 3372032, 3372032, 637952, 1275904, 637952],
+   "before_allocation_sizes_bytes": [
+    712,
+    712,
+    637952,
+    1275904,
+    1275904,
+    182272,
+    182272,
+    182272,
+    91136,
+    91136,
+    1275904,
+    1275904,
+    637952,
+    6744064,
+    6744064,
+    3372032,
+    3372032,
+    3372032,
+    3372032,
+    637952,
+    1275904,
+    637952
+   ],
    "after_device_allocations_over_6_repeated_prefills": 0,
    "scratch_bytes": 36600000,
    "arena_capacity_bytes": 36700160,
@@ -40,7 +97,48 @@
    "logits_sha256": "8f28f15f22869bc4767278f88e8b3ecd997e6149a3b31b2bf7a4a57334dec4cc",
    "logits_sum": -279604.0,
    "argmax_token": 151644,
-   "verdict": "identical between revisions, and the hidden hash is stable across all 7 timed trials"
+   "verdict": "identical between revisions, and the hidden hash is stable across all 7 timed trials in-process and across separate processes for both lanes"
+  },
+  "reproduction_with_committed_harness": {
+   "in_process_rotating_ab": {
+    "trials": 8,
+    "per_call_malloc_ms": 221.9,
+    "per_call_malloc_trials": [
+     222.1,
+     221.6,
+     222.6,
+     221.2,
+     218.0,
+     218.6,
+     223.5,
+     227.9
+    ],
+    "reused_arena_ms": 213.8,
+    "reused_arena_trials": [
+     214.1,
+     214.0,
+     216.3,
+     218.6,
+     213.6,
+     212.1,
+     213.6,
+     213.6
+    ],
+    "delta_ms": 8.1,
+    "delta_pct": 3.77
+   },
+   "separate_process_before_after": {
+    "trials": 7,
+    "before_ms_median": 218.3,
+    "after_ms_median": 213.8,
+    "delta_pct": 2.11
+   },
+   "device_allocations": {
+    "before": 22,
+    "after": 0
+   },
+   "output_sha256": "bf9411ca4f20af0b4ca45e357490f94acf6520b4b16c86837509db8d4d62ae1f",
+   "note": "a later run of the committed harness, same host and protocol, reproducing the recorded direction and magnitude within host variance. The recorded 3.22% and this 3.77% are two runs of one protocol, not two protocols."
   }
  },
  "gates": {
@@ -48,9 +146,15 @@
   "new_reuse_gate": "test_prefill_scratch_is_reused_across_calls patches HipRuntime.malloc (the single choke point for every allocation path) and requires a second same-size prefill to allocate nothing. RED on the parent revision with 22 device allocations, GREEN after with 0.",
   "free_path": "the arena is released only through the base close(), which is also what frees it for Q4 runners via super().close(); the arena views are never freed individually, so there is one free path and no double free"
  },
+ "profile": {
+  "arithmetic": "strict",
+  "why": "the change is byte-exact on the affected surface (identical output hash before and after), so it meets the strict arithmetic contract, which is stronger than production requires.",
+  "not_claimed": "this artifact is not a full production qualification. Production promotion additionally requires the calibrated mean/p95/p99/max KL envelope, top-1 by category/shape, same-schedule determinism, isolation, BF16-relative and task-quality gates per docs/EXECUTION-PROFILES.md section 6, which were not run here."
+ },
  "notes": [
-  "The two protocols disagree on magnitude (3.22% in-process vs 4.11% separate-process) because the separate-process runs drift upward across trials; the in-process rotating number is the one quoted. The direct measurement of the removed malloc/free calls is 4.22 ms of a 220.2 ms prefill (1.92%), so the A/B figure is the more complete one: removing the calls also avoids the driver-side disruption they cause beyond their own call time.",
+  "The two protocols disagree on magnitude (3.22% in-process vs 4.11% separate-process in the recorded run; 3.77% vs 2.11% on the re-run) because the separate-process runs drift across trials; the in-process rotating number is the one quoted. The direct measurement of the removed malloc/free calls is 4.22 ms of a 220.2 ms prefill (1.92%), so the A/B figure is the more complete one. Why the A/B figure exceeds the direct call time is not measured here; the plausible reading is that the calls also stall the launch pipeline beyond their own duration, but this artifact measures the A/B delta, not the mechanism.",
   "An earlier version of the output-hash probe re-uploaded nothing between prefills, so each pass consumed the previous pass's output as input and the hash depended on the iteration count. The probe now restores the input buffer before every pass; the before/after hashes above come from the corrected probe.",
-  "Scoped to prefill; no end-to-end claim. Prefill is about 0.2 s of a roughly 4.3 s pipeline for an 11 s clip."
+  "Scoped to prefill; no end-to-end claim. Prefill is about 0.2 s of a roughly 4.3 s pipeline for an 11 s clip.",
+  "The recorded numbers come from an uncommitted probe. results.reproduction_with_committed_harness records a later run of the committed harness, which reproduces the same direction, the same 22 -> 0 allocation count and the same output hash."
  ]
 }
