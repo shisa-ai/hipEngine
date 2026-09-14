@@ -74,3 +74,21 @@ def test_chunk_trace_does_not_leave_a_bound_method_override():
         with observe_prefill_chunks(runner, tokens=3, size=3):
             runner._prefill_chunk([1, 2, 3])
     assert "_prefill_chunk" not in vars(runner)
+
+
+def test_allocation_profile_resolves_in_a_fresh_cpu_process():
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    code = """
+import ctypes
+def forbidden(*args, **kwargs):
+    raise AssertionError("profile preflight must not load a GPU library")
+ctypes.CDLL = forbidden
+from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile
+profile = resolve_allocation_profile()
+assert profile.manifest["quant"] == "gguf_ud_q4_k_xl"
+"""
+    subprocess.run([sys.executable, "-c", code], check=True,
+                   cwd=Path(__file__).resolve().parents[1], timeout=20)
