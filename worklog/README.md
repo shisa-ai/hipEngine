@@ -92,6 +92,24 @@ The check also rejects any change to an already-tracked entry or to the frozen
 legacy journal, and it rejects a staged entry whose working-tree copy has moved
 on (re-run `git add` to commit the final text).
 
+### base_commit provenance
+
+Format validation only proves that `base_commit` looks like a commit hash. Three
+entries in this repository recorded a correct short prefix with an invented tail
+(`7e5d0ccb5f9055b4b1a0e6a2e8d1f5c0b7a9e3d2` and two others), which passed every
+format rule while pointing at nothing. `check` therefore resolves each recorded
+`base_commit` against the object database and counts the ones that are not
+commits in this repository:
+
+```bash
+python3 scripts/worklog.py check --provenance
+```
+
+The count appears in the summary line of every `check`; `--provenance` lists the
+offending entries. This is reported rather than enforced: a committed entry is
+immutable, so a hard failure would leave no in-tree remedy for a historical one.
+Correct such an entry with a new entry that names the real commit.
+
 The optional local pre-commit checker can be installed in a trusted clone with:
 
 ```bash
