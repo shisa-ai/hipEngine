@@ -412,6 +412,7 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _residual_weight: bool = False,
 ) -> None:
     """Run the grouped selected-expert Q8_0 down via WMMA tiles.
 
@@ -437,7 +438,11 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
         raise ValueError("wmma_total_rows must be divisible by 16")
     library = library or build_gguf_q8_0_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = library.hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out
+    fn = getattr(library, (
+        "hipengine_gguf_q8_0_selected_grouped_wmma_residual_prefill_bf16_bf16_out"
+        if _residual_weight else
+        "hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+    ))
     fn.argtypes = _GROUPED_WMMA_ARGTYPES
     fn.restype = ctypes.c_int
     err = fn(
@@ -458,7 +463,15 @@ def gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
         runtime.check(int(err))
 
 
+def gguf_q8_0_selected_grouped_wmma_residual_prefill_bf16_bf16_out(*args, **kwargs):
+    return gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+        *args, **kwargs, _residual_weight=True,
+    )
+
+
 _WRAPPERS = {
+    "selected_grouped_wmma_residual_prefill_bf16_bf16_out": (
+        gguf_q8_0_selected_grouped_wmma_residual_prefill_bf16_bf16_out),
     "selected_grouped_wmma_prefill_bf16_bf16_out": (
         gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out),
     "wmma_prefill_bf16_bf16_out": gguf_q8_0_wmma_prefill_bf16_bf16_out,

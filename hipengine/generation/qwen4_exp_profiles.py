@@ -517,6 +517,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": (
             "1" if production else "0"
         ),
+        "HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT": "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",

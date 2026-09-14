@@ -1,5 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Journey Q8 Residual-Weight Candidate
+
+- `HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT` and the residual-weight
+  grouped-WMMA key are explicit/default-off numerical experiments.
+  Promote only after the full production gate and complete-model cost gate;
+  otherwise remove the extra plane/export/wrapper/flag. Keep the original
+  WMMA and strict grouped/selected GEMV fallbacks.
+
 ## Journey Multi-Column GDN
 
 - `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry
