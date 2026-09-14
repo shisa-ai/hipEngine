@@ -1,0 +1,66 @@
+{
+ "date": "2026-09-14",
+ "purpose": "VibeVoice-ASR Q4_K_M end-to-end real-time factor and stage attribution on real speech",
+ "host": "zbook",
+ "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+ "protocol": {
+  "weights": "Q4_K_M GGUF backbone (raw blocks, no repack), bf16 front-end encoders + connectors",
+  "workload": "LibriSpeech test-clean utterances at 24 kHz mono, round-robin across speakers; greedy decode, max_new_tokens 256, seed 20260914",
+  "matched_request": "each clip's request is regenerated through the bench's prepare lane (HF processor, frozen seed) so both lanes consume identical PCM, noise, scales and prompt ids",
+  "timing_boundaries": "each stage is bracketed by device synchronizes, so a stage is execution wall time rather than enqueue time. Weight loading, tokenization, request preparation and WER scoring are outside every timer. Real-time factor is total wall time / audio duration; the pooled value is total time over total audio (duration-weighted), the median is the median of per-clip RTFs.",
+  "command": "python3 scripts/vibevoice_q4_e2e_stage_breakdown.py --num-clips 20 --json <artifact>, and python3 scripts/vibevoice_asr_wer_q4.py --num-clips 40 --cache-dir /tmp/librispeech-clean-spread --gguf /tmp/vibevoice-asr-q4km.gguf"
+ },
+ "results": {
+  "rtf_pooled": 0.354,
+  "rtf_pooled_stage_run": 0.3602,
+  "rtf_median_per_clip": 0.2393,
+  "rtf_min": 0.1384,
+  "rtf_max": 0.83,
+  "clips_40clip_run": 40,
+  "audio_seconds_40clip_run": 371.4,
+  "inference_seconds_40clip_run": 131.48,
+  "mean_s_per_clip_40clip_run": 3.287,
+  "mean_audio_seconds_per_clip": 9.285,
+  "wer_pct_40clip_run": 1.37,
+  "stage_totals_ms": {
+   "frontend": 6763.2,
+   "assembly": 37.0,
+   "prefill": 7605.8,
+   "decode": 62781.6
+  },
+  "stage_share_pct": {
+   "frontend": 8.8,
+   "assembly": 0.0,
+   "prefill": 9.9,
+   "decode": 81.3
+  },
+  "decode_ms_per_token_median": 46.64,
+  "decode_tokens_per_s_median": 21.44,
+  "stage_run_clips": 20,
+  "stage_run_audio_seconds": 214.3,
+  "prior_200clip_rows": {
+   "note": "recorded on the same host before the decode-scratch, prefill-arena and Q6_K down-projection changes landed; kept for context, not as a like-for-like comparison since the clip sets and durations differ",
+   "hip_q4_km_rtf": 0.3986,
+   "hip_bf16_rtf": 0.5397,
+   "torch_bf16_rtf": 0.4986,
+   "mean_audio_seconds_per_clip": 8.722
+  }
+ },
+ "gates": {
+  "wer": "1.37% on the 40-clip run (Whisper-normalized jiwer micro-average over parsed Content), consistent with the 2.011% recorded over 200 clips",
+  "correctness": "same production path as the WER gate: 16 passed / 1 xfailed in tests/test_gpu_vibevoice_qwen2_q4_runner.py",
+  "consistency": "the two independent runs agree: pooled RTF 0.354 with no stage timers over 40 clips, 0.360 with per-stage synchronizes over 20 clips"
+ },
+ "profile": {
+  "arithmetic": "strict",
+  "why": "this is a timing measurement of the existing production path; it changes no arithmetic.",
+  "not_claimed": "real-time factor is not a production qualification. WER is the task-quality gate here and it passes, but the calibrated KL envelope, isolation and BF16-relative gates are recorded elsewhere."
+ },
+ "notes": [
+  "Decode dominates: 81.3% of end-to-end time, against 9.9% batched prefill and 8.8% front-end. Prompt assembly is 0.0% (37 ms over 20 clips).",
+  "Decode is a bandwidth-bound GEMV: 5.012 GB of Q4_K_M weights streamed per token against 14.15 GB for the dense bf16 lane, which is where the 1.55x decode ratio comes from.",
+  "RTF is dominated by the token-to-audio ratio, not by audio length alone. The 20-clip stage run pools to 0.360 but its per-clip median is 0.239, because most clips reach EOS in about 30 tokens while one 22.6 s clip hit the 256-token cap at RTF 0.625. Both numbers are reported for that reason.",
+  "Excluding decode, the rest of the pipeline is about 19% of end-to-end time, so further RTF work is decode work.",
+  "The 40-clip run's mean is 3.287 s/clip against the 3.477 s/clip recorded on the 200-clip run before today's scratch changes; the clip sets differ, so this is context rather than a measured same-suite delta."
+ ]
+}
