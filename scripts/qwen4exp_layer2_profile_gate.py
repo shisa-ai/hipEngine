@@ -62,6 +62,27 @@ class CandidateSpec:
 
 
 CANDIDATES = {
+    "gdn_isolated": CandidateSpec(
+        name="gdn_isolated",
+        classification="diagnostic",
+        mechanism="current GDN suffix over strict non-GDN arithmetic",
+        environment={
+            "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": ",".join(map(str, range(35, 48))),
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
+            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_dpp_prefill",
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+        },
+        base_profile="strict",
+        scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
+        candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                       "qwen4exp_gdn_tiled16_dpp_prefill"),
+        fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                      "qwen4exp_sigmoid_strict_prefill"),
+    ),
     "gdn_multi_column": CandidateSpec(
         name="gdn_multi_column",
         classification="T1",

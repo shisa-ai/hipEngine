@@ -46,6 +46,9 @@ ARMS["q8_selected_down_strict"] = {PREFIX + "Q8_0_SELECTED_WMMA_DOWN": "0"}
 ARMS["base_plus_q8_selected_down_strict"] = {
     **ARMS["all_numerics_strict"], **ARMS["q8_selected_down_strict"],
 }
+for name in ("strict_plus_gdn", "strict_plus_gdn_serial",
+             "strict_plus_gdn_multi"):
+    ARMS[name] = {}
 OUTLIER = "heldout_general_ja_speculative"
 
 
@@ -76,6 +79,20 @@ def strict_family_overrides(strict_flags):
             **{key: value for key, value in strict_flags.items()
                if any(key.startswith(PREFIX + prefix) for prefix in prefixes)},
         } for name, prefixes in families.items()
+    }
+
+
+def gdn_isolation_overrides(strict_flags, production_flags):
+    production_gdn = {key: value for key, value in production_flags.items()
+                      if key.startswith(PREFIX + "GDN_")}
+    isolated = {**strict_flags, **production_gdn}
+    return {
+        "strict_plus_gdn": isolated,
+        "strict_plus_gdn_serial": {**isolated, **ARMS["gdn_strict"]},
+        "strict_plus_gdn_multi": {
+            **isolated,
+            PREFIX + "GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
+        },
     }
 
 
@@ -144,6 +161,7 @@ def main():
             "arms": {}, "strict_after_close": strict_close,
         }
         generator, production_profile, _ = _make_generator(args, "production")
+        ARMS.update(gdn_isolation_overrides(strict_flags, os.environ))
         controlled = set(key for values in ARMS.values() for key in values)
         bound = {key: os.environ.get(key) for key in controlled}
         try:

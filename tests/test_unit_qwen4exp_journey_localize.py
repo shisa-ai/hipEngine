@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from scripts.qwen4exp_journey_localize import ARMS, OUTLIER, PREFIX, clear_arm_graphs, strict_family_overrides
+from scripts.qwen4exp_journey_localize import ARMS, OUTLIER, PREFIX, clear_arm_graphs, strict_family_overrides, gdn_isolation_overrides
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 
 
@@ -59,3 +59,23 @@ def test_remaining_family_flags_are_taken_from_strict_binding():
     assert PREFIX + "GDN_REGISTER_PREFILL" not in groups["base_plus_moe_flags"]
     assert groups["base_plus_q8_gr_flags"][PREFIX + "Q8_WAVE_SCALE"] == "0"
     assert groups["base_plus_gdn_flags"][PREFIX + "GDN_REGISTER_PREFILL"] == "0"
+
+
+def test_gdn_isolation_keeps_other_families_strict():
+    strict = {PREFIX + name: "0" for name in (
+        "GDN_REGISTER_PREFILL", "GDN_PEER_PREFILL",
+        "GDN_COLWARPS_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+    )}
+    production = {key: "1" for key in strict}
+    production["UNRELATED"] = "ignored"
+    arms = gdn_isolation_overrides(strict, production)
+    for values in arms.values():
+        assert values[PREFIX + "Q8_0_SELECTED_WMMA_DOWN"] == "0"
+        assert values[PREFIX + "GDN_REGISTER_PREFILL"] == "1"
+        assert "UNRELATED" not in values
+    assert arms["strict_plus_gdn"][PREFIX + "GDN_COLWARPS_PREFILL"] == "1"
+    assert arms["strict_plus_gdn_serial"][PREFIX + "GDN_COLWARPS_PREFILL"] == "0"
+    assert arms["strict_plus_gdn_serial"][PREFIX + "GDN_PEER_PREFILL"] == "0"
+    assert arms["strict_plus_gdn_multi"][PREFIX + "GDN_TILE16_VARIANT"] == (
+        "qwen4exp_gdn_tiled16_multi_prefill"
+    )
