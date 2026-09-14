@@ -126,19 +126,27 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   benchmark-time change. Until both are in place the peer-copy path in "Runtime
   and communication" is not a candidate and bf16 transport is the prefill
   default (2.593 -> 1.309 ms per 1024-row all-reduce).
-- **Collective latency is affordable for decode.** A 20 KB all-reduce costs
-  28-32 us marginal inside one group; 36 collectives per token is 1.0-1.15
-  ms/token against 33.5-35.8 ms/token of single-GPU decode. Group enqueue already
-  satisfies the "first rank's collective must not block the second rank's
-  enqueue" requirement, and threaded enqueue is measurably worse, so no host
-  threads are needed for enqueue.
+- **Collective latency is the binding constraint for decode.** A 20 KB
+  all-reduce costs 28-35 us marginal inside one group, and the shard inventory
+  fixes the count at **128 row-split tensors per token** (two per transformer
+  block across 64 autoregressive blocks: 64 MLP down projections, 48 GDN
+  state-output projections, 16 attention output projections), so a decode token
+  spends **3.66-4.48 ms** in exposed collectives against 33.5-35.8 ms/token of
+  single-GPU decode - 11-13%, not the 3-6% an earlier 36-collective estimate
+  implied. Group enqueue already satisfies the "first rank's collective must not
+  block the second rank's enqueue" requirement, and threaded enqueue is
+  measurably worse, so no host threads are needed for enqueue. Reducing the
+  *number* of exposed collectives is the highest-value Packet 3/4 lever.
 - **A TP2 rank holds half the KV pool.** At 8192 context a rank claims 258 MiB
   of KV against 514 MiB for the whole pool (16 full-attention layers, 2 of the 4
   KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans`), and 1032 against 2056
   MiB at 32768. The per-rank head partition is the weight planner's own
   `partition_groups` result, so a rank's KV heads are exactly the heads its
-  weights serve and N=3 is refused with the planner's message. Claims are
-  all-or-nothing across ranks.
+  weights serve, and N=3 is refused with the planner's message. When a group
+  exceeds the KV-head count the assignment replicates by *block* - consecutive
+  ranks share a head - so each rank still holds the KV heads covering its own
+  query-head block; round-robin replication would hand a rank a head its queries
+  never attend to. Claims are all-or-nothing across ranks.
 - **RCCL work can be captured into a HIP graph, up to a size limit.** With
   communicator creation outside capture and each rank's whole chain captured on
   its own stream, 40/40 probes across chain depths 1/4/8/16/24 replayed
@@ -146,8 +154,8 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   eager enqueue (a 24-op group: 1.05-1.19 -> 0.72-0.88 ms). The limit matters:
   49 captured nodes (24 ops plus their producer/consumer memsets) works, 65
   nodes (32 ops) faults the device with a memory access error, so a TP2 decode
-  step's 36 collectives must be split across at least two graphs rather than
-  captured as one.
+  step's 128 collectives must be split across several graphs rather than captured
+  as one.
 - **The GDN value-head axis is tiled.** GGUF linear-attention weights use
   llama.cpp's reordering (`k_head = v_head % ssm_group_count`), so a shard plan
   must split the key-head axis contiguously and cut each value tile the same way.

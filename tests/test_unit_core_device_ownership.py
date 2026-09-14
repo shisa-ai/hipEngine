@@ -265,3 +265,40 @@ def test_distributed_package_binds_devices_through_one_mechanism() -> None:
     # selects the rank's device around communicator calls. Both are the same
     # primitive, which is the point: there is one mechanism, not three.
     assert binders == {"context.py", "rccl.py"}
+
+
+def test_free_accepts_unattributed_and_duck_typed_buffers() -> None:
+    """``free`` must not require the ``device`` attribute.
+
+    ``DeviceBuffer`` gained ``device`` for multi-rank allocation, but callers and
+    tests also pass buffers that expose only ``ptr``/``nbytes`` - either an
+    unattributed ``DeviceBuffer`` or a stand-in object. Those predate attribution
+    and must keep the previous current-device semantics instead of raising
+    ``AttributeError``.
+    """
+
+    class _StandIn:
+        def __init__(self, ptr: int, nbytes: int) -> None:
+            self.ptr = ptr
+            self.nbytes = nbytes
+
+    runtime = FakeDeviceRuntime(current=0)
+    free(DeviceBuffer(ptr=4096, nbytes=64), runtime=runtime)
+    free(_StandIn(ptr=8192, nbytes=64), runtime=runtime)
+    free(DeviceBuffer(ptr=12288, nbytes=64, device=Device("hip", 1)), runtime=runtime)
+
+    # Each free records the device that was current at the call: the first two
+    # unattributed buffers free on the ambient device, the third on its own.
+    assert runtime.calls == [
+        ("free", (4096, 0)),
+        ("free", (8192, 0)),
+        ("free", (12288, 1)),
+    ]
+    # The attributed buffer selected its own device and restored the previous one.
+    assert runtime.get_device() == 0
+
+    with pytest.raises(ValueError):
+        copy_device_to_device(
+            _StandIn(ptr=1, nbytes=8), DeviceBuffer(ptr=2, nbytes=8, device=Device("hip", 0)),
+            runtime=runtime,
+        )

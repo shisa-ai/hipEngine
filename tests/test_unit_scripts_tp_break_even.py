@@ -121,3 +121,71 @@ def test_main_writes_the_artifact(tmp_path: pathlib.Path, mod, capsys) -> None:
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["devices"][0]["rows"][0]["collective_ms_per_token"] == pytest.approx(1.3)
     assert "verdict" in capsys.readouterr().out
+
+
+# -- inventory-derived collective budget -------------------------------------
+
+
+def test_collective_budget_is_derived_from_the_shard_inventory(mod) -> None:
+    """The per-token collective budget must come from the manifest, not a guess.
+
+    The first version of this projection used a hand-written "36 collectives per
+    token" while the shard inventory held 128 row-split tensors. Nothing tied the
+    two together, so the budget was 3.6x too small and the verdict read as a
+    comfortable pass. This test derives the count from the committed shard report
+    and checks the committed break-even artifact against it.
+    """
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    shard_report = json.loads(
+        (root / "benchmarks" / "results" / "tp2_shard_plan_report.json").read_text(encoding="utf-8")
+    )
+    break_even = json.loads(
+        (root / "benchmarks" / "results" / "tp2_break_even.json").read_text(encoding="utf-8")
+    )
+
+    degrees = shard_report["degrees"]
+    counts = {degree: entry["reduction_points"] for degree, entry in degrees.items()}
+    assert counts, "shard report carries no reduction_points"
+    assert len(set(counts.values())) == 1, f"reduction count varies by degree: {counts}"
+    count = next(iter(counts.values()))
+
+    # Every block contributes exactly two reductions (attention/state output and
+    # the MLP down projection), which is what makes the count checkable.
+    per_block = degrees[next(iter(degrees))]["reduction_points_per_block"]
+    assert set(per_block.values()) == {2}, per_block
+    assert count == 2 * len(per_block)
+
+    assert break_even["reduction_points_per_token"] == count
+    expected = break_even["collective_ms_expected_from_count"]
+    for value in break_even["collective_ms_measured"]:
+        assert expected[0] * 0.98 <= value <= expected[1] * 1.02, (
+            f"budget {value} ms does not match {count} reduction points x marginal "
+            f"{expected} ms"
+        )
+    assert break_even["errors"] == []
+
+
+def test_build_report_flags_a_budget_that_contradicts_the_count(mod) -> None:
+    """A budget inconsistent with the reduction count is an error, not a pass."""
+
+    devices = [mod.parse_tp1("W7900=27.9:15.652:8.646")]
+    # 36 collectives is the wrong count for this model; the budget built from it
+    # must be reported as inconsistent with 128 reduction points.
+    wrong = mod.build_report(
+        devices,
+        collective_ms=(1.03, 1.25),
+        reduction_points=128,
+        marginal_us=(28.6, 35.0),
+    )
+    assert wrong["errors"], "an understated budget was accepted"
+    assert "does not match" in wrong["errors"][0]
+    assert wrong["verdict"]["passes_target_in_every_row"] is True  # the *wrong* input still passes
+
+    right = mod.build_report(
+        devices,
+        collective_ms=(3.66, 4.48),
+        reduction_points=128,
+        marginal_us=(28.6, 35.0),
+    )
+    assert right["errors"] == []
