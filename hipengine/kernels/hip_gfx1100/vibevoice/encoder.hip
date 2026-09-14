@@ -284,12 +284,18 @@ __global__ void vv_prefill_attention_kernel(
     __syncthreads();
   }
   const float inv_sum = 1.0f / partial[0];
+  // normalized attention weights live in shared so the value pass reads
+  // them instead of recomputing expf per (dim, token) pair
+  for (int64_t token = threadIdx.x; token < ctx; token += blockDim.x) {
+    scores[token] = expf(scores[token] - max_score) * inv_sum;
+  }
+  __syncthreads();
   float* out_row = out + (row * num_q_heads + q_head) * head_dim;
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
     for (int64_t token = 0; token < ctx; ++token) {
       const int64_t v_off = (token * num_kv_heads + kv_head) * head_dim + d;
-      acc = fmaf(expf(scores[token] - max_score) * inv_sum, bf16_bits_to_float(value_cache[v_off]), acc);
+      acc = fmaf(scores[token], bf16_bits_to_float(value_cache[v_off]), acc);
     }
     out_row[d] = acc;
   }
