@@ -1,12 +1,11 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Journey Q8 Residual-Weight Candidate
+## Journey Q8 Residual-Weight Candidate: Removed
 
-- `HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT` and the residual-weight
-  grouped-WMMA key are explicit/default-off numerical experiments.
-  Promote only after the full production gate and complete-model cost gate;
-  otherwise remove the extra plane/export/wrapper/flag. Keep the original
-  WMMA and strict grouped/selected GEMV fallbacks.
+- Full594-row numerical gate fails top1 at587/594 and prefill-last mean
+  KL0.001256 despite improved maxKL0.019447. Extra plane/export/wrapper/
+  flag and candidate tests are removed; original WMMA and strict fallbacks
+  remain. Candidate is reproducible at f4e3d08fa/7ca725140, not current HEAD.
 
 ## Journey Multi-Column GDN
 
@@ -15,6 +14,11 @@
   Full profile gate owns promotion. The ordinary single-column DPP route
   remains selected until the complete gate passes; remove the multi-column
   path if the numerical or operation-complete performance gate rejects it.
+
+  Current blocker: full594-row candidate passes overall maxKL0.048222 and
+  590/594 top1, but Japanese and prefill-last scopes fail. Do not promote
+  before the incumbent envelope is localized and the complete candidate
+  packet passes; do not reject solely because it differs in FP32 bits.
 
 ## Journey GDN DPP Experiment
 

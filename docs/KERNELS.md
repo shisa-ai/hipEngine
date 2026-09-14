@@ -1119,13 +1119,11 @@ Stable porting rules:
 
 ### HIP build profiles
 
-Journey Q8 selected-down precision experiment:
-`selected_grouped_wmma_residual_prefill_bf16_bf16_out` adds a scaled FP16
-residual weight plane to the existing WMMA kernel. The profile binds
-`HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT=0`; only an explicit numerical
-candidate selects it. Raw-weight CPU oracle, tail/determinism and cached
-trace pass. Actual-weight owner tests reduce MSE versus strict grouped GEMV,
-with up to19% cost versus single-plane WMMA; full profile gate is pending.
+Journey Q8 selected-down residual-weight experiment is rejected and removed:
+the full594-row gate improves max KL to0.019447 but fails top1 at587/594
+(98.82%) and prefill-last mean KL0.001256. CPU weight error improvement
+does not certify the model. Original WMMA/strict fallback bodies are restored;
+the corrected GPU oracle and fresh-process parent registration remain.
 
 Journey multi-column GDN remains experimental:
 `qwen4exp_gdn_tiled16_multi_prefill` uses eight columns per warp, eight
@@ -1133,6 +1131,10 @@ warps and token-tile16 with DPP. The single-column DPP default remains the
 fallback. Parent parity is not exact; CPU-reference/numerical smoke,
 carried-state and deterministic repeats pass. Full production envelope
 qualification is required before any default selection.
+
+The multi-column full594-row gate has now run: overall maxKL0.048222 and
+590/594 top1, but Japanese/prefill-last scopes fail. It remains unpromoted
+with a concrete numerical blocker; the incumbent also fails related scopes.
 
 Journey GDN DPP experiment: gfx1151 registers
 `gdn_recurrence_norm_gate/f32_state/qwen4exp_gdn_tiled16_dpp_prefill`.

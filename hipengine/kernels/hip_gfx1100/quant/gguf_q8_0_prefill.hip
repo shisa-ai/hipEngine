@@ -482,7 +482,7 @@ int launch_gguf_q8_0_prefill_dual_wmma(
 // with row_bytes = (in_features / 32) * 34 (2-byte fp16 d + 32 int8 qs
 // per block, no min term).
 // -------------------------------------------------------------------------
-template <int TILE_M, int TILE_N, bool RESIDUAL_WEIGHT = false>
+template <int TILE_M, int TILE_N>
 __launch_bounds__(32, 8)
 __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,            // [compact, in_features] bf16
@@ -524,15 +524,11 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
   }
 
   float8_t acc[TM][TN];
-  float8_t acc_low[TM][TN];
 #pragma unroll
   for (int tm = 0; tm < TM; ++tm) {
 #pragma unroll
     for (int tn = 0; tn < TN; ++tn) {
       acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
-      if constexpr (RESIDUAL_WEIGHT) {
-        acc_low[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
-      }
     }
   }
   const int blocks_per_row = static_cast<int>(in_features / Q8_0_BLOCK);
@@ -567,26 +563,15 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
       for (int tm = 0; tm < TM; ++tm) {
         const int8_t* qs = reinterpret_cast<const int8_t*>(block_ptr[tm] + 2);
         half16_t a_reg;
-        half16_t a_low;
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
-          if constexpr (RESIDUAL_WEIGHT) {
-            const float exact = static_cast<float>(d_h[tm]) * static_cast<float>(qs[k_off + kk]);
-            a_reg[kk] = static_cast<half_t>(exact);
-            a_low[kk] = static_cast<half_t>((exact - static_cast<float>(a_reg[kk])) * 1024.0f);
-          } else {
-            a_reg[kk] =
-                d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
-          }
+          a_reg[kk] =
+              d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
         }
 #pragma unroll
         for (int tn = 0; tn < TN; ++tn) {
           acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
               a_reg, b_reg[tn], acc[tm][tn]);
-          if constexpr (RESIDUAL_WEIGHT) {
-            acc_low[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-                a_low, b_reg[tn], acc_low[tm][tn]);
-          }
         }
       }
     }
@@ -601,12 +586,8 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
       for (int j = 0; j < 8; ++j) {
         const int col = out_start + tm * 16 + 2 * j + (tid >> 4);
         if (col < out_features) {
-          float value = static_cast<float>(acc[tm][tn][j]);
-          if constexpr (RESIDUAL_WEIGHT) {
-            value += static_cast<float>(acc_low[tm][tn][j]) * (1.0f / 1024.0f);
-          }
           output[out_row * out_features + col] =
-              float_to_bf16_bits(value);
+              float_to_bf16_bits(static_cast<float>(acc[tm][tn][j]));
         }
       }
     }
@@ -624,8 +605,7 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
 //   ("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_<in>_<out>_out").
 // -------------------------------------------------------------------------
 
-template <bool RESIDUAL_WEIGHT>
-int launch_q8_selected_wmma(
+extern "C" int hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     const void* input,
     const void* expert_start_compact,
     const void* expert_start_wmma,
@@ -648,7 +628,7 @@ int launch_q8_selected_wmma(
   constexpr int tile_n = 16;
   const int64_t row_bytes = (in_features / 32) * Q8_0_BLOCK_BYTES;
   hipLaunchKernelGGL(
-      (q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<tile_m, tile_n, RESIDUAL_WEIGHT>),
+      (q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<tile_m, tile_n>),
       dim3(static_cast<uint32_t>((out_features + tile_m - 1) / tile_m),
            static_cast<uint32_t>(wmma_total_rows / tile_n)),
       dim3(32), 0, stream,
@@ -660,22 +640,6 @@ int launch_q8_selected_wmma(
       static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
-}
-
-extern "C" int hipengine_gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
-    const void* input, const void* compact, const void* padded, const void* tiles,
-    const void* weights, void* output, int64_t rows, int64_t experts,
-    int64_t k, int64_t n, int64_t total, hipStream_t stream) {
-  return launch_q8_selected_wmma<false>(
-      input, compact, padded, tiles, weights, output, rows, experts, k, n, total, stream);
-}
-
-extern "C" int hipengine_gguf_q8_0_selected_grouped_wmma_residual_prefill_bf16_bf16_out(
-    const void* input, const void* compact, const void* padded, const void* tiles,
-    const void* weights, void* output, int64_t rows, int64_t experts,
-    int64_t k, int64_t n, int64_t total, hipStream_t stream) {
-  return launch_q8_selected_wmma<true>(
-      input, compact, padded, tiles, weights, output, rows, experts, k, n, total, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_wmma_prefill_bf16_bf16_out(

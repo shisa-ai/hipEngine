@@ -5,6 +5,14 @@ hipEngine source: `70dd4055a`, whose parent runtime is unchanged by the
 six-finding evidence repair. Status: source/evidence audit complete; new
 performance candidates are not implemented or qualified by this document.
 
+Execution update: actual testing and two default promotions are recorded in
+[the execution checkpoint](../benchmarks/results/2026-09-14-journey-progress/README.md)
+and the live journey table. Mapping-only random PLE advice and exact DPP
+suffix reductions are adopted. Multi-column GDN is numerically blocked,
+Q8 residual-weight down is rejected/removed, larger chunks exceed the current
+scratch model, and the incumbent numerical envelope still fails. The
+remaining inventory is not claimed complete.
+
 ## Separate The Two Workloads
 
 The dense Qwen3.8-27B Q4_K_M comparison and the Flash-Next UD-Q4_K_XL journey
