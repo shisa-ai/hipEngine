@@ -3489,11 +3489,6 @@ _MOE_BACKEND_REGISTRY_GENERATIONS: dict[str, int] = {}
 
 
 def _ensure_qwen4_exp_moe_backend(backend: str) -> None:
-    if os.environ.get("HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE", "0") in {
-        "", "0", "false", "False",
-    }:
-        load_backend_kernel_package(backend)
-        return
     generation = _registry_generation()
     if _MOE_BACKEND_REGISTRY_GENERATIONS.get(backend) == generation:
         return

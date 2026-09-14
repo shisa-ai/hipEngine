@@ -1,0 +1,18 @@
+{
+  "observation": "Read /proc/3011458/maps during the shared-process A/B; both arms used these mappings. SHA256 read after timing completed.",
+  "libraries": [
+    {
+      "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamdhip64.so.7",
+      "mapped_inode": 5164543,
+      "sha256": "1a8bcd00d05cce36bebcf4acf30289f36f6562ec532e9c618c42e9bd2d90ed05",
+      "gnu_build_id": null
+    },
+    {
+      "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-runtime64.so.1",
+      "mapped_inode": 5164551,
+      "sha256": "815364af872593e577206ff22a29141af63e800a78488b2ee02cf04532e14a46",
+      "gnu_build_id": null
+    }
+  ],
+  "build_id_note": "readelf -n reported no GNU build-id; use the file SHA256 identities."
+}

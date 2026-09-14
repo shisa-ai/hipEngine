@@ -35,6 +35,7 @@ failed candidates, and work not yet executed.
 | J6 HC/BF16/conv/gather fusions | Pending | Last-reader census and operation-complete gates |
 | J7 QSA indexer/top-k/packing/attention | Quad prefill and ordered/v2 decode restored; other work pending | 780-row base plus targeted 516-row gate; complete requests improve, individual decode categories mixed |
 | J8 graph/PM4 transport | Pending | Exposed submission bound, exact runtime-pin review, isolated qualification if justified |
+| J8 host backend refresh | Adopted | Exact 72-sample cache A/B: PP +3.29/+1.59/+1.88%; all complete requests improve, 4K TG -1.36%; no PM4 or arithmetic change |
 | J9 batched MTP target verification | Pending | Rejection-depth/accepted-prefix state gates and full-suite true-AR economics |
 | J1 external compatibility gaps / J10 closure | Pending | No unchanged replay of known faults; final counterbalanced comparison |
 

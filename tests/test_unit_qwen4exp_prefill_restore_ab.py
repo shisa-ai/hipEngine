@@ -10,7 +10,6 @@ def test_shared_graphs_allow_only_reviewed_uncaptured_switches():
     validate_shared_graphs([
         CANDIDATES["q8_blockscale_guarded_quad"].environment,
         CANDIDATES["q8_blockscale_guarded_ordered"].environment,
-        CANDIDATES["production_moe_backend_cache"].environment,
     ])
     with pytest.raises(ValueError, match="captured decode"):
         validate_shared_graphs([{"HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1"}])

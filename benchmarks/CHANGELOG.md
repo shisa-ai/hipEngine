@@ -1,5 +1,13 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-14 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 caches unchanged
+  MoE backend registrations by default. Matched 512/1K/4K PP
+  177.703/186.190/178.411 -> 183.546/189.153/181.759 tok/s
+  (+3.29/+1.59/+1.88%); TG 17.520/16.749/10.158 ->
+  17.492/16.719/10.019 (-0.16/-0.17/-1.36%). All 12 complete requests
+  improve 0.22-1.54%; all 72 samples exact IDs/final logits/state, no arithmetic
+  change. [Evidence](results/2026-09-14-journey-backend-cache/README.md).
+
 - **2026-09-15 JST (September 14 UTC)**: Framework Flash-Next UD-Q4_K_XL/BF16
   guarded Q8 selected-down and qualified QSA become production defaults.
   Same-residency shared-graph 512/1K/4K PP 170.108/177.803/128.991 ->

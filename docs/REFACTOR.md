@@ -1,14 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## MoE Backend Refresh Cache Experiment
+## MoE Backend Refresh Cache
 
-- `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` is default-off while R21 checks
-  exact registration behavior and complete-request cost. It skips repeated
-  refresh only at a stable registry generation, preserving mutation and
-  failed-registration behavior.
-- If the measured exact path wins, make it unconditional and remove the
-  experiment flag after the paired comparison; retain generation invalidation.
-  No kernel variant, graph packet, allocation or arithmetic changes.
+- Stable-generation MoE backend caching is unconditional after its exact
+  72-sample model A/B. The experiment flag and candidate selector are removed.
+  Registry mutation and failed-refresh behavior remain covered.
+- Prefill and every measured complete request improve; 4K decode is 1.36%
+  lower. This is not a decode-speed claim or a measured benefit at arbitrary
+  output lengths. Evidence:
+  `benchmarks/results/2026-09-14-journey-backend-cache/`.
 
 ## Q8 Block-Scale Restoration
 
