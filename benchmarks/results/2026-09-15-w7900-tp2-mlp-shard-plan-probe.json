@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "kind": "tp2-mlp-shard-plan-probe",
+  "generated_at": "2026-09-14T20:55:26Z",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_hash": "mlp-probe",
+  "layer": 0,
+  "world_size": 2,
+  "hidden_size": 5120,
+  "manifest_hash": "a3c81c9993a3578fca786c9146cc212603833d2d4dbcfdddedd73bd86279c7e6",
+  "activation_dtype": "bf16",
+  "output_dtype": "bf16",
+  "tensors": {
+    "blk.0.ffn_gate.weight": {
+      "source_shape": [
+        17408,
+        5120
+      ],
+      "source_nbytes": 50135040,
+      "quant_type": "Q4_K",
+      "kind": "column",
+      "split_axis": 0,
+      "block_size": 256,
+      "type_size": 144,
+      "resident_layout": "gguf_q4_k_t16_v1",
+      "quant_key": "gguf_q4_k_t16_v1",
+      "tp1_dispatch": {
+        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+        "abi": "t16"
+      },
+      "ranks": {
+        "0": {
+          "axis_ranges": [
+            [
+              0,
+              8704
+            ]
+          ],
+          "local_shape": [
+            8704,
+            5120
+          ],
+          "local_nbytes": 25067520,
+          "segments": 1,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 8704,
+            "out_features_divisible": true,
+            "bytes_per_row": 2880,
+            "block_bytes": 144,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        },
+        "1": {
+          "axis_ranges": [
+            [
+              8704,
+              17408
+            ]
+          ],
+          "local_shape": [
+            8704,
+            5120
+          ],
+          "local_nbytes": 25067520,
+          "segments": 1,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 8704,
+            "out_features_divisible": true,
+            "bytes_per_row": 2880,
+            "block_bytes": 144,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        }
+      },
+      "round_trip_bit_exact": true
+    },
+    "blk.0.ffn_up.weight": {
+      "source_shape": [
+        17408,
+        5120
+      ],
+      "source_nbytes": 50135040,
+      "quant_type": "Q4_K",
+      "kind": "column",
+      "split_axis": 0,
+      "block_size": 256,
+      "type_size": 144,
+      "resident_layout": "gguf_q4_k_t16_v1",
+      "quant_key": "gguf_q4_k_t16_v1",
+      "tp1_dispatch": {
+        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+        "abi": "t16"
+      },
+      "ranks": {
+        "0": {
+          "axis_ranges": [
+            [
+              0,
+              8704
+            ]
+          ],
+          "local_shape": [
+            8704,
+            5120
+          ],
+          "local_nbytes": 25067520,
+          "segments": 1,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 8704,
+            "out_features_divisible": true,
+            "bytes_per_row": 2880,
+            "block_bytes": 144,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        },
+        "1": {
+          "axis_ranges": [
+            [
+              8704,
+              17408
+            ]
+          ],
+          "local_shape": [
+            8704,
+            5120
+          ],
+          "local_nbytes": 25067520,
+          "segments": 1,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 8704,
+            "out_features_divisible": true,
+            "bytes_per_row": 2880,
+            "block_bytes": 144,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        }
+      },
+      "round_trip_bit_exact": true
+    },
+    "blk.0.ffn_down.weight": {
+      "source_shape": [
+        5120,
+        17408
+      ],
+      "source_nbytes": 73113600,
+      "quant_type": "Q6_K",
+      "kind": "row",
+      "split_axis": 1,
+      "block_size": 256,
+      "type_size": 210,
+      "resident_layout": "raw_gguf",
+      "quant_key": "gguf_q6_k",
+      "tp1_dispatch": {
+        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
+        "abi": "raw"
+      },
+      "ranks": {
+        "0": {
+          "axis_ranges": [
+            [
+              0,
+              8704
+            ]
+          ],
+          "local_shape": [
+            5120,
+            8704
+          ],
+          "local_nbytes": 36556800,
+          "segments": 5120,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 5120,
+            "out_features_divisible": true,
+            "bytes_per_row": 7140,
+            "block_bytes": 210,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        },
+        "1": {
+          "axis_ranges": [
+            [
+              8704,
+              17408
+            ]
+          ],
+          "local_shape": [
+            5120,
+            8704
+          ],
+          "local_nbytes": 36556800,
+          "segments": 5120,
+          "layout_admissible": {
+            "t16_cols": 16,
+            "out_features": 5120,
+            "out_features_divisible": true,
+            "bytes_per_row": 7140,
+            "block_bytes": 210,
+            "bytes_per_row_divisible": true,
+            "admissible": true
+          },
+          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
+          "dispatch_matches_tp1": true
+        }
+      },
+      "round_trip_bit_exact": true
+    }
+  },
+  "questions": {
+    "rank_local_materialization_exists": {
+      "answer": true,
+      "evidence": "each MLP tensor has one slice per rank with a concrete local shape and byte count",
+      "tp1_weight_bytes": 173383680,
+      "shard_weight_bytes_per_rank": 86691840,
+      "shard_to_tp1_ratio": 0.5
+    },
+    "rank_local_bytes_round_trip": {
+      "answer": true,
+      "evidence": "reconstruct_tensor(manifest, name, rank payloads) compared byte-wise to the source payload"
+    },
+    "local_shapes_are_layout_admissible": {
+      "answer": true,
+      "evidence": "the t16 repack's own divisibility test applied to each local shape"
+    },
+    "shard_dispatch_needs_no_new_kernel": {
+      "answer": true,
+      "evidence": "resolve_gguf_linear_dispatch for the shard-shaped weight equals the TP1 dispatch key; the weight row count is a launch parameter, not a dispatch key"
+    }
+  },
+  "reduction_point": {
+    "kind": "all_reduce",
+    "per_layer_count": 1,
+    "elements": 5120,
+    "dtype": "fp32",
+    "payload_bytes": 20480,
+    "note": "the down projection is row-parallel, so each rank holds a partial output over the full hidden size and the partials are summed once per layer; this is the payload the transport screen already measured"
+  },
+  "next": "measure complete TP1 and local-shard MLP segment walls on both cards, connect the shard outputs through the native exchange into the next consumer, and validate against the CPU split oracle and the TP1 teacher under the production numerical contract"
+}
