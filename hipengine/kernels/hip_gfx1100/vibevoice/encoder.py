@@ -372,3 +372,33 @@ def vv_attention_spans(query_ptr,key_cache_ptr,value_cache_ptr,out_ptr,spans,row
     err = fn(query_ptr,key_cache_ptr,value_cache_ptr,out_ptr,*metadata,rows,q_heads,kv_heads,head_dim,spans.max_live_count,scale,stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def vv_depthwise_accumulate_f32(prefix, normed, w, b, accumulator, prefix_rows, rows, channels, k_len, *, stream=0, library=None, runtime=None):
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_vv_depthwise_accumulate_f32",
+        [ctypes.c_void_p]*5 + [ctypes.c_int64]*4 + [ctypes.c_void_p], ctypes.c_int)
+    runtime.check(int(fn(prefix,normed,w,b,accumulator,prefix_rows,rows,channels,k_len,stream)))
+
+
+def vv_depthwise_residual_bf16(accumulator, resid, gamma, out, rows, channels, *, stream=0, library=None, runtime=None):
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_vv_depthwise_residual_bf16",
+        [ctypes.c_void_p]*4 + [ctypes.c_int64]*2 + [ctypes.c_void_p], ctypes.c_int)
+    runtime.check(int(fn(accumulator,resid,gamma,out,rows,channels,stream)))
+
+
+def vv_depthwise_unfused_bf16(prefix, normed, resid, w, b, gamma, out, prefix_rows, rows, channels, k_len, *, stream=0, library=None, runtime=None):
+    from hipengine.core.memory import malloc,free
+    if rows <= 0 or channels <= 0 or k_len <= 0 or prefix_rows != k_len - 1:
+        raise ValueError("invalid depthwise dimensions")
+    accumulator = malloc(rows*channels*4)
+    try:
+        vv_depthwise_accumulate_f32(prefix,normed,w,b,accumulator.ptr,prefix_rows,rows,channels,k_len,
+            stream=stream,library=library,runtime=runtime)
+        vv_depthwise_residual_bf16(accumulator.ptr,resid,gamma,out,rows,channels,
+            stream=stream,library=library,runtime=runtime)
+    finally:
+        free(accumulator)
