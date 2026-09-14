@@ -1119,6 +1119,14 @@ Stable porting rules:
 
 ### HIP build profiles
 
+Journey Q8 selected-down precision experiment:
+`selected_grouped_wmma_residual_prefill_bf16_bf16_out` adds a scaled FP16
+residual weight plane to the existing WMMA kernel. The profile binds
+`HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT=0`; only an explicit numerical
+candidate selects it. Raw-weight CPU oracle, tail/determinism and cached
+trace pass. Actual-weight owner tests reduce MSE versus strict grouped GEMV,
+with up to19% cost versus single-plane WMMA; full profile gate is pending.
+
 Journey multi-column GDN remains experimental:
 `qwen4exp_gdn_tiled16_multi_prefill` uses eight columns per warp, eight
 warps and token-tile16 with DPP. The single-column DPP default remains the

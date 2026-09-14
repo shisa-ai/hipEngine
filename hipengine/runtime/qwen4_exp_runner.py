@@ -4440,7 +4440,11 @@ def run_qwen4_exp_moe(
                     backend=backend,
                     layer="linear",
                     quant=weights["expert_down"].spec.quant_key,
-                    variant="selected_grouped_wmma_prefill_bf16_bf16_out",
+                    variant=(
+                        "selected_grouped_wmma_residual_prefill_bf16_bf16_out"
+                        if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT", "0") == "1"
+                        else "selected_grouped_wmma_prefill_bf16_bf16_out"
+                    ),
                 )
                 q8_wmma_down(
                     scratch.expert_intermediate.ptr,

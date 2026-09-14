@@ -62,6 +62,18 @@ class CandidateSpec:
 
 
 CANDIDATES = {
+    "q8_residual_weight": CandidateSpec(
+        name="q8_residual_weight",
+        classification="T1",
+        mechanism="two FP16 weight planes for grouped Q8 selected down",
+        environment={"HIPENGINE_QWEN4_EXP_Q8_DOWN_RESIDUAL_WEIGHT": "1"},
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-q8-residual-weight",
+        candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                       "selected_grouped_wmma_residual_prefill_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                      "selected_gemv_bf16_bf16_out"),
+    ),
     "gdn_multi_column": CandidateSpec(
         name="gdn_multi_column",
         classification="T1",
