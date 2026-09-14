@@ -267,6 +267,15 @@ CANDIDATES["q8_blockscale_guarded_ordered"] = replace(
                  "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
                  "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1"},
 )
+CANDIDATES["production_gdn_restore"] = replace(
+    CANDIDATES["gdn_isolated"],
+    name="production_gdn_restore",
+    classification="T1",
+    mechanism="restore the existing GDN/DPP suffix over corrected Q8/QSA production",
+    base_profile="production",
+    scenario_id="qwen4exp-production-gdn-restoration",
+    count_registered_dispatch=True,
+)
 
 
 class GateError(RuntimeError):

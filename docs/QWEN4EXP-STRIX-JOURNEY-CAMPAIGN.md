@@ -2,7 +2,9 @@
 
 Date: September 13, 2026 UTC (runs span September 13-14 JST).
 Status: September 15 JST recovery review complete; guarded Q8/QSA restored.
-Remaining optimization experiments are open and were not rerun for this review.
+Optimization execution resumed September 15 JST. The reconciled
+[remaining inventory](QWEN4EXP-JOURNEY-REMAINING.md) tracks every next
+candidate from this campaign and the runtime review.
 
 ### Active Execution
 
