@@ -1,0 +1,213 @@
+{
+  "assumption": "fixed cost (attention, GDN recurrence, launch overhead) does not shrink with tensor parallelism; only its share of the TP1 token time is assumed and the projection is reported across a range of shares",
+  "baselines": [
+    {
+      "device": "W7900",
+      "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+      "tp1_tok_s": 29.575,
+      "tp1_weights_gib": 15.652,
+      "tp2_rank_weights_gib": 8.646
+    },
+    {
+      "device": "XTX",
+      "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+      "tp1_tok_s": 35.355,
+      "tp1_weights_gib": 15.652,
+      "tp2_rank_weights_gib": 7.009
+    }
+  ],
+  "collective_ms_expected_from_count": 18.687,
+  "collective_ms_per_token": [
+    18.687
+  ],
+  "collective_source": {
+    "case": "all_reduce:rows1:fp32",
+    "depends_on_every_step": true,
+    "group_boundary": "one native group per reduction",
+    "marginal_us_per_step": 145.9911457431598,
+    "mode": "per_step_alternating_graph",
+    "payload_bytes": 20480,
+    "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
+    "world_size": 2
+  },
+  "errors": [],
+  "kind": "tp2_break_even",
+  "model": "one synchronized group time: T2 = max_rank(fixed) + max_rank(rank weights) + collective, compared against the faster matched TP1 arm",
+  "pre_packet3_gate": {
+    "evidence": [],
+    "requirement": "the packet plan requires local shard-shaped kernel measurements before Packet 3; pass --shard-kernel-evidence to record them",
+    "satisfied": false
+  },
+  "protocol_match": {
+    "matched": true,
+    "protocols": [
+      "512-128-int8kv-fp32scales-eager-persistent"
+    ]
+  },
+  "reduction_points_per_token": 128,
+  "rows": [
+    {
+      "baseline_device": "XTX",
+      "baseline_tp1_ms_per_token": 28.284542497525106,
+      "break_even_collective_ms": 9.60696106069933,
+      "collective_ms_per_token": 18.687,
+      "fixed_group_ms_per_token": 0.0,
+      "fixed_share": 0.0,
+      "headroom_factor": 0.5140986279605785,
+      "limiting_rank_fixed": "W7900",
+      "limiting_rank_weight": "W7900",
+      "per_rank": [
+        {
+          "device": "W7900",
+          "fixed_ms_per_token": 0.0,
+          "implied_bandwidth_gbs": 462.9078999999999,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.5523894709941223,
+          "rank_weight_ms_per_token": 18.677581436825776,
+          "tp1_ms_per_token": 33.8123415046492
+        },
+        {
+          "device": "XTX",
+          "fixed_ms_per_token": 0.0,
+          "implied_bandwidth_gbs": 553.3764599999998,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.4478021978021979,
+          "rank_weight_ms_per_token": 12.66588029422141,
+          "tp1_ms_per_token": 28.284542497525106
+        }
+      ],
+      "projected_speedup": 0.7569880729253515,
+      "rank_weight_group_ms_per_token": 18.677581436825776,
+      "required_improvement_factor": 1.9451520498449588,
+      "speedup_if_rank_weights_were_free": 1.5135946110946168,
+      "tp2_group_ms_per_token": 37.36458143682577,
+      "tp2_tok_s": 26.763313318275802
+    },
+    {
+      "baseline_device": "XTX",
+      "baseline_tp1_ms_per_token": 28.284542497525106,
+      "break_even_collective_ms": 8.09348505391699,
+      "collective_ms_per_token": 18.687,
+      "fixed_group_ms_per_token": 3.3812341504649197,
+      "fixed_share": 0.1,
+      "headroom_factor": 0.4331077783441424,
+      "limiting_rank_fixed": "W7900",
+      "limiting_rank_weight": "W7900",
+      "per_rank": [
+        {
+          "device": "W7900",
+          "fixed_ms_per_token": 3.3812341504649197,
+          "implied_bandwidth_gbs": 514.3421111111111,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.49715052389471004,
+          "rank_weight_ms_per_token": 16.809823293143197,
+          "tp1_ms_per_token": 33.8123415046492
+        },
+        {
+          "device": "XTX",
+          "fixed_ms_per_token": 2.828454249752511,
+          "implied_bandwidth_gbs": 614.8627333333333,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.4030219780219781,
+          "rank_weight_ms_per_token": 11.399292264799268,
+          "tp1_ms_per_token": 28.284542497525106
+        }
+      ],
+      "projected_speedup": 0.7275194378873301,
+      "rank_weight_group_ms_per_token": 16.809823293143197,
+      "required_improvement_factor": 2.3088941136619616,
+      "speedup_if_rank_weights_were_free": 1.5135946110946168,
+      "tp2_group_ms_per_token": 38.878057443608114,
+      "tp2_tok_s": 25.721449726506552
+    },
+    {
+      "baseline_device": "XTX",
+      "baseline_tp1_ms_per_token": 28.284542497525106,
+      "break_even_collective_ms": 6.580009047134649,
+      "collective_ms_per_token": 18.687,
+      "fixed_group_ms_per_token": 6.762468300929839,
+      "fixed_share": 0.2,
+      "headroom_factor": 0.35211692872770634,
+      "limiting_rank_fixed": "W7900",
+      "limiting_rank_weight": "W7900",
+      "per_rank": [
+        {
+          "device": "W7900",
+          "fixed_ms_per_token": 6.762468300929839,
+          "implied_bandwidth_gbs": 578.634875,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.44191157679529774,
+          "rank_weight_ms_per_token": 14.942065149460618,
+          "tp1_ms_per_token": 33.8123415046492
+        },
+        {
+          "device": "XTX",
+          "fixed_ms_per_token": 5.656908499505022,
+          "implied_bandwidth_gbs": 691.7205749999998,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.35824175824175825,
+          "rank_weight_ms_per_token": 10.132704235377126,
+          "tp1_ms_per_token": 28.284542497525106
+        }
+      ],
+      "projected_speedup": 0.7002591900172507,
+      "rank_weight_group_ms_per_token": 14.942065149460618,
+      "required_improvement_factor": 2.8399657000680723,
+      "speedup_if_rank_weights_were_free": 1.5135946110946168,
+      "tp2_group_ms_per_token": 40.391533450390455,
+      "tp2_tok_s": 24.757663663059894
+    },
+    {
+      "baseline_device": "XTX",
+      "baseline_tp1_ms_per_token": 28.284542497525106,
+      "break_even_collective_ms": 5.066533040352306,
+      "collective_ms_per_token": 18.687,
+      "fixed_group_ms_per_token": 10.14370245139476,
+      "fixed_share": 0.3,
+      "headroom_factor": 0.2711260791112702,
+      "limiting_rank_fixed": "W7900",
+      "limiting_rank_weight": "W7900",
+      "per_rank": [
+        {
+          "device": "W7900",
+          "fixed_ms_per_token": 10.14370245139476,
+          "implied_bandwidth_gbs": 661.297,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.38667262969588556,
+          "rank_weight_ms_per_token": 13.07430700577804,
+          "tp1_ms_per_token": 33.8123415046492
+        },
+        {
+          "device": "XTX",
+          "fixed_ms_per_token": 8.485362749257531,
+          "implied_bandwidth_gbs": 790.5378,
+          "protocol": "512-128-int8kv-fp32scales-eager-persistent",
+          "rank_share_of_token": 0.31346153846153846,
+          "rank_weight_ms_per_token": 8.866116205954985,
+          "tp1_ms_per_token": 28.284542497525106
+        }
+      ],
+      "projected_speedup": 0.6749680494985235,
+      "rank_weight_group_ms_per_token": 13.07430700577804,
+      "required_improvement_factor": 3.688320958566291,
+      "speedup_if_rank_weights_were_free": 1.5135946110946168,
+      "tp2_group_ms_per_token": 41.905009457172795,
+      "tp2_tok_s": 23.863495390020297
+    }
+  ],
+  "verdict": {
+    "best_case_speedup": 0.7569880729253515,
+    "certified": false,
+    "maximum_required_improvement_factor": 3.688320958566291,
+    "minimum_headroom_factor": 0.2711260791112702,
+    "optimistic_bound_clears_target": true,
+    "optimistic_bound_speedup": 1.5135946110946168,
+    "passes_target_in_every_row": false,
+    "target_speedup": 1.3,
+    "withheld_reasons": [
+      "the pre-Packet-3 shard-kernel gate has no recorded evidence",
+      "a row projects below the 1.3x target"
+    ],
+    "worst_case_speedup": 0.6749680494985235
+  }
+}

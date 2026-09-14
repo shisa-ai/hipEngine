@@ -129,32 +129,68 @@ ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
   candidate, and the bf16 transport measurements below (2.593 -> 1.309 ms per
   1024-row all-reduce) are transport-level diagnostics rather than a qualified
   model-level prefill default.
-- **Collective latency is the binding constraint for decode, and it is currently
-too expensive for the eager path.** The shard inventory fixes the count at
-**128 row-split tensors per token** (two per transformer block across 64
-autoregressive blocks: 64 MLP down projections, 48 GDN state-output
-projections, 16 attention output projections). In a *dependent* chain, where
-each reduction runs in its own group and its result feeds the next layer, a
-20 KB fp32 all-reduce costs **177.8 us per reduction**, so a decode token spends
-**22.76 ms** in exposed collectives
+- **Collective latency is the binding constraint for decode, and RCCL's eager path is
+too expensive for it.** The shard inventory fixes the count at **128 row-split
+tensors per token** (two per transformer block across 64 autoregressive blocks:
+64 MLP down projections, 48 GDN state-output projections, 16 attention output
+projections). In a *dependent* chain, where each reduction runs in its own group
+and its result feeds the next layer, a 20 KB fp32 all-reduce costs **179.2 us per
+reduction**, so a decode token spends **22.94 ms** in exposed collectives
 (`benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json`).
 Against the faster matched single-GPU arm (35.36 tok/s, 28.28 ms/token) that is
-80% of a whole token before any weight is read, and the break-even projection
-lands at **0.62-0.68x** - TP2 slower than one GPU, not faster. The optimistic
-bound is decisive on its own: even if rank-local weight reads cost nothing, the
-group would still pay 22.76 ms against a 28.28 ms baseline, or **1.24x**, below
-the plan's 1.3x target. No shard kernel can close that gap, so the
-pre-Packet-3 gate does not need to be satisfied to decide the question. The
-exposed collectives must get **2.2-4.5x cheaper** for the eager path to break
-even; the levers are fewer exposed collectives, cheaper per-reduction groups, or
+81% of a whole token before any weight is read, and the break-even projection
+lands at **0.61-0.68x** - TP2 slower than one GPU, not faster. The exposed
+collectives must get **2.2-4.5x cheaper** for the eager path to break even; the
+levers are fewer exposed collectives, cheaper per-reduction groups, or
 overlapping the reduction with independent work.
 
+  **Three transport levers are now measured, and one of them changes the verdict
+  at zero fixed-cost share.** Every structure below reproduces the closed form
+  `seed * 2 ** depth`, which only holds if every reduction consumed its
+  predecessor, so these are per-layer costs rather than deferrable ones.
+
+  | Per-reduction structure | Cost | 128 reductions | Speedup at 0% fixed share |
+  | --- | ---: | ---: | ---: |
+  | RCCL, one group per reduction, with an intermediate device copy | 179.2 us | 22.94 ms | 0.680x |
+  | RCCL, one group per reduction, copy removed | 153.6 us | 19.66 ms | 0.738x |
+  | RCCL, copy removed, replayed from a captured graph | 146.0 us | 18.69 ms | 0.757x |
+  | Page-locked host exchange with a host-side sum | **71.1 us** | **9.11 ms** | **1.018x** |
+
+  The intermediate device copy costs **25.6 us per reduction**, so the copy-free
+  protocol is the right default for any RCCL-based chain. Host submission is only
+  **7.6 us** - that is what replaying the same device structure from a captured
+  graph removes - so RCCL's per-reduction cost is device-side protocol, not
+  Python or ctypes overhead. Collapsing N dependent reductions into a single
+  group saves 119.3 us, which is why that structure is fast and why it cannot
+  carry a layer dependency. Replacing RCCL with a two-rank page-locked host
+  exchange is worth a further **2.1x**, and at zero fixed-cost share it crosses
+  the 9.61 ms break-even line with 1.06x headroom. At the plan's assumed
+  fixed-cost shares it still loses: 0.965x at 10%, 0.918x at 20%, 0.875x at 30%.
+  Reaching 1.3x at zero fixed share would need ~24 us per reduction, so the
+  remaining gap is one more 3x on the exchange.
+
+  The host exchange's cost is **27.7 us of device-to-host copy and host wait plus
+  28.5 us of host-to-device copy and host wait plus 6.4 us of host accumulation**
+  per reduction. The transfers themselves are ~2 us each way for 20 KB, so the
+  cost is dominated by the host waiting on each copy; a device-signalled protocol
+  that removes those two exposed waits is the next lever, and 24 us per reduction
+  is the number it has to reach.
+
+  Capturing the dependency-bearing chain works: 128 reductions, one native group
+  each, captured into a HIP graph and replayed, with the closed form reproduced
+  and a `0xFF`-poisoned tail buffer proving the replay did the work. It saves
+  7.6 us per reduction, which is the measured host submission cost. Capturing the
+  whole chain into a *single* group is both invalid (the reductions collapse) and
+  unsafe on this host (a `Memory access fault` at depth 32), so it is opt-in and
+  excluded from a default run.
+
   An earlier estimate of 3.66-4.48 ms (11-13% of a token) used a marginal
-  measured from collectives that were *not* dependent: a group in which the
-  reduction is deferred past its consumer costs 37.3 us per step, but that
-  structure cannot carry a layer dependency. The per-step structure, which can,
-  costs 177.8 us - 4.8x more. The earlier figure is superseded, not merely
-  refined.
+  measured from collectives that were *not* dependent: a single group holding the
+  whole chain costs 34-38 us per step, but that structure cannot carry a layer
+  dependency - the reductions collapse (depth 4 returns the depth-2 value, depth
+  16 returns roughly the depth-10 value) and the closed form is not reached. The
+  per-step structure, which can carry the dependency, costs 179.2 us - 4.7x more.
+  The earlier figure is superseded, not merely refined.
 
   Group enqueue already satisfies the "first rank's collective must not block
 the second rank's enqueue" requirement, and threaded enqueue is measurably
@@ -319,13 +355,22 @@ D2H probes, or host barriers inside every production layer. GPU stream ordering
 carries layer dependencies; only the request/transaction boundary needs host
 completion before externally publishing results.
 
-Use RCCL as the reference communication implementation. Screen a specialized
-two-rank peer-copy plus local-sum path only if measured small-message latency
-justifies it. It must have explicit producer/consumer events, reusable-buffer
-lifetime rules, and stress tests; peer accessibility alone does not establish
-ordering or coherent polling semantics. Do not begin with persistent GPU
-spin-wait barriers. Keep a registered strict fallback for any fused kernel.
-A host-staged transport is a diagnostic fallback, not an assumed fast path.
+Use RCCL as the reference communication implementation. The specialized two-rank
+screen has now been run, and it is the only structure measured on this host that
+crosses break-even at zero fixed-cost share: a page-locked host exchange with a
+host-side sum costs **71.1 us per reduction** against **153.6 us** for the
+copy-free RCCL per-step chain, both dependency-verified
+(`benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json`). It
+is a measured candidate rather than a fast path: it still loses at every nonzero
+fixed-cost share, and it must have explicit producer/consumer events, reusable
+buffer lifetime rules, and stress tests before serving. The remaining cost is
+the host waiting on each copy (27.7 us device-to-host plus 28.5 us host-to-device
+per reduction, against ~2 us of transfer each way), so a device-signalled
+completion is the lever that matters and it needs a bounded, timed-out wait.
+Peer accessibility alone does not establish ordering or coherent polling
+semantics. Do not begin with persistent GPU spin-wait barriers. Keep a
+registered strict fallback for any fused kernel. A host-staged transport must be
+qualified as a serving path before it is a default; today it is a screen result.
 
 Each allocation, stream, event, library handle, graph executable, kernel-module
 handle, and workspace must belong to a device. Audit cache keys and teardown,
@@ -474,13 +519,28 @@ communication wrappers or treat estimated half-model time as measured evidence.
   this host, using the full category suite. Profile per-layer and head time.
   Do not substitute a result from another host, even with the same GPU model.
 - [x] Write a break-even artifact and a go/no-go decision before Packet 3.
-  **Decision: no-go on the eager path.** `benchmarks/results/tp2_break_even.json`
-  projects 0.62-0.68x against the faster matched TP1 arm, and the optimistic
-  bound with free rank-weight reads is 1.24x, below the 1.3x target. The
-  collective budget is the binding term: 128 exposed reductions at 177.8 us in a
-  dependent chain is 22.76 ms/token. Packet 3 (full-model integration) does not
-  start from this result. What can change the answer is a cheaper or fewer
-  exposed collectives, not a faster shard kernel; see "Measured status".
+  **Decision: no-go on the RCCL eager path; conditional on the transport.**
+  `benchmarks/results/tp2_break_even_per_step.json` projects 0.61-0.68x against
+  the faster matched TP1 arm with RCCL's per-reduction groups. Removing the
+  intermediate device copy gives 0.66-0.74x
+  (`benchmarks/results/tp2_break_even_per_step_alternating.json`), and replaying
+  the same structure from a captured graph gives 0.68-0.76x
+  (`benchmarks/results/tp2_break_even_per_step_alternating_graph.json`).
+  Replacing RCCL with a page-locked host exchange gives 0.88-1.02x
+  (`benchmarks/results/tp2_break_even_staged_exchange_host_sync.json`): it
+  crosses break-even at zero fixed-cost share and still loses at every nonzero
+  share. The collective budget remains the binding term - 128 exposed reductions
+  at 179.2 us is 22.94 ms/token, against 9.11 ms for the host exchange. Packet 3
+  does not start from this result. What can change the answer is a cheaper
+  transport or fewer exposed collectives, not a faster shard kernel; see
+  "Measured status".
+- [ ] Reduce the exposed host wait in the two-rank exchange. The staged path
+  spends 27.7 us of device-to-host copy plus host wait and 28.5 us of
+  host-to-device copy plus host wait per reduction, against ~2 us of actual
+  transfer each way, so a device-signalled completion is the next lever. The
+  target is ~24 us per reduction, which is what 1.3x at zero fixed-cost share
+  requires. This needs a bounded device-side wait with a declared timeout, not an
+  unbounded spin.
 - [ ] Use Tier-1 allocation probes before full-prompt capacity testing. Record
   actual TP1 HIP/PM4 submission transport and resolved profile; measure local
   shard-shaped kernels and rank enqueue skew before extrapolating.

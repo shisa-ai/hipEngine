@@ -47,17 +47,21 @@ recorded in the artifact:
   they exist; without it the projection is reported as uncertified.
 
 The collective input must come from a measurement, not a default: pass
-``--dependent-chain-artifact`` to read the per-step marginal out of a dependent
-chain artifact, or state ``--marginal-us`` explicitly. Both are recorded with
-their source.
+``--dependent-chain-artifact`` to read the per-reduction marginal out of a
+dependent chain artifact, or state ``--marginal-us`` explicitly. Both are
+recorded with their source. ``--dependent-chain-mode`` selects which structure
+supplies the marginal, and the artifact's own dependency check is enforced, so a
+structure whose reductions collapsed instead of chaining is refused rather than
+projected.
 
 Usage:
     python3 scripts/tp_break_even.py \
         --tp1 "W7900=27.9:15.652:8.646:512/128/int8-kv" \
         --tp1 "XTX=29.82:15.652:7.009:8192/8/bf16-kv" \
         --dependent-chain-artifact benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json \
+        --dependent-chain-mode staged_exchange_host_sync \
         --reduction-points 128 \
-        --json benchmarks/results/tp2_break_even.json
+        --json benchmarks/results/tp2_break_even_staged_exchange_host_sync.json
 """
 
 from __future__ import annotations
@@ -190,6 +194,16 @@ def project_group(
     }
 
 
+#: Structures whose per-reduction cost is usable as a per-layer cost, because the
+#: dependent-chain value check proves every reduction consumed its predecessor.
+DEPENDENT_CHAIN_MODES = (
+    "per_step",
+    "per_step_alternating",
+    "per_step_alternating_graph",
+    "staged_exchange_host_sync",
+)
+
+
 def read_dependent_chain_marginal(
     path: Path,
     *,
@@ -198,10 +212,16 @@ def read_dependent_chain_marginal(
 ) -> dict[str, Any]:
     """Read the measured per-step marginal out of a dependent chain artifact.
 
-    The marginal must come from the ``per_step`` mode: that is the structure in
-    which every reduction runs in its own group and consumes the previous
-    result. A ``per_chain`` marginal describes a group in which the collectives
-    are deferred past the consumer work, so it cannot carry a layer dependency.
+    The marginal must come from a mode whose arithmetic check proves each
+    reduction consumed its predecessor. ``per_step`` is the original structure,
+    ``per_step_alternating`` removes the artificial device copy between
+    reductions, ``per_step_alternating_graph`` replays the same structure from a
+    captured graph, and ``staged_exchange_host_sync`` replaces the collective
+    with a page-locked host exchange. A ``per_chain`` or single-group marginal
+    describes
+    a group in which the collectives are deferred or collapsed, so it cannot
+    carry a layer dependency; the recorded ``depends_on_every_step`` flag is
+    checked here rather than trusted from the mode name.
     """
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -394,8 +414,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dependent-chain-mode",
         default="per_step",
-        choices=("per_step",),
-        help="group mode to read the marginal from; only per_step can carry a dependency",
+        choices=DEPENDENT_CHAIN_MODES,
+        help=(
+            "mode to read the marginal from; the choices are the structures whose "
+            "arithmetic check proves each reduction consumed its predecessor "
+            "(per_chain and the single-group modes fail that check on this host)"
+        ),
     )
     parser.add_argument(
         "--marginal-us",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import importlib.util
 import pathlib
 import sys
@@ -347,7 +348,15 @@ class _ShadowChainTransport:
     """A transport that reduces host-side shadow buffers instead of device ones.
 
     The device pointers the benchmark passes index into the runtime's per-rank
-    work and scratch arrays, so the chain's arithmetic can be checked on CPU.
+    work and scratch arrays, so the chain's arithmetic can be checked on CPU. The
+    model follows the stream semantics the real transport has, because the point
+    of these tests is to check that the protocol detects a broken dependency:
+
+    * non-collective work enqueued inside a group runs *before* every collective
+      in that group, so it becomes visible only to the next group's collectives;
+    * collectives inside a group execute in call order on one stream, so each
+      reads what the previous one wrote;
+    * a collective issued outside a group is an error, as on the real transport.
     """
 
     algorithm = "rccl"
@@ -361,6 +370,13 @@ class _ShadowChainTransport:
         self.groups: list[tuple[int, int]] = []
         self._open = 0
         self._group_id = 0
+        # When set, collectives never publish their result: a chain that cannot
+        # consume its predecessor even though its buffers alternate.
+        self.stale_snapshot = False
+        # One collective is one operation across ranks: the per-rank host call is
+        # bookkeeping, so a reduction is applied once per batch of world_size
+        # consecutive calls, and every rank's row receives the same total.
+        self._calls_this_group = 0
 
     def stream(self, rank: int) -> int:
         return 0x10 + int(rank)
@@ -368,26 +384,30 @@ class _ShadowChainTransport:
     def group_start(self) -> None:
         self._open += 1
         self._group_id += 1
-        # A real reduction reads every rank's contribution simultaneously, so
-        # snapshot the buffers at the group boundary instead of letting one
-        # rank's result feed the next rank's sum.
-        self._snapshots = {
-            "work": [row[0] for row in self.runtime.work],
-            "scratch": [row[0] for row in self.runtime.scratch],
-        }
+        self._calls_this_group = 0
+        self.runtime.group_depth = self._open
 
     def group_end(self) -> None:
         self._open -= 1
         if self._open < 0:
             raise AssertionError("group_end without group_start")
+        self.runtime.group_depth = self._open
+        if self._open == 0:
+            self.runtime.publish_staged()
 
     def all_reduce_sum(self, rank, send_ptr, recv_ptr, *, count, dtype) -> None:
         if self._open <= 0:
             raise AssertionError("collective issued outside a group")
         self.groups.append((self._group_id, int(rank)))
+        self._calls_this_group += 1
+        if self._calls_this_group % self.world_size:
+            return
         kind = "scratch" if int(send_ptr) >= _ShadowChainRuntime.SCRATCH_BASE else "work"
-        total = float(sum(self._snapshots[kind]))
-        self.runtime.target_for(int(recv_ptr))[int(rank)][0] = total
+        total = float(sum(row[0] for row in getattr(self.runtime, kind)))
+        if self.stale_snapshot:
+            return
+        for row in self.runtime.target_for(int(recv_ptr)):
+            row[0] = total
 
     def sync(self, *, timeout_s=None) -> None:
         return None
@@ -411,6 +431,13 @@ class _ShadowChainRuntime:
         self.current = 0
         self.copies = 0
         self.events = 0
+        # 0 outside a group. A non-collective write while inside a group is staged
+        # and published at group_end, matching "enqueued work runs before the
+        # group's collectives".
+        self.group_depth = 0
+        self._staged: list[tuple[list, int, float]] = []
+        self.streams = 0
+        self.registered_host: set[int] = set()
 
     def slot(self, ptr: int) -> tuple[list, int]:
         if self.WORK_BASE <= ptr < self.SCRATCH_BASE:
@@ -425,23 +452,66 @@ class _ShadowChainRuntime:
     def target_for(self, ptr: int) -> list:
         return self.scratch if ptr >= self.SCRATCH_BASE else self.work
 
+    def publish_staged(self) -> None:
+        for buffer, row, value in self._staged:
+            buffer[row][0] = value
+        self._staged = []
+
     def get_device(self) -> int:
         return self.current
 
     def set_device(self, device: int) -> None:
         self.current = int(device)
 
+    def stream_create(self) -> int:
+        self.streams += 1
+        return self.streams
+
+    def stream_destroy(self, stream) -> None:
+        return None
+
+    def stream_synchronize(self, stream) -> None:
+        return None
+
+    def host_register(self, ptr: int, nbytes: int) -> None:
+        self.registered_host.add(int(ptr))
+
+    def host_unregister(self, ptr: int) -> None:
+        self.registered_host.discard(int(ptr))
+
     def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+        from hipengine.core.runtime import MemcpyKind
+
+        if kind in (MemcpyKind.HOST_TO_DEVICE, MemcpyKind.DEVICE_TO_HOST):
+            # Host staging is real memory: the staged path sums the pinned slot,
+            # so the shadow has to move actual bytes through it.
+            if kind == MemcpyKind.DEVICE_TO_HOST:
+                buffer, row = self.slot(int(src))
+                payload = np.zeros(self.count, dtype=np.float32)
+                payload[:] = np.asarray(buffer[row][: self.count], dtype=np.float32)
+                ctypes.memmove(int(dst), payload.tobytes(), int(nbytes))
+            else:
+                payload = np.frombuffer(
+                    ctypes.string_at(int(src), int(nbytes)), dtype=np.float32
+                )
+                buffer, row = self.slot(int(dst))
+                buffer[row] = [float(value) for value in payload] + [0.0] * (
+                    self.count - int(payload.size)
+                )
+            return
         self.copies += 1
         target, target_index = self.slot(int(dst))
         if not self.consume_previous:
             # The old ladder re-read an unchanged input: the consumer never
             # consumes the reduction result.
-            target[target_index][0] = self.seed_value
-            return
-        _, source_index = self.slot(int(src))
-        source = self.work
-        target[target_index][0] = source[source_index][0]
+            value = self.seed_value
+        else:
+            _, source_index = self.slot(int(src))
+            value = self.work[source_index][0]
+        if self.group_depth:
+            self._staged.append((target, target_index, value))
+        else:
+            target[target_index][0] = value
 
     def event_create(self) -> int:
         self.events += 1
@@ -538,23 +608,191 @@ def test_dependent_chain_runs_one_group_per_reduction(mod, monkeypatch) -> None:
     _stub_chain_memory(mod, monkeypatch, kwargs)
 
     report = mod._measure_dependent_chain(**kwargs)
-    # depth 1 -> one group per rank; depth 4 -> four groups per rank, per
-    # measurement iteration, in both modes; per_chain adds one enclosing group.
-    assert report["modes"]["per_step"]["group_boundary"] == "one native group per reduction"
     world = kwargs["transport"].world_size
     iterations = int(kwargs["iterations"])
-    assert len(kwargs["transport"].groups) == 2 * (1 + 4) * world * iterations
+    depths = tuple(int(depth) for depth in kwargs["depths"])
+
+    # Group shape per mode: (collectives in each group, how many such groups).
+    per_step_segments = [
+        (world, int(depth) * iterations) for depth in depths
+    ]
+    per_chain_segments = [
+        (int(depth) * world, iterations) for depth in depths
+    ]
+    expected: list[tuple[int, int]] = []
+    expected += per_step_segments  # per_step
+    expected += per_chain_segments  # per_chain
+    expected += per_step_segments  # per_step_alternating
+    # The single-group mode is the contrast structure: one group per chain.
+    single_group_segments = [(int(depth) * world, iterations) for depth in depths]
+    expected += single_group_segments  # single_group_alternating
+    # Captured replay is opt-in: the transport refuses capture, and driving that
+    # path across depths hangs or faults the GPU, so a default run must not reach
+    # it. The staged exchange uses no group at all, so it contributes no groups.
+    assert "single_group_alternating_graph" not in report["modes"]
+    assert "staged_exchange_host_sync" in report["modes"]
+
     counts: dict[int, int] = {}
     for group_id, _rank in kwargs["transport"].groups:
         counts[group_id] = counts.get(group_id, 0) + 1
     ordered = [counts[group_id] for group_id in sorted(counts)]
-    # per_step runs first: one group per reduction, each holding exactly one
-    # collective per rank - the boundary the previous ladder did not have.
-    per_step_groups = (1 + 4) * iterations
-    assert ordered[:per_step_groups] == [world] * per_step_groups
-    # per_chain then batches each whole chain into a single group: the depth-1
-    # chain holds one collective per rank, the depth-4 chain four.
-    assert ordered[per_step_groups:] == [world] * iterations + [4 * world] * iterations
+    flat_expected: list[int] = []
+    for size, repeats in expected:
+        flat_expected.extend([size] * repeats)
+    assert ordered == flat_expected
+
+    assert report["modes"]["per_step"]["group_boundary"] == "one native group per reduction"
+    assert report["modes"]["per_step_alternating"]["group_boundary"] == (
+        "one native group per reduction"
+    )
+    assert report["modes"]["per_step_alternating"]["device_copy_per_reduction"] is False
+    assert report["modes"]["single_group_alternating"]["group_boundary"] == (
+        "one native group for the whole chain"
+    )
+    assert report["modes"]["single_group_alternating"]["dependency_carried_by"] == (
+        "stream order within one group"
+    )
+
+
+def test_alternating_chain_needs_no_device_copy(mod, monkeypatch) -> None:
+    """The copy-free protocol must issue zero copies.
+
+    Driven directly so the copy census covers only the alternating structure:
+    the copy-bearing mode is the contrast case and is measured separately.
+    """
+
+    kwargs = _shadow_chain_args(mod)
+    monkeypatch.setattr(mod, "decode_values", lambda host, dtype: list(host.view("float32")))
+    monkeypatch.setattr(mod, "encode_values", lambda values, dtype: values)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    runtime = kwargs["runtime"]
+
+    report = mod._measure_alternating_chain(
+        transport=kwargs["transport"],
+        runtime=runtime,
+        case=kwargs["case"],
+        buffers=(kwargs["work"], kwargs["scratch"]),
+        depths=kwargs["depths"],
+        iterations=kwargs["iterations"],
+        warmup=kwargs["warmup"],
+        seed=kwargs["seed"],
+        timeout_s=kwargs["timeout_s"],
+        graph=False,
+        group_boundary="per_step",
+    )
+    assert runtime.copies == 0, "the alternating chain must not copy between reductions"
+    assert report["device_copy_per_reduction"] is False
+    assert report["consumes_predecessor_via"] == "alternating buffers"
+    assert report["depths"]["4"]["final_value_matches"] is True
+    assert report["depends_on_every_step"] is True
+    # One group per reduction, each holding one collective per rank.
+    counts: dict[int, int] = {}
+    for group_id, _rank in kwargs["transport"].groups:
+        counts[group_id] = counts.get(group_id, 0) + 1
+    assert sorted(counts.values()) == [kwargs["transport"].world_size] * 2 * (1 + 4)
+
+
+def test_alternating_chain_value_check_accepts_a_dependent_chain(mod, monkeypatch) -> None:
+    kwargs = _shadow_chain_args(mod)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    alternating = report["modes"]["per_step_alternating"]
+    assert alternating["depths"]["4"]["final_value_matches"] is True
+    assert alternating["depths"]["4"]["observed_final_value"] == [16.0, 16.0]
+    assert alternating["depends_on_every_step"] is True
+    # Step i writes the buffer step i+1 reads, so an even depth ends in buffer 0.
+    assert alternating["depths"]["4"]["final_buffer"] == 0
+    assert alternating["depths"]["1"]["final_buffer"] == 1
+
+
+def test_alternating_chain_value_check_rejects_a_stale_input(mod, monkeypatch) -> None:
+    """A chain that re-reads its original input must fail, copy or no copy."""
+
+    kwargs = _shadow_chain_args(mod)
+    kwargs["transport"].stale_snapshot = True
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    alternating = report["modes"]["per_step_alternating"]
+    assert alternating["depths"]["4"]["final_value_matches"] is False
+    assert alternating["depends_on_every_step"] is False
+    # A chain whose collectives never publish leaves the seed in buffer 0, so a
+    # four-step chain ends holding seed instead of seed * world^4.
+    assert alternating["depths"]["4"]["observed_final_value"] == [1.0, 1.0]
+    assert alternating["depths"]["4"]["expected_final_value"] == 16.0
+
+
+def test_single_group_alternating_chain_still_consumes_its_predecessor(mod, monkeypatch) -> None:
+    """Stream order inside one group must carry the dependency on its own.
+
+    This is the structure the transport can capture, so whether the dependency
+    survives without a per-reduction group boundary is the question that decides
+    whether a captured replay is a valid measurement at all.
+    """
+
+    kwargs = _shadow_chain_args(mod)
+    _stub_chain_memory(mod, monkeypatch, kwargs)
+    report = mod._measure_dependent_chain(**kwargs)
+    single = report["modes"]["single_group_alternating"]
+    assert single["depths"]["1"]["final_value_matches"] is True
+    assert single["depths"]["4"]["final_value_matches"] is True
+    assert single["depths"]["4"]["observed_final_value"] == [16.0, 16.0]
+    assert single["depends_on_every_step"] is True
+    # One group for the whole chain, holding one collective per rank per step.
+    counts: dict[int, int] = {}
+    for group_id, _rank in kwargs["transport"].groups:
+        counts[group_id] = counts.get(group_id, 0) + 1
+    assert max(counts.values()) == kwargs["transport"].world_size * 4
+
+
+def test_alternating_chain_refuses_an_unknown_group_boundary(mod) -> None:
+    kwargs = _shadow_chain_args(mod)
+    with pytest.raises(ValueError, match="group_boundary"):
+        mod._measure_alternating_chain(
+            transport=kwargs["transport"],
+            runtime=kwargs["runtime"],
+            case=kwargs["case"],
+            buffers=(kwargs["work"], kwargs["scratch"]),
+            depths=(1,),
+            iterations=1,
+            warmup=0,
+            seed=1.0,
+            timeout_s=1.0,
+            graph=False,
+            group_boundary="batched",
+        )
+
+
+def test_chain_final_buffer_index_alternates() -> None:
+    mod = _load()
+    assert mod._chain_final_buffer_index(0) == 0
+    assert mod._chain_final_buffer_index(1) == 1
+    assert mod._chain_final_buffer_index(2) == 0
+    assert mod._chain_final_buffer_index(7) == 1
+
+
+def test_chain_attribution_decomposes_the_cost() -> None:
+    mod = _load()
+    modes = {
+        "per_step": {"marginal": {"overall_us_per_step": 178.0}},
+        "per_step_alternating": {"marginal": {"overall_us_per_step": 150.0}},
+        "per_step_alternating_graph": {"marginal": {"overall_us_per_step": 142.0}},
+        "single_group_alternating": {"marginal": {"overall_us_per_step": 90.0}},
+        "single_group_alternating_graph": {"marginal": {"overall_us_per_step": 60.0}},
+    }
+    attribution = mod._chain_attribution(modes)
+    assert attribution["device_copy_us"] == pytest.approx(28.0)
+    # Host submission is measured by replaying the *same* device structure, so the
+    # delta is host cost rather than a device-side structure change.
+    assert attribution["host_submission_us"] == pytest.approx(8.0)
+    assert attribution["per_step_over_single_group_us"] == pytest.approx(60.0)
+    assert attribution["graph_launch_amortized_us"] == pytest.approx(30.0)
+    assert attribution["collective_and_wait_us"] == pytest.approx(142.0)
+    assert attribution["per_step_over_graph_replay"] == pytest.approx(150.0 / 142.0)
+    # A missing mode leaves its term out rather than inventing a zero.
+    partial = mod._chain_attribution({"per_step": {"marginal": {"overall_us_per_step": 178.0}}})
+    assert "device_copy_us" not in partial
+    assert "host_submission_us" not in partial
+    assert partial["graph_replay_per_step_us"] is None
 
 
 def test_dependent_chain_accepts_a_chain_that_consumes_its_predecessor(mod, monkeypatch) -> None:
@@ -585,3 +823,73 @@ def test_dependent_chain_is_skipped_for_non_reductions(mod, monkeypatch) -> None
     kwargs["case"].op = "broadcast"
     report = mod._measure_dependent_chain(**kwargs)
     assert "skipped" in report
+def test_dependency_verdict_ignores_a_saturated_depth(mod, monkeypatch) -> None:
+    """A depth whose closed form is ``inf`` cannot prove the chain compounded.
+
+    At depth 128 the fp32 chain saturates, so the observed and expected values
+    are both ``inf`` and the equality check passes trivially. The verdict has to
+    come from the deepest depth with a finite expected value.
+    """
+
+    depths = {
+        "16": {
+            "observed_final_value": [65536.0, 65536.0],
+            "final_value_matches": True,
+            "value_check_informative": True,
+        },
+        "128": {
+            "observed_final_value": [float("inf"), float("inf")],
+            "final_value_matches": True,
+            "value_check_informative": False,
+        },
+    }
+    verdict, reason = mod._dependency_verdict(depths, single_step_value=2.0)
+    assert verdict is True
+    assert reason is None
+    assert mod._deepest_informative_depth(depths) == "16"
+
+    # A chain that never compounds is still rejected, and the rejection names the
+    # depth the verdict came from rather than the saturated one.
+    stalled = {
+        "16": {
+            "observed_final_value": [2.0, 2.0],
+            "final_value_matches": False,
+            "value_check_informative": True,
+        },
+        "128": {
+            "observed_final_value": [float("inf"), float("inf")],
+            "final_value_matches": True,
+            "value_check_informative": False,
+        },
+    }
+    verdict, reason = mod._dependency_verdict(stalled, single_step_value=2.0)
+    assert verdict is False
+    assert reason == "depth 16 did not reach the closed form"
+
+    # With no informative depth there is no evidence at all.
+    verdict, reason = mod._dependency_verdict(
+        {
+            "128": {
+                "observed_final_value": [float("inf")],
+                "final_value_matches": True,
+                "value_check_informative": False,
+            }
+        },
+        single_step_value=2.0,
+    )
+    assert verdict is False
+    assert reason == "no depth has a finite expected value, so no check is informative"
+
+
+def test_opt_in_modes_stay_out_of_a_default_run(mod) -> None:
+    """The single-group capture faults the GPU, so it is not a default.
+
+    Capturing one group for the whole chain faults at depth 32 on this host. The
+    per-step capture keeps the dependency and is measured by default; the staged
+    exchange replaces the transport and is also measured by default.
+    """
+
+    assert "single_group_alternating_graph" not in mod.DEFAULT_CHAIN_MODES
+    assert "single_group_alternating_graph" in mod.OPT_IN_CHAIN_MODES
+    assert "per_step_alternating_graph" in mod.DEFAULT_CHAIN_MODES
+    assert "staged_exchange_host_sync" in mod.DEFAULT_CHAIN_MODES
