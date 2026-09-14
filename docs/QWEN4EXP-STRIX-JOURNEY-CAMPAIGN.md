@@ -28,7 +28,7 @@ failed candidates, and work not yet executed.
 | J4 GDN DPP suffix | Kernel retained, restored composition not promoted | Corrected-Q8/QSA short/depth numerics pass; targeted EOS explanation fails predeclared task rule ([review](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
 | J4 multi-column | Numerical blocker | Owner1.34-2.69x; full594-row Japanese/prefill scopes fail; deterministic, unpromoted |
 | J4 serial prefix | Pending | No blind all-layer widening; full numerical gates required |
-| J5 chunk2048/4096 | Admission blocker measured | At context4352/capacity1 allocate/close but exceed4GiB scratch by0.479/3.285GB |
+| J5 chunk2048/4096 | 2048 current-profile allocation passes; 4096 accounting blocked | At context4352/c1, including lazy repair queues:2048 has1.066GB scratch margin;4096 exceeds allowance by2.160GB; no new chunk default ([evidence](../benchmarks/results/2026-09-14-journey-chunk-admission/README.md)) |
 | J5 Q8 residual-weight down | Rejected/removed | Model top1 587/594 and prefill-last mean fail despite better weight MSE |
 | J5 guarded Q8 block-scale down | Adopted | FP32 block scales plus empirical sparse repair; same-session combined Q8/QSA PP +4.34/+4.73/+38.48% |
 | J5 other mixed-quant matrix / routing | Pending | Real expert populations and repair costs, complete-owner comparisons |
