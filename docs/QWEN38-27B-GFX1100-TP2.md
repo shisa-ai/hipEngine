@@ -161,14 +161,28 @@ the second rank's enqueue" requirement, and threaded enqueue is measurably
 worse, so no host threads are needed for enqueue.
 - **A TP2 rank holds half the KV pool.** At 8192 context a rank claims 258 MiB
   of KV against 514 MiB for the whole pool (16 full-attention layers, 2 of the 4
-  KV heads, 32 KiB per token, plus 2 MiB of `KVLiveSpans`), and 1032 against 2056
-  MiB at 32768. The per-rank head partition is the weight planner's own
-  `partition_groups` result, so a rank's KV heads are exactly the heads its
-  weights serve, and N=3 is refused with the planner's message. When a group
-  exceeds the KV-head count the assignment replicates by *block* - consecutive
-  ranks share a head - so each rank still holds the KV heads covering its own
-  query-head block; round-robin replication would hand a rank a head its queries
-  never attend to. Claims are all-or-nothing across ranks.
+  KV heads, 32 KiB per token from the declared 256-wide K and V planes, plus
+  2 MiB of `KVLiveSpans` under the dense-policy layout of four 32-bit fields per
+  token per layer), and 1032 against 2056 MiB at 32768. Geometry is
+  backend-owned: `key_length` and `value_length` are read separately from the
+  config, so unequal K/V widths are sized correctly and an inferred value width
+  is recorded as inferred; the metadata term comes from a declared
+  `KvSpansLayout` (`paged_uniform`, `per_head_variable`, `sliding_ring`, or the
+  historical `dense_policy`) because those modes carry different tensors and
+  only some of them are per token. The per-rank head partition is the weight
+  planner's own `partition_groups` result, so a rank's KV heads are exactly the
+  heads its weights serve, and N=3 is refused with the planner's message. When a
+  group exceeds the KV-head count the assignment replicates by *block* -
+  consecutive ranks share a head - so each rank still holds the KV heads
+  covering its own query-head block; round-robin replication would hand a rank a
+  head its queries never attend to.
+
+  Admission is all-or-nothing and ledger-owned: each rank's KV region is a
+  stable `KVPoolPlan` of byte pools, `reserve_group_kv` takes a provisional
+  reservation in every rank's `ResourceLedger` and commits only when all ranks
+  reserved, a failure on any rank rolls back the earlier holds, and a second
+  group cannot claim the same rank's pools. `claim_all` drives the device
+  allocator after the ledger commits.
 - **RCCL work can be captured into a HIP graph, up to a size limit.** With
   communicator creation outside capture and each rank's whole chain captured on
   its own stream, 40/40 probes across chain depths 1/4/8/16/24 replayed
@@ -491,8 +505,13 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
 - [ ] Implement minimal distributed config/context and a transport interface in
   `hipengine/distributed/`; add only missing HIP device/peer operations in core.
   Keep world-size-one behavior unchanged and RCCL optional until TP is requested.
-- [ ] Resolve the N-rank plan and composite KV pool/claim set. Preserve the
+- [x] Resolve the N-rank plan and composite KV pool/claim set. Preserve the
   model-owning scheduler; add a distributed runner adapter, not N schedulers.
+  `hipengine/distributed/kv.py` resolves geometry from the model config and a
+  declared `KvSpansLayout`, builds a per-rank `KVPoolPlan`, and reserves the
+  group's claims through the existing `ResourceLedger` (provisional hold on
+  every rank, commit only when all reserved, rollback otherwise). The
+  distributed runner adapter is still Packet 3 work.
 - [ ] Audit core, weight loading, runtime workspaces, graphs, native cycle ABI,
   sampler, and global caches for implicit device zero/default stream ownership.
 - [ ] Add CPU/mock tests for rank/device mismatch, invalid topology and dtype,
