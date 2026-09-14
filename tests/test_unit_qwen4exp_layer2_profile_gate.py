@@ -196,6 +196,18 @@ def test_q8_fallback_preserves_other_production_choices() -> None:
     }
 
 
+def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
+    candidate = _load_script().CANDIDATES["production_conservative"]
+    assert candidate.base_profile == "production"
+    assert set(candidate.environment.values()) == {"0"}
+    for suffix in ("Q8_MMQ_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+                   "Q4_DP4A64", "QSA_ORDERED_DECODE", "GDN_COLWARPS_PREFILL"):
+        assert candidate.environment["HIPENGINE_QWEN4_EXP_" + suffix] == "0"
+    for suffix in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
+                   "GDN_WAVE_NORM", "PLE_MAPPING_ACCESS"):
+        assert "HIPENGINE_QWEN4_EXP_" + suffix not in candidate.environment
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]

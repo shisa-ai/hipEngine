@@ -61,7 +61,26 @@ class CandidateSpec:
     compact_output: bool = False
 
 
+CONSERVATIVE_ARITHMETIC_FLAGS = (
+    "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+    "Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN",
+    "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
+    "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
+    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
+)
+
 CANDIDATES = {
+    "production_conservative": CandidateSpec(
+        name="production_conservative",
+        classification="diagnostic",
+        mechanism="conservative arithmetic fallback retaining independently exact production owners",
+        environment={"HIPENGINE_QWEN4_EXP_" + flag: "0"
+                     for flag in CONSERVATIVE_ARITHMETIC_FLAGS},
+        base_profile="production",
+        scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
+        candidate_key=None,
+        fallback_key=None,
+    ),
     "production_q8_fallback": CandidateSpec(
         name="production_q8_fallback",
         classification="diagnostic",
