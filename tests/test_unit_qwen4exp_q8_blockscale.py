@@ -51,3 +51,12 @@ def test_quad_restoration_does_not_restore_other_approximate_routes():
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
     }
+
+
+def test_all_q8_codes_are_exact_bf16_without_rounding_bias():
+    import numpy as np
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    values = np.arange(-128, 128, dtype=np.int32).astype(np.float32)
+    shifted = (values.view(np.uint32) >> 16).astype(np.uint16)
+    np.testing.assert_array_equal(shifted, float_array_to_bf16_bits(values))
