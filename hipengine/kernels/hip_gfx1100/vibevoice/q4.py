@@ -235,15 +235,55 @@ def q4_prefill(runner, hidden_rows, rows, start):
     if start + rows > runner.max_context:
         raise ValueError("prefill exceeds max_context")
 
-    def gemm_bf16_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, bf16_scratch):
-        """bf16 activations x raw K-quant blocks -> f32 (Q6_K via bf16)."""
-        if GGUF_WEIGHT_TYPES.get(int(w_ptr), GGML_Q4_K) == GGML_Q6_K:
+    def prefill_weight_type(w_ptr, role):
+        """GGML type of a weight, from the loader's pointer-keyed registry.
+
+        The registry is the same side channel the decode GEMV dispatch reads.
+        A missing entry means this pointer did not come from the Q4 GGUF
+        loader, and guessing a type there is exactly how a different quant
+        (Q5_K, Q8_0, IQ4_XS) would get silently decoded by the Q4_K kernel.
+        """
+        weight_type = GGUF_WEIGHT_TYPES.get(int(w_ptr))
+        if weight_type is None:
+            raise ValueError(
+                f"batched prefill: no GGUF type registered for the {role} weight "
+                f"at 0x{int(w_ptr):x}; load the model through the Q4 GGUF loader"
+            )
+        return weight_type
+
+    def gemm_bf16_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, bf16_scratch, role):
+        """bf16 activations x raw K-quant blocks -> f32.
+
+        Only the types with a WMMA prefill kernel are routed; anything else
+        fails loudly instead of falling through to the Q4_K decoder.
+        """
+        weight_type = prefill_weight_type(w_ptr, role)
+        if weight_type == GGML_Q4_K:
+            _q4_prefill_bf16_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
+                                 stream=stream, runtime=runtime)
+        elif weight_type == GGML_Q6_K:
+            # Q6_K has no f32-output prefill entry point: widen once.
             _q6_prefill_bf16_bf16(x_ptr, w_ptr, bf16_scratch.ptr, rows, in_f, out_f,
                                   stream=stream, runtime=runtime)
             bf16_to_f32(bf16_scratch.ptr, out_ptr, rows * out_f, stream=stream, runtime=runtime)
         else:
-            _q4_prefill_bf16_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
-                                 stream=stream, runtime=runtime)
+            raise ValueError(
+                f"batched prefill: no WMMA prefill kernel for GGML type "
+                f"{weight_type} ({role}); this route wires Q4_K and Q6_K. Q5_K has "
+                f"only the naive raw-block prefill (~100x slower) and the other "
+                f"types have none, so routing them here would mis-decode."
+            )
+
+    def gemm_f32_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, role):
+        """f32 activations x raw Q4_K blocks -> f32 (o_proj keeps f32)."""
+        weight_type = prefill_weight_type(w_ptr, role)
+        if weight_type != GGML_Q4_K:
+            raise ValueError(
+                f"batched prefill: {role} needs the f32/f32 Q4_K WMMA prefill but "
+                f"its weight is GGML type {weight_type}"
+            )
+        _q4_prefill_f32_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
+                            stream=stream, runtime=runtime)
 
     pos_host = np.arange(start, start + rows, dtype=np.int64)
     positions = _upload(pos_host)
@@ -279,9 +319,9 @@ def q4_prefill(runner, hidden_rows, rows, start):
             runner.kernels.vv_rmsnorm_bf16(
                 hidden_rows.ptr, layer.input_ln.ptr, normed.ptr, rows, hidden,
                 spec.rms_norm_eps, library=runner.library, runtime=runtime)
-            gemm_bf16_f32(normed.ptr, layer.q_w.ptr, q_f32.ptr, hidden, hidden, q6_scratch)
-            gemm_bf16_f32(normed.ptr, layer.k_w.ptr, k_f32.ptr, hidden, kv_dim, q6_scratch)
-            gemm_bf16_f32(normed.ptr, layer.v_w.ptr, v_f32.ptr, hidden, kv_dim, q6_scratch)
+            gemm_bf16_f32(normed.ptr, layer.q_w.ptr, q_f32.ptr, hidden, hidden, q6_scratch, "q_proj")
+            gemm_bf16_f32(normed.ptr, layer.k_w.ptr, k_f32.ptr, hidden, kv_dim, q6_scratch, "k_proj")
+            gemm_bf16_f32(normed.ptr, layer.v_w.ptr, v_f32.ptr, hidden, kv_dim, q6_scratch, "v_proj")
             runner.kernels.vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
                                            library=runner.library, runtime=runtime)
             runner.kernels.vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_dim, kv_dim,
@@ -302,8 +342,7 @@ def q4_prefill(runner, hidden_rows, rows, start):
                 spans, rows, heads, kv_heads, head_dim, runner._scale,
                 library=runner.library, runtime=runtime)
             # o projection keeps f32 activations, so it uses the f32/f32 variant.
-            _q4_prefill_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, rows, heads * head_dim, hidden,
-                                stream=stream, runtime=runtime)
+            gemm_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, heads * head_dim, hidden, "o_proj")
             runner.kernels.f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
                                        stream=stream, runtime=runtime)
             runner.kernels.vv_scale_residual_bf16(
@@ -312,13 +351,13 @@ def q4_prefill(runner, hidden_rows, rows, start):
             runner.kernels.vv_rmsnorm_bf16(
                 hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr, rows, hidden,
                 spec.rms_norm_eps, library=runner.library, runtime=runtime)
-            gemm_bf16_f32(normed2.ptr, layer.gate_w.ptr, gate_f32.ptr, hidden, ffn, q6_scratch)
-            gemm_bf16_f32(normed2.ptr, layer.up_w.ptr, up_f32.ptr, hidden, ffn, q6_scratch)
+            gemm_bf16_f32(normed2.ptr, layer.gate_w.ptr, gate_f32.ptr, hidden, ffn, q6_scratch, "gate_proj")
+            gemm_bf16_f32(normed2.ptr, layer.up_w.ptr, up_f32.ptr, hidden, ffn, q6_scratch, "up_proj")
             runner.kernels.f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=stream, runtime=runtime)
             runner.kernels.f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=stream, runtime=runtime)
             runner.kernels.silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
                                                      stream=stream, runtime=runtime)
-            gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden, q6_scratch)
+            gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden, q6_scratch, "down_proj")
             runner.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden,
                                        stream=stream, runtime=runtime)
             runner.kernels.vv_scale_residual_bf16(

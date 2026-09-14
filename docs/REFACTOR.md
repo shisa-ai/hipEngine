@@ -9,6 +9,10 @@
   activation dtypes. Unify them behind overridable GEMM, activation-staging
   and scratch hooks once the Q4 prefill has a production-profile numerical
   gate; the two copies currently differ only in those three places.
+- The batched prefill route wires only Q4_K and Q6_K; Q5_K has no WMMA
+  prefill kernel (only the naive raw-block `gguf_q5_k_prefill_*`, ~100x
+  slower) and raises rather than mis-decoding. Add a Q5_K WMMA prefill before
+  any Q5_K_M GGUF is put on this route.
 - `q4_prefill` allocates ~19 scratch buffers per call. Hoist them into the
   runner (like the decode scratch) once prefill is on the production path and
   per-request allocation shows up in a profile.
