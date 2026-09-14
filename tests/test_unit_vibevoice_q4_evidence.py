@@ -54,7 +54,7 @@ requires_jiwer = pytest.mark.skipif(not _has_jiwer(), reason="needs jiwer")
 @requires_jiwer
 def test_wer_is_a_fraction_and_wer_pct_is_its_percentage():
     refs = ["the quick brown fox jumps"]
-    hyps = ['[{"Content": "the quick brown fox jumped"}]']
+    hyps = ['[{"Start": 0.0, "End": 1.0, "Speaker": 0, "Content": "the quick brown fox jumped"}]']
     fraction = _wer(refs, hyps)
     assert fraction == pytest.approx(0.2)
     assert _wer_pct(refs, hyps) == pytest.approx(20.0)
@@ -62,10 +62,14 @@ def test_wer_is_a_fraction_and_wer_pct_is_its_percentage():
     assert _wer_pct(refs, hyps) == 100.0 * fraction
 
 
+# A schema-valid single segment: every key the engine's protocol requires.
+VALID_SEG = '[{"Start": 0.0, "End": 1.0, "Speaker": 0, "Content": "hello world"}]'
+
+
 @requires_jiwer
 def test_wer_perfect_transcript_is_zero_in_both_units():
     refs = ["hello world"]
-    hyps = ['[{"Content": "hello world"}]']
+    hyps = [VALID_SEG]
     assert _wer(refs, hyps) == 0.0
     assert _wer_pct(refs, hyps) == 0.0
 
@@ -76,7 +80,7 @@ def test_extracted_content_is_not_reparsed():
     Scoring an already-extracted transcript through _wer() re-parses it as
     JSON and raises, which broke the per-clip records.
     """
-    raw = '[{"Content": "hello world"}]'
+    raw = VALID_SEG
     content, status = parse_transcript(raw)
     assert status == "ok" and content == "hello world"
     with pytest.raises(ValueError):
@@ -85,7 +89,7 @@ def test_extracted_content_is_not_reparsed():
 
 @requires_jiwer
 def test_extracted_content_scores_without_reparsing():
-    raw = '[{"Content": "hello world"}]'
+    raw = VALID_SEG
     content, _ = parse_transcript(raw)
     assert _wer(["hello world"], [raw]) == 0.0
     assert _wer_content(["hello world"], [content]) == 0.0
@@ -95,15 +99,38 @@ def test_extracted_content_scores_without_reparsing():
 # --- transcript parsing -------------------------------------------------
 
 def test_parse_transcript_reports_status():
-    assert parse_transcript('[{"Content": "a b"}]') == ("a b", "ok")
+    assert parse_transcript(VALID_SEG) == ("hello world", "ok")
     assert parse_transcript("plain text")[1] == "no_json"
-    assert parse_transcript('[{"Content": "a"') [1] == "bad_json"
+    assert parse_transcript('[{"Start": 0.0, "End": 1.0, "Speaker": 0, "Content": "a"')[1] == "bad_json"
     assert parse_transcript('{"Content": "a"}')[1] == "no_json"
+
+
+@pytest.mark.parametrize("segment", [
+    '{"Content": "a b"}',              # missing Start/End/Speaker
+    '{"Start": 0.0, "End": 1.0, "Speaker": 0}',   # missing Content
+    '{"Start": 0.0, "End": 1.0, "Content": "a b"}',  # missing Speaker
+    '{"Start": 2.0, "End": 1.0, "Speaker": 0, "Content": "a"}',  # End < Start
+    '{"Start": -1.0, "End": 1.0, "Speaker": 0, "Content": "a"}',  # negative Start
+    '{"Start": 0.0, "End": NaN, "Speaker": 0, "Content": "a"}',  # non-finite
+    '{"Start": 0.0, "End": 1.0, "Speaker": true, "Content": "a"}',  # bool Speaker
+    '{"Start": 0.0, "End": 1.0, "Speaker": 0, "Content": 5}',  # non-str Content
+    '{}',
+    '1',
+    '"a b"',
+])
+def test_segments_violating_the_schema_are_not_ok(segment):
+    """The evaluator must be exactly as strict as the engine's protocol.
+
+    A local re-check used to accept any list whose elements had a ``Content``
+    key (defaulting to ""), so ``[{}]`` and ``[1]`` scored as an empty
+    hypothesis instead of being reported as a schema failure.
+    """
+    assert parse_transcript(f"[{segment}]")[1] == "bad_json"
 
 
 def test_content_outside_the_array_is_not_ok():
     """Only the assistant role prefix may sit outside the JSON array."""
-    good = '[{"Content": "hello world"}]'
+    good = VALID_SEG
     assert parse_transcript(good)[1] == "ok"
     assert parse_transcript("assistant\n" + good)[1] == "ok"
     assert parse_transcript("<|im_start|>assistant\n" + good)[1] == "ok"
