@@ -39,3 +39,15 @@ def test_guarded_wrapper_rejects_short_queue_before_build(monkeypatch):
         module.gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out(
             1, 2, 3, 4, 5, 6, 64, 4, 640, 320, 96,
             risk_count_ptr=7, risk_indices_ptr=8, risk_capacity=64 * 320 - 1)
+
+
+def test_quad_restoration_does_not_restore_other_approximate_routes():
+    env = CANDIDATES["q8_blockscale_guarded_quad"].environment
+    assert env["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
+    assert env["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
+    assert set(env) == {
+        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
+        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT",
+        "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
+        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
+    }

@@ -48,6 +48,8 @@ def test_blockscale_raw_oracle_and_ragged_tiles(case, hidden, outputs, guarded):
     codes = rng.integers(-127, 128, (4, outputs, hidden // 32, 32), dtype=np.int8)
     if case == "positive_basis":
         codes = np.abs(codes)
+    else:
+        codes[..., 0], codes[..., -1] = -128, 127
     if case == "cancellation":
         codes[..., 1::2] = codes[..., ::2]
     raw = np.empty((4, outputs, hidden // 32, 34), dtype=np.uint8)

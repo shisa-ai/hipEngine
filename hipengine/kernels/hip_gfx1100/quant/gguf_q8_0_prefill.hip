@@ -641,7 +641,7 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
             const float distance = fabsf(value - __uint_as_float(mid_bits));
             // Empirical rounding-risk screen; full profile gates remain binding.
             const float error = 4.0f * 0x1p-23f * magnitude[tm][tn][j];
-            if (!isfinite(value) || distance <= error) {
+            if (!isfinite(value) || !isfinite(error) || distance <= error) {
               const int slot = atomicAdd(risk_count, 1);
               risk_indices[slot] = static_cast<int>(out_row * out_features + col);
             }

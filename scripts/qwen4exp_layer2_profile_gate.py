@@ -241,6 +241,13 @@ CANDIDATES["q8_blockscale_guarded_mmq"] = replace(
     environment={**CANDIDATES["q8_blockscale_guarded"].environment,
                  "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
 )
+CANDIDATES["q8_blockscale_guarded_quad"] = replace(
+    CANDIDATES["q8_blockscale_guarded"], name="q8_blockscale_guarded_quad",
+    scenario_id="qwen4exp-q8-blockscale-guarded-qsa-quad",
+    environment={**CANDIDATES["q8_blockscale_guarded"].environment,
+                 "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256",
+                 "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad"},
+)
 
 
 class GateError(RuntimeError):
