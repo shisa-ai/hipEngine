@@ -1,0 +1,47 @@
+{
+  "date": "2026-09-14",
+  "purpose": "VibeVoice-ASR Q4_K_M batched prefill: replace the row-by-row route with raw-block Q4_K/Q6_K WMMA prefill",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395, Radeon 8060S (gfx1151), 256-bit LPDDR5X, 133 GB unified",
+  "protocol": {
+    "weights": "Q4_K_M backbone (168 Q4_K + 28 Q6_K layer tensors), bf16 front-end + dense bf16 untied lm_head",
+    "kernels": "gguf_q4_k_wmma_prefill_{bf16_f32,f32_f32}_out and gguf_q6_k_wmma_prefill_bf16_bf16_out read the unmodified GGUF block bytes; no repack, no fp16 weight copies, no extra resident memory",
+    "workload": "89-row prompt from tests/fixtures/vibevoice_asr/vibevoice_asr_lm.npz, 5 repetitions after one warmup, both lanes batched via prefill_rows in one process",
+    "command": "python3 - <<'EOF' (load both lanes, time runtime.prefill_rows(buf, 89, 0) x5, then greedy_generate 16 tokens) EOF"
+  },
+  "results": {
+    "prefill_s_89_rows_q4": 0.195,
+    "prefill_s_89_rows_bf16": 0.296,
+    "prefill_speedup_vs_bf16": 1.52,
+    "prior_row_by_row_prefill_s_89_rows": 3.74,
+    "speedup_vs_prior_row_by_row": 19.2,
+    "greedy_16_tokens_s_q4": 0.995,
+    "greedy_16_tokens_s_bf16": 1.410,
+    "token_chains_identical": true,
+    "decode_ms_per_token_q4": 48.1,
+    "decode_ms_per_token_bf16": 72.2
+  },
+  "per_gemm_at_146_rows": {
+    "note": "ms, raw-block WMMA prefill vs the naive raw-block prefill kernels on the same weights",
+    "ffn_gate_q4_k": {"naive": 170.2, "wmma": 1.92, "speedup": 88.4},
+    "attn_q_q4_k": {"naive": 27.1, "wmma": 0.35, "speedup": 77.2},
+    "ffn_down_q4_k": {"naive": 161.5, "wmma": 1.51, "speedup": 107.2},
+    "ffn_down_q6_k": {"naive": 159.8, "wmma": 7.49, "speedup": 21.3},
+    "attn_v_q6_k": {"naive": 3.0, "wmma": 0.51, "speedup": 5.8},
+    "dual_gate_up_q4_k": {"wmma_dual_2_gemms": 3.70},
+    "bf16_lane_reference": "~1.5 ms per GEMM average (196 GEMMs in ~0.30 s)"
+  },
+  "gates": {
+    "gpu_suite": "8/8 tests/test_gpu_vibevoice_qwen2_q4_runner.py including the greedy chain 16/16 vs the torch fixture, first-position logits, and a new batched-vs-row-by-row prefill oracle",
+    "prefill_numerics": "batched vs row-by-row post-prefill: top-1 identical, top-5 set identical, max logit drift 5.9e-3 relative to the logit scale, cosine 0.99991",
+    "wer_recheck": "20-clip Q4 lane with the batched prefill launched; the 50-clip gate and the 20-clip pack8-decode check are both 1.978% / 1.487% == bf16"
+  },
+  "notes": [
+    "Q4_K now runs at or faster than the dense bf16 lane on both stages under a matched protocol: prefill 0.195 vs 0.296 s and decode 48.1 vs 72.2 ms/token, at 6.10 GB of resident weights against 16.66 GB.",
+    "Q6_K has no f32-output prefill entry point, so attn_v/ffn_down on half the layers land in a bf16 scratch and are widened once. Q6_K ffn_down is the slowest GEMM at 7.49 ms (21x over naive vs 107x for the Q4_K equivalent).",
+    "o_proj keeps f32 activations and uses the f32/f32 variant; the bf16 lane stages fp16 for hipBLASLt, which the Q4 route does not need at all.",
+    "Prefill scratch is allocated per call and released in finally; the route runs once per request."
+  ],
+  "status": "accepted",
+  "supersedes": null
+}
