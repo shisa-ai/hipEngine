@@ -1,234 +1,250 @@
-"""Same-host VibeVoice-ASR speed comparison: hipEngine vs torch GPU.
+"""Matched-request VibeVoice inference benchmark in isolated HIP/torch processes.
 
-Times both stacks end-to-end on identical PCM (feature-extraction
-normalization applied identically): hipEngine front-end -> incremental
-Qwen2 greedy, vs transformers VibeVoice-ASR on cuda bf16 greedy.
-Reports per-phase and total wall time plus transcript equality.
-
-Usage:
-    python3 scripts/vibevoice_asr_bench.py [--pcm-file FILE] [--seconds 11]
-        [--repeats 3]
+An untimed oracle boundary freezes processed PCM, prompt IDs, masks and the
+actual BF16 acoustic noise operands once. Both lanes consume that request;
+reported inference time includes host-to-device input staging, audio encoders,
+prefill and generation, and excludes loading, tokenization and JSON parsing.
 """
-
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import hashlib
 import json
-import platform
+from pathlib import Path
 import socket
 import subprocess
 import sys
+import tempfile
 import time
-from pathlib import Path
 
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-IM_END_ID = 151645
+
+def _load_pcm(args):
+    import wave
+    if getattr(args, 'pcm_npy', None):
+        return np.load(args.pcm_npy)
+    if args.pcm_file is None:
+        from scripts.vibevoice_asr_e2e import synth_pcm
+        return synth_pcm(args.seconds, 0)
+    with wave.open(str(args.pcm_file), 'rb') as fh:
+        if (fh.getframerate(), fh.getnchannels(), fh.getsampwidth()) != (24000, 1, 2):
+            raise ValueError('benchmark WAV must be mono 24 kHz PCM16')
+        return np.frombuffer(fh.readframes(fh.getnframes()), dtype='<i2').astype(np.float32) / 32768
 
 
-def _load_pcm(args) -> tuple[np.ndarray, float]:
-    if args.pcm_file is not None:
-        import wave
-
-        with wave.open(str(args.pcm_file), "rb") as fh:
-            pcm = np.frombuffer(fh.readframes(fh.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
-        return pcm, len(pcm) / fh.getframerate()
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    from vibevoice_asr_e2e import synth_pcm
-
-    pcm = synth_pcm(args.seconds, 0)
-    return pcm, args.seconds
+def array_hash(array):
+    x = np.ascontiguousarray(array)
+    return hashlib.sha256(str((x.shape, x.dtype.str)).encode() + x.tobytes()).hexdigest()
 
 
-def _normalize(pcm: np.ndarray) -> np.ndarray:
-    rms = float(np.sqrt(np.mean(pcm.astype(np.float64) ** 2)))
-    if rms > 0:
-        pcm = pcm * (10 ** (-25.0 / 20)) / (rms + 1e-8)
-        peak = float(np.abs(pcm).max())
-        if peak > 1.0:
-            pcm = pcm / (peak + 1e-8)
-    if len(pcm) % 3200:
-        pcm = np.pad(pcm, (0, 3200 - len(pcm) % 3200))
-    return pcm
-
-
-def _host_identity() -> str:
-    try:
-        gpu = subprocess.run(
-            ["rocminfo"], capture_output=True, text=True, timeout=20
-        ).stdout
-        name = next(
-            (ln.split(":", 1)[1].strip() for ln in gpu.splitlines() if "Marketing Name:" in ln and "AMD" in ln),
-            "unknown",
-        )
-    except Exception:
-        name = "unknown"
-    return f"{socket.gethostname()} / {name} / {platform.machine()}"
-
-
-def bench_hipengine(pcm: np.ndarray, duration: float, args) -> dict:
-    from hipengine.loading.hf_cache import resolve_model_path
-    from hipengine.loading.vibevoice_asr import (
-        load_vibevoice_connector,
-        load_vibevoice_encoder,
-        load_vibevoice_qwen2,
-    )
-    from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
-    from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime
-
-    from vibevoice_asr_e2e import AUDIO_TOKEN_ID, build_prompt
-
-    specs, conns = {}, {}
-    for tok in ("acoustic", "semantic"):
-        specs[tok] = load_vibevoice_encoder(args.weights, tok)
-        conns[tok] = load_vibevoice_connector(args.weights, tok)
-    frontend = VibevoiceFrontendRuntime(
-        specs["acoustic"][0], specs["acoustic"][1],
-        specs["semantic"][0], specs["semantic"][1],
-        conns["acoustic"], conns["semantic"],
-    )
-    lm_path = resolve_model_path(args.model)
-    lm_weights = load_vibevoice_qwen2(str(lm_path))
-    runner = VibevoiceQwen2Runtime(
-        lm_weights, max_context=max(int(len(pcm) / 3200) + 64 + args.max_new_tokens, 1024)
-    )
-    from tokenizers import Tokenizer
-
-    tokenizer = Tokenizer.from_file(str(Path(str(lm_path)) / "tokenizer.json"))
-
-    frames = specs["acoustic"][0].frame_count(len(pcm))
-    rng = np.random.default_rng(20260914)
-    noise = rng.standard_normal((1, frames, specs["acoustic"][0].hidden_size)).astype(np.float32)
-    scale = (specs["acoustic"][0].vae_std * rng.standard_normal(1)).astype(np.float32)
-
-    prompt = build_prompt(duration, frames)
-    input_ids = tokenizer.encode(prompt, add_special_tokens=False).ids
-
-    result = {"engine": "hipEngine (torch-free)"}
-    timings = []
-    for _ in range(args.repeats):
-        t0 = time.perf_counter()
-        audio_embeds = frontend.forward(pcm, noise=noise[0], noise_scale=scale[0])
-        t1 = time.perf_counter()
-
-        rows = [runner.embed_row(int(t)) for t in input_ids]
-        placeholder_idx = [i for i, t in enumerate(input_ids) if t == AUDIO_TOKEN_ID]
-        if len(placeholder_idx) != audio_embeds.shape[0]:
-            raise RuntimeError(
-                f"template placeholders {len(placeholder_idx)} != front-end frames {audio_embeds.shape[0]}"
-            )
-        for j, i in enumerate(placeholder_idx):
-            rows[i] = audio_embeds[j].astype(np.float32)
-        from hipengine.runtime.vibevoice_qwen2 import greedy_generate as _greedy
-
-        t2_pre = time.perf_counter()
-        gen = _greedy(runner, rows, max_new_tokens=args.max_new_tokens, eos_token_id=IM_END_ID)
-        t3 = time.perf_counter()
-        # split prefill vs decode: rerun decode timing is included above; use
-        # the greedy call's single timing for prompt+decode combined and the
-        # token count for reporting
-        timings.append(
-            {"frontend_s": t1 - t0, "prompt_decode_s": t3 - t2_pre, "total_s": t3 - t0, "tokens": len(gen)}
-        )
-    result["timings"] = timings
-    result["tokens"] = gen
-    text = tokenizer.decode(gen, skip_special_tokens=True).strip()
-    result["text"] = text
-    frontend.close()
-    runner.close()
-    return result
-
-
-def bench_torch_gpu(pcm: np.ndarray, duration: float, args) -> dict:
+def prepare_request(args):
     import torch
+    from transformers import VibeVoiceAsrProcessor
+    from hipengine.loading.hf_cache import resolve_model_path
+    path = resolve_model_path(args.model)
+    raw = _load_pcm(args)
+    if raw.ndim != 1 or not raw.size or not np.isfinite(raw).all():
+        raise ValueError('audio must be a nonempty finite mono waveform')
+    processor = VibeVoiceAsrProcessor.from_pretrained(str(path))
+    config = json.loads((path / 'config.json').read_text())
+    t0 = time.perf_counter()
+    inputs = processor.apply_transcription_request(audio=raw, prompt=args.context or None)
+    pcm = inputs['input_values'].to(torch.bfloat16).float().numpy().reshape(-1)
+    frames = (raw.size + 3199) // 3200
+    rng = np.random.default_rng(args.seed)
+    width = config['acoustic_tokenizer_encoder_config']['hidden_size']
+    noise = torch.tensor(rng.standard_normal((1, frames, width)), dtype=torch.bfloat16)
+    base_scale = torch.tensor(rng.standard_normal(1), dtype=torch.bfloat16)
+    scale = base_scale * config['acoustic_tokenizer_encoder_config']['vae_std']
+    arrays = dict(pcm=pcm, input_ids=inputs['input_ids'].numpy(),
+                  padding_mask=inputs['padding_mask'].numpy(), noise=noise.float().numpy(),
+                  base_scale=base_scale.float().numpy(), scale=scale.float().numpy())
+    meta = dict(model=str(path), revision=path.name, audio_seconds=raw.size / 24000,
+                raw_pcm_sha256=array_hash(raw), hashes={k: array_hash(v) for k,v in arrays.items()},
+                seed=args.seed, context=args.context, preprocessing_s=time.perf_counter()-t0)
+    np.savez(args.request, **arrays)
+    args.request.with_suffix('.json').write_text(json.dumps(meta, indent=2)+'\n')
+    return meta
 
-    from transformers import VibeVoiceAsrForConditionalGeneration, VibeVoiceAsrProcessor
 
-    lm_path = str(resolve_model_path_torch(args))
-    processor = VibeVoiceAsrProcessor.from_pretrained(lm_path)
-    model = VibeVoiceAsrForConditionalGeneration.from_pretrained(
-        lm_path, torch_dtype=torch.bfloat16, device_map="cuda", attn_implementation="eager"
-    ).eval()
-    torch.set_grad_enabled(False)
+@contextmanager
+def recorded_noise(torch, noise, base_scale):
+    """Override just the two audio RNG draws, validating use and shape."""
+    from unittest.mock import patch
+    calls = []
+    def randn(*shape, **kwargs):
+        if shape != (1,):
+            raise ValueError(f'unexpected acoustic scale draw: {shape}')
+        calls.append('scale')
+        return base_scale.to(device=kwargs['device'], dtype=kwargs['dtype'])
+    def randn_like(x, **kwargs):
+        if tuple(x.shape) != tuple(noise.shape):
+            raise ValueError(f'acoustic noise shape mismatch: {x.shape} != {noise.shape}')
+        calls.append('noise')
+        return noise.to(device=x.device, dtype=x.dtype)
+    with patch.object(torch, 'randn', randn), patch.object(torch, 'randn_like', randn_like):
+        yield
+    if calls != ['scale', 'noise']:
+        raise RuntimeError(f'acoustic RNG protocol changed: {calls}')
 
-    pcm_f32 = pcm.astype(np.float32)
-    result = {"engine": "torch GPU (cuda bf16, sdpa)"}
-    timings = []
-    text = ""
-    for _ in range(args.repeats):
-        t0 = time.perf_counter()
-        inputs = processor.apply_transcription_request(audio=pcm_f32)
-        input_values = inputs["input_values"].to(device="cuda", dtype=torch.bfloat16)
-        if input_values.ndim == 2:
-            input_values = input_values.reshape(1, 1, -1)
-        input_ids = inputs["input_ids"].to("cuda")
-        padding_mask = inputs.get("padding_mask")
-        if padding_mask is not None:
-            padding_mask = padding_mask.to("cuda")
-        torch.cuda.synchronize()
-        t1 = time.perf_counter()
-        generated = model.generate(
-            inputs=input_ids,
-            input_values=input_values,
-            padding_mask=padding_mask,
-            max_new_tokens=args.max_new_tokens,
-            do_sample=False,
-        )
-        torch.cuda.synchronize()
-        t2 = time.perf_counter()
-        timings.append(
-            {"preprocess_s": t1 - t0, "model_s": t2 - t1, "total_s": t2 - t0, "tokens": int(generated.shape[1] - inputs["input_ids"].shape[1])}
-        )
-    text = processor.decode(generated[0, input_ids.shape[1]:], skip_special_tokens=True).strip()
-    result["timings"] = timings
-    result["text"] = text
+
+def _read_request(path):
+    meta = json.loads(path.with_suffix('.json').read_text())
+    with np.load(path) as f:
+        arrays = {k: f[k] for k in f.files}
+    if {k: array_hash(v) for k,v in arrays.items()} != meta['hashes']:
+        raise ValueError('request hash mismatch')
+    return arrays, meta
+
+
+def _compat_lane(pcm, duration, args, lane):
+    """Keep existing single-lane callers on the matched request protocol."""
+    if abs(len(pcm) / 24000 - duration) > 1 / 24000:
+        raise ValueError('duration must describe the unpadded 24 kHz PCM')
+    with tempfile.TemporaryDirectory(prefix='vibevoice-lane-') as directory:
+        root = Path(directory)
+        np.save(root/'pcm.npy', pcm)
+        cmd = [sys.executable, str(Path(__file__).resolve()), '--model',args.model,
+               '--pcm-npy',str(root/'pcm.npy'), '--request',str(root/'request.npz'),
+               '--output',str(root/'out.json'), '--max-new-tokens',str(args.max_new_tokens),
+               '--repeats',str(args.repeats)]
+        subprocess.run([*cmd,'--lane','prepare'],check=True)
+        subprocess.run([*cmd,'--lane',lane],check=True)
+        result = json.loads((root/'out.json').read_text())
+    result['text'] = result['timings'][-1]['text']
     return result
 
 
-def resolve_model_path_torch(args) -> str:
-    from hipengine.loading.hf_cache import resolve_model_path
-
-    return str(resolve_model_path(args.model))
+def bench_hipengine(pcm, duration, args):
+    return _compat_lane(pcm, duration, args, 'hip')
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pcm-file", type=Path, default=None)
-    parser.add_argument("--seconds", type=float, default=11.0)
-    parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--model", default="microsoft/VibeVoice-ASR-HF")
-    parser.add_argument("--weights", default="microsoft/VibeVoice-ASR")
-    parser.add_argument("--max-new-tokens", type=int, default=128)
-    parser.add_argument("--skip-torch", action="store_true")
-    args = parser.parse_args()
-
-    pcm_raw, duration = _load_pcm(args)
-    pcm = _normalize(pcm_raw)
-    print(f"host: {_host_identity()}")
-    print(f"audio: {len(pcm)} samples ({duration:.2f} s), frames {len(pcm)//3200}")
-
-    hip = bench_hipengine(pcm, duration, args)
-    best = min(hip["timings"], key=lambda t: t["total_s"])
-    print(f"hipEngine: frontend {best['frontend_s']:.3f}s prompt+decode {best['prompt_decode_s']:.3f}s "
-          f"({best['tokens']} tok) total {best['total_s']:.3f}s")
-    print("hipEngine text:", hip["text"][:120])
-
-    if not args.skip_torch:
-        tor = bench_torch_gpu(pcm, duration, args)
-        best_t = min(tor["timings"], key=lambda t: t["total_s"])
-        print(f"torch GPU: model {best_t['model_s']:.3f}s total {best_t['total_s']:.3f}s")
-        print("torch text:", tor["text"][:120])
-        print(f"transcripts equal: {hip['text'].strip() == tor['text'].strip()}")
-        ratio = best_t["total_s"] / best["total_s"]
-        print(f"hipEngine/torch total ratio: {best['total_s']/best_t['total_s']:.2f}x (lower is better for hipEngine)")
-    out = {"host": _host_identity(), "audio_seconds": duration, "hip": {k: hip[k] for k in ('timings','text')}}
-    if not args.skip_torch:
-        out["torch"] = {k: tor[k] for k in ('timings','text')}
-    print(json.dumps(out, indent=2))
+def bench_torch_gpu(pcm, duration, args):
+    return _compat_lane(pcm, duration, args, 'torch')
 
 
-if __name__ == "__main__":
+def run_lane(args):
+    from scripts.vibevoice_asr_e2e import AUDIO_TOKEN_ID, IM_END_ID, parse_transcript
+    arrays, meta = _read_request(args.request)
+    input_ids = arrays['input_ids'][0].tolist()
+    timings = []
+    if args.lane == 'hip':
+        from tokenizers import Tokenizer
+        from hipengine.loading.vibevoice_asr import load_vibevoice_encoder, load_vibevoice_connector, load_vibevoice_qwen2
+        from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
+        from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime, greedy_generate
+        specs = {k: load_vibevoice_encoder(meta['model'], k) for k in ('acoustic','semantic')}
+        frontend = VibevoiceFrontendRuntime(*specs['acoustic'], *specs['semantic'],
+            load_vibevoice_connector(meta['model'],'acoustic'), load_vibevoice_connector(meta['model'],'semantic'))
+        weights = load_vibevoice_qwen2(meta['model'])
+        runner = VibevoiceQwen2Runtime(weights, max_context=len(input_ids)+args.max_new_tokens)
+        del weights, specs
+        tokenizer = Tokenizer.from_file(str(Path(meta['model'])/'tokenizer.json'))
+        def infer():
+            embeds = frontend.forward(arrays['pcm'], noise=arrays['noise'][0], noise_scale=arrays['scale'][0])
+            rows = [runner.embed_row(t) for t in input_ids]
+            positions = [i for i,t in enumerate(input_ids) if t == AUDIO_TOKEN_ID]
+            if len(positions) != len(embeds):
+                raise ValueError('audio placeholder count mismatch')
+            for i, row in zip(positions, embeds):
+                rows[i] = row
+            return greedy_generate(runner, rows, max_new_tokens=args.max_new_tokens, eos_token_id=IM_END_ID)
+        def close():
+            frontend.close()
+            runner.close()
+        def decode(ids):
+            return tokenizer.decode(ids, skip_special_tokens=True).strip()
+        versions = {'numpy': np.__version__}
+    else:
+        import torch
+        import transformers
+        from transformers import VibeVoiceAsrForConditionalGeneration, VibeVoiceAsrProcessor
+        torch.set_grad_enabled(False)
+        model = VibeVoiceAsrForConditionalGeneration.from_pretrained(meta['model'],
+            torch_dtype=torch.bfloat16, device_map='cuda', attn_implementation='eager').eval()
+        processor = VibeVoiceAsrProcessor.from_pretrained(meta['model'])
+        noise = torch.from_numpy(arrays['noise'])
+        base_scale = torch.from_numpy(arrays['base_scale'])
+        def infer():
+            ids = torch.tensor([input_ids], device='cuda')
+            pcm = torch.from_numpy(arrays['pcm']).reshape(1,1,-1).to(device='cuda',dtype=torch.bfloat16)
+            mask = torch.from_numpy(arrays['padding_mask']).to('cuda')
+            with recorded_noise(torch, noise, base_scale):
+                out = model.generate(inputs=ids, input_values=pcm, padding_mask=mask,
+                    max_new_tokens=args.max_new_tokens, do_sample=False, eos_token_id=IM_END_ID)
+            torch.cuda.synchronize()
+            return out[0, len(input_ids):].tolist()
+        def decode(ids):
+            return processor.decode(ids, skip_special_tokens=True).strip()
+        def close():
+            pass
+        versions = {'torch':torch.__version__, 'transformers':transformers.__version__}
+    try:
+        for repeat in range(args.warmup + args.repeats):
+            t0 = time.perf_counter()
+            ids = infer()
+            elapsed = time.perf_counter() - t0
+            text = decode(ids)
+            if repeat >= args.warmup:
+                timings.append(dict(inference_s=elapsed, tokens=ids, text=text,
+                    parsed=parse_transcript(text), natural_eos=bool(ids and ids[-1] == IM_END_ID)))
+    finally:
+        close()
+    result = dict(lane=args.lane, versions=versions, request=meta, timings=timings,
+                  torch_imported='torch' in sys.modules)
+    if args.lane == 'hip' and result['torch_imported']:
+        raise RuntimeError('torch imported in HIP lane')
+    args.output.write_text(json.dumps(result,indent=2)+'\n')
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--pcm-file', type=Path)
+    p.add_argument('--pcm-npy', type=Path, help=argparse.SUPPRESS)
+    p.add_argument('--seconds',type=float,default=11.)
+    p.add_argument('--repeats',type=int,default=3)
+    p.add_argument('--warmup',type=int,default=1)
+    p.add_argument('--seed',type=int,default=20260914)
+    p.add_argument('--context',default='')
+    p.add_argument('--model',default='microsoft/VibeVoice-ASR-HF')
+    p.add_argument('--max-new-tokens',type=int,default=256)
+    p.add_argument('--output',type=Path,default=Path('/tmp/vibevoice-matched-benchmark.json'))
+    p.add_argument('--request',type=Path)
+    p.add_argument('--lane',choices=['prepare','hip','torch'])
+    args = p.parse_args()
+    if args.repeats <= 0 or args.warmup < 1 or args.max_new_tokens <= 0:
+        p.error('positive repeats/max-new-tokens and at least one discarded warmup required')
+    if args.lane == 'prepare':
+        prepare_request(args)
+        return
+    if args.lane:
+        run_lane(args)
+        return
+    with tempfile.TemporaryDirectory(prefix='vibevoice-bench-') as directory:
+        request = Path(directory)/'request.npz'
+        cmd = [sys.executable,str(Path(__file__).resolve()),*sys.argv[1:], '--request',str(request)]
+        subprocess.run([*cmd,'--lane','prepare'],check=True)
+        lanes = {}
+        for lane in ('hip','torch'):
+            out = Path(directory)/(lane+'.json')
+            subprocess.run([*cmd,'--lane',lane,'--output',str(out)],check=True)
+            lanes[lane] = json.loads(out.read_text())
+        gpu = subprocess.run(['rocminfo'],capture_output=True,text=True,check=True).stdout
+        report = dict(host=socket.gethostname(),hardware=[s.strip() for s in gpu.splitlines()
+            if 'Marketing Name:' in s or 'Name:' in s and 'gfx' in s],
+            command=[sys.executable,*sys.argv], warmup=args.warmup,
+            timing_scope='inference including input H2D; shared preprocessing/tokenization, loading and parsing excluded',
+            lanes=lanes)
+        args.output.write_text(json.dumps(report,indent=2)+'\n')
+        for lane,result in lanes.items():
+            print(lane,'inference_s:',[round(t['inference_s'],4) for t in result['timings']])
+        print(args.output)
+
+
+if __name__ == '__main__':
     main()

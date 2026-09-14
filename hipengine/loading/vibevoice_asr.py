@@ -1,8 +1,8 @@
 """Torch-free weight loading for the VibeVoice-ASR audio front-end.
 
-Reads the original ``microsoft/VibeVoice-ASR`` safetensors checkpoint (BF16)
-with NumPy only and produces the frozen weight bundles consumed by the CPU
-reference (``hipengine/kernels/cpu_reference/vibevoice_asr.py``) and later by
+Reads original or HF ``microsoft/VibeVoice-ASR`` safetensors checkpoints (BF16)
+with NumPy only; each call stays within its selected artifact and produces the frozen weight bundles consumed by the CPU
+reference (``hipengine/kernels/cpu_reference/vibevoice_asr.py``) and by
 the HIP runtime.
 
 Stage-ordering is *inferred from tensor shapes*, not from config lists: the
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,27 @@ def _bf16_bytes_to_f32(payload: bytes, shape: tuple[int, ...]) -> np.ndarray:
         raise ValueError("bf16 payload size mismatch")
     raw = np.frombuffer(payload, dtype=np.uint16).astype(np.uint32)
     return (raw << np.uint32(16)).view(np.float32).reshape(shape).copy()
+
+
+def hf_frontend_tensor_name(name: str) -> str:
+    """Translate original frontend names to the independently pinned HF layout."""
+    name = re.sub(r"model\.(acoustic|semantic)_tokenizer.encoder", r"\1_tokenizer_encoder", name)
+    def stage(index):
+        return "stem" if int(index) == 0 else f"conv_layers.{int(index) - 1}"
+    name = re.sub(r"downsample_layers\.(\d+)\.0\.conv\.conv", lambda m: stage(m[1]) + ".conv.conv", name)
+    name = re.sub(r"stages\.(\d+)\.(\d+)", lambda m: stage(m[1]) + f".stage.{m[2]}", name)
+    name = name.replace("mixer.conv.conv.conv", "mixer.conv").replace("head.conv.conv", "head.conv")
+    name = re.sub(r"model\.(acoustic|semantic)_connector\.fc([12])", r"multi_modal_projector.\1_linear_\2", name)
+    return re.sub(r"model\.(acoustic|semantic)_connector\.norm", r"multi_modal_projector.\1_norm", name)
+
+
+class _FrontendIndex:
+    def __init__(self, index):
+        self.index = index
+        self.hf = index.config.get("model_type") == "vibevoice_asr"
+
+    def require(self, names):
+        return self.index.require(tuple(hf_frontend_tensor_name(n) for n in names) if self.hf else names)
 
 
 def _load_tensor(index: Any, name: str, path: Path) -> np.ndarray:
@@ -91,7 +113,7 @@ def load_vibevoice_encoder(
     if tokenizer not in ("acoustic", "semantic"):
         raise ValueError("tokenizer must be 'acoustic' or 'semantic'")
     path = resolve_model_path(model_path)
-    index = load_weight_index(path)
+    index = _FrontendIndex(load_weight_index(path))
     prefix = f"model.{tokenizer}_tokenizer.encoder"
 
     stem_w = _load_tensor(index, f"{prefix}.downsample_layers.0.0.conv.conv.weight", path)
@@ -174,7 +196,7 @@ def load_vibevoice_connector(model_path: str | Path, tokenizer: str) -> Vibevoic
     if tokenizer not in ("acoustic", "semantic"):
         raise ValueError("tokenizer must be 'acoustic' or 'semantic'")
     path = resolve_model_path(model_path)
-    index = load_weight_index(path)
+    index = _FrontendIndex(load_weight_index(path))
     prefix = f"model.{tokenizer}_connector"
     return VibevoiceConnectorWeights(
         fc1_weight=_load_tensor(index, f"{prefix}.fc1.weight", path),
