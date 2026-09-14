@@ -217,29 +217,49 @@ NATIVE_AB_MODES = ("native_staged_exchange_batched",)
 def read_native_ab_marginal(path: Path) -> dict[str, Any]:
     """Read the native arm's per-step marginal out of the A/B artifact.
 
-    The native runner verifies the chain's dependency at the same depth it times
-    with a bounded recurrence and fails its process if the check is not exact, so
-    an artifact that reports ``exact`` here has already proved that every step
-    consumed its predecessor.
+    The native runner runs the chain through one ``step`` implementation for both
+    its timed and its verified passes, checks the whole vector on both ranks,
+    rejects nonfinite values, and exits non-zero when a check fails. A depth is
+    accepted here when the bounded recurrence verified exactly and the timed
+    recurrence either verified exactly or is honestly reported as saturating fp32
+    at that depth. The comparison against the Python arm is reported as
+    provisional when the two arms did not match on payload, depths, protocol,
+    devices and balanced repetitions, and that flag is carried into the source
+    record rather than dropped.
     """
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if payload.get("kind") != "tp2-staged-exchange-native-ab":
         raise ValueError(f"{path}: not a native A/B artifact")
-    marginal = payload.get("native_marginal", {}).get("overall_us_per_step")
+    arms = payload.get("arms") or {}
+    native_arm = arms.get("native") or {}
+    marginal = (native_arm.get("marginal") or {}).get("overall_us_per_step")
     if marginal is None:
         raise ValueError(f"{path}: the native arm has no overall marginal")
-    depths = payload.get("native", {})
-    unverified = [
-        depth
-        for depth, entry in depths.items()
-        if not (entry.get("verification") or {}).get("exact")
-    ]
+    depths = native_arm.get("depths") or {}
+    if not depths:
+        raise ValueError(f"{path}: the native arm has no depths")
+    unverified = []
+    for depth, entry in depths.items():
+        verification = entry.get("verification") or {}
+        bounded = verification.get("bounded") or {}
+        summed = verification.get("sum") or {}
+        if not (bounded.get("exact") and bounded.get("finite")):
+            unverified.append(depth)
+            continue
+        timed_ok = (
+            bool(summed.get("finite") and summed.get("exact"))
+            if summed.get("informative")
+            else bool(summed.get("saturation_expected"))
+        )
+        if not timed_ok:
+            unverified.append(depth)
     if unverified:
         raise ValueError(
             f"{path}: depths {sorted(unverified, key=int)} did not verify their chain, "
             "so the marginal is not a per-layer cost"
         )
+    comparison = payload.get("comparison") or {}
     return {
         "marginal_us_per_step": float(marginal),
         "source": str(path),
@@ -248,8 +268,11 @@ def read_native_ab_marginal(path: Path) -> dict[str, Any]:
         "payload_bytes": payload.get("payload_bytes"),
         "world_size": 2,
         "group_boundary": payload.get("protocol"),
-        "python_arm_us_per_step": payload.get("comparison", {}).get("python_us_per_step"),
-        "python_over_native": payload.get("comparison", {}).get("python_over_native"),
+        "python_arm_us_per_step": comparison.get("python_us_per_step"),
+        "python_over_native": comparison.get("python_over_native"),
+        "comparison_provisional": bool(comparison.get("provisional", True)),
+        "provenance_match": payload.get("provenance_match"),
+        "git_commit": (payload.get("provenance") or {}).get("git_commit"),
     }
 
 

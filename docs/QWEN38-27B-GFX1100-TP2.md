@@ -158,8 +158,8 @@ per-step groups do not.
   | RCCL, one group per reduction, copy removed | 153.9 us | 19.70 ms | 0.738x |
   | RCCL, copy removed, replayed from a captured graph | 147.0 us | 18.82 ms | 0.757x |
   | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 9.00 ms | 1.022x |
-  | Host exchange, both ranks submitted before either is awaited | 40.9 us | 5.24 ms | 1.182x |
-  | Host exchange, same protocol driven from a native C++ loop | **20.8 us** | **2.66 ms** | **1.326x** |
+  | Host exchange, both ranks submitted before either is awaited | 40.0 us | 5.12 ms | 1.181x |
+  | Host exchange, same protocol driven from a native C++ loop | **20.5 us** | **2.62 ms** | **1.328x** |
 
   The intermediate device copy costs **23.6 us per reduction**, so the copy-free
   protocol is the right default for any RCCL-based chain. Host submission is only
@@ -195,21 +195,29 @@ per-step groups do not.
 
   The Python arm's projection clears 1.0x at 0%, 10% and 20% fixed-cost share and
   reaches 0.994x at 30%. Driving the identical protocol from a native C++ loop
-  costs **20.8 us per reduction instead of 40.9**, and its projection clears 1.0x
-  in every row and reaches **1.326x at 0% fixed share**, above the design's 1.3x
-  target. The term-by-term picture is not a simple subtraction: submission and
-  device scoping fall from 26.3 to 3.6 us and the host sum from 6.6 to 2.0 us, but
-  the exposed wait **rises** from 8.9 to 15.0 us because earlier submission changes
-  what is exposed. These are still **conditional projections**: the artifacts
+  costs **20.45 us per reduction instead of 40.00**, and its projection clears 1.0x
+  in every row and reaches **1.328x at 0% fixed share**, above the design's 1.3x
+  target. The comparison is now **matched rather than artifact-imported**:
+  `scripts/tp_staged_exchange_native_ab.py` reruns both arms in one session over
+  the same depth ladder with alternating order per repetition, and reports the
+  ratio only after both arms agree on payload, depths, protocol, physical devices
+  and repetition count (artifact
+  `benchmarks/results/2026-09-14-w7900-tp2-staged-exchange-native-ab.json`). The
+  term-by-term picture is not a simple subtraction: submission and device scoping
+  fall from 26.3 to 3.3 us and the host sum from 6.6 to 2.0 us, but the exposed
+  wait **rises** from 8.9 to 14.9 us because earlier submission changes what is
+  exposed. These are still **conditional projections**: the artifacts
   record `certified: false` with no shard-kernel evidence, the native runner is a
   standalone program rather than engine code, and the fixed-cost share is an
   assumption. The transport budget is now measured as affordable; nothing here is
   a qualified model result. The 1.3x target is an aspiration, and the design accepts smaller
   qualified wins; whether the exchange can supply one is undecided until the local
-  segments and an in-chain copy trace exist. The full-vector check runs through
-  the same batched protocol at the maximum timed depth with a distinct seed per
-  rank and a bounded recurrence, so every element and both ranks are covered
-  rather than element zero of a scalar seed: 5120 elements, exact, ranks agree.
+  segments and an in-chain copy trace exist. The native runner's timed and
+  verified passes share one `step` implementation, so the structure that is timed
+  is the structure that is checked: both ranks are read back over the whole
+  5120-element vector, nonfinite values fail the run explicitly, and the timed
+  recurrence is verified exactly at every depth through 64 while depth 128 is
+  reported as fp32-saturating rather than passed.
 
   Capturing the dependency-bearing chain works: 128 reductions, one native group
   each, captured into a HIP graph and replayed, with the closed form reproduced
@@ -569,13 +577,16 @@ communication wrappers or treat estimated half-model time as measured evidence.
   **0.99-1.17x** (`.../tp2_break_even_staged_exchange_batched.json`) - above 1.0x
   at 0%, 10% and 20% fixed-cost share. Packet 3 does not start from the RCCL
   result; see "Measured status".
-- [x] Measure the TP1 segment costs on both cards. A rocprofv3 attribution of the
-  same protocol puts attention + GDN + sampler + copy at **1.578 ms/step (W7900)
-  and 1.441 ms/step (XTX)**, 4.7% and 5.1% of each card's own token time, or 11.9%
-  and 12.9% including every unnamed kernel; weight reads are 77% of the token time
-  on both cards, so the fixed share is small and the projection's 20-30% rows are
-  unsupported. Each step issues ~811 launches, which is the per-rank term the
-  projection omits.
+- [x] Profile where the TP1 step's device time goes, on both cards. A rocprofv3
+  attribution puts weight reads at **25.95 ms/step (W7900) and 21.77 ms/step
+  (XTX)** - 77% of each card's own token time - with attention + GDN + sampler +
+  copy at **1.578 and 1.441 ms/step** beside them, and the two cards' 1.19x
+  weight-read ratio matching their 1.20x TP1 token-rate ratio. This is a device-time
+  profile, **not** a fixed-cost share: dispatch intervals overlap (the harness
+  reports a 1.916 overlap ratio), the family sums are not additive, and the fixed
+  term includes launch and scheduling cost that the table does not measure. The
+  0-30% sensitivity range therefore stands. Each step issues ~811 launches, which a
+  TP2 group would carry on both ranks.
 - [ ] Measure the shard-shaped segments that selective sharding needs, on both
   cards: half-intermediate MLP through the engine's own GEMV dispatch, plus
   replicated and single-owner attention and GDN at full and half head counts, with
