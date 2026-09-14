@@ -6,45 +6,156 @@
  "protocol": {
   "weights": "microsoft/VibeVoice-ASR-HF acoustic and semantic tokenizer encoders + connectors, frontend_variant=wmma",
   "change": "_ScratchPool.reset() used to close the DeviceMemoryArena and create a new one on every call, so each encoder pass paid a hipMalloc/hipFree pair for the whole arena. It now rewinds the bump pointer when the existing arena is already large enough and only replaces it when a request does not fit. DeviceMemoryArena gains a rewind() method; the change is purely additive there.",
-  "why_it_matters": "reset() runs once per encoder pass, so a forward is two resets. The requested capacity is 24 * chunk_samples * num_filters * 2 + 16 MiB, which is 287 MB for an 11 s clip, 754 MB for 30 s and 2.23 GB for 90 s (both encoders have num_filters=32). All resets within a forward request the same capacity, so reuse applies from the first pass onward.",
+  "why_it_matters": "reset() runs once per encoder pass, so a forward is two resets. The requested capacity is 24 * chunk * num_filters * 2 + 16 MiB (both encoders have num_filters=32), measured at 287113216 B for an 11 s clip (one chunk), 754057216 B for 30 s (one chunk) and 2228617216 B for 90 s, and 262537216 B per reset for the 30 s three-chunk case. All resets within a forward request the same capacity, so reuse applies from the first pass onward.",
   "method_primary": "in-process rotating A/B: the same frontend alternates between the previous reset and the rewind reset, 2 warmup passes each, then 6 timed passes per lane alternating, so host drift cannot favour a lane",
-  "method_secondary": "separate-process before/after on the same host, 1 warmup plus 4 timed passes per revision",
-  "command": "python3 /tmp/frontend_ab.py (primary) and python3 /tmp/frontend_bench.py (secondary), run against HEAD and against the change"
+  "method_secondary": "separate-process before/after on the same host via --lane legacy / --lane reused, 1 warmup plus 4 timed passes per revision",
+  "command": "python3 scripts/vibevoice_frontend_scratch_ab.py --trials 6 --warmup 2 --seconds 11 30 90 --json <artifact> for the primary A/B; --trials 6 --warmup 2 --seconds 30 --chunk-samples 160000 for the multi-chunk row; --lane legacy and --lane reused in separate processes for the secondary row. The script seeds each clip from its duration, so a clip's waveform and output hash do not depend on which other durations were requested in the same run. It also asserts the shipped _ScratchPool.reset() rewinds a fitting arena and aborts if it does not, so the A/B cannot silently compare the legacy path with itself."
  },
  "results": {
   "in_process_rotating_ab": {
-   "11s_audio": {"old_ms": 290.2, "new_ms": 280.6, "delta_ms": 9.6, "delta_pct": 3.42,
-                 "old_trials": [293.3, 290.5, 292.1, 289.5, 289.9, 288.4],
-                 "new_trials": [281.8, 280.2, 275.7, 280.7, 280.9, 280.4]},
-   "30s_audio": {"old_ms": 594.9, "new_ms": 529.7, "delta_ms": 65.2, "delta_pct": 12.31,
-                 "old_trials": [594.0, 594.0, 595.8, 600.2, 590.2, 597.4],
-                 "new_trials": [523.8, 529.1, 530.9, 533.7, 529.5, 529.8]},
-   "90s_audio": {"old_ms": 1657.7, "new_ms": 1441.9, "delta_ms": 215.7, "delta_pct": 14.96,
-                 "old_trials": [1680.0, 1674.3, 1655.1, 1654.1, 1660.2, 1652.8],
-                 "new_trials": [1444.9, 1429.4, 1438.7, 1439.0, 1473.9, 1475.5]}
+   "11s_audio": {
+    "old_ms": 288.5,
+    "new_ms": 275.3,
+    "delta_ms": 13.2,
+    "delta_pct": 4.8,
+    "old_trials": [
+     287.9,
+     287.3,
+     288.9,
+     288.8,
+     288.2,
+     291.8
+    ],
+    "new_trials": [
+     276.3,
+     276.0,
+     276.1,
+     270.6,
+     274.5,
+     271.1
+    ]
+   },
+   "30s_audio": {
+    "old_ms": 609.8,
+    "new_ms": 550.4,
+    "delta_ms": 59.3,
+    "delta_pct": 10.78,
+    "old_trials": [
+     592.6,
+     613.3,
+     611.9,
+     609.1,
+     605.5,
+     610.5
+    ],
+    "new_trials": [
+     530.3,
+     556.9,
+     546.7,
+     544.9,
+     559.0,
+     554.1
+    ]
+   },
+   "90s_audio": {
+    "old_ms": 1650.5,
+    "new_ms": 1441.1,
+    "delta_ms": 209.4,
+    "delta_pct": 14.53,
+    "old_trials": [
+     1642.8,
+     1661.8,
+     1653.9,
+     1669.0,
+     1647.1,
+     1623.7
+    ],
+    "new_trials": [
+     1453.6,
+     1456.5,
+     1439.0,
+     1437.1,
+     1437.0,
+     1443.2
+    ]
+   }
+  },
+  "multi_chunk_30s": {
+   "chunk_samples": 160000,
+   "chunks": 3,
+   "resets_per_forward": 6,
+   "old_ms": 842.6,
+   "new_ms": 802.9,
+   "delta_ms": 39.7,
+   "delta_pct": 4.94
   },
   "separate_process_before_after": {
-   "11s_audio": {"old_ms": 294.5, "new_ms": 274.3, "delta_pct": 6.9},
-   "30s_audio": {"old_ms": 600.1, "new_ms": 525.3, "delta_pct": 12.5}
+   "11s_audio": {
+    "old_ms": 294.6,
+    "new_ms": 276.0,
+    "delta_pct": 6.74
+   },
+   "30s_audio": {
+    "old_ms": 607.5,
+    "new_ms": 537.8,
+    "delta_pct": 12.96
+   }
   },
-  "arena_capacity_bytes": {"11s": 287113216, "30s": 754974720, "90s": 2231369728},
-  "resets_per_forward": 2,
-  "saving_scales_with_arena_size": "9.6 ms at 287 MB, 65.2 ms at 754 MB, 215.7 ms at 2.23 GB; the freed and reallocated bytes per forward are twice the arena size",
+  "arena_capacity_bytes": {
+   "11s_1_chunk": 287113216,
+   "30s_1_chunk": 754057216,
+   "30s_3_chunks": 262537216,
+   "90s_1_chunk": 2228617216
+  },
+  "resets_per_forward": {
+   "11s": 2,
+   "30s_1_chunk": 2,
+   "30s_3_chunks": 6,
+   "90s": 2
+  },
+  "saving_scales_with_arena_size": "13.2 ms at 287 MB, 59.3 ms at 754 MB, 209.4 ms at 2.23 GB; the freed and reallocated bytes per forward are twice the arena size",
+  "run_to_run_spread_pct": {
+   "11s": [
+    3.86,
+    4.42,
+    4.8
+   ],
+   "30s": [
+    8.96,
+    10.78,
+    10.84,
+    12.31
+   ],
+   "90s": [
+    14.53,
+    14.6,
+    14.96
+   ],
+   "note": "the same committed command re-run at different times; the effect is well clear of this spread at every duration, and the percentage is not a fixed constant."
+  },
   "output_bit_identity": {
-   "11s_chunk_1440000": "d120e4b35cc484535c0c642ab76987c0",
-   "30s_chunk_160000": "c5cff17f76d13a19aafd1bb8ca88ee04",
-   "30s_chunk_1440000": "f950be75d44b19f24a6ad03340b1e43c",
-   "verdict": "identical between revisions for all three configurations, and identical across four repeated calls in each configuration, so reuse does not expose stale arena contents"
+   "11s_chunk_1440000": "265a7485046e2fa5bf0c068f0f1607f74eeebf1fda05bccb91d00ae15eb30a48",
+   "30s_chunk_1440000": "5f72a790c34eddf136b621fb601c1e85e19061840d158ced2d89074640683732",
+   "30s_chunk_160000": "5f72a790c34eddf136b621fb601c1e85e19061840d158ced2d89074640683732",
+   "90s_chunk_1440000": "54bba9f084e1cf1a37a8064b056b44a4c56beba68c157a4252803d6bed69a639",
+   "verdict": "identical between revisions for every configuration, and identical across all timed calls in each configuration, so reuse does not expose stale arena contents. The 30 s one-chunk and three-chunk runs share one waveform (the script seeds per clip) and produce the same embeddings, so chunking does not change this frontend's output for this fixture."
   }
  },
  "gates": {
   "arena_users": "34 passed (tests/test_unit_vibevoice_frontend_contract.py, tests/test_gpu_memory_stats.py, tests/test_unit_loading_materialize.py, tests/test_gpu_vibevoice_encoder_kernels.py)",
   "new_reuse_gates": "3 new unit tests: a fitting reset must rewind and not close; a larger request must replace the arena while a later smaller one must reuse it; repeated resets must rewind every time. All three are RED on the parent revision and GREEN after.",
-  "embedding_identity": "front-end embeddings are bit-identical before and after across 11 s single-chunk, 30 s multi-chunk (chunk_samples=160000) and 30 s single-chunk, and stable across repeated calls"
+  "embedding_identity": "front-end embeddings are bit-identical before and after for 11 s one-chunk, 30 s one-chunk, 30 s three-chunk and 90 s one-chunk, and stable across repeated calls and across separate processes",
+  "harness_determinism": "the harness seeds each clip from its duration, so a clip's waveform and output hash are identical whether it is run alone or alongside other durations; without that, the 30 s waveform differed between --seconds 30 and --seconds 11 30 and the recorded hashes were not comparable across runs"
+ },
+ "profile": {
+  "arithmetic": "strict",
+  "why": "the change is byte-exact on the affected surface (identical output hash before and after), so it meets the strict arithmetic contract, which is stronger than production requires.",
+  "not_claimed": "this artifact is not a full production qualification. Production promotion additionally requires the calibrated mean/p95/p99/max KL envelope, top-1 by category/shape, same-schedule determinism, isolation, BF16-relative and task-quality gates per docs/EXECUTION-PROFILES.md section 6, which were not run here."
  },
  "notes": [
   "The multi-chunk case (30 s at chunk_samples=160000, three chunks) exercises six resets in one forward and still matches bit for bit, which is the case where a stale arena would show up.",
-  "Scoped to the front-end encode stage. In end-to-end terms an 11 s clip saves about 10 ms of a roughly 4.5 s pipeline, so no end-to-end claim is made.",
-  "benchmarks/README.md has no front-end stage row, so only the artifact and the changelog line are updated."
+  "Scoped to the front-end encode stage. In end-to-end terms an 11 s clip saves about 13 ms of a roughly 4.5 s pipeline, so no end-to-end claim is made.",
+  "benchmarks/README.md has no front-end stage row, so only the artifact and the changelog line are updated.",
+  "The recorded hashes were regenerated with the committed harness. The earlier values came from an uncommitted probe that shared one RNG across all durations, so its clips depended on which durations were requested together; the bit-identity property is unchanged, but the witness hashes are not comparable to the older ones."
  ]
 }
