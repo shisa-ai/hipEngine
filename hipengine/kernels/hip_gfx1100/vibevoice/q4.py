@@ -215,12 +215,15 @@ def q4_prefill(runner, hidden_rows, rows, start):
     (attn_v/ffn_down on half the layers) land in a bf16 scratch. ffn_down
     feeds the bf16 residual directly, so its Q6_K result is written straight
     into the residual buffer; the other Q6_K tensors are widened once.
-    Scratch is allocated per call and released in ``finally``.
+    Scratch comes from the runner's reused prefill arena.
     """
     from numbers import Integral
 
-    from hipengine.runtime.vibevoice_qwen2 import _upload
-    from hipengine.core.memory import copy_host_to_device, host_array_ptr
+    from hipengine.core.memory import (
+        copy_host_array_to_device,
+        copy_host_to_device,
+        host_array_ptr,
+    )
 
     spec = runner.spec
     hidden = spec.hidden_size
@@ -314,101 +317,101 @@ def q4_prefill(runner, hidden_rows, rows, start):
             )
 
     pos_host = np.arange(start, start + rows, dtype=np.int64)
-    positions = _upload(pos_host)
-    counts = _upload(pos_host + 1)
-    spans = runner._spans(positions, counts, rows)
+    counts_host = pos_host + 1
     qkv_w = rows * hidden * 4
     kv_w = rows * kv_dim * 4
-    scratch = [
-        malloc(rows * hidden * 2),   # normed bf16
-        malloc(qkv_w),               # q f32
-        malloc(qkv_w),               # q_out f32 (rope)
-        malloc(kv_w),                # k f32
-        malloc(kv_w),                # v f32
-        malloc(kv_w),                # k_out f32 (rope)
-        malloc(rows * kv_dim * 2),   # k bf16
-        malloc(rows * kv_dim * 2),   # v bf16
-        malloc(qkv_w),               # attn f32
-        malloc(rows * hidden * 4),   # o f32
-        malloc(rows * hidden * 2),   # normed2 bf16
-        malloc(rows * ffn * 4),      # gate f32
-        malloc(rows * ffn * 4),      # up f32
-        malloc(rows * ffn * 2),      # gate bf16
-        malloc(rows * ffn * 2),      # up bf16
-        malloc(rows * ffn * 2),      # act bf16
-        malloc(rows * ffn * 2),      # bf16 scratch for Q6_K prefill output
-        malloc(rows * hidden * 2),   # attn bf16 (Q6_K o_proj narrowing)
-        malloc(rows * hidden * 4),   # down f32
-        malloc(rows * hidden * 2),   # down bf16
-    ]
-    (normed, q_f32, q_out, k_f32, v_f32, k_out, k_bf16, v_bf16, attn, o_f32,
-     normed2, gate_f32, up_f32, gate, up, act, q6_scratch, attn_bf16, down_f32,
-     down_bf16) = scratch
-    try:
-        for layer in runner.layers:
-            runner.kernels.vv_rmsnorm_bf16(
-                hidden_rows.ptr, layer.input_ln.ptr, normed.ptr, rows, hidden,
-                spec.rms_norm_eps, library=runner.library, runtime=runtime)
-            gemm_bf16_f32(normed.ptr, layer.q_w.ptr, q_f32.ptr, hidden, hidden, q6_scratch, "q_proj")
-            gemm_bf16_f32(normed.ptr, layer.k_w.ptr, k_f32.ptr, hidden, kv_dim, q6_scratch, "k_proj")
-            gemm_bf16_f32(normed.ptr, layer.v_w.ptr, v_f32.ptr, hidden, kv_dim, q6_scratch, "v_proj")
-            runner.kernels.vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
-                                           library=runner.library, runtime=runtime)
-            runner.kernels.vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_dim, kv_dim,
-                                           library=runner.library, runtime=runtime)
-            runner.kernels.vv_add_bias_f32(v_f32.ptr, layer.v_b.ptr, v_f32.ptr, rows * kv_dim, kv_dim,
-                                           library=runner.library, runtime=runtime)
-            runner.kernels.vv_rope_positions_f32(
-                q_f32.ptr, k_f32.ptr, runner._cos.ptr, runner._sin.ptr, positions.ptr,
-                q_out.ptr, k_out.ptr, rows, heads, kv_heads, head_dim,
-                stream=stream, runtime=runtime)
-            runner.kernels.f32_to_bf16(k_out.ptr, k_bf16.ptr, rows * kv_dim, stream=stream, runtime=runtime)
-            runner.kernels.f32_to_bf16(v_f32.ptr, v_bf16.ptr, rows * kv_dim, stream=stream, runtime=runtime)
-            runner.kernels.vv_kv_write_spans(
-                k_bf16.ptr, v_bf16.ptr, layer.k_cache.ptr, layer.v_cache.ptr,
-                spans, rows, kv_heads, head_dim, library=runner.library, runtime=runtime)
-            runner.kernels.vv_attention_spans(
-                q_out.ptr, layer.k_cache.ptr, layer.v_cache.ptr, attn.ptr,
-                spans, rows, heads, kv_heads, head_dim, runner._scale,
-                library=runner.library, runtime=runtime)
-            # o projection keeps f32 activations: Q4_K uses the f32/f32 variant,
-            # Q6_K narrows and widens (it has no f32-in prefill kernel).
-            gemm_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, heads * head_dim, hidden,
-                         "o_proj", attn_bf16)
-            runner.kernels.f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
+    # Arena-owned views, rewound per call: freeing them individually would free
+    # memory the arena still owns. Twenty separate hipMalloc/hipFree pairs for
+    # this scratch measured 4.2 ms of a 220 ms prefill (1.9%).
+    scratch = runner._prefill_scratch.take((
+        rows * 8,                    # positions
+        rows * 8,                    # counts
+        rows * hidden * 2,           # normed bf16
+        qkv_w,                       # q f32
+        qkv_w,                       # q_out f32 (rope)
+        kv_w,                        # k f32
+        kv_w,                        # v f32
+        kv_w,                        # k_out f32 (rope)
+        rows * kv_dim * 2,           # k bf16
+        rows * kv_dim * 2,           # v bf16
+        qkv_w,                       # attn f32
+        rows * hidden * 4,           # o f32
+        rows * hidden * 2,           # normed2 bf16
+        rows * ffn * 4,              # gate f32
+        rows * ffn * 4,              # up f32
+        rows * ffn * 2,              # gate bf16
+        rows * ffn * 2,              # up bf16
+        rows * ffn * 2,              # act bf16
+        rows * ffn * 2,              # bf16 scratch for Q6_K prefill output
+        rows * hidden * 2,           # attn bf16 (Q6_K o_proj narrowing)
+        rows * hidden * 4,           # down f32
+        rows * hidden * 2,           # down bf16
+    ))
+    (positions, counts, normed, q_f32, q_out, k_f32, v_f32, k_out, k_bf16, v_bf16,
+     attn, o_f32, normed2, gate_f32, up_f32, gate, up, act, q6_scratch, attn_bf16,
+     down_f32, down_bf16) = scratch
+    copy_host_array_to_device(positions, pos_host)
+    copy_host_array_to_device(counts, counts_host)
+    spans = runner._spans(positions, counts, rows)
+    for layer in runner.layers:
+        runner.kernels.vv_rmsnorm_bf16(
+            hidden_rows.ptr, layer.input_ln.ptr, normed.ptr, rows, hidden,
+            spec.rms_norm_eps, library=runner.library, runtime=runtime)
+        gemm_bf16_f32(normed.ptr, layer.q_w.ptr, q_f32.ptr, hidden, hidden, q6_scratch, "q_proj")
+        gemm_bf16_f32(normed.ptr, layer.k_w.ptr, k_f32.ptr, hidden, kv_dim, q6_scratch, "k_proj")
+        gemm_bf16_f32(normed.ptr, layer.v_w.ptr, v_f32.ptr, hidden, kv_dim, q6_scratch, "v_proj")
+        runner.kernels.vv_add_bias_f32(q_f32.ptr, layer.q_b.ptr, q_f32.ptr, rows * hidden, hidden,
+                                       library=runner.library, runtime=runtime)
+        runner.kernels.vv_add_bias_f32(k_f32.ptr, layer.k_b.ptr, k_f32.ptr, rows * kv_dim, kv_dim,
+                                       library=runner.library, runtime=runtime)
+        runner.kernels.vv_add_bias_f32(v_f32.ptr, layer.v_b.ptr, v_f32.ptr, rows * kv_dim, kv_dim,
+                                       library=runner.library, runtime=runtime)
+        runner.kernels.vv_rope_positions_f32(
+            q_f32.ptr, k_f32.ptr, runner._cos.ptr, runner._sin.ptr, positions.ptr,
+            q_out.ptr, k_out.ptr, rows, heads, kv_heads, head_dim,
+            stream=stream, runtime=runtime)
+        runner.kernels.f32_to_bf16(k_out.ptr, k_bf16.ptr, rows * kv_dim, stream=stream, runtime=runtime)
+        runner.kernels.f32_to_bf16(v_f32.ptr, v_bf16.ptr, rows * kv_dim, stream=stream, runtime=runtime)
+        runner.kernels.vv_kv_write_spans(
+            k_bf16.ptr, v_bf16.ptr, layer.k_cache.ptr, layer.v_cache.ptr,
+            spans, rows, kv_heads, head_dim, library=runner.library, runtime=runtime)
+        runner.kernels.vv_attention_spans(
+            q_out.ptr, layer.k_cache.ptr, layer.v_cache.ptr, attn.ptr,
+            spans, rows, heads, kv_heads, head_dim, runner._scale,
+            library=runner.library, runtime=runtime)
+        # o projection keeps f32 activations: Q4_K uses the f32/f32 variant,
+        # Q6_K narrows and widens (it has no f32-in prefill kernel).
+        gemm_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, heads * head_dim, hidden,
+                     "o_proj", attn_bf16)
+        runner.kernels.f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
+                                   stream=stream, runtime=runtime)
+        runner.kernels.vv_scale_residual_bf16(
+            hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
+            rows * hidden, hidden, library=runner.library, runtime=runtime)
+        runner.kernels.vv_rmsnorm_bf16(
+            hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr, rows, hidden,
+            spec.rms_norm_eps, library=runner.library, runtime=runtime)
+        gemm_bf16_f32(normed2.ptr, layer.gate_w.ptr, gate_f32.ptr, hidden, ffn, q6_scratch, "gate_proj")
+        gemm_bf16_f32(normed2.ptr, layer.up_w.ptr, up_f32.ptr, hidden, ffn, q6_scratch, "up_proj")
+        runner.kernels.f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=stream, runtime=runtime)
+        runner.kernels.f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=stream, runtime=runtime)
+        runner.kernels.silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
+                                                 stream=stream, runtime=runtime)
+        # ffn_down feeds the bf16 residual with nothing in between. A Q6_K
+        # down projection already produces bf16, so target the residual
+        # buffer directly and drop the widen-to-f32/narrow-back-to-bf16
+        # pair (two launches on each of this model's 14 Q6_K down
+        # projections). Q4_K has only an f32 output, so it still narrows.
+        down = gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden,
+                             q6_scratch, "down_proj", bf16_out=down_bf16)
+        if down is not down_bf16:
+            runner.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden,
                                        stream=stream, runtime=runtime)
-            runner.kernels.vv_scale_residual_bf16(
-                hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
-                rows * hidden, hidden, library=runner.library, runtime=runtime)
-            runner.kernels.vv_rmsnorm_bf16(
-                hidden_rows.ptr, layer.post_ln.ptr, normed2.ptr, rows, hidden,
-                spec.rms_norm_eps, library=runner.library, runtime=runtime)
-            gemm_bf16_f32(normed2.ptr, layer.gate_w.ptr, gate_f32.ptr, hidden, ffn, q6_scratch, "gate_proj")
-            gemm_bf16_f32(normed2.ptr, layer.up_w.ptr, up_f32.ptr, hidden, ffn, q6_scratch, "up_proj")
-            runner.kernels.f32_to_bf16(gate_f32.ptr, gate.ptr, rows * ffn, stream=stream, runtime=runtime)
-            runner.kernels.f32_to_bf16(up_f32.ptr, up.ptr, rows * ffn, stream=stream, runtime=runtime)
-            runner.kernels.silu_mul_separate_out_bf16(gate.ptr, up.ptr, act.ptr, rows, ffn,
-                                                     stream=stream, runtime=runtime)
-            # ffn_down feeds the bf16 residual with nothing in between. A Q6_K
-            # down projection already produces bf16, so target the residual
-            # buffer directly and drop the widen-to-f32/narrow-back-to-bf16
-            # pair (two launches on each of this model's 14 Q6_K down
-            # projections). Q4_K has only an f32 output, so it still narrows.
-            down = gemm_bf16_f32(act.ptr, layer.down_w.ptr, down_f32.ptr, ffn, hidden,
-                                 q6_scratch, "down_proj", bf16_out=down_bf16)
-            if down is not down_bf16:
-                runner.kernels.f32_to_bf16(down_f32.ptr, down_bf16.ptr, rows * hidden,
-                                           stream=stream, runtime=runtime)
-            runner.kernels.vv_scale_residual_bf16(
-                hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
-                rows * hidden, hidden, library=runner.library, runtime=runtime)
-        runner._ctx_len_host[0] = start + rows
-        copy_host_to_device(runner._ctx_len, host_array_ptr(runner._ctx_len_host))
-    finally:
-        for buf in scratch:
-            free(buf)
-        free(positions)
-        free(counts)
+        runner.kernels.vv_scale_residual_bf16(
+            hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
+            rows * hidden, hidden, library=runner.library, runtime=runtime)
+    runner._ctx_len_host[0] = start + rows
+    copy_host_to_device(runner._ctx_len, host_array_ptr(runner._ctx_len_host))
 
 
 LINEAR_VARIANTS = (

@@ -683,6 +683,52 @@ def test_batched_prefill_is_deterministic(runtime, lm) -> None:
         "between identical runs")
 
 
+def test_prefill_scratch_is_reused_across_calls(runtime, lm, monkeypatch) -> None:
+    """A repeated prefill must not allocate device memory for its scratch.
+
+    Both prefill routes used to malloc and free ~20 scratch buffers per call,
+    which measured 4.2 ms of a 220 ms prefill (1.9%). The scratch now comes
+    from a per-runner arena that is rewound on reuse, so a second prefill of
+    the same size performs no device allocation at all.
+
+    Patches ``HipRuntime.malloc``, the single choke point every allocation path
+    goes through, so this fails whichever route reintroduces per-call scratch
+    (the previous code allocated directly rather than through the arena).
+    """
+    from hipengine.core.hip import HipRuntime
+    from hipengine.core.memory import copy_host_array_to_device, free, malloc
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+    import numpy as np
+
+    allocated: list[int] = []
+    original = HipRuntime.malloc
+
+    def counted(self, nbytes):
+        allocated.append(int(nbytes))
+        return original(self, nbytes)
+
+    rows = _prompt_rows(runtime, lm)
+    hidden = runtime.spec.hidden_size
+    total = len(rows)
+    pristine = f32_to_bf16_bits(np.asarray(rows, dtype=np.float32))
+    prompt = malloc(total * hidden * 2)
+    try:
+        runtime.reset()
+        copy_host_array_to_device(prompt, pristine)
+        runtime.prefill_rows(prompt, total, 0)      # may allocate the arena
+        monkeypatch.setattr(HipRuntime, "malloc", counted)
+        allocated.clear()
+        runtime.reset()
+        copy_host_array_to_device(prompt, pristine)
+        runtime.prefill_rows(prompt, total, 0)
+    finally:
+        free(prompt)
+
+    assert allocated == [], (
+        f"a repeated prefill made {len(allocated)} device allocations "
+        f"({allocated} bytes); prefill scratch must be reused across calls")
+
+
 @pytest.mark.xfail(
     strict=False,
     reason="Comparing two different schedules, not two arithmetics. The batched "
