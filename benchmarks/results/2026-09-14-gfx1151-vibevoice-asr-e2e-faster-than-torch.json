@@ -31,5 +31,11 @@
     "hipBLASLt bf16 heuristics are NOT_SUPPORTED on this ROCm build (recorded in the prefill-probe worklog entry); fp16 with f32 accumulate is the route",
     "decode remains the bandwidth-bound floor (14.6 GB of weights per token at ~256 GB/s LPDDR5X); front-end residual vs torch is 0.345 s vs ~0.30 s",
     "prior negative result kept: WMMA GEMV variants on rows=1 decode are slower (bulk-tile kernels)"
-  ]
+  ],
+  "status": "invalid-comparison",
+  "audit_correction": {
+    "date": "2026-09-14",
+    "reason": "Lanes used different acoustic noise and duration prompt IDs; timing boundaries differed. Prefix fixture checks did not establish production correctness. Historical timing rows are diagnostic only, not a validated speedup.",
+    "source": "worklog/entries/20260914T062401.248622Z-lhl-vibevoice-asr-completion-audit-7eb56c.md"
+  }
 }
