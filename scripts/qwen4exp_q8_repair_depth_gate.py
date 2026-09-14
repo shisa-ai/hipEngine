@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from functools import wraps
 
 import numpy as np
 
@@ -31,7 +32,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--decode-steps", type=int, default=64)
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--candidate", choices=("production_q8_fallback", "production_conservative"),
+    parser.add_argument("--candidate", choices=tuple(CANDIDATES),
                         default="production_conservative")
     args = parser.parse_args()
     check_host()
@@ -89,7 +90,25 @@ def main():
         os.environ.update(overrides)
         outputs, states = [], []
         deterministic = True
+        dispatch_count = 0
+        dispatch_original = None
         try:
+            if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+                generator.runner.configure_mmq_prefill_resources()
+            spec = CANDIDATES[args.candidate]
+            if spec.count_registered_dispatch:
+                from hipengine.kernels.registry import KernelKey, register, resolve
+                key = KernelKey(*spec.candidate_key)
+                dispatch_original = resolve(backend=key.backend, layer=key.layer,
+                                            quant=key.quant, variant=key.variant)
+
+                @wraps(dispatch_original)
+                def counted(*a, **kw):
+                    nonlocal dispatch_count
+                    dispatch_count += 1
+                    return dispatch_original(*a, **kw)
+
+                register(key, counted, replace=True)
             for case in cases:
                 teacher = teachers[case["id"]]
                 reference = None
@@ -117,6 +136,9 @@ def main():
             report["deterministic"] = deterministic
             report["state_gate"] = _state_repeat_gate(
                 [strict_states[case["id"]] for case in cases], states)
+            report["candidate_dispatch_calls"] = dispatch_count
+            if spec.count_registered_dispatch and dispatch_count == 0:
+                raise ValueError("candidate never dispatched")
             report["status"] = "completed"
         finally:
             for key, value in previous.items():
@@ -125,6 +147,8 @@ def main():
                 else:
                     os.environ[key] = value
             generator.close()
+            if dispatch_original is not None:
+                register(key, dispatch_original, replace=True)
             report["lifecycle"]["candidate"] = memory_stats()
             args.output.write_text(json.dumps(report, indent=2) + "\n")
 

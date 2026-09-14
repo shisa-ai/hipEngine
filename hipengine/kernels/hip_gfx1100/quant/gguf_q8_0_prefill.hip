@@ -658,7 +658,7 @@ __global__ void q8_0_selected_sparse_repair_kernel(
     int capacity, int experts, int hidden, int outputs) {
   __shared__ float sums[4];
   const int total = min(*count, capacity);
-  for (int slot = blockIdx.x; slot < total; slot += gridDim.x) {
+  for (int64_t slot = blockIdx.x; slot < total; slot += gridDim.x) {
     const int index = indices[slot];
     const int row = index / outputs;
     const int col = index % outputs;
