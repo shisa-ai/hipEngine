@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--candidate", choices=tuple(CANDIDATES),
                         default="production_conservative")
+    parser.add_argument("--case-id", action="append")
     args = parser.parse_args()
     check_host()
     if args.decode_steps < 1 or args.repeats < 3:
@@ -53,13 +54,20 @@ def main():
         reset_memory_stats()
         fixture, fixture_hash = load_fixture(DEFAULT_FIXTURE)
         cases = fixture["cases"]
+        if args.case_id:
+            requested = set(args.case_id)
+            if not requested <= {case["id"] for case in cases}:
+                raise ValueError("unknown canonical case")
+            cases = [case for case in cases if case["id"] in requested]
         descriptors, teachers, strict_states = [], {}, {}
         report = dict(status="running", command=sys.argv, source=_git_metadata(ROOT),
                       host=_host_metadata(), model=model_identity(args.model_root),
                       fixture_sha256=fixture_hash, lifecycle={},
                       performance_claim=False, promotion_claim=False,
                       protocol=dict(chunk=1024, kv="BF16", decode_steps=args.decode_steps,
-                                    repeats=args.repeats, task_gate="separate"))
+                                    repeats=args.repeats, task_gate="separate",
+                                    complete_fixture=not bool(args.case_id),
+                                    case_ids=[case["id"] for case in cases]))
         generator, profile, _ = _make_generator(args, "strict")
         report["strict_manifest"] = profile.manifest_sha256
         try:
