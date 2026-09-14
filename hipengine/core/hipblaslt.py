@@ -6,6 +6,7 @@ import ctypes
 
 HIP_R_32F = 0
 HIP_R_16F = 2
+HIP_R_16BF = 6
 HIPBLAS_COMPUTE_32F = 2
 HIPBLAS_OP_T = 112
 HIPBLASLT_ORDER_COL = 0
@@ -53,6 +54,9 @@ class HipblasLt:
         in_features: int,
         out_features: int,
         workspace_nbytes: int = 0,
+        *,
+        ab_type: int = HIP_R_16F,
+        cd_type: int = HIP_R_32F,
     ) -> "HipblasLtProblem":
         problem = HipblasLtProblem(
             self,
@@ -60,6 +64,8 @@ class HipblasLt:
             in_features,
             out_features,
             workspace_nbytes,
+            ab_type=ab_type,
+            cd_type=cd_type,
         )
         self._problems.append(problem)
         return problem
@@ -170,6 +176,9 @@ class HipblasLtProblem:
         in_features: int,
         out_features: int,
         workspace_nbytes: int,
+        *,
+        ab_type: int = HIP_R_16F,
+        cd_type: int = HIP_R_32F,
     ) -> None:
         if min(rows, in_features, out_features) <= 0:
             raise ValueError("hipBLASLt dimensions must be positive")
@@ -180,6 +189,8 @@ class HipblasLtProblem:
         self.in_features = int(in_features)
         self.out_features = int(out_features)
         self.workspace_nbytes = int(workspace_nbytes)
+        self.ab_type = int(ab_type)
+        self.cd_type = int(cd_type)
         self.matmul_desc = ctypes.c_void_p()
         self.preference = ctypes.c_void_p()
         self.layouts: list[ctypes.c_void_p] = []
@@ -204,25 +215,25 @@ class HipblasLtProblem:
             "hipblasLtMatmulDescSetAttribute(TRANSA)",
         )
         self.a = self._layout(
-            HIP_R_16F,
+            self.ab_type,
             self.in_features,
             self.out_features,
             self.in_features,
         )
         self.b = self._layout(
-            HIP_R_16F,
+            self.ab_type,
             self.in_features,
             self.rows,
             self.in_features,
         )
         self.c = self._layout(
-            HIP_R_32F,
+            self.cd_type,
             self.out_features,
             self.rows,
             self.out_features,
         )
         self.d = self._layout(
-            HIP_R_32F,
+            self.cd_type,
             self.out_features,
             self.rows,
             self.out_features,
