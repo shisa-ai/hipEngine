@@ -148,8 +148,8 @@ def main() -> int:
                 "hypotheses": hyps,
                 "per_clip": [
                     {"clip_id": c["clip_id"],
-                     "wer_fraction": wer._wer([c["text"]],
-                                              [wer.parse_transcript(h)[0]]),
+                     "wer_fraction": wer._wer_content(
+                         [c["text"]], [wer.parse_transcript(h)[0]]),
                      "seconds": elapsed}
                     for c, h, elapsed in zip(clips, hyps, timings)
                 ],

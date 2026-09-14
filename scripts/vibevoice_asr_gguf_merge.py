@@ -22,8 +22,6 @@ from pathlib import Path
 
 import numpy as np
 
-import gguf
-
 from hipengine.loading.gguf import GGUFReader, scan_gguf
 
 ENCODER_PREFIXES = ("ate.", "ste.", "mmp.")
@@ -45,9 +43,16 @@ def file_sha256(path: str) -> str:
 
 def validate_inputs(backbone: str, full_bf16: str, backbone_info, full_info) -> None:
     """Reject incomplete, mismatched, or non-BF16 merge inputs."""
-    if backbone_info.architecture != full_info.architecture:
-        raise SystemExit(f"architecture mismatch: backbone {backbone_info.architecture!r} "
-                         f"vs full-bf16 {full_info.architecture!r}")
+    # The quantized backbone comes out of llama-quantize, which stamps
+    # general.architecture=llama; the BF16 export carries vibevoice-asr.
+    # That pair is the intended pipeline input, so the backbone is allowed
+    # to be either. The output architecture is taken from the BF16 export.
+    if full_info.architecture != "vibevoice-asr":
+        raise SystemExit(f"full-bf16 architecture must be 'vibevoice-asr', "
+                         f"got {full_info.architecture!r}")
+    if backbone_info.architecture not in ("vibevoice-asr", "llama"):
+        raise SystemExit(f"unexpected backbone architecture "
+                         f"{backbone_info.architecture!r} (expected llama or vibevoice-asr)")
     full_names = {t.name for t in full_info.tensors}
     backbone_names = {t.name for t in backbone_info.tensors}
     overlapping = backbone_names & full_names
@@ -96,6 +101,8 @@ def main() -> int:
     full_info = scan_gguf(args.full_bf16)
     assert full_info.architecture == "vibevoice-asr", full_info.architecture
     validate_inputs(args.backbone, args.full_bf16, backbone_info, full_info)
+
+    import gguf
 
     writer = gguf.GGUFWriter(path=args.out, arch="vibevoice-asr")
 

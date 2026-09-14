@@ -48,6 +48,9 @@ def _normalizer():
     return EnglishTextNormalizer({})
 
 
+_ROLE_PREFIXES = ("<|im_start|>assistant", "assistant")
+
+
 def parse_transcript(text: str) -> tuple[str, str]:
     """Split a VibeVoice transcript into (spoken text, status).
 
@@ -61,14 +64,20 @@ def parse_transcript(text: str) -> tuple[str, str]:
     import json as _json
 
     body = text.strip()
-    start = body.find("[")
-    end = body.rfind("]")
-    if start < 0:
+    # The chat template prefixes the answer with the assistant role; that is
+    # the only tolerated text outside the array. Anything else means the
+    # generation did not follow the schema and must not score as a clean
+    # transcript (a trailing "garbage [...]" used to pass silently).
+    for prefix in _ROLE_PREFIXES:
+        if body.startswith(prefix):
+            body = body[len(prefix):].lstrip()
+            break
+    if not body.startswith("["):
         return body, "no_json"
-    if end <= start:
+    if not body.endswith("]"):
         return body, "bad_json"
     try:
-        segments = _json.loads(body[start:end + 1])
+        segments = _json.loads(body)
     except Exception:
         return body, "bad_json"
     if not isinstance(segments, list):
@@ -91,13 +100,21 @@ def _transcription_only(text: str, *, strict: bool = True) -> str:
 def _wer(refs: list[str], hyps: list[str]) -> float:
     """Word error rate as a **fraction** in [0, 1] (jiwer convention).
 
+    ``hyps`` are raw model outputs (the structured transcript). Use
+    :func:`_wer_content` when the spoken text has already been extracted:
+    passing extracted text here re-parses it, which fails on plain text.
     Use :func:`_wer_pct` for the percentage form. Mixing the two is a
     100x error, so call sites that print or store a summary must use the
     ``_pct`` helper and label the field accordingly.
     """
+    return _wer_content(refs, [_transcription_only(h) for h in hyps])
+
+
+def _wer_content(refs: list[str], contents: list[str]) -> float:
+    """Word error rate over already-extracted spoken text (a fraction)."""
     from jiwer import process_words
 
-    hyps = [_transcription_only(h) for h in hyps]
+    hyps = list(contents)
     ref_t = [_normalizer()(r) for r in refs]
     hyp_t = [_normalizer()(h) for h in hyps]
     # drop pairs the normalizer emptied (pure-punctuation refs)
@@ -109,6 +126,11 @@ def _wer(refs: list[str], hyps: list[str]) -> float:
 def _wer_pct(refs: list[str], hyps: list[str]) -> float:
     """Word error rate in percent (``_wer`` scaled by 100)."""
     return 100.0 * _wer(refs, hyps)
+
+
+def _wer_pct_content(refs: list[str], contents: list[str]) -> float:
+    """Percentage form of :func:`_wer_content`."""
+    return 100.0 * _wer_content(refs, contents)
 
 
 def _load_clips(num_clips: int, cache_dir: Path,
