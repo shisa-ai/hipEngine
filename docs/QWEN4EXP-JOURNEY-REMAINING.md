@@ -17,7 +17,7 @@ improvements require the applicable unchanged production quality gates.
 | ID | Concrete experiment | State / prerequisite |
 | --- | --- | --- |
 | R01 | Existing tiled GDN/DPP suffix on corrected production | Numerical/state pass; targeted EOS task fails predeclared no-new-material-error rule; not promoted ([evidence](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
-| R02 | Multi-column GDN on corrected production | Counted isolated candidate prepared; previous old-stack failure preserved |
+| R02 | Multi-column GDN on corrected production | Short numerical/state gate passes; depth, complete code task and perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md)) |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
 | R04 | Dense Q8 iu8 independently | Count actual projection dispatch; short and canonical depth gates |
 | R05 | GR iu8 up independently | Same-input boundary and short/depth/task gates |
@@ -36,7 +36,7 @@ improvements require the applicable unchanged production quality gates.
 | R18 | QSA indexer/packing/attention | Full BF16 selected-position owner at 2051/2052, 4096/4097 and tails |
 | R19 | Multi-CTA QSA threshold + stable compaction | 513-65536 pooled blocks; ties, tails, finite domain, extra scratch/launch cost |
 | R20 | MoE top10 and vocabulary top1 | Distinct tie/output contracts; measure complete owners before port |
-| R21 | Host dispatch and backend refresh overhead | Measure repeated registration cost and safe initialization ownership |
+| R21 | Host dispatch and backend refresh overhead | Default-off cache prepared; 79 CPU and 4 GPU tests pass; uncontended canonical A/B next |
 | R22 | Current graph/submission census | Separate prefill/decode, updates, cold capture and exposed wall |
 | R23 | Private runtime ordinary AQL versus current AQL | Exact pinned runtime source, compatible private build, loaded DSO identities |
 | R24 | Private retained PM4 versus its ordinary AQL | Engagement logging without activity tracing, dependency/scratch/in-flight/c2/lifecycle gates |
