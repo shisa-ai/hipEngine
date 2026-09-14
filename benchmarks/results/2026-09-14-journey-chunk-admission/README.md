@@ -1,7 +1,8 @@
 # Current-Profile Chunk Admission
 
 Framework machine `55ea6c509d0b49eea8de7094a1023668`, Radeon 8060S/gfx1151,
-Flash-Next UD-Q4_K_XL/BF16, c1/context 4352. Source `9ce67327a`.
+Flash-Next UD-Q4_K_XL/BF16. The initial bounded allocation probes use
+c1/context 4352 at `9ce67327a`; later scopes and pins are stated below.
 Chunk 1024 remains the default. Allocation and bounded numerical results
 are recorded below, followed by the bounded performance comparison.
 No native-context inference or new-default claim.
@@ -41,7 +42,7 @@ size did not move with the candidate.
 
 This passes the production numerical envelope, without changing its limits.
 Active-shape task/isolation and wider admission remain before
-default promotion. Native-context, c2, hidden-seed export, graph-capture and
+default promotion. Native-context/c2 inference, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
 
@@ -79,6 +80,17 @@ This is a measured workload tradeoff, not a universal speedup. The active
 decode owners/graphs are shared; observed TG movement is not attributed
 to a changed decode kernel or an independently measured frequency mechanism.
 Chunk1024 remains default while remaining admission checks are completed.
+
+## Native c2 Allocation
+
+Clean `350cf1abc`, chunk2048, two prepared runners at262144 positions:
+tracked allocation107,332,608,432 bytes, unused modeled scratch1,017,794,480
+bytes, unchanged4,294,967,296-byte reserve and zero teardown allocations.
+All four worst-case repair queues are prepared and reconcile to the tracked
+allocation increase.
+
+This is an allocation-only result, not262K generation, retrieval or c2
+inference qualification. Boundary/isolation and active long-task checks remain.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
