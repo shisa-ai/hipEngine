@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -26,6 +27,62 @@ import gguf
 from hipengine.loading.gguf import GGUFReader, scan_gguf
 
 ENCODER_PREFIXES = ("ate.", "ste.", "mmp.")
+
+# Backbone tensors the runner reads by name; a merge that silently drops
+# one produces a model that loads and then decodes nonsense.
+REQUIRED_GLOBAL_BACKBONE = ("token_embd.weight", "output_norm.weight", "output.weight")
+REQUIRED_LAYER_PARTS = ("attn_q", "attn_k", "attn_v", "attn_output",
+                       "ffn_gate", "ffn_up", "ffn_down")
+
+
+def file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 22), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_inputs(backbone: str, full_bf16: str, backbone_info, full_info) -> None:
+    """Reject incomplete, mismatched, or non-BF16 merge inputs."""
+    if backbone_info.architecture != full_info.architecture:
+        raise SystemExit(f"architecture mismatch: backbone {backbone_info.architecture!r} "
+                         f"vs full-bf16 {full_info.architecture!r}")
+    full_names = {t.name for t in full_info.tensors}
+    backbone_names = {t.name for t in backbone_info.tensors}
+    overlapping = backbone_names & full_names
+    if overlapping:
+        raise SystemExit(f"inputs share {len(overlapping)} tensor name(s), e.g. "
+                         f"{sorted(overlapping)[:3]}")
+    # Every encoder tensor in the output must come from the BF16 export as BF16.
+    non_bf16 = [t.name for t in full_info.tensors
+                if t.name.startswith(ENCODER_PREFIXES) and t.ggml_type != 30]
+    if non_bf16:
+        raise SystemExit(f"{len(non_bf16)} encoder tensor(s) are not BF16, e.g. {non_bf16[:3]}")
+    encoder_in_full = {t.name for t in full_info.tensors if t.name.startswith(ENCODER_PREFIXES)}
+    if not encoder_in_full:
+        raise SystemExit("full-bf16 input contains no encoder tensors (wrong file?)")
+    # Completeness: the runner requires the full decoder tensor set.
+    import re
+
+    missing_global = [n for n in REQUIRED_GLOBAL_BACKBONE if n not in backbone_names]
+    layer_ids = sorted({int(m.group(1)) for n in backbone_names
+                        if (m := re.match(r"blk\.(\d+)\.", n))})
+    if not layer_ids:
+        raise SystemExit("backbone contains no blk.<i>. tensors (wrong file?)")
+    missing_layers = [
+        f"blk.{i}.{part}.weight"
+        for i in layer_ids
+        for part in REQUIRED_LAYER_PARTS
+        if f"blk.{i}.{part}.weight" not in backbone_names
+    ]
+    if missing_global or missing_layers:
+        raise SystemExit(f"backbone is incomplete: missing globals {missing_global[:3]}"
+                         f", missing {len(missing_layers)} layer tensor(s) {missing_layers[:3]}")
+    print(f"inputs ok: backbone {len(backbone_names)} tensors "
+          f"(sha256 {file_sha256(backbone)[:16]}), "
+          f"full-bf16 {len(full_names)} tensors (sha256 {file_sha256(full_bf16)[:16]}), "
+          f"{len(encoder_in_full)} encoder tensors to staple")
 
 
 def main() -> int:
@@ -38,6 +95,7 @@ def main() -> int:
     backbone_info = scan_gguf(args.backbone)
     full_info = scan_gguf(args.full_bf16)
     assert full_info.architecture == "vibevoice-asr", full_info.architecture
+    validate_inputs(args.backbone, args.full_bf16, backbone_info, full_info)
 
     writer = gguf.GGUFWriter(path=args.out, arch="vibevoice-asr")
 

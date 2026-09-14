@@ -110,6 +110,9 @@ class _LayerBuffers:
 class VibevoiceQwen2Runtime:
     """Dense-KV incremental Qwen2 runner over raw device pointers."""
 
+    # Recorded in the execution manifest; subclasses override.
+    quant_name = 'bf16'
+
     def __init__(
         self,
         weights,
@@ -218,6 +221,9 @@ class VibevoiceQwen2Runtime:
         self._o_f32 = _alloc(hidden * 4)
         self._o_bf16 = _alloc(hidden * 2)
         self._gate_up = _alloc(2 * ffn * 2)
+        # Caller-owned scratch for emulated dual GEMVs (Q4). Left None for
+        # fused dense kernels that need no intermediate f32 buffer.
+        self._dual_scratch = None
         self._silu = _alloc(ffn * 2)
         self._down_f32 = _alloc(hidden * 4)
         self._down_bf16 = _alloc(hidden * 2)
@@ -300,6 +306,7 @@ class VibevoiceQwen2Runtime:
             self.kernels.dense_dual_gemv_out_bf16(
                 self._normed.ptr, layer.gate_w.ptr, layer.up_w.ptr, self._gate_up.ptr,
                 1, hidden, ffn, ffn, stream=0, runtime=self.runtime,
+                **({"scratch": self._dual_scratch} if self._dual_scratch else {}),
             )
             self.kernels.silu_mul_dual_out_bf16(self._gate_up.ptr, self._silu.ptr, 1, ffn,
                                    stream=0, runtime=self.runtime)
@@ -382,7 +389,7 @@ class VibevoiceQwen2Runtime:
         call = self._prefill_routes[selected]
         self.variant_manifest = build_variant_manifest(
             profile='strict' if selected == 'strict' else 'production',
-            backend=self.backend,model='vibevoice_asr',quant='bf16',
+            backend=self.backend,model='vibevoice_asr',quant=self.quant_name,
             kv_policy='uniform_block1_spans',graph_policy='eager',
             selections=[VariantSelection(name,'decoder','strict','strict') for name in DECODER_PRIMITIVES]
                 + [VariantSelection('vibevoice_prefill','decoder',selected,'strict')])

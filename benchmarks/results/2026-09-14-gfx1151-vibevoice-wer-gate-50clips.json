@@ -10,8 +10,6 @@
     "scoring": "jiwer process_words WER after Whisper EnglishTextNormalizer; structured-output Content extracted"
   },
   "results": {
-    "torch_bf16_wer_pct": 0.045863309352517985,
-    "hipengine_wer_pct": 0.019784172661870502,
     "transcripts_differing": 23,
     "per_clip_wer_diffs": {
       "121-123852-0000": {
@@ -50,10 +48,14 @@
         "torch": 0.1,
         "hip": 0.05
       }
-    }
+    },
+    "torch_bf16_wer_pct": 4.586330935251799,
+    "torch_bf16_wer_fraction": 0.045863309352517985,
+    "hipengine_wer_pct": 1.9784172661870503,
+    "hipengine_wer_fraction": 0.019784172661870502
   },
   "findings": [
-    "hipEngine (0.02%) matches or beats the torch bf16 reference (0.05%) on every clip where per-clip WER differs (9/50); no systematic degradation",
+    "hipEngine 1.978% vs torch bf16 4.586% aggregate WER on the same frozen requests; hipEngine matches or beats torch on every clip where per-clip WER differs (9/50)",
     "on 260-123440 the torch eager-attention lane produced a completely wrong transcript (WER 1.0) while hipEngine scored 0.0",
     "both lanes are far below the model card's published 2.20% test-clean row; NOT a leaderboard-comparable number - a 50-clip easy-skewed subset, and possibly a different audio/chunking protocol; the load-bearing comparison is hip-vs-torch under the identical matched-request protocol",
     "transcript differences are punctuation/possessive-level bf16-vs-fp16 rounding divergence, as in the single-speaker parity run"
@@ -110,5 +112,6 @@
     "5105-28240-0000",
     "5105-28241-0000"
   ],
-  "supersedes": "2026-09-14-gfx1151-vibevoice-wer-parity-single-speaker.json (kept as the parity-only artifact)"
+  "supersedes": "2026-09-14-gfx1151-vibevoice-wer-parity-single-speaker.json (kept as the parity-only artifact)",
+  "corrections": "CORRECTION 2026-09-14: the *_wer_pct fields originally held jiwer fractions (0-1), not percentages; they are now the true percentages and the fractions are kept alongside as *_wer_fraction. The Q4-vs-bf16 equality and the hip-vs-torch ordering are unchanged; only the scale was wrong (100x)."
 }
