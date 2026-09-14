@@ -523,6 +523,129 @@ def test_q6_k_f32_input_composition_is_exact(runtime) -> None:
         f"max |diff| {np.max(np.abs(ref - got)):.3e}")
 
 
+def test_q6_k_down_proj_skips_the_round_trip(runtime, lm, monkeypatch) -> None:
+    """A Q6_K ffn_down must not widen to f32 only to narrow straight back.
+
+    The Q4_K_M ruleset upgrades ffn_down to Q6_K on 14 of the 28 layers. Those
+    down projections produce bf16 and feed the bf16 residual with nothing in
+    between, so the widen-to-f32 / narrow-back-to-bf16 pair is dead work. This
+    pins the launch count: bf16_to_f32 still runs once per Q6_K attn_v (which
+    does need f32 for its bias add) but not for ffn_down.
+    """
+    from hipengine.core.memory import free, malloc
+    from hipengine.loading.vibevoice_asr_gguf import GGUF_WEIGHT_TYPES
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+    import hipengine.kernels.hip_gfx1100.vibevoice.q4 as q4_module
+
+    GGML_Q6_K = 14
+    q6_down = sum(1 for layer in runtime.layers
+                  if GGUF_WEIGHT_TYPES.get(layer.down_w.ptr) == GGML_Q6_K)
+    q6_v = sum(1 for layer in runtime.layers
+               if GGUF_WEIGHT_TYPES.get(layer.v_w.ptr) == GGML_Q6_K)
+    assert q6_down and q6_v, "fixture model has no Q6_K tensors to exercise"
+
+    counts = {"bf16_to_f32": 0, "f32_to_bf16": 0}
+
+    def counted(name, fn):
+        def inner(*args, **kwargs):
+            counts[name] += 1
+            return fn(*args, **kwargs)
+        return inner
+
+    monkeypatch.setattr(q4_module, "bf16_to_f32",
+                        counted("bf16_to_f32", q4_module.bf16_to_f32))
+    monkeypatch.setattr(runtime.kernels, "f32_to_bf16",
+                        counted("f32_to_bf16", runtime.kernels.f32_to_bf16))
+
+    import numpy as np
+
+    rows = _prompt_rows(runtime, lm)
+    hidden = runtime.spec.hidden_size
+    total = len(rows)
+    prompt = malloc(total * hidden * 2)
+    try:
+        from hipengine.core.memory import copy_host_array_to_device
+
+        copy_host_array_to_device(prompt, f32_to_bf16_bits(np.asarray(rows, dtype=np.float32)))
+        runtime.reset()
+        runtime.prefill_rows(prompt, total, 0)
+    finally:
+        free(prompt)
+
+    # attn_v needs the f32 widening for its bias add; ffn_down must not.
+    assert counts["bf16_to_f32"] == q6_v, (
+        f"expected {q6_v} bf16_to_f32 launches (Q6_K attn_v only), "
+        f"got {counts['bf16_to_f32']}; a Q6_K ffn_down is round-tripping through f32")
+    assert counts["f32_to_bf16"] == 154, (
+        f"expected 154 f32_to_bf16 launches (o_proj, gate, up, k, v, and the "
+        f"Q4_K down projections), got {counts['f32_to_bf16']}")
+
+
+def test_q6_k_down_proj_direct_bf16_matches_the_round_trip(runtime) -> None:
+    """The Q6_K ffn_down fast path must write the same bf16 residual bytes.
+
+    The fast path writes the Q6_K kernel's bf16 output straight into the
+    residual buffer instead of widening it to f32 for the caller to narrow
+    straight back. Widening bf16 to f32 is exact and narrowing an exactly
+    representable value back to bf16 is the identity, so the two routes must
+    agree bit for bit. Uses a real Q6_K ffn_down weight from the model.
+    """
+    from hipengine.core.memory import (copy_device_to_host, copy_host_array_to_device,
+                                       free, host_array_ptr, malloc)
+    from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+        gguf_q6_k_wmma_prefill_bf16_bf16_out as q6_prefill,
+    )
+    from hipengine.loading.vibevoice_asr_gguf import GGUF_WEIGHT_TYPES
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+
+    GGML_Q6_K = 14
+    layer = next((candidate for candidate in runtime.layers
+                  if GGUF_WEIGHT_TYPES.get(candidate.down_w.ptr) == GGML_Q6_K), None)
+    assert layer is not None, "fixture model has no Q6_K ffn_down to exercise"
+
+    spec = runtime.spec
+    rows = 64
+    in_f = spec.intermediate_size
+    out_f = spec.hidden_size
+
+    rng = np.random.default_rng(0)
+    x_bf16 = f32_to_bf16_bits(
+        (rng.standard_normal((rows, in_f)) * 0.5).astype(np.float32))
+
+    x_dev = malloc(rows * in_f * 2)
+    scratch_bf16 = malloc(rows * out_f * 2)
+    widened_f32 = malloc(rows * out_f * 4)
+    direct = malloc(rows * out_f * 2)
+    round_trip = malloc(rows * out_f * 2)
+    try:
+        copy_host_array_to_device(x_dev, x_bf16)
+
+        # fast path: the Q6_K result lands in the bf16 residual buffer
+        q6_prefill(x_dev.ptr, layer.down_w.ptr, direct.ptr, rows, in_f, out_f,
+                   stream=0, runtime=runtime.runtime)
+
+        # previous path: Q6_K -> bf16 scratch -> f32 -> bf16
+        q6_prefill(x_dev.ptr, layer.down_w.ptr, scratch_bf16.ptr, rows, in_f, out_f,
+                   stream=0, runtime=runtime.runtime)
+        bf16_to_f32(scratch_bf16.ptr, widened_f32.ptr, rows * out_f, stream=0,
+                    runtime=runtime.runtime)
+        f32_to_bf16(widened_f32.ptr, round_trip.ptr, rows * out_f, stream=0,
+                    runtime=runtime.runtime)
+        runtime.runtime.device_synchronize()
+
+        got = np.empty(rows * out_f, dtype=np.uint16)
+        ref = np.empty(rows * out_f, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(got), direct, rows * out_f * 2)
+        copy_device_to_host(host_array_ptr(ref), round_trip, rows * out_f * 2)
+    finally:
+        for buffer in (x_dev, scratch_bf16, widened_f32, direct, round_trip):
+            free(buffer)
+
+    assert np.array_equal(ref, got), (
+        "Q6_K ffn_down direct-bf16 route differs from the widen/narrow round trip")
+
+
 def test_batched_prefill_is_deterministic(runtime, lm) -> None:
     """Identical inputs must give identical hidden rows across repeats.
 
