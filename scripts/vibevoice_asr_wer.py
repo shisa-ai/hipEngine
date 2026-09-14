@@ -56,12 +56,20 @@ def parse_transcript(text: str) -> tuple[str, str]:
 
     The model emits a JSON array of segments. Status is ``"ok"`` for a
     well-formed array, ``"no_json"`` when no array is present, and
-    ``"bad_json"`` when an array is present but does not parse. Callers
-    must treat anything other than ``"ok"`` as a malformed generation:
-    scoring the raw body silently turns a schema failure into a word
-    error and hides it from the quality gate.
+    ``"bad_json"`` when an array is present but does not satisfy the
+    transcript schema. Callers must treat anything other than ``"ok"`` as a
+    malformed generation: scoring the raw body silently turns a schema
+    failure into a word error and hides it from the quality gate.
+
+    Schema acceptance is owned by :mod:`hipengine.generation.vibevoice_protocol`
+    so the evaluator is exactly as strict as the engine: every segment must be
+    an object carrying finite ``Start``/``End`` with ``0 <= Start <= End``, an
+    ``int``/``str`` ``Speaker``, and a ``str`` ``Content``. A local re-check
+    used to accept ``[{}]`` and ``[1]``, which scored as empty hypotheses.
     """
-    import json as _json
+    from hipengine.generation.vibevoice_protocol import (
+        parse_transcript as _validate_segments,
+    )
 
     body = text.strip()
     # The chat template prefixes the answer with the assistant role; that is
@@ -72,17 +80,11 @@ def parse_transcript(text: str) -> tuple[str, str]:
         if body.startswith(prefix):
             body = body[len(prefix):].lstrip()
             break
-    if not body.startswith("["):
-        return body, "no_json"
-    if not body.endswith("]"):
-        return body, "bad_json"
-    try:
-        segments = _json.loads(body)
-    except Exception:
-        return body, "bad_json"
-    if not isinstance(segments, list):
-        return body, "bad_json"
-    return " ".join(str(s.get("Content", "")) for s in segments), "ok"
+    segments = _validate_segments(body)
+    if segments is None:
+        return body, ("no_json" if not body.startswith("[") else "bad_json")
+    # ``Content`` is present and a str for every segment by construction.
+    return " ".join(segment["Content"] for segment in segments), "ok"
 
 
 def _transcription_only(text: str, *, strict: bool = True) -> str:

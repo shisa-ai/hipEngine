@@ -236,3 +236,57 @@ def test_batched_prefill_matches_row_by_row(runtime, lm) -> None:
             "batched prefill changed the top-5 set"
     finally:
         free(prompt)
+
+
+def test_batched_prefill_refuses_unsupported_quant_types(runtime, lm, monkeypatch) -> None:
+    """A non-Q4_K/Q6_K weight must fail loudly, never decode as Q4_K.
+
+    The prefill route used to default any unregistered type to the Q4_K
+    decoder, so a Q5_K / Q8_0 / IQ4_XS tensor would have produced silently
+    wrong logits. Only the types with a WMMA prefill kernel may route.
+    """
+    from hipengine.core.memory import malloc
+    from hipengine.kernels.hip_gfx1100.vibevoice import q4 as q4mod
+    from hipengine.loading.vibevoice_asr_gguf import GGUF_WEIGHT_TYPES
+
+    rows = _prompt_rows(runtime, lm)
+    hidden = runtime.spec.hidden_size
+    total = len(rows)
+    prompt = malloc(total * hidden * 2)
+    try:
+        import numpy as np
+
+        from hipengine.core.memory import copy_host_array_to_device
+        from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+
+        copy_host_array_to_device(prompt, f32_to_bf16_bits(np.asarray(rows, dtype=np.float32)))
+        layer = runtime.layers[0]
+
+        # Claim the q_proj weight is Q5_K: supported by the decode GEMV path,
+        # but with no WMMA prefill kernel.
+        GGML_Q5_K = 13
+        original = GGUF_WEIGHT_TYPES.get(layer.q_w.ptr)
+        monkeypatch.setitem(GGUF_WEIGHT_TYPES, layer.q_w.ptr, GGML_Q5_K)
+        try:
+            runtime.reset()
+            with pytest.raises(ValueError, match="no WMMA prefill kernel"):
+                runtime.prefill_rows(prompt, total, 0)
+        finally:
+            if original is None:
+                GGUF_WEIGHT_TYPES.pop(layer.q_w.ptr, None)
+            else:
+                GGUF_WEIGHT_TYPES[layer.q_w.ptr] = original
+
+        # An unregistered pointer must not be guessed at either.
+        monkeypatch.setitem(GGUF_WEIGHT_TYPES, layer.q_w.ptr, None)
+        try:
+            runtime.reset()
+            with pytest.raises(ValueError, match="no GGUF type registered"):
+                runtime.prefill_rows(prompt, total, 0)
+        finally:
+            if original is not None:
+                GGUF_WEIGHT_TYPES[layer.q_w.ptr] = original
+    finally:
+        from hipengine.core.memory import free
+
+        free(prompt)

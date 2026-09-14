@@ -215,21 +215,31 @@ def run_lane_worker(args, wer) -> int:
     malformed = [c["clip_id"] for c, h in zip(clips, hyps)
                  if wer.parse_transcript(h)[1] != "ok"]
     refs = [c["text"] for c in clips]
+    # A schema failure must not be scored as an ordinary transcription error,
+    # so malformed generations are excluded from WER and reported separately
+    # (the gate is "malformed == 0", not "WER looks fine"). Excluding them
+    # must never be silent, or a lane that emits garbage would score better.
+    ok_pairs = [(c["text"], h) for c, h in zip(clips, hyps)
+                if wer.parse_transcript(h)[1] == "ok"]
+    ok_refs = [r for r, _ in ok_pairs]
+    ok_hyps = [h for _, h in ok_pairs]
     scored = timings[args.warmup:]
     record = {
         "hypotheses": hyps,
         "timings": timings,
         "warmup_clips": args.warmup,
         "malformed_transcripts": malformed,
-        "wer_fraction": wer._wer(refs, hyps),
-        "wer_pct": wer._wer_pct(refs, hyps),
+        "clips_scored_for_wer": len(ok_hyps),
+        "wer_excludes_malformed": bool(malformed),
+        "wer_fraction": wer._wer(ok_refs, ok_hyps) if ok_hyps else None,
+        "wer_pct": wer._wer_pct(ok_refs, ok_hyps) if ok_hyps else None,
         "mean_seconds_excl_warmup": (sum(t["seconds"] for t in scored) / len(scored)
                                      if scored else None),
         "clips_scored_for_timing": len(scored),
     }
     Path(args.lane_out).write_text(json.dumps(record, indent=2))
-    print(f"{lane} WER: {record['wer_pct']:.3f}%"
-          + (f"  [{len(malformed)} malformed: {malformed}]" if malformed else ""))
+    print(f"{lane} WER: {record['wer_pct']:.3f}% over {len(ok_hyps)}/{len(clips)} clips"
+          + (f"  [{len(malformed)} malformed excluded: {malformed}]" if malformed else ""))
     return 0
 
 
@@ -303,11 +313,19 @@ def main() -> int:
         results["systems"][lane] = json.loads(lane_out.read_text())
 
     for lane, data in results["systems"].items():
-        print(f"{lane} WER: {data['wer_pct']:.3f}%  "
+        n_ok = data.get("clips_scored_for_wer")
+        mal = data.get("malformed_transcripts") or []
+        wer_txt = ("n/a" if data["wer_pct"] is None
+                   else f"{data['wer_pct']:.3f}%")
+        print(f"{lane} WER: {wer_txt} over {n_ok}/{results['clips']} clips  "
               f"mean {data['mean_seconds_excl_warmup']:.2f} s/clip "
-              f"(excl. {data['warmup_clips']} warmup)")
+              f"(excl. {data['warmup_clips']} warmup)"
+              + (f"  [{len(mal)} malformed excluded]" if mal else ""))
+    total_malformed = sum(len(d.get("malformed_transcripts") or [])
+                          for d in results["systems"].values())
+    results["malformed_transcripts_total"] = total_malformed
     Path(args.out).write_text(json.dumps(results, indent=2))
-    print("wrote", args.out)
+    print(f"wrote {args.out}  (malformed transcripts across lanes: {total_malformed})")
     return 0
 
 
