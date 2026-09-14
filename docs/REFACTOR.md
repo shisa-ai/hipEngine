@@ -2,6 +2,17 @@
 
 ## VibeVoice ASR prefill and legacy dense attention
 
+- The Q4_K_M batched prefill in `kernels/hip_gfx1100/vibevoice/q4.py`
+  (`q4_prefill`) mirrors the orchestration in
+  `runtime/vibevoice_qwen2.py::_prefill_batched` — the same norm / rope /
+  KV-write / attention / silu / residual sequence with different GEMMs and
+  activation dtypes. Unify them behind overridable GEMM, activation-staging
+  and scratch hooks once the Q4 prefill has a production-profile numerical
+  gate; the two copies currently differ only in those three places.
+- `q4_prefill` allocates ~19 scratch buffers per call. Hoist them into the
+  runner (like the decode scratch) once prefill is on the production path and
+  per-request allocation shows up in a profile.
+
 - `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic
   candidates to the production evaluator. Keep their registered strict chains
   as debugging oracles. Bind the public production profile only after the full

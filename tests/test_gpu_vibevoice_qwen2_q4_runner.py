@@ -188,3 +188,51 @@ def test_loader_buffers_are_bf16_sized() -> None:
         assert weights.final_norm.nbytes == weights.spec.hidden_size * 2
     finally:
         weights.close()
+
+
+def test_batched_prefill_matches_row_by_row(runtime, lm) -> None:
+    """The batched WMMA prefill must reproduce the row-by-row result.
+
+    ``q4_prefill`` was a per-row loop through the decode path; it now runs
+    the raw-block Q4_K/Q6_K WMMA prefill kernels. Both routes must land on
+    the same post-prefill hidden row, otherwise the batched GEMMs changed
+    the arithmetic rather than just the schedule.
+    """
+    from hipengine.core.memory import free, malloc
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+
+    rows = _prompt_rows(runtime, lm)
+    hidden = runtime.spec.hidden_size
+    total = len(rows)
+    prompt = malloc(total * hidden * 2)
+    try:
+        import numpy as np
+
+        from hipengine.core.memory import copy_device_to_host, copy_host_array_to_device, host_array_ptr
+
+        copy_host_array_to_device(prompt, f32_to_bf16_bits(np.asarray(rows, dtype=np.float32)))
+
+        runtime.reset()
+        runtime.prefill_rows(prompt, total, 0)
+        runtime.runtime.memcpy(runtime._hidden.ptr,
+                               prompt.ptr + (total - 1) * hidden * 2, hidden * 2, 3)
+        batched_logits, batched_top = runtime.logits_argmax()
+
+        runtime.reset()
+        for i, row in enumerate(rows):
+            runtime.push_token(row, i)
+            runtime.forward_layers(i)
+        sequential_logits, sequential_top = runtime.logits_argmax()
+
+        assert batched_top == sequential_top, (
+            f"batched prefill top-1 {batched_top} != row-by-row {sequential_top}")
+        # Same schedule class: the batched WMMA tiles reassociate, so require
+        # closeness rather than bit equality. Normalise by the logit scale,
+        # not per-element (near-zero logits make a per-element ratio useless).
+        scale = float(np.max(np.abs(sequential_logits)))
+        rel = float(np.max(np.abs(batched_logits - sequential_logits))) / scale
+        assert rel < 0.05, f"batched prefill logit drift {rel:.3e} (scale {scale:.3f})"
+        assert set(np.argsort(sequential_logits)[-5:]) == set(np.argsort(batched_logits)[-5:]), \
+            "batched prefill changed the top-5 set"
+    finally:
+        free(prompt)
