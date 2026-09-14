@@ -899,24 +899,37 @@ transport-level diagnostics, not a qualified model-level prefill default.
 
 A direct chain ladder pins the per-token cost better than a two-point marginal:
 one 20 KB fp32 all-reduce chain measures 398 us at depth 1, 827 us at depth 16
-(28.6 us per op) and 1388 us at depth 32. The shard inventory fixes the count:
-**128 row-split tensors**, two per transformer block across 64 autoregressive
-blocks (64 MLP down projections, 48 GDN state-output projections, 16 attention
-output projections), so a decode token spends **3.66-4.48 ms** in exposed
-collectives - about 11-13% of the 33.5-35.8 ms single-GPU token time.
+(28.6 us per op) and 1388 us at depth 32. Those chains do not make each reduction
+consume the previous one, though, so they measure a *deferrable* collective. A
+dependent chain, where every reduction runs in its own group and its result feeds
+the next layer, measures **177.8 us per reduction** instead. The shard inventory
+fixes the count: **128 row-split tensors**, two per transformer block across 64
+autoregressive blocks (64 MLP down projections, 48 GDN state-output projections,
+16 attention output projections), so a decode token spends **22.76 ms** in
+exposed collectives against 28.3-33.8 ms of matched single-GPU token time.
 
-**Break-even, measured on both sides.** Taking the same-host TP1 rows (W7900
-27.9 tok/s, XTX 29.82 tok/s at 8192 context) and the measured collective cost,
-TP2 wins while its per-token collective time stays under
-`(1 - fixed_share) * T1 * (1 - rank_weight_fraction)`: **11.2-16.0 ms** on the
-W7900 and 13.0-18.5 ms on the XTX for fixed-cost shares of 0-30%. The measured
-3.66-4.48 ms leaves **2.5-5.1x** of headroom, and the projection clears the
-plan's 1.3x target in 14 of 16 rows: **1.23-1.53x** on the W7900 and
-**1.34-1.80x** on the XTX. Both misses are the W7900 at a 30% fixed-cost share
-(1.23x and 1.27x), so the W7900 result is marginal rather than comfortable and
-the exposed collective count is the binding constraint. This is a projection
-from measured collective latency and an explicit fixed-cost assumption, not a
-measured engine result.
+**Break-even, measured on both sides, and currently negative.** The two TP1 arms
+are measured on this host, one GPU at a time, on one revision and one protocol
+(512-prompt / 128-decode / INT8 per-token-head KV / eager decode / persistent
+session): **W7900 29.58 tok/s, XTX 35.36 tok/s**. A TP2 decode step is one
+synchronized group, so its time is the sum of `max` over ranks at each dependency
+boundary - `max(fixed) + max(rank weight reads) + collective` - compared against
+the *faster* arm:
+
+| Fixed-cost share | Baseline (faster TP1) | TP2 group | Projected speedup | Break-even collective |
+| ---: | ---: | ---: | ---: | ---: |
+| 0% | 28.28 ms | 41.44 ms | 0.68x | 9.61 ms |
+| 10% | 28.28 ms | 42.95 ms | 0.66x | 8.09 ms |
+| 20% | 28.28 ms | 44.46 ms | 0.64x | 6.58 ms |
+| 30% | 28.28 ms | 45.98 ms | 0.62x | 5.07 ms |
+
+The measured collective is **2.2-4.5x over budget** in every row, and the
+optimistic bound settles the question without any shard-kernel measurement: with
+rank-weight reads costing *nothing*, the group would still pay 22.76 ms against
+a 28.28 ms baseline, or **1.24x**, below the plan's 1.3x target. This is a
+projection from measured collective latency and an explicit fixed-cost
+assumption, not a measured engine result, and it is why full-model integration
+does not start from here.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
@@ -973,8 +986,11 @@ full copy (N=4: 37.5 MiB growth, 17.4 MiB largest, 3.51 GiB full copy). The
 reconstruction oracle that holds every rank's payload is a test path, not the
 loader path.
 [Collective screening](results/tp2_collective_bench.json),
+[dependent reduction chain](results/2026-09-14-w7900-tp2-dependent-reduction-chain.json),
 [graph capture and replay](results/tp2_graph_capture_probe.json),
 [break-even projection](results/tp2_break_even.json),
+[matched W7900 TP1 arm](results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json),
+[matched XTX TP1 arm](results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
 [degree admissibility](results/tp2_shard_plan_degrees.json),
 [topology inventory](results/tp2_host_inventory.json).
