@@ -137,7 +137,7 @@ host power/thermal headroom, not a code change.
 
 **VibeVoice-ASR 9B** runs torch-free on Strix Halo. Correctness and matched-input
 performance qualification are in progress; no speedup is claimed.
-[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-e2e-faster-than-torch.json).
+[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-full-content-audit.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
