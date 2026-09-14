@@ -57,6 +57,11 @@ def test_an_unaligned_row_block_is_rejected(mod) -> None:
     assert admissible["out_features_divisible"] is False
 
 
+def test_an_unknown_source_quant_has_no_recorded_repack(mod) -> None:
+    with pytest.raises(ValueError, match="no t16 repack"):
+        mod._t16_repack_tiles(b"", rows=1, bytes_per_row=1, quant_type="Q2_K_UNKNOWN")
+
+
 def test_q4_k_resolves_to_t16_and_q6_k_to_raw(mod) -> None:
     """The resident layout per source type comes from the engine's own tables."""
 
@@ -90,6 +95,7 @@ def test_probe_answers_every_question_with_evidence(mod) -> None:
         "rank_local_materialization_exists",
         "rank_local_bytes_round_trip",
         "local_shapes_are_layout_admissible",
+        "t16_repack_commutes_with_the_split",
         "shard_dispatch_needs_no_new_kernel",
     }
     for question, answer in report["questions"].items():
@@ -119,6 +125,30 @@ def test_the_shard_resolves_to_the_same_kernel_as_tp1(mod) -> None:
         for rank, shard in entry["ranks"].items():
             assert shard["dispatch_matches_tp1"] is True, f"{name} rank {rank}"
             assert shard["dispatch_key"] == entry["tp1_dispatch"]["key"]
+
+
+@requires_model
+def test_the_t16_repack_commutes_with_the_split(mod) -> None:
+    """A rank must be able to repack its own slice, bit-identically.
+
+    If this failed, the shard arm would run on weights that differ from the
+    corresponding half of the TP1 repack while still producing plausible output.
+    """
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    question = report["questions"]["t16_repack_commutes_with_the_split"]
+    assert question["answer"] is True
+    # The Q4_K gate and up are t16; the Q6_K down is raw and needs no repack.
+    assert question["tensors_checked"] == [
+        "blk.0.ffn_gate.weight",
+        "blk.0.ffn_up.weight",
+    ]
+    assert question["not_applicable"] == ["blk.0.ffn_down.weight"]
+    for name in question["tensors_checked"]:
+        entry = report["tensors"][name]
+        assert entry["repack_commutes_with_split"] is True, name
+        for rank, shard in entry["ranks"].items():
+            assert shard["repack_commutes_with_split"] is True, f"{name} rank {rank}"
 
 
 @requires_model

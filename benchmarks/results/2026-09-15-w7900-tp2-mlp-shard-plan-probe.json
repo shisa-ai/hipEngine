@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-shard-plan-probe",
-  "generated_at": "2026-09-14T20:55:26Z",
+  "generated_at": "2026-09-14T20:56:42Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_hash": "mlp-probe",
   "layer": 0,
@@ -52,7 +52,8 @@
             "admissible": true
           },
           "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "dispatch_matches_tp1": true,
+          "repack_commutes_with_split": true
         },
         "1": {
           "axis_ranges": [
@@ -77,9 +78,11 @@
             "admissible": true
           },
           "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "dispatch_matches_tp1": true,
+          "repack_commutes_with_split": true
         }
       },
+      "repack_commutes_with_split": true,
       "round_trip_bit_exact": true
     },
     "blk.0.ffn_up.weight": {
@@ -123,7 +126,8 @@
             "admissible": true
           },
           "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "dispatch_matches_tp1": true,
+          "repack_commutes_with_split": true
         },
         "1": {
           "axis_ranges": [
@@ -148,9 +152,11 @@
             "admissible": true
           },
           "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "dispatch_matches_tp1": true,
+          "repack_commutes_with_split": true
         }
       },
+      "repack_commutes_with_split": true,
       "round_trip_bit_exact": true
     },
     "blk.0.ffn_down.weight": {
@@ -222,6 +228,7 @@
           "dispatch_matches_tp1": true
         }
       },
+      "repack_commutes_with_split": null,
       "round_trip_bit_exact": true
     }
   },
@@ -240,6 +247,17 @@
     "local_shapes_are_layout_admissible": {
       "answer": true,
       "evidence": "the t16 repack's own divisibility test applied to each local shape"
+    },
+    "t16_repack_commutes_with_the_split": {
+      "answer": true,
+      "evidence": "repack of each rank-local slice equals the corresponding tile range of the full-tensor repack, so a rank repacks its own slice",
+      "tensors_checked": [
+        "blk.0.ffn_gate.weight",
+        "blk.0.ffn_up.weight"
+      ],
+      "not_applicable": [
+        "blk.0.ffn_down.weight"
+      ]
     },
     "shard_dispatch_needs_no_new_kernel": {
       "answer": true,
