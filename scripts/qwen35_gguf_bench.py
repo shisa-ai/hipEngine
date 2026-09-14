@@ -41,6 +41,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.generation.qwen35_gguf import _gguf_decode_graph_enabled
 from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
+from hipengine.runtime.gguf_decode_graph import _decode_graph_kv_layout_admitted
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
@@ -447,7 +448,9 @@ def main() -> int:
         "gguf": gguf_inventory,
         "gguf_tensor_inventory_hash": gguf_inventory["tensor_inventory_hash"],
         "mode": _mode_name(
-            graph_replay_decode=args.graph_replay_decode,
+            graph_replay_decode=_measured_graph_replay_decode(
+                args.graph_replay_decode, measured_runs
+            ),
             use_bulk_prefill=use_bulk_prefill,
             bulk_attention_mode=args.bulk_prefill_attention_mode,
         ),
@@ -685,6 +688,24 @@ def _rearm_reused_decode_graph(session: Any, graph: Any, runtime: HipRuntime) ->
         runtime.stream_synchronize(stream)
     finally:
         runtime.stream_destroy(stream)
+
+
+def _measured_graph_replay_decode(requested: bool, measured_runs: list[dict[str, Any]]) -> bool:
+    """Report the decode route the measured runs actually took.
+
+    ``--graph-replay-decode`` is a request: a session that cannot capture it falls
+    back to eager decode and records the reason on the run. Naming the mode after
+    the request would label an eager measurement as a graph measurement.
+    """
+
+    effective = [
+        run.get("effective_graph_replay_decode")
+        for run in measured_runs
+        if run.get("effective_graph_replay_decode") is not None
+    ]
+    if not effective:
+        return bool(requested)
+    return any(bool(value) for value in effective)
 
 
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
@@ -1234,6 +1255,16 @@ def _decode_graph_disabled_reason(
         return None
     if not callable(getattr(session, "capture_decode_graph", None)):
         return "capture_decode_graph_unavailable"
+    # The session refuses capture for a KV layout it has not admitted, and the
+    # refusal is an exception rather than a signal. Ask the same predicate the
+    # capture path asks so the documented eager fallback happens instead of a
+    # traceback for, e.g., --kv-storage int8_per_token_head without the opt-in.
+    # Only a session that publishes its KV layout is asked: the predicate reads
+    # the attribute directly, and a capability probe need not carry it.
+    if getattr(session, "kv_storage_dtype", None) is not None and not (
+        _decode_graph_kv_layout_admitted(session)
+    ):
+        return "kv_layout_not_admitted"
     if getattr(session, "host_token_embedding_enabled", False) and not callable(
         getattr(session, "_device_token_embedding_weight", None)
     ):

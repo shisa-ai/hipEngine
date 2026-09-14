@@ -119,6 +119,37 @@ def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> No
     assert bench._decode_graph_disabled_reason(HostEmbeddingGraphSession(), requested=True) == "host_token_embedding"
 
 
+def test_decode_graph_disabled_reason_covers_an_unadmitted_kv_layout() -> None:
+    """An unadmitted KV layout must fall back to eager decode, not raise.
+
+    ``capture_qwen35_gguf_decode_graph`` raises for a layout it has not admitted,
+    so without this check ``--graph-replay-decode`` (the default) crashed on
+    ``--kv-storage int8_per_token_head`` instead of recording the reason and
+    falling back to eager decode as the flag's own help text promises.
+    """
+
+    from hipengine.core.dtype import DType
+
+    class Session:
+        def capture_decode_graph(self) -> None:  # pragma: no cover - capability probe only
+            raise AssertionError("helper should not call capture_decode_graph")
+
+        kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD.value
+        kv_storage_layout = "uniform"
+        kv_scale_granularity = "per_token_head"
+
+    class BF16Session(Session):
+        kv_storage_dtype = DType.BF16.value
+
+    class AdmittedInt8Session(Session):
+        kv_storage_layout = "tail4_hadamard_group32"
+        kv_scale_granularity = "hadamard_group32"
+
+    assert bench._decode_graph_disabled_reason(Session(), requested=True) == "kv_layout_not_admitted"
+    assert bench._decode_graph_disabled_reason(BF16Session(), requested=True) is None
+    assert bench._decode_graph_disabled_reason(AdmittedInt8Session(), requested=True) is None
+
+
 def test_reset_existing_session_drains_prior_work_before_zeroing_state() -> None:
     calls: list[object] = []
 
@@ -280,3 +311,26 @@ def test_decode_graph_disabled_reason_reports_backend_floor() -> None:
     assert bench._decode_graph_disabled_reason(session, requested=True, decode_tokens=128) is None
     # A backend without a floor keeps the previous behaviour.
     assert bench._decode_graph_disabled_reason(GraphSession(None), requested=True, decode_tokens=8) is None
+
+
+def test_mode_name_reports_the_measured_decode_route_not_the_request() -> None:
+    """A fallback to eager decode must not be labelled a graph measurement."""
+
+    fallback = [{"effective_graph_replay_decode": False}]
+    captured = [{"effective_graph_replay_decode": True}]
+    unknown: list[dict[str, object]] = []
+
+    assert bench._measured_graph_replay_decode(True, fallback) is False
+    assert bench._measured_graph_replay_decode(True, captured) is True
+    assert bench._measured_graph_replay_decode(False, fallback) is False
+    # Without run detail the request is the only available statement.
+    assert bench._measured_graph_replay_decode(True, unknown) is True
+
+    assert (
+        bench._mode_name(
+            graph_replay_decode=bench._measured_graph_replay_decode(True, fallback),
+            use_bulk_prefill=None,
+            bulk_attention_mode="bulk",
+        )
+        == "resident_default_prefill_eager_decode"
+    )
