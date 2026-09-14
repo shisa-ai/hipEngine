@@ -588,7 +588,9 @@ __global__ void q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel(
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
           if constexpr (BLOCK_SCALE) {
-            a_bits[kk] = float_to_bf16_bits(static_cast<float>(qs[k_off + kk]));
+            // Every int8 code is exactly representable in BF16.
+            a_bits[kk] = static_cast<uint16_t>(
+                __float_as_uint(static_cast<float>(qs[k_off + kk])) >> 16);
           } else {
             a_reg[kk] =
                 d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
