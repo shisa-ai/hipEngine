@@ -16,16 +16,16 @@
       "tp2_rank_weights_gib": 7.009
     }
   ],
-  "collective_ms_expected_from_count": 9.172,
+  "collective_ms_expected_from_count": 5.488,
   "collective_ms_per_token": [
-    9.172
+    5.488
   ],
   "collective_source": {
     "case": "all_reduce:rows1:fp32",
     "depends_on_every_step": true,
     "group_boundary": "not applicable (no RCCL group)",
-    "marginal_us_per_step": 71.65629255372708,
-    "mode": "staged_exchange_host_sync",
+    "marginal_us_per_step": 42.87423404652303,
+    "mode": "staged_exchange_batched",
     "payload_bytes": 20480,
     "source": "benchmarks/results/2026-09-14-w7900-tp2-dependent-reduction-chain.json",
     "world_size": 2
@@ -50,10 +50,10 @@
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 9.60696106069933,
-      "collective_ms_per_token": 9.172,
+      "collective_ms_per_token": 5.488,
       "fixed_group_ms_per_token": 0.0,
       "fixed_share": 0.0,
-      "headroom_factor": 1.0474227061381738,
+      "headroom_factor": 1.7505395518767,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -76,21 +76,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 1.0156182261369349,
+      "projected_speedup": 1.1704474221515098,
       "rank_weight_group_ms_per_token": 18.677581436825776,
-      "required_improvement_factor": 0.9547243859997839,
-      "speedup_if_rank_weights_were_free": 3.0837922478767013,
-      "tp2_group_ms_per_token": 27.849581436825776,
-      "tp2_tok_s": 35.90718238507133
+      "required_improvement_factor": 0.5712524455262553,
+      "speedup_if_rank_weights_were_free": 5.153888939053408,
+      "tp2_group_ms_per_token": 24.165581436825775,
+      "tp2_tok_s": 41.381168610166625
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 8.09348505391699,
-      "collective_ms_per_token": 9.172,
+      "collective_ms_per_token": 5.488,
       "fixed_group_ms_per_token": 3.3812341504649197,
       "fixed_share": 0.1,
-      "headroom_factor": 0.8824122387611196,
+      "headroom_factor": 1.4747603961219002,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -113,21 +113,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9632696646745897,
+      "projected_speedup": 1.101463422465513,
       "rank_weight_group_ms_per_token": 16.809823293143197,
-      "required_improvement_factor": 1.1332571739983686,
-      "speedup_if_rank_weights_were_free": 3.0837922478767013,
-      "tp2_group_ms_per_token": 29.363057443608117,
-      "tp2_tok_s": 34.05639899457012
+      "required_improvement_factor": 0.6780762506435942,
+      "speedup_if_rank_weights_were_free": 5.153888939053408,
+      "tp2_group_ms_per_token": 25.679057443608116,
+      "tp2_tok_s": 38.94223930126821
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 6.580009047134649,
-      "collective_ms_per_token": 9.172,
+      "collective_ms_per_token": 5.488,
       "fixed_group_ms_per_token": 6.762468300929839,
       "fixed_share": 0.2,
-      "headroom_factor": 0.7174017713840655,
+      "headroom_factor": 1.1989812403671005,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -150,21 +150,21 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.9160530453643728,
+      "projected_speedup": 1.0401584151446164,
       "rank_weight_group_ms_per_token": 14.942065149460618,
-      "required_improvement_factor": 1.3939190560830717,
-      "speedup_if_rank_weights_were_free": 3.0837922478767013,
-      "tp2_group_ms_per_token": 30.876533450390458,
-      "tp2_tok_s": 32.3870554188574
+      "required_improvement_factor": 0.8340414064308653,
+      "speedup_if_rank_weights_were_free": 5.153888939053408,
+      "tp2_group_ms_per_token": 27.192533450390457,
+      "tp2_tok_s": 36.77480076743791
     },
     {
       "baseline_device": "XTX",
       "baseline_tp1_ms_per_token": 28.284542497525106,
       "break_even_collective_ms": 5.066533040352306,
-      "collective_ms_per_token": 9.172,
+      "collective_ms_per_token": 5.488,
       "fixed_group_ms_per_token": 10.14370245139476,
       "fixed_share": 0.3,
-      "headroom_factor": 0.5523913040070111,
+      "headroom_factor": 0.9232020846123006,
       "limiting_rank_fixed": "W7900",
       "limiting_rank_weight": "W7900",
       "per_rank": [
@@ -187,27 +187,27 @@
           "tp1_ms_per_token": 28.284542497525106
         }
       ],
-      "projected_speedup": 0.8732489731107957,
+      "projected_speedup": 0.9853178143664835,
       "rank_weight_group_ms_per_token": 13.07430700577804,
-      "required_improvement_factor": 1.8103109023369197,
-      "speedup_if_rank_weights_were_free": 3.0837922478767013,
-      "tp2_group_ms_per_token": 32.390009457172795,
-      "tp2_tok_s": 30.87371744433218
+      "required_improvement_factor": 1.083186462279221,
+      "speedup_if_rank_weights_were_free": 5.153888939053408,
+      "tp2_group_ms_per_token": 28.706009457172797,
+      "tp2_tok_s": 34.83591132692702
     }
   ],
   "verdict": {
-    "best_case_speedup": 1.0156182261369349,
+    "best_case_speedup": 1.1704474221515098,
     "certified": false,
-    "maximum_required_improvement_factor": 1.8103109023369197,
-    "minimum_headroom_factor": 0.5523913040070111,
+    "maximum_required_improvement_factor": 1.083186462279221,
+    "minimum_headroom_factor": 0.9232020846123006,
     "optimistic_bound_clears_target": true,
-    "optimistic_bound_speedup": 3.0837922478767013,
+    "optimistic_bound_speedup": 5.153888939053408,
     "passes_target_in_every_row": false,
     "target_speedup": 1.3,
     "withheld_reasons": [
       "the pre-Packet-3 shard-kernel gate has no recorded evidence",
       "a row projects below the 1.3x target"
     ],
-    "worst_case_speedup": 0.8732489731107957
+    "worst_case_speedup": 0.9853178143664835
   }
 }

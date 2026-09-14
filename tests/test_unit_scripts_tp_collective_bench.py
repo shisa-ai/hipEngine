@@ -437,6 +437,7 @@ class _ShadowChainRuntime:
         self.group_depth = 0
         self._staged: list[tuple[list, int, float]] = []
         self.streams = 0
+        self.syncs = 0
         self.registered_host: set[int] = set()
 
     def slot(self, ptr: int) -> tuple[list, int]:
@@ -471,7 +472,8 @@ class _ShadowChainRuntime:
         return None
 
     def stream_synchronize(self, stream) -> None:
-        return None
+        # Counted so a test can check how many host waits a protocol performs.
+        self.syncs += 1
 
     def host_register(self, ptr: int, nbytes: int) -> None:
         self.registered_host.add(int(ptr))
@@ -893,3 +895,42 @@ def test_opt_in_modes_stay_out_of_a_default_run(mod) -> None:
     assert "single_group_alternating_graph" in mod.OPT_IN_CHAIN_MODES
     assert "per_step_alternating_graph" in mod.DEFAULT_CHAIN_MODES
     assert "staged_exchange_host_sync" in mod.DEFAULT_CHAIN_MODES
+def test_batched_staging_drops_the_host_to_device_waits(mod, monkeypatch) -> None:
+    """The batched protocol must submit both ranks before waiting, and skip the
+    host-to-device waits entirely.
+
+    Dropping a wait is only safe because the slot-reuse guard is the
+    device-to-host wait the host already performs two steps later, so the count
+    has to be exact: the batched protocol performs exactly the two
+    device-to-host waits per step, plus one drain per chain, and nothing else.
+    """
+
+    depth = 4
+    chains = 1  # warmup 0, one timed iteration
+    counts: dict[str, int] = {}
+    for mode in ("staged_exchange_host_sync", "staged_exchange_batched"):
+        kwargs = _shadow_chain_args(mod)
+        kwargs["depths"] = (depth,)
+        kwargs["iterations"] = chains
+        kwargs["warmup"] = 0
+        kwargs["modes"] = (mode,)
+        _stub_chain_memory(mod, monkeypatch, kwargs)
+        report = mod._measure_dependent_chain(**kwargs)
+        entry = report["modes"][mode]
+        assert entry["depths"][str(depth)]["final_value_matches"] is True
+        assert entry["depends_on_every_step"] is True
+        counts[mode] = kwargs["runtime"].syncs
+        if mode == "staged_exchange_batched":
+            assert entry["protocol"] == "batched"
+            assert entry["host_waits_per_reduction"] == 2
+        else:
+            assert entry["protocol"] == "serial"
+            assert entry["host_waits_per_reduction"] == 4
+
+    steps = depth * chains
+    # Serial: four waits per step. Batched: two per step plus one drain per chain.
+    # The event probe inside each run synchronizes the same number of times in
+    # both, so it cancels out of the difference.
+    assert counts["staged_exchange_host_sync"] - counts["staged_exchange_batched"] == (
+        2 * steps - 2 * chains
+    )

@@ -908,31 +908,41 @@ autoregressive blocks (64 MLP down projections, 48 GDN state-output projections,
 16 attention output projections), so a decode token spends **22.94 ms** in
 exposed collectives against 28.3-33.8 ms of matched single-GPU token time.
 
-**Three transport levers are measured, and one changes the verdict at zero
-fixed-cost share.** Every structure below reproduces the closed form
+**Four transport levers are measured, and the exchange's host orchestration is
+the largest.** Every structure below reproduces the closed form
 `seed * 2 ** depth`, which only holds if each reduction consumed its predecessor,
 so these are per-layer costs rather than deferrable ones:
 
 | Per-reduction structure | Cost | 128 reductions | Speedup at 0% fixed share |
 | --- | ---: | ---: | ---: |
-| RCCL, one group per reduction, with an intermediate device copy | 179.2 us | 22.94 ms | 0.68x |
-| RCCL, one group per reduction, copy removed | 153.6 us | 19.66 ms | 0.74x |
-| RCCL, copy removed, replayed from a captured graph | 146.0 us | 18.69 ms | 0.76x |
-| Page-locked host exchange with a host-side sum | **71.1 us** | **9.11 ms** | **1.02x** |
+| RCCL, one group per reduction, with an intermediate device copy | 177.3 us | 22.69 ms | 0.68x |
+| RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.74x |
+| RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.76x |
+| Host exchange, one rank at a time (submit, wait, submit, wait) | 71.7 us | 9.17 ms | 1.02x |
+| Host exchange, both ranks submitted before either is awaited | **42.9 us** | **5.49 ms** | **1.17x** |
 
-The intermediate copy is worth **25.6 us per reduction**. Host submission is only
-**7.6 us** - that is what replaying the same device structure from a captured
+The intermediate copy is worth **23.6 us per reduction**. Host submission is only
+**6.9 us** - that is what replaying the same device structure from a captured
 graph removes - so RCCL's cost here is device-side protocol, not Python or ctypes
-overhead. Collapsing N dependent reductions into one group saves 119.3 us, which
+overhead. Collapsing N dependent reductions into one group saves 119.6 us, which
 is why that structure is fast and why it cannot carry a layer dependency.
-Replacing RCCL with a two-rank page-locked host exchange is worth a further
-**2.1x**, and it crosses the 9.61 ms break-even line at zero fixed-cost share
-with 1.06x headroom. It still loses at every nonzero share: 0.96x at 10%, 0.92x
-at 20%, 0.87x at 30%. The exchange's cost is 27.7 us of device-to-host copy plus
-host wait, 28.5 us of host-to-device copy plus host wait, and 6.4 us of host
-accumulation per reduction; the transfers are ~2 us each way for 20 KB, so the
-exposed host wait is what remains to be removed. Reaching 1.3x at zero fixed
-share would need ~24 us per reduction.
+
+**Host orchestration is worth 28.8 us per reduction on its own.** The serial
+exchange performs four host waits per reduction and never overlaps the two
+transfers of a pair. Submitting both device-to-host copies before awaiting
+either, and not awaiting the return copies at all, costs two waits per reduction
+and moves the projection from 0.87-1.02x to **0.99-1.17x**. The return copies
+need no host wait: the device-to-host copy for a step is enqueued after the
+return copy that read the same staging slot on that rank's stream, so the wait
+the host already performs is also the slot-reuse guard.
+
+The batched exchange's per-reduction budget is 4.7 us to submit the
+device-to-host copies, 9.4 us waiting for them, 5.7 us to submit the return
+copies, 0.2 us of return-copy wait and 6.5 us of host accumulation, against
+**15.4 us per copy measured on the device with events**. The copies (30.8 us for
+the pair) now overlap the host work (26.4 us) instead of sitting beside it, and
+copy time rather than host wait is the binding term. Each staged byte crosses
+PCIe twice, so peer DMA would halve it, and peer DMA is unavailable on this host.
 
 **Break-even, measured on both sides, and negative for RCCL.** The two TP1 arms
 are measured on this host, one GPU at a time, on one revision and one protocol
@@ -942,18 +952,21 @@ synchronized group, so its time is the sum of `max` over ranks at each dependenc
 boundary - `max(fixed) + max(rank weight reads) + collective` - compared against
 the *faster* arm:
 
-| Fixed-cost share | Baseline (faster TP1) | TP2 group (RCCL) | Projected speedup | TP2 group (host exchange) | Projected speedup | Break-even collective |
+| Fixed-cost share | Baseline (faster TP1) | TP2 group (RCCL) | Projected speedup | TP2 group (batched exchange) | Projected speedup | Break-even collective |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0% | 28.28 ms | 41.61 ms | 0.68x | 27.78 ms | 1.02x | 9.61 ms |
-| 10% | 28.28 ms | 43.12 ms | 0.66x | 29.29 ms | 0.96x | 8.09 ms |
-| 20% | 28.28 ms | 44.64 ms | 0.63x | 30.81 ms | 0.92x | 6.58 ms |
-| 30% | 28.28 ms | 46.15 ms | 0.61x | 32.32 ms | 0.87x | 5.07 ms |
+| 0% | 28.28 ms | 41.61 ms | 0.68x | 24.17 ms | 1.17x | 9.61 ms |
+| 10% | 28.28 ms | 43.12 ms | 0.66x | 25.68 ms | 1.10x | 8.09 ms |
+| 20% | 28.28 ms | 44.64 ms | 0.63x | 27.19 ms | 1.04x | 6.58 ms |
+| 30% | 28.28 ms | 46.15 ms | 0.61x | 28.71 ms | 0.99x | 5.07 ms |
 
-RCCL's collective is **2.2-4.5x over budget** in every row. The host exchange is
-within budget at zero fixed-cost share and 1.4-1.8x over it at the plan's assumed
-shares. This is a projection from measured collective latency and an explicit
-fixed-cost assumption, not a measured engine result, and it is why full-model
-integration does not start from here.
+RCCL's collective is 2.2-4.5x over budget in every row. The batched exchange is
+within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at 30%. This is
+a projection from measured collective latency and an explicit fixed-cost
+assumption, not a measured engine result. Reaching the plan's 1.3x at zero fixed
+share would need ~24 us per reduction, which is below the measured 30.8 us cost
+of the two copies alone, so 1.3x is not reachable through transport work on this
+host; the 1.04-1.17x qualified win the design accepts is what the exchange
+delivers.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
@@ -1021,7 +1034,8 @@ loader path.
 [break-even projection, RCCL](results/tp2_break_even_per_step.json),
 [break-even projection, copy-free](results/tp2_break_even_per_step_alternating.json),
 [break-even projection, replayed](results/tp2_break_even_per_step_alternating_graph.json),
-[break-even projection, host exchange](results/tp2_break_even_staged_exchange_host_sync.json),
+[break-even projection, serial host exchange](results/tp2_break_even_staged_exchange_host_sync.json),
+[break-even projection, batched host exchange](results/tp2_break_even_staged_exchange_batched.json),
 [matched W7900 TP1 arm](results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json),
 [matched XTX TP1 arm](results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
