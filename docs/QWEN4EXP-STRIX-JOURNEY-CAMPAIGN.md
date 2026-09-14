@@ -25,7 +25,7 @@ failed candidates, and work not yet executed.
 | J3 bounded pread / persistent workers | Screened, unpromoted | Warm unique rows regress; workers improve cold unique gathers6.3-6.7x versus random mmap; no safe cache-state policy |
 | J3 copy elision / staging | Screened / pending | Copy-elision full12 one-pair model screen exact but timing mixed; async staging still pending |
 | J3 mapping-only random advice | Adopted | Exact72-sample cold/warm matrices, neutral five-pair warm replication; cold PP3.095/2.198/1.287x |
-| J4 GDN DPP suffix | Exact kernel retained, suffix inactive | Full72 parent-exact A/B remains valid; tiled GDN disabled by arithmetic recovery pending complete-composition requalification |
+| J4 GDN DPP suffix | Kernel retained, restored composition not promoted | Corrected-Q8/QSA short/depth numerics pass; targeted EOS explanation fails predeclared task rule ([review](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
 | J4 multi-column | Numerical blocker | Owner1.34-2.69x; full594-row Japanese/prefill scopes fail; deterministic, unpromoted |
 | J4 serial prefix | Pending | No blind all-layer widening; full numerical gates required |
 | J5 chunk2048/4096 | Admission blocker measured | At context4352/capacity1 allocate/close but exceed4GiB scratch by0.479/3.285GB |

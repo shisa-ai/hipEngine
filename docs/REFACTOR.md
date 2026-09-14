@@ -29,6 +29,11 @@
   registered for independent experiments. Re-enable only with a complete
   same-suite numerical/task/depth gate and accurate manifest. No production
   override is added to bypass the recovery binder.
+- The existing GDN/DPP suffix was retested over corrected Q8/QSA production:
+  short/depth numerics pass, but a complete Japanese explanation introduces
+  a material verification-parallelism error under the predeclared task rule.
+  See `benchmarks/results/2026-09-15-journey-gdn-restoration/`. Keep that
+  composition off; this is not proof that all GDN variants are faulty.
 - DPP itself is exact relative to its tiled parent and is not removed.
   Its suffix is inactive while tiled GDN is disabled. Requalify that complete
   composition before restoring it; do not infer DPP caused the failure.
