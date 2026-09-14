@@ -274,16 +274,28 @@ def q4_prefill(runner, hidden_rows, rows, start):
                 f"types have none, so routing them here would mis-decode."
             )
 
-    def gemm_f32_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, role):
-        """f32 activations x raw Q4_K blocks -> f32 (o_proj keeps f32)."""
+    def gemm_f32_f32(x_ptr, w_ptr, out_ptr, in_f, out_f, role, bf16_in_scratch):
+        """f32 activations x raw K-quant blocks -> f32 (o_proj keeps f32).
+
+        Q4_K has a native f32-in/f32-out WMMA prefill. Q6_K does not, so that
+        case narrows to bf16, runs the bf16/bf16 kernel and widens — Q6_K is a
+        legal o_proj type in an accepted file, so it must route, not raise.
+        """
         weight_type = prefill_weight_type(w_ptr, role)
-        if weight_type != GGML_Q4_K:
+        if weight_type == GGML_Q4_K:
+            _q4_prefill_f32_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
+                                stream=stream, runtime=runtime)
+        elif weight_type == GGML_Q6_K:
+            f32_to_bf16(x_ptr, bf16_in_scratch.ptr, rows * in_f,
+                        stream=stream, runtime=runtime)
+            _q6_prefill_bf16_bf16(bf16_in_scratch.ptr, w_ptr, q6_scratch.ptr, rows,
+                                  in_f, out_f, stream=stream, runtime=runtime)
+            bf16_to_f32(q6_scratch.ptr, out_ptr, rows * out_f, stream=stream, runtime=runtime)
+        else:
             raise ValueError(
-                f"batched prefill: {role} needs the f32/f32 Q4_K WMMA prefill but "
-                f"its weight is GGML type {weight_type}"
+                f"batched prefill: no f32-in prefill kernel for GGML type "
+                f"{weight_type} ({role}); this route wires Q4_K and Q6_K."
             )
-        _q4_prefill_f32_f32(x_ptr, w_ptr, out_ptr, rows, in_f, out_f,
-                            stream=stream, runtime=runtime)
 
     pos_host = np.arange(start, start + rows, dtype=np.int64)
     positions = _upload(pos_host)
@@ -309,11 +321,13 @@ def q4_prefill(runner, hidden_rows, rows, start):
         malloc(rows * ffn * 2),      # up bf16
         malloc(rows * ffn * 2),      # act bf16
         malloc(rows * ffn * 2),      # bf16 scratch for Q6_K prefill output
+        malloc(rows * hidden * 2),   # attn bf16 (Q6_K o_proj narrowing)
         malloc(rows * hidden * 4),   # down f32
         malloc(rows * hidden * 2),   # down bf16
     ]
     (normed, q_f32, q_out, k_f32, v_f32, k_out, k_bf16, v_bf16, attn, o_f32,
-     normed2, gate_f32, up_f32, gate, up, act, q6_scratch, down_f32, down_bf16) = scratch
+     normed2, gate_f32, up_f32, gate, up, act, q6_scratch, attn_bf16, down_f32,
+     down_bf16) = scratch
     try:
         for layer in runner.layers:
             runner.kernels.vv_rmsnorm_bf16(
@@ -341,8 +355,10 @@ def q4_prefill(runner, hidden_rows, rows, start):
                 q_out.ptr, layer.k_cache.ptr, layer.v_cache.ptr, attn.ptr,
                 spans, rows, heads, kv_heads, head_dim, runner._scale,
                 library=runner.library, runtime=runtime)
-            # o projection keeps f32 activations, so it uses the f32/f32 variant.
-            gemm_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, heads * head_dim, hidden, "o_proj")
+            # o projection keeps f32 activations: Q4_K uses the f32/f32 variant,
+            # Q6_K narrows and widens (it has no f32-in prefill kernel).
+            gemm_f32_f32(attn.ptr, layer.o_w.ptr, o_f32.ptr, heads * head_dim, hidden,
+                         "o_proj", attn_bf16)
             runner.kernels.f32_to_bf16(o_f32.ptr, down_bf16.ptr, rows * hidden,
                                        stream=stream, runtime=runtime)
             runner.kernels.vv_scale_residual_bf16(
