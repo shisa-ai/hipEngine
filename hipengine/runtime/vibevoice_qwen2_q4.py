@@ -144,6 +144,11 @@ class VibevoiceQwen2Q4Runtime(VibevoiceQwen2Runtime):
         # Caller-owned f32 scratch for the emulated dual gate/up GEMV; kept
         # per runner (not process-global) so runners stay isolated.
         self._dual_scratch = (keep(_alloc(ffn * 4)), keep(_alloc(ffn * 4)))
+        # Caller-owned bf16 scratch for the o_proj decode GEMV. Allocated once
+        # per runner: without it the o_proj wrapper mallocs and frees ~7 KiB on
+        # every layer of every decoded token. Released through self._buffers
+        # (keep()), not through close()'s attribute list.
+        self._o_proj_x_bf16 = keep(_alloc(heads * head_dim * 2))
         self._silu = _alloc(ffn * 2)
         self._down_f32 = _alloc(hidden * 4)
         self._down_bf16 = _alloc(hidden * 2)
