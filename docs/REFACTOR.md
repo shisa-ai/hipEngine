@@ -7709,3 +7709,28 @@ one owns, and any such change has to keep the 256-wide tree pairing per output.
 **Method note:** for a streaming kernel, flush between calls AND synchronize the
 flush before timing, then cross-check the isolated figure against the end-to-end
 stage delta.
+
+## VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work
+
+Not a refactor item so much as the frame for every other one. The diffusion head
+holds **246.5 MB** of weights and is invoked once per generated frame with a
+20-step solver, so it streams **123.3 GB per request** -- a **0.616 s floor** at
+the ~209 GB/s this host sustains, against **1.298 s** measured (about 45% of
+achievable bandwidth).
+
+Frames cannot be batched to fix this: each frame's diffusion condition is the LM
+hidden state for that frame, which depends on the previous frame's semantic
+feedback, so the frames are sequentially dependent. The weights cannot be cached
+either -- 246.5 MB against a much smaller L2, re-read on all 20 steps of every
+frame. The CFG branches are already batched into rows=2, so the weights are read
+once for both.
+
+The practical consequence: every measured gap in this model is a kernel at 45-68%
+of sustained bandwidth, and closing those gaps means changing the summation order,
+which this model's generated audio rejects. The accepted semantic win worked
+because it changed the column tile and not the accumulation order.
+
+Anyone looking for more speed should start from the bandwidth number rather than
+from a kernel profile, and should expect the answer to be a work-partitioning
+change that preserves the reduction tree, or a quality candidate (fewer solver
+steps, lower precision) that the generated-audio suite has to justify.
