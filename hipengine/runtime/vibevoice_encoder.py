@@ -7,7 +7,11 @@ the dense prefill GEMM.
 
 Data layout is row-major ``(rows = positions, cols = channels)`` bf16.
 Causal conv chunk carry uses one prefix buffer per conv layer holding the
-previous chunk's tail rows; a full pass uses zero prefixes.
+previous chunk's tail rows; a full pass uses zero prefixes. The streaming path
+floors each chunk's row count, which equals the fork's non-streaming ``ceil``
+only when the chunk divides every encoder ratio (true for 3200-sample chunks);
+``encode_reference`` is the non-streaming entry point that reproduces the
+fork's per-stage right zero padding.
 
 Batching: one recording per forward (the multi-recording padded batch is a
 later serving feature). Acoustic sampling noise must be supplied by the
@@ -306,8 +310,16 @@ class VibevoiceFrontendRuntime:
         num_samples: int,
         *,
         chunk_tail: dict[str, np.ndarray] | None = None,
+        align_stages: bool = False,
     ) -> tuple[DeviceBuffer, int]:
-        """One full pass; returns latents buffer (frames, hidden) and frames."""
+        """One full pass; returns latents buffer (frames, hidden) and frames.
+
+        ``align_stages`` reproduces the fork's non-streaming encode, which
+        zero-pads every stage's input up to the next stride multiple so the
+        stage emits ``ceil(rows/stride)`` rows. The streaming path adds no right
+        padding and floors instead; the two agree when the row count divides
+        every ratio, which holds for 3200-sample chunks.
+        """
         spec = self.specs[tok]
         stages = self.encoders[tok]
         blocks = self.blocks[tok]
@@ -334,7 +346,7 @@ class VibevoiceFrontendRuntime:
         self.kernels.vv_conv_gemm_bf16(
             prefix.ptr, pcm_u16.ptr, stem_w.ptr, stem_b.ptr, buf_a.ptr,
             spec.kernel_size - 1, rows_out, 1, spec.num_filters, spec.kernel_size, 1,
-            library=self.library, runtime=self.runtime,
+            rows_out, library=self.library, runtime=self.runtime,
         )
         cur, other = buf_a, buf_b
         for b, block in enumerate(blocks[0]):
@@ -346,7 +358,12 @@ class VibevoiceFrontendRuntime:
             input_rows = rows_out
             prefix = self._prefix(chunk_tail, f'down.{s}',cur,input_rows,stage.c_in,
                                   prefix_rows,stage.prefix)
-            rows_out = conv_rows_out(prefix_rows, rows_out, stage.k_len, stage.stride)
+            # The fork's non-streaming encode zero-pads each stage's input up to
+            # the next stride multiple, so the stage emits ceil(rows/stride)
+            # rows; the streaming path adds no right padding and floors. The two
+            # agree for 3200-aligned chunks, which divide every encoder ratio.
+            pad = (-input_rows) % stage.stride if align_stages else 0
+            rows_out = conv_rows_out(prefix_rows, input_rows + pad, stage.k_len, stage.stride)
             flat_features = stage.c_in * stage.k_len
             if flat_features % 32 == 0 and stage.c_out % 128 == 0 and rows_out >= 1:
                 # im2col + bulk GEMM: weights stream once instead of once per
@@ -354,15 +371,17 @@ class VibevoiceFrontendRuntime:
                 im2col_buf = self._scratch.take_u16(rows_out * flat_features)
                 conv_input = cur
                 im2col_pad = prefix_rows
+                rows_in = input_rows
                 if chunk_tail is not None:
                     conv_input = self._scratch.take_u16((prefix_rows+input_rows)*stage.c_in)
                     self.runtime.memcpy(conv_input.ptr,prefix.ptr,prefix_rows*stage.c_in*2,MemcpyKind.DEVICE_TO_DEVICE)
                     self.runtime.memcpy(conv_input.ptr+prefix_rows*stage.c_in*2,cur.ptr,
                                         input_rows*stage.c_in*2,MemcpyKind.DEVICE_TO_DEVICE)
                     im2col_pad = 0
+                    rows_in = prefix_rows + input_rows
                 self.kernels.vv_im2col_bf16(
                     conv_input.ptr, im2col_buf.ptr, rows_out, stage.c_in, stage.k_len, stage.stride,
-                    im2col_pad, library=self.library, runtime=self.runtime,
+                    im2col_pad, rows_in, library=self.library, runtime=self.runtime,
                 )
                 self.kernels.frontend_gemm(
                     im2col_buf.ptr, stage.conv_w_flat.ptr, other.ptr, rows_out,
@@ -376,7 +395,7 @@ class VibevoiceFrontendRuntime:
                 self.kernels.vv_conv_gemm_bf16(
                     prefix.ptr, cur.ptr, stage.conv_w_t.ptr, stage.conv_b.ptr, other.ptr,
                     prefix_rows, rows_out, stage.c_in, stage.c_out, stage.k_len, stage.stride,
-                    library=self.library, runtime=self.runtime,
+                    input_rows, library=self.library, runtime=self.runtime,
                 )
             cur, other = other, cur
             width = stage.c_out
@@ -391,7 +410,7 @@ class VibevoiceFrontendRuntime:
         self.kernels.vv_conv_gemm_bf16(
             prefix.ptr, cur.ptr, head_w.ptr, head_b.ptr, latents.ptr,
             head_prefix_rows, frames, width, spec.hidden_size, spec.kernel_size, 1,
-            library=self.library, runtime=self.runtime,
+            rows_out, library=self.library, runtime=self.runtime,
         )
         return latents, frames
 
@@ -468,6 +487,32 @@ class VibevoiceFrontendRuntime:
         try:
             self._scratch.reset(capacity_bytes=24 * pcm.size * spec.num_filters * 2 + (16 << 20))
             latent, frames = self._encoder_forward(tok, pcm_u16, pcm.size, chunk_tail=state)
+            host = np.empty((frames, spec.hidden_size), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(host), latent)
+            return (host.astype(np.uint32) << 16).view(np.float32)
+        finally:
+            free(pcm_u16)
+
+    def encode_reference(self, pcm: np.ndarray) -> np.ndarray:
+        """One non-streaming pass over a whole reference waveform.
+
+        This is the fork's ``acoustic_tokenizer.encode`` on a voice prompt: a
+        single forward with zero left context and per-stage right zero padding,
+        so every stage emits ``ceil(rows/stride)`` frames. It is deliberately
+        not the chunked streaming path. For a reference whose length is not a
+        hop multiple the two disagree in the final frame, because streaming
+        floors each chunk where the fork ceils the whole pass.
+        """
+        pcm = np.asarray(pcm, dtype=np.float32)
+        if pcm.ndim != 1 or not pcm.size or not np.isfinite(pcm).all():
+            raise ValueError('PCM must be a nonempty finite mono waveform')
+        spec = self.specs['acoustic']
+        pcm_u16 = _upload_u16(f32_to_bf16_bits(pcm))
+        try:
+            self._scratch.reset(capacity_bytes=24 * pcm.size * spec.num_filters * 2 + (16 << 20))
+            latent, frames = self._encoder_forward(
+                'acoustic', pcm_u16, pcm.size, align_stages=True
+            )
             host = np.empty((frames, spec.hidden_size), dtype=np.uint16)
             copy_device_to_host(host_array_ptr(host), latent)
             return (host.astype(np.uint32) << 16).view(np.float32)
