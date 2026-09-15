@@ -1,10 +1,11 @@
 # MODEL-VIBEVOICE-TTS.md — VibeVoice 1.5B TTS on hipEngine
 
-Status: **plan tightened; milestone 1 (freeze the torch oracle) is the next action**
-(2026-09-14). The architecture review is unchanged; the API, benchmark protocol
-and closure criteria below are now specified. No weights were downloaded and no
-model has been executed, so every upstream claim here is a source review, not a
-measurement.
+Status: **milestone 1 (frozen torch oracle) closed 2026-09-15; milestone 2 (the
+acoustic decoder) is the next action.** The architecture review is unchanged and
+the API, benchmark protocol and closure criteria below are specified. The pinned
+oracle environment, fixtures and weight inventory are measured reference outputs
+from the community fork; nothing in `hipengine/` implements this model yet, so
+upstream architecture claims remain source review and no performance claim exists.
 
 This is the largest new runtime surface in this model group: a Qwen2 language
 model controls text/speech transitions, a diffusion head generates continuous
@@ -277,6 +278,7 @@ result = engine.synthesize(
 1. Freeze and smoke-test the community oracle against the Microsoft checkpoint;
    inventory all weights, speech tokens, scheduler settings and codec state.
    Add proposed `scripts/vibevoice_tts_oracle_torch.py` and a model contract.
+   Done 2026-09-15 (see "Milestone closure" below).
 2. Reuse the ASR encoder/core work, then independently implement the acoustic
    decoder. Validate latent→PCM with recorded latents, including chunk boundaries
    and final flush, before involving the language model.
@@ -399,9 +401,11 @@ here as they do to the MTP paths.
 
 ## Repository contracts and evidence
 
-This is a source review, not an implemented plugin or a measured performance
-result. Proposed implementation paths are future work. Keep runtime imports
-torch-free, resolve kernels through `(backend, layer, quant, variant)`, retain
+Milestone 1 produced measured reference outputs — the frozen oracle fixtures
+and weight inventory — but this is still not an implemented plugin and not a
+measured performance result. The implementation path below is future work.
+Keep runtime imports torch-free, resolve kernels through
+`(backend, layer, quant, variant)`, retain
 registered strict fallbacks, and preserve `KVLiveSpans` for cached attention.
 Before a kernel port, read [KERNELS.md](KERNELS.md) and run
 `python3 scripts/check_lineage.py --kind kernel --diff stat`; develop in-tree
@@ -427,9 +431,9 @@ architecture and track temporary loaders/flags in `REFACTOR.md`.
 
 Reviewed on 2026-09-11 against hipEngine
 `0dacb0df29864c622a787f8e42f64b4e36be9894`. Links below pin the inspected
-config/code revisions where available. No weights were downloaded and no model
-was executed. Library sources describe those revisions, not a tested dependency
-set; the first implementation milestone must freeze a working oracle environment.
+config/code revisions where available. At review time no weights had been
+downloaded and no model had been executed; milestone 1 has since frozen the
+working oracle environment (see "Oracle environment" above).
 
 The community [scheduler implementation][scheduler] is part of the oracle pin.
 
