@@ -1,6 +1,10 @@
 # MODEL-VIBEVOICE-TTS.md — VibeVoice 1.5B TTS on hipEngine
 
-Status: **reviewed; implementation pending** (2026-09-11).
+Status: **plan tightened; milestone 1 (freeze the torch oracle) is the next action**
+(2026-09-14). The architecture review is unchanged; the API, benchmark protocol
+and closure criteria below are now specified. No weights were downloaded and no
+model has been executed, so every upstream claim here is a source review, not a
+measurement.
 
 This is the largest new runtime surface in this model group: a Qwen2 language
 model controls text/speech transitions, a diffusion head generates continuous
@@ -73,14 +77,26 @@ state at speech boundaries. Preserve these mechanics before batching or capture.
 
 ## Reuse and correctness traps
 
-The audio **encoder** topology and connectors overlap with
-[MODEL-VIBEVOICE-ASR.md](MODEL-VIBEVOICE-ASR.md); weights, latent scaling and
-processor contracts still need independent validation. Reuse a common tokenizer
-implementation after ASR bring-up. The Qwen2 decoder can share with ASR and
-MinerU at the primitive level. Existing RMSNorm/SiLU/GEMM kernels also fit the
-conditioned head, but adaptive normalization, waveform upsampling and session
-orchestration are new. Moonshine's text output and cross-attention loop cannot
-substitute for this design.
+### Reuse from the ASR lane
+
+The ASR lane is now on `main`, so the starting point is concrete. This table
+separates what is reusable as-is from what is only a candidate that has not
+passed a production gate.
+
+| Surface | Module | State |
+| --- | --- | --- |
+| Causal audio encoder + connectors | `hipengine/runtime/vibevoice_encoder.py` (`VibevoiceFrontendRuntime.encode`, `_ScratchPool`) | **Validated for ASR.** The encoder topology and connector shapes overlap with TTS, but the TTS weights, the reference-audio processor contract and the latent scaling below need independent validation. |
+| Qwen2 backbone | `hipengine/runtime/vibevoice_qwen2.py` (`VibevoiceQwen2Runtime`: `push_token`, `forward_layers`, `logits_argmax`, `reset`, `prefill_rows`) | **Validated for ASR** text generation. Same architecture TTS needs; TTS adds a second (negative) branch and speech-token transitions. |
+| Q4_K_M backbone | `hipengine/runtime/vibevoice_qwen2_q4.py` | **Production-unqualified candidate.** Byte-exact against its own strict parent and WER-parity with bf16 over 200 clips, but no production profile is registered and gfx1100 is unverified. Do not treat it as the reference lane. |
+| Kernel primitives | `hipengine/kernels/vibevoice.py` `PRIMITIVES`, registered by `hipengine/kernels/hip_gfx1100/vibevoice/registered.py` | RMSNorm, SiLU, GEMM, RoPE, KV-write and attention-span primitives are **validated for ASR shapes**. The conditioned diffusion head additionally needs adaptive normalization, which is not among them. |
+| Scratch / arena reuse | `hipengine/core/memory.py` `DeviceMemoryArena` (with `rewind`), `_ScratchPool`, `_PrefillScratchArena` | **Validated.** The reuse pattern and its regression tests carry over directly. |
+| Fixture and layout helpers | `hipengine/loading/vibevoice_layout.py`, `hipengine/generation/vibevoice_protocol.py` | `f32_to_bf16_bits`, `conv_rows_out` and `transpose_conv_weight_t` are shared. `build_prompt`/`parse_transcript` are ASR-specific and do not apply. |
+| Test and harness patterns | `tests/test_gpu_vibevoice_qwen2_runner.py`, `scripts/vibevoice_q4_e2e_stage_breakdown.py` | The matched-request protocol, the negative-control pattern and synchronize-bracketed stage timing carry over. |
+
+Two surfaces are **not** reusable and must be built new: the acoustic waveform
+decoder (upsampling, chunk flush, sample accounting) and the diffusion head with
+its solver. Moonshine's text output and cross-attention loop cannot substitute
+for this design.
 
 - Load `speech_scaling_factor` and `speech_bias_factor` from the checkpoint.
   The loop decodes `latent / scale - bias`; the acoustic feedback connector
@@ -100,6 +116,36 @@ substitute for this design.
   hour-long continuity.
 
 [Inference and scaling source][inference], [audio tokenizer source][tokenizers].
+
+## Initial API and scope
+
+The first implementation is deliberately narrow: one serialized request at a
+time, up to four speakers, a short script. Concurrency, batching and long-form
+qualification are later milestones, and the first API must not assume them.
+
+Proposed surface, mirroring the ASR adapter's shape:
+
+```python
+engine = LLM("microsoft/VibeVoice-1.5B")
+result = engine.synthesize(
+    script,                    # text to speak, including speaker turns
+    speaker_references,        # list of 24 kHz mono float PCM, one per speaker
+    sample_rate=24000,
+    max_new_tokens=None,
+    seed=None,
+)
+```
+
+| Contract | Decision |
+| --- | --- |
+| Script input | Plain text. Multi-speaker turns use the checkpoint's speaker formatting, resolved through the actual tokenizer/processor rather than a literal template string. |
+| Speaker references | Finite mono 24 kHz float PCM, one per speaker, at most four. Other rates are resampled by the caller, as in ASR. Reference audio is normalized to the processor's target, and that normalization is part of the oracle contract. |
+| Output | Mono 24 kHz float PCM, including the codec's final flush. Output length is derived from generated speech frames, not assumed from the script. |
+| Chunk format | PCM chunks of a declared size, with the first chunk reported separately from the pooled total. A boundary must not duplicate or drop samples. |
+| Completion status | `eos` when the end token is emitted, `length` when a token or frame budget cuts generation off, `cancelled` for a cancelled request, and `error` with a reason when a step fails. Truncated output is returned with `length`, never silently padded. |
+| Cancellation | Cancellable between steps. The session releases LM, negative-LM, codec and semantic state, and returns the audio completed so far, marked `cancelled`. |
+| Reset | `reset()` returns the session to its initial state: positive and negative KV caches, codec streaming state, semantic cache and RNG. A speaker transition inside one request resets codec state at the speech boundary without discarding the request. |
+| Ownership | The engine owns weights, codec state and scratch. Per-request RNG is owned by the request and must survive batching, cancellation and speaker transitions. Requests on one initialized engine serialize access to scratch and KV, as ASR does. |
 
 ## Suggested implementation sequence
 
@@ -140,6 +186,80 @@ steps/time, acoustic decoding and semantic feedback. Keep voice prompts, text,
 CFG, step count, noise policy and output duration matched. Report initialization
 and preprocessing separately. A smaller diffusion-step budget cannot be claimed
 as a kernel speedup, and upstream Apple/NVIDIA results do not predict ROCm rates.
+
+### Executable protocol
+
+A lane comparison is only meaningful if every lane consumes the same frozen
+request. Before any timing is retained:
+
+- Commit **one request manifest** per benchmark, hashed, holding the script,
+  speaker-reference PCM hashes, resolved prompt token IDs, CFG scale, solver
+  order, timestep spacing, step count, seed, token/frame budget and the
+  synchronization points. Every lane reads that manifest; a lane that cannot
+  reproduce its hashes fails rather than reporting a number.
+- Record the **random tensors**, not just the seed: initial diffusion noise, the
+  per-step schedule and the codec's stochastic state. A seed does not align torch
+  and HIP random streams, so a shared seed is not a shared request.
+- Commit the **harness** that produced the number. An artifact whose command lives
+  outside the repository is not reproducible, as the ASR scratch artifacts
+  demonstrated before their probes were committed.
+- Bracket each stage with explicit **device synchronizes**, so a stage is
+  execution wall time rather than enqueue time, and state the boundaries in the
+  artifact.
+- Report four numbers separately, because they answer different questions:
+  **cold start** (first request after load, including initialization),
+  **warm synthesis** (steady-state per-request time), **time to first audible
+  chunk** (the latency a listener perceives) and **pooled RTF** (total wall time
+  over total output audio, which is duration-weighted). One headline RTF hides
+  all four.
+- RTF here is wall time over **output** audio seconds, the inverse convention of
+  ASR's wall time over input audio. Every reported number must say which it uses.
+
+## Milestone closure and failure accounting
+
+### Milestone 1 closure
+
+The first milestone is complete when a frozen torch oracle runs end to end and
+its outputs are captured as fixtures. Concretely, all of:
+
+- the pinned checkpoint, fork revision and environment are recorded, and the
+  oracle produces non-empty PCM for one single-speaker and one two-speaker script;
+- a hashed request manifest and its recorded random tensors are committed, and a
+  re-run of the oracle reproduces its own output hashes;
+- fixtures exist for reference-audio features, LM logits, positive and negative
+  conditions, per-step diffusion predictions, the final latent, waveform samples
+  and semantic feedback, each with its shape and dtype;
+- every checkpoint weight is inventoried and accounted for, including
+  `speech_scaling_factor` and `speech_bias_factor`;
+- the scheduler is pinned by class, order, timestep spacing and step count, and a
+  generic DDPM sampler is documented as not interchangeable;
+- the oracle is known to work on the *reviewed* fork revision rather than a newer
+  one, and any difference is recorded if it does not.
+
+Out of scope for milestone 1: batching, concurrency, hour-scale continuity,
+kernel porting, quantization, and any quality or speed claim.
+
+### Failure accounting
+
+Failed and degraded generations stay visible in **both** the quality and the
+timing results. They are not dropped from a mean, and they are never reported as
+a fast lane:
+
+| Failure | Accounting |
+| --- | --- |
+| Truncation | Returned with `length`, counted separately, and reported alongside the quality score rather than excluded from it. |
+| Missing or unparsed turns | Reported per request with expected and observed speaker-turn counts. A turn-count mismatch is a failure, not a formatting detail. |
+| Empty or near-silent audio | Detected by duration and level, counted, and excluded from speaker-similarity and listening aggregates only when listed explicitly. |
+| Step failure or cancellation | Reported with the reason, the stage, and the audio produced so far. A cancelled request is never counted as a completed synthesis. |
+| Join artifacts | Sample-count continuity plus a click/duplication check at every chunk boundary, because correct chunks can still click at joins. |
+
+Timing tables report the failure counts next to the latencies, so a lane cannot
+look faster by failing more requests.
+
+Acceptance thresholds are calibrated against the frozen oracle **before**
+optimization begins. Choosing a threshold after seeing a candidate's result is
+the benchmark-gaming failure mode, and the `AGENTS.md` "Anti-gaming" rules apply
+here as they do to the MTP paths.
 
 ## Repository contracts and evidence
 
