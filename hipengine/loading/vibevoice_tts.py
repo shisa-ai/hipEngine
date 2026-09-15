@@ -28,6 +28,10 @@ from hipengine.kernels.cpu_reference.vibevoice_tts import (
     VibevoiceDecoderSpec,
     VibevoiceDecoderWeights,
 )
+from hipengine.kernels.cpu_reference.vibevoice_tts_diffusion import (
+    VibevoiceDiffusionSpec,
+    VibevoiceDiffusionWeights,
+)
 
 
 def _bf16_bytes_to_f32(payload: bytes, shape: tuple[int, ...]) -> np.ndarray:
@@ -126,5 +130,66 @@ def load_vibevoice_tts_decoder(
         head_conv_weight=head_w,
         head_conv_bias=head_b,
         blocks=tuple(blocks),
+    )
+    return spec, weights, scaling_factor, bias_factor
+
+
+def load_vibevoice_tts_diffusion_head(
+    model_path: str | Path,
+) -> tuple[VibevoiceDiffusionSpec, VibevoiceDiffusionWeights, float, float]:
+    """Load the diffusion head spec, weights, and the two scaling factors.
+
+    Returns ``(spec, weights, speech_scaling_factor, speech_bias_factor)``.
+    The head bundle is separate from the decoder so each runtime loads only
+    what it drives.
+    """
+    path = resolve_model_path(model_path)
+    index = load_weight_index(path)
+    head_config = index.config.get("diffusion_head_config")
+    if head_config is None:
+        raise ValueError(f"{path} has no diffusion_head_config; not a VibeVoice-TTS checkpoint")
+    spec = VibevoiceDiffusionSpec.from_config(head_config)
+    prefix = "model.prediction_head"
+
+    noisy = _load_tensor(index, f"{prefix}.noisy_images_proj.weight", path)
+    cond = _load_tensor(index, f"{prefix}.cond_proj.weight", path)
+    t_mlp_0 = _load_tensor(index, f"{prefix}.t_embedder.mlp.0.weight", path)
+    t_mlp_2 = _load_tensor(index, f"{prefix}.t_embedder.mlp.2.weight", path)
+    if noisy.shape != (spec.hidden_size, spec.latent_size):
+        raise ValueError(f"noisy_images_proj {noisy.shape} does not match spec {spec}")
+
+    layers = []
+    for i in range(spec.head_layers):
+        bp = f"{prefix}.layers.{i}"
+        layers.append(
+            {
+                "norm_weight": _load_tensor(index, f"{bp}.norm.weight", path),
+                "adaLN_weight": _load_tensor(index, f"{bp}.adaLN_modulation.1.weight", path),
+                "gate_proj": _load_tensor(index, f"{bp}.ffn.gate_proj.weight", path),
+                "up_proj": _load_tensor(index, f"{bp}.ffn.up_proj.weight", path),
+                "down_proj": _load_tensor(index, f"{bp}.ffn.down_proj.weight", path),
+            }
+        )
+        if layers[-1]["adaLN_weight"].shape != (3 * spec.hidden_size, spec.hidden_size):
+            raise ValueError(f"layer {i} adaLN shape {layers[-1]['adaLN_weight'].shape} unexpected")
+
+    final_adaLN = _load_tensor(index, f"{prefix}.final_layer.adaLN_modulation.1.weight", path)
+    final_linear = _load_tensor(index, f"{prefix}.final_layer.linear.weight", path)
+    if final_linear.shape != (spec.latent_size, spec.hidden_size):
+        raise ValueError(f"final linear {final_linear.shape} does not match spec {spec}")
+
+    scaling_factor = float(_load_tensor(index, "model.speech_scaling_factor", path).reshape(-1)[0])
+    bias_factor = float(_load_tensor(index, "model.speech_bias_factor", path).reshape(-1)[0])
+    if not (math.isfinite(scaling_factor) and math.isfinite(bias_factor)):
+        raise ValueError("speech scaling factors did not load as finite values")
+
+    weights = VibevoiceDiffusionWeights(
+        noisy_images_proj=noisy,
+        cond_proj=cond,
+        t_mlp_0=t_mlp_0,
+        t_mlp_2=t_mlp_2,
+        layers=tuple(layers),
+        final_adaLN=final_adaLN,
+        final_linear=final_linear,
     )
     return spec, weights, scaling_factor, bias_factor

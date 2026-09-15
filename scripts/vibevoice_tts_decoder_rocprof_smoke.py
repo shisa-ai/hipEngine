@@ -23,8 +23,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.kernels.hip_gfx1100.fused import paro_silu
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv
 from hipengine.kernels.hip_gfx1100.vibevoice import decoder as tts_decoder
+from hipengine.kernels.hip_gfx1100.vibevoice import diffusion as tts_diffusion
 from hipengine.kernels.hip_gfx1100.vibevoice import encoder as vv_enc
 from hipengine.runtime.vibevoice_tts_decoder import VibevoiceTTSDecoderGPU
 
@@ -48,13 +50,19 @@ def main() -> int:
         (tts_decoder.build_vibevoice_decoder, "vibevoice_tts_decoder"),
         (vv_enc.build_vibevoice_encoder, "vibevoice_encoder"),
         (dense_gemv.build_dense_gemv, "dense_gemv"),
+        (tts_diffusion.build_vibevoice_diffusion, "vibevoice_tts_diffusion"),
+        (paro_silu.build_paro_silu, "paro_silu"),
     ):
         library = build(load=True, require_cached=True, compiler_version=compiler_version)
         if library is None:
             raise RuntimeError(f"{label} cached build unavailable; prebuild outside the profiler")
 
     from hipengine.loading.hf_cache import resolve_model_path
-    from hipengine.loading.vibevoice_tts import load_vibevoice_tts_decoder
+    from hipengine.loading.vibevoice_tts import (
+        load_vibevoice_tts_decoder,
+        load_vibevoice_tts_diffusion_head,
+    )
+    from hipengine.runtime.vibevoice_tts_diffusion import VibevoiceTTSDiffusionHeadGPU
 
     spec, weights, _, _ = load_vibevoice_tts_decoder(resolve_model_path("microsoft/VibeVoice-1.5B"))
     data = np.load(_FIXTURE)
@@ -65,6 +73,16 @@ def main() -> int:
     pcm = runner.decode_bulk(lat)
     runner.close()
     print(f"decoded {pcm.shape} pcm, absmax {np.abs(pcm).max():.4f}")
+
+    dspec, dweights, _, _ = load_vibevoice_tts_diffusion_head(
+        resolve_model_path("microsoft/VibeVoice-1.5B")
+    )
+    dhead = VibevoiceTTSDiffusionHeadGPU(dspec, dweights)
+    noise = np.load(_FIXTURE)["call0_initial_noise"]
+    cond = np.zeros((1, dspec.hidden_size), dtype=np.float32)
+    speech, _ = dhead.sample_speech_tokens(cond, cond, 1.3, noise)
+    dhead.close()
+    print(f"diffusion latent {speech.shape}, absmax {np.abs(speech).max():.4f}")
     return 0
 
 
