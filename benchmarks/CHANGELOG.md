@@ -1,5 +1,20 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: Withdrew the Flash-Next 4K gap decomposition (1.65x
+  conservative arithmetic x 3.38x kernel quality) - telescoping two ratios is
+  algebra, not a causal decomposition, and equal arithmetic was never
+  demonstrated. Corrected pwilkin's dense comparison from 2770 ms to 1387.5 ms
+  per prefill (whole-window sum used as a per-prefill figure), making the dense
+  ratio 7.3x not 3.6x. Flagged the `gr_read` row as not comparable across
+  engines. No hipEngine rate changed. Added a request-delimited, role-marked
+  per-role cost table: 100% of 9652 kernels attributed, `moe:expert_gate`
+  6667.6/22368.1 ms (29.8%), every Q8_0 projection at 2140-3466 GFLOP/s
+  (14.5-23.4% of FP32 peak). Fixed three bucketer bugs that had put
+  `quantize_mmq_q8_1` in `dense_matmul` and dropped `qsa3_attn_kernel` and the
+  rocBLAS `Cijk_*` GEMM to `unattributed`.
+  [Correction](results/2026-09-15-flashnext-engine-comparison/README.md) and
+  [per-role cost](results/2026-09-16-flashnext-per-role-cost/README.md).
+
 - **2026-09-15 UTC**: Added a same-file Flash-Next prefill comparison against
   every llama.cpp-family engine that can open `UD-Q4_K_XL`. hipEngine current
   default 183.6 tok/s at 4K; pwilkin `strix-halo` `40a9f4d01` 1061.9 (5.78x),

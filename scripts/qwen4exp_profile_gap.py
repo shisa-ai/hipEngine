@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from hipengine.kernels import launch_census
+
 from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     DEFAULT_FIXTURE,
     _git_metadata,
@@ -75,7 +77,6 @@ class Roctx:
 
 class RoleMarkers:
     """Profiler-only owner ranges for correlation-ID role attribution."""
-
     def __init__(self, module: Any, marker: Roctx) -> None:
         self.module = module
         self.marker = marker
@@ -85,16 +86,26 @@ class RoleMarkers:
     def _layer(weight: Any) -> str:
         return str(getattr(getattr(weight, "spec", None), "slot_path", "unknown"))
 
-    def install(self) -> None:
-        specs: dict[str, Callable[[tuple[Any, ...], dict[str, Any]], str]] = {
-            "launch_gguf_linear": lambda a, _k: "linear:" + self._layer(a[0]),
-            "run_qwen4_exp_gr_read": lambda a, _k: "gr_read:" + self._layer(a[2]),
-            "run_qwen4_exp_moe": lambda a, _k: "moe:" + self._layer(a[1]["expert_gate"]),
-            "run_qwen4_exp_gdn_token_mixer": lambda a, _k: "gdn:" + self._layer(a[1]["attn_qkv"]),
-            "run_qwen4_exp_qsa_prefill_token_mixer": lambda a, _k: "qsa_prefill:" + self._layer(a[1].projections["attn_q"]),
-            "run_qwen4_exp_dense_qsa_token_mixer": lambda a, _k: "qsa_decode:" + self._layer(a[1].projections["attn_q"]),
-            "run_qwen4_exp_ple": lambda a, _k: "ple:" + self._layer(a[2]["ple_key"]),
+    @staticmethod
+    def _role_specs() -> dict[str, Callable[[tuple[Any, ...], dict[str, Any]], str]]:
+        """Owner entry point -> role label. Shared with the launch census."""
+        slot = RoleMarkers._layer
+        return {
+            "launch_gguf_linear": lambda a, _k: "linear:" + slot(a[0]),
+            "run_qwen4_exp_gr_read": lambda a, _k: "gr_read:" + slot(a[2]),
+            "run_qwen4_exp_moe": lambda a, _k: "moe:" + slot(a[1]["expert_gate"]),
+            "run_qwen4_exp_gdn_token_mixer": lambda a, _k: "gdn:" + slot(a[1]["attn_qkv"]),
+            "run_qwen4_exp_qsa_prefill_token_mixer": lambda a, _k: (
+                "qsa_prefill:" + slot(a[1].projections["attn_q"])
+            ),
+            "run_qwen4_exp_dense_qsa_token_mixer": lambda a, _k: (
+                "qsa_decode:" + slot(a[1].projections["attn_q"])
+            ),
+            "run_qwen4_exp_ple": lambda a, _k: "ple:" + slot(a[2]["ple_key"]),
         }
+
+    def install(self) -> None:
+        specs = RoleMarkers._role_specs()
         for name, role_fn in specs.items():
             original = getattr(self.module, name)
             self.originals[name] = original
@@ -110,6 +121,46 @@ class RoleMarkers:
                     return _original(*args, **kwargs)
                 finally:
                     self.marker.pop()
+
+            setattr(self.module, name, wrapper)
+
+    def close(self) -> None:
+        for name, original in self.originals.items():
+            setattr(self.module, name, original)
+        self.originals.clear()
+
+
+class LaunchCensusRoles:
+    """Owner ranges for the GGUF launch census, without needing a profiler.
+
+    Wraps the same entry points as :class:`RoleMarkers` so the two describe the
+    same boundaries, but pushes the role onto a Python stack that
+    ``hipengine.kernels.launch_census`` reads at launch time. A launch outside
+    every wrapped entry point stays ``<unattributed>``.
+    """
+
+    def __init__(self, module: Any) -> None:
+        self.module = module
+        self.originals: dict[str, Any] = {}
+
+    def install(self) -> None:
+        for name, role_fn in RoleMarkers._role_specs().items():
+            original = getattr(self.module, name, None)
+            if original is None:
+                continue
+            self.originals[name] = original
+
+            def wrapper(
+                *args: Any,
+                _original: Any = original,
+                _role_fn: Callable[[tuple[Any, ...], dict[str, Any]], str] = role_fn,
+                **kwargs: Any,
+            ) -> Any:
+                launch_census.push_role(_role_fn(args, kwargs))
+                try:
+                    return _original(*args, **kwargs)
+                finally:
+                    launch_census.pop_role()
 
             setattr(self.module, name, wrapper)
 
@@ -396,6 +447,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
     parser.add_argument("--role-markers", action="store_true", help="Emit profiler-only qwen4exp_role:* ranges")
     parser.add_argument(
+        "--launch-census", type=Path, default=None,
+        help=(
+            "Write a per-role GGUF matmul launch census. Unlike --role-markers "
+            "this needs no profiler: it records the tensor slot path and shape "
+            "of every quantized matmul launch in the measured pass, so a kernel "
+            "variant that serves several tensors can be attributed to one."
+        ),
+    )
+    parser.add_argument(
         "--moe-telemetry",
         action="store_true",
         help="Collect diagnostic per-layer selected-expert row distributions",
@@ -591,6 +651,13 @@ def main() -> None:
             telemetry = MoeTelemetry(runner_module) if args.moe_telemetry else None
             if telemetry is not None:
                 telemetry.install()
+            # Reset after the warmup so graph instantiation, allocator growth and
+            # cache population are not attributed to the measured pass.
+            launch_roles = None
+            if args.launch_census:
+                launch_census.reset()
+                launch_roles = LaunchCensusRoles(runner_module)
+                launch_roles.install()
             try:
                 for rep in range(args.repetitions):
                     if roctx:
@@ -622,7 +689,11 @@ def main() -> None:
                     telemetry.close()
                 if roles is not None:
                     roles.close()
+                if launch_roles is not None:
+                    launch_roles.close()
                 census.close()
+            if args.launch_census:
+                report["launch_census"] = launch_census.dump(args.launch_census)
             prompt_tokens = len(ids)
         else:
             if args.decode_output == "full_logits":
