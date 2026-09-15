@@ -131,6 +131,49 @@ def test_the_contract_partial_widths_follow_the_split(mod) -> None:
         )
 
 
+def test_f32_partials_skip_the_final_bf16_rounding(mod) -> None:
+    """The reduction dtype decision: an f32 partial is the unrounded accumulator."""
+
+    rng = np.random.default_rng(5)
+    hidden, ffn, world_size = 16, 32, 2
+    gate = rng.standard_normal((ffn, hidden), dtype=np.float32)
+    up = rng.standard_normal((ffn, hidden), dtype=np.float32)
+    down = rng.standard_normal((hidden, ffn), dtype=np.float32)
+    x = mod.bf16_round(rng.standard_normal(hidden, dtype=np.float32))
+    bf16_partial = mod.contract_rank_partials(
+        gate, up, down, x, 0, world_size, down_output_dtype="bf16"
+    )["down_partial"]
+    f32_partial = mod.contract_rank_partials(
+        gate, up, down, x, 0, world_size, down_output_dtype="f32"
+    )["down_partial"]
+    assert not np.array_equal(bf16_partial, f32_partial), (
+        "the two dtypes are different contracts; a test that conflates them checks nothing"
+    )
+    # The f32 partial is the exact f32 matmul: no representable value was lost.
+    exact = (down[:, : ffn // world_size] @ mod.contract_rank_partials(
+        gate, up, down, x, 0, world_size, down_output_dtype="f32"
+    )["activated"]).astype(np.float32)
+    assert np.array_equal(f32_partial, exact)
+    # The bf16 partial is that value rounded to bf16.
+    assert np.array_equal(bf16_partial, mod.bf16_round(exact))
+
+
+def test_the_boundary_adds_the_residual_and_normalizes(mod) -> None:
+    """next = residual + mlp_out in f32, then the next block's input RMSNorm."""
+
+    from hipengine.kernels.cpu_reference.ops import rmsnorm
+
+    rng = np.random.default_rng(13)
+    n = 64
+    residual = rng.standard_normal(n, dtype=np.float32) * 0.1
+    mlp_out = rng.standard_normal(n, dtype=np.float32) * 0.1
+    weight = rng.standard_normal(n, dtype=np.float32) * 0.1 + 1.0
+    out = mod.residual_boundary(residual, mlp_out, weight)
+    expected_next = (residual + mlp_out).astype(np.float32)
+    assert np.array_equal(out["next_hidden"], expected_next)
+    assert np.allclose(out["next_norm"], rmsnorm(expected_next, weight), rtol=1e-6)
+
+
 def test_an_uneven_ffn_is_refused(mod) -> None:
     rng = np.random.default_rng(3)
     gate = rng.standard_normal((7, 4), dtype=np.float32)
@@ -166,21 +209,29 @@ def test_the_two_gpu_slice_matches_the_oracle_and_the_teacher(mod) -> None:
         "each rank must run on its own device"
     )
 
-    # Every rank partial lands on the bf16 contract emulation.
+    # Partials are f32 and land on the f32 contract emulation; the activated
+    # intermediate is bf16 and lands on its bf16 contract.
+    assert report["reduction"]["down_output_dtype"] == "f32"
     for rank in report["per_rank"]:
-        assert rank["down_partial_vs_contract"]["max_abs_err"] < 1e-4, rank
+        assert rank["down_partial_vs_contract"]["max_abs_err"] < 1e-6, rank
         assert rank["activated_vs_contract"]["max_rel_err"] < 4e-3, rank
 
     stages = report["stages"]
-    # The production numerical envelope, not exactness: bf16 has ~2^-8 relative
-    # precision, so a mean relative error inside it and a max a few ulps above
-    # at small magnitudes is the expected quantization envelope.
+    # The remaining distance to the f64 truth is the bf16 activation contract,
+    # which the TP1 teacher carries identically.
     assert stages["tp2_sum_vs_truth"]["mean_rel_err"] < 5e-3
     assert stages["tp2_sum_vs_truth"]["max_rel_err"] < 3e-2
-    # TP2 agrees with the TP1 teacher the same way the teacher agrees with the
-    # truth - the slice does not lose accuracy relative to the unsharded path.
-    assert stages["tp2_sum_vs_tp1_teacher"]["mean_rel_err"] < 5e-3
-    assert stages["tp1_teacher_vs_truth"]["mean_rel_err"] < 5e-3
+    # With f32 partials, TP2 and TP1 agree to f32 accumulation noise.
+    assert stages["tp2_sum_vs_tp1_teacher"]["max_abs_err"] < 1e-6
+    assert stages["tp2_sum_vs_tp1_teacher"]["mean_rel_err"] < 1e-6
+    # The exchange delivered the same reduced vector to every rank.
+    for verified in report["reduction"]["exchange"]["verified_ranks"]:
+        assert verified["h2d_roundtrip_max_abs"] == 0.0
+    # The residual/next-consumer boundary matches TP1 at f32 noise and stays
+    # inside the bf16 activation envelope against the f64 truth.
+    assert stages["boundary_next_hidden_tp2_vs_tp1"]["max_abs_err"] < 1e-7
+    assert stages["boundary_next_norm_tp2_vs_tp1"]["mean_rel_err"] < 1e-6
+    assert stages["boundary_next_norm_tp2_vs_truth"]["mean_rel_err"] < 2e-3
 
     # The fused candidate runs at the shard shape and is bit-exact with the
     # unfused baseline on both ranks; it stays a candidate - the policy table
