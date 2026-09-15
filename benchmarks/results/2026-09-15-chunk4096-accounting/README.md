@@ -65,8 +65,22 @@ All48 chunk traces match the declared sizes; at4K the candidate executes
 one4096-token call versus four1024-token reference calls.
 
 This is a bounded numerical pass, not a new default or speed claim.
-Full-payload boundary/reuse, active tasks, c2 inference and timing remain.
+Active tasks, c2 inference and timing remain.
 Exact capture argv and manifests are in `artifact.json`.
+
+## Boundary And Reuse Gate
+
+Clean `5c5dc5dbe`, capacity4352, code and Japanese prefixes at
+2047/2048/2049/2051/2052/4095/4097 tokens,64 teacher transitions and three
+candidate repeats. All910 logits match strict exactly. Control metadata,
+finiteness and deterministic repeats pass.
+
+Complete BF16 KV buffers, live raw/pooled index keys and recurrent state
+match strict at prefill and final decode endpoints. Intervening257-token
+prefills do not change the repeated result. All declared chunk traces
+match and tracked allocations return to zero.
+
+This is c1 full-payload/reuse evidence; c2 and active tasks remain separate.
 
 ## Reproduction
 

@@ -12,6 +12,7 @@ def assemble(root):
         "resume-chunk2048-lazy-allocation.json", "resume-chunk4096-lazy-allocation.json",
         "resume-chunk4096-native-c2-accounted.json",
         "resume-chunk4096-depth.json",
+        "resume-chunk4096-boundaries.json",
     )
     packets, hashes = {}, {}
     for name in names:
@@ -89,13 +90,47 @@ def assemble(root):
         whole, tail = divmod(prompt, size)
         if trace["chunks"] != [size] * whole + ([tail] if tail else []):
             raise ValueError("canonical chunk trace mismatch")
+    boundary = packets["resume-chunk4096-boundaries.json"]
+    lengths = (2047, 2048, 2049, 2051, 2052, 4095, 4097)
+    ids = [f"{category}-boundary{length}" for category in ("code", "general_ja") for length in lengths]
+    if (boundary["status"] != "completed" or not boundary["source"]["tracked_clean"]
+            or boundary["protocol"] != {
+                "steps": 64, "candidate_repeats": 3, "capacity": 4352,
+                "strict_chunk": 1024, "candidate_chunk": 4096, "complete_matrix": True}
+            or boundary["model"] != depth["model"]
+            or boundary["host"]["machine_id"] != native["host"]["machine_id"]
+            or boundary["quality"]["summary"]["rows"] != 910
+            or boundary["quality"]["summary"]["max_abs_logit_delta"] != 0
+            or not boundary["quality"]["hard_gates_passed"] or not boundary["deterministic"]
+            or not boundary["state_gate"]["passed"] or not boundary["payload_exact_vs_strict"]
+            or [row["id"] for row in boundary["cases"]] != ids
+            or any(row["current_allocated_bytes"] for row in boundary["lifecycle"].values())):
+        raise ValueError("invalid chunk4096 boundary gate")
+    for case in boundary["cases"]:
+        if (len(case["candidate_payloads"]) != 3
+                or case["intervening_prefill_chunks"] != [[257], [257]]
+                or not all(case[key] for key in (
+                    "deterministic", "control_exact", "state_finite", "payload_exact_vs_strict"))):
+            raise ValueError("missing boundary reuse evidence")
+        for phase in ("prefill", "final"):
+            expected = case["strict_payload"][phase]
+            if (expected["full_kv_bytes"] <= 0 or expected["live_index_bytes"] <= 0
+                    or not expected["full_kv_finite"] or not expected["live_index_finite"]
+                    or not expected["recurrent"]["finite"]
+                    or any(row[phase] != expected for row in case["candidate_payloads"])):
+                raise ValueError("boundary payloads do not match")
+        for row, size in [(case["strict_payload"], 1024)] + [
+                (row, 4096) for row in case["candidate_payloads"]]:
+            count, tail = divmod(case["prompt_tokens"], size)
+            if row["chunks"] != [size] * count + ([tail] if tail else []):
+                raise ValueError("boundary chunk trace mismatch")
     return dict(
         schema=2, status="accounting_and_canonical_numerics_passed_more_gates_pending",
         performance_claim=False, promotion_claim=False,
         raw_sha256=hashes, bounded_reconciliation=reconciled,
         captures=packets,
         limits=[
-            "Canonical numerics pass; boundary/full-payload, active-task, c2 inference and performance gates remain.",
+            "Canonical and full-payload boundary/reuse gates pass; active-task, c2 inference and performance gates remain.",
             "Native-c2 allocation is not native-depth generation qualification.",
             "The mandatory footprint excludes optional MMQ, graph, verification and transaction resources.",
             "The4GiB scratch floor and separate4GiB reserve remain; larger mandatory buffers raise accounting.",
