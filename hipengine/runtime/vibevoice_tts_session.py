@@ -56,6 +56,8 @@ VALID_TOKENS = (
 #: is an exhausted budget.
 FINISH_STOP = "stop"
 FINISH_LENGTH = "length"
+FINISH_CANCELLED = "cancelled"
+FINISH_ERROR = "error"
 
 
 @dataclass
@@ -88,6 +90,7 @@ class SessionResult:
     chunks: list[np.ndarray]
     trace: SessionTrace | None
     finish_reason: str
+    error_reason: str | None = None
 
 
 class VibevoiceTtsSession:
@@ -119,6 +122,22 @@ class VibevoiceTtsSession:
         # noise inside the prefill pass).
         self._rng = np.random.Generator(np.random.PCG64(seed))
         self._noise_draws = 0
+        self._seed = int(seed)
+
+    def reset(self) -> None:
+        """Return the session to its initial state.
+
+        Both KV caches, the codec's streaming state, the semantic cache, the
+        negative branch and the random stream -- everything a request leaves behind.
+        Weights and scratch are untouched: this is the contract's ``reset()``, not a
+        reload, and it is what makes one session able to serve request after request.
+        """
+        self.positive.reset()
+        self.negative.reset()
+        self.decoder.reset()
+        self.semantic_state = {}
+        self._negative_reset()
+        self.reseed(self._seed)
 
     def reseed(self, seed: int) -> None:
         """Restart the session's random stream.
@@ -296,6 +315,7 @@ class VibevoiceTtsSession:
         noise_hook=None,
         neg_hook=None,
         trace: SessionTrace | None = None,
+        cancel=None,
     ) -> SessionResult:
         """Run the frozen-fork generation loop.
 
@@ -305,6 +325,12 @@ class VibevoiceTtsSession:
         session's own generator and negative pass. Pass a ``neg_hook`` only to
         isolate arithmetic: with it set the session's own negative branch is
         bypassed and its output is never checked.
+
+        ``cancel`` is polled at the top of every step. A cancelled request
+        returns the audio completed so far with :data:`FINISH_CANCELLED`, and a
+        step that raises returns what it had with :data:`FINISH_ERROR` and the
+        reason in ``error_reason``; neither is ever reported as a completed
+        synthesis.
         """
         self._noise_draws = 0
         self.semantic_state = {}
@@ -332,79 +358,97 @@ class VibevoiceTtsSession:
         chunks: list[np.ndarray] = []
         call_index = 0
         budget = max_new_tokens if max_new_tokens is not None else 40 * len(prompt_rows)
-        for _ in range(budget):
-            ids.append(next_token)
-            if trace is not None:
-                trace.tokens.append(next_token)
-            if next_token == EOS_TOKEN_ID:
-                break
-            # Boundary resets fire on the freshly generated token, exactly
-            # like the fork's speech_start / speech_end blocks.
-            if next_token == SPEECH_START_ID or next_token == SPEECH_END_ID:
-                self.semantic_state = {}
-                self.decoder.reset()
-                self._negative_reset()
-                self._noise_draws = 0
-            # Diffusion processing fires on the freshly generated token; its
-            # feedback embedding is fed at the NEXT forward, like the fork's
-            # ``next_inputs_embeds[diffusion_indices] = diffusion_embeds``.
-            next_embed: np.ndarray | None = None
-            if next_token == SPEECH_DIFFUSION_ID:
-                if neg_hook is not None:
-                    neg_condition = np.asarray(neg_hook(call_index), dtype=np.float32).reshape(1, -1)
+        cancelled = False
+        error_reason: str | None = None
+        try:
+            for _ in range(budget):
+                if cancel is not None and cancel():
+                    cancelled = True
+                    break
+                ids.append(next_token)
+                if trace is not None:
+                    trace.tokens.append(next_token)
+                if next_token == EOS_TOKEN_ID:
+                    break
+                # Boundary resets fire on the freshly generated token, exactly
+                # like the fork's speech_start / speech_end blocks.
+                if next_token == SPEECH_START_ID or next_token == SPEECH_END_ID:
+                    self.semantic_state = {}
+                    self.decoder.reset()
+                    self._negative_reset()
+                    self._noise_draws = 0
+                # Diffusion processing fires on the freshly generated token; its
+                # feedback embedding is fed at the NEXT forward, like the fork's
+                # ``next_inputs_embeds[diffusion_indices] = diffusion_embeds``.
+                next_embed: np.ndarray | None = None
+                if next_token == SPEECH_DIFFUSION_ID:
+                    if neg_hook is not None:
+                        neg_condition = np.asarray(neg_hook(call_index), dtype=np.float32).reshape(1, -1)
+                    else:
+                        neg_condition = self._negative_condition(self._prev_feedback)
+                    condition = pending_hidden.reshape(1, -1)
+                    if trace is not None:
+                        trace.conditions.append(condition.reshape(-1).copy())
+                        trace.neg_conditions.append(neg_condition.reshape(-1).copy())
+                    if noise_hook is not None:
+                        initial_noise = np.asarray(noise_hook(call_index), dtype=np.float32).reshape(2, 64)
+                    else:
+                        initial_noise = self._rng_standard_normal((2, 64))
+                    speech, _ = self.diffusion.sample_speech_tokens(
+                        condition, neg_condition.reshape(1, -1), cfg_scale, initial_noise
+                    )
+                    speech_latent = speech[0].reshape(64)
+                    if trace is not None:
+                        trace.speech_latents.append(speech_latent.copy())
+                    scaled = speech_latent / np.float32(self.w.speech_scaling_factor) - np.float32(self.w.speech_bias_factor)
+                    chunk = self.decoder.decode(scaled.reshape(1, 64)[0])
+                    chunks.append(chunk.copy())
+                    if trace is not None:
+                        trace.chunks.append(chunk.copy())
+                    sem = self.frontend.encode_chunk_streaming("semantic", chunk, self.semantic_state)
+                    sem_mean = sem.reshape(1, 128)
+                    if trace is not None:
+                        trace.semantic_means.append(sem_mean.reshape(-1).copy())
+                    acoustic_embed = vibevoice_connector(self.w.acoustic_connector, speech_latent.reshape(1, 64), dtype="bfloat16")
+                    semantic_embed = vibevoice_connector(self.w.semantic_connector, sem_mean, dtype="bfloat16")
+                    feedback = acoustic_embed + semantic_embed
+                    if trace is not None:
+                        trace.feedback_sums.append(feedback.reshape(-1).copy())
+                    next_embed = feedback.reshape(-1).astype(np.float32)
+                    # The next frame's negative pass consumes this as the positive
+                    # pass's current input embedding.
+                    self._prev_feedback = next_embed
+                    call_index += 1
+                # Forward the next input: the feedback embedding when this step
+                # diffused, otherwise the plain token embedding.
+                if next_embed is not None:
+                    embed = next_embed
                 else:
-                    neg_condition = self._negative_condition(self._prev_feedback)
-                condition = pending_hidden.reshape(1, -1)
+                    embed = pos.embed_row(next_token)
+                position = len(prompt_rows) + len(ids) - 1
+                pos.push_token(embed, position)
+                pos.forward_layers(position)
+                pending_hidden = pos.hidden_state()
+                logits, _ = pos.logits_argmax()
                 if trace is not None:
-                    trace.conditions.append(condition.reshape(-1).copy())
-                    trace.neg_conditions.append(neg_condition.reshape(-1).copy())
-                if noise_hook is not None:
-                    initial_noise = np.asarray(noise_hook(call_index), dtype=np.float32).reshape(2, 64)
-                else:
-                    initial_noise = self._rng_standard_normal((2, 64))
-                speech, _ = self.diffusion.sample_speech_tokens(
-                    condition, neg_condition.reshape(1, -1), cfg_scale, initial_noise
-                )
-                speech_latent = speech[0].reshape(64)
-                if trace is not None:
-                    trace.speech_latents.append(speech_latent.copy())
-                scaled = speech_latent / np.float32(self.w.speech_scaling_factor) - np.float32(self.w.speech_bias_factor)
-                chunk = self.decoder.decode(scaled.reshape(1, 64)[0])
-                chunks.append(chunk.copy())
-                if trace is not None:
-                    trace.chunks.append(chunk.copy())
-                sem = self.frontend.encode_chunk_streaming("semantic", chunk, self.semantic_state)
-                sem_mean = sem.reshape(1, 128)
-                if trace is not None:
-                    trace.semantic_means.append(sem_mean.reshape(-1).copy())
-                acoustic_embed = vibevoice_connector(self.w.acoustic_connector, speech_latent.reshape(1, 64), dtype="bfloat16")
-                semantic_embed = vibevoice_connector(self.w.semantic_connector, sem_mean, dtype="bfloat16")
-                feedback = acoustic_embed + semantic_embed
-                if trace is not None:
-                    trace.feedback_sums.append(feedback.reshape(-1).copy())
-                next_embed = feedback.reshape(-1).astype(np.float32)
-                # The next frame's negative pass consumes this as the positive
-                # pass's current input embedding.
-                self._prev_feedback = next_embed
-                call_index += 1
-            # Forward the next input: the feedback embedding when this step
-            # diffused, otherwise the plain token embedding.
-            if next_embed is not None:
-                embed = next_embed
-            else:
-                embed = pos.embed_row(next_token)
-            position = len(prompt_rows) + len(ids) - 1
-            pos.push_token(embed, position)
-            pos.forward_layers(position)
-            pending_hidden = pos.hidden_state()
-            logits, _ = pos.logits_argmax()
-            if trace is not None:
-                trace.logits.append((position, logits.copy()))
-            next_token = self._masked_argmax(logits)
+                    trace.logits.append((position, logits.copy()))
+                next_token = self._masked_argmax(logits)
+        except Exception as exc:  # reported, never silent
+            error_reason = f"{type(exc).__name__}: {exc}"
         # The loop breaks as soon as an EOS is appended, so the last token is the
         # EOS exactly when the model ended the utterance rather than the budget
         # ending it. Deriving the reason from the token rather than from a break
         # flag keeps the two equivalent for a chain that ends on its last
         # allowed token.
         finish_reason = FINISH_STOP if ids and ids[-1] == EOS_TOKEN_ID else FINISH_LENGTH
-        return SessionResult(ids=ids, chunks=chunks, trace=trace, finish_reason=finish_reason)
+        if error_reason is not None:
+            finish_reason = FINISH_ERROR
+        elif cancelled:
+            finish_reason = FINISH_CANCELLED
+        return SessionResult(
+            ids=ids,
+            chunks=chunks,
+            trace=trace,
+            finish_reason=finish_reason,
+            error_reason=error_reason,
+        )
