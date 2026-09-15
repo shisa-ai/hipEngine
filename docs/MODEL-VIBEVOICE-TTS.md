@@ -1,8 +1,10 @@
 # MODEL-VIBEVOICE-TTS.md — VibeVoice 1.5B TTS on hipEngine
 
-Status: **milestone 1 (frozen torch oracle) closed 2026-09-15; milestone 2 (the
-acoustic decoder) is the next action.** The architecture review is unchanged and
-the API, benchmark protocol and closure criteria below are specified. The pinned
+Status: **milestones 1 (frozen torch oracle), 2 (the acoustic decoder) and 3
+(the diffusion head + DPMSolver) closed 2026-09-15; the session runtime
+(connector + LM driving loop) is the next action.** The architecture
+review is unchanged and the API, benchmark protocol and closure criteria below
+are specified. The pinned
 oracle environment, fixtures and weight inventory are measured reference outputs
 from the community fork; nothing in `hipengine/` implements this model yet, so
 upstream architecture claims remain source review and no performance claim exists.

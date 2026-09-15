@@ -12,6 +12,8 @@ PRIMITIVES = (
     'silu_mul_dual_out_bf16','silu_mul_separate_out_bf16','dense_dual_gemv_out_bf16',
     'dense_gemv_bf16_f32_out','dense_gemv_f32_bf16w_f32_out','dense_gemv_out_bf16',
     'qwen35_partial_rotary_f32',
+    'vv_diff_silu_bf16','vv_diff_add_bf16','vv_diff_mul_bf16','vv_diff_modulate_bf16',
+    'vv_diff_gated_residual_bf16','vv_diff_cfg_combine_bf16','vv_diff_rmsnorm_bf16',
 )
 
 
