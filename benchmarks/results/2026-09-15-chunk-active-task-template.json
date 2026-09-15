@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "status": "stopped_invalid_template_capture",
+  "performance_claim": false,
+  "promotion_claim": false,
+  "source": "59a162abd8773faca2bf68f20e7edfbe3a6932de",
+  "raw_path": "/tmp/hipengine-journey-execute-20260914/resume-chunk2048-active-tasks.json",
+  "raw_sha256": "01cfdceb314bbf40ddc4fda414fd1c6190b2b3938117edbaaafe63b8995fda8b",
+  "reason": "Legacy qwen_chat wrapper omitted the configured non-thinking assistant prefix. Strict responses started with thinking and hit the 64-token cap before the required option letter.",
+  "completed_strict_cases": [
+    {"id": "mtp_retrieval_access_code", "tokens": 64, "finish": "length"},
+    {"id": "mtp_multihop_clearance_phrase", "tokens": 64, "finish": "length"}
+  ],
+  "candidate_executed": false,
+  "termination": "SIGINT to the owned capture process; exited 130 after finally cleanup",
+  "tracked_allocations_after_close": 0,
+  "fix": "Use the model's embedded chat renderer with enable_thinking=false. Preserve exact 4096-token total by adjusting only filler budget; task content and answer criterion are unchanged.",
+  "limits": [
+    "This is a harness failure, not evidence against chunk2048.",
+    "The raw packet retains running status because interruption was outside its Exception handler; it is not a live job.",
+    "A fresh source-pinned capture is required after the prompt-template repair."
+  ]
+}

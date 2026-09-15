@@ -71,9 +71,30 @@ def traced_completion(runner, tokenizer, prompt, limit, chunk):
     return {**result, "prefill_chunks": chunks}
 
 
-def main():
-    from scripts.gguf_mtp_long_context_task_gate import load_tasks, _TokenizerAdapter, DEFAULT_SUITE
+def build_active_prompt(generator, task, *, context_tokens=4096):
+    from scripts.gguf_mtp_long_context_task_gate import _TokenizerAdapter
     from scripts.qwen35_paro_kv_quality_smoke import _build_prompt_tokens
+
+    marker = "__HIPENGINE_ACTIVE_TASK_CONTENT__"
+    rendered = generator.render_chat_prompt(
+        [{"role": "user", "content": marker}], enable_thinking=False)
+    if rendered.count(marker) != 1:
+        raise ValueError("embedded template must preserve the task content exactly once")
+    before, _, after = rendered.partition(marker)
+    raw_task = {
+        **task, "prompt_format": "raw",
+        "prefix": before + task["prefix"], "suffix": task["suffix"] + after,
+    }
+    prompt, metadata = _build_prompt_tokens(
+        _TokenizerAdapter(generator.tokenizer), raw_task, context_tokens=context_tokens)
+    metadata.update(
+        prompt_format="qwen4exp_embedded", enable_thinking=False,
+        chat_template_sha256=hashlib.sha256(generator.tokenizer.chat_template.encode()).hexdigest())
+    return prompt, metadata
+
+
+def main():
+    from scripts.gguf_mtp_long_context_task_gate import load_tasks, DEFAULT_SUITE
     from hipengine.core.memory import memory_stats
     from hipengine.kernels.registry import KernelKey
 
@@ -138,8 +159,7 @@ def main():
                     shape_positions=spec.dispatch_shape_positions if counted else None,
                 ) as counter:
                     for task in tasks:
-                        prompt, prompt_info = _build_prompt_tokens(
-                            _TokenizerAdapter(generator.tokenizer), task, context_tokens=4096)
+                        prompt, prompt_info = build_active_prompt(generator, task)
                         runs = [traced_completion(
                             generator.runner, generator.tokenizer, prompt,
                             args.max_tokens, arm_args.prefill_chunk_size)

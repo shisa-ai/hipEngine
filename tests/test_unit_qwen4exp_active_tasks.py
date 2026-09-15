@@ -62,3 +62,37 @@ def test_traced_task_requires_actual_chunk_coverage(monkeypatch):
     with pytest.raises(ValueError, match="chunk coverage"):
         tasks.traced_completion(runner, None, [1, 2, 3, 4, 5], 4, 4)
     assert "_prefill_chunk" not in vars(runner)
+
+
+def test_active_prompt_uses_embedded_template_without_thinking_and_preserves_length():
+    task = {
+        "id": "test", "prefix": "QUESTION\n", "suffix": "\nANSWER:",
+        "filler": "filler ", "evidence": [{"position": 0.5, "text": "FACT"}],
+    }
+    calls = []
+
+    def render(messages, *, enable_thinking):
+        calls.append((messages, enable_thinking))
+        return "USER:" + messages[0]["content"] + ":ASSISTANT:CLOSED_THINK:"
+
+    generator = SimpleNamespace(
+        tokenizer=SimpleNamespace(encode=lambda text: list(text.encode()), chat_template="template"),
+        render_chat_prompt=render)
+    prompt, metadata = tasks.build_active_prompt(generator, task, context_tokens=256)
+    text = bytes(prompt).decode()
+    assert len(prompt) == 256
+    assert text.startswith("USER:QUESTION\n")
+    assert text.endswith("\nANSWER::ASSISTANT:CLOSED_THINK:")
+    assert text.count("FACT") == 1
+    assert calls[0][1] is False
+    assert metadata["prompt_format"] == "qwen4exp_embedded"
+    assert metadata["enable_thinking"] is False
+    assert task["prefix"] == "QUESTION\n"
+
+
+def test_active_prompt_rejects_template_that_drops_content():
+    import pytest
+
+    generator = SimpleNamespace(render_chat_prompt=lambda *args, **kwargs: "no content")
+    with pytest.raises(ValueError, match="preserve"):
+        tasks.build_active_prompt(generator, {"prefix": "", "suffix": ""})
