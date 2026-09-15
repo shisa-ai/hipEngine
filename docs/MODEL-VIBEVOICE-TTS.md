@@ -266,6 +266,37 @@ Two argument shapes are easy to get wrong and both fail quietly:
 - The shipped reference voices are **16 kHz**, not 24 kHz. Take `speech_tensors`
   from the processor, which owns resampling, rather than reading the WAV files.
 
+### Multi-speaker reference padding
+
+The oracle batches every voice of a request into one `forward_speech_features`
+call: `speech_tensors` is right zero padded to the longest reference in the
+batch before the encoder runs, and `speech_masks` selects each voice's real
+frames afterwards. The acoustic encoder is **not translation invariant at its
+tail**, so that pad is part of the arithmetic rather than a storage detail. On
+the frozen two-speaker fixture the shorter speaker's final frame lands 0.23
+relative away from the oracle when it is encoded alone and 0.04 when it is
+encoded inside the batch, so a per-voice encode cannot be substituted.
+`VibevoiceTtsSession.voice_prompt_rows_multi` therefore pads to the batch max
+and returns each voice's sampled latents beside the concatenation of the
+per-voice connected rows in mask order. For one voice the pad is empty and the
+path is bit-identical to `voice_prompt_rows`.
+
+Status on the frozen fixtures: the two-speaker prompt is built correctly — 70 +
+208 = 278 connected rows spliced at the mask's two runs, final-position prefill
+logits within 0.012 of the oracle with a matching argmax. The 59-token greedy
+chain is **not yet exact**. The first 31 tokens match and the divergence is the
+32nd, the first span's end, where the oracle emits `speech_end` and this session
+emits another `speech_diffusion` (top-2 gap 9 logits, so not a near tie). It is
+localized to the prompt rows rather than the LM or the diffusion head: the
+head reproduces the oracle's own per-call latents to 0.036 and the LM reproduces
+the oracle's prefill hidden to 0.05 given the oracle's own connected rows, while
+the 208-frame voice's connected rows are 0.206 off because the encoder's bf16
+drift on that voice is amplified by the connector.
+`test_two_speaker_prompt_rows_match_reference` and
+`test_two_speaker_prefill_logits_match_reference` gate the parts that do hold;
+`test_two_speaker_greedy_chain_matches_torch` is a strict xfail that fails
+loudly once the chain is exact.
+
 ## Initial API and scope
 
 The first implementation is deliberately narrow: one serialized request at a

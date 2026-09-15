@@ -37,7 +37,7 @@ from hipengine.loading.vibevoice_tts_session import (
     VibevoiceTtsSessionWeights,
 )
 from hipengine.kernels.cpu_reference.vibevoice_asr import vibevoice_connector
-from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
+from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime, reference_frame_count
 from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime
 from hipengine.runtime.vibevoice_tts_decoder import VibevoiceTTSDecoderGPU
 from hipengine.runtime.vibevoice_tts_diffusion import VibevoiceTTSDiffusionHeadGPU
@@ -126,23 +126,87 @@ class VibevoiceTtsSession:
         audio path, which encodes the whole waveform with per-stage right zero
         padding rather than in aligned chunks.
         """
-        pcm = np.asarray(ref_pcm, dtype=np.float32).reshape(-1)
-        if not pcm.size:
+        sampled, connected = self.voice_prompt_rows_multi(
+            [ref_pcm], noise_scale=noise_scale, noise=noise,
+        )
+        return sampled[0], connected
+
+    def voice_prompt_rows_multi(
+        self,
+        ref_pcms,
+        *,
+        noise_scale: np.ndarray | None = None,
+        noise: np.ndarray | None = None,
+    ) -> tuple[list[np.ndarray], np.ndarray]:
+        """One or more reference waveforms -> (per-voice latents, spliced rows).
+
+        The fork batches every voice of a request into a single
+        ``forward_speech_features`` call, so ``speech_tensors`` are right zero
+        padded to the longest reference in the batch before the encoder runs
+        and ``speech_masks`` afterwards selects each voice's real frames. The
+        encoder is not translation invariant at its tail: a voice shorter than
+        the batch max has its final frame computed with the longer voices' zero
+        padding in context, and encoding that voice alone disagrees with the
+        fork there by up to 0.39 relative on the frozen two-speaker fixture.
+        Padding to the batch max reproduces the fork's frame, and for a single
+        voice the pad is empty, so the one-voice path is unchanged.
+
+        Returns each voice's sampled latents, shaped ``(frames_i, 64)``, and
+        the concatenation of the per-voice connected rows in mask order, which
+        is what ``build_prompt_rows`` splices into the prompt.
+        """
+        pcms = [np.asarray(p, dtype=np.float32).reshape(-1) for p in ref_pcms]
+        if not pcms:
+            raise ValueError('at least one reference waveform is required')
+        if any(not pcm.size for pcm in pcms):
             raise ValueError('reference PCM must be nonempty')
-        latent = self.frontend.encode_reference(pcm)
-        # ``encode_chunk_streaming`` returns (frames, hidden); take the frame
-        # count from the encoder rather than recomputing it, so the sampled
-        # shape can never disagree with what was actually encoded.
-        mean = np.asarray(latent, dtype=np.float32).reshape(-1, 64)
-        frames = mean.shape[0]
+        batch = len(pcms)
+        max_samples = max(pcm.size for pcm in pcms)
+        frames = [reference_frame_count(pcm.size) for pcm in pcms]
+        max_frames = max(frames)
+        # One draw per batch, matching the fork's single ``torch.randn`` over
+        # ``speech_mode`` rather than one draw per voice.
         if noise is None:
-            noise = self._rng_standard_normal((1, frames, 64))
+            noise = self._rng_standard_normal((batch, max_frames, 64))
         if noise_scale is None:
-            noise_scale = self._rng_standard_normal((1,)) * np.float32(0.5 / 0.8)
-        sampled = mean + np.asarray(noise_scale, dtype=np.float32).reshape(1, 1) * np.asarray(noise, dtype=np.float32).reshape(frames, 64)
-        scaled = (sampled + np.float32(self.w.speech_bias_factor)) * np.float32(self.w.speech_scaling_factor)
-        connected = vibevoice_connector(self.w.acoustic_connector, scaled, dtype="bfloat16")
-        return sampled.astype(np.float32), connected.astype(np.float32)
+            noise_scale = self._rng_standard_normal((batch,)) * np.float32(0.5 / 0.8)
+        noise = np.asarray(noise, dtype=np.float32)
+        if noise.ndim == 2 and batch == 1:
+            noise = noise.reshape(1, *noise.shape)
+        if noise.ndim != 3 or noise.shape[0] != batch or noise.shape[2] != 64:
+            raise ValueError(
+                f'noise must be ({batch}, frames, 64) or (frames, 64) for one voice, got {noise.shape}'
+            )
+        if noise.shape[1] < max_frames:
+            raise ValueError(
+                f'noise has {noise.shape[1]} frames, needs at least {max_frames}'
+            )
+        noise_scale = np.asarray(noise_scale, dtype=np.float32).reshape(-1)
+        if noise_scale.size != batch:
+            raise ValueError(
+                f'noise_scale must hold {batch} value(s), got {noise_scale.size}'
+            )
+        sampled: list[np.ndarray] = []
+        connected: list[np.ndarray] = []
+        for index, pcm in enumerate(pcms):
+            if pcm.size < max_samples:
+                pcm = np.pad(pcm, (0, max_samples - pcm.size))
+            latent = np.asarray(
+                self.frontend.encode_reference(pcm), dtype=np.float32
+            ).reshape(-1, 64)
+            if latent.shape[0] != max_frames:
+                raise RuntimeError(
+                    f'reference {index} encoded {latent.shape[0]} frames, '
+                    f'expected {max_frames} from {pcm.size} samples'
+                )
+            value = latent[:frames[index]] + noise_scale[index] * noise[index][:frames[index]]
+            scaled = (value + np.float32(self.w.speech_bias_factor)) * np.float32(
+                self.w.speech_scaling_factor
+            )
+            rows = vibevoice_connector(self.w.acoustic_connector, scaled, dtype='bfloat16')
+            sampled.append(value.astype(np.float32))
+            connected.append(np.asarray(rows, dtype=np.float32))
+        return sampled, np.vstack(connected)
 
     def build_prompt_rows(
         self,
