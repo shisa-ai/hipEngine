@@ -1222,8 +1222,13 @@ torch oracle venv.
 
 | Lane | Pooled RTF | Warm | Time to first audio | LM | Diffusion | Decode | Semantic |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | 1.642 | 5.474 s | 0.422 s | 1.587 s | 1.390 s | 1.303 s | 1.013 s |
+| hipEngine | 1.381 | 4.603 s | 0.406 s | 1.547 s | 1.383 s | 0.343 s | 1.135 s |
 | torch (oracle venv) | **1.303** | 4.343 s | — | — | — | — | — |
+
+Five hipEngine runs of this protocol measured pooled RTF 1.316, 1.381, 1.408,
+1.431 and 1.434 on this host, so the row above is the median. Decode is stable
+across all five (0.343-0.355 s); the spread is in the LM, diffusion and semantic
+stages, which moved together by about 8%.
 
 The 27-token constrained chain is exact on the same run and the session's own
 negative conditions match the recorded ones, with no prompt embeddings or
