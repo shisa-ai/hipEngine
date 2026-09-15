@@ -36,6 +36,8 @@ from collections import defaultdict
 from pathlib import Path
 
 DEFAULT_MODEL = "microsoft/VibeVoice-1.5B"
+# The checkpoint revision pinned in docs/MODEL-VIBEVOICE-TTS.md.
+DEFAULT_MODEL_REVISION = "c00898d257e6b46004e3e2866a47534085fb685a"
 DEFAULT_OUT = Path("tests/fixtures/vibevoice_tts/weight_inventory.json")
 
 # Component order is fixed so the artifact is stable across runs.
@@ -56,12 +58,27 @@ DTYPE_BYTES = {
 }
 
 
-def _snapshot_dir(model_id: str) -> Path:
-    pattern = Path.home() / f".cache/huggingface/hub/models--{model_id.replace('/', '--')}/snapshots/*"
-    snapshots = sorted(glob.glob(str(pattern)))
-    if not snapshots:
-        raise SystemExit(f"no local snapshot found for {model_id}; snapshot_download it first")
-    return Path(snapshots[-1])
+def _snapshot_dir(model_id: str, expect_revision: str | None) -> Path:
+    """Resolve the exact local snapshot to inventory.
+
+    With ``expect_revision`` set (the default pin), only that snapshot is
+    acceptable, so the recorded revision cannot drift from the inventoried
+    weights when the hub cache holds several revisions.
+    """
+    base = Path.home() / f".cache/huggingface/hub/models--{model_id.replace('/', '--')}/snapshots"
+    if expect_revision:
+        snap = base / expect_revision
+        if not snap.is_dir():
+            raise SystemExit(
+                f"pinned snapshot {expect_revision} not found under {base}; "
+                "download that revision (snapshot_download with revision=...) first"
+            )
+    else:
+        snapshots = sorted(glob.glob(str(base / "*")))
+        if not snapshots:
+            raise SystemExit(f"no local snapshot found for {model_id}; snapshot_download it first")
+        snap = Path(snapshots[-1])
+    return snap
 
 
 def _component_of(key: str) -> str:
@@ -70,7 +87,7 @@ def _component_of(key: str) -> str:
     return ".".join(parts[:2]) if len(parts) >= 2 else key
 
 
-def build_inventory(snap: Path) -> dict:
+def build_inventory(snap: Path, expected_revision: str | None = None) -> dict:
     from safetensors import safe_open
 
     index_path = snap / "model.safetensors.index.json"
@@ -122,6 +139,7 @@ def build_inventory(snap: Path) -> dict:
     return {
         "model_id": DEFAULT_MODEL,
         "model_revision": snap.name,
+        "model_revision_expected": expected_revision,
         "total_tensors": total_tensors,
         "total_params": total_params,
         "total_bytes": total_bytes,
@@ -143,7 +161,7 @@ def verify_model(snap: Path, inventory: dict) -> dict:
     ckpt_keys = set(weight_map)
 
     model = VibeVoiceForConditionalGenerationInference.from_pretrained(
-        DEFAULT_MODEL, torch_dtype=torch.bfloat16, device_map="cpu"
+        str(snap), torch_dtype=torch.bfloat16, device_map="cpu"
     )
     state_keys = set(model.state_dict().keys())
 
@@ -198,13 +216,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--model-revision", default=DEFAULT_MODEL_REVISION,
+                        help="checkpoint snapshot that must be inventoried (default: the doc pin; "
+                             "pass an empty string to allow whatever snapshot is cached)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--verify-model", action="store_true",
                         help="load the fork's model and check orphans/missing/ties")
     args = parser.parse_args()
 
-    snap = _snapshot_dir(args.model)
-    inv = build_inventory(snap)
+    snap = _snapshot_dir(args.model, args.model_revision or None)
+    inv = build_inventory(snap, expected_revision=args.model_revision or None)
     inv["model_id"] = args.model
 
     print(f"{'component':32s} {'tensors':>8s} {'params':>16s} {'GiB':>8s}")

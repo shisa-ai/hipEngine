@@ -16,32 +16,54 @@ are in ``scripts/vibevoice_tts_oracle_requirements.txt``; the one that matters
 most is ``transformers==4.51.3``, because 5.15.0 already claims model type
 ``vibevoice_acoustic_tokenizer`` and blocks the fork's import.
 
+Provenance is enforced, not just recorded. Both the processor and the model are
+loaded from the exact local snapshot named by ``--model-revision`` (default: the
+revision pinned in the doc), so the manifest cannot name weights other than the
+ones actually loaded. The fork must be a clean git tree at one revision; a dirty
+tree is refused unless ``--allow-dirty-fork`` is passed explicitly.
+
 Fixtures written under ``tests/fixtures/vibevoice_tts/``, one set per request:
 
-- ``<name>_request.json``: the request manifest -- script, speakers, seed,
-  dtype, cfg_scale, solver steps, checkpoint and fork revisions, and the
-  reference WAV hashes. Every other artifact is derived from this.
-- ``<name>_reference.npz``: reference-audio encoder output (pre- and
-  post-scale/bias), the connected embeddings, and the two scaling factors.
-- ``<name>_lm.npz``: prompt ids, prefill logits and last hidden state, and the
-  full generated token sequence.
-- ``<name>_diffusion.npz``: per-call positive/negative conditions, the initial
-  noise draw, per-solver-step eps and latent state, and the final pre-/post-scale
-  latents.
-- ``<name>_feedback.npz``: semantic feedback -- semantic features, acoustic and
-  semantic embeddings, and their sum.
-- ``<name>_audio.npz``: per-chunk decoder output and the concatenated waveform.
+- ``manifest.json``: checkpoint snapshot (resolved == expected), fork revision
+  and dirty state, environment versions, and per-request summary statistics.
+- ``<name>_reference.npz``: the reference-audio encoding **of the generation
+  pass** -- the encode whose connected embeddings actually entered the language
+  model for the generated audio: encoder mean/std, sampled latents, every random
+  draw that pass consumed, the scaled features and connected embeddings, and the
+  two scaling factors.
+- ``<name>_lm.npz``: prompt ids and masks, the prefill pass's own speech encode
+  (draws, latents, features, connected embeddings), full-vocab logits at a few
+  prompt positions, last hidden state, and the full generated token sequence.
+- ``<name>_diffusion.npz``: **every** diffusion call (no cap): conditions, the
+  initial noise draw and how many draws the call consumed, per-solver-step eps
+  and latent state, the final pre-scale latent, the post-scale decoder input
+  (``scaled_latent``) with its batch sample indices, whether the decoder ran,
+  and the scheduler pin (class, config JSON, exact timesteps).
+- ``<name>_feedback.npz``: per diffusion call, the semantic features, the
+  acoustic and semantic connector embeddings, their recorded sum, and the batch
+  sample indices -- the complete next-input embedding the loop fed back.
+- ``<name>_audio.npz``: every decoder chunk in order and the concatenated
+  waveform.
+
+Cache resets are recorded in the diffusion fixture (``reset<i>_role`` /
+``reset<i>_sample_indices``): the acoustic and semantic streaming caches are
+zeroed at every speech-end token, and the recorder labels which cache by
+correlating the object identity with the decode/semantic-encode calls.
 
 Randomness is recorded, not re-derived. A seed alone is not enough here: the
-acoustic encoder samples under ``std_dist_type='gaussian'`` (two draws per
-encode), ``sample_speech_tokens`` draws ``torch.randn(2 * n_tokens, 64)`` at the
-*doubled* CFG batch size and discards the second half, and the decoder carries
-streaming caches across steps. The script seeds the global RNG so a run is
-repeatable, and separately saves every draw it observes.
+acoustic encoder samples under ``std_dist_type='gaussian'``, the diffusion head
+draws its initial noise, and the decoder carries streaming caches across steps.
+The script seeds the global RNG once per request; every draw on that single
+stream is logged in order, and each capture labels the slice of the log that
+produced it. There are exactly two speech-encoding passes per request -- the
+explicit prefill and generate's first step -- and each fixture states which one
+it holds. A capture that cannot be attributed is an error, not a silent gap.
 
 Every capture is done by wrapping the reference module or method that performs
-the work. No arithmetic is reimplemented here, so a fixture cannot silently
-disagree with the reference by construction.
+the work. No model arithmetic is reimplemented here, so a fixture cannot
+silently disagree with the reference by construction. (The one exception is the
+feedback sum, which is the addition of two recorded tensors, stored alongside
+its addends.)
 """
 
 from __future__ import annotations
@@ -60,30 +82,56 @@ DEFAULT_OUT_DIR = Path("tests/fixtures/vibevoice_tts")
 DEFAULT_FORK = "/home/lhl/VibeVoice-community"
 SAMPLING_RATE = 24_000
 DEFAULT_SEED = 20260915
+# The checkpoint revision pinned in docs/MODEL-VIBEVOICE-TTS.md.
+DEFAULT_MODEL_REVISION = "c00898d257e6b46004e3e2866a47534085fb685a"
+# Bumped whenever fixture layout or capture semantics change. Schema 2 adds:
+# enforced snapshot loading, complete per-call diffusion capture (scaled latent,
+# sample indices, decoder flag), per-pass speech-encode attribution, feedback
+# embeddings with their sum, scheduler config, and cache-reset events.
+ORACLE_SCHEMA = 2
 
 
-def _snapshot_dir(model_id: str) -> Path:
-    """Resolve the local HF snapshot for ``model_id`` (download must exist)."""
-    pattern = Path.home() / f".cache/huggingface/hub/models--{model_id.replace('/', '--')}/snapshots/*"
-    snapshots = sorted(glob.glob(str(pattern)))
-    if not snapshots:
-        raise SystemExit(f"no local snapshot found for {model_id}; snapshot_download it first")
-    snap = Path(snapshots[-1])
+def _snapshot_dir(model_id: str, expect_revision: str | None) -> Path:
+    """Resolve the local HF snapshot for ``model_id`` (download must exist).
+
+    With ``expect_revision`` set, only that snapshot is acceptable: the returned
+    path is the exact directory both loads use, so the revision recorded in the
+    manifest is the revision whose weights were loaded.
+    """
+    base = Path.home() / f".cache/huggingface/hub/models--{model_id.replace('/', '--')}/snapshots"
+    if expect_revision:
+        snap = base / expect_revision
+        if not snap.is_dir():
+            raise SystemExit(
+                f"pinned snapshot {expect_revision} not found under {base}; "
+                "download that revision (snapshot_download with revision=...) first"
+            )
+    else:
+        snapshots = sorted(glob.glob(str(base / "*")))
+        if not snapshots:
+            raise SystemExit(f"no local snapshot found for {model_id}; snapshot_download it first")
+        snap = Path(snapshots[-1])
     if not list(snap.glob("model-*.safetensors")) and not (snap / "model.safetensors").exists():
         raise SystemExit(f"snapshot {snap} has no weights yet (download incomplete?)")
     return snap
 
 
-def _git_revision(repo: Path) -> str:
-    """HEAD of a git working tree, or a marker if it is not one."""
+def _git_state(repo: Path) -> tuple[str, bool]:
+    """(HEAD, dirty) of a git working tree; a non-tree counts as dirty."""
     try:
-        out = subprocess.run(
+        head = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=30,
         )
-        return out.stdout.strip() if out.returncode == 0 else "<not-a-git-tree>"
+        status = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if head.returncode != 0 or status.returncode != 0:
+            return "<not-a-git-tree>", True
+        return head.stdout.strip(), bool(status.stdout.strip())
     except Exception:
-        return "<unknown>"
+        return "<unknown>", True
 
 
 def _sha256(path: Path) -> str:
@@ -104,218 +152,373 @@ def _npi(t) -> np.ndarray:
     return t.detach().cpu().numpy()
 
 
+def _sched_config(sched) -> str:
+    """The scheduler's full config as canonical JSON (solver order/algorithm etc.)."""
+    cfg = getattr(sched, "config", None)
+    out: dict = {}
+    if cfg is not None:
+        for k, v in dict(cfg).items():
+            # ``_use_default_values`` is built from a set difference upstream, so
+            # its list order varies per Python process; sort it or the fixture
+            # is not reproducible.
+            if k == "_use_default_values" and isinstance(v, (list, tuple, set)):
+                v = sorted(str(x) for x in v)
+            out[k] = v if isinstance(v, (int, float, str, bool, type(None))) else str(v)
+    return json.dumps(out, sort_keys=True)
+
+
 class _Recorder:
     """Capture the reference generation loop's internals without reimplementing them.
 
     Each patch wraps a real module or method, records what passed through, and
-    restores the original on exit. The per-call detail is capped so a long
-    generation does not produce an unusable fixture; the summary tensors (final
-    latent, waveform, semantic feedback) are always recorded.
+    restores the original on exit. Every diffusion call and every decoder chunk
+    is retained -- the fixtures must be able to replay the complete latent->PCM
+    chain, so there is no per-call cap.
     """
 
-    def __init__(self, model, max_calls: int = 8):
+    def __init__(self, model):
         self.model = model
         self.inner = model.model
-        self.max_calls = max_calls
-        self.calls: list[dict] = []
-        self.semantic: list[dict] = []
-        self.chunks: list[np.ndarray] = []
+        self.phase = "prefill"
+        self.calls: list[dict] = []          # one per sample_speech_tokens
+        self.passes: list[dict] = []         # one per _process_speech_inputs
+        self.encodes: list[dict] = []        # acoustic_tokenizer.encode outputs
+        self.enc_samples: list[dict] = []    # encoder-output .sample() results
+        self.decodes: list[dict] = []        # one per acoustic decode
+        self.feedback: list[dict] = []       # semantic encodes + connector embeds
+        self.resets: list[dict] = []         # streaming-cache set_to_zero events
+        self.chunks: list[np.ndarray] = []   # every decode output, in order
+        self.draws: list[np.ndarray] = []    # global ordered torch.randn log
         self._saved: dict = {}
         self._cur: dict | None = None
-        self._noise: list = []
-        self._randn_like: list = []
+        self._in_call = False
+        self._call_idx = -1
+        self._in_prompt = 0
+        self._cache_roles: dict[int, str] = {}
 
     # -- patching ---------------------------------------------------------
     def __enter__(self) -> "_Recorder":
+        import torch
+        from vibevoice.modular.modular_vibevoice_tokenizer import (
+            VibeVoiceTokenizerEncoderOutput,
+            VibeVoiceTokenizerStreamingCache,
+        )
+
         inner, model = self.inner, self.model
         self._saved = {
+            "randn": torch.randn,
+            "randn_like": torch.randn_like,
             "sample": model.sample_speech_tokens,
+            "speech_inputs": model._process_speech_inputs,
+            "encode": inner.acoustic_tokenizer.encode,
+            "enc_sample": VibeVoiceTokenizerEncoderOutput.sample,
             "head_fwd": inner.prediction_head.forward,
             "sched_step": inner.noise_scheduler.step,
             "decode": inner.acoustic_tokenizer.decode,
             "sem_encode": inner.semantic_tokenizer.encode,
-            "randn": __import__("torch").randn,
-            "randn_like": __import__("torch").randn_like,
+            "ac_conn_fwd": inner.acoustic_connector.forward,
+            "sem_conn_fwd": inner.semantic_connector.forward,
+            "set_to_zero": VibeVoiceTokenizerStreamingCache.set_to_zero,
         }
-        torch = __import__("torch")
 
         def _randn(*a, **kw):
             out = self._saved["randn"](*a, **kw)
-            self._noise.append(_np(out))
+            self.draws.append(_np(out))
             return out
 
         def _randn_like(*a, **kw):
             out = self._saved["randn_like"](*a, **kw)
-            self._randn_like.append(_np(out))
+            self.draws.append(_np(out))
             return out
 
         torch.randn = _randn
         torch.randn_like = _randn_like
 
         def sample_speech_tokens(condition, neg_condition, cfg_scale=3.0):
-            self._noise = []
-            self._cur = {
+            call = {
                 "condition": _np(condition),
                 "neg_condition": _np(neg_condition),
                 "cfg_scale": float(cfg_scale),
-                "eps": [], "speech": [], "timesteps": [],
+                "draw_start": len(self.draws),
+                "eps": [], "timesteps": [], "speech": [],
+                "decoder_called": False,
             }
+            self.calls.append(call)
+            self._call_idx = len(self.calls) - 1
+            self._cur = call
+            self._in_call = True
             latent = None
             try:
                 latent = self._saved["sample"](condition, neg_condition, cfg_scale=cfg_scale)
             finally:
+                self._in_call = False
                 # The returned latent is the final diffusion output, before the
                 # decode-side ``/ scale - bias``. Keep it: it is the value the
                 # port must match, and it is not recoverable from the eps trace.
-                self._cur["speech_latent"] = (
+                call["speech_latent"] = (
                     _np(latent) if latent is not None else np.zeros(0, dtype=np.float32)
                 )
-                self._cur["initial_noise"] = (
-                    self._noise[0] if self._noise else np.zeros(0, dtype=np.float32)
+                window = self.draws[call["draw_start"]:]
+                call["initial_noise"] = (
+                    window[0] if window else np.zeros(0, dtype=np.float32)
                 )
-                # Pin the solver schedule: class, step count and exact timesteps.
+                call["noise_draw_count"] = len(window)
+                # Pin the solver: class, full config, and the exact timesteps.
                 sched = self.inner.noise_scheduler
-                self._cur["scheduler_class"] = type(sched).__name__
+                call["scheduler_class"] = type(sched).__name__
                 ts = getattr(sched, "timesteps", None)
-                self._cur["scheduler_timesteps"] = (
+                call["scheduler_timesteps"] = (
                     _np(ts) if ts is not None else np.zeros(0, dtype=np.float32)
                 )
-                if len(self.calls) < self.max_calls:
-                    self.calls.append(self._cur)
-                self._cur = None
+                call["scheduler_config"] = _sched_config(sched)
+                # _cur deliberately stays set: the decoder hook runs after this
+                # returns and must still find its call to attach the decoder
+                # input. It is cleared by the decode hook.
+                self._cur = call
             return latent
+
+        def speech_inputs(speech_tensors, speech_masks, speech_type="audio"):
+            enc_start, samp_start, draw_start = (
+                len(self.encodes), len(self.enc_samples), len(self.draws),
+            )
+            self._in_prompt += 1
+            try:
+                features, connected = self._saved["speech_inputs"](
+                    speech_tensors, speech_masks, speech_type,
+                )
+            finally:
+                self._in_prompt -= 1
+            self.passes.append({
+                "phase": self.phase,
+                "speech_type": speech_type,
+                "features_scaled": _np(features),
+                "connected": _np(connected),
+                "draw_start": draw_start, "draw_end": len(self.draws),
+                "enc_start": enc_start, "enc_end": len(self.encodes),
+                "samp_start": samp_start, "samp_end": len(self.enc_samples),
+            })
+            return features, connected
+
+        def encode(audio, **kw):
+            out = self._saved["encode"](audio, **kw)
+            std = out.std
+            self.encodes.append({
+                "mean": _np(out.mean),
+                "std": _np(std) if hasattr(std, "detach") else np.float32(std),
+            })
+            return out
+
+        def enc_sample(self_, dist_type="fix"):
+            out = self._saved["enc_sample"](self_, dist_type)
+            self.enc_samples.append({"dist_type": dist_type, "latents": _np(out[0])})
+            return out
 
         def head_fwd(x, timestep, condition=None, **kw):
             out = self._saved["head_fwd"](x, timestep, condition=condition, **kw)
-            if self._cur is not None and len(self._cur["eps"]) < 200:
+            if self._in_call and self._cur is not None and len(self._cur["eps"]) < 200:
                 self._cur["eps"].append(_np(out))
                 self._cur["timesteps"].append(_np(timestep.reshape(-1)[:1]))
             return out
 
         def sched_step(eps, t, sample, **kw):
             out = self._saved["sched_step"](eps, t, sample, **kw)
-            if self._cur is not None and len(self._cur["speech"]) < 200:
+            if self._in_call and self._cur is not None and len(self._cur["speech"]) < 200:
                 self._cur["speech"].append(_np(out.prev_sample))
             return out
 
         def decode(latent, **kw):
             out = self._saved["decode"](latent, **kw)
+            cache = kw.get("cache")
+            if cache is not None:
+                self._cache_roles[id(cache)] = "acoustic"
+            rec = {
+                "scaled_latent": _np(latent),
+                "chunk": _np(out),
+                "sample_indices": (
+                    _npi(kw["sample_indices"]) if kw.get("sample_indices") is not None
+                    else np.zeros(0, dtype=np.int64)
+                ),
+                "cache_id": id(cache) if cache is not None else None,
+            }
+            self.decodes.append(rec)
+            self.chunks.append(rec["chunk"])
             if self._cur is not None:
-                self._cur.setdefault("scaled_latent", _np(latent))
-            self.chunks.append(_np(out))
+                self._cur["decoder_called"] = True
+                self._cur["scaled_latent"] = rec["scaled_latent"]
+                self._cur["decode_sample_indices"] = rec["sample_indices"]
+                self._cur = None
             return out
 
         def sem_encode(audio, **kw):
             out = self._saved["sem_encode"](audio, **kw)
-            self.semantic.append({"features": _np(out.mean)})
+            cache = kw.get("cache")
+            if cache is not None:
+                self._cache_roles[id(cache)] = "semantic"
+            self.feedback.append({
+                "call_idx": max(self._call_idx, 0),
+                "kind": "semantic_features",
+                "features": _np(out.mean),
+                "sample_indices": (
+                    _npi(kw["sample_indices"]) if kw.get("sample_indices") is not None
+                    else np.zeros(0, dtype=np.int64)
+                ),
+                "cache_id": id(cache) if cache is not None else None,
+            })
             return out
 
+        def ac_conn_fwd(x, **kw):
+            out = self._saved["ac_conn_fwd"](x, **kw)
+            if not self._in_prompt:
+                self.feedback.append({
+                    "call_idx": max(self._call_idx, 0),
+                    "kind": "acoustic_embed", "embed": _np(out), "input": _np(x),
+                })
+            return out
+
+        def sem_conn_fwd(x, **kw):
+            out = self._saved["sem_conn_fwd"](x, **kw)
+            if not self._in_prompt:
+                self.feedback.append({
+                    "call_idx": max(self._call_idx, 0),
+                    "kind": "semantic_embed", "embed": _np(out), "input": _np(x),
+                })
+            return out
+
+        def set_to_zero(self_, sample_indices):
+            self._saved["set_to_zero"](self_, sample_indices)
+            self.resets.append({
+                "cache_id": id(self_),
+                "sample_indices": _npi(sample_indices),
+            })
+
         model.sample_speech_tokens = sample_speech_tokens
+        model._process_speech_inputs = speech_inputs
+        inner.acoustic_tokenizer.encode = encode
+        VibeVoiceTokenizerEncoderOutput.sample = enc_sample
         inner.prediction_head.forward = head_fwd
         inner.noise_scheduler.step = sched_step
         inner.acoustic_tokenizer.decode = decode
         inner.semantic_tokenizer.encode = sem_encode
+        inner.acoustic_connector.forward = ac_conn_fwd
+        inner.semantic_connector.forward = sem_conn_fwd
+        VibeVoiceTokenizerStreamingCache.set_to_zero = set_to_zero
         return self
 
     def __exit__(self, *exc) -> None:
-        torch = __import__("torch")
+        import torch
+        from vibevoice.modular.modular_vibevoice_tokenizer import (
+            VibeVoiceTokenizerEncoderOutput,
+            VibeVoiceTokenizerStreamingCache,
+        )
         torch.randn = self._saved["randn"]
         torch.randn_like = self._saved["randn_like"]
         self.model.sample_speech_tokens = self._saved["sample"]
+        self.model._process_speech_inputs = self._saved["speech_inputs"]
+        self.inner.acoustic_tokenizer.encode = self._saved["encode"]
+        VibeVoiceTokenizerEncoderOutput.sample = self._saved["enc_sample"]
         self.inner.prediction_head.forward = self._saved["head_fwd"]
         self.inner.noise_scheduler.step = self._saved["sched_step"]
         self.inner.acoustic_tokenizer.decode = self._saved["decode"]
         self.inner.semantic_tokenizer.encode = self._saved["sem_encode"]
+        self.inner.acoustic_connector.forward = self._saved["ac_conn_fwd"]
+        self.inner.semantic_connector.forward = self._saved["sem_conn_fwd"]
+        VibeVoiceTokenizerStreamingCache.set_to_zero = self._saved["set_to_zero"]
+
+    # -- consistency ------------------------------------------------------
+    def check_complete(self) -> None:
+        """Refuse to pack an incoherent capture."""
+        n_calls, n_decodes = len(self.calls), len(self.decodes)
+        n_sem = len([f for f in self.feedback if f["kind"] == "semantic_features"])
+        if n_calls != n_decodes:
+            raise SystemExit(
+                f"capture incomplete: {n_calls} diffusion calls but {n_decodes} decoder calls"
+            )
+        if n_calls != n_sem:
+            raise SystemExit(
+                f"capture incomplete: {n_calls} diffusion calls but {n_sem} semantic encodes"
+            )
+        missing = [i for i, c in enumerate(self.calls) if not c["decoder_called"]]
+        if missing:
+            raise SystemExit(f"decoder input not captured for diffusion calls {missing}")
 
     # -- packing ----------------------------------------------------------
     def diffusion_fixture(self) -> dict:
-        out: dict = {"num_calls_recorded": np.array(len(self.calls))}
+        out: dict = {
+            "num_calls_recorded": np.array(len(self.calls)),
+            "num_cache_resets": np.array(len(self.resets)),
+            "oracle_schema": np.array(ORACLE_SCHEMA, dtype=np.int64),
+        }
         for i, c in enumerate(self.calls):
-            out[f"call{i}_condition"] = c["condition"]
-            out[f"call{i}_neg_condition"] = c["neg_condition"]
-            out[f"call{i}_initial_noise"] = c["initial_noise"]
-            out[f"call{i}_speech_latent"] = c["speech_latent"]
-            out[f"call{i}_scheduler_timesteps"] = c["scheduler_timesteps"]
-            out[f"call{i}_scheduler_class"] = np.array(c["scheduler_class"])
-            out[f"call{i}_cfg_scale"] = np.array(c["cfg_scale"], dtype=np.float32)
-            if c["eps"]:
-                out[f"call{i}_eps"] = np.stack(c["eps"])
-                out[f"call{i}_timesteps"] = np.concatenate(c["timesteps"])
-            if c["speech"]:
-                out[f"call{i}_speech"] = np.stack(c["speech"])
+            p = f"call{i}_"
+            out[p + "condition"] = c["condition"]
+            out[p + "neg_condition"] = c["neg_condition"]
+            out[p + "cfg_scale"] = np.array(c["cfg_scale"], dtype=np.float32)
+            out[p + "initial_noise"] = c["initial_noise"]
+            out[p + "noise_draw_count"] = np.array(c["noise_draw_count"], dtype=np.int64)
+            out[p + "speech_latent"] = c["speech_latent"]
+            out[p + "decoder_called"] = np.array(c["decoder_called"])
             if "scaled_latent" in c:
-                out[f"call{i}_scaled_latent"] = c["scaled_latent"]
+                out[p + "scaled_latent"] = c["scaled_latent"]
+                out[p + "decode_sample_indices"] = c["decode_sample_indices"]
+            if c["eps"]:
+                out[p + "eps"] = np.stack(c["eps"])
+                out[p + "timesteps"] = np.concatenate(c["timesteps"])
+            if c["speech"]:
+                out[p + "speech"] = np.stack(c["speech"])
+            out[p + "scheduler_class"] = np.array(c["scheduler_class"])
+            out[p + "scheduler_config"] = np.array(c["scheduler_config"])
+            out[p + "scheduler_timesteps"] = c["scheduler_timesteps"]
+        for i, r in enumerate(self.resets):
+            role = self._cache_roles.get(r["cache_id"], "unknown")
+            out[f"reset{i}_role"] = np.array(role)
+            out[f"reset{i}_sample_indices"] = r["sample_indices"]
         return out
 
     def feedback_fixture(self) -> dict:
-        out: dict = {"num_calls_recorded": np.array(len(self.semantic))}
-        for i, s in enumerate(self.semantic):
-            out[f"call{i}_semantic_features"] = s["features"]
+        by_call: dict[int, list[dict]] = {}
+        for f in self.feedback:
+            by_call.setdefault(f["call_idx"], []).append(f)
+        out: dict = {
+            "num_calls_recorded": np.array(
+                len([f for f in self.feedback if f["kind"] == "semantic_features"])
+            ),
+            "oracle_schema": np.array(ORACLE_SCHEMA, dtype=np.int64),
+        }
+        for ci in sorted(by_call):
+            events = by_call[ci]
+            for kind in ("semantic_features", "acoustic_embed", "semantic_embed"):
+                group = [e for e in events if e["kind"] == kind]
+                if not group:
+                    raise SystemExit(f"feedback capture incomplete: no {kind} for call {ci}")
+                for j, e in enumerate(group):
+                    suffix = "" if len(group) == 1 else str(j)
+                    if kind == "semantic_features":
+                        out[f"call{ci}_semantic_features{suffix}"] = e["features"]
+                        out[f"call{ci}_sample_indices{suffix}"] = e["sample_indices"]
+                    else:
+                        out[f"call{ci}_{kind}{suffix}"] = e["embed"]
+            a = out.get(f"call{ci}_acoustic_embed")
+            s = out.get(f"call{ci}_semantic_embed")
+            if a is not None and s is not None:
+                # Packing arithmetic only: the sum the loop fed back, stored
+                # alongside both addends so the port can re-derive it.
+                out[f"call{ci}_feedback_sum"] = a + s
         return out
 
 
-def _reference_fixture(model, speech, speech_masks, device, dtype, seed: int) -> dict:
-    """Encode the reference audio and capture the scale/bias the fork derives from it.
-
-    ``speech`` / ``speech_masks`` come from the processor, which owns resampling
-    to 24 kHz. Reading the voice WAV directly is wrong: the shipped reference
-    voices are 16 kHz.
-    """
-    import torch
-
-    out: dict = {}
-    speech = speech.to(device=device, dtype=dtype)
-    speech_masks = speech_masks.to(device=device)
-    out["ref_pcm"] = _np(speech)
-    out["ref_speech_masks"] = speech_masks.detach().cpu().numpy()
-
-    # The factors are checkpoint weights, not derived values: the state dict
-    # carries ``model.speech_scaling_factor`` / ``model.speech_bias_factor`` as
-    # bf16 scalars, and ``from_pretrained`` loads them over the ``NaN`` default
-    # that the module registers at construction time. Read them back; do not
-    # recompute them and do not reset them to NaN, which would poison every
-    # downstream embedding.
-    with torch.no_grad():
-        draws: list[np.ndarray] = []
-        orig_randn, orig_randn_like = torch.randn, torch.randn_like
-
-        def _randn(*a, **kw):
-            o = orig_randn(*a, **kw)
-            draws.append(_np(o))
-            return o
-
-        def _randn_like(*a, **kw):
-            o = orig_randn_like(*a, **kw)
-            draws.append(_np(o))
-            return o
-
-        torch.randn, torch.randn_like = _randn, _randn_like
-        try:
-            torch.manual_seed(seed)
-            enc = model.model.acoustic_tokenizer.encode(speech.unsqueeze(1))
-            latents = enc.sample(dist_type=model.model.acoustic_tokenizer.std_dist_type)[0]
-        finally:
-            torch.randn, torch.randn_like = orig_randn, orig_randn_like
-
-        out["encoder_mean"] = _np(enc.mean)
-        out["encoder_std"] = _np(enc.std)
-        out["latents"] = _np(latents)
-        for i, d in enumerate(draws):
-            out[f"encode_draw{i}"] = d
-
-        # Drive the fork's own path so the connected embeddings are produced
-        # exactly as in generation, then read the factors back.
-        model._process_speech_inputs(speech, speech_masks, speech_type="audio")
-        out["scaling_factor"] = np.array(float(model.model.speech_scaling_factor), dtype=np.float32)
-        out["bias_factor"] = np.array(float(model.model.speech_bias_factor), dtype=np.float32)
-        out["features_scaled"] = _np(
-            (latents + model.model.speech_bias_factor.to(latents.device))
-            * model.model.speech_scaling_factor.to(latents.device)
-        )
-        out["connected"] = _np(model.model.acoustic_connector(
-            torch.from_numpy(out["features_scaled"]).to(device=device, dtype=dtype)
-        ))
-    return out
+def _pass_keys(fixture: dict, prefix: str, rec: "_Recorder", p: dict) -> None:
+    """Fill ``fixture`` with one speech-encode pass's actual inputs and draws."""
+    fixture[f"{prefix}phase"] = np.array(p["phase"])
+    for j, e in enumerate(rec.encodes[p["enc_start"]:p["enc_end"]]):
+        fixture[f"{prefix}encode{j}_mean"] = e["mean"]
+        fixture[f"{prefix}encode{j}_std"] = e["std"]
+    for j, s in enumerate(rec.enc_samples[p["samp_start"]:p["samp_end"]]):
+        fixture[f"{prefix}encode{j}_sample_dist"] = np.array(s["dist_type"])
+        fixture[f"{prefix}encode{j}_latents"] = s["latents"]
+    for j, d in enumerate(rec.draws[p["draw_start"]:p["draw_end"]]):
+        fixture[f"{prefix}encode_draw{j}"] = d
+    fixture[f"{prefix}features_scaled"] = p["features_scaled"]
+    fixture[f"{prefix}connected"] = p["connected"]
 
 
 def _run_request(
@@ -330,7 +533,6 @@ def _run_request(
     seed: int,
     cfg_scale: float,
     ddpm_steps: int,
-    max_calls: int,
     logit_positions: int,
     out_dir: Path,
 ) -> dict:
@@ -353,42 +555,29 @@ def _run_request(
     )
     moved = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in inputs.items()}
 
-    # -- reference features (processor-resampled, one pass over the audio) --
-    ref = _reference_fixture(
-        model, moved["speech_tensors"], moved["speech_masks"], device, dtype, seed
-    )
-    np.savez_compressed(out_dir / f"{name}_reference.npz", **ref)
-    print(f"  wrote {name}_reference.npz (scale {float(ref['scaling_factor']):.6f}, "
-          f"bias {float(ref['bias_factor']):.6f})")
+    ref_pcm = _np(moved["speech_tensors"])
+    ref_masks = _npi(moved["speech_masks"])
 
-    # -- LM prefill (explicit, deterministic) -----------------------------
-    # Token ids and masks keep their integer/bool dtype; only floats go through
-    # _np. Saving ids as float32 would round-trip but loses the type contract.
-    lm: dict = {"input_ids": _npi(moved["input_ids"])}
-    if "attention_mask" in moved:
-        lm["attention_mask"] = _npi(moved["attention_mask"])
-    for key in ("speech_masks", "speech_input_mask"):
-        if key in moved:
-            lm[key] = _npi(moved[key])
-    # The reference waveform is already stored as ``ref_pcm`` in the reference
-    # fixture; ``speech_tensors`` is the same array. Keep one copy so the two
-    # cannot drift.
-    with torch.no_grad():
-        pre = model(**moved, return_dict=True)
+    # The factors are checkpoint weights, not derived values: the state dict
+    # carries ``model.speech_scaling_factor`` / ``model.speech_bias_factor`` as
+    # bf16 scalars, and ``from_pretrained`` loads them over the ``NaN`` default
+    # that the module registers at construction time. Read them back and refuse
+    # NaN: a model built from config without a weight load would otherwise
+    # poison every downstream embedding silently.
+    scale = model.model.speech_scaling_factor
+    bias = model.model.speech_bias_factor
+    if not bool(torch.isfinite(scale)) or not bool(torch.isfinite(bias)):
+        raise SystemExit(f"{name}: speech_scaling/bias_factor is not finite; weights did not load")
 
-    # Full-vocab logits for every prompt position is ~73 MB of float32 for a
-    # 121-token prompt, which is too large to commit. Keep a few positions: the
-    # start (prompt encoding) and the end (the token that starts generation).
-    seq_len = pre.logits.shape[1]
-    half = max(1, logit_positions // 2)
-    idx = sorted(set(list(range(min(half, seq_len)))
-                     + list(range(max(0, seq_len - (logit_positions - half)), seq_len))))
-    lm["prefill_logits"] = _np(pre.logits[0, idx, :])
-    lm["prefill_logit_positions"] = np.array(idx, dtype=np.int64)
-    lm["prefill_last_hidden"] = _np(pre.last_hidden_state)
+    # One connected execution trace: the recorder is live for the explicit
+    # prefill and the whole generation, so every random draw and every speech
+    # encode is attributed to the pass that consumed it.
+    with _Recorder(model) as rec:
+        rec.phase = "prefill"
+        with torch.no_grad():
+            pre = model(**moved, return_dict=True)
 
-    # -- generation with capture ------------------------------------------
-    with _Recorder(model, max_calls=max_calls) as rec:
+        rec.phase = "generate"
         out = model.generate(
             **moved,
             max_new_tokens=None,
@@ -400,16 +589,65 @@ def _run_request(
             show_progress_bar=False,
         )
 
+    rec.check_complete()
+    passes = rec.passes
+    phases = [p["phase"] for p in passes]
+    if phases != ["prefill", "generate"]:
+        raise SystemExit(
+            f"{name}: expected exactly one prefill and one generation prompt pass, got {phases}"
+        )
+    pre_pass, gen_pass = passes
+
+    # -- reference features = the generation pass's speech encode -------------
+    # These are the connected embeddings that actually entered the language
+    # model and produced the generated audio, with the draws that made them.
+    ref: dict = {
+        "ref_pcm": ref_pcm,
+        "ref_speech_masks": ref_masks,
+        "scaling_factor": np.array(float(scale), dtype=np.float32),
+        "bias_factor": np.array(float(bias), dtype=np.float32),
+        "oracle_schema": np.array(ORACLE_SCHEMA, dtype=np.int64),
+    }
+    _pass_keys(ref, "", rec, gen_pass)
+    np.savez_compressed(out_dir / f"{name}_reference.npz", **ref)
+    print(f"  wrote {name}_reference.npz (scale {float(ref['scaling_factor']):.6f}, "
+          f"bias {float(ref['bias_factor']):.6f}, phase {gen_pass['phase']}, "
+          f"draws {gen_pass['draw_end'] - gen_pass['draw_start']})")
+
+    # -- LM prefill and generation -------------------------------------------
+    # Token ids and masks keep their integer/bool dtype; only floats go through
+    # _np. Saving ids as float32 would round-trip but loses the type contract.
+    lm: dict = {"input_ids": _npi(moved["input_ids"])}
+    if "attention_mask" in moved:
+        lm["attention_mask"] = _npi(moved["attention_mask"])
+    for key in ("speech_masks", "speech_input_mask"):
+        if key in moved:
+            lm[key] = _npi(moved[key])
+    # The prefill logits were produced from the prefill pass's speech encode;
+    # record that encode beside them so the fixture is self-contained.
+    _pass_keys(lm, "prefill_", rec, pre_pass)
+    # Full-vocab logits for every prompt position is ~73 MB of float32 for a
+    # 121-token prompt, which is too large to commit. Keep a few positions: the
+    # start (prompt encoding) and the end (the token that starts generation).
+    seq_len = pre.logits.shape[1]
+    half = max(1, logit_positions // 2)
+    idx = sorted(set(list(range(min(half, seq_len)))
+                     + list(range(max(0, seq_len - (logit_positions - half)), seq_len))))
+    lm["prefill_logits"] = _np(pre.logits[0, idx, :])
+    lm["prefill_logit_positions"] = np.array(idx, dtype=np.int64)
+    lm["prefill_last_hidden"] = _np(pre.last_hidden_state)
     lm["generated_ids"] = _npi(out.sequences)
     np.savez_compressed(out_dir / f"{name}_lm.npz", **lm)
     print(f"  wrote {name}_lm.npz (prompt {lm['input_ids'].shape[1]} -> generated {lm['generated_ids'].shape[1]} ids)")
 
     diff = rec.diffusion_fixture()
     np.savez_compressed(out_dir / f"{name}_diffusion.npz", **diff)
-    print(f"  wrote {name}_diffusion.npz ({len(rec.calls)} calls recorded)")
+    print(f"  wrote {name}_diffusion.npz ({len(rec.calls)} calls, "
+          f"{len(rec.decodes)} decoder inputs, {len(rec.resets)} cache resets)")
 
     np.savez_compressed(out_dir / f"{name}_feedback.npz", **rec.feedback_fixture())
-    print(f"  wrote {name}_feedback.npz ({len(rec.semantic)} semantic encodes)")
+    n_sem = len([f for f in rec.feedback if f["kind"] == "semantic_features"])
+    print(f"  wrote {name}_feedback.npz ({n_sem} semantic encodes with embeddings)")
 
     audio: dict = {}
     if rec.chunks:
@@ -437,7 +675,9 @@ def _run_request(
         "generated_tokens": int(lm["generated_ids"].shape[1]),
         "logit_positions": int(lm["prefill_logit_positions"].size),
         "diffusion_calls_recorded": len(rec.calls),
-        "semantic_encodes": len(rec.semantic),
+        "decoder_inputs_recorded": len(rec.decodes),
+        "semantic_encodes": n_sem,
+        "cache_resets": len(rec.resets),
         "pcm_samples": int(pcm.size),
         "pcm_seconds": round(float(pcm.size) / SAMPLING_RATE, 3),
         "pcm_rms": round(float(np.sqrt((pcm.astype(np.float64) ** 2).mean())), 6),
@@ -453,12 +693,15 @@ def main() -> None:
     parser.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--model", default="microsoft/VibeVoice-1.5B")
+    parser.add_argument("--model-revision", default=DEFAULT_MODEL_REVISION,
+                        help="checkpoint snapshot that must be loaded (default: the doc pin; "
+                             "pass an empty string to allow whatever snapshot is cached)")
     parser.add_argument("--fork-dir", type=Path, default=Path(DEFAULT_FORK))
+    parser.add_argument("--allow-dirty-fork", action="store_true",
+                        help="permit a fork working tree with uncommitted changes")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--cfg-scale", type=float, default=1.3)
     parser.add_argument("--ddpm-steps", type=int, default=20)
-    parser.add_argument("--max-diffusion-calls", type=int, default=8,
-                        help="per-call diffusion detail cap; summaries are always written")
     parser.add_argument("--logit-positions", type=int, default=4,
                         help="prompt positions whose full-vocab logits are stored (default 4)")
     parser.add_argument("--only", default=None, choices=["single", "two"],
@@ -479,7 +722,14 @@ def main() -> None:
     if args.device == "cuda" and not torch.cuda.is_available():
         raise SystemExit("--device cuda requested but HIP reports no device")
 
-    snap = _snapshot_dir(args.model)
+    snap = _snapshot_dir(args.model, args.model_revision or None)
+    fork_head, fork_dirty = _git_state(args.fork_dir)
+    if fork_dirty and not args.allow_dirty_fork:
+        raise SystemExit(
+            f"fork working tree is dirty (HEAD {fork_head}); commit or stash it, or pass "
+            "--allow-dirty-fork to record the dirty state and continue"
+        )
+
     voices = args.fork_dir / "demo" / "voices"
     alice, carter = voices / "en-Alice_woman.wav", voices / "en-Carter_man.wav"
     for wav in (alice, carter):
@@ -487,9 +737,13 @@ def main() -> None:
             raise SystemExit(f"reference voice missing: {wav}")
 
     print(f"device={args.device} dtype={args.dtype} seed={args.seed} cfg={args.cfg_scale} ddpm={args.ddpm_steps}")
-    processor = VibeVoiceProcessor.from_pretrained(args.model)
+    print(f"snapshot={snap.name} fork={fork_head} fork_dirty={fork_dirty}")
+    # Load from the resolved snapshot directory itself: the revision recorded in
+    # the manifest is then the revision whose weights were actually loaded,
+    # independent of the hub cache's own resolution.
+    processor = VibeVoiceProcessor.from_pretrained(str(snap))
     model = VibeVoiceForConditionalGenerationInference.from_pretrained(
-        args.model, torch_dtype=dtype, device_map=args.device, attn_implementation="sdpa",
+        str(snap), torch_dtype=dtype, device_map=args.device, attn_implementation="sdpa",
     )
     model.eval()
 
@@ -511,10 +765,14 @@ def main() -> None:
         ))
 
     manifest = {
+        "oracle_schema": ORACLE_SCHEMA,
         "model_id": args.model,
         "model_revision": snap.name,
+        "model_revision_expected": args.model_revision or None,
+        "model_revision_matches": (args.model_revision or None) in (None, snap.name),
         "fork_dir": str(args.fork_dir),
-        "fork_revision": _git_revision(args.fork_dir),
+        "fork_revision": fork_head,
+        "fork_dirty": fork_dirty,
         "device": args.device,
         "dtype": args.dtype,
         "torch_version": torch.__version__,
@@ -530,8 +788,7 @@ def main() -> None:
             name, script, voices,
             model=model, processor=processor, device=args.device, dtype=dtype,
             seed=args.seed, cfg_scale=args.cfg_scale, ddpm_steps=args.ddpm_steps,
-            max_calls=args.max_diffusion_calls, logit_positions=args.logit_positions,
-            out_dir=args.out_dir,
+            logit_positions=args.logit_positions, out_dir=args.out_dir,
         ))
 
     (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

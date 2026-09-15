@@ -228,11 +228,21 @@ PYTHONPATH=/home/lhl/VibeVoice-community \
     scripts/vibevoice_tts_oracle_torch.py
 ```
 
-It captures by wrapping the reference module or method that does each piece of
-work, so no arithmetic is reimplemented and a fixture cannot disagree with the
-reference by construction. Two runs produce byte-identical artifacts. Per
-request it writes `manifest.json`, and `<name>_reference`, `_lm`, `_diffusion`,
-`_feedback` and `_audio` `.npz` files.
+Provenance is enforced, not just recorded: the processor and model are loaded
+from the exact local snapshot named by `--model-revision` (default: the pin
+above), and a dirty fork tree is refused unless overridden. It captures by
+wrapping the reference module or method that does each piece of work, so no
+arithmetic is reimplemented and a fixture cannot disagree with the reference by
+construction. Two runs produce byte-identical artifacts. Fixture schema 2 (one
+connected execution trace per request) records, per request, `manifest.json`
+and `<name>_reference`, `_lm`, `_diffusion`, `_feedback` and `_audio` `.npz`
+files: the generation pass's speech encode with its random draws, the prefill
+pass's own encode beside its logits, **every** diffusion call with its initial
+noise, per-step eps and latent state, final latent, post-scale decoder input
+and batch sample indices, the acoustic and semantic feedback embeddings and
+their sum, the full scheduler config (class, `dpmsolver++`, order 2, midpoint,
+cosine, v_prediction, exact timesteps), streaming-cache reset events, and all
+decoder chunks with the concatenated waveform.
 
 Two argument shapes are easy to get wrong and both fail quietly:
 
@@ -363,16 +373,38 @@ its outputs are captured as fixtures. Concretely, all of:
 - the oracle is known to work on the *reviewed* fork revision rather than a newer
   one, and any difference is recorded if it does not.
 
-**Status: closed (2026-09-15).** All six criteria are met. The frozen fixtures
-are `tests/fixtures/vibevoice_tts/` (10 `.npz` files plus `manifest.json`, 8.0 MB,
-281 arrays) and a fresh run reproduces every one of them byte-identically. The
-weight inventory is `tests/fixtures/vibevoice_tts/weight_inventory.json`, produced
-by `scripts/vibevoice_tts_weight_inventory.py`: 1204 tensors,
-2,704,021,987 parameters, 5.037 GiB, zero orphan keys. The one key absent from
-the checkpoint, `lm_head.weight`, is tied to `embed_tokens.weight` with verified
-shared storage. The two scaling factors are buffers rather than parameters, which
-is why a `.parameters()` sum undercounts the checkpoint by exactly 2. See
-`worklog/entries/20260915T032856.748048Z-lhl-vibevoice-tts-milestone1-closure-511389.md`.
+**Status: closed (2026-09-15), re-established after a second review.** The
+first closure used fixtures that were reproducible but incomplete as boundary
+fixtures: the recorder cleared its per-call state before the decoder hook ran,
+so no decoder input was captured and only 8 of the diffusion calls were
+retained; the reference, prefill and generation captures each held a different
+speech-encode pass's random draws, so the saved reference embeddings were not
+the ones that produced the saved logits; the feedback fixtures carried semantic
+features only; the scheduler record omitted the solver configuration; and the
+checkpoint pin was recorded from one snapshot resolution while the weights were
+loaded through another. All of that is fixed in fixture schema 2 and the
+fixtures were regenerated.
+
+The frozen fixtures are `tests/fixtures/vibevoice_tts/` (10 `.npz` files plus
+`manifest.json`, 1,690 arrays, 12 MB). A fresh run reproduces every one of
+them byte-identically. Each request now holds one connected execution trace:
+the generation pass's speech encode with its draws, the prefill pass's encode
+beside its logits, every diffusion call with its initial noise, per-step eps
+and latent state, final latent, post-scale decoder input and sample indices,
+feedback embeddings with their sum, the full scheduler config, cache-reset
+events, and all decoder chunks. Measured on the pinned run: single 148
+generated ids → 80,000 samples (3.333 s, rms 0.055272) with all 25 diffusion
+calls captured; two 411 ids → 176,000 samples (7.333 s, rms 0.091783) with all
+55 calls captured. The weight inventory is
+`tests/fixtures/vibevoice_tts/weight_inventory.json`, produced by
+`scripts/vibevoice_tts_weight_inventory.py`: 1204 tensors, 2,704,021,987
+parameters, 5.037 GiB, zero orphan keys. The one key absent from the
+checkpoint, `lm_head.weight`, is tied to `embed_tokens.weight` with verified
+shared storage. The two scaling factors are buffers rather than parameters,
+which is why a `.parameters()` sum undercounts the checkpoint by exactly 2.
+See `worklog/entries/20260915T032856.748048Z-lhl-vibevoice-tts-milestone1-closure-511389.md`
+for the first closure and the schema-2 entry that supersedes its capture
+claims.
 
 Out of scope for milestone 1: batching, concurrency, hour-scale continuity,
 kernel porting, quantization, and any quality or speed claim.

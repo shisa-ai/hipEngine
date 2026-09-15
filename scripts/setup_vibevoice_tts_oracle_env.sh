@@ -11,9 +11,13 @@
 # Everything else is pinned; see scripts/vibevoice_tts_oracle_requirements.txt.
 #
 # Usage:
-#     scripts/setup_vibevoice_tts_oracle_env.sh [venv-path]
+#     scripts/setup_vibevoice_tts_oracle_env.sh [--recreate] [venv-path]
 #
 # Default venv path: /home/lhl/venvs/vibevoice-tts-oracle
+#
+# An existing destination is refused by default; pass --recreate to delete and
+# rebuild it deliberately. The venv path is a caller-supplied argument, so the
+# script never destroys a directory it was not explicitly told to replace.
 #
 # After it finishes, verify the environment with:
 #     <venv>/bin/python -c "import torch, transformers; \
@@ -21,6 +25,11 @@
 
 set -euo pipefail
 
+RECREATE=0
+if [[ "${1:-}" == "--recreate" ]]; then
+    RECREATE=1
+    shift
+fi
 VENV="${1:-/home/lhl/venvs/vibevoice-tts-oracle}"
 REQS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vibevoice_tts_oracle_requirements.txt"
 BASE_PYTHON="${BASE_PYTHON:-python3}"
@@ -30,8 +39,17 @@ if [[ ! -f "$REQS" ]]; then
     exit 1
 fi
 
+if [[ -e "$VENV" ]]; then
+    if [[ "$RECREATE" == "1" ]]; then
+        echo "==> --recreate given: deleting existing $VENV"
+        rm -rf "$VENV"
+    else
+        echo "error: $VENV already exists; pass --recreate to delete and rebuild it" >&2
+        exit 1
+    fi
+fi
+
 echo "==> creating venv at $VENV (system site packages: reuses host ROCm torch)"
-rm -rf "$VENV"
 "$BASE_PYTHON" -m venv --system-site-packages "$VENV"
 
 echo "==> installing pinned dependencies"
