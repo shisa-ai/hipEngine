@@ -337,15 +337,21 @@ def fused_path_admission(
     The dense-pair fused route is chosen by
     ``_gguf_dense_pair_silu_decode_variant``, which looks the variant up by the
     exact key ``(rows, in_features, out_features)``. The kernel behind that
-    variant validates only ``out_features % 16 == 0`` and ``in_features % 256 ==
-    0``, so a half-intermediate shard is *accepted by the kernel* but is *not
-    admitted by the policy table* unless its shape is listed. That distinction
-    decides whether a shard segment pays for one fused launch or for two separate
-    GEMV launches plus a SiLU-multiply, so it is reported rather than assumed.
+    variant accepts a shape whenever ``dense_t16_pair_decode_shape_error``
+    returns None (``rows == 1``, ``in_features`` a positive multiple of 256,
+    ``out_features`` a positive multiple of 16), so a half-intermediate shard is
+    *inside the kernel's shape contract* but is *not admitted by the policy
+    table* unless its shape is listed. That distinction decides whether a shard
+    segment pays for one fused launch or for two separate GEMV launches plus a
+    SiLU-multiply, so it is reported rather than assumed.
+
+    The shape contract is asked through the kernel module's pure validator, never
+    through the launcher: calling a launcher with valid shapes and null pointers
+    enqueues an invalid device launch on a host where the library is loaded.
     """
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
-        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+        dense_t16_pair_decode_shape_error,
     )
 
     from hipengine.kernels.backends import backend_package_capability
@@ -361,23 +367,19 @@ def fused_path_admission(
     tp1_key = (1, int(hidden_size), int(intermediate))
     shard_key = (1, int(hidden_size), half)
 
-    # Ask the kernel's own validation whether it accepts the shard shape, rather
-    # than reading its bounds test by eye.
-    kernel_accepts_shard: bool | str
-    try:
-        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
-            0, 0, 0, 0, 1, int(hidden_size), half, runtime=None
-        )
-        kernel_accepts_shard = True
-    except ValueError as error:
-        kernel_accepts_shard = f"rejected on arguments: {error}"
-    except Exception as error:  # noqa: BLE001 - a null-pointer launch is expected
-        # The launch got past argument validation, which is what is being tested.
-        kernel_accepts_shard = f"passed argument validation, then: {type(error).__name__}"
+    # Ask the kernel module's pure shape contract, which is the same check the
+    # launcher performs before any HIP contact. No pointers are involved.
+    tp1_shape_error = dense_t16_pair_decode_shape_error(
+        rows=tp1_key[0], in_features=tp1_key[1], out_features=tp1_key[2]
+    )
+    shard_shape_error = dense_t16_pair_decode_shape_error(
+        rows=shard_key[0], in_features=shard_key[1], out_features=shard_key[2]
+    )
 
     return {
         "route": "launch_gguf_linear_pair_silu -> _gguf_dense_pair_silu_decode_variant",
         "lookup_key": "(rows, in_features, out_features)",
+        "shape_contract": "dense_t16_pair_decode_shape_error",
         "tp1_key": list(tp1_key),
         "tp1_variant": next(
             (
@@ -391,11 +393,13 @@ def fused_path_admission(
         "admitted_shapes": [list(k) for k in sorted(admitted_shapes)],
         "tp1_admitted": tp1_key in admitted_shapes,
         "shard_admitted": shard_key in admitted_shapes,
-        "kernel_accepts_shard_shape": kernel_accepts_shard,
+        "tp1_shape_error": tp1_shape_error,
+        "shard_shape_error": shard_shape_error,
         "gap": (
-            "the shard shape is accepted by the kernel but absent from the policy "
-            "table, so a shard segment would take the unfused chain (two GEMV "
-            "launches plus a separate SiLU-multiply) unless the policy admits it"
+            "the shard shape is inside the kernel's shape contract but absent "
+            "from the policy table, so a shard segment would take the unfused "
+            "chain (two GEMV launches plus a separate SiLU-multiply) unless the "
+            "policy admits it"
         )
         if shard_key not in admitted_shapes
         else None,

@@ -344,22 +344,96 @@ def test_the_fused_decode_route_is_shape_keyed(mod) -> None:
     assert admission["shard_key"] == [1, 5120, 8704]
     assert admission["shard_admitted"] is False
     assert admission["gap"] is not None
-    assert "accepted by the kernel" in admission["gap"]
+    assert "inside the kernel's shape contract" in admission["gap"]
+    # Both shapes are inside the kernel's contract, so the gap is purely
+    # admission: no kernel work and no shape work is required.
+    assert admission["tp1_shape_error"] is None
+    assert admission["shard_shape_error"] is None
 
 
-def test_the_kernel_itself_accepts_the_shard_shape(mod) -> None:
-    """A half-intermediate shard satisfies the kernel's own divisibility test.
+def test_the_shard_shape_satisfies_the_pure_shape_contract() -> None:
+    """A half-intermediate shard is inside the kernel launcher's shape contract.
 
-    This is why the gap is a one-line policy admission rather than a new kernel,
-    and it is checked by calling the kernel's validation rather than by reading
-    its bounds test.
+    This is why the gap is a one-line policy admission rather than a new kernel.
+    The contract is the kernel module's pure validator, asked directly: no
+    pointers, no library, no device.
     """
 
-    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17408)
-    # A null-pointer launch cannot succeed, but it must get past argument
-    # validation; a ValueError here would mean the shape itself was refused.
-    assert isinstance(admission["kernel_accepts_shard_shape"], str)
-    assert "passed argument validation" in admission["kernel_accepts_shard_shape"]
+    from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+        dense_t16_pair_decode_shape_error,
+    )
+
+    # The shapes this probe actually reports.
+    assert dense_t16_pair_decode_shape_error(rows=1, in_features=5120, out_features=17408) is None
+    assert dense_t16_pair_decode_shape_error(rows=1, in_features=5120, out_features=8704) is None
+    # The rejecting boundary, with the reason each condition produces.
+    assert "rows == 1" in dense_t16_pair_decode_shape_error(rows=2, in_features=5120, out_features=8704)
+    assert "in_features" in dense_t16_pair_decode_shape_error(rows=1, in_features=5118, out_features=8704)
+    assert "in_features" in dense_t16_pair_decode_shape_error(rows=1, in_features=0, out_features=8704)
+    assert "out_features" in dense_t16_pair_decode_shape_error(rows=1, in_features=5120, out_features=8700)
+    assert "out_features" in dense_t16_pair_decode_shape_error(rows=1, in_features=5120, out_features=0)
+
+
+def test_the_launcher_refuses_exactly_what_the_contract_refuses(monkeypatch) -> None:
+    """The launcher must consult the shared contract, not its own copy.
+
+    Invalid shapes are safe to pass to a launcher with null pointers because the
+    launcher raises before any HIP contact; the loaders are patched to raise
+    anyway, so a regression that launched before validating would fail this test
+    instead of enqueueing an invalid device launch.
+    """
+
+    import inspect
+
+    from hipengine.kernels.hip_gfx1100.quant import gguf_t16_selected_gemv as gemv
+
+    def _forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("HIP contact during a shape-contract test")
+
+    monkeypatch.setattr(gemv, "get_hip_runtime", _forbidden)
+    monkeypatch.setattr(gemv, "_t16_selected_gemv_library", _forbidden)
+
+    # One shared contract, consulted by both pair decode launchers.
+    for launcher in (
+        gemv.gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+        gemv.gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out,
+    ):
+        assert "dense_t16_pair_decode_shape_error" in inspect.getsource(launcher)
+        for rows, in_features, out_features in ((2, 5120, 8704), (1, 5118, 8704), (1, 5120, 8700)):
+            reason = gemv.dense_t16_pair_decode_shape_error(
+                rows=rows, in_features=in_features, out_features=out_features
+            )
+            with pytest.raises(ValueError, match=reason.split("requires ")[1]):
+                launcher(0, 0, 0, 0, rows, in_features, out_features)
+
+
+def test_the_probe_answers_the_admission_question_without_hip(monkeypatch) -> None:
+    """fused_path_admission must stay pure: no runtime, no library, no launch.
+
+    This is the structural guard for the review finding: an earlier revision
+    called the launcher with null pointers, which enqueues an invalid device
+    launch on any host where the library is loaded. With the loaders patched to
+    raise, the probe can only pass by never touching them.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant import gguf_t16_selected_gemv as gemv
+
+    def _forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fused_path_admission touched HIP or the kernel library")
+
+    monkeypatch.setattr(gemv, "get_hip_runtime", _forbidden)
+    monkeypatch.setattr(gemv, "_t16_selected_gemv_library", _forbidden)
+
+    probe = sys.modules.get("tp2_mlp_shard_plan_probe")
+    if probe is None:
+        spec = importlib.util.spec_from_file_location("tp2_mlp_shard_plan_probe", SCRIPT)
+        assert spec is not None and spec.loader is not None
+        probe = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = probe
+        spec.loader.exec_module(probe)
+    admission = probe.fused_path_admission(hidden_size=5120, intermediate=17408)
+    assert admission["shard_admitted"] is False
+    assert admission["shard_shape_error"] is None
 
 
 def test_an_odd_intermediate_reports_a_non_integral_shard(mod) -> None:
