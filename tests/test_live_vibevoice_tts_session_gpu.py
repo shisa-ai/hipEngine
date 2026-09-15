@@ -67,16 +67,51 @@ def dif() -> dict[str, np.ndarray]:
     return _npz("single_diffusion.npz")
 
 
-def _prompt_rows(sess, lm):
+@pytest.fixture(scope="module")
+def ref() -> dict[str, np.ndarray]:
+    """The generation pass's reference features; ``connected`` lives here."""
+    return _npz("single_reference.npz")
+
+
+def _prefill_rows(sess, lm):
+    """Prompt rows for comparisons against the *prefill* pass.
+
+    ``prefill_connected`` comes from the recorder's explicit ``pre`` forward.
+    That forward samples its own encoder noise, so its connected rows are 0.185
+    (relative) away from the rows the generation actually consumed. Use it only
+    to compare against prefill-pass outputs such as ``prefill_last_hidden``.
+    """
     in_ids = np.asarray(lm["input_ids"])[0]
     mask = np.asarray(lm["speech_input_mask"], dtype=bool).reshape(-1)
     conn = np.asarray(lm["prefill_connected"])
     return sess.build_prompt_rows(in_ids, mask, conn)
 
 
-def _run_chain(session, lm, dif, trace: SessionTrace):
+def _generation_rows(sess, ref, lm):
+    """Prompt rows for the chain: our encoder on the generation's own draws.
+
+    This is the end-to-end path -- encode, sample, scale, connect -- and it is
+    what ``generated_ids`` was produced from. The chain tests used
+    ``prefill_connected`` (the other pass's draw) before; the single chain is
+    exact either way, but feeding the rows the generation consumed drops the
+    call-0 condition error from 0.044 to 0.011.
+    """
+    pcm = np.asarray(ref["ref_pcm"])[0]
+    _, connected = sess.voice_prompt_rows(
+        pcm,
+        noise=np.asarray(ref["encode_draw1"]),
+        noise_scale=np.asarray(ref["encode_draw0"]),
+    )
+    return sess.build_prompt_rows(
+        np.asarray(lm["input_ids"]),
+        np.asarray(lm["speech_input_mask"], dtype=bool),
+        connected,
+    )
+
+
+def _run_chain(session, ref, lm, dif, trace: SessionTrace):
     """The frozen chain with recorded noise + negative conditions injected."""
-    rows = _prompt_rows(session, lm)
+    rows = _generation_rows(session, ref, lm)
     return session.generate(
         rows,
         cfg_scale=1.3,
@@ -122,7 +157,7 @@ def test_voice_prompt_rows_matches_reference(session) -> None:
     ), "connected rows drifted"
 
 
-def test_session_negative_path_without_injection(session, lm, dif) -> None:
+def test_session_negative_path_without_injection(session, ref, lm, dif) -> None:
     """Recorded noise only: the session's own negative-LM branch is gated.
 
     ``neg_hook`` is deliberately omitted, so ``_negative_condition`` runs and
@@ -130,7 +165,7 @@ def test_session_negative_path_without_injection(session, lm, dif) -> None:
     generated token chain does not catch a broken negative branch, because the
     chain stays exact even when the branch is wrong; the conditions do.
     """
-    rows = _prompt_rows(session, lm)
+    rows = _generation_rows(session, ref, lm)
     trace = SessionTrace()
     res = session.generate(
         rows,
@@ -182,7 +217,7 @@ def test_voice_prompt_scaled_features_match_reference(session, weights) -> None:
 def test_prefill_trace_matches_fixture(session, lm) -> None:
     """Every prompt position's post-final-norm hidden stays on the oracle."""
     ref_h = np.asarray(lm["prefill_last_hidden"])[0]
-    rows = _prompt_rows(session, lm)
+    rows = _prefill_rows(session, lm)
     session.positive.reset()
     worst = 0.0
     for position, row in enumerate(rows):
@@ -193,10 +228,10 @@ def test_prefill_trace_matches_fixture(session, lm) -> None:
     assert worst <= 0.05, f"prefill hidden drift {worst:.4f}"
 
 
-def test_greedy_chain_matches_torch(session, lm, dif) -> None:
+def test_greedy_chain_matches_torch(session, ref, lm, dif) -> None:
     """The exact 27-token constrained chain, RNG-independent via fixtures."""
     trace = SessionTrace()
-    res = _run_chain(session, lm, dif, trace)
+    res = _run_chain(session, ref, lm, dif, trace)
     gen = np.asarray(lm["generated_ids"])[0]
     in_ids = np.asarray(lm["input_ids"])[0]
     expected = [int(t) for t in gen[len(in_ids):]]
@@ -204,10 +239,10 @@ def test_greedy_chain_matches_torch(session, lm, dif) -> None:
     assert len(res.chunks) == 25
 
 
-def test_session_conditions_track_oracle(session, lm, dif) -> None:
+def test_session_conditions_track_oracle(session, ref, lm, dif) -> None:
     """Positive/negative conditions stay on the oracle through the span."""
     trace = SessionTrace()
-    _run_chain(session, lm, dif, trace)
+    _run_chain(session, ref, lm, dif, trace)
     c0 = np.asarray(dif["call0_condition"]).reshape(-1)
     peak_c = float(np.abs(c0).max())
     got0 = trace.conditions[0]
@@ -233,13 +268,13 @@ def test_session_conditions_track_oracle(session, lm, dif) -> None:
         assert np.abs(got - ref).max() <= 0.4, f"call{call} speech latent drifted"
 
 
-def test_session_pcm_matches_oracle(session, lm, dif) -> None:
+def test_session_pcm_matches_oracle(session, ref, lm, dif) -> None:
     """Decoded chunks track the oracle's PCM: waveform within the measured
     compounding envelope and pooled energy within 25%."""
     audio = _npz("single_audio.npz")
     ref_chunks = np.asarray(audio["chunks"]).reshape(25, 3200)
     trace = SessionTrace()
-    res = _run_chain(session, lm, dif, trace)
+    res = _run_chain(session, ref, lm, dif, trace)
     assert len(res.chunks) == ref_chunks.shape[0]
     for call in (0, 1, 12, 24):
         ref = ref_chunks[call]
@@ -462,11 +497,63 @@ def test_two_speaker_chain_is_exact_with_the_oracle_condition(two_session, monke
     assert res.ids == expected, "chain moved off the oracle with the oracle's condition"
 
 
+def test_two_speaker_trajectory_is_stable_once_call0_is_on_branch(two_session, monkeypatch) -> None:
+    """Call 0 is the only instability in the two-speaker feedback loop.
+
+    The two-speaker call-0 diffusion solve bifurcates. Injecting the oracle's
+    condition plus white noise at 2% of its peak keeps the solved latent within
+    ~0.2 of the oracle's; at 5% it jumps to ~3.5. This request's own condition
+    error is 0.018, so the solve lands on the wrong branch and every later
+    condition inherits it (call 1 is 1.27 off).
+
+    Forcing the oracle's recorded condition for call 0 alone puts the loop back
+    on the branch: calls 1..10 then track the oracle's latents to 0.04 or less,
+    and the error does not grow with depth. So the feedback loop is stable and
+    the entry point is what is not -- which is why forcing all 55 conditions is
+    needed for an exact chain, not just the first few.
+    """
+    ref = _npz("two_reference.npz")
+    lm = _npz("two_lm.npz")
+    dif = _npz("two_diffusion.npz")
+    calls = int(dif["num_calls_recorded"])
+    rows = _two_prompt_rows(two_session, ref, lm)
+    original = two_session.diffusion.sample_speech_tokens
+    seen = {"count": 0, "latent": []}
+
+    def with_oracle_call0(condition, neg_condition, cfg_scale, initial_noise, *, collect=None):
+        index = min(seen["count"], calls - 1)
+        seen["count"] += 1
+        if index == 0:
+            condition = np.asarray(dif["call0_condition"], dtype=np.float32).reshape(1, -1)
+        out = original(condition, neg_condition, cfg_scale, initial_noise, collect=collect)
+        if index < calls:
+            oracle = np.asarray(dif[f"call{index}_speech_latent"], np.float64).reshape(-1)
+            got = np.asarray(out[0], np.float64).reshape(-1)
+            seen["latent"].append(float(np.abs(got - oracle).max() / np.abs(oracle).max()))
+        return out
+
+    monkeypatch.setattr(two_session.diffusion, "sample_speech_tokens", with_oracle_call0)
+    two_session.generate(
+        rows,
+        cfg_scale=1.3,
+        max_new_tokens=59,
+        noise_hook=lambda i: dif[f"call{min(i, calls - 1)}_initial_noise"],
+        neg_hook=lambda i: dif[f"call{min(i, calls - 1)}_neg_condition"],
+    )
+    latents = seen["latent"][:11]
+    assert len(latents) == 11, f"expected 11 recorded latents, got {len(latents)}"
+    # Measured on our encoder's rows: 0.036 at call 0 then 0.020-0.055 across
+    # calls 1..10. A loop that had lost the branch shows 0.5-1.3 here instead,
+    # so the gate discriminates by more than 10x.
+    assert max(latents) <= 0.08, f"latent drift {max(latents):.4f} after call 0"
+
+
 @pytest.mark.xfail(
     strict=True,
-    reason="two-speaker chain diverges at the first span end because the "
-    "diffusion condition is off; with the oracle's condition and this "
-    "session's own solve it is exact. See "
+    reason="two-speaker call-0 diffusion solve bifurcates: our 0.018 condition "
+    "error lands on the wrong branch and call 1 inherits it. With the "
+    "oracle's condition for call 0 the loop is stable, and with the oracle's "
+    "conditions for all 55 calls the chain is exact. See "
     "worklog/entries/20260915T091156.145004Z-lhl-vibevoice-tts-two-speaker-prompt-f6fe75.md",
 )
 def test_two_speaker_greedy_chain_matches_torch(two_session) -> None:
