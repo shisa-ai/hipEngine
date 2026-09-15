@@ -55,19 +55,36 @@ def assemble(root, trace):
     for suffix in ("<4, false>", "<3, true>"):
         if not any(suffix in name for name in kernels):
             raise ValueError("correction specialization not traced")
+    model_path = root / "resume-gr-down-compensated-depth.json"
+    model_raw = model_path.read_bytes()
+    model_gate = json.loads(model_raw)
+    hashes[model_path.name] = hashlib.sha256(model_raw).hexdigest()
+    expected_shapes = [{"arguments": [512, 10240, 320], "calls": 1152},
+                       {"arguments": [1024, 10240, 320], "calls": 5760}]
+    if (model_gate["status"] != "completed" or not model_gate["source"]["tracked_clean"]
+            or model_gate["candidate"] != "production_gr_down_compensated"
+            or model_gate["candidate_dispatch_mode"] != "registry"
+            or model_gate["candidate_dispatch_calls"] != 6912
+            or model_gate["candidate_dispatch_shapes"] != expected_shapes
+            or model_gate["quality"]["summary"]["rows"] != 780
+            or model_gate["quality"]["hard_gates_passed"]
+            or not model_gate["deterministic"] or not model_gate["state_gate"]["passed"]
+            or any(row["current_allocated_bytes"] for row in model_gate["lifecycle"].values())):
+        raise ValueError("invalid compensated model rejection evidence")
     for packet in captures.values():
         packet["records"] = [{key: value for key, value in row.items()
                               if key not in ("sampled_fp64", "sampled_parent", "sampled_candidate")}
                              for row in packet["records"]]
     return dict(
-        schema=1, status="operand_screen_pass_full_model_and_cost_pending",
+        schema=1, status="compensated_down_model_failure_p4_up_model_pending",
         performance_claim=False, promotion_claim=False, raw_sha256=hashes,
-        captures=captures, ratios=ratios,
+        captures=captures, ratios=ratios, compensated_model_gate=model_gate,
         trace=dict(sha256=hashlib.sha256(trace.read_bytes()).hexdigest(), kernels=kernels),
         limits=[
             "Sampled FP64 MSE is not the production model admission criterion.",
             "P4 carries higher VGPR/LDS use; throughput is not measured here.",
-            "Corrections remain off by default; full numerical/task/isolation and cost gates are pending.",
+            "Compensated down fails full model numerics despite better projection MSE; no cost/task run follows.",
+            "P4-up remains off by default and still needs its independent model gate.",
         ])
 
 
