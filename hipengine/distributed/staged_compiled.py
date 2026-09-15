@@ -105,6 +105,17 @@ def _bind(library: Any) -> None:
         ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
     ]
     library.tp2_staged_reduce.restype = ctypes.c_int32
+    library.tp2_staged_reduce_at.argtypes = [
+        ctypes.c_void_p,  # handle
+        ctypes.POINTER(ctypes.c_void_p),  # per-rank partial pointers
+        ctypes.c_int32,  # caller-chosen payload slot
+        ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
+    ]
+    library.tp2_staged_reduce_at.restype = ctypes.c_int32
+    library.tp2_staged_payload_base.argtypes = [ctypes.c_void_p]
+    library.tp2_staged_payload_base.restype = ctypes.c_uint64
+    library.tp2_staged_slot_stride.argtypes = [ctypes.c_void_p]
+    library.tp2_staged_slot_stride.restype = ctypes.c_size_t
     library.tp2_staged_last_error.argtypes = [ctypes.c_void_p]
     library.tp2_staged_last_error.restype = ctypes.c_char_p
     library.tp2_staged_destroy.argtypes = [ctypes.c_void_p]
@@ -131,6 +142,7 @@ class CompiledStagedExchangeTransport:
         hidden: int,
         staging_dtype: str = "f32",
         library: Any | None = None,
+        slot_sets: int = _SLOT_SETS,
     ) -> None:
         if not devices:
             raise TransportStateError("a staged exchange needs at least one rank")
@@ -163,13 +175,16 @@ class CompiledStagedExchangeTransport:
             *[int(streams[d]) for d in self.devices]
         )
         error_code = ctypes.c_int32(0)
+        slot_sets = int(slot_sets)
+        if slot_sets < 2:
+            raise TransportStateError("a staged exchange needs at least two slot sets")
         handle = library.tp2_staged_create(
             devices_arr,
             len(self.devices),
             streams_arr,
             self.hidden,
             _STAGING_DTYPE_CODES[staging_dtype],
-            _SLOT_SETS,
+            slot_sets,
             ctypes.byref(error_code),
         )
         if not handle:
@@ -179,6 +194,13 @@ class CompiledStagedExchangeTransport:
                 f"compiled staged exchange create failed (code {error_code.value}): {message}"
             )
         self._handle = int(handle)
+        self._slot_sets = int(slot_sets)
+        self._payload_base = int(
+            library.tp2_staged_payload_base(ctypes.c_void_p(self._handle))
+        )
+        self._slot_stride = int(
+            library.tp2_staged_slot_stride(ctypes.c_void_p(self._handle))
+        )
         # Per-call scratch: one pointer per rank plus the payload out-param,
         # allocated once - the reduce path allocates nothing.
         self._partial_array = (ctypes.c_void_p * len(self.devices))()
@@ -190,9 +212,20 @@ class CompiledStagedExchangeTransport:
     def poisoned(self) -> bool:
         return self._poisoned
 
+    def payload_ptr(self, slot: int) -> int:
+        """The device-visible address of one fixed payload slot's reduced row."""
+
+        self._require_live()
+        slot = int(slot)
+        if slot < 0 or slot >= self._slot_sets:
+            raise TransportStateError(
+                f"payload slot {slot} outside this transport's {self._slot_sets} slot sets"
+            )
+        return self._payload_base + slot * self._slot_stride
+
     # -- the reduction ----------------------------------------------------
 
-    def reduce(self, partial_ptrs: Mapping[int, int]) -> dict[int, int]:
+    def reduce(self, partial_ptrs: Mapping[int, int], *, slot: int | None = None) -> dict[int, int]:
         """Reduce one partial per rank into the mapped reduced payload.
 
         Both ranks' D2H copies are submitted before any wait, each stream is
@@ -200,7 +233,9 @@ class CompiledStagedExchangeTransport:
         them in this transport's staging dtype), and the payload's
         device-visible address is returned per rank with no H2D copy: every
         rank's consumer reads the mapped host row zero-copy on its own
-        stream.
+        stream. With ``slot`` the reduce publishes into that fixed payload
+        slot set and the internal alternation is untouched - the stable
+        pointer a captured graph's consumer needs.
         """
 
         self._require_live()
@@ -210,11 +245,19 @@ class CompiledStagedExchangeTransport:
             raise TransportStateError(f"no partial given for ranks {missing}")
         for index, device in enumerate(self.devices):
             self._partial_array[index] = int(partial_ptrs[device])
-        code = self._library.tp2_staged_reduce(
-            ctypes.c_void_p(self._handle),
-            self._partial_array,
-            ctypes.byref(self._payload_out),
-        )
+        if slot is None:
+            code = self._library.tp2_staged_reduce(
+                ctypes.c_void_p(self._handle),
+                self._partial_array,
+                ctypes.byref(self._payload_out),
+            )
+        else:
+            code = self._library.tp2_staged_reduce_at(
+                ctypes.c_void_p(self._handle),
+                self._partial_array,
+                int(slot),
+                ctypes.byref(self._payload_out),
+            )
         if code != _REDUCE_OK:
             self._poisoned = True
             detail = self._library.tp2_staged_last_error(ctypes.c_void_p(self._handle))

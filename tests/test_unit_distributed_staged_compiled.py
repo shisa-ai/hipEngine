@@ -38,6 +38,7 @@ class FakeDriver:
     def __init__(self, *, fail_reduce_code: int = 0, fail_create: bool = False) -> None:
         self.create_calls: list[tuple[tuple[int, ...], int, int, int, int]] = []
         self.reduce_calls: list[list[int]] = []
+        self.reduce_at_calls: list[tuple[int, list[int]]] = []
         self.destroyed: list[int] = []
         self.fail_reduce_code = int(fail_reduce_code)
         self.fail_create = fail_create
@@ -67,6 +68,24 @@ class FakeDriver:
             out[0] = _PAYLOAD_PTR
             return 0
 
+        def tp2_staged_reduce_at(handle, partials, slot, out_payload):
+            array = ctypes.cast(partials, ctypes.POINTER(ctypes.c_void_p))
+            driver.reduce_at_calls.append(
+                (int(slot), [int(array[i]) for i in range(2)])
+            )
+            out = ctypes.cast(out_payload, ctypes.POINTER(ctypes.c_uint64))
+            if driver.fail_reduce_code:
+                driver._message = b"simulated reduce failure"
+                return driver.fail_reduce_code
+            out[0] = _PAYLOAD_PTR + int(slot) * 32
+            return 0
+
+        def tp2_staged_payload_base(handle):
+            return _PAYLOAD_PTR
+
+        def tp2_staged_slot_stride(handle):
+            return 32
+
         def tp2_staged_last_error(handle):
             return driver._message
 
@@ -76,6 +95,9 @@ class FakeDriver:
 
         self.tp2_staged_create = tp2_staged_create
         self.tp2_staged_reduce = tp2_staged_reduce
+        self.tp2_staged_reduce_at = tp2_staged_reduce_at
+        self.tp2_staged_payload_base = tp2_staged_payload_base
+        self.tp2_staged_slot_stride = tp2_staged_slot_stride
         self.tp2_staged_last_error = tp2_staged_last_error
         self.tp2_staged_destroy = tp2_staged_destroy
 
@@ -417,3 +439,43 @@ def staged_compiled_module():
     from hipengine.distributed import staged_compiled
 
     return staged_compiled
+
+
+# -- fixed payload slots (the graphed schedule's stable per-layer pointer) ----
+
+
+def test_create_receives_the_requested_slot_sets() -> None:
+    library = FakeDriver()
+    transport = _transport(library, slot_sets=7)
+    assert library.create_calls == [((0, 1), 2, 8, 0, 7)], (
+        "the driver gets the caller's slot-set count, not the default two"
+    )
+    transport.close()
+
+
+def test_payload_ptr_computes_base_plus_slot_stride() -> None:
+    library = FakeDriver()
+    transport = _transport(library, hidden=8, slot_sets=8)
+    assert transport.payload_ptr(0) == _PAYLOAD_PTR
+    assert transport.payload_ptr(3) == _PAYLOAD_PTR + 3 * 32
+    with pytest.raises(TransportStateError, match="outside this transport"):
+        transport.payload_ptr(8)
+    transport.close()
+    with pytest.raises(TransportError):
+        transport.payload_ptr(0)
+
+
+def test_reduce_at_publishes_into_the_chosen_slot_without_advancing() -> None:
+    library = FakeDriver()
+    transport = _transport(library)
+    first = transport.reduce({0: 0x1111, 1: 0x2222}, slot=5)
+    second = transport.reduce({0: 0x3333, 1: 0x4444}, slot=5)
+    assert library.reduce_at_calls == [
+        (5, [0x1111, 0x2222]),
+        (5, [0x3333, 0x4444]),
+    ], "both reduces publish into the fixed slot, in rank order"
+    # The eager two-slot alternation is untouched by slot-pinned reduces.
+    eager = transport.reduce({0: 0x5555, 1: 0x6666})
+    assert library.reduce_calls[-1] == [0x5555, 0x6666]
+    assert eager == {0: _PAYLOAD_PTR, 1: _PAYLOAD_PTR}
+    transport.close()

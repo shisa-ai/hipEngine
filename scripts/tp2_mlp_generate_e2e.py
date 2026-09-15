@@ -191,6 +191,7 @@ def run_arm(
     tokenizer: Qwen35GGUFTokenizer,
     label: str,
     driver: str = "python",
+    schedule: str = "eager",
 ) -> tuple[dict[str, Any], np.ndarray]:
     """One fresh session: generations + teacher-forced logits.
 
@@ -200,13 +201,19 @@ def run_arm(
 
     started = time.perf_counter()
     session = MlpTP2GenerationSession(
-        model, devices=devices, mode=mode, max_sequence_length=2048, driver=driver
+        model,
+        devices=devices,
+        mode=mode,
+        max_sequence_length=2048,
+        driver=driver,
+        schedule=schedule,
     )
     built_s = time.perf_counter() - started
     record: dict[str, Any] = {
         "label": label,
         "mode": mode,
         "driver": driver if mode == "tp2" else None,
+        "schedule": schedule if mode == "tp2" else None,
         "mlp_decode_variant": (
             session._shard_group.mlp_decode_variant
             if mode == "tp2" and session._shard_group is not None
@@ -266,6 +273,14 @@ def main(argv: list[str] | None = None) -> int:
         help="the TP2 arm's staged-exchange transport: the compiled host driver "
         "(default; mapped pinned payload, no H2D return) or the Python staged route",
     )
+    parser.add_argument(
+        "--schedule",
+        default="graphed",
+        choices=("eager", "graphed"),
+        help="the TP2 arm's token schedule: the captured per-layer graphs with "
+        "fixed per-layer payload slots (default, the production default) or the "
+        "per-launch eager enqueue (opt-out)",
+    )
     args = parser.parse_args(argv)
 
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -293,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
             tokenizer=tokenizer,
             label=label,
             driver=args.driver,
+            schedule=args.schedule if mode == "tp2" else "eager",
         )
         arms.append(record)
         logits_by_label[label] = teacher_logits

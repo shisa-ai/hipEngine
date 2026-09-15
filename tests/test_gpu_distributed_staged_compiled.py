@@ -163,3 +163,70 @@ def test_the_mapped_payload_feeds_the_zero_copy_boundary_cast() -> None:
     compiled.close()
     for device in (0, 1):
         rt.stream_destroy(streams[device])
+
+
+def test_reduce_at_publishes_into_fixed_slots_and_consumers_read_them() -> None:
+    """Caller-chosen slots: two fixed publishes and a mapped-payload consumer.
+
+    The graphed schedule reduces each layer into its own fixed payload slot
+    and a captured consumer reads that slot's mapped host row later. This
+    pins: the slot address computation, the internal alternation surviving
+    slot-pinned reduces, and the zero-copy contract on the second device.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.staged_compiled import CompiledStagedExchangeTransport
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden = 1024
+    rng = np.random.default_rng(23)
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    transport = CompiledStagedExchangeTransport(
+        rt, devices=(0, 1), streams=streams, hidden=hidden, slot_sets=4
+    )
+    try:
+        partials = {}
+        host_partials = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                row = rng.standard_normal(hidden).astype("<f4")
+                host_partials[device] = row
+                buffer = rt.malloc(row.nbytes)
+                rt.memcpy(
+                    buffer,
+                    row.ctypes.data,
+                    row.nbytes,
+                    3,  # hipMemcpyHostToDevice
+                )
+                partials[device] = buffer
+        payload_1 = transport.payload_ptr(1)
+        payload_3 = transport.payload_ptr(3)
+        assert payload_3 - payload_1 == 2 * hidden * 4, (
+            "fixed slots sit one payload row apart each"
+        )
+        reduced = transport.reduce(partials, slot=3)
+        assert reduced[0] == payload_3 and reduced[1] == payload_3
+        expected = (
+            host_partials[0].astype("<f8") + host_partials[1].astype("<f8")
+        ).astype("<f4")
+        got = np.empty(hidden, dtype="<f4")
+        ctypes.memmove(
+            got.ctypes.data, ctypes.c_void_p(payload_3), got.nbytes
+        )
+        np.testing.assert_array_equal(got, expected)
+        # The eager two-slot alternation still works after slot-pinned calls.
+        alternated = transport.reduce(partials)
+        assert alternated[0] not in (payload_1, payload_3)
+        ctypes.memmove(got.ctypes.data, ctypes.c_void_p(alternated[0]), got.nbytes)
+        np.testing.assert_array_equal(got, expected)
+    finally:
+        transport.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_destroy(streams[device])

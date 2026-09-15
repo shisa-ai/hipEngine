@@ -184,13 +184,25 @@ void tp2_staged_destroy(void* handle) {
   delete ex;
 }
 
-// One staged reduction. `partials` holds one device partial pointer per rank;
-// on success `out_payload` receives the device-visible address of the f32 row
-// this reduce published (the same address for both ranks). No H2D copy is
-// submitted: the consumers read the mapped host row directly.
-int32_t tp2_staged_reduce(void* handle, void* const* partials, uint64_t* out_payload) {
-  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+// One staged reduction into a caller-chosen payload slot. `partials` holds
+// one device partial pointer per rank; on success `out_payload` receives the
+// device-visible address of the f32 row this reduce published (the same
+// address for both ranks). No H2D copy is submitted: the consumers read the
+// mapped host row directly. The slot is not advanced.
+static int32_t reduce_into(
+    Tp2StagedExchange* ex,
+    void* const* partials,
+    int32_t slot,
+    uint64_t* out_payload) {
   if (ex == nullptr || partials == nullptr) {
+    return kErrArg;
+  }
+  if (slot < 0 || slot >= ex->slot_sets) {
+    if (ex != nullptr) {
+      ex->error = "payload slot " + std::to_string(slot) +
+                  " outside this transport's " + std::to_string(ex->slot_sets) +
+                  " slot sets";
+    }
     return kErrArg;
   }
   for (int rank = 0; rank < ex->world; ++rank) {
@@ -206,7 +218,6 @@ int32_t tp2_staged_reduce(void* handle, void* const* partials, uint64_t* out_pay
     previous_device = 0;
   }
 
-  const int slot = ex->slot;
   hipError_t code = hipSuccess;
   unsigned char* staging_slot =
       ex->staging + static_cast<size_t>(slot) * ex->world * ex->staging_row_bytes;
@@ -272,9 +283,29 @@ int32_t tp2_staged_reduce(void* handle, void* const* partials, uint64_t* out_pay
     *out_payload =
         ex->payload_device_base + static_cast<uint64_t>(slot) * ex->payload_row_bytes;
   }
-  ex->slot = 1 - slot;
   (void)hipSetDevice(previous_device);
   return kOk;
+}
+
+int32_t tp2_staged_reduce(void* handle, void* const* partials, uint64_t* out_payload) {
+  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+  if (ex == nullptr) {
+    return kErrArg;
+  }
+  const int32_t slot = ex->slot;
+  const int32_t code = reduce_into(ex, partials, slot, out_payload);
+  if (code == kOk) {
+    ex->slot = 1 - slot;
+  }
+  return code;
+}
+
+int32_t tp2_staged_reduce_at(
+    void* handle,
+    void* const* partials,
+    int32_t slot,
+    uint64_t* out_payload) {
+  return reduce_into(static_cast<Tp2StagedExchange*>(handle), partials, slot, out_payload);
 }
 
 const char* tp2_staged_last_error(void* handle) {
@@ -282,6 +313,25 @@ const char* tp2_staged_last_error(void* handle) {
     return create_error_slot().c_str();
   }
   return static_cast<Tp2StagedExchange*>(handle)->error.c_str();
+}
+
+// The device-visible base of the mapped reduced-payload arena and the byte
+// stride between payload slot sets, so a caller can precompute the fixed
+// per-slot address a captured graph's consumer reads.
+uint64_t tp2_staged_payload_base(void* handle) {
+  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+  if (ex == nullptr) {
+    return 0;
+  }
+  return ex->payload_device_base;
+}
+
+size_t tp2_staged_slot_stride(void* handle) {
+  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+  if (ex == nullptr) {
+    return 0;
+  }
+  return ex->payload_row_bytes;
 }
 
 }  // extern "C"

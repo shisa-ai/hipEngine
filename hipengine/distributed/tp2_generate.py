@@ -67,6 +67,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
     gguf_rmsnorm_bf16_f32_weight,
 )
+from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
@@ -125,6 +126,7 @@ class MlpTP2GenerationSession:
         max_sequence_length: int = 2048,
         stage_trace: bool = True,
         driver: str = "compiled",
+        schedule: str | None = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -134,6 +136,25 @@ class MlpTP2GenerationSession:
             raise ValueError(
                 f"unknown exchange driver {driver!r}; expected 'python' or 'compiled'"
             )
+        if schedule is None:
+            # Production default: tp2 sessions run the captured per-layer
+            # graph schedule (validated, -46% decode p50 vs eager); the eager
+            # per-launch schedule stays the explicit opt-out and the TP1
+            # control's schedule.
+            schedule = "graphed" if mode == "tp2" else "eager"
+        if schedule not in {"eager", "graphed"}:
+            raise ValueError(
+                f"unknown schedule {schedule!r}; expected 'eager' or 'graphed'"
+            )
+        if schedule == "graphed" and mode != "tp2":
+            raise ValueError("the graphed schedule is tp2-only; the matched TP1 "
+                             "control always runs eager")
+        if schedule == "graphed" and driver != "compiled":
+            raise ValueError(
+                "the graphed schedule needs the compiled staged-exchange driver "
+                "for fixed per-layer payload slots"
+            )
+        self.schedule = str(schedule)
         self.driver = str(driver)
         self.devices = tuple(int(d) for d in devices)
         if not self.devices:
@@ -160,6 +181,23 @@ class MlpTP2GenerationSession:
         self._tp1_mlp_ptrs: dict[int, tuple[int, int, int]] = {}
         self._step_buffers: dict[int, Any] = {}
         self._add_norm_cache: dict[int, Any] = {}
+        self._layer_graphs: dict[tuple[int, int], int] = {}
+        self._layer_execs: dict[tuple[int, int], int] = {}
+        self._layer_partials: dict[tuple[int, int], int] = {}
+        self._graph_schedule_ready = False
+        self._capture_position = max(int(max_sequence_length) - 1, 1)
+        self._created_streams: dict[int, int] = {}
+        # Graph capture is not permitted on the legacy default stream, so the
+        # graphed schedule creates one non-blocking stream per rank and runs
+        # ALL of that rank's work on it; the eager schedule keeps stream 0.
+        if schedule == "graphed":
+            try:
+                for device in self.devices:
+                    with scoped_current_device(self.runtime, device):
+                        self._created_streams[device] = self.runtime.stream_create()
+            except Exception:
+                self.close()
+                raise
 
         try:
             for device in self.devices:
@@ -183,6 +221,11 @@ class MlpTP2GenerationSession:
         self._token_ids_host = np.empty(1, dtype=np.int64)
 
     # -- construction ------------------------------------------------------
+
+    def _rank_stream(self, device: int) -> int:
+        """The one stream this rank's work runs on (created for graphed)."""
+
+        return self._created_streams.get(int(device), 0)
 
     def _build_rank(self, device: int) -> None:
         """One rank's runner and scratch, entirely inside its device scope."""
@@ -231,7 +274,7 @@ class MlpTP2GenerationSession:
         self._shard_group = MlpShardGroup(
             self.runtime,
             devices=self.devices,
-            streams={device: 0 for device in self.devices},
+            streams={device: self._rank_stream(device) for device in self.devices},
             hidden=int(config.hidden_size),
             per_rank_ffn=per_rank_ffn,
             weights=uploaded,
@@ -243,6 +286,11 @@ class MlpTP2GenerationSession:
             staging_dtype="bf16",
             driver=self.driver,
             mlp_decode_variant=fused_variant,
+            # Graphed schedules give every layer its own fixed mapped payload
+            # slot so a captured graph's deferred consumer (the bf16 cast and
+            # residual add folded into the next layer's graph) reads a stable
+            # pointer. The eager schedule keeps the two-slot alternation.
+            slot_sets=len(self._config.layer_types) if self.schedule == "graphed" else 2,
         )
 
     def _alloc_step_buffers(self, device: int) -> None:
@@ -324,6 +372,7 @@ class MlpTP2GenerationSession:
         finished_on_eos = False
         next_token: int | None = None
         total_positions = len(prompt) + int(max_new_tokens)
+        self._ensure_graph_schedule()
         for position in range(total_positions):
             if position < len(prompt):
                 token_id = prompt[position]
@@ -366,12 +415,13 @@ class MlpTP2GenerationSession:
         self._require_live()
         for device, scratch in self._scratches.items():
             with scoped_current_device(self.runtime, device):
-                scratch.zero_states(self.runtime)
+                scratch.zero_states(self.runtime, stream=self._rank_stream(device))
         tokens = tuple(int(t) for t in token_ids)
         if not tokens:
             raise ValueError("token_ids must not be empty")
         if len(tokens) > self.max_sequence_length:
             raise ValueError("token_ids exceed the session capacity")
+        self._ensure_graph_schedule()
         rows: list[np.ndarray] = []
         for position, token_id in enumerate(tokens):
             logits, _trace = self._forward_token(token_id, position, kind="prefill")
@@ -393,6 +443,19 @@ class MlpTP2GenerationSession:
             raise TP2GroupError(
                 f"position {position} exceeds the {self.max_sequence_length}-token capacity"
             )
+        if self.schedule == "graphed" and self._graph_schedule_ready:
+            return self._forward_token_graphed(token_id, position, kind=kind)
+        return self._forward_token_eager(token_id, position, kind=kind)
+
+    def _forward_token_eager(
+        self,
+        token_id: int,
+        position: int,
+        *,
+        kind: str,
+    ) -> tuple[np.ndarray, StepTrace]:
+        if self._poisoned:
+            raise TP2GroupError("the session is poisoned by an earlier failure")
         started = time.perf_counter()
         stages: dict[str, float] = {}
         exchanges_before = (
@@ -451,6 +514,7 @@ class MlpTP2GenerationSession:
                     rows=1,
                     hidden_size=runner.hidden_size,
                     vocab_size=runner.vocab_size,
+                    stream=self._rank_stream(device),
                     runtime=self.runtime,
                 )
         stages["embedding"] = time.perf_counter() - mark
@@ -467,17 +531,18 @@ class MlpTP2GenerationSession:
         mark = time.perf_counter()
         for device in self.devices:
             src, _dst = hidden_ptrs[device]
+            stream = self._rank_stream(device)
             with scoped_current_device(self.runtime, device):
                 runner = self._runners[device]
                 scratch = self._scratches[device]
                 attn_out = scratch.attn_out.ptr
                 if layer_type == LINEAR_ATTENTION:
                     runner._run_linear_attention_attn_only(
-                        layer_id, src, attn_out, scratch, stream=0
+                        layer_id, src, attn_out, scratch, stream=stream
                     )
                 elif layer_type == FULL_ATTENTION:
                     runner._run_full_attention_attn_only(
-                        layer_id, src, attn_out, scratch, position=position, stream=0
+                        layer_id, src, attn_out, scratch, position=position, stream=stream
                     )
                 else:
                     raise TP2GroupError(
@@ -490,6 +555,7 @@ class MlpTP2GenerationSession:
         mark = time.perf_counter()
         for device in self.devices:
             src, _dst = hidden_ptrs[device]
+            stream = self._rank_stream(device)
             with scoped_current_device(self.runtime, device):
                 runner = self._runners[device]
                 scratch = self._scratches[device]
@@ -505,7 +571,7 @@ class MlpTP2GenerationSession:
                     1,
                     runner.hidden_size,
                     runner.weights.config.rms_norm_eps,
-                    stream=0,
+                    stream=stream,
                     runtime=self.runtime,
                 )
         stages["add_norm"] = stages.get("add_norm", 0.0) + (
@@ -538,7 +604,7 @@ class MlpTP2GenerationSession:
                     outputs[device],
                     dst,
                     self.hidden_size,
-                    stream=0,
+                    stream=self._rank_stream(device),
                     runtime=self.runtime,
                 )
         stages["residual_add"] = stages.get("residual_add", 0.0) + (
@@ -549,6 +615,253 @@ class MlpTP2GenerationSession:
         for device in self.devices:
             src, dst = hidden_ptrs[device]
             hidden_ptrs[device] = (dst, src)
+
+    # -- graphed schedule --------------------------------------------------
+
+    def _ensure_graph_schedule(self) -> None:
+        """Build the per-layer captured graphs once, on first use.
+
+        The schedule is captured eagerly first (one warmup token to force
+        every lazy allocation and JIT build), then each (layer, rank) pair's
+        capturable segment - the prior layer's deferred bf16 cast and residual
+        add, attention, add+norm, the D2D input copy and the fused shard
+        chain - is recorded into one instantiated graph. The transport
+        reduction stays host-driven between graph segments.
+        """
+
+        if self.schedule != "graphed" or self._graph_schedule_ready:
+            return
+        if self.mode != "tp2" or self._shard_group is None:
+            raise TP2GroupError("the graphed schedule is tp2-only")
+        try:
+            self._build_graph_schedule()
+        except Exception as error:
+            self._poisoned = True
+            raise TP2GroupError(
+                f"graph schedule capture failed: {type(error).__name__}: {error}"
+            ) from error
+
+    def _build_graph_schedule(self) -> None:
+        capture_position = self._capture_position
+        # Warmup: one eager token forces every lazy allocation (split-decode
+        # rows, launcher workspaces) and JIT build, so nothing allocates or
+        # compiles inside a capture.
+        self._forward_token_eager(0, 0, kind="prefill")
+        group = self._shard_group
+        assert group is not None
+        group.reset_exchange_walls()
+        for device in self.devices:
+            with scoped_current_device(self.runtime, device):
+                self.runtime.device_synchronize()
+                self._scratches[device].zero_states(
+                    self.runtime, stream=self._rank_stream(device)
+                )
+                self._scratches[device].set_full_attention_position(
+                    capture_position, self.runtime
+                )
+        try:
+            for layer_id, layer_type in enumerate(self._config.layer_types):
+                for device in self.devices:
+                    self._capture_layer_graph(
+                        layer_id, layer_type, device, capture_position
+                    )
+        except Exception:
+            self._destroy_graphs()
+            raise
+        self._graph_schedule_ready = True
+
+    def _capture_layer_graph(
+        self,
+        layer_id: int,
+        layer_type: str,
+        device: int,
+        capture_position: int,
+    ) -> None:
+        group = self._shard_group
+        assert group is not None
+        runner = self._runners[device]
+        scratch = self._scratches[device]
+        src, dst = self._hidden[device]
+        if layer_id % 2 == 1:
+            src, dst = dst, src
+        out_buf = group.output_ptr(device)
+        runtime = self.runtime
+        stream = self._rank_stream(device)
+        with scoped_current_device(self.runtime, device):
+            runtime.stream_begin_capture(stream)
+            try:
+                # The prior layer's reduced row: cast to bf16 and add the
+                # residual it was computed from, producing this layer's input.
+                # Pointers are stable: one fixed mapped payload slot per layer.
+                if layer_id > 0:
+                    prior_reduced = group.reduced_payload_ptr(layer_id - 1)
+                    f32_to_bf16(
+                        prior_reduced,
+                        out_buf,
+                        self.hidden_size,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    prior_residual = scratch.residual.ptr
+                    gguf_bf16_add(
+                        prior_residual,
+                        out_buf,
+                        src,
+                        self.hidden_size,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                attn_out = scratch.attn_out.ptr
+                if layer_type == LINEAR_ATTENTION:
+                    runner._run_linear_attention_attn_only(
+                        layer_id, src, attn_out, scratch, stream=stream
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    runner._run_full_attention_attn_only(
+                        layer_id,
+                        src,
+                        attn_out,
+                        scratch,
+                        position=capture_position,
+                        stream=stream,
+                    )
+                else:
+                    raise TP2GroupError(
+                        f"unsupported GGUF layer type {layer_type!r}"
+                    )
+                self._add_norm_kernel(runner)(
+                    src,
+                    scratch.attn_out.ptr,
+                    runner.weights.layer(layer_id)
+                    .weight("post_attention_norm")
+                    .allocation()
+                    .tensor.ptr,
+                    scratch.post_norm.ptr,
+                    scratch.residual.ptr,
+                    1,
+                    runner.hidden_size,
+                    runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                partial = group.enqueue_rank_chain(
+                    layer_id, device, scratch.post_norm.ptr
+                )
+            except Exception:
+                leaked = runtime.stream_end_capture(stream)
+                if leaked:
+                    runtime.graph_destroy(leaked)
+                raise
+            graph = runtime.stream_end_capture(stream)
+            try:
+                graph_exec = runtime.graph_instantiate(graph)
+            except Exception:
+                runtime.graph_destroy(graph)
+                raise
+        self._layer_graphs[(layer_id, device)] = graph
+        self._layer_execs[(layer_id, device)] = graph_exec
+        self._layer_partials[(layer_id, device)] = partial
+
+    def _forward_token_graphed(
+        self,
+        token_id: int,
+        position: int,
+        *,
+        kind: str,
+    ) -> tuple[np.ndarray, StepTrace]:
+        started = time.perf_counter()
+        stages: dict[str, float] = {}
+        exchanges_before = (
+            len(self._shard_group.exchange_walls_s) if self._shard_group else 0
+        )
+        group = self._shard_group
+        assert group is not None
+        try:
+            # Eager per-token metadata: token id and the pinned position/
+            # context refresh the captured kernels read through device
+            # tensors, then the token embedding.
+            hidden_ptrs = self._enqueue_embedding(token_id, position, stages)
+            mark = time.perf_counter()
+            for layer_id, _layer_type in enumerate(self._config.layer_types):
+                for device in self.devices:
+                    with scoped_current_device(self.runtime, device):
+                        self.runtime.graph_launch(
+                            self._layer_execs[(layer_id, device)],
+                            self._rank_stream(device),
+                        )
+                partials = {
+                    d: self._layer_partials[(layer_id, d)] for d in self.devices
+                }
+                group.reduce_partials(partials, slot=layer_id)
+            stages["layers"] = time.perf_counter() - mark
+            mark = time.perf_counter()
+            # The tail writes the LAST layer's destination buffer - the one
+            # the head reads - not the unswapped embedding pair: layer L-1
+            # swaps the pair iff L-1 is odd.
+            layer_count = len(self._config.layer_types)
+            for device in self.devices:
+                stream = self._rank_stream(device)
+                with scoped_current_device(self.runtime, device):
+                    scratch = self._scratches[device]
+                    dst = self._hidden[device][1 - ((layer_count - 1) % 2)]
+                    out_buf = group.output_ptr(device)
+                    f32_to_bf16(
+                        group.reduced_payload_ptr(
+                            len(self._config.layer_types) - 1
+                        ),
+                        out_buf,
+                        self.hidden_size,
+                        stream=stream,
+                        runtime=self.runtime,
+                    )
+                    gguf_bf16_add(
+                        scratch.residual.ptr,
+                        out_buf,
+                        dst,
+                        self.hidden_size,
+                        stream=stream,
+                        runtime=self.runtime,
+                    )
+            stages["tail"] = time.perf_counter() - mark
+            logits = self._finish_step(stages)
+        except Exception as error:
+            self._poisoned = True
+            raise TP2GroupError(
+                f"graphed {self.mode} rank group failed at position {position}: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        total = time.perf_counter() - started
+        trace = StepTrace(
+            kind=kind,
+            position=position,
+            total_s=total,
+            stages=stages if self.stage_trace else {},
+            exchange_layers=(
+                len(self._shard_group.exchange_walls_s) - exchanges_before
+                if self._shard_group
+                else 0
+            ),
+        )
+        return logits, trace
+
+    def _destroy_graphs(self) -> None:
+        for (layer_id, device), graph_exec in self._layer_execs.items():
+            try:
+                with scoped_current_device(self.runtime, device):
+                    self.runtime.graph_exec_destroy(graph_exec)
+                    self.runtime.graph_destroy(self._layer_graphs[(layer_id, device)])
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+        self._layer_execs.clear()
+        self._layer_graphs.clear()
+        self._layer_partials.clear()
+        for device, stream in self._created_streams.items():
+            try:
+                with scoped_current_device(self.runtime, device):
+                    self.runtime.stream_destroy(stream)
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+        self._created_streams.clear()
 
     def _local_mlp(self, device: int, layer_id: int) -> int:
         """The matched TP1 control's full-width unfused MLP chain (bf16 out)."""
@@ -604,6 +917,7 @@ class MlpTP2GenerationSession:
     def _finish_step(self, stages: dict[str, float]) -> np.ndarray:
         mark = time.perf_counter()
         device = self.control_device
+        stream = self._rank_stream(device)
         with scoped_current_device(self.runtime, device):
             runner = self._runners[device]
             scratch = self._scratches[device]
@@ -615,6 +929,7 @@ class MlpTP2GenerationSession:
                 1,
                 runner.hidden_size,
                 runner.weights.config.rms_norm_eps,
+                stream=stream,
                 runtime=self.runtime,
             )
             buffers = self._step_buffers[device]
@@ -626,9 +941,13 @@ class MlpTP2GenerationSession:
                 runner.hidden_size,
                 runner.vocab_size,
                 output_dtype=GGUF_OUTPUT_F32,
-                stream=0,
+                stream=stream,
                 runtime=self.runtime,
             )
+            # The blocking logits readback must not race the non-blocking
+            # rank stream's pending head work.
+            if stream:
+                self.runtime.stream_synchronize(stream)
             logits = np.empty(runner.vocab_size, dtype="<f4")
             copy_device_to_host(
                 logits.ctypes.data,
@@ -664,6 +983,7 @@ class MlpTP2GenerationSession:
         if self._closed:
             return
         self._closed = True
+        self._destroy_graphs()
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None
