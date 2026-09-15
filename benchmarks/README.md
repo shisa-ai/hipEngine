@@ -1029,19 +1029,29 @@ the *faster* arm:
 | 20% | 28.28 ms | 44.64 ms | 0.63x | 26.94 ms | 1.05x | 24.36 ms | 1.16x |
 | 30% | 28.28 ms | 46.15 ms | 0.61x | 28.45 ms | 0.99x | 25.88 ms | 1.09x |
 
-RCCL's collective is 2.2-4.5x over budget in every row. The Python batched
-exchange is within budget at 0%, 10% and 20% fixed-cost share and 0.92x of it at
-30%; the native arm is within budget at every row and clears the design's 1.3x
-target at 0% fixed share. All of these are **conditional projections from
-measured transport latency and an explicit fixed-cost assumption**, not a
-qualified model result: the break-even artifacts record `certified: false` with
-no shard-kernel evidence, no local shard kernel, state trajectory, production
-numerical gate or end-to-end TP latency has been measured, and the native runner
-is a standalone program rather than engine code, so it measures what the protocol
-costs when driven natively and not what the engine currently does. The 0% row is
-also the optimistic end of the fixed-cost assumption, which is itself unmeasured.
-The exchange is therefore a viable transport candidate with a measured budget, not
-a delivered speedup.
+RCCL's collective is 2.2-4.5x over budget in every row, so a group built on it
+would be slower than a single card at every fixed share. The Python batched
+exchange beats the faster arm at 0%, 10% and 20% and falls to 0.99x at 30%; the
+native arm beats it in every row.
+
+Two thresholds are reported separately, because they decide different things.
+**Beating the faster TP1 arm (>1.0x) is the gate**: it is what makes a group worth
+building, and a row at or below it is a real blocker. **The 1.3x planning target is
+an aspiration**: the native arm reaches 1.33x at 0% fixed share but 1.09x at 30%,
+and a projection that clears 1.0x everywhere is a qualified net improvement by the
+design's own rule rather than a failure. The break-even artifact records
+`beats_faster_tp1_arm: true`, `meets_planning_aspiration: false`, and
+`certified: false` for one genuine reason - the shard-kernel gate has no recorded
+evidence.
+
+All of these are **conditional projections from measured transport latency and an
+explicit fixed-cost assumption**, not a qualified model result: no local shard
+kernel, state trajectory, production numerical gate or end-to-end TP latency has
+been measured, and the native runner is a standalone program rather than engine
+code, so it measures what the protocol costs when driven natively and not what the
+engine currently does. The 0% row is also the optimistic end of the fixed-cost
+assumption, which is itself unmeasured. The exchange is therefore a viable
+transport candidate with a measured budget, not a delivered speedup.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
