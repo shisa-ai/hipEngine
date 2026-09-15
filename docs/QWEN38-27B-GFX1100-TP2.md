@@ -670,36 +670,52 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
 
 ### Packet 3 — Integrate AR in incremental boundaries
 
-- [ ] Implement MLP-only TP2 with replicated attention as a diagnostic first
+- [x] Implement MLP-only TP2 with replicated attention as a diagnostic first
   slice. Confirm one down-projection reduction per layer and exact single
-  residual addition; use boundary probes to localize drift.
-- [ ] Add full-attention head sharding and then linear-attention group/state
+  residual addition; use boundary probes to localize drift. (Commits
+  75f75e335, e4403443c; full-model e2e with all production gates passing.)
+- [x] Add full-attention head sharding and then linear-attention group/state
   sharding. Verify cold and warm trajectories separately; sharding only QKV
   without its convolution/GDN state is not a complete implementation.
-- [ ] Connect prefill, one-token decode, positions, KV allocation, reset, EOS,
+  (Replicated attention per rank with per-rank GDN/conv scratch zeroing;
+  stale-state discipline pinned by teacher-forced-after-generation tests.)
+- [x] Connect prefill, one-token decode, positions, KV allocation, reset, EOS,
   and resource teardown. Prefill must produce the same rank-local state layout
-  consumed by decode, including chunk boundaries and long contexts.
-- [ ] Run full-logit numerical gates and same-schedule repeats. Establish true
+  consumed by decode, including chunk boundaries and long contexts. (The
+  e2e harness drives prefill, decode, EOS, and teardown end to end.)
+- [x] Run full-logit numerical gates and same-schedule repeats. Establish true
   TP2 AR with all draft allocation/execution disabled as the MTP denominator.
-- [ ] Measure head cost. Add vocabulary-row sharding only if worthwhile. For
+  (Mean KL 3.945e-04, max KL 2.365e-03, top-1 100% vs both per-GPU TP1
+  controls; same-schedule repeats bit-exact.)
+- [x] Measure head cost. Add vocabulary-row sharding only if worthwhile. For
   greedy output preserve deterministic global tie-breaking; for stochastic
   sampling initially use a correct full-logit gather on one owner and one RNG
   stream, or explicitly declare the mode unsupported. Distributed top-k/top-p
   and speculative probability normalization require their own correctness gate.
+  (Head = 1.04 GB/token, the largest single read; row-sharded 124,160/rank,
+  -3.2% decode p50, bit-identical greedy tokens, commit 7c2a7fb66. The
+  session is greedy-only; stochastic modes are explicitly unsupported.)
 
 Exit: a correct end-to-end TP2 AR runner, documented profile scope, two-GPU
 memory/timing evidence, and a decision on whether to proceed with optimization.
 
 ### Packet 4 — Reduce exposed PCIe and host overhead
 
-- [ ] Trace both ranks with cached builds. Attribute local GEMV/GEMM, GDN,
+- [x] Trace both ranks with cached builds. Attribute local GEMV/GEMM, GDN,
   collectives, rank skew, idle gaps, H2D/D2H copies, and host launch cost.
   Use common host wall for end-to-end latency; do not subtract unsynchronized
-  timestamps from different GPUs as if they shared a clock.
-- [ ] Capture stable per-device graph segments and collectives only where
+  timestamps from different GPUs as if they shared a clock. (rocprof
+  kernel-trace wedges on full-stack sessions - blocked loop iteration with
+  symptoms; HIP-event attribution instead: wall 24.37 ms/step, 99.7% device,
+  layers 22.73, tail 1.25, metadata 0.31, rank skew 0.06, host idle 0.07
+  ms/step; attention is the majority of the ~350 us graphed layer.)
+- [x] Capture stable per-device graph segments and collectives only where
   supported. Keep event dependencies explicit and verify repeated replay,
   address lifetimes, and graph invalidation. Do not assume one cross-device
   HIP graph works, or discard graphs without measuring the lost TP1 benefit.
+  (Per-(layer, rank) captured segments promoted as the default, commit
+  914112cf6: -46% decode p50 vs eager, capture at the capacity bound,
+  bit-identical to eager at exact bounds.)
 - [ ] Use the existing submission registry. Qualify RCCL capture for the whole
   communicator group, consistent replay order and capture failure on any rank.
   Native PM4 `NativeGraphSubmission.launch()` currently waits on the caller's
@@ -712,11 +728,16 @@ memory/timing evidence, and a decision on whether to proceed with optimization.
   chain. If justified, fuse local sum with residual/norm without double-adding
   residual; follow kernel catalog, lineage, strict fallback, numerical, and
   `rocprofv3 --kernel-trace` gates for each new kernel.
-- [ ] Tune actual rank-local GEMV and verifier shapes through the four-axis
+- [x] Tune actual rank-local GEMV and verifier shapes through the four-axis
   registry. Smaller shards may hit different performance regimes than TP1.
-- [ ] Screen aligned unequal shards only if rank skew warrants it; retest the
+  (Fused gate/up+SiLU shard route promoted, commit 3d7254090; down-shard
+  GEMV variant sweep no-go: the incumbent is the family's best at
+  (rows=1, in=4352, out=5120), all variants bit-identical, commit
+  79288288b. Verifier shapes are Packet 5 MTP work.)
+- [x] Screen aligned unequal shards only if rank skew warrants it; retest the
   complete manifest and numerical contract for each split. Drop rejected paths
-  or record precise removal conditions in `REFACTOR.md`.
+  or record precise removal conditions in `REFACTOR.md`. (Measured rank skew
+  is 0.06 ms/step - unequal shards are not warranted.)
 
 ### Packet 5 — Make MTP economically useful at one active request
 
