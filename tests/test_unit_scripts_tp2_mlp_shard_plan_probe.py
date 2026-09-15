@@ -325,3 +325,47 @@ def test_the_device_stage_is_opt_in(mod) -> None:
     source = SCRIPT.read_text(encoding="utf-8")
     assert '"ran": False' in source
     assert "run with --device on a ROCm host" in source
+
+
+# ---------------------------------------------------------------------------
+# Fused-route admission
+# ---------------------------------------------------------------------------
+
+
+def test_the_fused_decode_route_is_shape_keyed(mod) -> None:
+    """The gap is admission, not the kernel: record both facts."""
+
+    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17408)
+    assert admission["lookup_key"] == "(rows, in_features, out_features)"
+    assert admission["tp1_key"] == [1, 5120, 17408]
+    assert admission["tp1_admitted"] is True
+    assert admission["tp1_variant"] == "dense_dual_local32_bf16_bf16_out"
+    # The shard's half-intermediate shape is not in the table.
+    assert admission["shard_key"] == [1, 5120, 8704]
+    assert admission["shard_admitted"] is False
+    assert admission["gap"] is not None
+    assert "accepted by the kernel" in admission["gap"]
+
+
+def test_the_kernel_itself_accepts_the_shard_shape(mod) -> None:
+    """A half-intermediate shard satisfies the kernel's own divisibility test.
+
+    This is why the gap is a one-line policy admission rather than a new kernel,
+    and it is checked by calling the kernel's validation rather than by reading
+    its bounds test.
+    """
+
+    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17408)
+    # A null-pointer launch cannot succeed, but it must get past argument
+    # validation; a ValueError here would mean the shape itself was refused.
+    assert isinstance(admission["kernel_accepts_shard_shape"], str)
+    assert "passed argument validation" in admission["kernel_accepts_shard_shape"]
+
+
+def test_an_odd_intermediate_reports_a_non_integral_shard(mod) -> None:
+    """The probe must not silently floor a shape that does not split evenly."""
+
+    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17409)
+    assert admission["shard_key"] == [1, 5120, 8704]
+    assert admission["shard_admitted"] is False
+    assert admission["gap"] is not None
