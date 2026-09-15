@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-15 JST (2026-09-14 UTC)**
+Last updated: **2026-09-15 JST (2026-09-15 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -639,6 +639,24 @@ in output IDs, final logits and state, with zero teardown allocations.
 [Host-cache evidence](results/2026-09-14-journey-backend-cache/README.md).
 The earlier Q8/QSA restoration and failed-composition recovery comparisons
 remain in their linked records; their rates are not this comparison's denominator.
+
+A separate same-host comparison evaluates prefill chunk sizes with the same
+production arithmetic, shared decode graphs and correctly sized prefill
+workspaces. Chunk1024 remains the default;2048 is a qualified explicit option:
+
+| Prefill Chunk | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| 1024 | 185.01 / 17.50 | 190.33 / 16.73 | 182.80 / 10.08 |
+| 2048 | 184.37 / 17.50 | 190.00 / 16.73 | 187.04 / 10.20 |
+
+At4K, PP improves2.32% and TG1.22%; complete requests improve1.52-2.14%.
+At512/1K, PP falls0.34%/0.18%; short complete-request changes range from
+-0.40% to+0.25%. The global default does not change because those rows
+include costs. Canonical/boundary numerics, six active4K tasks and native
+c2 isolation pass. This does not certify native-depth or full long-form
+factual quality. The rates above have their own paired denominator and
+must not be compared as an update to the separate host-cache table.
+[Chunk comparison and qualification](results/2026-09-14-journey-chunk-admission/README.md).
 
 Exact DPP reductions improved the previously active tiled-GDN prefill suffix:
 matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s

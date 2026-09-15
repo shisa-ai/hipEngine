@@ -41,8 +41,8 @@ All48 case/arm/repeat chunk records are checked. The strict reference's chunk
 size did not move with the candidate.
 
 This passes the production numerical envelope, without changing its limits.
-c2 isolation and wider admission remain before
-default promotion. Native-context/c2 inference, hidden-seed export, graph-capture and
+The default stays1024 because of the short-request performance tradeoff.
+Native-context inference, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
 
@@ -90,7 +90,7 @@ All four worst-case repair queues are prepared and reconcile to the tracked
 allocation increase.
 
 This is an allocation-only result, not262K generation, retrieval or c2
-inference qualification. True c2 isolation checks remain.
+inference qualification. Bounded c2 checks are recorded below.
 
 ## Active 4K Tasks
 
@@ -114,8 +114,7 @@ and adjusts only filler budget to keep4096 total tokens. The invalid capture
 is documented in `../2026-09-15-chunk-active-task-template.json`.
 
 This is supplementary task evidence, not a complete long-form factual-quality
-certificate or full KV/isolation gate. True c2 isolation and the default
-chunk-policy decision remain; chunk1024 is still the default.
+certificate or full KV/isolation gate. Chunk1024 is still the default.
 
 ## Boundaries And c1 Reuse
 
@@ -139,7 +138,54 @@ separate from the production numerical/control gates.
 This closes c1 boundary/reuse evidence, not simultaneous c2 ownership,
 cancellation or native-depth inference. The real serving pool accumulates
 scheduler chunks before invoking model prefill; no GPU-prefill interleaving
-claim is made. True c2 pool isolation and the default decision remain.
+claim is made. Bounded c2 pool isolation is recorded next.
+
+## Two Live Resident Runners
+
+Detailed inspection at `15ead1097` and deferred inspection at `2003660a9`
+pass on the same host/model/profile, chunk2048, context capacity4352.
+Code2052, Japanese4097 and mixed2049 requests are compared with isolated
+execution of the same production arithmetic.
+
+Three repeats cover delayed peer prefill, decode-order permutation, peer
+cancellation after two outputs, admission rollback, partial-prefix
+cancellation, reuse of the released peer and cancellation while another
+request remains live. Each request exercises both physical owners.
+
+The detailed arm compares84 checkpoints. Because those reads synchronize
+the device, the deferred arm adds no diagnostic reads during interleaving:
+it verifies six final A/C payloads afterward. Both preserve emitted tokens,
+full logits, recurrent state, complete KV and live index payloads against
+their isolated references, which also match across runs.
+
+Observed state/logit/KV/index/repair-buffer ranges do not overlap across
+owners. Both arms trace12 model prefills/28 chunks; three cancelled partial
+scheduler prefixes never reach model prefill. Peak tracked memory is
+89,586,110,480 bytes, returning to zero after close.
+
+Normal compact prefill/decode calls stay enabled; diagnostics do not force
+full-output or logit-bias routes. These are native pool work items, not an
+HTTP/SSE load test or concurrent GPU-prefill schedule. Native-depth, MTP and
+multimodal qualification are not implied.
+
+## Default Decision
+
+Chunk2048 is a qualified explicit choice for the measured long-prefill
+workloads; the global default stays1024. The4K PP/TG gains are2.32%/1.22%,
+but512/1K PP is0.34%/0.18% lower. Short complete-request throughput changes
+range from-0.40% to+0.25%, while every4K request improves1.52-2.14%.
+These short costs cannot be averaged away to call the whole policy
+non-regressive.
+
+The concrete automatic-selection blocker is workspace residency: a
+shape-dependent policy must keep the smaller owner's short-request costs
+while using2048 for long prefill. The existing explicit
+`prefill_chunk_size=2048` factory/benchmark setting is preserved. Do not
+repeat unchanged arithmetic or claim every shape benefits.
+
+Chunk4096 remains a separate accounting problem: it allocated physically
+but exceeded the modeled scratch allowance. That investigation is not
+closed by the2048 qualification.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \

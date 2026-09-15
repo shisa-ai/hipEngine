@@ -26,7 +26,7 @@ improvements require the applicable unchanged production quality gates.
 | R08 | Approximate MoE grouped and Q4 iu8 restoration | Separate families, real routing/repair counts, then composition |
 | R09 | Decode DP4A restoration | Full category/heldout numerical/task gates and true AR cost |
 | R10 | Real expert populations and repair telemetry | Capture updated baseline before ranking new matrix tiles |
-| R11 | Chunk scratch model and larger chunks | 2048 numerics/native-c2 allocation, six4K tasks and910-row full-payload boundary/reuse gates pass;4K PP/TG +2.32/+1.22%, small short costs; true c2 isolation/default decision pending;4096 scratch under-accounted by2.16GB ([evidence](../benchmarks/results/2026-09-14-journey-chunk-admission/README.md)) |
+| R11 | Chunk scratch model and larger chunks | 2048 qualified explicit option,4K PP/TG +2.32/+1.22%; default1024 preserves short costs. Shape-dependent workspace selection and4096 scratch accounting remain open ([evidence](../benchmarks/results/2026-09-14-journey-chunk-admission/README.md)) |
 | R12 | Other mixed-quant matrix geometry/dequant-on-load | Actual Q4_K/Q5_K/Q5_1 roles and whole-owner cost, not IQ4_NL transfer |
 | R13 | PLE copy elision / sorted dedup | Existing one-pair screen mixed; isolate gather/scatter savings on unique and duplicate rows |
 | R14 | Persistent pread / direct-I/O and row cache | Existing cold gain/warm loss; cache-state policy and new-row workload required |
