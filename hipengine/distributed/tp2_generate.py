@@ -28,11 +28,15 @@ TP1 control: the identical layer recipe with the local full-width unfused MLP
 chain, on one device. Fresh controls per physical GPU are run by constructing
 one session per device.
 
-Arithmetic is the runner's own unfused eager route: the resolved add+RMSNorm
-leaf, plain bf16 residual add, and the same GEMV kernels the shard chain
-uses. It is a production-profile candidate, not a strict-parity route: the
-reduction order changes, so the binding contract is the full-logit teacher
-gate against the TP1 model, not bitwise equality.
+Arithmetic: attention/GDN take the runner's own eager route (the resolved
+add+RMSNorm leaf, plain bf16 residual add, the same GEMV kernels the shard
+chain uses); the MLP shard chain resolves its gate/up route through the
+shape-qualified fused pair+SiLU policy at the shard shape when the policy row
+admits it (bit-identical to the unfused chain per the slice probe), else the
+unfused gate GEMV / up GEMV / SiLU-multiply chain. It is a production-profile
+candidate, not a strict-parity route: the reduction order changes, so the
+binding contract is the full-logit teacher gate against the TP1 model, not
+bitwise equality.
 
 Failure semantics: any failure inside a step poisons the session and raises
 :class:`TP2GroupError`; the session then refuses every further step. A
@@ -69,6 +73,7 @@ from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     _FullStackScratch,
+    _gguf_dense_pair_silu_decode_variant,
     _gguf_norm_residual_decode_kernel,
 )
 
@@ -205,6 +210,18 @@ class MlpTP2GenerationSession:
             self.model_path, world_size=len(self.devices)
         )
         per_rank_ffn = int(config.feed_forward_length) // len(self.devices)
+        # The MLP gate/up route resolves through the same shape-qualified
+        # policy lookup the TP1 runner uses, at this rank's shard shape -
+        # never a hardcoded variant. When the policy row admits the shard
+        # shape the ranks run the fused pair+SiLU chain (bit-identical to
+        # the unfused chain and faster, per the slice probe); when it does
+        # not, every rank takes the unfused chain.
+        fused_variant = _gguf_dense_pair_silu_decode_variant(
+            self._runners[self.control_device],
+            rows=1,
+            in_features=int(config.hidden_size),
+            out_features=per_rank_ffn,
+        )
         shards = materialize_mlp_shards(
             self.model_path, world_size=len(self.devices)
         )
@@ -225,6 +242,7 @@ class MlpTP2GenerationSession:
             # numerical candidate, not this run's schedule.
             staging_dtype="bf16",
             driver=self.driver,
+            mlp_decode_variant=fused_variant,
         )
 
     def _alloc_step_buffers(self, device: int) -> None:

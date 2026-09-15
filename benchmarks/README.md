@@ -1063,9 +1063,11 @@ weights. With f32 partials the summed TP2 output agrees with the TP1 teacher to
 f32 accumulation noise (mean relative error 1.4e-07 against 2.0e-03 to a float64
 truth, which is the bf16 activation contract both paths share), and the reduced
 vector plus the residual add and next RMSNorm - what the next block consumes -
-match TP1 the same way. A fused gate/up+SiLU candidate at the shard shape was
-compared against the unfused chain and is bit-identical on both ranks; it is not
-added to the production policy table.
+match TP1 the same way. The fused gate/up+SiLU candidate at the shard shape was
+compared against the unfused chain, measured bit-identical on both ranks and
+faster (246.9 vs 307.2 us device chains), and is admitted to the qwen35/
+`MOSTLY_Q4_K_M` fused decode policy under the gate the full-width shape used -
+it is the TP2 session's default MLP route.
 
 The measured walls on one block (W7900 pair, one token, hidden 5120, intermediate
 17408, 200 timed steps):
@@ -1096,12 +1098,14 @@ Each decode token makes 64 reductions. The exchange runs on the compiled host
 driver (`hipengine/distributed/staged_exchange_host.cpp`): both ranks' D2H
 submits, one wait per stream, a compiled f32 sum, and no H2D return copy - both
 ranks' boundary-cast kernels read the mapped pinned payload zero-copy over the
-bus. Its in-step wall is 156 us p50 (187 us p95) over 9,216 reductions, against
-201 us p50 (238 us p95) for the Python-driven route with the H2D return, and
-decode p50 moves 56.5 -> 53.1 ms/token at the matched composition (W7900 TP1
-31.8 ms, RX 7900 XTX TP1 26.3 ms) - the remaining wall is the per-layer
-dependency wait plus the replicated attention enqueue, and TP2 is still not
-faster, so no speedup is claimed for it. The compiled driver's reduced payload
+bus, and the MLP shard chain resolves the fused gate/up+SiLU pair at the shard
+shape through the shape-qualified decode policy. The in-step exchange wall is
+156-169 us p50 across retained runs (9,216 reductions), against 201 us p50 for
+the original Python-driven route with the H2D return, and decode p50 moved
+56.5 -> 50.6 ms/token at the matched composition (W7900 TP1 31.8 ms, RX 7900
+XTX TP1 26.3 ms) - the remaining wall is the per-layer dependency wait plus the
+replicated-attention enqueue, and TP2 is still not faster, so no speedup is
+claimed for it. The compiled driver's reduced payload
 is bit-identical to the Python route's (same f32 sum in the same rank order;
 the Python route stays the registered fallback and the world != 2 general
 transport). What the checkpoint certifies is arithmetic and control: the

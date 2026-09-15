@@ -494,6 +494,16 @@ GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+        # 2026-09-15, TP2 MLP shard shape: the fused pair+SiLU candidate at
+        # (1, hidden, per_rank_intermediate) measured bit-identical to the
+        # unfused chain on both ranks of the W7900 + RX 7900 XTX pair, with
+        # device chains 246.9 vs 307.2 us
+        # (benchmarks/results/2026-09-15-w7900-tp2-mlp-slice-e2e.json), and
+        # the kernel's own shape contract admits the shape
+        # (dense_t16_pair_decode_shape_error -> null). Admitted under the
+        # same gate the TP1 shape used; the launcher still validates the
+        # shape before any HIP contact and falls back to the unfused chain.
+        (1, 5_120, 8_704): "dense_dual_local32_bf16_bf16_out",
     },
     # 2026-09-10, UD impact-list task 5: the UD artifacts carry Q5_K T16
     # ffn gate/up pairs (9 on K_M, 6 on K_S) that decode through the direct
