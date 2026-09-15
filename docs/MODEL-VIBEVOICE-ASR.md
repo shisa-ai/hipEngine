@@ -255,3 +255,20 @@ set; the first implementation milestone must freeze a working oracle environment
 [hfprocessor]: https://github.com/huggingface/transformers/blob/177e90dd2d51273fa235dd8bacee7c80f1eef067/src/transformers/models/vibevoice_asr/processing_vibevoice_asr.py
 [tokenizers]: https://github.com/microsoft/VibeVoice/blob/1541f590c7099820f10ea012f48d2399282df69f/vibevoice/modular/modular_vibevoice_tokenizer.py
 [processor]: https://github.com/microsoft/VibeVoice/blob/1541f590c7099820f10ea012f48d2399282df69f/vibevoice/processor/vibevoice_asr_processor.py
+
+
+## Standalone Q4 GGUF
+
+`python scripts/vibevoice_asr_transcribe.py --model model.gguf --audio speech.wav`
+loads all frontend/backbone weights and tokenizer/configuration assets from one
+GGUF. Input is mono 24 kHz PCM16 WAV; no HF checkpoint or network is needed at
+inference. This CLI uses the existing evaluated Q4/WMMA candidates, without
+changing the public strict BF16 profile or claiming broader production qualification.
+
+The exporter embeds `config.json`, `tokenizer.json`, `tokenizer_config.json`,
+`processor_config.json`, `generation_config.json` and `chat_template.jinja` in
+versioned, SHA-256-checked metadata. `--repackage old.gguf --model HF_SNAPSHOT
+--out new.gguf` upgrades an existing file without requantizing tensors. The
+frontend loader shares the HF path's tensor-name mapping and geometry checks.
+See `scripts/vibevoice_asr_standalone_check.py` for weight/asset verification and
+`tests/test_gpu_vibevoice_standalone.py` for offline HF-frontend parity.

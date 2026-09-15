@@ -1,6 +1,6 @@
 {
   "hipengine": {
-    "file_bytes": 6748861024,
+    "file_bytes": 6760289568,
     "tensors": 901,
     "parameters": 8330325888,
     "groups": {
@@ -41,8 +41,21 @@
         "bytes": 689227200
       }
     },
-    "sha256": "2caf6170b98a2ac339f54018a6b9f7571ff24f3b69ba35aa5f40a52a692df1e2",
-    "filename": "vibevoice-asr-q4km.gguf"
+    "sha256": "bfd0927951f8c572b8298e289e152e3756895960a43458eba361ad7a82883fbd",
+    "filename": "vibevoice-asr-q4_k_m.gguf",
+    "original_container": {
+      "filename": "vibevoice-asr-q4km.gguf",
+      "file_bytes": 6748861024,
+      "sha256": "2caf6170b98a2ac339f54018a6b9f7571ff24f3b69ba35aa5f40a52a692df1e2"
+    },
+    "embedded_assets": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "processor_config.json",
+      "generation_config.json",
+      "chat_template.jinja"
+    ]
   },
   "cstr": {
     "file_bytes": 4811829376,

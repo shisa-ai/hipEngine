@@ -1,0 +1,35 @@
+{
+  "source_sha256": "2caf6170b98a2ac339f54018a6b9f7571ff24f3b69ba35aa5f40a52a692df1e2",
+  "standalone_sha256": "bfd0927951f8c572b8298e289e152e3756895960a43458eba361ad7a82883fbd",
+  "standalone_bytes": 6760289568,
+  "tensors_bit_identical": 901,
+  "embedded_assets_byte_identical": [
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "processor_config.json",
+    "generation_config.json",
+    "chat_template.jinja"
+  ],
+  "hf_frontend_tensors_and_specs": "exact",
+  "torch_imported": false,
+  "source_model": "microsoft/VibeVoice-ASR-HF",
+  "source_revision": "f22241c2062b3b25272bf117397e03d73381037a",
+  "hardware": "zbook / Radeon 8060S / gfx1151",
+  "offline_e2e": [
+    {
+      "clip": "1089-134686-0000",
+      "text": "assistant\n[{\"Start\":0.0,\"End\":10.44,\"Speaker\":0,\"Content\":\"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.\"}]",
+      "finish_reason": "eos",
+      "exact_vs_hf_frontend": true
+    },
+    {
+      "clip": "121-121726-0000",
+      "text": "assistant\n[{\"Start\":0.0,\"End\":8.46,\"Speaker\":0,\"Content\":\"Also a popular contrivance whereby love-making may be suspended but not stopped during the picnic season.\"}]",
+      "finish_reason": "eos",
+      "exact_vs_hf_frontend": true
+    }
+  ],
+  "validation_scope": "Packaging parity, not a new WER or speed benchmark; weights unchanged from 200-clip evaluation.",
+  "command": "PYTHONPATH=. python scripts/vibevoice_asr_standalone_check.py --source SOURCE.gguf --standalone RELEASE.gguf --hf HF_SNAPSHOT --out validation.json"
+}
