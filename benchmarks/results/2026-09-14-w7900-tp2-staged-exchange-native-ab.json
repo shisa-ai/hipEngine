@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-staged-exchange-native-ab",
-  "generated_at": "2026-09-14T20:52:36Z",
+  "generated_at": "2026-09-15T02:35:33Z",
   "protocol": "batched: both D2H submitted before either wait, no return wait",
   "count": 5120,
   "payload_bytes": 20480,
@@ -18,7 +18,7 @@
   "reps": 2,
   "arch": "gfx1100",
   "provenance": {
-    "git_commit": "0f2d4792660c61c537d0e75176b878b8d2945114",
+    "git_commit": "0627ecae5252d9ae92ab9b85846cdce952e8aca3",
     "python_arm": {
       "path": "scripts/tp_collective_bench.py",
       "sha256": "0305cd72e61d55a2e725e9e541a51f3ae89188cc4351e1f910d5ba6acc365024",
@@ -26,8 +26,8 @@
     },
     "native_arm": {
       "path": "benchmarks/micro/runners/hip_staged_exchange.hip",
-      "sha256": "5f506cd8abe409be0291501378600f5c0480400136ad4333abbda339c125c458",
-      "binary_sha256": "bc2f1af0d3ef398ae402920c7ebb3317ca29ffff8bcb1a8f48982b5f63536764",
+      "sha256": "a606859580d2841bac5d37c055bfa38e6a17380e943d02b7706234d7ae9894ef",
+      "binary_sha256": "9486750ed2a520376441d8259aba5496851e7ab0dc2276ee61b6cf9929fcc3ca",
       "compile_flags": [
         "-O2",
         "--offload-arch=gfx1100"
@@ -61,66 +61,91 @@
           "points": [
             [
               1,
-              0.06170524284243584
+              0.062000472098588943
             ],
             [
               4,
-              0.19724154844880104
+              0.19164802506566048
             ],
             [
               16,
-              0.7289154455065727
+              0.7060547359287739
             ],
             [
               32,
-              1.3178037479519844
+              1.35858915746212
             ],
             [
               64,
-              2.6232884265482426
+              2.64353072270751
             ],
             [
               128,
-              5.185524933040142
+              5.044769961386919
             ]
           ],
           "segments": [
             {
               "from_depth": 1,
               "to_depth": 4,
-              "marginal_us_per_step": 45.17876853545507
+              "marginal_us_per_step": 43.21585098902384
             },
             {
               "from_depth": 4,
               "to_depth": 16,
-              "marginal_us_per_step": 44.30615808814764
+              "marginal_us_per_step": 42.86722590525945
             },
             {
               "from_depth": 16,
               "to_depth": 32,
-              "marginal_us_per_step": 36.80551890283823
+              "marginal_us_per_step": 40.783401345834136
             },
             {
               "from_depth": 32,
               "to_depth": 64,
-              "marginal_us_per_step": 40.79639620613307
+              "marginal_us_per_step": 40.154423913918436
             },
             {
               "from_depth": 64,
               "to_depth": 128,
-              "marginal_us_per_step": 40.03494541393593
+              "marginal_us_per_step": 37.519363104365766
             }
           ],
-          "marginal_us_per_step": 40.03494541393593,
-          "overall_us_per_step": 40.3450369306906
-        }
+          "marginal_us_per_step": 37.519363104365766,
+          "overall_us_per_step": 39.234405427467166
+        },
+        "repetitions": [
+          {
+            "depends_on_every_step": true,
+            "dependency_carried_by": "stream order plus the host round trip",
+            "dependency_verdict_depth": "64",
+            "vector_check": {
+              "ranks_agree": true,
+              "full_vector_matches": true,
+              "rank_seeds_differ": true
+            },
+            "final_values_match": true
+          },
+          {
+            "depends_on_every_step": true,
+            "dependency_carried_by": "stream order plus the host round trip",
+            "dependency_verdict_depth": "64",
+            "vector_check": {
+              "ranks_agree": true,
+              "full_vector_matches": true,
+              "rank_seeds_differ": true
+            },
+            "final_values_match": true
+          }
+        ],
+        "every_repetition_passed": true
       },
       "depths": {
         "1": {
-          "total_median_us": 61.70524284243584,
+          "total_median_us": 62.00047209858894,
           "samples_us": [
-            188.4065568447113,
-            61.70524284243584
+            60.85028871893883,
+            62.00047209858894
           ],
           "value_check_informative": true,
           "final_value_matches": true,
@@ -128,7 +153,7 @@
             2.0,
             2.0
           ],
-          "per_step_us": 61.70524284243584,
+          "per_step_us": 62.00047209858894,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -144,10 +169,10 @@
           }
         },
         "4": {
-          "total_median_us": 197.24154844880104,
+          "total_median_us": 191.64802506566048,
           "samples_us": [
-            454.9180157482624,
-            197.24154844880104
+            195.3374594449997,
+            191.64802506566048
           ],
           "value_check_informative": true,
           "final_value_matches": true,
@@ -155,7 +180,7 @@
             16.0,
             16.0
           ],
-          "per_step_us": 49.31038711220026,
+          "per_step_us": 47.91200626641512,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -171,10 +196,10 @@
           }
         },
         "16": {
-          "total_median_us": 728.9154455065727,
+          "total_median_us": 706.0547359287739,
           "samples_us": [
-            675.8440285921097,
-            728.9154455065727
+            699.3347778916359,
+            706.0547359287739
           ],
           "value_check_informative": true,
           "final_value_matches": true,
@@ -182,7 +207,7 @@
             65536.0,
             65536.0
           ],
-          "per_step_us": 45.557215344160795,
+          "per_step_us": 44.12842099554837,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -198,10 +223,10 @@
           }
         },
         "32": {
-          "total_median_us": 1317.8037479519844,
+          "total_median_us": 1358.58915746212,
           "samples_us": [
-            1336.9042426347733,
-            1317.8037479519844
+            1385.9043829143047,
+            1358.58915746212
           ],
           "value_check_informative": true,
           "final_value_matches": true,
@@ -209,7 +234,7 @@
             4294967296.0,
             4294967296.0
           ],
-          "per_step_us": 41.18136712349951,
+          "per_step_us": 42.45591117069125,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -225,10 +250,10 @@
           }
         },
         "64": {
-          "total_median_us": 2623.2884265482426,
+          "total_median_us": 2643.53072270751,
           "samples_us": [
-            2645.23783698678,
-            2623.2884265482426
+            2881.344873458147,
+            2643.53072270751
           ],
           "value_check_informative": true,
           "final_value_matches": true,
@@ -236,7 +261,7 @@
             1.8446744073709552e+19,
             1.8446744073709552e+19
           ],
-          "per_step_us": 40.98888166481629,
+          "per_step_us": 41.305167542304844,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -252,10 +277,10 @@
           }
         },
         "128": {
-          "total_median_us": 5185.524933040142,
+          "total_median_us": 5044.769961386919,
           "samples_us": [
-            5223.630461841822,
-            5185.524933040142
+            5128.376185894012,
+            5044.769961386919
           ],
           "value_check_informative": false,
           "final_value_matches": true,
@@ -263,7 +288,7 @@
             Infinity,
             Infinity
           ],
-          "per_step_us": 40.51191353937611,
+          "per_step_us": 39.412265323335305,
           "protocol": "batched",
           "host_waits_per_reduction": 2,
           "depends_on_every_step": true,
@@ -282,16 +307,16 @@
       "marginal": {
         "from_depth": 1,
         "to_depth": 128,
-        "overall_us_per_step": 39.996234626751246
+        "overall_us_per_step": 39.56809207269057
       }
     },
     "native": {
       "depths": {
         "1": {
-          "total_median_us": 35.00976562,
+          "total_median_us": 28.90136719,
           "samples_us": [
-            28.45996094,
-            35.00976562
+            29.38183594,
+            28.90136719
           ],
           "depth": 1,
           "count": 5120,
@@ -299,14 +324,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 31.95996094,
+          "single_step_median_us": 29.94140625,
           "per_step_us": null,
-          "per_step_phases_us": 19.45117188,
+          "per_step_phases_us": 17.58105469,
           "phases_us": {
-            "submit_d2h": 3.411132812,
-            "wait_d2h": 9.919921875,
-            "host_reduce": 2.879882812,
-            "submit_h2d": 3.240234375
+            "submit_d2h": 2.669921875,
+            "wait_d2h": 9.83984375,
+            "host_reduce": 2.560546875,
+            "submit_h2d": 2.510742188
           },
           "verification": {
             "bounded": {
@@ -317,7 +342,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -328,7 +353,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth"
             },
             "ranks_checked": 2,
@@ -337,10 +362,10 @@
           "protocol": "batched: both D2H submitted before either wait, no return wait"
         },
         "4": {
-          "total_median_us": 105.2402344,
+          "total_median_us": 107.0810547,
           "samples_us": [
-            106.2509766,
-            105.2402344
+            116.4609375,
+            107.0810547
           ],
           "depth": 4,
           "count": 5120,
@@ -348,14 +373,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 27.6796875,
-          "per_step_us": 25.85351562,
-          "per_step_phases_us": 23.34741211,
+          "single_step_median_us": 27.64941406,
+          "per_step_us": 26.47721354,
+          "per_step_phases_us": 22.90966797,
           "phases_us": {
-            "submit_d2h": 1.624755859,
-            "wait_d2h": 17.73022461,
-            "host_reduce": 2.055175781,
-            "submit_h2d": 1.937255859
+            "submit_d2h": 1.677490234,
+            "wait_d2h": 17.29541016,
+            "host_reduce": 2.062011719,
+            "submit_h2d": 1.874755859
           },
           "verification": {
             "bounded": {
@@ -366,7 +391,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -377,7 +402,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth"
             },
             "ranks_checked": 2,
@@ -386,10 +411,10 @@
           "protocol": "batched: both D2H submitted before either wait, no return wait"
         },
         "16": {
-          "total_median_us": 413.2324219,
+          "total_median_us": 409.2548828,
           "samples_us": [
-            411.203125,
-            413.2324219
+            397.9960938,
+            409.2548828
           ],
           "depth": 16,
           "count": 5120,
@@ -397,14 +422,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 23.9296875,
-          "per_step_us": 25.95351563,
-          "per_step_phases_us": 21.31488037,
+          "single_step_median_us": 23.95996094,
+          "per_step_us": 25.68632812,
+          "per_step_phases_us": 21.27337646,
           "phases_us": {
-            "submit_d2h": 1.563354492,
-            "wait_d2h": 15.8458252,
-            "host_reduce": 2.051147461,
-            "submit_h2d": 1.854553223
+            "submit_d2h": 1.594909668,
+            "wait_d2h": 15.8840332,
+            "host_reduce": 2.00567627,
+            "submit_h2d": 1.788757324
           },
           "verification": {
             "bounded": {
@@ -415,7 +440,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -426,7 +451,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth"
             },
             "ranks_checked": 2,
@@ -435,10 +460,10 @@
           "protocol": "batched: both D2H submitted before either wait, no return wait"
         },
         "32": {
-          "total_median_us": 742.1855469,
+          "total_median_us": 738.3291016,
           "samples_us": [
-            750.1865234,
-            742.1855469
+            771.1113281,
+            738.3291016
           ],
           "depth": 32,
           "count": 5120,
@@ -446,14 +471,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 23.41992188,
-          "per_step_us": 23.1859879,
-          "per_step_phases_us": 20.58389282,
+          "single_step_median_us": 23.02929688,
+          "per_step_us": 23.07418725,
+          "per_step_phases_us": 20.17333984,
           "phases_us": {
-            "submit_d2h": 1.573272705,
-            "wait_d2h": 14.90008545,
-            "host_reduce": 2.186981201,
-            "submit_h2d": 1.923553467
+            "submit_d2h": 1.633392334,
+            "wait_d2h": 14.68362427,
+            "host_reduce": 1.990966797,
+            "submit_h2d": 1.865356445
           },
           "verification": {
             "bounded": {
@@ -464,7 +489,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -475,7 +500,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth"
             },
             "ranks_checked": 2,
@@ -484,10 +509,10 @@
           "protocol": "batched: both D2H submitted before either wait, no return wait"
         },
         "64": {
-          "total_median_us": 1373.55957,
+          "total_median_us": 1370.989258,
           "samples_us": [
-            1421.229492,
-            1373.55957
+            1375.749023,
+            1370.989258
           ],
           "depth": 64,
           "count": 5120,
@@ -495,14 +520,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 22.37988281,
-          "per_step_us": 21.44729663,
-          "per_step_phases_us": 20.33322144,
+          "single_step_median_us": 23.10058594,
+          "per_step_us": 21.39505828,
+          "per_step_phases_us": 20.3714447,
           "phases_us": {
-            "submit_d2h": 1.494689941,
-            "wait_d2h": 15.04193115,
-            "host_reduce": 1.995223999,
-            "submit_h2d": 1.801376343
+            "submit_d2h": 1.541030884,
+            "wait_d2h": 14.80819702,
+            "host_reduce": 2.170822144,
+            "submit_h2d": 1.851394653
           },
           "verification": {
             "bounded": {
@@ -513,7 +538,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -524,7 +549,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth"
             },
             "ranks_checked": 2,
@@ -533,10 +558,10 @@
           "protocol": "batched: both D2H submitted before either wait, no return wait"
         },
         "128": {
-          "total_median_us": 2623.148438,
+          "total_median_us": 2658.84668,
           "samples_us": [
-            2633.508789,
-            2623.148438
+            2662.006836,
+            2658.84668
           ],
           "depth": 128,
           "count": 5120,
@@ -544,14 +569,14 @@
           "iterations": 20,
           "warmup": 6,
           "timed_recurrence": "sum",
-          "single_step_median_us": 22.75,
-          "per_step_us": 20.47557825,
-          "per_step_phases_us": 20.19962311,
+          "single_step_median_us": 22.85058594,
+          "per_step_us": 20.75587475,
+          "per_step_phases_us": 20.45435333,
           "phases_us": {
-            "submit_d2h": 1.509208679,
-            "wait_d2h": 14.89971161,
-            "host_reduce": 1.970474243,
-            "submit_h2d": 1.820228577
+            "submit_d2h": 1.579528809,
+            "wait_d2h": 14.96874237,
+            "host_reduce": 2.017807007,
+            "submit_h2d": 1.888275146
           },
           "verification": {
             "bounded": {
@@ -562,7 +587,7 @@
               "saturation_expected": false,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "mean_r(seed_r[j]) + depth"
             },
             "sum": {
@@ -573,7 +598,7 @@
               "saturation_expected": true,
               "max_abs_error": 0,
               "ranks_checked": 2,
-              "elements_per_rank": 0,
+              "elements_per_rank": 5120,
               "expected": "seed * world ** depth",
               "detail": "closed form overflows fp32 at this depth, so the nonfinite values are expected; they also show the chain compounded, because a shorter chain would still be finite"
             },
@@ -586,7 +611,7 @@
       "marginal": {
         "from_depth": 1,
         "to_depth": 128,
-        "overall_us_per_step": 20.44562008047244
+        "overall_us_per_step": 20.71878075933071
       }
     }
   },
@@ -596,14 +621,16 @@
     "depths": true,
     "protocol": true,
     "python_dependency_check": true,
+    "python_repetitions_passed": true,
+    "native_repetitions_passed": true,
     "native_verification": true,
     "balanced_repetitions": true,
     "two_devices": true
   },
   "comparison": {
-    "python_us_per_step": 39.996234626751246,
-    "native_us_per_step": 20.44562008047244,
-    "python_over_native": 1.9562250726233315,
+    "python_us_per_step": 39.56809207269057,
+    "native_us_per_step": 20.71878075933071,
+    "python_over_native": 1.9097693311355237,
     "balanced_reps": 2,
     "matched": true,
     "provisional": false,

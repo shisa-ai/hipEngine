@@ -919,8 +919,8 @@ so these are per-layer costs rather than deferrable ones:
 | RCCL, one group per reduction, copy removed | 153.7 us | 19.67 ms | 0.74x |
 | RCCL, copy removed, replayed from a captured graph | 146.8 us | 18.79 ms | 0.76x |
 | Host exchange, one rank at a time (submit, wait, submit, wait) | 70.3 us | 8.99 ms | 1.02x |
-| Host exchange, both ranks submitted before either is awaited | 40.0 us | 5.12 ms | 1.18x |
-| Host exchange, same protocol driven from a native C++ loop | **20.5 us** | **2.62 ms** | **1.33x** |
+| Host exchange, both ranks submitted before either is awaited | 39.6-40.6 us | 5.07-5.20 ms | 1.18x |
+| Host exchange, same protocol driven from a native C++ loop | **20.5-20.9 us** | **2.62-2.67 ms** | **1.32-1.33x** |
 
 The intermediate copy is worth **23.6 us per reduction**. Host submission is only
 **6.9 us** - that is what replaying the same device structure from a captured
@@ -928,7 +928,7 @@ graph removes - so RCCL's cost here is device-side protocol, not Python or ctype
 overhead. Collapsing N dependent reductions into one group saves 119.6 us, which
 is why that structure is fast and why it cannot carry a layer dependency.
 
-**Driving the same protocol natively is worth another 19.6 us per reduction.**
+**Driving the same protocol natively is worth another 19-20 us per reduction.**
 A standalone C++ runner (`benchmarks/micro/runners/hip_staged_exchange.hip`)
 implements the identical batched protocol - both device-to-host copies submitted
 before either wait, two host waits per reduction, host sum, no return wait, one
@@ -938,22 +938,26 @@ get/set/restore around each call.
 
 **Both arms are rerun in one session over the same depth ladder, with alternating
 order per repetition, and the comparison is reported only after both arms agree on
-payload, depths, protocol, physical devices and repetition count**
+payload, depths, protocol, physical devices and repetition count, and after every
+contributing repetition passes its own correctness check**
 (`scripts/tp_staged_exchange_native_ab.py`; artifact
 `benchmarks/results/2026-09-14-w7900-tp2-staged-exchange-native-ab.json`). The
-ladder slope is **20.45 us per reduction against Python's 40.00 us, a 1.956x
-reduction in transport cost**. Both arms carry the same dependency gate: the
-Python arm's verdict comes from the deepest depth whose closed form is finite, and
-the native runner runs its timed and verified passes through one `step`
+ladder slope is **20.5-20.9 us per reduction against Python's 39.6-40.6 us**,
+measured over three matched runs: **1.91x to 1.96x**, with the spread coming from
+run-to-run variance on both arms rather than from a protocol difference. Both arms
+carry the same dependency gate: the Python arm's verdict comes from the deepest
+depth whose closed form is finite and is required to hold in *every* repetition,
+and the native runner runs its timed and verified passes through one `step`
 implementation, checks the whole vector on both ranks, rejects nonfinite values
 explicitly, and exits non-zero when a check fails. Its timed recurrence
 (`seed * 2 ** depth`) verifies exactly at every depth through 64 and is reported
 as saturating fp32 at depth 128 rather than passed.
 
 The terms do not transfer one for one: submission and device scoping collapse
-from 26.3 us to 3.3 us and the host sum from 6.6 us to 2.0 us, but the **exposed
-wait grows from 8.9 us to 14.9 us**, because earlier submission changes what is
-exposed. The net gain is measured, not the sum of the terms that moved.
+from 26.3 us to about 3.3 us and the host sum from 6.6 us to 2.0 us, but the
+**exposed wait grows from 8.9 us to about 15 us**, because earlier submission
+changes what is exposed. The net gain is measured, not the sum of the terms that
+moved.
 
 **Host orchestration is worth 29.3 us per reduction in the Python arm, and the
 causal split is measured rather than inferred.** The serial exchange performs four host waits per

@@ -1,16 +1,18 @@
 """Tests for the TP2 MLP shard-plan probe.
 
-The probe exists to answer one question that decides whether a shard segment
-needs a new kernel: does the engine's linear dispatch key a weight's own row
-count? It does not, so a shard-shaped MLP weight resolves to the same registered
-kernel as the TP1 shape. These tests pin that property, the layout admissibility
-of a half-intermediate row block, and the artifact contract.
+The probe is a **host-payload** prerequisite check: it establishes that the
+rank-local bytes for one MLP are the right bytes in the right layout. It does not
+qualify device execution, and these tests pin that scope so the artifact cannot be
+read as more than it is.
+
+The layout assertions matter because the layouts are not guessable: the Q6_K down
+projection resolves to the planar t16 layout under the incumbent capability set,
+not to raw storage, so a hardcoded table would benchmark a different TP1 path.
 """
 
 from __future__ import annotations
 
 import importlib.util
-import json
 import pathlib
 import sys
 
@@ -40,10 +42,17 @@ def mod():
     return _load()
 
 
+# ---------------------------------------------------------------------------
+# Pure helpers
+# ---------------------------------------------------------------------------
+
+
 def test_half_intermediate_row_block_is_t16_admissible(mod) -> None:
     """8704 rows is half of 17408 and still a whole number of t16 tiles."""
 
-    admissible = mod._t16_admissible(out_features=8704, bytes_per_row=5120 * 144 // 256, block_bytes=144)
+    admissible = mod._t16_admissible(
+        out_features=8704, bytes_per_row=5120 * 144 // 256, block_bytes=144
+    )
     assert admissible["admissible"] is True
     assert admissible["out_features_divisible"] is True
     assert admissible["bytes_per_row_divisible"] is True
@@ -57,25 +66,27 @@ def test_an_unaligned_row_block_is_rejected(mod) -> None:
     assert admissible["out_features_divisible"] is False
 
 
-def test_an_unknown_source_quant_has_no_recorded_repack(mod) -> None:
+def test_every_layout_maps_to_a_repack_or_is_raw(mod) -> None:
+    """Layouts drive the repack decision, not source quant types."""
+
+    assert mod._t16_repack_for("gguf_q4_k_t16_v1", "Q4_K") is mod.repack_gguf_q4_k_tile16
+    assert (
+        mod._t16_repack_for("gguf_q6_k_t16_qmicro_planar_v1", "Q6_K")
+        is mod.repack_gguf_q6_k_tile16_qmicro_planar
+    )
+    assert mod._t16_repack_for("raw_gguf", "Q6_K") is None
+
+
+def test_an_unknown_layout_is_refused_rather_than_guessed(mod) -> None:
+    """A layout the probe cannot materialize must fail, not fall back."""
+
+    with pytest.raises(ValueError, match="no repack is recorded"):
+        mod._t16_repack_for("gguf_q5_k_t16_v1", "Q5_K")
+
+
+def test_a_missing_repack_is_refused(mod) -> None:
     with pytest.raises(ValueError, match="no t16 repack"):
-        mod._t16_repack_tiles(b"", rows=1, bytes_per_row=1, quant_type="Q2_K_UNKNOWN")
-
-
-def test_q4_k_resolves_to_t16_and_q6_k_to_raw(mod) -> None:
-    """The resident layout per source type comes from the engine's own tables."""
-
-    q4_layout, q4_quant = mod._resident_layout("Q4_K")
-    q6_layout, q6_quant = mod._resident_layout("Q6_K")
-    assert q4_layout == "gguf_q4_k_t16_v1"
-    assert q4_quant == "gguf_q4_k_t16_v1"
-    assert q6_layout == "raw_gguf"
-    assert q6_quant == "gguf_q6_k"
-
-
-def test_an_unknown_source_quant_is_refused_rather_than_guessed(mod) -> None:
-    with pytest.raises(ValueError, match="no resident layout"):
-        mod._resident_layout("Q2_K_UNKNOWN")
+        mod._t16_repack_tiles(b"", rows=1, bytes_per_row=1, quant_type="Q2_K", repack=None)
 
 
 def test_the_mlp_tensor_names_are_the_three_projections(mod) -> None:
@@ -86,17 +97,49 @@ def test_the_mlp_tensor_names_are_the_three_projections(mod) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Incumbent-plan resolution
+# ---------------------------------------------------------------------------
+
+
+@requires_model
+def test_the_plan_resolver_reports_the_environment_it_resolved_under(mod) -> None:
+    """A layout claim is only meaningful with the flags that produced it."""
+
+    info = mod.scan_gguf(str(GGUF_PATH))
+    plan, context = mod.resolve_incumbent_plan(info)
+    assert context["backend"] == "hip_gfx1100"
+    assert isinstance(context["decode_repack"], bool)
+    assert "dense_flags" in context
+    assert len(plan.layer_specs) >= 64
+
+
+@requires_model
+def test_an_unknown_slot_is_named_rather_than_silently_skipped(mod) -> None:
+    info = mod.scan_gguf(str(GGUF_PATH))
+    plan, _ = mod.resolve_incumbent_plan(info)
+    with pytest.raises(SystemExit, match="no slot"):
+        mod._spec_for_slot(plan, layer=0, slot="ffn_nonexistent")
+    with pytest.raises(SystemExit, match="no layer"):
+        mod._spec_for_slot(plan, layer=999, slot="ffn_gate")
+
+
+# ---------------------------------------------------------------------------
+# The probe itself
+# ---------------------------------------------------------------------------
+
+
 @requires_model
 def test_probe_answers_every_question_with_evidence(mod) -> None:
-    """The four gate questions must all be answered yes on the real model."""
+    """The gate questions must all be answered yes on the real model."""
 
     report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
     assert set(report["questions"]) == {
         "rank_local_materialization_exists",
         "rank_local_bytes_round_trip",
         "local_shapes_are_layout_admissible",
-        "t16_repack_commutes_with_the_split",
-        "shard_dispatch_needs_no_new_kernel",
+        "repack_commutes_with_the_split",
+        "layouts_resolved_from_the_incumbent_planner",
     }
     for question, answer in report["questions"].items():
         assert answer["answer"] is True, question
@@ -110,45 +153,98 @@ def test_probe_reports_a_halved_weight_budget_and_one_reduction(mod) -> None:
     assert exists["shard_to_tp1_ratio"] == pytest.approx(0.5)
     assert report["reduction_point"]["per_layer_count"] == 1
     # The down projection is row-parallel over the full hidden size, so the
-    # reduction payload is hidden_size * 4 and matches the transport screen.
+    # reduction carries one partial per hidden element.
     assert report["reduction_point"]["elements"] == report["hidden_size"]
-    assert report["reduction_point"]["payload_bytes"] == 20480
 
 
 @requires_model
-def test_the_shard_resolves_to_the_same_kernel_as_tp1(mod) -> None:
-    """A shape-keyed dispatch would break the shard path; catch it here."""
-
-    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
-    for name, entry in report["tensors"].items():
-        assert entry["round_trip_bit_exact"] is True, name
-        for rank, shard in entry["ranks"].items():
-            assert shard["dispatch_matches_tp1"] is True, f"{name} rank {rank}"
-            assert shard["dispatch_key"] == entry["tp1_dispatch"]["key"]
-
-
-@requires_model
-def test_the_t16_repack_commutes_with_the_split(mod) -> None:
+def test_every_repack_commutes_with_its_split_axis(mod) -> None:
     """A rank must be able to repack its own slice, bit-identically.
 
     If this failed, the shard arm would run on weights that differ from the
     corresponding half of the TP1 repack while still producing plausible output.
+    All three MLP tensors are repacked in the incumbent plan.
     """
 
     report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
-    question = report["questions"]["t16_repack_commutes_with_the_split"]
+    question = report["questions"]["repack_commutes_with_the_split"]
     assert question["answer"] is True
-    # The Q4_K gate and up are t16; the Q6_K down is raw and needs no repack.
     assert question["tensors_checked"] == [
         "blk.0.ffn_gate.weight",
         "blk.0.ffn_up.weight",
+        "blk.0.ffn_down.weight",
     ]
-    assert question["not_applicable"] == ["blk.0.ffn_down.weight"]
+    assert question["not_applicable"] == []
     for name in question["tensors_checked"]:
         entry = report["tensors"][name]
         assert entry["repack_commutes_with_split"] is True, name
         for rank, shard in entry["ranks"].items():
             assert shard["repack_commutes_with_split"] is True, f"{name} rank {rank}"
+            assert shard["repack_slice_compared"]
+
+
+@requires_model
+def test_the_incumbent_layouts_come_from_the_planner_not_a_table(mod) -> None:
+    """The Q6_K down projection is not raw; guessing it benchmarks the wrong path."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    assert report["plan_context"]["decode_repack"] is True
+    layouts = {
+        name: entry["incumbent_spec"]["layout"] for name, entry in report["tensors"].items()
+    }
+    assert layouts["blk.0.ffn_gate.weight"] == "gguf_q4_k_t16_v1"
+    assert layouts["blk.0.ffn_up.weight"] == "gguf_q4_k_t16_v1"
+    # Resolved by the planner under the incumbent capability set: the planar Q6_K
+    # t16 layout, not raw_gguf.
+    assert layouts["blk.0.ffn_down.weight"] == "gguf_q6_k_t16_qmicro_planar_v1"
+    for entry in report["tensors"].values():
+        assert entry["incumbent_spec"]["allocation_names"] == ["tiles"]
+
+
+@requires_model
+def test_the_probe_scopes_itself_to_host_payloads(mod) -> None:
+    """Passing this probe must not be readable as device qualification."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    assert "does not qualify device" in report["scope"]
+    assert "shard_dispatch_needs_no_new_kernel" not in report["questions"]
+
+
+@requires_model
+def test_the_reduction_dtype_is_left_explicitly_unresolved(mod) -> None:
+    """The exchange payload must match the down projection's real output dtype."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    point = report["reduction_point"]
+    assert point["selected"] is None
+    assert "unresolved" in point["selection_reason"]
+    names = {option["name"] for option in point["options"]}
+    assert names == {"fp32_partials", "bf16_partials_then_fp32_sum"}
+    for option in point["options"]:
+        assert option["note"]
+
+
+@requires_model
+def test_the_inventory_excludes_the_mtp_block(mod) -> None:
+    """The AR cost model is 64 blocks: 16 full-attention plus 48 GDN."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    inventory = report["inventory"]
+    assert inventory["ar_blocks"] == 64
+    assert inventory["full_attention_blocks"] == 16
+    assert inventory["linear_attention_gdn_blocks"] == 48
+    assert inventory["excluded_blocks"] == [64]
+    assert inventory["full_attention_blocks"] + inventory["linear_attention_gdn_blocks"] == 64
+
+
+@requires_model
+def test_the_model_identity_is_content_bound(mod) -> None:
+    """A placeholder hash would let another file inherit this evidence."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2)
+    assert report["model_hash"] not in {"mlp-probe", "", None}
+    assert len(report["model_hash"]) >= 16
+    assert report["manifest_hash"]
 
 
 @requires_model

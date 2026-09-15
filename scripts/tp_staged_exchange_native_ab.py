@@ -208,8 +208,17 @@ def _run_python_arm(
             }
         return results
     finally:
+        # Free the buffers first, then the transport: a live RCCL communicator
+        # holds device handles, and leaving it open leaks them across repetitions.
         for buffer in (*work, *scratch):
-            free(buffer)
+            try:
+                free(buffer)
+            except Exception:  # noqa: BLE001 - cleanup must not mask the result
+                pass
+        try:
+            transport.close()
+        except Exception as error:  # noqa: BLE001 - reported, not raised
+            results.setdefault("errors", []).append(f"transport close: {error!r}")
 
 
 def _marginal(points: list[tuple[int, float]]) -> dict[str, Any]:
@@ -275,7 +284,7 @@ def main() -> int:
     native_samples: dict[int, list[float]] = {depth: [] for depth in depths}
     python_entries: dict[int, dict[str, Any]] = {}
     native_entries: dict[int, dict[str, Any]] = {}
-    python_ladder: dict[str, Any] = {}
+    python_ladders: list[dict[str, Any]] = []
     errors: list[str] = []
 
     def run_python_ladder() -> None:
@@ -291,8 +300,7 @@ def main() -> int:
         except Exception as error:  # noqa: BLE001 - reported, not raised
             errors.append(f"python: {error!r}")
             return
-        python_ladder.clear()
-        python_ladder.update(result)
+        python_ladders.append(result)
         for ladder_depth in depths:
             python_entries[ladder_depth] = {
                 **result["depths"][str(ladder_depth)],
@@ -336,8 +344,52 @@ def main() -> int:
     python_medians = {
         depth: statistics.median(values) for depth, values in python_samples.items() if values
     }
-    # The ladder-level dependency verdict, taken from the last Python repetition.
-    python_dependency = python_ladder.get("depends_on_every_step") if python_ladder else None
+    # Every contributing repetition must pass its own correctness check. Keeping
+    # only the last verdict would let a failed earlier repetition contribute its
+    # timings while a later passing run supplied the verdict.
+    python_ladder = python_ladders[-1] if python_ladders else {}
+    python_verdicts = [
+        {
+            "depends_on_every_step": ladder.get("depends_on_every_step"),
+            "dependency_carried_by": ladder.get("dependency_carried_by"),
+            "dependency_verdict_depth": ladder.get("dependency_verdict_depth"),
+            # The Python arm's vector check reports its three findings
+            # separately, so read them rather than a single aggregate field.
+            "vector_check": {
+                key: (ladder.get("vector_check") or {}).get(key)
+                for key in ("ranks_agree", "full_vector_matches", "rank_seeds_differ")
+            }
+            if isinstance(ladder.get("vector_check"), dict)
+            else None,
+            "final_values_match": all(
+                bool((ladder.get("depths", {}).get(str(depth)) or {}).get("final_value_matches"))
+                for depth in depths
+            ),
+        }
+        for ladder in python_ladders
+    ]
+    python_dependency = (
+        bool(python_verdicts) and all(bool(v["depends_on_every_step"]) for v in python_verdicts)
+    )
+    python_repetitions_passed = (
+        len(python_verdicts) == args.reps
+        and all(
+            bool(v["depends_on_every_step"])
+            and bool(v["final_values_match"])
+            # A missing vector check is a failure, not an unknown: every
+            # repetition must have verified the whole vector on both ranks.
+            and all(
+                bool((v["vector_check"] or {}).get(key))
+                for key in ("ranks_agree", "full_vector_matches", "rank_seeds_differ")
+            )
+            for v in python_verdicts
+        )
+    )
+    # The native runner exits non-zero on a failed check, so a recorded native
+    # depth already passed its own verification; a depth with no record did not.
+    native_repetitions_passed = all(
+        len(native_samples[depth]) == args.reps for depth in depths
+    )
     native_medians = {
         depth: statistics.median(values) for depth, values in native_samples.items() if values
     }
@@ -372,7 +424,9 @@ def main() -> int:
         "protocol": (
             python_protocols == {PYTHON_PROTOCOL} and native_protocols == {NATIVE_PROTOCOL}
         ),
-        "python_dependency_check": python_dependency is True,
+        "python_dependency_check": python_dependency,
+        "python_repetitions_passed": python_repetitions_passed,
+        "native_repetitions_passed": native_repetitions_passed,
         "native_verification": native_verified == {True},
         "balanced_repetitions": all(
             len(python_samples[depth]) == args.reps and len(native_samples[depth]) == args.reps
@@ -423,6 +477,8 @@ def main() -> int:
                     "dependency_verdict_depth": python_ladder.get("dependency_verdict_depth"),
                     "vector_check": python_ladder.get("vector_check"),
                     "marginal": python_ladder.get("marginal"),
+                    "repetitions": python_verdicts,
+                    "every_repetition_passed": python_repetitions_passed,
                 },
                 "depths": {
                     str(depth): {
