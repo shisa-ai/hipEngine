@@ -51,6 +51,12 @@ VALID_TOKENS = (
     151644,  # bos <|im_start|>
 )
 
+#: Session finish reasons, in the engine-wide vocabulary (see
+#: :mod:`hipengine.generation.finish`): ``"stop"`` is a stop token, ``"length"``
+#: is an exhausted budget.
+FINISH_STOP = "stop"
+FINISH_LENGTH = "length"
+
 
 @dataclass
 class SessionTrace:
@@ -69,9 +75,19 @@ class SessionTrace:
 
 @dataclass
 class SessionResult:
+    """One generation.
+
+    ``finish_reason`` is :data:`FINISH_STOP` when the last generated token is the
+    EOS token, so the model ended the utterance, and :data:`FINISH_LENGTH` when
+    the loop exhausted its budget first -- including the empty result of a zero
+    budget. The EOS token stays in ``ids``; callers that want the spoken tokens
+    only should drop it when ``finish_reason == FINISH_STOP``.
+    """
+
     ids: list[int]
     chunks: list[np.ndarray]
     trace: SessionTrace | None
+    finish_reason: str
 
 
 class VibevoiceTtsSession:
@@ -372,4 +388,10 @@ class VibevoiceTtsSession:
             if trace is not None:
                 trace.logits.append((position, logits.copy()))
             next_token = self._masked_argmax(logits)
-        return SessionResult(ids=ids, chunks=chunks, trace=trace)
+        # The loop breaks as soon as an EOS is appended, so the last token is the
+        # EOS exactly when the model ended the utterance rather than the budget
+        # ending it. Deriving the reason from the token rather than from a break
+        # flag keeps the two equivalent for a chain that ends on its last
+        # allowed token.
+        finish_reason = FINISH_STOP if ids and ids[-1] == EOS_TOKEN_ID else FINISH_LENGTH
+        return SessionResult(ids=ids, chunks=chunks, trace=trace, finish_reason=finish_reason)

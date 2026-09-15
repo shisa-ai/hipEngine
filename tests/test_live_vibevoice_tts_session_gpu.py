@@ -588,3 +588,47 @@ def test_two_speaker_greedy_chain_matches_torch(two_session) -> None:
         f"session ran {len(res.chunks)} diffusion calls, oracle recorded {calls}"
     )
     assert res.ids == expected, "two-speaker chain moved off the oracle"
+
+
+def test_finish_reason_separates_eos_from_truncation(session, ref, lm, dif) -> None:
+    """A complete chain reports "stop"; a cut-off budget reports "length".
+
+    The oracle chain is 27 tokens and its last token is EOS. One token less is a
+    genuine truncation, so the two cases must not share a reason; both directions
+    are asserted so the field cannot be a constant.
+    """
+    from hipengine.runtime.vibevoice_tts_session import (
+        FINISH_LENGTH,
+        FINISH_STOP,
+        EOS_TOKEN_ID,
+    )
+
+    rows = _generation_rows(session, ref, lm)
+    calls = int(dif["num_calls_recorded"])
+
+    def run(budget):
+        return session.generate(
+            rows,
+            cfg_scale=1.3,
+            max_new_tokens=budget,
+            noise_hook=lambda i: dif[f"call{min(i, calls - 1)}_initial_noise"],
+            neg_hook=lambda i: dif[f"call{min(i, calls - 1)}_neg_condition"],
+        )
+
+    gen = np.asarray(lm["generated_ids"])[0]
+    expected = [int(t) for t in gen[len(np.asarray(lm["input_ids"])[0]) :]]
+    assert len(expected) == 27 and expected[-1] == EOS_TOKEN_ID
+
+    complete = run(27)
+    assert complete.ids == expected, "the 27-token chain moved off the oracle"
+    assert complete.finish_reason == FINISH_STOP
+
+    truncated = run(26)
+    assert truncated.ids == expected[:-1]
+    assert truncated.finish_reason == FINISH_LENGTH, (
+        "a budget that stops one token before EOS must not report a stop"
+    )
+
+    empty = run(0)
+    assert empty.ids == []
+    assert empty.finish_reason == FINISH_LENGTH
