@@ -107,6 +107,10 @@ def _group(rt: FakeHipRuntime, *, layers=(0, 1), hidden=8, per_rank_ffn=4):
         hidden=hidden,
         per_rank_ffn=per_rank_ffn,
         weights=weights,
+        # These tests pin the Python route's protocol (H2D return copies,
+        # per-rank reduced buffers, transport-level sync failures); the
+        # compiled driver has its own file.
+        driver="python",
     ), weights
 
 

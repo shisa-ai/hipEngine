@@ -16,6 +16,14 @@ Ownership and discipline:
   batched protocol; the exchange's host wait covers each rank's copies);
 * the group never allocates or frees per call - every buffer is persistent
   per rank, allocated at construction;
+* the exchange runs on one of two registered transports selected by ``driver``:
+  ``"compiled"`` (default: the hipcc-built host driver with the H2D return
+  path removed - consumers read the mapped pinned payload zero-copy; measured
+  156 us p50 in-schedule against 201 us for the Python route, with
+  bit-identical reduced payloads) or ``"python"`` (the original staged route:
+  pinned D2H, host f32 sum, H2D return - the registered fallback); both
+  reduce the same partials in the same order, so the reduced f32 payload is
+  bit-identical for the two-rank world;
 * any exchange failure poisons the transport and the group refuses further
   forwards; the caller must fail the whole rank group - a partially advanced
   session is not reusable;
@@ -30,6 +38,7 @@ from typing import Any, Mapping
 from hipengine.core.device import scoped_current_device
 from hipengine.distributed.shard_exec import MlpShardRank
 from hipengine.distributed.staged import StagedExchangeTransport
+from hipengine.distributed.staged_compiled import CompiledStagedExchangeTransport
 from hipengine.distributed.transport import TransportError
 
 
@@ -44,10 +53,11 @@ class MlpShardGroup:
     materialized planner shards from
     :func:`hipengine.distributed.shard_weights.upload_mlp_shard_weights`).
     The group builds one :class:`MlpShardRank` per (layer, device) and one
-    shared :class:`StagedExchangeTransport`; the reduced f32 buffers are the
-    transport's persistent per-rank buffers, reused layer to layer, which is
-    safe because the caller consumes the reduced value on the same stream
-    that the next layer's exchange reads.
+    shared exchange transport (selected by ``driver``); the reduced f32
+    buffers are the transport's persistent per-rank buffers (Python route) or
+    the mapped pinned payload rows (compiled route), reused layer to layer,
+    which is safe because the caller consumes the reduced value on the same
+    stream that the next layer's exchange reads.
     """
 
     def __init__(
@@ -60,9 +70,14 @@ class MlpShardGroup:
         per_rank_ffn: int,
         weights: Mapping[int, Mapping[int, Mapping[str, Any]]],
         staging_dtype: str = "f32",
+        driver: str = "compiled",
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
+        if driver not in {"python", "compiled"}:
+            raise ShardGroupError(
+                f"unknown exchange driver {driver!r}; expected 'python' or 'compiled'"
+            )
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
         self.hidden = int(hidden)
@@ -88,13 +103,29 @@ class MlpShardGroup:
                     per_rank_ffn=per_rank_ffn,
                     partial_dtype=staging_dtype,
                 )
-        self._transport = StagedExchangeTransport(
-            runtime,
-            devices=self.devices,
-            streams=self._streams,
-            hidden=hidden,
-            staging_dtype=staging_dtype,
-        )
+        if driver == "compiled":
+            # The compiled host driver: the same batched protocol enqueued
+            # from hipcc-built code, with the H2D return path removed (the
+            # consumer reads the mapped pinned payload zero-copy). Bit-ident
+            # sums for the two-rank world; the Python route stays the
+            # registered fallback.
+            self._transport: StagedExchangeTransport | CompiledStagedExchangeTransport = (
+                CompiledStagedExchangeTransport(
+                    runtime,
+                    devices=self.devices,
+                    streams=self._streams,
+                    hidden=hidden,
+                    staging_dtype=staging_dtype,
+                )
+            )
+        else:
+            self._transport = StagedExchangeTransport(
+                runtime,
+                devices=self.devices,
+                streams=self._streams,
+                hidden=hidden,
+                staging_dtype=staging_dtype,
+            )
         # The bf16 boundary buffer per rank: the reduced f32 value cast to the
         # dtype the TP1 local chain's down projection writes, so the caller's
         # residual add consumes one identical contract on either path.

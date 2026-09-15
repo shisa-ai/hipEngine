@@ -190,6 +190,7 @@ def run_arm(
     eos_token_id: int,
     tokenizer: Qwen35GGUFTokenizer,
     label: str,
+    driver: str = "python",
 ) -> tuple[dict[str, Any], np.ndarray]:
     """One fresh session: generations + teacher-forced logits.
 
@@ -199,12 +200,13 @@ def run_arm(
 
     started = time.perf_counter()
     session = MlpTP2GenerationSession(
-        model, devices=devices, mode=mode, max_sequence_length=2048
+        model, devices=devices, mode=mode, max_sequence_length=2048, driver=driver
     )
     built_s = time.perf_counter() - started
     record: dict[str, Any] = {
         "label": label,
         "mode": mode,
+        "driver": driver if mode == "tp2" else None,
         "devices": list(devices),
         "device_names": _device_names(session),
         "memory_after_load": _device_memory(session),
@@ -252,6 +254,13 @@ def main(argv: list[str] | None = None) -> int:
         default="benchmarks/results/2026-09-15-w7900-tp2-mlp-generate-e2e.json",
     )
     parser.add_argument("--max-new-tokens", type=int, default=16)
+    parser.add_argument(
+        "--driver",
+        default="compiled",
+        choices=("python", "compiled"),
+        help="the TP2 arm's staged-exchange transport: the compiled host driver "
+        "(default; mapped pinned payload, no H2D return) or the Python staged route",
+    )
     args = parser.parse_args(argv)
 
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -278,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             eos_token_id=eos_token_id,
             tokenizer=tokenizer,
             label=label,
+            driver=args.driver,
         )
         arms.append(record)
         logits_by_label[label] = teacher_logits
