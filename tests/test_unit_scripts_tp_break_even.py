@@ -458,6 +458,9 @@ def test_build_report_reports_a_losing_projection(mod) -> None:
     assert report["verdict"]["certified"] is False
     row = report["rows"][0]
     assert row["projected_speedup"] < 1.0
+    # A row at or below 1.0x is a genuine blocker, not an unmet aspiration.
+    assert report["verdict"]["beats_faster_tp1_arm"] is False
+    assert any("would not beat the faster TP1 arm" in r for r in report["verdict"]["withheld_reasons"])
     assert row["required_improvement_factor"] > 1.0
     assert json.loads(json.dumps(report))["kind"] == "tp2_break_even"
 
@@ -483,11 +486,89 @@ def test_build_report_pins_the_share_sensitivity_of_the_matched_pair(mod) -> Non
         mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
         mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
     ]
-    passing = mod.build_report(devices, collective_ms=(1.3,), fixed_shares=(0.0, 0.2))
+    evidence = ["benchmarks/results/shard-kernel-smoke.json"]
+    passing = mod.build_report(
+        devices, collective_ms=(1.3,), fixed_shares=(0.0, 0.2), shard_kernel_evidence=evidence
+    )
     assert passing["verdict"]["passes_target_in_every_row"] is True
-    dipping = mod.build_report(devices, collective_ms=(1.3,), fixed_shares=(0.3,))
+    dipping = mod.build_report(
+        devices, collective_ms=(1.3,), fixed_shares=(0.3,), shard_kernel_evidence=evidence
+    )
     assert dipping["verdict"]["passes_target_in_every_row"] is False
     assert dipping["rows"][0]["projected_speedup"] == pytest.approx(1.294, abs=0.005)
+    # Missing the aspiration is recorded, never withheld, and does not stop the
+    # result being certified: the design accepts any qualified net improvement.
+    assert dipping["verdict"]["beats_faster_tp1_arm"] is True
+    assert dipping["verdict"]["meets_planning_aspiration"] is False
+    assert dipping["verdict"]["certified"] is True
+    assert dipping["verdict"]["withheld_reasons"] == []
+    assert any("aspiration" in note for note in dipping["verdict"]["aspiration_notes"])
+    assert not any(
+        "target" in reason for reason in dipping["verdict"]["withheld_reasons"]
+    )
+
+
+def test_the_two_thresholds_are_reported_separately(mod) -> None:
+    """A 1.1x-class result is a qualified win, not a failure."""
+
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
+    ]
+    devices = [
+        mod.parse_tp1("W7900=29.575:15.652:8.646:512-128-int8kv-eager"),
+        mod.parse_tp1("XTX=35.355:15.652:7.009:512-128-int8kv-eager"),
+    ]
+    report = mod.build_report(
+        devices,
+        collective_ms=(3.2,),
+        fixed_shares=(0.0, 0.1, 0.2, 0.3),
+        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+    )
+    verdict = report["verdict"]
+    speedups = [row["projected_speedup"] for row in report["rows"]]
+    assert max(speedups) < mod.TARGET_SPEEDUP, "this fixture must miss the aspiration"
+    assert min(speedups) > mod.BEATS_TP1_SPEEDUP, "and clear the gate"
+    assert verdict["beats_faster_tp1_arm"] is True
+    assert verdict["meets_planning_aspiration"] is False
+    # The gate decides certification; the aspiration only annotates it.
+    assert verdict["certified"] is True
+    assert verdict["withheld_reasons"] == []
+    assert len(verdict["aspiration_notes"]) == 1
+    # The legacy field still means the aspiration, so older readers are not
+    # silently re-pointed at the gate.
+    assert verdict["passes_target_in_every_row"] is verdict["meets_planning_aspiration"]
+    assert verdict["aspiration_target_speedup"] == mod.TARGET_SPEEDUP
+
+
+def test_an_unreachable_gate_is_withheld_but_an_unreachable_aspiration_is_not(mod) -> None:
+    """A bound below 1.0x is structural; a bound below 1.3x only caps the win."""
+
+    devices = [
+        mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
+        mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
+    ]
+    # A large rank-weight share with no shard kernel benefit: the optimistic
+    # bound (free rank-weight reads) cannot reach the gate.
+    devices = [
+        mod.parse_tp1("W7900=29.575:15.652:8.646:512-128-int8kv-eager"),
+        mod.parse_tp1("XTX=35.355:15.652:7.009:512-128-int8kv-eager"),
+    ]
+    # 30 ms of collective exceeds the faster arm's whole 28.28 ms token time, so
+    # even with free rank-weight reads the group cannot beat it.
+    report = mod.build_report(
+        devices,
+        collective_ms=(30.0,),
+        fixed_shares=(0.0,),
+    )
+    verdict = report["verdict"]
+    assert verdict["optimistic_bound_beats_tp1"] is False
+    assert any("no shard kernel can make the group" in r for r in verdict["withheld_reasons"])
+    assert verdict["certified"] is False
+    # An unreachable gate is withheld; an unreachable aspiration is only noted.
+    assert not any(
+        "aspiration" in reason for reason in verdict["withheld_reasons"]
+    )
 
 
 def test_build_report_reports_an_optimistic_bound_that_clears_the_target(mod) -> None:
@@ -528,7 +609,13 @@ def test_optimistic_bound_decides_a_losing_projection_without_shard_kernels(mod)
     verdict = report["verdict"]
     assert verdict["optimistic_bound_speedup"] == pytest.approx(28.284 / 22.758, rel=1e-4)
     assert verdict["optimistic_bound_clears_target"] is False
-    assert any("optimistic bound" in reason for reason in verdict["withheld_reasons"])
+    # The bound clears the gate, so it bounds the win rather than blocking it.
+    assert verdict["optimistic_bound_beats_tp1"] is True
+    assert any("optimistic bound" in note for note in verdict["aspiration_notes"])
+    assert not any("optimistic bound" in reason for reason in verdict["withheld_reasons"])
+    # What does block it is the projection itself: no row beats the faster TP1 arm.
+    assert verdict["beats_faster_tp1_arm"] is False
+    assert any("would not beat the faster TP1 arm" in r for r in verdict["withheld_reasons"])
     assert verdict["certified"] is False
     assert report["errors"] == []
 

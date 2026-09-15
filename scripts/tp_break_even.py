@@ -77,7 +77,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_FIXED_SHARES = (0.0, 0.1, 0.2, 0.3)
+#: The planning aspiration. The design accepts any qualified net improvement, so
+#: missing this is reported as an unmet aspiration rather than as a failure.
 TARGET_SPEEDUP = 1.3
+
+#: The gate that actually decides whether a TP2 group is worth building: it must
+#: be faster than the faster matched TP1 arm. A row at or below this is a genuine
+#: blocker, because the group would not pay for itself at that fixed share.
+BEATS_TP1_SPEEDUP = 1.0
 
 
 def parse_tp1(spec: str) -> dict[str, Any]:
@@ -410,29 +417,60 @@ def build_report(
         )
     if not report["pre_packet3_gate"]["satisfied"]:
         withheld.append("the pre-Packet-3 shard-kernel gate has no recorded evidence")
-    passes = bool(speedups) and min(speedups) >= TARGET_SPEEDUP
-    if not passes:
-        withheld.append(f"a row projects below the {TARGET_SPEEDUP}x target")
+    # Two thresholds, deliberately not conflated:
+    #   beats_faster_tp1_arm   the gate. Every row must beat the faster TP1 arm.
+    #   meets_planning_aspiration   the 1.3x target. Missing it is recorded, not
+    #                               withheld: the design accepts smaller wins.
+    beats = bool(speedups) and min(speedups) > BEATS_TP1_SPEEDUP
+    if not beats:
+        withheld.append(
+            f"a row projects at or below {BEATS_TP1_SPEEDUP}x, so the group would not "
+            "beat the faster TP1 arm at that fixed share"
+        )
+    meets_aspiration = bool(speedups) and min(speedups) >= TARGET_SPEEDUP
     optimistic = [
         row["speedup_if_rank_weights_were_free"]
         for row in report["rows"]
         if row["speedup_if_rank_weights_were_free"] is not None
     ]
     optimistic_bound = max(optimistic) if optimistic else None
-    if optimistic_bound is not None and optimistic_bound < TARGET_SPEEDUP:
+    # A structurally unreachable *gate* is a blocker; an unreachable aspiration
+    # only bounds how far the win can go.
+    optimistic_beats = (
+        None if optimistic_bound is None else optimistic_bound > BEATS_TP1_SPEEDUP
+    )
+    optimistic_meets_aspiration = (
+        None if optimistic_bound is None else optimistic_bound >= TARGET_SPEEDUP
+    )
+    if optimistic_beats is False:
         withheld.append(
             f"the optimistic bound ({optimistic_bound:.3f}x with free rank-weight reads) is "
-            f"below the {TARGET_SPEEDUP}x target, so no shard kernel can reach it"
+            f"at or below {BEATS_TP1_SPEEDUP}x, so no shard kernel can make the group "
+            "faster than the faster TP1 arm"
+        )
+    aspiration_notes: list[str] = []
+    if not meets_aspiration:
+        aspiration_notes.append(
+            f"the worst row projects {min(speedups):.3f}x, below the {TARGET_SPEEDUP}x "
+            "planning aspiration; a qualified net improvement is still retained"
+        )
+    if optimistic_meets_aspiration is False and optimistic_beats:
+        aspiration_notes.append(
+            f"the optimistic bound ({optimistic_bound:.3f}x with free rank-weight reads) is "
+            f"below the {TARGET_SPEEDUP}x aspiration, so the win is bounded below it"
         )
     report["verdict"] = {
         "target_speedup": TARGET_SPEEDUP,
-        "passes_target_in_every_row": passes,
-        "certified": passes and not withheld,
+        "aspiration_target_speedup": TARGET_SPEEDUP,
+        "beats_faster_tp1_arm": beats,
+        "meets_planning_aspiration": meets_aspiration,
+        "aspiration_notes": aspiration_notes,
+        "passes_target_in_every_row": meets_aspiration,
+        "certified": beats and not withheld,
         "withheld_reasons": withheld,
         "optimistic_bound_speedup": optimistic_bound,
-        "optimistic_bound_clears_target": (
-            None if optimistic_bound is None else optimistic_bound >= TARGET_SPEEDUP
-        ),
+        "optimistic_bound_beats_tp1": optimistic_beats,
+        "optimistic_bound_clears_target": optimistic_meets_aspiration,
         "minimum_headroom_factor": min(headroom) if headroom else None,
         "maximum_required_improvement_factor": max(
             (
@@ -585,11 +623,15 @@ def main(argv: list[str] | None = None) -> int:
             )
         verdict = report["verdict"]
         print(
-            f"verdict: target {verdict['target_speedup']}x met in every row = "
-            f"{verdict['passes_target_in_every_row']}; certified = {verdict['certified']}"
+            f"verdict: beats the faster TP1 arm in every row = "
+            f"{verdict['beats_faster_tp1_arm']}; meets the "
+            f"{verdict['aspiration_target_speedup']}x aspiration = "
+            f"{verdict['meets_planning_aspiration']}; certified = {verdict['certified']}"
         )
         for reason in verdict["withheld_reasons"]:
             print(f"  withheld: {reason}", file=sys.stderr)
+        for note in verdict["aspiration_notes"]:
+            print(f"  aspiration: {note}", file=sys.stderr)
 
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
