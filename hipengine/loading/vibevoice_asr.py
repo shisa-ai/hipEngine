@@ -61,11 +61,18 @@ class _FrontendIndex:
         self.index = index
         self.hf = index.config.get("model_type") == "vibevoice_asr"
 
+    def read(self, name):
+        return _load_tensor(self, name)
+
     def require(self, names):
         return self.index.require(tuple(hf_frontend_tensor_name(n) for n in names) if self.hf else names)
 
 
-def _load_tensor(index: Any, name: str, path: Path) -> np.ndarray:
+def _load_frontend_tensor(index: Any, name: str, path: Path) -> np.ndarray:
+    return index.read(name)
+
+
+def _load_tensor(index, name, path=None):
     info = index.require((name,))[0]
     payload = read_tensor_storage_bytes(info)
     if info.dtype == "BF16":
@@ -88,16 +95,16 @@ def _stage_conv_stride(weight_shape: tuple[int, ...]) -> int:
 def _load_block(index: Any, bp: str, path: Path) -> dict[str, np.ndarray]:
     """Load one ConvNeXt block's ten tensors under checkpoint prefix ``bp``."""
     return {
-        "norm_weight": _load_tensor(index, f"{bp}.norm.weight", path),
-        "conv_weight": _load_tensor(index, f"{bp}.mixer.conv.conv.conv.weight", path),
-        "conv_bias": _load_tensor(index, f"{bp}.mixer.conv.conv.conv.bias", path),
-        "gamma": _load_tensor(index, f"{bp}.gamma", path),
-        "ffn_norm_weight": _load_tensor(index, f"{bp}.ffn_norm.weight", path),
-        "ffn_gamma": _load_tensor(index, f"{bp}.ffn_gamma", path),
-        "ffn_linear1_weight": _load_tensor(index, f"{bp}.ffn.linear1.weight", path),
-        "ffn_linear1_bias": _load_tensor(index, f"{bp}.ffn.linear1.bias", path),
-        "ffn_linear2_weight": _load_tensor(index, f"{bp}.ffn.linear2.weight", path),
-        "ffn_linear2_bias": _load_tensor(index, f"{bp}.ffn.linear2.bias", path),
+        "norm_weight": _load_frontend_tensor(index, f"{bp}.norm.weight", path),
+        "conv_weight": _load_frontend_tensor(index, f"{bp}.mixer.conv.conv.conv.weight", path),
+        "conv_bias": _load_frontend_tensor(index, f"{bp}.mixer.conv.conv.conv.bias", path),
+        "gamma": _load_frontend_tensor(index, f"{bp}.gamma", path),
+        "ffn_norm_weight": _load_frontend_tensor(index, f"{bp}.ffn_norm.weight", path),
+        "ffn_gamma": _load_frontend_tensor(index, f"{bp}.ffn_gamma", path),
+        "ffn_linear1_weight": _load_frontend_tensor(index, f"{bp}.ffn.linear1.weight", path),
+        "ffn_linear1_bias": _load_frontend_tensor(index, f"{bp}.ffn.linear1.bias", path),
+        "ffn_linear2_weight": _load_frontend_tensor(index, f"{bp}.ffn.linear2.weight", path),
+        "ffn_linear2_bias": _load_frontend_tensor(index, f"{bp}.ffn.linear2.bias", path),
     }
 
 
@@ -114,12 +121,16 @@ def load_vibevoice_encoder(
         raise ValueError("tokenizer must be 'acoustic' or 'semantic'")
     path = resolve_model_path(model_path)
     index = _FrontendIndex(load_weight_index(path))
+    return _load_encoder_from_index(index, path, tokenizer)
+
+
+def _load_encoder_from_index(index, path, tokenizer):
     prefix = f"model.{tokenizer}_tokenizer.encoder"
 
-    stem_w = _load_tensor(index, f"{prefix}.downsample_layers.0.0.conv.conv.weight", path)
-    stem_b = _load_tensor(index, f"{prefix}.downsample_layers.0.0.conv.conv.bias", path)
-    head_w = _load_tensor(index, f"{prefix}.head.conv.conv.weight", path)
-    head_b = _load_tensor(index, f"{prefix}.head.conv.conv.bias", path)
+    stem_w = _load_frontend_tensor(index, f"{prefix}.downsample_layers.0.0.conv.conv.weight", path)
+    stem_b = _load_frontend_tensor(index, f"{prefix}.downsample_layers.0.0.conv.conv.bias", path)
+    head_w = _load_frontend_tensor(index, f"{prefix}.head.conv.conv.weight", path)
+    head_b = _load_frontend_tensor(index, f"{prefix}.head.conv.conv.bias", path)
 
     # infer execution order of the 6 strided entry convs from in-channels
     stage_entries: list[tuple[int, str, tuple[int, ...]]] = []
@@ -140,9 +151,9 @@ def load_vibevoice_encoder(
     if head_w.shape[1] != widths[-1]:
         raise ValueError(f"head in-channels {head_w.shape[1]} != last stage width {widths[-1]}")
 
-    stage_conv_weights = tuple(_load_tensor(index, n, path) for n in stage_names)
+    stage_conv_weights = tuple(_load_frontend_tensor(index, n, path) for n in stage_names)
     stage_conv_biases = tuple(
-        _load_tensor(index, n.replace(".weight", ".bias"), path) for n in stage_names
+        _load_frontend_tensor(index, n.replace(".weight", ".bias"), path) for n in stage_names
     )
 
     # block depths and widths, asserted against the expected layout
@@ -197,13 +208,17 @@ def load_vibevoice_connector(model_path: str | Path, tokenizer: str) -> Vibevoic
         raise ValueError("tokenizer must be 'acoustic' or 'semantic'")
     path = resolve_model_path(model_path)
     index = _FrontendIndex(load_weight_index(path))
+    return _load_connector_from_index(index, path, tokenizer)
+
+
+def _load_connector_from_index(index, path, tokenizer):
     prefix = f"model.{tokenizer}_connector"
     return VibevoiceConnectorWeights(
-        fc1_weight=_load_tensor(index, f"{prefix}.fc1.weight", path),
-        fc1_bias=_load_tensor(index, f"{prefix}.fc1.bias", path),
-        norm_weight=_load_tensor(index, f"{prefix}.norm.weight", path),
-        fc2_weight=_load_tensor(index, f"{prefix}.fc2.weight", path),
-        fc2_bias=_load_tensor(index, f"{prefix}.fc2.bias", path),
+        fc1_weight=_load_frontend_tensor(index, f"{prefix}.fc1.weight", path),
+        fc1_bias=_load_frontend_tensor(index, f"{prefix}.fc1.bias", path),
+        norm_weight=_load_frontend_tensor(index, f"{prefix}.norm.weight", path),
+        fc2_weight=_load_frontend_tensor(index, f"{prefix}.fc2.weight", path),
+        fc2_bias=_load_frontend_tensor(index, f"{prefix}.fc2.bias", path),
     )
 
 

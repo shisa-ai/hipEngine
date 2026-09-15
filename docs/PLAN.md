@@ -1044,6 +1044,15 @@ The public path selects strict frontend GEMM and incremental prefill; optimized
 variants have no certified production plan yet. See
 [MODEL-VIBEVOICE-ASR.md](MODEL-VIBEVOICE-ASR.md) for API and qualification status.
 
+The standalone Q4 GGUF path embeds hash-checked tokenizer/configuration assets
+and BF16 frontend tensors in the weight file. `VibeVoiceASRQ4Generator` and
+`scripts/vibevoice_asr_transcribe.py` load it without an HF checkpoint or network
+access, using the existing evaluated WMMA/Q4 arithmetic candidates. This
+packaging path does not change the public BF16 default or certify a production
+profile. The exporter supports `--repackage` to preserve existing quantized
+tensor bytes while embedding all six source assets.
+
+
 ## Extensibility Design
 
 hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implementations; the engine composes concrete instances at load time from the user's choice.

@@ -12,6 +12,9 @@ is stored as ``vibevoice.text.*`` keys mirroring ``config.json``'s
 ``text_config``, and the encoder geometry as ``vibevoice.acoustic.*`` /
 ``vibevoice.semantic.*`` so a GGUF-side loader can rebuild
 ``VibevoiceQwen2Spec`` and the encoder configs without the HF directory.
+The complete tokenizer, configuration, processor and chat-template assets are
+embedded with a versioned SHA-256 manifest. Use --repackage to add these assets
+to an existing quantized GGUF while preserving every tensor byte.
 
 Usage:
     python3 scripts/vibevoice_asr_to_gguf.py \
@@ -201,6 +204,38 @@ def add_llama_metadata(writer: _gguf().GGUFWriter, config: dict) -> None:
     writer.add_uint32("llama.vocab_size", int(text["vocab_size"]))
 
 
+def repackage(source: Path, destination: Path, snapshot: Path):
+    """Copy raw tensors into a new container with complete embedded assets."""
+    from hipengine.loading.gguf import GGUFReader, scan_gguf
+    from hipengine.loading.vibevoice_assets import asset_metadata, PREFIX
+    from scripts.vibevoice_asr_gguf_merge import _add_kv
+    if source.resolve() == destination.resolve() or destination.exists():
+        raise ValueError('repackage output must be a new file')
+    info = scan_gguf(source)
+    if info.architecture != 'vibevoice-asr':
+        raise ValueError('expected hipEngine vibevoice-asr GGUF')
+    assets = asset_metadata(snapshot)
+    # Stage to a sibling path and rename only after the full write succeeds.
+    import tempfile
+    with tempfile.TemporaryDirectory(dir=destination.parent, prefix='.vibevoice-pack-') as temp:
+        staged = Path(temp) / destination.name
+        writer = _gguf().GGUFWriter(str(staged), arch=info.architecture)
+        for key, value in info.metadata.items():
+            if key != 'general.architecture' and not key.startswith(PREFIX):
+                _add_kv(writer, key, value)
+        for key, value in assets.items():
+            _add_kv(writer, key, value)
+        reader = GGUFReader(source)
+        for tensor in info.tensors:
+            writer.add_tensor(tensor.name, np.asarray(reader.tensor_data(tensor.name)),
+                              raw_dtype=_gguf().GGMLQuantizationType(tensor.ggml_type))
+        writer.write_header_to_file()
+        writer.write_kv_data_to_file()
+        writer.write_tensors_to_file()
+        writer.close()
+        staged.rename(destination)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="microsoft/VibeVoice-ASR-HF")
@@ -222,9 +257,13 @@ def main() -> int:
         default="bf16",
         help="storage dtype (bf16 keeps the checkpoint byte-identical)",
     )
+    parser.add_argument("--repackage", type=Path, help="existing GGUF: embed assets without changing tensor bytes")
     args = parser.parse_args()
 
     snapshot = resolve_snapshot(args.model)
+    if args.repackage:
+        repackage(args.repackage, Path(args.out), snapshot)
+        return 0
     config = json.load(open(snapshot / "config.json"))
 
     arch = "vibevoice-asr"
@@ -234,6 +273,10 @@ def main() -> int:
         name_fn = llama_name
     writer = _gguf().GGUFWriter(path=args.out, arch=arch)
     add_metadata(writer, config)
+    from hipengine.loading.vibevoice_assets import asset_metadata
+    from scripts.vibevoice_asr_gguf_merge import _add_kv
+    for key, value in asset_metadata(snapshot).items():
+        _add_kv(writer, key, value)
     if args.llama_names:
         add_llama_metadata(writer, config)
 

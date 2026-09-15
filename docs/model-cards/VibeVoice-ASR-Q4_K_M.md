@@ -15,7 +15,7 @@ tags:
 
 A quantized version of Microsoft's [VibeVoice-ASR-HF](https://huggingface.co/microsoft/VibeVoice-ASR-HF)
 for [hipEngine](https://github.com/shisa-ai/hipEngine), a native HIP inference
-engine for AMD GPUs. The GGUF is **6.75 GB**, about **59.5% smaller** than the
+engine for AMD GPUs. The GGUF is **6.76 GB**, about **59.4% smaller** than the
 original 16.66 GB BF16 checkpoint weights.
 
 ## What's compressed?
@@ -27,7 +27,7 @@ audio connectors, output head, norms and biases remain BF16.
 | Weight files | Size |
 | --- | ---: |
 | Original BF16 checkpoint | 16.66 GB |
-| This Q4_K_M GGUF | **6.75 GB** |
+| This Q4_K_M GGUF | **6.76 GB** |
 
 Sizes are decimal GB on disk, not total runtime memory. hipEngine expands token
 embeddings to BF16 when loading and also needs memory for audio processing,
@@ -53,12 +53,23 @@ reference words. Tested on Radeon 8060S (gfx1151).
 
 ## Use with hipEngine
 
-Use hipEngine's [VibeVoice-ASR Q4 evaluation runner](https://github.com/shisa-ai/hipEngine/blob/main/scripts/vibevoice_asr_wer_full.py)
-with `--lanes hipq4 --gguf /path/to/vibevoice-asr-q4km.gguf`.
-The current runner also requires the original HF checkpoint for the audio
-frontend, configuration and processor; the GGUF alone is not a standalone
-transcription package. Its tensor layout is specific to hipEngine and has not
-been validated with llama.cpp or other GGUF runtimes.
+The single GGUF contains all weights, the tokenizer, model and processor
+configuration, generation settings and chat template. No original checkpoint
+or companion files are needed at inference.
+
+After installing [hipEngine](https://github.com/shisa-ai/hipEngine), download
+the file and run from the hipEngine checkout:
+
+```bash
+hf download shisa-ai/VibeVoice-ASR-Q4_K_M vibevoice-asr-q4_k_m.gguf --local-dir models
+python scripts/vibevoice_asr_transcribe.py \
+  --model models/vibevoice-asr-q4_k_m.gguf --audio speech.wav
+```
+
+Input is mono 24 kHz PCM16 WAV. Inference runs without PyTorch or network
+access. This release uses hipEngine's evaluated Q4 path; broader production
+qualification is ongoing. Its tensor layout has not been validated with
+llama.cpp or other GGUF runtimes.
 
 ## Comparison with another public GGUF
 
@@ -69,16 +80,16 @@ shows a different compression policy:
 
 | Component | This hipEngine quant | cstr quant |
 | --- | --- | --- |
-| File size | 6.75 GB | 4.81 GB |
+| File size | 6.76 GB | 4.81 GB |
 | LM layer matrices | Q4_K + 28 Q6_K tensors | Q4_K throughout |
 | Token embeddings | Q4_K | Q4_K |
 | Output head | BF16 | Q4_K |
 | Audio encoders/connectors | BF16 | Mixed Q4_K/Q4_0/F16/F32 |
-| Embedded tokenizer | No | Yes |
+| Embedded tokenizer | Yes | Yes |
 | Runtime layout | hipEngine | CrispASR |
 
 Both files contain 901 tensors totaling 8.33 billion parameters. Of the
-1.94 GB size difference, approximately 0.91 GB comes from the audio frontend
+1.95 GB size difference, approximately 0.91 GB comes from the audio frontend
 and 0.78 GB from the output head; most of the remainder comes from selected
 LM weights kept in Q6_K here. Although cstr's card labels its file Q4_K_M,
 the inspected file contains no Q6_K tensors.
