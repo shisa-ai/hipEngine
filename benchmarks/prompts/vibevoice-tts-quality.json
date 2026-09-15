@@ -6,19 +6,25 @@
   "reference_sets": {
     "single": {
       "fixture": "single_reference.npz",
-      "voices": ["en-Alice_woman.wav"],
+      "voices": [
+        "en-Alice_woman.wav"
+      ],
       "note": "One speaker. Reference PCM and per-speaker voice-prompt token counts come from this fixture, which records the fork's own preprocessing output for this voice file."
     },
     "two": {
       "fixture": "two_reference.npz",
-      "voices": ["en-Alice_woman.wav", "en-Carter_man.wav"],
+      "voices": [
+        "en-Alice_woman.wav",
+        "en-Carter_man.wav"
+      ],
       "note": "Two speakers. Both references are the fork's own output for these two files."
     }
   },
   "limitations": [
     "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
-    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected, so a request is not bit-reproducible across runs. The checks are chosen to be robust to that.",
-    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output."
+    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected. A request IS reproducible at a fixed seed, because the suite reseeds the session per request; it is not comparable to the torch lane, whose stream differs.",
+    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output.",
+    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated."
   ],
   "requests": [
     {

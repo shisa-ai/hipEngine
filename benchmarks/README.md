@@ -1222,13 +1222,15 @@ torch oracle venv.
 
 | Lane | Pooled RTF | Warm | Time to first audio | LM | Diffusion | Decode | Semantic |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | 1.381 | 4.603 s | 0.406 s | 1.547 s | 1.383 s | 0.343 s | 1.135 s |
-| torch (oracle venv) | **1.303** | 4.343 s | — | — | — | — | — |
+| hipEngine | 1.337 | 4.457 s | 0.395 s | 1.518 s | 1.314 s | 0.327 s | 1.108 s |
+| torch (oracle venv) | 1.303 | 4.343 s | — | — | — | — | — |
 
-Five hipEngine runs of this protocol measured pooled RTF 1.316, 1.381, 1.408,
-1.431 and 1.434 on this host, so the row above is the median. Decode is stable
-across all five (0.343-0.355 s); the spread is in the LM, diffusion and semantic
-stages, which moved together by about 8%.
+Four hipEngine runs of this protocol measured pooled RTF 1.315, 1.333, 1.337 and
+1.355 on this host, so the row above is the median. Decode is stable across all
+four (0.323-0.327 s). The two lanes are not yet a like-for-like comparison: they
+draw different random operands, and the hipEngine lane's generation budget is
+declared by the request (`max_audio_seconds` 4.333 s, a 35-token cap) rather than
+sized from the oracle's token count, so it reaches EOS with headroom.
 
 The 27-token constrained chain is exact on the same run and the session's own
 negative conditions match the recorded ones, with no prompt embeddings or
@@ -1243,30 +1245,30 @@ Six held-out scripts (one to four turns, 7 to 40 words) over the same two voice
 sets, run with nothing injected: the session draws its own voice-prompt VAE
 noise, its own diffusion noise and its own negative-LM branch, and each request's
 generation budget comes from its declared `max_audio_seconds` rather than from the
-oracle's token count. Three seeds per request.
+oracle's token count. Three seeds per request, 18 request-runs in total.
 
-| Request | Turns | WER (3 seeds) | Duration ratio | Voice attribution |
-| --- | ---: | --- | ---: | :-: |
-| `single-short` | 1 | 0.0 / 0.0 / 0.0 | 0.81-0.95 | n/a |
-| `single-medium` | 1 | 0.0 / 0.0 / 0.0 | 0.64-0.80 | n/a |
-| `single-numbers` | 1 | 0.0 / 0.0 / 0.0 | 0.83-1.03 | n/a |
-| `two-2turn` | 2 | **0.353** / 0.059 / 0.059 | 0.96-1.08 | 3/3 |
-| `two-4turn` | 4 | 0.0 / 0.0 / 0.0 | 1.01-1.07 | 3/3 |
-| `two-long` | 2 | 0.025 / 0.025 / 0.05 | 0.78-0.81 | 3/3 |
+| Request | Turns | WER (3 seeds) | Duration ratio | Speaker runs (3 seeds) |
+| --- | ---: | --- | ---: | --- |
+| `single-short` | 1 | 0.0 / 0.0 / 0.0 | 0.76-1.14 | n/a |
+| `single-medium` | 1 | 0.0 / 0.0 / 0.0 | 0.67-0.87 | n/a |
+| `single-numbers` | 1 | 0.0 / 0.0 / 0.0 | 0.83-0.97 | n/a |
+| `two-2turn` | 2 | 0.0 / 0.059 / 0.0 | 0.86-0.96 | `[0,1]` x3 |
+| `two-4turn` | 4 | 0.0 / 0.0 / 0.0 | 1.01-1.07 | `[0,1,0,1]` x3 |
+| `two-long` | 2 | 0.025 / 0.05 / 0.025 | 0.73-0.88 | `[0,1]` x3 |
 
-17 of 18 request-runs pass. Every request reaches EOS, no output clips, the
-longest internal gap is 0.98 s, and no repeated 4-gram appears. The one failure
-is the shortest two-speaker script's first turn on one seed, where "I think the
-meeting went well this morning" came back as "I can see you in the world this
-morning"; its second turn is word-perfect on all three seeds.
+All 18 request-runs pass. Every request reaches EOS, no output clips, the longest
+internal gap is under 1 s, and no repeated 4-gram appears. The non-zero WER values
+are single words, including the `cancelled`/`canceled` spelling difference.
 
-Voice attribution is measured on the acoustic encoder's own window assignment,
-not on the ASR's speaker labels: the ASR reports a single speaker for two-speaker
-scripts that contain both voices (the 2-turn script on all three seeds, the long
-2-turn script on two of three), while the encoder assignment makes a clean single
-transition between the two references in every case. The three non-zero WER
-values below 0.06 are single words, one of them the `cancelled`/`canceled`
-spelling difference.
+Speaker attribution is measured on the acoustic encoder's own window assignment,
+not on the ASR's speaker labels, which report a single speaker for two-speaker
+scripts that contain both voices. The four-turn script reproduces its whole
+`[0,1,0,1]` sequence on all three seeds, so the check covers the intermediate
+speaker changes rather than only the endpoints. The instrument does **not**
+resolve absolute voice identity: classifying a single-voice request against both
+references sits at the noise floor (mean cosines 0.424 against 0.413 for one
+request) and assigns every window to the wrong reference for another, so identity
+is recorded per request as a diagnostic and is not gated.
 
 Evidence: [quality suite](results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json).
 

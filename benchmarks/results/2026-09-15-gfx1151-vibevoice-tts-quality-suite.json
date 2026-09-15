@@ -24,7 +24,7 @@
     "max_abs": 1.0,
     "max_repeated_4grams": 0,
     "turn_count_min": 1,
-    "voice_attribution": "for a script with more than one speaker, the encoder's window assignment must open on the script's first speaker and close on its last"
+    "voice_attribution": "for a script with more than one speaker, the encoder's window assignment must reproduce the script's whole speaker sequence, not only its endpoints"
   },
   "attribution_instrument": {
     "method": "hipengine.runtime.vibevoice_encoder.encode_reference (deterministic, no VAE sampling); each window assigned to the reference voice with the higher cosine similarity to its mean latent",
@@ -32,12 +32,15 @@
     "hop_seconds": 0.5,
     "decision_margin": 0.1,
     "min_decided_windows": 3,
+    "resolves": "speaker changes inside an utterance that contains both voices: the 4-turn script reproduces [0, 1, 0, 1] on all three seeds",
+    "does_not_resolve": "absolute voice identity for single-voice audio. Classifying a single-speaker request against both references sits at the noise floor (mean cosines 0.4236 against 0.4125 for one request), assigns every window to the wrong reference for another, and is therefore recorded per request as attribution_identity_control rather than gated",
     "asr_speaker_labels": "reported per request as a diagnostic, not gated: on these requests the ASR reports one speaker for two-speaker scripts that contain both voices"
   },
   "limitations": [
     "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
-    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected, so a request is not bit-reproducible across runs. The checks are chosen to be robust to that.",
-    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output."
+    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected. A request IS reproducible at a fixed seed, because the suite reseeds the session per request; it is not comparable to the torch lane, whose stream differs.",
+    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output.",
+    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated."
   ],
   "stability": {
     "seeds": 3,
@@ -164,7 +167,7 @@
       },
       "two-2turn": {
         "seeds": 3,
-        "passed": 2,
+        "passed": 3,
         "checks": {
           "transcript_well_formed": {
             "passed": 3
@@ -188,7 +191,7 @@
             "passed": 3
           },
           "intelligible": {
-            "passed": 2
+            "passed": 3
           },
           "word_count_plausible": {
             "passed": 3
@@ -203,7 +206,7 @@
             "passed": 3
           }
         },
-        "stable": false
+        "stable": true
       },
       "two-4turn": {
         "seeds": 3,
@@ -301,7 +304,7 @@
           "name": "single-short",
           "base_seed": 20260915,
           "request_seed": 20260915,
-          "pcm": ".vibevoice-tts-quality/seed20260915/single-short.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/single-short.npy",
           "reference_set": "single",
           "script": "Speaker 1: Good morning, and welcome to the show.",
           "turns": 1,
@@ -314,38 +317,53 @@
           "prompt_tokens": 120,
           "max_audio_seconds": 8.0,
           "token_cap": 62,
-          "generated_tokens": 22,
-          "diffusion_frames": 20,
+          "generated_tokens": 18,
+          "diffusion_frames": 16,
           "finish_reason": "stop",
-          "synthesis_seconds": 4.554,
-          "output_audio_seconds": 2.6667,
+          "synthesis_seconds": 3.106,
+          "output_audio_seconds": 2.1333,
           "voice_assignment": [
-            0,
             0,
             0,
             0
           ],
           "voice_assignment_cosines": [
             [
-              0.3595
+              0.3591
             ],
             [
-              0.4956
+              0.5621
             ],
             [
-              0.6095
-            ],
-            [
-              0.563
+              0.4937
             ]
           ],
-          "transcribe_seconds": 80.3,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.3591,
+              0.1687
+            ],
+            [
+              0.5621,
+              0.3394
+            ],
+            [
+              0.4937,
+              0.273
+            ]
+          ],
+          "transcribe_seconds": 76.67,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
             {
               "start": 0.0,
-              "end": 2.67,
+              "end": 2.13,
               "speaker": "0",
               "content": "Good morning and welcome to the show."
             }
@@ -356,13 +374,13 @@
           "expected_words": 7,
           "transcript_words": 7,
           "repeated_ngrams": [],
-          "rms": 0.055671,
-          "absmax": 0.435547,
+          "rms": 0.054728,
+          "absmax": 0.4375,
           "longest_silence_seconds": 0.124,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 2.8,
-          "duration_ratio": 0.952,
+          "duration_ratio": 0.762,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -377,13 +395,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.4716,
+              0.2604
+            ],
+            "mean_margin": 0.2113,
+            "decided_windows": 3,
+            "windows": 3,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-medium",
           "base_seed": 20260915,
           "request_seed": 20260916,
-          "pcm": ".vibevoice-tts-quality/seed20260915/single-medium.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/single-medium.npy",
           "reference_set": "single",
           "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
           "turns": 1,
@@ -396,12 +434,13 @@
           "prompt_tokens": 128,
           "max_audio_seconds": 12.0,
           "token_cap": 92,
-          "generated_tokens": 31,
-          "diffusion_frames": 29,
+          "generated_tokens": 32,
+          "diffusion_frames": 30,
           "finish_reason": "stop",
-          "synthesis_seconds": 6.152,
-          "output_audio_seconds": 3.8667,
+          "synthesis_seconds": 5.11,
+          "output_audio_seconds": 4.0,
           "voice_assignment": [
+            0,
             0,
             0,
             0,
@@ -411,31 +450,73 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.4507
+              0.488
             ],
             [
-              0.46
+              0.5034
             ],
             [
-              0.5055
+              0.5613
             ],
             [
-              0.497
+              0.5462
             ],
             [
-              0.4602
+              0.5129
             ],
             [
-              0.4211
+              0.4728
+            ],
+            [
+              0.5545
             ]
           ],
-          "transcribe_seconds": 9.56,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.488,
+              0.4351
+            ],
+            [
+              0.5034,
+              0.334
+            ],
+            [
+              0.5613,
+              0.4005
+            ],
+            [
+              0.5462,
+              0.5087
+            ],
+            [
+              0.5129,
+              0.483
+            ],
+            [
+              0.4728,
+              0.362
+            ],
+            [
+              0.5545,
+              0.4376
+            ]
+          ],
+          "transcribe_seconds": 9.35,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
             {
               "start": 0.0,
-              "end": 3.87,
+              "end": 4.0,
               "speaker": "0",
               "content": "The library opens at nine and the reading room closes at six in the evening."
             }
@@ -446,13 +527,13 @@
           "expected_words": 15,
           "transcript_words": 15,
           "repeated_ngrams": [],
-          "rms": 0.057685,
-          "absmax": 0.376953,
-          "longest_silence_seconds": 0.015,
+          "rms": 0.057494,
+          "absmax": 0.369141,
+          "longest_silence_seconds": 0.008,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 6.0,
-          "duration_ratio": 0.644,
+          "duration_ratio": 0.667,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -467,13 +548,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.5199,
+              0.423
+            ],
+            "mean_margin": 0.0969,
+            "decided_windows": 4,
+            "windows": 7,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-numbers",
           "base_seed": 20260915,
           "request_seed": 20260917,
-          "pcm": ".vibevoice-tts-quality/seed20260915/single-numbers.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/single-numbers.npy",
           "reference_set": "single",
           "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
           "turns": 1,
@@ -489,7 +590,7 @@
           "generated_tokens": 34,
           "diffusion_frames": 32,
           "finish_reason": "stop",
-          "synthesis_seconds": 6.811,
+          "synthesis_seconds": 5.386,
           "output_audio_seconds": 4.2667,
           "voice_assignment": [
             0,
@@ -502,28 +603,67 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.3497
+              0.3481
             ],
             [
-              0.4213
+              0.4207
             ],
             [
-              0.41
+              0.4071
             ],
             [
-              0.3868
+              0.3913
             ],
             [
-              0.4921
+              0.4986
             ],
             [
-              0.4741
+              0.4802
             ],
             [
-              0.5401
+              0.5464
             ]
           ],
-          "transcribe_seconds": 9.78,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.3481,
+              0.1299
+            ],
+            [
+              0.4207,
+              0.2307
+            ],
+            [
+              0.4071,
+              0.3231
+            ],
+            [
+              0.3913,
+              0.2522
+            ],
+            [
+              0.4986,
+              0.3392
+            ],
+            [
+              0.4802,
+              0.2346
+            ],
+            [
+              0.5464,
+              0.3789
+            ]
+          ],
+          "transcribe_seconds": 9.54,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
@@ -540,8 +680,8 @@
           "expected_words": 12,
           "transcript_words": 12,
           "repeated_ngrams": [],
-          "rms": 0.046177,
-          "absmax": 0.433594,
+          "rms": 0.045963,
+          "absmax": 0.435547,
           "longest_silence_seconds": 0.041,
           "wer": 0.0,
           "word_count_ratio": 1.0,
@@ -561,13 +701,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.4418,
+              0.2698
+            ],
+            "mean_margin": 0.172,
+            "decided_windows": 6,
+            "windows": 7,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "two-2turn",
           "base_seed": 20260915,
           "request_seed": 20260918,
-          "pcm": ".vibevoice-tts-quality/seed20260915/two-2turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/two-2turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
           "turns": 2,
@@ -582,11 +742,11 @@
           "prompt_tokens": 350,
           "max_audio_seconds": 14.0,
           "token_cap": 107,
-          "generated_tokens": 52,
-          "diffusion_frames": 50,
+          "generated_tokens": 53,
+          "diffusion_frames": 49,
           "finish_reason": "stop",
-          "synthesis_seconds": 11.562,
-          "output_audio_seconds": 6.6667,
+          "synthesis_seconds": 9.348,
+          "output_audio_seconds": 6.5333,
           "voice_assignment": [
             0,
             0,
@@ -603,78 +763,142 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.2141,
-              -0.1989
+              0.505,
+              0.2449
             ],
             [
-              -0.0239,
-              -0.246
+              0.3845,
+              0.2094
             ],
             [
-              0.1819,
-              -0.0806
+              0.528,
+              0.3441
             ],
             [
-              0.3668,
-              0.0528
+              0.53,
+              0.3872
             ],
             [
-              0.4491,
-              0.1154
+              0.509,
+              0.3469
             ],
             [
-              0.2724,
-              0.1877
+              0.258,
+              0.1923
             ],
             [
-              0.3087,
-              0.473
+              0.2567,
+              0.3807
             ],
             [
-              0.2647,
-              0.5906
+              0.1638,
+              0.5349
             ],
             [
-              0.2545,
-              0.5383
+              0.0669,
+              0.4107
             ],
             [
               0.3139,
-              0.5284
+              0.5076
             ],
             [
-              0.3721,
-              0.5899
+              0.306,
+              0.5666
             ],
             [
-              0.2907,
-              0.662
+              0.2168,
+              0.5201
             ]
           ],
-          "transcribe_seconds": 11.77,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.505,
+              0.2449
+            ],
+            [
+              0.3845,
+              0.2094
+            ],
+            [
+              0.528,
+              0.3441
+            ],
+            [
+              0.53,
+              0.3872
+            ],
+            [
+              0.509,
+              0.3469
+            ],
+            [
+              0.258,
+              0.1923
+            ],
+            [
+              0.2567,
+              0.3807
+            ],
+            [
+              0.1638,
+              0.5349
+            ],
+            [
+              0.0669,
+              0.4107
+            ],
+            [
+              0.3139,
+              0.5076
+            ],
+            [
+              0.306,
+              0.5666
+            ],
+            [
+              0.2168,
+              0.5201
+            ]
+          ],
+          "transcribe_seconds": 11.51,
           "transcript_status": "ok",
-          "transcript": "I can see you in the world this morning. I agree, and the budget question is finally settled.",
+          "transcript": "I think the meeting went well this morning. I agree, and the budget question is finally settled.",
           "segments": [
             {
               "start": 0.0,
-              "end": 6.67,
+              "end": 6.53,
               "speaker": "0",
-              "content": "I can see you in the world this morning. I agree, and the budget question is finally settled."
+              "content": "I think the meeting went well this morning. I agree, and the budget question is finally settled."
             }
           ],
           "transcript_speakers": [
             "0"
           ],
           "expected_words": 17,
-          "transcript_words": 18,
+          "transcript_words": 17,
           "repeated_ngrams": [],
-          "rms": 0.047198,
-          "absmax": 0.5,
-          "longest_silence_seconds": 0.45,
-          "wer": 0.3529,
-          "word_count_ratio": 1.0588,
+          "rms": 0.071216,
+          "absmax": 0.9375,
+          "longest_silence_seconds": 0.824,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
           "expected_seconds": 6.8,
-          "duration_ratio": 0.98,
+          "duration_ratio": 0.961,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -683,20 +907,32 @@
             "not_clipping": true,
             "no_long_silence": true,
             "duration_plausible": true,
-            "intelligible": false,
+            "intelligible": true,
             "word_count_plausible": true,
             "no_repeated_speech": true,
             "turn_count": true,
             "voice_attribution": true
           },
           "attribution_decided_windows": 11,
-          "passed": false
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
+          "passed": true
         },
         {
           "name": "two-4turn",
           "base_seed": 20260915,
           "request_seed": 20260919,
-          "pcm": ".vibevoice-tts-quality/seed20260915/two-4turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/two-4turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
           "turns": 4,
@@ -716,7 +952,7 @@
           "generated_tokens": 78,
           "diffusion_frames": 70,
           "finish_reason": "stop",
-          "synthesis_seconds": 15.78,
+          "synthesis_seconds": 12.986,
           "output_audio_seconds": 9.3333,
           "voice_assignment": [
             0,
@@ -739,98 +975,187 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.417,
-              0.2043
+              0.414,
+              0.2059
             ],
             [
-              0.4721,
-              0.3538
+              0.4706,
+              0.3537
             ],
             [
-              0.4383,
-              0.4147
+              0.4377,
+              0.4143
             ],
             [
-              0.2805,
-              0.3009
+              0.2795,
+              0.2943
             ],
             [
-              0.2229,
-              0.4324
+              0.2198,
+              0.4306
             ],
             [
-              0.3016,
-              0.5334
+              0.2965,
+              0.5279
             ],
             [
-              0.266,
-              0.5633
+              0.2638,
+              0.561
             ],
             [
-              0.2948,
-              0.5375
+              0.2933,
+              0.5385
             ],
             [
-              0.6079,
-              0.3732
+              0.6074,
+              0.3751
             ],
             [
-              0.5942,
-              0.117
+              0.5949,
+              0.1167
             ],
             [
-              0.5989,
-              0.3988
+              0.5951,
+              0.3601
             ],
             [
-              0.4914,
-              0.3234
+              0.5572,
+              0.3388
             ],
             [
-              0.4446,
-              0.2775
+              0.4606,
+              0.265
             ],
             [
-              0.3954,
-              0.2564
+              0.411,
+              0.2691
             ],
             [
-              0.3088,
-              0.2446
+              0.2629,
+              0.2626
             ],
             [
-              0.1696,
-              0.4938
+              0.0468,
+              0.4942
             ],
             [
-              0.0988,
-              0.5252
+              0.2138,
+              0.6589
             ]
           ],
-          "transcribe_seconds": 19.02,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.414,
+              0.2059
+            ],
+            [
+              0.4706,
+              0.3537
+            ],
+            [
+              0.4377,
+              0.4143
+            ],
+            [
+              0.2795,
+              0.2943
+            ],
+            [
+              0.2198,
+              0.4306
+            ],
+            [
+              0.2965,
+              0.5279
+            ],
+            [
+              0.2638,
+              0.561
+            ],
+            [
+              0.2933,
+              0.5385
+            ],
+            [
+              0.6074,
+              0.3751
+            ],
+            [
+              0.5949,
+              0.1167
+            ],
+            [
+              0.5951,
+              0.3601
+            ],
+            [
+              0.5572,
+              0.3388
+            ],
+            [
+              0.4606,
+              0.265
+            ],
+            [
+              0.411,
+              0.2691
+            ],
+            [
+              0.2629,
+              0.2626
+            ],
+            [
+              0.0468,
+              0.4942
+            ],
+            [
+              0.2138,
+              0.6589
+            ]
+          ],
+          "transcribe_seconds": 18.55,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
             {
               "start": 0.0,
-              "end": 1.97,
+              "end": 1.8,
               "speaker": "0",
               "content": "Did you finish the report?"
             },
             {
-              "start": 2.09,
-              "end": 4.64,
+              "start": 2.18,
+              "end": 4.5,
               "speaker": "1",
               "content": "Almost, I need one more figure."
             },
             {
-              "start": 4.64,
+              "start": 4.95,
               "end": 6.99,
               "speaker": "0",
               "content": "Send it over when it is ready."
             },
             {
-              "start": 7.01,
+              "start": 7.61,
               "end": 9.33,
               "speaker": "1",
               "content": "I will later this afternoon."
@@ -843,9 +1168,9 @@
           "expected_words": 23,
           "transcript_words": 23,
           "repeated_ngrams": [],
-          "rms": 0.057343,
-          "absmax": 0.431641,
-          "longest_silence_seconds": 0.956,
+          "rms": 0.051984,
+          "absmax": 0.369141,
+          "longest_silence_seconds": 1.055,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 9.2,
@@ -865,13 +1190,31 @@
             "voice_attribution": true
           },
           "attribution_decided_windows": 14,
+          "attribution_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
           "passed": true
         },
         {
           "name": "two-long",
           "base_seed": 20260915,
           "request_seed": 20260920,
-          "pcm": ".vibevoice-tts-quality/seed20260915/two-long.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260915/two-long.npy",
           "reference_set": "two",
           "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "turns": 2,
@@ -886,11 +1229,11 @@
           "prompt_tokens": 374,
           "max_audio_seconds": 24.0,
           "token_cap": 182,
-          "generated_tokens": 100,
-          "diffusion_frames": 96,
+          "generated_tokens": 105,
+          "diffusion_frames": 101,
           "finish_reason": "stop",
-          "synthesis_seconds": 21.549,
-          "output_audio_seconds": 12.8,
+          "synthesis_seconds": 18.119,
+          "output_audio_seconds": 13.4667,
           "voice_assignment": [
             0,
             0,
@@ -905,6 +1248,7 @@
             0,
             0,
             0,
+            1,
             1,
             1,
             1,
@@ -919,109 +1263,242 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.5016,
-              0.2812
+              0.5023,
+              0.2825
             ],
             [
-              0.6497,
-              0.3396
+              0.6502,
+              0.3407
             ],
             [
-              0.5489,
-              0.3925
+              0.5473,
+              0.3923
             ],
             [
-              0.4962,
-              0.4875
+              0.4944,
+              0.4873
             ],
             [
-              0.5338,
-              0.4607
+              0.5333,
+              0.4588
             ],
             [
-              0.5442,
-              0.3734
+              0.5485,
+              0.3767
             ],
             [
-              0.4172,
-              0.293
+              0.4165,
+              0.2945
             ],
             [
-              0.4346,
-              0.3524
+              0.432,
+              0.3522
             ],
             [
-              0.539,
-              0.4833
+              0.5364,
+              0.4806
             ],
             [
-              0.5277,
-              0.4265
+              0.5339,
+              0.4349
             ],
             [
               0.6001,
-              0.3762
+              0.3889
             ],
             [
-              0.6062,
-              0.4394
+              0.6055,
+              0.4389
             ],
             [
-              0.3987,
-              0.3486
+              0.4033,
+              0.3498
             ],
             [
-              0.099,
-              0.2273
+              0.1021,
+              0.2265
             ],
             [
-              0.067,
-              0.3039
+              -0.0206,
+              0.1852
             ],
             [
-              0.1096,
-              0.3491
+              -0.2542,
+              0.017
             ],
             [
-              0.0574,
-              0.4772
+              -0.3629,
+              0.0477
             ],
             [
-              0.1189,
-              0.455
+              -0.2055,
+              0.0154
             ],
             [
-              0.1809,
-              0.4445
+              -0.2021,
+              0.074
             ],
             [
-              0.2258,
-              0.4294
+              -0.1585,
+              0.1662
             ],
             [
-              0.2503,
-              0.4756
+              0.1488,
+              0.1962
             ],
             [
-              0.1468,
-              0.517
+              -0.0865,
+              0.1726
             ],
             [
-              0.087,
-              0.4935
+              -0.1984,
+              0.1183
             ],
             [
-              0.2199,
-              0.5264
+              -0.1224,
+              0.2434
+            ],
+            [
+              -0.1093,
+              0.2209
             ]
           ],
-          "transcribe_seconds": 17.69,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.5023,
+              0.2825
+            ],
+            [
+              0.6502,
+              0.3407
+            ],
+            [
+              0.5473,
+              0.3923
+            ],
+            [
+              0.4944,
+              0.4873
+            ],
+            [
+              0.5333,
+              0.4588
+            ],
+            [
+              0.5485,
+              0.3767
+            ],
+            [
+              0.4165,
+              0.2945
+            ],
+            [
+              0.432,
+              0.3522
+            ],
+            [
+              0.5364,
+              0.4806
+            ],
+            [
+              0.5339,
+              0.4349
+            ],
+            [
+              0.6001,
+              0.3889
+            ],
+            [
+              0.6055,
+              0.4389
+            ],
+            [
+              0.4033,
+              0.3498
+            ],
+            [
+              0.1021,
+              0.2265
+            ],
+            [
+              -0.0206,
+              0.1852
+            ],
+            [
+              -0.2542,
+              0.017
+            ],
+            [
+              -0.3629,
+              0.0477
+            ],
+            [
+              -0.2055,
+              0.0154
+            ],
+            [
+              -0.2021,
+              0.074
+            ],
+            [
+              -0.1585,
+              0.1662
+            ],
+            [
+              0.1488,
+              0.1962
+            ],
+            [
+              -0.0865,
+              0.1726
+            ],
+            [
+              -0.1984,
+              0.1183
+            ],
+            [
+              -0.1224,
+              0.2434
+            ],
+            [
+              -0.1093,
+              0.2209
+            ]
+          ],
+          "transcribe_seconds": 17.75,
           "transcript_status": "ok",
           "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
             {
               "start": 0.0,
-              "end": 12.8,
+              "end": 13.47,
               "speaker": "0",
               "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
             }
@@ -1032,13 +1509,13 @@
           "expected_words": 40,
           "transcript_words": 40,
           "repeated_ngrams": [],
-          "rms": 0.065327,
-          "absmax": 0.671875,
-          "longest_silence_seconds": 0.489,
+          "rms": 0.061953,
+          "absmax": 0.484375,
+          "longest_silence_seconds": 0.49,
           "wer": 0.025,
           "word_count_ratio": 1.0,
           "expected_seconds": 16.0,
-          "duration_ratio": 0.8,
+          "duration_ratio": 0.842,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1053,13 +1530,23 @@
             "turn_count": true,
             "voice_attribution": true
           },
-          "attribution_decided_windows": 19,
+          "attribution_decided_windows": 18,
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
           "passed": true
         }
       ],
-      "failed_requests": [
-        "two-2turn"
-      ]
+      "failed_requests": []
     },
     {
       "seed": 20260916,
@@ -1068,7 +1555,7 @@
           "name": "single-short",
           "base_seed": 20260916,
           "request_seed": 20260916,
-          "pcm": ".vibevoice-tts-quality/seed20260916/single-short.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/single-short.npy",
           "reference_set": "single",
           "script": "Speaker 1: Good morning, and welcome to the show.",
           "turns": 1,
@@ -1081,34 +1568,71 @@
           "prompt_tokens": 120,
           "max_audio_seconds": 8.0,
           "token_cap": 62,
-          "generated_tokens": 20,
-          "diffusion_frames": 18,
+          "generated_tokens": 26,
+          "diffusion_frames": 24,
           "finish_reason": "stop",
-          "synthesis_seconds": 3.994,
-          "output_audio_seconds": 2.4,
+          "synthesis_seconds": 4.294,
+          "output_audio_seconds": 3.2,
           "voice_assignment": [
+            0,
+            0,
             0,
             0,
             0
           ],
           "voice_assignment_cosines": [
             [
-              0.3156
+              0.3012
             ],
             [
-              0.4617
+              0.4841
             ],
             [
-              0.516
+              0.5736
+            ],
+            [
+              0.5188
+            ],
+            [
+              0.5863
             ]
           ],
-          "transcribe_seconds": 8.03,
+          "voice_assignment_pair": [
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.3012,
+              0.3235
+            ],
+            [
+              0.4841,
+              0.3541
+            ],
+            [
+              0.5736,
+              0.4793
+            ],
+            [
+              0.5188,
+              0.411
+            ],
+            [
+              0.5863,
+              0.4464
+            ]
+          ],
+          "transcribe_seconds": 8.33,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
             {
               "start": 0.0,
-              "end": 2.4,
+              "end": 3.2,
               "speaker": "0",
               "content": "Good morning and welcome to the show."
             }
@@ -1119,13 +1643,13 @@
           "expected_words": 7,
           "transcript_words": 7,
           "repeated_ngrams": [],
-          "rms": 0.062853,
-          "absmax": 0.341797,
-          "longest_silence_seconds": 0.002,
+          "rms": 0.055671,
+          "absmax": 0.392578,
+          "longest_silence_seconds": 0.065,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 2.8,
-          "duration_ratio": 0.857,
+          "duration_ratio": 1.143,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1140,13 +1664,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.4928,
+              0.4029
+            ],
+            "mean_margin": 0.0989,
+            "decided_windows": 3,
+            "windows": 5,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-medium",
           "base_seed": 20260916,
           "request_seed": 20260917,
-          "pcm": ".vibevoice-tts-quality/seed20260916/single-medium.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/single-medium.npy",
           "reference_set": "single",
           "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
           "turns": 1,
@@ -1159,12 +1703,13 @@
           "prompt_tokens": 128,
           "max_audio_seconds": 12.0,
           "token_cap": 92,
-          "generated_tokens": 38,
-          "diffusion_frames": 36,
+          "generated_tokens": 40,
+          "diffusion_frames": 38,
           "finish_reason": "stop",
-          "synthesis_seconds": 7.674,
-          "output_audio_seconds": 4.8,
+          "synthesis_seconds": 6.487,
+          "output_audio_seconds": 5.0667,
           "voice_assignment": [
+            0,
             0,
             0,
             0,
@@ -1176,37 +1721,89 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.3154
+              0.3151
             ],
             [
-              0.3538
+              0.38
             ],
             [
-              0.4418
+              0.4124
             ],
             [
-              0.5013
+              0.3882
             ],
             [
-              0.3903
+              0.3289
             ],
             [
-              0.2401
+              0.3035
             ],
             [
-              0.2873
+              0.4027
             ],
             [
-              0.303
+              0.3344
+            ],
+            [
+              0.3131
             ]
           ],
-          "transcribe_seconds": 10.17,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.3151,
+              0.205
+            ],
+            [
+              0.38,
+              0.2944
+            ],
+            [
+              0.4124,
+              0.2805
+            ],
+            [
+              0.3882,
+              0.0921
+            ],
+            [
+              0.3289,
+              0.2431
+            ],
+            [
+              0.3035,
+              0.3363
+            ],
+            [
+              0.4027,
+              0.3841
+            ],
+            [
+              0.3344,
+              0.2951
+            ],
+            [
+              0.3131,
+              0.258
+            ]
+          ],
+          "transcribe_seconds": 10.21,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
             {
               "start": 0.0,
-              "end": 4.8,
+              "end": 5.07,
               "speaker": "0",
               "content": "The library opens at nine and the reading room closes at six in the evening."
             }
@@ -1217,13 +1814,13 @@
           "expected_words": 15,
           "transcript_words": 15,
           "repeated_ngrams": [],
-          "rms": 0.049213,
-          "absmax": 0.419922,
-          "longest_silence_seconds": 0.001,
+          "rms": 0.045826,
+          "absmax": 0.457031,
+          "longest_silence_seconds": 0.004,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 6.0,
-          "duration_ratio": 0.8,
+          "duration_ratio": 0.844,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1238,13 +1835,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.3531,
+              0.2654
+            ],
+            "mean_margin": 0.095,
+            "decided_windows": 3,
+            "windows": 9,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-numbers",
           "base_seed": 20260916,
           "request_seed": 20260918,
-          "pcm": ".vibevoice-tts-quality/seed20260916/single-numbers.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/single-numbers.npy",
           "reference_set": "single",
           "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
           "turns": 1,
@@ -1257,11 +1874,11 @@
           "prompt_tokens": 126,
           "max_audio_seconds": 12.0,
           "token_cap": 92,
-          "generated_tokens": 39,
-          "diffusion_frames": 37,
+          "generated_tokens": 37,
+          "diffusion_frames": 35,
           "finish_reason": "stop",
-          "synthesis_seconds": 7.981,
-          "output_audio_seconds": 4.9333,
+          "synthesis_seconds": 5.967,
+          "output_audio_seconds": 4.6667,
           "voice_assignment": [
             0,
             0,
@@ -1274,37 +1891,81 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.5289
+              0.538
             ],
             [
-              0.4333
+              0.4283
             ],
             [
-              0.392
+              0.2618
             ],
             [
-              0.4629
+              0.4583
             ],
             [
-              0.4789
+              0.3846
             ],
             [
-              0.3715
+              0.3764
             ],
             [
-              0.5458
+              0.5272
             ],
             [
-              0.5708
+              0.4142
             ]
           ],
-          "transcribe_seconds": 10.3,
+          "voice_assignment_pair": [
+            0,
+            1,
+            1,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.538,
+              0.4078
+            ],
+            [
+              0.4283,
+              0.4377
+            ],
+            [
+              0.2618,
+              0.4465
+            ],
+            [
+              0.4583,
+              0.4517
+            ],
+            [
+              0.3846,
+              0.3965
+            ],
+            [
+              0.3764,
+              0.3654
+            ],
+            [
+              0.5272,
+              0.3975
+            ],
+            [
+              0.4142,
+              0.3966
+            ]
+          ],
+          "transcribe_seconds": 9.91,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
             {
               "start": 0.0,
-              "end": 4.93,
+              "end": 4.67,
               "speaker": "0",
               "content": "The train to Bristol leaves from platform twelve at half past four."
             }
@@ -1315,13 +1976,13 @@
           "expected_words": 12,
           "transcript_words": 12,
           "repeated_ngrams": [],
-          "rms": 0.047901,
-          "absmax": 0.417969,
+          "rms": 0.06632,
+          "absmax": 0.396484,
           "longest_silence_seconds": 0.326,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 4.8,
-          "duration_ratio": 1.028,
+          "duration_ratio": 0.972,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1336,13 +1997,37 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0,
+            1,
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0,
+              1,
+              0
+            ],
+            "mean_cosines": [
+              0.4236,
+              0.4125
+            ],
+            "mean_margin": 0.0626,
+            "decided_windows": 3,
+            "windows": 8,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "two-2turn",
           "base_seed": 20260916,
           "request_seed": 20260919,
-          "pcm": ".vibevoice-tts-quality/seed20260916/two-2turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/two-2turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
           "turns": 2,
@@ -1360,7 +2045,7 @@
           "generated_tokens": 51,
           "diffusion_frames": 49,
           "finish_reason": "stop",
-          "synthesis_seconds": 11.363,
+          "synthesis_seconds": 9.228,
           "output_audio_seconds": 6.5333,
           "voice_assignment": [
             0,
@@ -1378,63 +2063,127 @@
           ],
           "voice_assignment_cosines": [
             [
-              -0.041,
-              -0.1071
+              -0.0415,
+              -0.1083
             ],
             [
-              0.2574,
-              0.0645
+              0.2542,
+              0.0709
             ],
             [
-              0.4949,
-              0.178
+              0.4947,
+              0.1869
             ],
             [
-              0.5414,
-              0.2761
+              0.5262,
+              0.2725
             ],
             [
-              0.2335,
-              0.0537
+              0.1997,
+              0.0453
             ],
             [
-              0.1089,
-              -0.1668
+              0.0825,
+              -0.1781
             ],
             [
-              0.1416,
-              -0.0021
+              0.1081,
+              -0.0121
             ],
             [
-              0.1965,
-              0.3418
+              0.1801,
+              0.3523
             ],
             [
-              0.2804,
-              0.4967
+              0.2589,
+              0.494
             ],
             [
-              0.4073,
-              0.5195
+              0.407,
+              0.5244
             ],
             [
-              0.2871,
-              0.4318
+              0.2831,
+              0.3854
             ],
             [
-              0.3908,
-              0.4926
+              0.4071,
+              0.5887
             ]
           ],
-          "transcribe_seconds": 11.78,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              -0.0415,
+              -0.1083
+            ],
+            [
+              0.2542,
+              0.0709
+            ],
+            [
+              0.4947,
+              0.1869
+            ],
+            [
+              0.5262,
+              0.2725
+            ],
+            [
+              0.1997,
+              0.0453
+            ],
+            [
+              0.0825,
+              -0.1781
+            ],
+            [
+              0.1081,
+              -0.0121
+            ],
+            [
+              0.1801,
+              0.3523
+            ],
+            [
+              0.2589,
+              0.494
+            ],
+            [
+              0.407,
+              0.5244
+            ],
+            [
+              0.2831,
+              0.3854
+            ],
+            [
+              0.4071,
+              0.5887
+            ]
+          ],
+          "transcribe_seconds": 11.5,
           "transcript_status": "ok",
-          "transcript": "I think meeting went well this morning. I agree, and the budget question is finally settled.",
+          "transcript": "I think meeting went well this morning. I agree. And the budget question is finally settled.",
           "segments": [
             {
               "start": 0.0,
               "end": 6.53,
               "speaker": "0",
-              "content": "I think meeting went well this morning. I agree, and the budget question is finally settled."
+              "content": "I think meeting went well this morning. I agree. And the budget question is finally settled."
             }
           ],
           "transcript_speakers": [
@@ -1443,8 +2192,8 @@
           "expected_words": 17,
           "transcript_words": 16,
           "repeated_ngrams": [],
-          "rms": 0.056936,
-          "absmax": 0.648438,
+          "rms": 0.055265,
+          "absmax": 0.640625,
           "longest_silence_seconds": 0.001,
           "wer": 0.0588,
           "word_count_ratio": 0.9412,
@@ -1465,13 +2214,25 @@
             "voice_attribution": true
           },
           "attribution_decided_windows": 11,
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
           "passed": true
         },
         {
           "name": "two-4turn",
           "base_seed": 20260916,
           "request_seed": 20260920,
-          "pcm": ".vibevoice-tts-quality/seed20260916/two-4turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/two-4turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
           "turns": 4,
@@ -1491,12 +2252,12 @@
           "generated_tokens": 78,
           "diffusion_frames": 70,
           "finish_reason": "stop",
-          "synthesis_seconds": 16.1,
+          "synthesis_seconds": 12.984,
           "output_audio_seconds": 9.3333,
           "voice_assignment": [
             0,
             0,
-            0,
+            1,
             1,
             0,
             1,
@@ -1514,75 +2275,164 @@
           ],
           "voice_assignment_cosines": [
             [
+              0.5997,
+              0.4013
+            ],
+            [
+              0.7083,
+              0.4073
+            ],
+            [
+              0.4199,
+              0.4305
+            ],
+            [
+              0.3591,
+              0.5113
+            ],
+            [
+              0.3613,
+              0.3068
+            ],
+            [
+              0.4193,
+              0.517
+            ],
+            [
+              0.3317,
+              0.4859
+            ],
+            [
+              0.2416,
+              0.44
+            ],
+            [
+              0.1314,
+              0.3809
+            ],
+            [
+              0.5162,
+              0.3402
+            ],
+            [
               0.5978,
-              0.3968
+              0.41
             ],
             [
-              0.7188,
-              0.4072
+              0.5104,
+              0.5525
             ],
             [
-              0.4252,
-              0.4145
+              0.4395,
+              0.3567
             ],
             [
-              0.3642,
-              0.5093
+              0.4931,
+              0.4142
             ],
             [
-              0.3633,
-              0.3082
+              0.1846,
+              0.2144
             ],
             [
-              0.4181,
-              0.5167
+              0.1822,
+              0.6393
             ],
             [
-              0.3357,
-              0.4884
-            ],
-            [
-              0.2435,
-              0.4436
-            ],
-            [
-              0.138,
-              0.3868
-            ],
-            [
-              0.5193,
-              0.3449
-            ],
-            [
-              0.6051,
-              0.4371
-            ],
-            [
-              0.4977,
-              0.5468
-            ],
-            [
-              0.4544,
-              0.3759
-            ],
-            [
-              0.4841,
-              0.4022
-            ],
-            [
-              0.1859,
-              0.2176
-            ],
-            [
-              0.1793,
-              0.6419
-            ],
-            [
-              0.233,
-              0.6691
+              0.2348,
+              0.67
             ]
           ],
-          "transcribe_seconds": 19.14,
+          "voice_assignment_pair": [
+            0,
+            0,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.5997,
+              0.4013
+            ],
+            [
+              0.7083,
+              0.4073
+            ],
+            [
+              0.4199,
+              0.4305
+            ],
+            [
+              0.3591,
+              0.5113
+            ],
+            [
+              0.3613,
+              0.3068
+            ],
+            [
+              0.4193,
+              0.517
+            ],
+            [
+              0.3317,
+              0.4859
+            ],
+            [
+              0.2416,
+              0.44
+            ],
+            [
+              0.1314,
+              0.3809
+            ],
+            [
+              0.5162,
+              0.3402
+            ],
+            [
+              0.5978,
+              0.41
+            ],
+            [
+              0.5104,
+              0.5525
+            ],
+            [
+              0.4395,
+              0.3567
+            ],
+            [
+              0.4931,
+              0.4142
+            ],
+            [
+              0.1846,
+              0.2144
+            ],
+            [
+              0.1822,
+              0.6393
+            ],
+            [
+              0.2348,
+              0.67
+            ]
+          ],
+          "transcribe_seconds": 18.75,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
@@ -1618,8 +2468,8 @@
           "expected_words": 23,
           "transcript_words": 23,
           "repeated_ngrams": [],
-          "rms": 0.0337,
-          "absmax": 0.351562,
+          "rms": 0.03341,
+          "absmax": 0.330078,
           "longest_silence_seconds": 1.015,
           "wer": 0.0,
           "word_count_ratio": 1.0,
@@ -1640,13 +2490,31 @@
             "voice_attribution": true
           },
           "attribution_decided_windows": 10,
+          "attribution_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
           "passed": true
         },
         {
           "name": "two-long",
           "base_seed": 20260916,
           "request_seed": 20260921,
-          "pcm": ".vibevoice-tts-quality/seed20260916/two-long.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260916/two-long.npy",
           "reference_set": "two",
           "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "turns": 2,
@@ -1661,25 +2529,24 @@
           "prompt_tokens": 374,
           "max_audio_seconds": 24.0,
           "token_cap": 182,
-          "generated_tokens": 97,
-          "diffusion_frames": 93,
+          "generated_tokens": 92,
+          "diffusion_frames": 88,
           "finish_reason": "stop",
-          "synthesis_seconds": 20.812,
-          "output_audio_seconds": 12.4,
+          "synthesis_seconds": 15.882,
+          "output_audio_seconds": 11.7333,
           "voice_assignment": [
             0,
             0,
             0,
             0,
             0,
-            1,
             0,
             0,
             0,
             0,
             0,
             0,
-            1,
+            0,
             1,
             1,
             1,
@@ -1693,107 +2560,217 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.4619,
-              0.2825
+              0.4616,
+              0.2798
             ],
             [
-              0.5698,
-              0.2094
+              0.5714,
+              0.2084
             ],
             [
-              0.6309,
-              0.296
+              0.6292,
+              0.2946
             ],
             [
-              0.5542,
-              0.4575
+              0.56,
+              0.4425
             ],
             [
-              0.5623,
-              0.5299
+              0.6045,
+              0.5415
             ],
             [
-              0.4532,
-              0.4567
-            ],
-            [
-              0.4481,
-              0.3391
-            ],
-            [
-              0.583,
-              0.2787
-            ],
-            [
-              0.5203,
-              0.4132
-            ],
-            [
-              0.5795,
-              0.3492
-            ],
-            [
-              0.6515,
-              0.3294
+              0.5331,
+              0.3754
             ],
             [
               0.5445,
-              0.3871
+              0.3206
             ],
             [
-              0.3658,
-              0.397
+              0.611,
+              0.4005
             ],
             [
-              0.2432,
-              0.2734
+              0.6345,
+              0.4509
             ],
             [
-              0.1563,
-              0.4008
+              0.5713,
+              0.3183
             ],
             [
-              0.0207,
-              0.493
+              0.59,
+              0.3219
             ],
             [
-              0.1812,
-              0.4522
+              0.5401,
+              0.3225
             ],
             [
-              0.2829,
-              0.5057
+              0.344,
+              0.362
             ],
             [
-              0.2408,
-              0.5624
+              0.2253,
+              0.254
             ],
             [
-              0.1156,
-              0.4698
+              0.0145,
+              0.2595
             ],
             [
-              0.336,
-              0.5616
+              -0.1545,
+              0.2846
             ],
             [
-              0.1676,
-              0.678
+              -0.0708,
+              0.2176
             ],
             [
-              0.1929,
-              0.5647
+              0.1119,
+              0.4027
+            ],
+            [
+              0.0215,
+              0.3932
+            ],
+            [
+              0.0202,
+              0.408
+            ],
+            [
+              -0.032,
+              0.3983
+            ],
+            [
+              -0.0327,
+              0.4614
             ]
           ],
-          "transcribe_seconds": 17.58,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.4616,
+              0.2798
+            ],
+            [
+              0.5714,
+              0.2084
+            ],
+            [
+              0.6292,
+              0.2946
+            ],
+            [
+              0.56,
+              0.4425
+            ],
+            [
+              0.6045,
+              0.5415
+            ],
+            [
+              0.5331,
+              0.3754
+            ],
+            [
+              0.5445,
+              0.3206
+            ],
+            [
+              0.611,
+              0.4005
+            ],
+            [
+              0.6345,
+              0.4509
+            ],
+            [
+              0.5713,
+              0.3183
+            ],
+            [
+              0.59,
+              0.3219
+            ],
+            [
+              0.5401,
+              0.3225
+            ],
+            [
+              0.344,
+              0.362
+            ],
+            [
+              0.2253,
+              0.254
+            ],
+            [
+              0.0145,
+              0.2595
+            ],
+            [
+              -0.1545,
+              0.2846
+            ],
+            [
+              -0.0708,
+              0.2176
+            ],
+            [
+              0.1119,
+              0.4027
+            ],
+            [
+              0.0215,
+              0.3932
+            ],
+            [
+              0.0202,
+              0.408
+            ],
+            [
+              -0.032,
+              0.3983
+            ],
+            [
+              -0.0327,
+              0.4614
+            ]
+          ],
+          "transcribe_seconds": 16.74,
           "transcript_status": "ok",
-          "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then they should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
             {
               "start": 0.0,
-              "end": 12.4,
+              "end": 11.73,
               "speaker": "0",
-              "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
+              "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then they should move the delivery to Friday morning and let the warehouse know before they load the trucks."
             }
           ],
           "transcript_speakers": [
@@ -1802,13 +2779,13 @@
           "expected_words": 40,
           "transcript_words": 40,
           "repeated_ngrams": [],
-          "rms": 0.062992,
-          "absmax": 0.605469,
-          "longest_silence_seconds": 0.629,
-          "wer": 0.025,
+          "rms": 0.065372,
+          "absmax": 0.457031,
+          "longest_silence_seconds": 0.628,
+          "wer": 0.05,
           "word_count_ratio": 1.0,
           "expected_seconds": 16.0,
-          "duration_ratio": 0.775,
+          "duration_ratio": 0.733,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1823,7 +2800,19 @@
             "turn_count": true,
             "voice_attribution": true
           },
-          "attribution_decided_windows": 18,
+          "attribution_decided_windows": 19,
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
           "passed": true
         }
       ],
@@ -1836,7 +2825,7 @@
           "name": "single-short",
           "base_seed": 20260917,
           "request_seed": 20260917,
-          "pcm": ".vibevoice-tts-quality/seed20260917/single-short.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/single-short.npy",
           "reference_set": "single",
           "script": "Speaker 1: Good morning, and welcome to the show.",
           "turns": 1,
@@ -1849,11 +2838,11 @@
           "prompt_tokens": 120,
           "max_audio_seconds": 8.0,
           "token_cap": 62,
-          "generated_tokens": 19,
-          "diffusion_frames": 17,
+          "generated_tokens": 18,
+          "diffusion_frames": 16,
           "finish_reason": "stop",
-          "synthesis_seconds": 3.826,
-          "output_audio_seconds": 2.2667,
+          "synthesis_seconds": 2.892,
+          "output_audio_seconds": 2.1333,
           "voice_assignment": [
             0,
             0,
@@ -1861,22 +2850,41 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.301
+              0.2999
             ],
             [
-              0.3647
+              0.3805
             ],
             [
-              0.3518
+              0.3399
             ]
           ],
-          "transcribe_seconds": 8.3,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.2999,
+              0.126
+            ],
+            [
+              0.3805,
+              0.1967
+            ],
+            [
+              0.3399,
+              0.3101
+            ]
+          ],
+          "transcribe_seconds": 7.89,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
             {
               "start": 0.0,
-              "end": 2.27,
+              "end": 2.13,
               "speaker": "0",
               "content": "Good morning and welcome to the show."
             }
@@ -1887,13 +2895,13 @@
           "expected_words": 7,
           "transcript_words": 7,
           "repeated_ngrams": [],
-          "rms": 0.054298,
+          "rms": 0.056504,
           "absmax": 0.382812,
-          "longest_silence_seconds": 0.07,
+          "longest_silence_seconds": 0.001,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 2.8,
-          "duration_ratio": 0.81,
+          "duration_ratio": 0.762,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -1908,13 +2916,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.3401,
+              0.2109
+            ],
+            "mean_margin": 0.1292,
+            "decided_windows": 2,
+            "windows": 3,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-medium",
           "base_seed": 20260917,
           "request_seed": 20260918,
-          "pcm": ".vibevoice-tts-quality/seed20260917/single-medium.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/single-medium.npy",
           "reference_set": "single",
           "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
           "turns": 1,
@@ -1927,12 +2955,13 @@
           "prompt_tokens": 128,
           "max_audio_seconds": 12.0,
           "token_cap": 92,
-          "generated_tokens": 36,
-          "diffusion_frames": 34,
+          "generated_tokens": 41,
+          "diffusion_frames": 39,
           "finish_reason": "stop",
-          "synthesis_seconds": 7.434,
-          "output_audio_seconds": 4.5333,
+          "synthesis_seconds": 6.781,
+          "output_audio_seconds": 5.2,
           "voice_assignment": [
+            0,
             0,
             0,
             0,
@@ -1944,37 +2973,89 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.2167
+              0.2181
             ],
             [
-              0.3167
+              0.3265
             ],
             [
-              0.2891
+              0.2726
             ],
             [
-              0.2354
+              0.2753
             ],
             [
-              0.2509
+              0.2614
             ],
             [
-              0.2015
+              0.2247
             ],
             [
-              0.1439
+              0.2635
             ],
             [
-              0.0006
+              0.2391
+            ],
+            [
+              0.2237
             ]
           ],
-          "transcribe_seconds": 10.22,
+          "voice_assignment_pair": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.2181,
+              0.2423
+            ],
+            [
+              0.3265,
+              0.4323
+            ],
+            [
+              0.2726,
+              0.4997
+            ],
+            [
+              0.2753,
+              0.3365
+            ],
+            [
+              0.2614,
+              0.3817
+            ],
+            [
+              0.2247,
+              0.4397
+            ],
+            [
+              0.2635,
+              0.4819
+            ],
+            [
+              0.2391,
+              0.3502
+            ],
+            [
+              0.2237,
+              0.2791
+            ]
+          ],
+          "transcribe_seconds": 10.5,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
             {
               "start": 0.0,
-              "end": 4.53,
+              "end": 5.2,
               "speaker": "0",
               "content": "The library opens at nine and the reading room closes at six in the evening."
             }
@@ -1985,13 +3066,13 @@
           "expected_words": 15,
           "transcript_words": 15,
           "repeated_ngrams": [],
-          "rms": 0.083788,
+          "rms": 0.080446,
           "absmax": 0.453125,
-          "longest_silence_seconds": 0.055,
+          "longest_silence_seconds": 0.261,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 6.0,
-          "duration_ratio": 0.756,
+          "duration_ratio": 0.867,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -2006,13 +3087,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            1
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              1
+            ],
+            "mean_cosines": [
+              0.2561,
+              0.3826
+            ],
+            "mean_margin": 0.1265,
+            "decided_windows": 6,
+            "windows": 9,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "single-numbers",
           "base_seed": 20260917,
           "request_seed": 20260919,
-          "pcm": ".vibevoice-tts-quality/seed20260917/single-numbers.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/single-numbers.npy",
           "reference_set": "single",
           "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
           "turns": 1,
@@ -2028,7 +3129,7 @@
           "generated_tokens": 32,
           "diffusion_frames": 30,
           "finish_reason": "stop",
-          "synthesis_seconds": 6.552,
+          "synthesis_seconds": 5.29,
           "output_audio_seconds": 4.0,
           "voice_assignment": [
             0,
@@ -2041,28 +3142,67 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.1137
+              0.2624
             ],
             [
-              0.1924
+              0.3485
             ],
             [
-              0.2332
+              0.3773
             ],
             [
-              0.3824
+              0.4716
             ],
             [
-              0.3227
+              0.4213
             ],
             [
-              0.2456
+              0.3693
             ],
             [
-              0.3665
+              0.4413
             ]
           ],
-          "transcribe_seconds": 9.57,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.2624,
+              0.1596
+            ],
+            [
+              0.3485,
+              0.203
+            ],
+            [
+              0.3773,
+              0.1902
+            ],
+            [
+              0.4716,
+              0.2304
+            ],
+            [
+              0.4213,
+              0.1336
+            ],
+            [
+              0.3693,
+              0.1562
+            ],
+            [
+              0.4413,
+              0.255
+            ]
+          ],
+          "transcribe_seconds": 9.38,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
@@ -2079,8 +3219,8 @@
           "expected_words": 12,
           "transcript_words": 12,
           "repeated_ngrams": [],
-          "rms": 0.068429,
-          "absmax": 0.695312,
+          "rms": 0.056259,
+          "absmax": 0.5,
           "longest_silence_seconds": 0.118,
           "wer": 0.0,
           "word_count_ratio": 1.0,
@@ -2100,13 +3240,33 @@
             "turn_count": true
           },
           "attribution_decided_windows": null,
+          "attribution_runs": [],
+          "expected_runs": [
+            0
+          ],
+          "pair_runs": [
+            0
+          ],
+          "attribution_identity_control": {
+            "pair_runs": [
+              0
+            ],
+            "mean_cosines": [
+              0.3845,
+              0.1897
+            ],
+            "mean_margin": 0.1948,
+            "decided_windows": 7,
+            "windows": 7,
+            "interpretation": "diagnostic only; see the note in _checks"
+          },
           "passed": true
         },
         {
           "name": "two-2turn",
           "base_seed": 20260917,
           "request_seed": 20260920,
-          "pcm": ".vibevoice-tts-quality/seed20260917/two-2turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/two-2turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
           "turns": 2,
@@ -2121,104 +3281,143 @@
           "prompt_tokens": 350,
           "max_audio_seconds": 14.0,
           "token_cap": 107,
-          "generated_tokens": 59,
-          "diffusion_frames": 55,
+          "generated_tokens": 48,
+          "diffusion_frames": 44,
           "finish_reason": "stop",
-          "synthesis_seconds": 12.937,
-          "output_audio_seconds": 7.3333,
+          "synthesis_seconds": 8.695,
+          "output_audio_seconds": 5.8667,
           "voice_assignment": [
             0,
             0,
             0,
             0,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
             0,
+            1,
+            1,
+            1,
             1,
             1
           ],
           "voice_assignment_cosines": [
             [
-              0.5818,
-              0.3687
+              0.5826,
+              0.3708
             ],
             [
-              0.7035,
-              0.3762
+              0.7027,
+              0.376
             ],
             [
-              0.5823,
-              0.3967
+              0.5791,
+              0.3954
             ],
             [
-              0.6402,
-              0.4828
+              0.6437,
+              0.4832
             ],
             [
-              0.3304,
-              0.3521
+              0.3915,
+              0.2937
             ],
             [
-              0.3078,
-              0.5464
+              0.1406,
+              0.199
             ],
             [
-              0.2731,
-              0.6698
+              0.2043,
+              0.3431
             ],
             [
-              0.2049,
-              0.5434
+              0.248,
+              0.466
             ],
             [
-              0.1992,
-              0.4649
+              0.1991,
+              0.4547
             ],
             [
-              0.257,
-              0.4994
-            ],
-            [
-              0.4659,
-              0.4586
-            ],
-            [
-              0.4052,
-              0.5877
-            ],
-            [
-              0.3465,
-              0.456
+              0.2496,
+              0.4189
             ]
           ],
-          "transcribe_seconds": 12.68,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.5826,
+              0.3708
+            ],
+            [
+              0.7027,
+              0.376
+            ],
+            [
+              0.5791,
+              0.3954
+            ],
+            [
+              0.6437,
+              0.4832
+            ],
+            [
+              0.3915,
+              0.2937
+            ],
+            [
+              0.1406,
+              0.199
+            ],
+            [
+              0.2043,
+              0.3431
+            ],
+            [
+              0.248,
+              0.466
+            ],
+            [
+              0.1991,
+              0.4547
+            ],
+            [
+              0.2496,
+              0.4189
+            ]
+          ],
+          "transcribe_seconds": 11.19,
           "transcript_status": "ok",
-          "transcript": "I think the meeting went well this morning. Dimwits, I agree, and the budget question is finally settled.",
+          "transcript": "I think the meeting went well this morning. I agree, and the budget question is finally settled.",
           "segments": [
             {
               "start": 0.0,
-              "end": 7.33,
+              "end": 5.87,
               "speaker": "0",
-              "content": "I think the meeting went well this morning. Dimwits, I agree, and the budget question is finally settled."
+              "content": "I think the meeting went well this morning. I agree, and the budget question is finally settled."
             }
           ],
           "transcript_speakers": [
             "0"
           ],
           "expected_words": 17,
-          "transcript_words": 18,
+          "transcript_words": 17,
           "repeated_ngrams": [],
-          "rms": 0.06308,
-          "absmax": 0.695312,
+          "rms": 0.056157,
+          "absmax": 0.683594,
           "longest_silence_seconds": 0.621,
-          "wer": 0.0588,
-          "word_count_ratio": 1.0588,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
           "expected_seconds": 6.8,
-          "duration_ratio": 1.078,
+          "duration_ratio": 0.863,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -2233,14 +3432,26 @@
             "turn_count": true,
             "voice_attribution": true
           },
-          "attribution_decided_windows": 11,
+          "attribution_decided_windows": 8,
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
           "passed": true
         },
         {
           "name": "two-4turn",
           "base_seed": 20260917,
           "request_seed": 20260921,
-          "pcm": ".vibevoice-tts-quality/seed20260917/two-4turn.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/two-4turn.npy",
           "reference_set": "two",
           "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
           "turns": 4,
@@ -2260,7 +3471,7 @@
           "generated_tokens": 82,
           "diffusion_frames": 74,
           "finish_reason": "stop",
-          "synthesis_seconds": 17.391,
+          "synthesis_seconds": 13.706,
           "output_audio_seconds": 9.8667,
           "voice_assignment": [
             1,
@@ -2284,79 +3495,173 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.3047,
-              0.3449
+              0.3075,
+              0.3476
             ],
             [
-              0.4853,
-              0.2656
+              0.4861,
+              0.2672
             ],
             [
-              0.5563,
-              0.3201
+              0.5571,
+              0.3229
             ],
             [
-              0.2852,
-              0.3735
+              0.2857,
+              0.3748
             ],
             [
-              0.1676,
-              0.3541
+              0.1714,
+              0.345
             ],
             [
-              0.255,
-              0.4149
+              0.2558,
+              0.419
             ],
             [
-              0.2227,
-              0.5422
+              0.2212,
+              0.5424
             ],
             [
-              0.2914,
-              0.5456
+              0.29,
+              0.5464
             ],
             [
-              0.3391,
-              0.5786
+              0.341,
+              0.5801
             ],
             [
-              0.3148,
-              0.5051
+              0.3139,
+              0.5061
             ],
             [
-              0.278,
-              0.4047
+              0.2741,
+              0.4029
             ],
             [
-              0.349,
-              0.2274
+              0.3493,
+              0.2319
             ],
             [
-              0.5679,
-              0.5417
+              0.5683,
+              0.5455
             ],
             [
-              0.6146,
-              0.4544
+              0.6152,
+              0.4569
             ],
             [
-              0.5335,
-              0.3806
+              0.5357,
+              0.3814
             ],
             [
-              0.2868,
-              0.4598
+              0.2843,
+              0.4672
             ],
             [
-              0.1171,
-              0.3847
+              0.1154,
+              0.388
             ],
             [
-              0.1252,
-              0.5275
+              0.1284,
+              0.5252
             ]
           ],
-          "transcribe_seconds": 19.83,
+          "voice_assignment_pair": [
+            1,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.3075,
+              0.3476
+            ],
+            [
+              0.4861,
+              0.2672
+            ],
+            [
+              0.5571,
+              0.3229
+            ],
+            [
+              0.2857,
+              0.3748
+            ],
+            [
+              0.1714,
+              0.345
+            ],
+            [
+              0.2558,
+              0.419
+            ],
+            [
+              0.2212,
+              0.5424
+            ],
+            [
+              0.29,
+              0.5464
+            ],
+            [
+              0.341,
+              0.5801
+            ],
+            [
+              0.3139,
+              0.5061
+            ],
+            [
+              0.2741,
+              0.4029
+            ],
+            [
+              0.3493,
+              0.2319
+            ],
+            [
+              0.5683,
+              0.5455
+            ],
+            [
+              0.6152,
+              0.4569
+            ],
+            [
+              0.5357,
+              0.3814
+            ],
+            [
+              0.2843,
+              0.4672
+            ],
+            [
+              0.1154,
+              0.388
+            ],
+            [
+              0.1284,
+              0.5252
+            ]
+          ],
+          "transcribe_seconds": 19.4,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
@@ -2392,9 +3697,9 @@
           "expected_words": 23,
           "transcript_words": 23,
           "repeated_ngrams": [],
-          "rms": 0.07188,
-          "absmax": 0.644531,
-          "longest_silence_seconds": 1.255,
+          "rms": 0.071455,
+          "absmax": 0.640625,
+          "longest_silence_seconds": 1.26,
           "wer": 0.0,
           "word_count_ratio": 1.0,
           "expected_seconds": 9.2,
@@ -2414,13 +3719,31 @@
             "voice_attribution": true
           },
           "attribution_decided_windows": 15,
+          "attribution_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1,
+            0,
+            1
+          ],
           "passed": true
         },
         {
           "name": "two-long",
           "base_seed": 20260917,
           "request_seed": 20260922,
-          "pcm": ".vibevoice-tts-quality/seed20260917/two-long.npy",
+          "pcm": ".vibevoice-tts-quality/ab-dec/seed20260917/two-long.npy",
           "reference_set": "two",
           "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "turns": 2,
@@ -2435,24 +3758,27 @@
           "prompt_tokens": 374,
           "max_audio_seconds": 24.0,
           "token_cap": 182,
-          "generated_tokens": 103,
-          "diffusion_frames": 97,
+          "generated_tokens": 109,
+          "diffusion_frames": 105,
           "finish_reason": "stop",
-          "synthesis_seconds": 22.42,
-          "output_audio_seconds": 12.9333,
+          "synthesis_seconds": 18.79,
+          "output_audio_seconds": 14.0,
           "voice_assignment": [
             0,
             0,
             0,
             0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
+            1,
             1,
             1,
             1,
@@ -2468,115 +3794,266 @@
           ],
           "voice_assignment_cosines": [
             [
-              0.5065,
-              0.3967
+              0.5102,
+              0.3999
             ],
             [
-              0.5684,
-              0.3707
+              0.5552,
+              0.4498
             ],
             [
-              0.649,
-              0.3762
+              0.6168,
+              0.3803
             ],
             [
-              0.5465,
-              0.4798
+              0.5521,
+              0.3754
             ],
             [
-              0.5683,
-              0.5812
+              0.5183,
+              0.5172
             ],
             [
-              0.5293,
-              0.4963
+              0.4976,
+              0.4564
             ],
             [
-              0.65,
-              0.2857
+              0.5577,
+              0.2582
             ],
             [
-              0.6472,
-              0.3928
+              0.5567,
+              0.3261
             ],
             [
-              0.5185,
-              0.4706
+              0.6232,
+              0.5071
             ],
             [
-              0.5625,
-              0.4124
+              0.5086,
+              0.4991
             ],
             [
-              0.4975,
-              0.3451
+              0.4688,
+              0.3944
             ],
             [
-              0.4661,
-              0.3895
+              0.6288,
+              0.388
             ],
             [
-              0.125,
-              0.1698
+              0.4752,
+              0.3439
             ],
             [
-              0.3319,
-              0.391
+              0.3005,
+              0.3039
             ],
             [
-              0.1431,
-              0.3704
+              0.1769,
+              0.2889
             ],
             [
-              0.2091,
-              0.4938
+              0.1978,
+              0.4375
             ],
             [
-              0.3021,
-              0.6261
+              0.2133,
+              0.4718
             ],
             [
-              0.2505,
-              0.4755
+              0.1942,
+              0.5657
             ],
             [
-              0.3259,
-              0.4779
+              0.2612,
+              0.5655
             ],
             [
-              0.2127,
-              0.4463
+              0.345,
+              0.6591
             ],
             [
-              0.2566,
-              0.4801
+              0.3134,
+              0.4996
             ],
             [
-              0.2491,
-              0.5815
+              0.1436,
+              0.5587
             ],
             [
-              0.1226,
-              0.6263
+              0.2624,
+              0.5855
             ],
             [
-              0.2203,
-              0.5394
+              0.3665,
+              0.5457
+            ],
+            [
+              0.2269,
+              0.5646
+            ],
+            [
+              0.2016,
+              0.6564
+            ],
+            [
+              0.4266,
+              0.4975
             ]
           ],
-          "transcribe_seconds": 20.02,
+          "voice_assignment_pair": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_pair_cosines": [
+            [
+              0.5102,
+              0.3999
+            ],
+            [
+              0.5552,
+              0.4498
+            ],
+            [
+              0.6168,
+              0.3803
+            ],
+            [
+              0.5521,
+              0.3754
+            ],
+            [
+              0.5183,
+              0.5172
+            ],
+            [
+              0.4976,
+              0.4564
+            ],
+            [
+              0.5577,
+              0.2582
+            ],
+            [
+              0.5567,
+              0.3261
+            ],
+            [
+              0.6232,
+              0.5071
+            ],
+            [
+              0.5086,
+              0.4991
+            ],
+            [
+              0.4688,
+              0.3944
+            ],
+            [
+              0.6288,
+              0.388
+            ],
+            [
+              0.4752,
+              0.3439
+            ],
+            [
+              0.3005,
+              0.3039
+            ],
+            [
+              0.1769,
+              0.2889
+            ],
+            [
+              0.1978,
+              0.4375
+            ],
+            [
+              0.2133,
+              0.4718
+            ],
+            [
+              0.1942,
+              0.5657
+            ],
+            [
+              0.2612,
+              0.5655
+            ],
+            [
+              0.345,
+              0.6591
+            ],
+            [
+              0.3134,
+              0.4996
+            ],
+            [
+              0.1436,
+              0.5587
+            ],
+            [
+              0.2624,
+              0.5855
+            ],
+            [
+              0.3665,
+              0.5457
+            ],
+            [
+              0.2269,
+              0.5646
+            ],
+            [
+              0.2016,
+              0.6564
+            ],
+            [
+              0.4266,
+              0.4975
+            ]
+          ],
+          "transcribe_seconds": 20.12,
           "transcript_status": "ok",
-          "transcript": "The bewildered forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
             {
               "start": 0.0,
-              "end": 6.34,
+              "end": 7.12,
               "speaker": "0",
-              "content": "The bewildered forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled."
+              "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled."
             },
             {
-              "start": 6.68,
-              "end": 12.93,
+              "start": 7.82,
+              "end": 14.0,
               "speaker": "1",
               "content": "Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
             }
@@ -2588,13 +4065,13 @@
           "expected_words": 40,
           "transcript_words": 40,
           "repeated_ngrams": [],
-          "rms": 0.060814,
-          "absmax": 0.613281,
-          "longest_silence_seconds": 1.019,
-          "wer": 0.05,
+          "rms": 0.045452,
+          "absmax": 0.439453,
+          "longest_silence_seconds": 0.574,
+          "wer": 0.025,
           "word_count_ratio": 1.0,
           "expected_seconds": 16.0,
-          "duration_ratio": 0.808,
+          "duration_ratio": 0.875,
           "checks": {
             "transcript_well_formed": true,
             "not_truncated": true,
@@ -2609,15 +4086,25 @@
             "turn_count": true,
             "voice_attribution": true
           },
-          "attribution_decided_windows": 17,
+          "attribution_decided_windows": 21,
+          "attribution_runs": [
+            0,
+            1
+          ],
+          "expected_runs": [
+            0,
+            1
+          ],
+          "pair_runs": [
+            0,
+            1
+          ],
           "passed": true
         }
       ],
       "failed_requests": []
     }
   ],
-  "failed_requests": [
-    "two-2turn"
-  ],
-  "passed": false
+  "failed_requests": [],
+  "passed": true
 }

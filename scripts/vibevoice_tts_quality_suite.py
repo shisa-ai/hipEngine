@@ -154,6 +154,21 @@ def _voice_assignment(session, audio, references):
     return assignment, similarities
 
 
+def _runs(decided: list[int]) -> list[int]:
+    """Collapse a per-window assignment into its sequence of speaker runs.
+
+    A gate that compares only the first and last confidently classified window
+    cannot see a lost speaker change in the middle: a four-turn script that came
+    back as one voice, then the other, then the first, then the second would still
+    open and close on the right voices. Comparing run sequences does see it.
+    """
+    out: list[int] = []
+    for speaker in decided:
+        if not out or out[-1] != speaker:
+            out.append(speaker)
+    return out
+
+
 def _frame_token_cap(max_audio_seconds: float) -> int:
     """Token budget from a declared audio budget, not from the oracle.
 
@@ -240,6 +255,9 @@ def synthesize(
     session = VibevoiceTtsSession(weights, max_context=1024)
     records: list[dict] = []
     reference_cache: dict[str, tuple[list[np.ndarray], list[int], list[np.ndarray]]] = {}
+    # The two-voice pair, used to classify every request -- including the
+    # single-speaker ones -- so the instrument has a non-vacuous control.
+    pair_embeddings: list[np.ndarray] | None = None
     try:
         for base_seed in seeds:
             seed_dir = work / f"seed{base_seed}"
@@ -254,6 +272,11 @@ def synthesize(
                     # The reference embeddings do not depend on the seed.
                     reference_cache[key] = (pcms, counts, _reference_embeddings(session, pcms))
                 pcms, counts, reference_embeddings = reference_cache[key]
+                if pair_embeddings is None:
+                    pair_pcms, _ = _reference_pcms(
+                        fixtures, suite["reference_sets"]["two"], suite["reference_sets"]["two"]["voices"]
+                    )
+                    pair_embeddings = _reference_embeddings(session, pair_pcms)
                 prompt = build_tts_prompt(request["script"], counts, tokenizer)
                 request_seed = _request_seed(base_seed, index)
                 session.reseed(request_seed)
@@ -288,6 +311,9 @@ def synthesize(
                 assignment, similarities = _voice_assignment(
                     session, audio, reference_embeddings
                 )
+                pair_assignment, pair_similarities = _voice_assignment(
+                    session, audio, pair_embeddings
+                )
                 turn_speakers = [
                     int(line.split(":", 1)[0].split()[-1])
                     for line in request["script"].strip().splitlines()
@@ -318,6 +344,8 @@ def synthesize(
                     "output_audio_seconds": round(float(audio.size) / SAMPLE_RATE, 4),
                     "voice_assignment": assignment,
                     "voice_assignment_cosines": similarities,
+                    "voice_assignment_pair": pair_assignment,
+                    "voice_assignment_pair_cosines": pair_similarities,
                 }
                 records.append(record)
                 print(
@@ -444,6 +472,24 @@ def score(records, asr_model_id: str) -> list[dict]:
                 if len(set(entry["turn_speakers"])) > 1
                 else None
             )
+            # The run sequences the gate compares, and the pair-classified runs the
+            # single-voice control reads, kept in the artifact so a failure says
+            # which speaker change was lost rather than only that one was.
+            entry["attribution_runs"] = _runs(_decided_windows(entry["voice_assignment_cosines"]))
+            entry["expected_runs"] = _runs(entry["turn_speakers"])
+            entry["pair_runs"] = _runs(_decided_windows(entry.get("voice_assignment_pair_cosines") or []))
+            pair_cosines = entry.get("voice_assignment_pair_cosines")
+            if pair_cosines and len(set(entry["turn_speakers"])) == 1:
+                pair = np.asarray(pair_cosines, dtype=np.float64)
+                margins = pair.max(axis=1) - pair.min(axis=1)
+                entry["attribution_identity_control"] = {
+                    "pair_runs": entry["pair_runs"],
+                    "mean_cosines": [round(float(v), 4) for v in pair.mean(axis=0)],
+                    "mean_margin": round(float(margins.mean()), 4),
+                    "decided_windows": len(_decided_windows(pair_cosines)),
+                    "windows": len(pair_cosines),
+                    "interpretation": "diagnostic only; see the note in _checks",
+                }
             entry["passed"] = all(entry["checks"].values())
             scored.append(entry)
             print(
@@ -487,15 +533,26 @@ def _checks(entry: dict) -> dict:
     }
     speakers = entry["turn_speakers"]
     if len(set(speakers)) > 1:
-        # A multi-speaker script must open on its first voice and close on its
-        # last, measured on the encoder's own assignment rather than on the ASR's
-        # speaker labels -- see _voice_assignment for why those are not usable.
+        # A multi-speaker script must reproduce its whole speaker sequence, not
+        # just its endpoints, measured on the encoder's own window assignment
+        # rather than on the ASR's speaker labels -- see _voice_assignment for why
+        # those are not usable.
         decided = _decided_windows(entry["voice_assignment_cosines"])
         checks["voice_attribution"] = (
             len(decided) >= ATTRIBUTION_MIN_DECIDED_WINDOWS
-            and decided[0] == speakers[0]
-            and decided[-1] == speakers[-1]
+            and _runs(decided) == _runs(speakers)
         )
+    # There is deliberately no gate on a single-speaker request's *identity*.
+    # Classifying single-voice audio against both reference voices was measured
+    # and it does not support one: the per-window margin between the two
+    # references sits at the noise floor (for `single-numbers` at seed 20260916
+    # the mean cosines are 0.4290 against 0.4227, a margin of 0.006), it fails
+    # on one request in one of three seeds, and on `single-medium` at seed
+    # 20260917 every window is assigned to the voice the request was NOT
+    # conditioned on. The instrument resolves speaker *changes* inside an
+    # utterance that contains both voices; it does not resolve absolute voice
+    # identity at these durations. `attribution_identity_control` records the
+    # measurement per request so the limitation stays visible.
     return checks
 
 
@@ -641,7 +698,7 @@ def main() -> None:
             "turn_count_min": 1,
             "voice_attribution": (
                 "for a script with more than one speaker, the encoder's window assignment "
-                "must open on the script's first speaker and close on its last"
+                "must reproduce the script's whole speaker sequence, not only its endpoints"
             ),
         },
         "attribution_instrument": {
@@ -654,6 +711,18 @@ def main() -> None:
             "hop_seconds": ATTRIBUTION_HOP_SECONDS,
             "decision_margin": ATTRIBUTION_MARGIN,
             "min_decided_windows": ATTRIBUTION_MIN_DECIDED_WINDOWS,
+            "resolves": (
+                "speaker changes inside an utterance that contains both voices: the "
+                "4-turn script reproduces [0, 1, 0, 1] on all three seeds"
+            ),
+            "does_not_resolve": (
+                "absolute voice identity for single-voice audio. Classifying a "
+                "single-speaker request against both references sits at the noise "
+                "floor (mean cosines 0.4236 against 0.4125 for one request), assigns "
+                "every window to the wrong reference for another, and is therefore "
+                "recorded per request as attribution_identity_control rather than "
+                "gated"
+            ),
             "asr_speaker_labels": (
                 "reported per request as a diagnostic, not gated: on these requests the "
                 "ASR reports one speaker for two-speaker scripts that contain both voices"
