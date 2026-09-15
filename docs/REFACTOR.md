@@ -7710,13 +7710,62 @@ one owns, and any such change has to keep the 256-wide tree pairing per output.
 flush before timing, then cross-check the isolated figure against the end-to-end
 stage delta.
 
+## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, kernel-ABI change)
+
+The session builds two LM runtimes over the same weights, `positive` and `negative`.
+`_negative_condition` runs a full LM forward per diffusion frame, streaming all 28
+layers for one row. The negative branch is bounded by `stages.lm_total_seconds`
+(1.563 s of 4.230 s warm synthesis), which it shares with the positive branch, so its
+plausible share is roughly half of `lm_total` -- **~0.7-0.8 s, ~18% of warm synthesis**.
+
+> **Superseded magnitude.** Earlier revisions of this section reported a 65.5 GB /
+> ~47% traffic share and a "bit-exact, session-orchestration refactor" framing. Both
+> were retracted by `worklog/entries/20260915T200702.494130Z`; the original figure came
+> from per-call-sync instrumentation that absorbed outstanding kernels from other
+> stages and summed to more than the session can contain. Do not reuse the 49.8% or
+> 47% figures.
+
+This is **not** a small refactor. The dependency chain inside one generation step is
+strictly sequential:
+
+```
+pos_forward(k-1) -> next_token -> neg_forward(k) -> diffusion(k) -> pos_forward(k)
+```
+
+`neg_forward(k)` cannot be hoisted, because whether iteration `k` diffuses is decided
+by the logits `pos_forward(k-1)` produces. A speculative batch is semantically sound
+(`neg_forward(k)` consumes the same `_prev_feedback` row `pos_forward(k-1)` consumed)
+but needs a rollback of the negative KV position when speculation misses.
+
+The existing multi-row machinery does not reach across runtimes:
+
+- each `VibevoiceQwen2Runtime` owns its own `self.layers` weight buffers, so one GEMV
+  cannot read both branches' weights from a single pointer;
+- `vv_kv_write_spans(...)` and `vv_attention_spans(...)` take a **single**
+  `k_cache` / `v_cache` pointer, and the two branches hold different KV caches.
+
+So it requires new kernel variants taking per-row cache pointers, plus speculative
+execution and KV rollback in the session loop. **That is a kernel-ABI change, not a
+tuning change, and it reassociates arithmetic** -- so it needs the production-profile
+numerical gate in `docs/EXECUTION-PROFILES.md`, not the bit-exact parent-parity gate.
+
+Expected if it lands: LM 1.450 s toward ~0.86 s. That is a bound from the corrected
+~18% share, not a promise, and it is well below the 2-10x framing.
+
 ## VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work
 
 Not a refactor item so much as the frame for every other one. The diffusion head
 holds **246.5 MB** of weights and is invoked once per generated frame with a
-20-step solver, so it streams **123.3 GB per request** -- a **0.616 s floor** at
-the ~209 GB/s this host sustains, against **1.298 s** measured (about 45% of
-achievable bandwidth).
+20-step solver, so it streams **123.3 GB per request** -- a **~0.59 s floor** at
+the ~209 GB/s this host sustains.
+
+> **Corrected by direct device measurement.** `worklog/entries/20260915T205121.492340Z`
+> traced the diffusion region under `rocprofv3` and measured **28.18 ms/frame of GEMV
+> device time** (89.6% of the head's 31.44 ms of device time), i.e. **~175 GB/s**, or
+> **~84% of sustained bandwidth** -- not the 45% this section previously claimed. The
+> remaining head time is 2.78 ms/frame of `vv_diff_rmsnorm_modulate` and ~0.5 ms of
+> everything else. The head is also invoked with `_GEMV_THREADS = 64` already
+> (`vibevoice_tts_diffusion.py` line 36).
 
 Frames cannot be batched to fix this: each frame's diffusion condition is the LM
 hidden state for that frame, which depends on the previous frame's semantic
@@ -7725,36 +7774,32 @@ either -- 246.5 MB against a much smaller L2, re-read on all 20 steps of every
 frame. The CFG branches are already batched into rows=2, so the weights are read
 once for both.
 
-The practical consequence: every measured gap in this model is a kernel at 45-68%
-of sustained bandwidth, and closing those gaps means changing the summation order,
-which this model's generated audio rejects. The accepted semantic win worked
-because it changed the column tile and not the accumulation order.
+The practical consequence: the diffusion GEMV is already at ~84% of sustained
+bandwidth, so it has no large win left. Closing the residual means changing the
+summation order, which this model's generated audio rejects. The accepted semantic
+win worked because it changed the column tile and not the accumulation order.
 
 Anyone looking for more speed should start from the bandwidth number rather than
 from a kernel profile, and should expect the answer to be a work-partitioning
 change that preserves the reduction tree, or a quality candidate (fewer solver
 steps, lower precision) that the generated-audio suite has to justify.
 
-## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, bit-exact)
+## VibeVoice-TTS: per-step diffusion D2H readback (open, ~5.6% of warm)
 
-The session builds two LM runtimes over the same weights, `positive` and
-`negative`. `_negative_condition` runs a **full LM forward per diffusion frame**,
-streaming all 28 layers for one row, so the negative branch accounts for **65.5 GB
-of the LM's 138.9 GB** of weight traffic -- about 47%. The LM runs at roughly
-110 GB/s against the ~209 GB/s this host sustains.
+`VibevoiceTTSDiffusionHeadGPU.forward()` reads `eps` back to the host every solver
+step, and `sample_speech_tokens` then runs the CFG combine and the DPM-Solver++ step
+in numpy. The blocking D2H makes the host wait for the whole queue to drain, leaving
+the GPU idle while the numpy step runs. `worklog/entries/20260915T205312.521230Z`
+measured the ceiling by removing only the readback: **1.2358x on the diffusion frame,
++222.6 ms per request, +5.56% of warm**, RTF 1.201 -> ~1.134.
 
-Merging the two decode branches into one rows=2 pass halves that traffic and is
-**bit-exact**, because a GEMV output element `(row, col)` reduces over `k`
-independently of every other row. Unlike the other items in this file, this one
-reduces traffic rather than changing arithmetic, so it does not need the
-generated-audio gate to be worth attempting -- though it should still be confirmed
-against it.
+`vv_diff_cfg_combine_bf16` already exists in
+`kernels/hip_gfx1100/vibevoice/diffusion.py` and is exported and registered, but is
+**unused by the runtime** -- it is the building block for this change. A DPM step
+kernel is still needed. Two properties decide whether the port can be bit-exact:
+the CFG combine applies `bf16_round` at two points, and
+`DPMSolverMultistepScheduler.step` is sequential fp32 accumulation. If it cannot be
+made bit-exact it needs the production-profile gate.
 
-It is a session-orchestration refactor, not a kernel change: the two runtimes own
-separate KV caches and positions, advance at different rates (positive once per
-generated token, negative once per diffusion frame), and the attention kernels take
-per-row `KVLiveSpans`, so a two-row pass needs two span sets.
-
-Expected: LM 1.450 s toward 0.86 s, pooled RTF 1.201 toward 1.05. This should be
-attempted before any lower-precision-diffusion-weights campaign, which would be a
-quality tradeoff.
+This is the last well-evidenced opportunity above 1% of warm anywhere in the
+pipeline, and it still does not approach 2x.
