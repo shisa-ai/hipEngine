@@ -1,0 +1,718 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_comparator_role_map",
+ "performance_claim": false,
+ "status": "diagnostic",
+ "label": "pwilkin-40a9f4d01-f16",
+ "dialect": "mmb",
+ "trace": "/tmp/comparators-20260915/prof-pwilkin-40a9f4d01-f16/trace/gfx1151/3785081_kernel_trace.csv",
+ "families": [
+  "dense_projection",
+  "expert_gate_up",
+  "expert_down",
+  "moe_reduce",
+  "hyper_connection",
+  "gdn",
+  "qsa_attention",
+  "ple",
+  "indexer",
+  "elementwise_norm",
+  "quantize_pack",
+  "other"
+ ],
+ "total_ms": 7945.6,
+ "dispatches": 24943,
+ "by_family_ms": {
+  "dense_projection": 2907.9,
+  "expert_gate_up": 1540.2,
+  "expert_down": 845.1,
+  "moe_reduce": 202.6,
+  "hyper_connection": 642.7,
+  "gdn": 535.2,
+  "qsa_attention": 339.5,
+  "ple": 0.0,
+  "indexer": 336.5,
+  "elementwise_norm": 551.1,
+  "quantize_pack": 0.0,
+  "other": 44.8
+ },
+ "by_family_dispatches": {
+  "dense_projection": 5860,
+  "expert_gate_up": 580,
+  "expert_down": 548,
+  "moe_reduce": 760,
+  "hyper_connection": 1520,
+  "gdn": 576,
+  "qsa_attention": 504,
+  "ple": 0,
+  "indexer": 496,
+  "elementwise_norm": 7683,
+  "quantize_pack": 0,
+  "other": 6416
+ },
+ "by_family_share_pct": {
+  "dense_projection": 36.6,
+  "expert_gate_up": 19.38,
+  "expert_down": 10.64,
+  "moe_reduce": 2.55,
+  "hyper_connection": 8.09,
+  "gdn": 6.74,
+  "qsa_attention": 4.27,
+  "ple": 0.0,
+  "indexer": 4.23,
+  "elementwise_norm": 6.94,
+  "quantize_pack": 0.0,
+  "other": 0.56
+ },
+ "kernels": [
+  {
+   "family": "dense_projection",
+   "kernel": "void (anonymous namespace)::mmb_dense_kernel<128, 128, 32, 64, 1>(unsigned char const*, unsigned short const*, float*, unsigned short*, bool, int, int, int)",
+   "ms": 1017.44,
+   "dispatches": 1236
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void (anonymous namespace)::mmb_routed_glu_kernel<64, 32, 16, 16, 44>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 991.54,
+   "dispatches": 184
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void (anonymous namespace)::mmb_dense_kernel<128, 256, 64, 64, 1>(unsigned char const*, unsigned short const*, float*, unsigned short*, bool, int, int, int)",
+   "ms": 892.14,
+   "dispatches": 340
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void (anonymous namespace)::mmb_f32split_kernel<128, 128, 32, 64, true>(float const*, float const*, float*, int, int, int)",
+   "ms": 858.7,
+   "dispatches": 952
+  },
+  {
+   "family": "expert_down",
+   "kernel": "void (anonymous namespace)::mmb_routed_kernel<128, 32, 32, 16, 39>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 531.03,
+   "dispatches": 172
+  },
+  {
+   "family": "gdn",
+   "kernel": "void gated_delta_net_tiled_cuda<128, 8, 8, 16, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, long, int)",
+   "ms": 415.15,
+   "dispatches": 144
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void (anonymous namespace)::mmb_routed_glu_kernel<64, 128, 32, 32, 44>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 407.44,
+   "dispatches": 184
+  },
+  {
+   "family": "hyper_connection",
+   "kernel": "hc_combine_norm_f32_b256(float const*, float const*, float const*, float const*, float*, float*, unsigned short*, bool, unsigned short const*, unsigned short*, unsigned short const*, int, float, float, float, float, float)",
+   "ms": 383.64,
+   "dispatches": 752
+  },
+  {
+   "family": "indexer",
+   "kernel": "void mm_ids_helper<10>(int const*, int*, int*, int*, int, int, int, int, int, bool)",
+   "ms": 329.57,
+   "dispatches": 376
+  },
+  {
+   "family": "hyper_connection",
+   "kernel": "void (anonymous namespace)::hc_gate_mix_kernel<4, 1>(unsigned char const*, unsigned short const*, unsigned short const*, float*, unsigned short*, bool, int, int, int, float, float)",
+   "ms": 258.26,
+   "dispatches": 380
+  },
+  {
+   "family": "expert_down",
+   "kernel": "void (anonymous namespace)::mmb_routed_kernel<128, 128, 32, 64, 39>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 213.92,
+   "dispatches": 172
+  },
+  {
+   "family": "moe_reduce",
+   "kernel": "moe_weighted_reduction_f32_v4(float const*, float const*, float const*, float*, long, int)",
+   "ms": 196.19,
+   "dispatches": 380
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "void flash_attn_ext_f16<256, 256, 16, 4, false, false, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)",
+   "ms": 149.45,
+   "dispatches": 24
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "qsa3_attn_kernel(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short const*, int const*, float*, qsa3_layout)",
+   "ms": 133.78,
+   "dispatches": 24
+  },
+  {
+   "family": "gdn",
+   "kernel": "void gdn_conv_direct_kernel<true, 128>(float const*, float const*, float const*, float*, int, int)",
+   "ms": 117.6,
+   "dispatches": 144
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void rms_rows_f32<true>(float const*, float const*, float const*, float*, int, long, long, long, long, long, long, float)",
+   "ms": 105.41,
+   "dispatches": 144
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void (anonymous namespace)::mmb_routed_glu_kernel<64, 32, 16, 16, 45>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 81.12,
+   "dispatches": 4
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "(anonymous namespace)::mmb_cvt_f32_bf16(float const*, unsigned short*, unsigned long)",
+   "ms": 75.53,
+   "dispatches": 772
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void rms_norm_f32<256, false, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 69.93,
+   "dispatches": 576
+  },
+  {
+   "family": "expert_down",
+   "kernel": "void (anonymous namespace)::mmb_routed_kernel<128, 32, 32, 16, 1>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 57.62,
+   "dispatches": 16
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void k_bin_bcast<&(op_add(float, float)), float, float, float, float const*>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, float const*)",
+   "ms": 53.16,
+   "dispatches": 896
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void k_bin_bcast<&(op_mul(float, float)), float, float, float, float const*>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, float const*)",
+   "ms": 52.29,
+   "dispatches": 756
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void rms_rows_f32<false>(float const*, float const*, float const*, float*, int, long, long, long, long, long, long, float)",
+   "ms": 38.74,
+   "dispatches": 96
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void mul_mat_vec_q_moe<(ggml_type)12, 2, true>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 37.18,
+   "dispatches": 184
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void cpy_scalar<&(void cpy_1_scalar<float, float>(char const*, char*))>(char const*, char*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long)",
+   "ms": 35.24,
+   "dispatches": 112
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_f<float, float, 1, 256, false, false>(float const*, float const*, int const*, ggml_cuda_mm_fusion_args_device, float*, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int)",
+   "ms": 33.84,
+   "dispatches": 200
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void unary_gated_op_kernel<&(op_sigmoid(float)), float>(float const*, float const*, float*, long, long, long, long)",
+   "ms": 33.59,
+   "dispatches": 240
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "void rope_multi<true, false, float>(float const*, float*, int, int, int, int, int, int, int, int, int, int, int, int const*, float, float, float, rope_corr_dims, float, float const*, mrope_sections, bool, bool)",
+   "ms": 32.94,
+   "dispatches": 288
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 2, false, false, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 31.63,
+   "dispatches": 552
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 4, false, false, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 31.37,
+   "dispatches": 552
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void rms_norm_f32<1024, false, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 26.08,
+   "dispatches": 40
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "scale_f32(float const*, float*, float, float, long)",
+   "ms": 24.35,
+   "dispatches": 1660
+  },
+  {
+   "family": "expert_down",
+   "kernel": "void mul_mat_vec_q_moe<(ggml_type)7, 2, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 21.42,
+   "dispatches": 172
+  },
+  {
+   "family": "expert_down",
+   "kernel": "void (anonymous namespace)::mmb_routed_kernel<128, 128, 32, 64, 1>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 21.11,
+   "dispatches": 16
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void (anonymous namespace)::mmb_routed_glu_kernel<64, 128, 32, 32, 45>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)",
+   "ms": 19.51,
+   "dispatches": 4
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 1, false, false, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 12.54,
+   "dispatches": 20
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "qsa3_rows_kernel(int const*, unsigned long, int, int, int*, int*)",
+   "ms": 8.78,
+   "dispatches": 24
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void cpy_scalar<&(void cpy_1_scalar<__half, __half>(char const*, char*))>(char const*, char*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long)",
+   "ms": 8.13,
+   "dispatches": 72
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "qsa3_merge_kernel(int const*, unsigned long, int, int, int, int const*, int const*, unsigned short*, unsigned short*, int*, int)",
+   "ms": 7.4,
+   "dispatches": 24
+  },
+  {
+   "family": "qsa_attention",
+   "kernel": "qsa_expand_complete_blocks_512(char const*, char const*, char const*, char const*, char*, char*, char*, char*, expand_layout)",
+   "ms": 7.18,
+   "dispatches": 120
+  },
+  {
+   "family": "indexer",
+   "kernel": "void top_k_nary_search_cuda<1024>(float const*, HIP_vector_type<int, 2u> const*, int*, HIP_vector_type<int, 2u>*, int, int, int, int, int, bool, bool)",
+   "ms": 6.92,
+   "dispatches": 120
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void (anonymous namespace)::mmb_dense_kernel<128, 128, 32, 64, 2>(unsigned char const*, unsigned short const*, float*, unsigned short*, bool, int, int, int)",
+   "ms": 6.78,
+   "dispatches": 72
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void k_bin_bcast<&(op_repeat(float, float)), float, float, float>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 6.66,
+   "dispatches": 144
+  },
+  {
+   "family": "moe_reduce",
+   "kernel": "void topk_moe_cuda<512, false>(float const*, float*, int*, float*, int, int, float, float, topk_moe_config)",
+   "ms": 6.43,
+   "dispatches": 380
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 2, false, false, false, true>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 5.8,
+   "dispatches": 426
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_f<float, float, 4, 256, false, false>(float const*, float const*, int const*, ggml_cuda_mm_fusion_args_device, float*, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int)",
+   "ms": 5.73,
+   "dispatches": 522
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "__amd_rocclr_fillBufferUnAligned",
+   "ms": 5.72,
+   "dispatches": 211
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 4, false, false, false, true>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 5.7,
+   "dispatches": 426
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void unary_gated_op_kernel<&(op_silu(float)), float>(float const*, float const*, float*, long, long, long, long)",
+   "ms": 5.63,
+   "dispatches": 376
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_f<float, float, 2, 256, false, false>(float const*, float const*, int const*, ggml_cuda_mm_fusion_args_device, float*, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int)",
+   "ms": 5.48,
+   "dispatches": 522
+  },
+  {
+   "family": "other",
+   "kernel": "void concat_cont<unsigned int, 1>(unsigned int const*, unsigned int const*, unsigned int*, long, long, long, long, long, long)",
+   "ms": 4.88,
+   "dispatches": 72
+  },
+  {
+   "family": "other",
+   "kernel": "void flash_attn_mask_to_KV_max<16>(__half2 const*, int*, int, long, long)",
+   "ms": 4.7,
+   "dispatches": 24
+  },
+  {
+   "family": "other",
+   "kernel": "void k_get_rows_float_vec<float>(float const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 4.39,
+   "dispatches": 288
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "__amd_rocclr_copyBuffer",
+   "ms": 3.9,
+   "dispatches": 532
+  },
+  {
+   "family": "other",
+   "kernel": "void k_set_rows<float, long, __half>(float const*, long const*, __half*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 3.9,
+   "dispatches": 288
+  },
+  {
+   "family": "other",
+   "kernel": "void concat_non_cont<unsigned int, 0>(char const*, char const*, char*, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 3.54,
+   "dispatches": 148
+  },
+  {
+   "family": "other",
+   "kernel": "quantize_q8_1(float const*, void*, long, long, long, long, long, unsigned int, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 3.51,
+   "dispatches": 2368
+  },
+  {
+   "family": "other",
+   "kernel": "void ple_conv_kernel<4, 3, 128, float>(float const*, float const*, float const*, float*, int, int)",
+   "ms": 3.46,
+   "dispatches": 4
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_silu(float)), float>(float const*, float*, int)",
+   "ms": 3.45,
+   "dispatches": 772
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void mul_mat_vec_q_moe<(ggml_type)8, 2, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 2.59,
+   "dispatches": 16
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "__amd_rocclr_copyBufferRectAligned",
+   "ms": 2.48,
+   "dispatches": 336
+  },
+  {
+   "family": "other",
+   "kernel": "qsa_decode_wmma_partial(char const*, char const*, char const*, char const*, char const*, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, int, int, int, int, float, float*)",
+   "ms": 2.31,
+   "dispatches": 24
+  },
+  {
+   "family": "gdn",
+   "kernel": "void gated_delta_net_cuda<128, false, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, long, int)",
+   "ms": 1.97,
+   "dispatches": 144
+  },
+  {
+   "family": "other",
+   "kernel": "void reduce_rows_f32<false>(float const*, float*, int)",
+   "ms": 1.77,
+   "dispatches": 8
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void cpy_scalar_transpose<__half>(char const*, char*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long)",
+   "ms": 1.61,
+   "dispatches": 24
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void rms_norm_f32<256, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 1.56,
+   "dispatches": 336
+  },
+  {
+   "family": "other",
+   "kernel": "idx_relu_sum_f32(float const*, float*, int, int)",
+   "ms": 1.29,
+   "dispatches": 96
+  },
+  {
+   "family": "other",
+   "kernel": "(anonymous namespace)::mmb_build_desc2(int const*, unsigned int*, unsigned int*, int, int, int, int, int, int)",
+   "ms": 1.16,
+   "dispatches": 376
+  },
+  {
+   "family": "other",
+   "kernel": "gdn_concat_tail(float const*, float const*, float*, int, int, int, int)",
+   "ms": 1.14,
+   "dispatches": 144
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_sigmoid(float)), float>(float const*, float*, int)",
+   "ms": 0.98,
+   "dispatches": 684
+  },
+  {
+   "family": "other",
+   "kernel": "void k_get_rows_float<float, float>(float const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 0.87,
+   "dispatches": 308
+  },
+  {
+   "family": "expert_gate_up",
+   "kernel": "void mul_mat_vec_q_moe<(ggml_type)13, 2, true>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 0.82,
+   "dispatches": 4
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void k_bin_bcast<&(op_sub(float, float)), float, float, float, float const*>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, float const*)",
+   "ms": 0.82,
+   "dispatches": 120
+  },
+  {
+   "family": "hyper_connection",
+   "kernel": "hc_mix_reduce_f32_hc4_parallel(float const*, float const*, float*, long, long, float, float)",
+   "ms": 0.78,
+   "dispatches": 388
+  },
+  {
+   "family": "other",
+   "kernel": "void mul_mat_f<__hip_bfloat162, 32, 4, 7, false>(__hip_bfloat162 const*, float const*, int const*, float*, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int)",
+   "ms": 0.55,
+   "dispatches": 48
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_softplus(float)), float>(float const*, float*, int)",
+   "ms": 0.5,
+   "dispatches": 288
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_log(float)), float>(float const*, float*, int)",
+   "ms": 0.44,
+   "dispatches": 120
+  },
+  {
+   "family": "gdn",
+   "kernel": "void ssm_conv_f32<true, 128ul, 4ul>(float const*, float const*, float const*, int, int, int, int, float*, int, int, int, long)",
+   "ms": 0.43,
+   "dispatches": 144
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_step(float)), float>(float const*, float*, int)",
+   "ms": 0.43,
+   "dispatches": 120
+  },
+  {
+   "family": "other",
+   "kernel": "void k_get_rows<32, 1, &(dequantize_q8_0(void const*, long, int, HIP_vector_type<float, 2u>&)), float>(void const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 0.37,
+   "dispatches": 8
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)12, 1, true, false, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 0.35,
+   "dispatches": 4
+  },
+  {
+   "family": "other",
+   "kernel": "qsa_decode_merge(float const*, float*, int)",
+   "ms": 0.31,
+   "dispatches": 24
+  },
+  {
+   "family": "other",
+   "kernel": "void flash_attn_tile<256, 256, 2, 4, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)",
+   "ms": 0.28,
+   "dispatches": 24
+  },
+  {
+   "family": "elementwise_norm",
+   "kernel": "void cpy_scalar_contiguous<int, float>(char const*, char*, long)",
+   "ms": 0.27,
+   "dispatches": 240
+  },
+  {
+   "family": "other",
+   "kernel": "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8",
+   "ms": 0.22,
+   "dispatches": 24
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_f<__hip_bfloat16, float, 2, 256, false, false>(__hip_bfloat16 const*, float const*, int const*, ggml_cuda_mm_fusion_args_device, float*, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int)",
+   "ms": 0.18,
+   "dispatches": 24
+  },
+  {
+   "family": "other",
+   "kernel": "void get_rows_mean4_128<__half>(char const*, char const*, float*, unsigned long, unsigned long, unsigned long, float, float)",
+   "ms": 0.18,
+   "dispatches": 48
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 1, false, false, false, true>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 0.14,
+   "dispatches": 8
+  },
+  {
+   "family": "other",
+   "kernel": "void flash_attn_combine_results<256>(float const*, HIP_vector_type<float, 2u> const*, float*, int)",
+   "ms": 0.07,
+   "dispatches": 24
+  },
+  {
+   "family": "dense_projection",
+   "kernel": "void mul_mat_vec_q<(ggml_type)8, 1, true, false, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+   "ms": 0.07,
+   "dispatches": 4
+  },
+  {
+   "family": "other",
+   "kernel": "void k_set_rows<float, long, float>(float const*, long const*, float*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 0.04,
+   "dispatches": 24
+  },
+  {
+   "family": "other",
+   "kernel": "ple_concat_tail(float const*, float const*, float*, int, int, int, int, int)",
+   "ms": 0.03,
+   "dispatches": 4
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_relu(float)), float>(float const*, float*, int)",
+   "ms": 0.03,
+   "dispatches": 24
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_sgn(float)), float>(float const*, float*, int)",
+   "ms": 0.01,
+   "dispatches": 8
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_abs(float)), float>(float const*, float*, int)",
+   "ms": 0.01,
+   "dispatches": 8
+  },
+  {
+   "family": "other",
+   "kernel": "void op_clamp_kernel<float>(float const*, float*, float, float, int)",
+   "ms": 0.01,
+   "dispatches": 8
+  },
+  {
+   "family": "other",
+   "kernel": "void unary_op_kernel<&(op_sqrt(float)), float>(float const*, float*, int)",
+   "ms": 0.01,
+   "dispatches": 8
+  }
+ ],
+ "unmapped_top": [
+  {
+   "kernel": "void concat_cont<unsigned int, 1>(unsigned int const*, unsigned int const*, unsigned int*, long, long, long, long, long, long)",
+   "ms": 4.88
+  },
+  {
+   "kernel": "void flash_attn_mask_to_KV_max<16>(__half2 const*, int*, int, long, long)",
+   "ms": 4.7
+  },
+  {
+   "kernel": "void k_get_rows_float_vec<float>(float const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 4.39
+  },
+  {
+   "kernel": "void k_set_rows<float, long, __half>(float const*, long const*, __half*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 3.9
+  },
+  {
+   "kernel": "void concat_non_cont<unsigned int, 0>(char const*, char const*, char*, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 3.54
+  },
+  {
+   "kernel": "quantize_q8_1(float const*, void*, long, long, long, long, long, unsigned int, HIP_vector_type<unsigned int, 3u>)",
+   "ms": 3.51
+  },
+  {
+   "kernel": "void ple_conv_kernel<4, 3, 128, float>(float const*, float const*, float const*, float*, int, int)",
+   "ms": 3.46
+  },
+  {
+   "kernel": "void unary_op_kernel<&(op_silu(float)), float>(float const*, float*, int)",
+   "ms": 3.45
+  },
+  {
+   "kernel": "qsa_decode_wmma_partial(char const*, char const*, char const*, char const*, char const*, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, int, int, int, int, float, float*)",
+   "ms": 2.31
+  },
+  {
+   "kernel": "void reduce_rows_f32<false>(float const*, float*, int)",
+   "ms": 1.77
+  },
+  {
+   "kernel": "idx_relu_sum_f32(float const*, float*, int, int)",
+   "ms": 1.29
+  },
+  {
+   "kernel": "(anonymous namespace)::mmb_build_desc2(int const*, unsigned int*, unsigned int*, int, int, int, int, int, int)",
+   "ms": 1.16
+  },
+  {
+   "kernel": "gdn_concat_tail(float const*, float const*, float*, int, int, int, int)",
+   "ms": 1.14
+  },
+  {
+   "kernel": "void unary_op_kernel<&(op_sigmoid(float)), float>(float const*, float*, int)",
+   "ms": 0.98
+  },
+  {
+   "kernel": "void k_get_rows_float<float, float>(float const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)",
+   "ms": 0.87
+  }
+ ],
+ "notes": [
+  "Shared taxonomy for the hipEngine/comparator gap attribution.",
+  "llama.cpp expert families are identified by ggml quant type; the Q8_0 expert-down layers are separated by routed grid Y.",
+  "Time is rocprofv3 kernel duration, not wall time; it excludes host gaps between dispatches."
+ ]
+}
