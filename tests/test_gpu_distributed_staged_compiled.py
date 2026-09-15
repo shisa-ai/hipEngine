@@ -350,3 +350,136 @@ def test_device_exchange_spin_timeout_fails_instead_of_hanging() -> None:
         for device in (0, 1):
             with scoped_current_device(rt, device):
                 rt.stream_destroy(streams[device])
+
+
+def test_head_shard_gemv_rows_bit_identical_to_replicated_head() -> None:
+    """The sharded head must produce bit-identical logit values per row.
+
+    Both ranks' contiguous Q6_K block ranges are repacked to the
+    runtime-resolved layout and compared against the full replicated head
+    GEMV on the same hidden input; row independence makes every range
+    bit-exact, which is what pins the exact greedy tie-break.
+    """
+
+    import ctypes
+    import os
+
+    import numpy as np
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device
+    from hipengine.distributed.head_shard import materialize_head_shards
+    from hipengine.distributed.shard_exec import upload_shard_weight
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        gguf_rmsnorm_bf16_f32_weight,
+    )
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
+    from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+
+    class _RawPtrProxy:
+        def __init__(self, ptr, nbytes):
+            self.ptr = int(ptr)
+            self.nbytes = int(nbytes)
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    model = os.environ.get("HIPENGINE_TP2_TEST_MODEL")
+    if not model or not os.path.exists(model):
+        pytest.skip("HIPENGINE_TP2_TEST_MODEL must point at the artifact GGUF")
+
+    reader = GGUFReader(model)
+    head_info = reader.info.tensor("output.weight")
+    vocab_rows = head_info.shape[0] if hasattr(head_info, "shape") else None
+    assert vocab_rows is not None
+    hidden = 5120
+    plan, rank_payloads = materialize_head_shards(model, world_size=2)
+    assert plan.vocab_rows == int(vocab_rows)
+
+    # The full replicated head, repacked to the same layout, on device 0.
+    source = np.memmap(
+        reader.path, dtype=np.uint8, mode="r",
+        offset=head_info.data_offset,
+        shape=(plan.vocab_rows * plan.source_row_bytes,),
+    )
+    full_local = np.ascontiguousarray(source).reshape(
+        1, plan.vocab_rows, plan.source_row_bytes
+    )
+    full_tiles = np.ascontiguousarray(
+        np.asarray(repack_gguf_q6_k_tile16_qmicro_planar(full_local).tiles)
+    ).reshape(-1)
+
+    rng = np.random.default_rng(23)
+    x_host = (rng.standard_normal(hidden) * 0.5).astype(np.float32)
+    import struct
+
+    x_bits = np.asarray(
+        [struct.unpack("<I", struct.pack("<f", v))[0] >> 16 for v in x_host],
+        dtype=np.uint16,
+    )
+    streams = {}
+    buffers = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+            x_dev = rt.malloc(hidden * 2)
+            copy_host_to_device(
+                _RawPtrProxy(x_dev, hidden * 2), x_bits.ctypes.data, hidden * 2,
+                runtime=rt,
+            )
+            out_dev = rt.malloc(plan.vocab_rows * 4)
+            buffers[device] = (x_dev, out_dev)
+    try:
+        with scoped_current_device(rt, 0):
+            full_weight = upload_shard_weight(
+                rt, device=0, name="tiles", layout=plan.layout,
+                quant_key=plan.quant_key, payload=full_tiles,
+            )
+            launch_gguf_linear(
+                full_weight, buffers[0][0], buffers[0][1], 1, hidden,
+                plan.vocab_rows, output_dtype=GGUF_OUTPUT_F32,
+                stream=streams[0], runtime=rt,
+            )
+        shard_outs = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                weight = upload_shard_weight(
+                    rt, device=device, name="tiles", layout=plan.layout,
+                    quant_key=plan.quant_key, payload=rank_payloads[device]["tiles"],
+                )
+                out_dev = rt.malloc(plan.rows_per_rank * 4)
+                launch_gguf_linear(
+                    weight, buffers[device][0], out_dev, 1, hidden,
+                    plan.rows_per_rank, output_dtype=GGUF_OUTPUT_F32,
+                    stream=streams[device], runtime=rt,
+                )
+                rt.stream_synchronize(streams[device])
+                row = np.empty(plan.rows_per_rank, dtype="<f4")
+                copy_device_to_host(
+                    row.ctypes.data, _RawPtrProxy(out_dev, plan.rows_per_rank * 4),
+                    plan.rows_per_rank * 4, runtime=rt,
+                )
+                shard_outs[device] = row
+                rt.free(out_dev)
+        with scoped_current_device(rt, 0):
+            rt.stream_synchronize(streams[0])
+            full_row = np.empty(plan.vocab_rows, dtype="<f4")
+            copy_device_to_host(
+                full_row.ctypes.data,
+                _RawPtrProxy(buffers[0][1], plan.vocab_rows * 4),
+                plan.vocab_rows * 4, runtime=rt,
+            )
+        assert np.array_equal(
+            full_row[: plan.rows_per_rank], shard_outs[0]
+        ), "rank 0's head shard rows differ from the replicated head"
+        assert np.array_equal(
+            full_row[plan.rows_per_rank :], shard_outs[1]
+        ), "rank 1's head shard rows differ from the replicated head"
+    finally:
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_destroy(streams[device])
+                rt.free(buffers[device][0])
+                rt.free(buffers[device][1])
