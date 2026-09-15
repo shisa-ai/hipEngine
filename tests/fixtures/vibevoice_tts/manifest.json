@@ -1,0 +1,66 @@
+{
+  "model_id": "microsoft/VibeVoice-1.5B",
+  "model_revision": "c00898d257e6b46004e3e2866a47534085fb685a",
+  "fork_dir": "/home/lhl/VibeVoice-community",
+  "fork_revision": "952326ddb264062466a888cf32a5b2f4e803e16e",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "torch_version": "2.13.0+rocm10.0.0",
+  "transformers_version": "4.51.3",
+  "gpu_name": "AMD Radeon 8060S Graphics",
+  "sampling_rate": 24000,
+  "requests": [
+    {
+      "name": "single",
+      "script": "Speaker 1: The quick brown fox jumps over the lazy dog.",
+      "voices": [
+        "/home/lhl/VibeVoice-community/demo/voices/en-Alice_woman.wav"
+      ],
+      "voice_sha256": [
+        "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203"
+      ],
+      "num_speakers": 1,
+      "cfg_scale": 1.3,
+      "ddpm_inference_steps": 20,
+      "seed": 20260915,
+      "prompt_tokens": 121,
+      "generated_tokens": 148,
+      "logit_positions": 4,
+      "diffusion_calls_recorded": 8,
+      "semantic_encodes": 25,
+      "pcm_samples": 80000,
+      "pcm_seconds": 3.333,
+      "pcm_rms": 0.059446,
+      "pcm_absmax": 0.345703,
+      "scaling_factor": 0.1962890625,
+      "bias_factor": -0.04931640625
+    },
+    {
+      "name": "two",
+      "script": "Speaker 1: I heard there is big news in text to speech lately.\nSpeaker 2: Yes, and it runs locally on this machine.",
+      "voices": [
+        "/home/lhl/VibeVoice-community/demo/voices/en-Alice_woman.wav",
+        "/home/lhl/VibeVoice-community/demo/voices/en-Carter_man.wav"
+      ],
+      "voice_sha256": [
+        "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "9dd7b12f25bf279d878a9f7a3125f64bff2b312a189959090acff9138a55e8dd"
+      ],
+      "num_speakers": 2,
+      "cfg_scale": 1.3,
+      "ddpm_inference_steps": 20,
+      "seed": 20260915,
+      "prompt_tokens": 352,
+      "generated_tokens": 402,
+      "logit_positions": 4,
+      "diffusion_calls_recorded": 8,
+      "semantic_encodes": 48,
+      "pcm_samples": 153600,
+      "pcm_seconds": 6.4,
+      "pcm_rms": 0.053668,
+      "pcm_absmax": 0.412109,
+      "scaling_factor": 0.1962890625,
+      "bias_factor": -0.04931640625
+    }
+  ]
+}
