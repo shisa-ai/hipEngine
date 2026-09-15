@@ -62,6 +62,14 @@ def test_layer_gated_selectors_carry_their_layer_companion(module):
                 assert overrides[layers], (name, layers)
 
 
+def test_the_shadowed_selector_arm_disables_its_shadow(module):
+    """EXACT_GROUPED_Q4 shadows Q4_IU8_PREFILL in the same dispatch chain."""
+    shadow = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
+    for name, overrides in module.ARMS.items():
+        if "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL" in overrides:
+            assert overrides.get(shadow) == "0", name
+
+
 def test_arms_cover_every_disabled_prefill_selector(module):
     from hipengine.generation.qwen4_exp_profiles import (
         PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
@@ -80,7 +88,6 @@ def test_arms_cover_every_disabled_prefill_selector(module):
         for key in overrides
     }
     assert still_disabled <= covered, sorted(still_disabled - covered)
-
 
 def test_the_restored_flags_are_not_in_the_disabled_set(module):
     """The tree's restored set is smaller than the disabled-selector narrative."""
