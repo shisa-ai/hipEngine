@@ -1,4 +1,4 @@
-"""Canonical boundary numerics and full payload parity for chunk2048.
+"""Canonical boundary numerics and full payload parity for larger chunks.
 
 This is c1 runner reuse, not c2 serving isolation or a performance benchmark.
 """
@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--allocation-evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--case-id", action="append")
+    parser.add_argument("--chunk-size", type=int, choices=(2048, 4096), default=2048)
     args = parser.parse_args()
     check_host()
     source = _git_metadata(ROOT)
@@ -136,14 +137,14 @@ def main():
         host, model = _host_metadata(), model_identity(args.model_root)
         allocation = json.loads(args.allocation_evidence.read_bytes())
         profile = resolve_allocation_profile()
-        validate_chunk_allocation(allocation, chunk=2048, context=4352,
+        validate_chunk_allocation(allocation, chunk=args.chunk_size, context=4352,
                                   manifest=profile.manifest_sha256, host=host, model=model)
         report = dict(
             status="running", source=source, host=host, model=model, command=sys.argv,
             fixture_sha256=fixture_hash, allocation_evidence_sha256=hashlib.sha256(
                 args.allocation_evidence.read_bytes()).hexdigest(),
             protocol=dict(steps=64, candidate_repeats=3, capacity=4352,
-                          strict_chunk=1024, candidate_chunk=2048, complete_matrix=not bool(args.case_id)),
+                          strict_chunk=1024, candidate_chunk=args.chunk_size, complete_matrix=not bool(args.case_id)),
             lifecycle={}, cases=[], performance_claim=False, promotion_claim=False,
             limitations=["c1 reuse only; not c2 isolation, cancellation, MTP or native-context admission.",
                          "Full KV buffers and live raw/pooled index keys are hashed; temporary index scores are not.",
@@ -151,7 +152,7 @@ def main():
         teachers, states, reference_logits, descriptors = {}, {}, [], []
         output_logits = []
         try:
-            for arm, chunk in (("strict", 1024), ("production", 2048)):
+            for arm, chunk in (("strict", 1024), ("production", args.chunk_size)):
                 arm_args = SimpleNamespace(**vars(args), max_sequence_length=4352,
                                            prefill_chunk_size=chunk)
                 generator, resolved, _ = _make_generator(arm_args, arm)
@@ -167,7 +168,7 @@ def main():
                             reference_logits.extend(logits)
                             for step, token in enumerate(tokens):
                                 descriptors.append(RowDescriptor(
-                                    scenario_id="chunk2048-boundaries",
+                                    scenario_id=f"chunk{args.chunk_size}-boundaries",
                                     scenario_step=len(descriptors), request_id=case["id"],
                                     teacher_step=step, category=case["category"],
                                     shape=f"p{len(prompt)}_" + ("prefill_last" if step == 0 else "c1"),
