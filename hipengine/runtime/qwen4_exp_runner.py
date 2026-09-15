@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 import os
 import time
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -3474,6 +3474,148 @@ def _qwen4_exp_q4_iu8_risk_multiplier() -> float:
     return value
 
 
+# Repair-rate instrumentation for the exact iu8 risk+repair routes.
+#
+# The risk criterion decides, per output element, whether the iu8-WMMA result
+# is close enough to the exact parent to keep or must be recomputed by the
+# sparse exact-repair kernel. Its trigger rate is the number that decides
+# whether the pattern is worth extending to another family: a low rate keeps
+# the speedup, a rate near 1.0 means the fast kernel only pays for repair it
+# then discards. Nothing here runs unless the opt-in env var is set, because
+# the readback synchronizes the caller's stream.
+RISK_DIAGNOSTICS_ENV = "HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS"
+_RISK_DIAGNOSTIC_LIMIT = 8192
+_risk_diagnostic_records: list[dict[str, Any]] = []
+
+
+def qwen4_exp_risk_diagnostics_enabled() -> bool:
+    """Whether the opt-in repair-rate readback is active."""
+
+    return os.environ.get(RISK_DIAGNOSTICS_ENV, "0") not in {
+        "", "0", "false", "False",
+    }
+
+
+def reset_qwen4_exp_risk_diagnostics() -> None:
+    _risk_diagnostic_records.clear()
+
+
+def qwen4_exp_risk_diagnostics() -> tuple[dict[str, Any], ...]:
+    """Raw per-call repair observations, in execution order."""
+
+    return tuple(_risk_diagnostic_records)
+
+
+def _observe_qwen4_exp_risk_queue(
+    *,
+    runtime: HipRuntime,
+    stream: int,
+    risk_count: DeviceBuffer,
+    route: str,
+    role: str,
+    layer: str,
+    rows: int,
+    compact_rows: int,
+    out_features_total: int,
+    experts: int,
+    risk_capacity: int,
+) -> None:
+    """Read one risk-queue count back to host and record the observation.
+
+    Diagnostic only. It synchronizes ``stream`` before the device-to-host
+    copy, which is why the caller gates it behind the opt-in env var.
+    """
+
+    if not qwen4_exp_risk_diagnostics_enabled():
+        return
+    if len(_risk_diagnostic_records) >= _RISK_DIAGNOSTIC_LIMIT:
+        return
+    observed = np.empty(1, dtype=np.int32)
+    if stream:
+        runtime.stream_synchronize(stream)
+    copy_device_to_host(
+        host_array_ptr(observed),
+        risk_count,
+        DType.INT32.itemsize,
+        runtime=runtime,
+    )
+    risk = int(observed[0])
+    outputs = int(compact_rows) * int(out_features_total)
+    _risk_diagnostic_records.append(
+        {
+            "route": route,
+            "role": role,
+            "layer": layer,
+            "rows": int(rows),
+            "compact_rows": int(compact_rows),
+            "out_features_total": int(out_features_total),
+            "experts": int(experts),
+            "risk": risk,
+            "outputs": outputs,
+            "risk_capacity": int(risk_capacity),
+            "repair_rate": (float(risk) / float(outputs)) if outputs > 0 else None,
+            "over_capacity": bool(risk > int(risk_capacity)),
+        }
+    )
+
+
+def summarize_qwen4_exp_risk_diagnostics(
+    records: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Aggregate repair observations by route/role and by route/role/layer."""
+
+    rows = list(_risk_diagnostic_records if records is None else records)
+
+    def bucket() -> dict[str, Any]:
+        return {
+            "calls": 0,
+            "outputs": 0,
+            "risk": 0,
+            "max_repair_rate": 0.0,
+            "over_capacity_calls": 0,
+        }
+
+    def accumulate(target: dict[str, Any], record: Mapping[str, Any]) -> None:
+        target["calls"] += 1
+        target["outputs"] += int(record.get("outputs") or 0)
+        target["risk"] += int(record.get("risk") or 0)
+        rate = record.get("repair_rate")
+        if isinstance(rate, (int, float)) and rate > target["max_repair_rate"]:
+            target["max_repair_rate"] = float(rate)
+        if record.get("over_capacity"):
+            target["over_capacity_calls"] += 1
+
+    by_role: dict[tuple[str, str], dict[str, Any]] = {}
+    by_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for record in rows:
+        accumulate(by_role.setdefault(
+            (str(record.get("route")), str(record.get("role"))), bucket()
+        ), record)
+        accumulate(by_layer.setdefault(
+            (str(record.get("route")), str(record.get("role")),
+             str(record.get("layer"))), bucket()
+        ), record)
+
+    def finish(entry: dict[str, Any]) -> dict[str, Any]:
+        outputs = entry["outputs"]
+        entry["aggregate_repair_rate"] = (
+            float(entry["risk"]) / float(outputs) if outputs > 0 else None
+        )
+        return entry
+
+    return {
+        "calls": len(rows),
+        "by_role": {
+            f"{route}:{role}": finish(entry)
+            for (route, role), entry in sorted(by_role.items())
+        },
+        "by_layer": {
+            f"{route}:{role}:{layer}": finish(entry)
+            for (route, role, layer), entry in sorted(by_layer.items())
+        },
+    }
+
+
 def qwen4_exp_q51_pair_prefill_selected(
     backend: str, quant: str, *, rows: int, in_features: int
 ) -> bool:
@@ -3925,6 +4067,19 @@ def run_qwen4_exp_moe(
                     experts,
                     stream=stream,
                     runtime=active_runtime,
+                )
+                _observe_qwen4_exp_risk_queue(
+                    runtime=active_runtime,
+                    stream=stream,
+                    risk_count=risk_count,
+                    route="q4_iu8_exact",
+                    role="expert_gate_up",
+                    layer=weights["expert_gate"].spec.slot_path,
+                    rows=rows,
+                    compact_rows=compact,
+                    out_features_total=2 * ffn,
+                    experts=experts,
+                    risk_capacity=risk_capacity,
                 )
                 silu_mul_dual_out_bf16(
                     scratch.group_gate_up.ptr,
