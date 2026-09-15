@@ -259,6 +259,8 @@ set; the first implementation milestone must freeze a working oracle environment
 
 ## Standalone Q4 GGUF
 
+Public model: [shisa-ai/VibeVoice-ASR-Q4_K_M](https://huggingface.co/shisa-ai/VibeVoice-ASR-Q4_K_M).
+
 `python scripts/vibevoice_asr_transcribe.py --model model.gguf --audio speech.wav`
 loads all frontend/backbone weights and tokenizer/configuration assets from one
 GGUF. Input is mono 24 kHz PCM16 WAV; no HF checkpoint or network is needed at
