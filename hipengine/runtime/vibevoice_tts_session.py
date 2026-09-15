@@ -286,11 +286,12 @@ class VibevoiceTtsSession:
         if trace is not None:
             trace.hidden_states.clear()
 
-        for position, row in enumerate(prompt_rows):
-            pos.push_token(row, position)
-            pos.forward_layers(position)
-            if trace is not None:
-                trace.hidden_states.append(pos.hidden_state())
+        # One batched pass over the prompt. The per-row loop this replaces ran
+        # 121 single-token GEMV forwards, which measured 2.5 s of the 4.0 s LM
+        # stage (20.9 ms/row) against roughly 50 ms for the batched GEMMs.
+        captured = pos.prefill_host_rows(prompt_rows, capture_hidden=trace is not None)
+        if trace is not None and captured is not None:
+            trace.hidden_states.extend(captured)
         # Hidden of the forward that produced the current ``next_token`` —
         # the fork's diffusion condition (``outputs.last_hidden_state[..., -1]``).
         pending_hidden = pos.hidden_state()

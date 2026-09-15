@@ -1212,6 +1212,26 @@ verifier. The attempted tile4 transfer was trajectory-identical to tile1 but
 failed the shared full-suite true-AR gate and did not improve complete E2E wall;
 see the [`tile4 rejection`](results/2026-08-20-gfx1151-laguna-dflash-iq3-tile4-rejected.json).
 
+### Radeon 8060S: VibeVoice-TTS 1.5B session
+
+The generation session on the pinned single-speaker request: a 121-token prompt
+that generates 27 tokens, 25 diffusion frames at 20 solver steps and CFG 1.3,
+producing 3.333 s of audio at 24 kHz. `RTF` is wall time over that output
+duration. The torch lane is the same request, on the same host, in the pinned
+torch oracle venv.
+
+| Lane | Pooled RTF | Warm | Time to first audio | LM | Diffusion | Decode | Semantic |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine | 1.868 | 6.227 s | 0.444 s | 1.614 s | 2.125 s | 1.292 s | 1.021 s |
+| torch (oracle venv) | **1.303** | 4.343 s | — | — | — | — | — |
+
+The 27-token constrained chain is exact on the same run and the session's own
+negative conditions match the recorded ones, with no prompt embeddings or
+negative conditions injected. A seed does not align torch and HIP random
+streams, so the torch lane is a duration comparison that draws its own noise.
+Evidence: [hipEngine](results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json),
+[torch](results/2026-09-15-gfx1151-vibevoice-tts-torch-lane.json).
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

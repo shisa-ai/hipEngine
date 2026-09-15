@@ -93,6 +93,53 @@ def test_greedy_chain_matches_torch(runtime, lm, variant) -> None:
     assert generated == fixture, f"{generated} != {fixture}"
 
 
+@pytest.mark.parametrize('variant',['strict','hipblaslt'])
+def test_batched_prefill_matches_the_per_row_loop(runtime, lm, variant) -> None:
+    """``prefill_host_rows`` must land where the per-row prefill lands.
+
+    The batched path reassociates every projection through hipBLASLt, so it is
+    a different arithmetic order from the one-GEMV-per-row loop. This pins the
+    two together on the last prompt position's hidden state and logits, which
+    is what generation conditions on. ``greedy_generate`` and the VibeVoice TTS
+    session both use the batched path, so a divergence here would move every
+    downstream chain.
+    """
+    rows = _prompt_rows(runtime, lm)
+    previous = runtime.prefill_variant
+    runtime.prefill_variant = variant
+    try:
+        runtime.prefill_host_rows(rows)
+        batched_hidden = runtime.hidden_state()
+        batched_logits, batched_token = runtime.logits_argmax()
+    finally:
+        runtime.prefill_variant = previous
+    runtime.reset()
+    for position, row in enumerate(rows):
+        runtime.push_token(row, position)
+        runtime.forward_layers(position)
+    loop_hidden = runtime.hidden_state()
+    loop_logits, loop_token = runtime.logits_argmax()
+    hidden_peak = max(float(np.abs(loop_hidden).max()), 1e-9)
+    logit_peak = max(float(np.abs(loop_logits).max()), 1e-9)
+    # Measured envelope for the hipblaslt route: 0.028 on the hidden and 0.024
+    # on the logits; the strict route is below both. These are max-over-channel
+    # metrics on heavy-tailed post-norm activations, so they are far looser than
+    # the fp32 reassociation error they are really looking for -- agreement with
+    # torch is gated separately by ``test_greedy_chain_matches_torch`` and
+    # ``test_teacher_forced_top1``, which both run the batched route. What this
+    # catches is a schedule bug: wrong padding, a wrong last-row copy, or a
+    # stale KV position. The envelope is also what the TTS session's two-speaker
+    # trajectory gate is calibrated against, since it is the condition the
+    # prefill feeds that moves.
+    assert np.abs(batched_hidden - loop_hidden).max() / hidden_peak <= 0.05, (
+        "batched prefill hidden drifted from the per-row loop"
+    )
+    assert np.abs(batched_logits - loop_logits).max() / logit_peak <= 0.05, (
+        "batched prefill logits drifted from the per-row loop"
+    )
+    assert batched_token == loop_token, f"{batched_token} != {loop_token}"
+
+
 def test_teacher_forced_top1(runtime, lm) -> None:
     """All 16 continuation steps keep the torch oracle's argmax."""
     rows = _prompt_rows(runtime, lm)

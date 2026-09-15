@@ -437,6 +437,64 @@ class VibevoiceQwen2Runtime:
             self._lt_problems[shape]=problem
             self._lt_algos[shape]=algorithms[0]
 
+    def prefill_host_rows(
+        self, rows: Sequence[np.ndarray], *, capture_hidden: bool = False
+    ) -> np.ndarray | None:
+        """Batched prefill of host-side prompt rows.
+
+        ``rows`` follows the ``push_token`` convention: one fp32 hidden row per
+        prompt position, holding bf16 values widened to fp32. The prompt runs
+        through the layer stack in a single batched pass -- hipBLASLt GEMMs
+        rather than one GEMV per row, which on the 121-row VibeVoice prompt is
+        about 50x faster -- and the KV cache is written for positions
+        ``0..len(rows)-1``. The last row's post-layer-stack hidden is copied
+        into ``_hidden``, so ``hidden_state()``, ``logits_argmax()`` and the
+        next ``forward_layers`` call all continue from the right position.
+
+        With ``capture_hidden`` the post-final-norm hidden of every prompt
+        position is returned as ``(len(rows), hidden)`` fp32; the timed path
+        leaves it off so it pays neither the extra norm launch nor the copy.
+        """
+        total = len(rows)
+        if total == 0:
+            raise ValueError("empty prompt")
+        if total > self.max_context:
+            raise ValueError("prompt exceeds max_context")
+        hidden = self.spec.hidden_size
+        rows_bf16 = f32_to_bf16_bits(
+            np.asarray(rows, dtype=np.float32).reshape(total, hidden)
+        )
+        prompt_buf = _upload(rows_bf16)
+        captured: np.ndarray | None = None
+        try:
+            self.reset()
+            self.prefill_rows(prompt_buf, total, 0)
+            self.runtime.memcpy(
+                self._hidden.ptr,
+                prompt_buf.ptr + (total - 1) * hidden * 2,
+                hidden * 2,
+                MemcpyKind.DEVICE_TO_DEVICE,
+            )
+            if capture_hidden:
+                normed = _alloc(total * hidden * 2)
+                try:
+                    self.kernels.vv_rmsnorm_bf16(
+                        prompt_buf.ptr, self.final_ln.ptr, normed.ptr, total, hidden,
+                        self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+                    )
+                    bits = np.empty(total * hidden, dtype=np.uint16)
+                    copy_device_to_host(host_array_ptr(bits), normed)
+                    captured = (
+                        (bits.astype(np.uint32) << 16).view(np.float32).reshape(total, hidden)
+                    )
+                finally:
+                    free(normed)
+        finally:
+            free(prompt_buf)
+        self._ctx_len_host[0] = total
+        copy_host_array_to_device(self._ctx_len, self._ctx_len_host)
+        return captured
+
     def prefill_rows(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int) -> None:
         self._validate_position(start_pos)
         if isinstance(rows,bool) or not isinstance(rows,Integral) or rows <= 0:
@@ -608,8 +666,6 @@ def greedy_generate(
     eos_token_id: int | None = None,
 ) -> list[int]:
     """Batched prefill of the prompt rows, then greedy decode."""
-    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits as _bits
-
     generated: list[int] = []
     total = len(input_rows)
     if total == 0:
@@ -621,22 +677,8 @@ def greedy_generate(
         raise ValueError("prompt and generation exceed max_context")
     if max_new_tokens == 0:
         return generated
-    runtime.reset()
-
-    rows_bf16 = _bits(np.asarray(input_rows, dtype=np.float32))  # (total, hidden) uint16
-    prompt_buf = _upload(rows_bf16)
-    try:
-        runtime.prefill_rows(prompt_buf, total, 0)
-        hidden = runtime.spec.hidden_size
-        runtime.runtime.memcpy(
-            runtime._hidden.ptr,
-            prompt_buf.ptr + (total - 1) * hidden * 2,
-            hidden * 2,
-            MemcpyKind.DEVICE_TO_DEVICE,
-        )
-        _, token = runtime.logits_argmax()
-    finally:
-        free(prompt_buf)
+    runtime.prefill_host_rows(input_rows)
+    _, token = runtime.logits_argmax()
     for step in range(max_new_tokens):
         generated.append(token)
         if step + 1 == max_new_tokens or (eos_token_id is not None and token == eos_token_id):

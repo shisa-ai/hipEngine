@@ -5,7 +5,10 @@ Status: **milestones 1 (frozen torch oracle), 2 (the acoustic decoder),
 closed 2026-09-15.** The session runs the generation loop on HIP without torch
 and reproduces the frozen oracle's 27-token constrained greedy chain exactly
 (25 diffusion frames, 25 decoded chunks) on the pinned single-speaker request,
-end-to-end from its own reference-audio encode.
+end-to-end from its own reference-audio encode. On zbook (Radeon 8060S) that
+request measures pooled RTF 1.868 against 1.303 for the same request in the
+pinned torch oracle venv, with the diffusion head as the largest remaining stage
+at 2.125 s of the 6.227 s warm total.
 The API, benchmark protocol and closure criteria below are specified.
 
 The open work is integration correctness on the unassisted request path. The

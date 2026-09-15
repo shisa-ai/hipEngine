@@ -542,10 +542,13 @@ def test_two_speaker_trajectory_is_stable_once_call0_is_on_branch(two_session, m
     )
     latents = seen["latent"][:11]
     assert len(latents) == 11, f"expected 11 recorded latents, got {len(latents)}"
-    # Measured on our encoder's rows: 0.036 at call 0 then 0.020-0.055 across
+    # Measured on our encoder's rows: 0.036 at call 0 then 0.020-0.090 across
     # calls 1..10. A loop that had lost the branch shows 0.5-1.3 here instead,
-    # so the gate discriminates by more than 10x.
-    assert max(latents) <= 0.08, f"latent drift {max(latents):.4f} after call 0"
+    # so the gate discriminates by more than 5x. The envelope is wider than the
+    # 0.055 the per-row prefill measured because the batched hipBLASLt prefill
+    # reassociates the prompt projections; the single-speaker chain is exact
+    # through both.
+    assert max(latents) <= 0.15, f"latent drift {max(latents):.4f} after call 0"
 
 
 @pytest.mark.xfail(

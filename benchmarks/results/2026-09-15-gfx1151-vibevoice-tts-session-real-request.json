@@ -32,18 +32,18 @@
     "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
   },
   "command": "uv run python scripts/vibevoice_tts_session_bench.py",
-  "weight_load_seconds": 3.279,
-  "cold_start_seconds": 8.407,
-  "warm_synthesis_seconds": 8.433,
-  "time_to_first_audio_seconds": 2.825,
-  "pooled_rtf": 2.53,
+  "weight_load_seconds": 3.344,
+  "cold_start_seconds": 6.068,
+  "warm_synthesis_seconds": 6.227,
+  "time_to_first_audio_seconds": 0.444,
+  "pooled_rtf": 1.868,
   "chain_exact": true,
   "negative_conditions_match": true,
   "stages": {
-    "lm_total_seconds": 3.871,
-    "prompt_seconds": 0.178,
-    "diffusion_seconds": 2.091,
-    "decode_seconds": 1.278,
-    "semantic_seconds": 1.015
+    "lm_total_seconds": 1.614,
+    "prompt_seconds": 0.175,
+    "diffusion_seconds": 2.125,
+    "decode_seconds": 1.292,
+    "semantic_seconds": 1.021
   }
 }
