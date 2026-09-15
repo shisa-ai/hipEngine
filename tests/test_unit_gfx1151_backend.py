@@ -437,6 +437,8 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
     backend.register_gfx1151_kernels()
 
     assert registered == [
+        KernelKey("hip_gfx1151", "linear", "gguf_q8_0", "iu8_p4_prefill_f32_f32_out"),
+        KernelKey("hip_gfx1151", "linear", "gguf_q8_0", "iu8_compensated_prefill_f32_f32_out"),
         KernelKey(
             "hip_gfx1151", "linear", "gguf_q8_0",
             "selected_grouped_blockscale_prefill_bf16_bf16_out",

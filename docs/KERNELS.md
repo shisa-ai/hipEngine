@@ -11,6 +11,13 @@ but are not defaults for this profile.
 Q4_K_M profile selection is unchanged; raw-pointer and KVLiveSpans ABIs are
 unchanged.
 
+Experimental gfx1151 dense Q8 correction variants
+`iu8_p4_prefill_f32_f32_out` and `iu8_compensated_prefill_f32_f32_out`
+share the raw-pointer F32 projection ABI in `quant/gguf_k_gemv.{hip,py}`.
+They respectively add a fourth residual activation plane or compensated
+block accumulation. They are explicitly registered diagnostics, not production
+defaults; the existing strict Q8 coltile/fused-GR chains remain the fallback.
+
 Dense gfx1151 Q4T16 gate/up prefill selects the existing fused row48 owner
 at rows33-48 (`GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS=48`), row64/row128
 above that band, and the registered unfused chain as fallback. The
