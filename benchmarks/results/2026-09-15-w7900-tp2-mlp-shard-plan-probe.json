@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-shard-plan-probe",
-  "generated_at": "2026-09-15T02:47:01Z",
+  "generated_at": "2026-09-15T03:15:34Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_hash": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
   "layer": 0,
@@ -410,6 +410,7 @@
   "fused_path_admission": {
     "route": "launch_gguf_linear_pair_silu -> _gguf_dense_pair_silu_decode_variant",
     "lookup_key": "(rows, in_features, out_features)",
+    "shape_contract": "dense_t16_pair_decode_shape_error",
     "tp1_key": [
       1,
       5120,
@@ -430,8 +431,9 @@
     ],
     "tp1_admitted": true,
     "shard_admitted": false,
-    "kernel_accepts_shard_shape": "passed argument validation, then: RuntimeError",
-    "gap": "the shard shape is accepted by the kernel but absent from the policy table, so a shard segment would take the unfused chain (two GEMV launches plus a separate SiLU-multiply) unless the policy admits it"
+    "tp1_shape_error": null,
+    "shard_shape_error": null,
+    "gap": "the shard shape is inside the kernel's shape contract but absent from the policy table, so a shard segment would take the unfused chain (two GEMV launches plus a separate SiLU-multiply) unless the policy admits it"
   },
   "next": "measure complete TP1 and local-shard MLP segment walls on both cards, connect the shard outputs through the native exchange into the next consumer, and validate against the CPU split oracle and the TP1 teacher under the production numerical contract"
 }

@@ -863,6 +863,26 @@ def gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16
     )
 
 
+def dense_t16_pair_decode_shape_error(
+    *, rows: int, in_features: int, out_features: int
+) -> str | None:
+    """Return why a shape is outside the dense T16 pair decode contract, or None.
+
+    Pure on purpose: asking whether a shape is admissible must not require a
+    library, a runtime, or device pointers. The pair decode launchers below
+    raise the returned reason as a ValueError before any HIP contact, which is
+    what makes their rejecting boundary safe to test with null pointers.
+    """
+
+    if rows != 1:
+        return "requires rows == 1"
+    if in_features <= 0 or in_features % _QK_K:
+        return "requires in_features to be a positive multiple of 256"
+    if out_features <= 0 or out_features % _T16_COLS:
+        return "requires out_features to be a positive multiple of 16"
+    return None
+
+
 def gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
     x_ptr: int,
     tiles_a_ptr: int,
@@ -878,12 +898,11 @@ def gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
 ) -> None:
     """Launch the exact local32 dense/shared Q4T16 SiLU decode owner."""
 
-    if rows != 1:
-        raise ValueError("dense Q4T16 local32 decode requires rows == 1")
-    if in_features <= 0 or in_features % _QK_K:
-        raise ValueError("in_features must be a positive multiple of 256")
-    if out_features <= 0 or out_features % _T16_COLS:
-        raise ValueError("out_features must be a positive multiple of 16")
+    shape_error = dense_t16_pair_decode_shape_error(
+        rows=rows, in_features=in_features, out_features=out_features
+    )
+    if shape_error is not None:
+        raise ValueError(f"dense Q4T16 local32 decode {shape_error}")
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_LOCAL32_SILU_BF16)
@@ -930,12 +949,11 @@ def gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out(
 ) -> None:
     """Launch the exact dense/shared Q5T16 SiLU decode dual."""
 
-    if rows != 1:
-        raise ValueError("dense Q5T16 SiLU decode dual requires rows == 1")
-    if in_features <= 0 or in_features % _QK_K:
-        raise ValueError("in_features must be a positive multiple of 256")
-    if out_features <= 0 or out_features % _T16_COLS:
-        raise ValueError("out_features must be a positive multiple of 16")
+    shape_error = dense_t16_pair_decode_shape_error(
+        rows=rows, in_features=in_features, out_features=out_features
+    )
+    if shape_error is not None:
+        raise ValueError(f"dense Q5T16 SiLU decode dual {shape_error}")
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q5_DENSE_DUAL_SILU_BF16)
