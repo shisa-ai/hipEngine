@@ -11,7 +11,10 @@
   the smaller owner's short costs, with allocation and lifetime gates.
   Do not simply average the short losses away. The existing explicit
   factory/benchmark setting remains available; no new runtime flag is added.
-- Chunk4096's2.16GB scratch under-accounting is separate and still open.
+- Chunk4096 accounting is repaired by the chunk/context-derived mandatory
+  footprint; native-c2 allocation matches the estimate with reserve unchanged.
+  See `benchmarks/results/2026-09-15-chunk4096-accounting/`.
+  Chunk4096 numerical/task/state/performance gates remain before admission.
 
 ## Non-GR Q8 Diagnostic Scope
 

@@ -301,7 +301,7 @@ def assemble(root):
         },
         inference_scope="Canonical c1 512/1K/4K:64 teacher-forced steps/three repeats; "
                         "performance128 AR transitions/three pairs",
-        status="2048_qualified_explicit_tradeoff_default1024_4096_accounting_blocker",
+        status="2048_qualified_explicit_tradeoff_default1024",
         default_decision=dict(
             default_chunk=1024, qualified_explicit_chunk=2048,
             reason="2048 improves 4K but has measured short-request costs; do not average away those rows.",
@@ -312,7 +312,7 @@ def assemble(root):
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
             "2048 improves measured 4K performance but has small short-prompt costs; default remains1024.",
             "Active tasks, 910 boundary rows and detailed/deferred c2 isolation pass;2048 is a qualified explicit option.",
-            "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
+            "Historical4096 accounting failure is preserved; the repair is in2026-09-15-chunk4096-accounting.",
             "No hidden-seed export, graph-capture qualification, driver scratch, native-depth or HTTP/SSE claim.",
         ],
     )
