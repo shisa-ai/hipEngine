@@ -35,9 +35,15 @@ The registered multi-column kernel executes1080 times. Three top1 differences
 are permitted by the production envelope; exact generated IDs are not the
 admission criterion. These state checks do not certify dynamic isolation.
 
-**No default promotion or current performance claim.** Complete task review,
-applicable isolation and a current-model performance comparison remain.
-The earlier old-stack numerical rejection remains recorded separately.
+**No default promotion or current performance claim.** The numerical result
+alone did not qualify tasks, isolation or current-model performance.
+The earlier old-stack numerical rejection is recorded separately.
+
+**September15 task decision:** not admitted under the existing per-prompt
+criterion. The completed quantization response introduces a materially
+misleading native-INT8 support explanation for AMD RX7000. This is a task
+finding, not a numerical rejection; see `task-review.json` and the complete
+paired outputs below. No isolation/timing promotion follows this finding.
 
 ## Targeted Complete Code Review
 
@@ -60,7 +66,7 @@ API. The constructor keyword-name difference is outside the specified API.
 
 **No new requested-API regression found on this prompt.** This scoped paired
 review is not a full task-suite pass or proof of complete instruction following.
-Other prompts, isolation and timing remain. `rate-limiter-review.json`
+The remaining task results appear below. `rate-limiter-review.json`
 preserves both complete outputs and the shared defects. Its reproduction
 script executes only the inspected source hashes:
 
@@ -69,9 +75,42 @@ script executes only the inspected source hashes:
   --capture /tmp/hipengine-journey-execute-20260914/resume-gdn-multi-rate-limiter-task.json
 ```
 
+## Remaining Category And Heldout Tasks
+
+Clean `b6f841832`:17 additional prompt pairs, two repeats per arm.
+Six complete pairs match IDs exactly; ten other pairs reach EOS with changed
+outputs. Both Japanese-plan responses hit the2048-token cap. All within-arm
+repeats are identical,510 candidate GDN calls are counted, and teardown closes
+to zero. Combined with the rate-limiter capture,17 of18 unique prompt pairs
+have complete EOS evidence; the truncated pair is not counted as passed.
+
+Both changed Markdown-table programs pass their generated tests plus1000
+shared oracle cases. Both interval-scheduling programs pass generated tests
+plus500 exhaustive-subset-oracle cases and a tie check. The candidate does
+not reproduce the single-column Japanese speculative-decoding error.
+
+The binding task finding is instead in `heldout_general_en_quant`: the
+candidate conflates native AMD INT8 capability with library support and FP16
+emulation. AMD's primary WMMA documentation demonstrates native IU8 and a
+HIP path on RX7900XTX. That source establishes availability, not the frequency
+of fallback across every library; the review states this limit explicitly.
+Strict's own errors and shared omissions remain disclosed. This one paired
+finding is not proof of worse expected quality or a GDN kernel defect.
+
+The unchanged candidate is not promoted. No Japanese-plan extension or
+performance arm is run after the task finding. Full paired texts, code
+execution evidence, provenance and review are preserved in
+`remaining-task-capture.json` and `task-review.json`.
+
+```bash
+.venv/bin/python benchmarks/results/2026-09-15-journey-gdn-multi-restoration/review_remaining_tasks.py \
+  --capture /tmp/hipengine-journey-execute-20260914/resume-gdn-multi-remaining-tasks.json
+```
+
 Exact commands, overrides, source/host/profile metadata and raw hash are
-preserved in `artifact.json`. The qualification ran in its own clean
-worktree, so main-tree backend-cache preparation did not change its source.
+preserved in `artifact.json` and its referenced task captures. The original
+short qualification ran in its own clean worktree, so main-tree backend-cache
+preparation did not change that capture's source.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-15-journey-gdn-multi-restoration/assemble.py \

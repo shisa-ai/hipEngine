@@ -37,16 +37,31 @@ def assemble(path, depth_path):
             or not depth["deterministic"] or not depth["state_gate"]["passed"]
             or any(row["current_allocated_bytes"] for row in depth["lifecycle"].values())):
         raise ValueError("incomplete or invalid multi-column depth qualification")
+    directory = Path(__file__).parent
+    task_review = json.loads((directory / "task-review.json").read_bytes())
+    for name, expected in (
+        ("remaining-task-capture.json", task_review["evidence"]["remaining_capture_sha256"]),
+        ("rate-limiter-review.json", task_review["evidence"]["rate_limiter_review_sha256"]),
+    ):
+        if hashlib.sha256((directory / name).read_bytes()).hexdigest() != expected:
+            raise ValueError("task review capture hash mismatch")
+    if (task_review["candidate"] != depth["candidate"]
+            or task_review["verdict"] != "not_admitted_material_native_support_misstatement"
+            or task_review["full_task_suite_passed"]
+            or task_review["promotion_claim"]):
+        raise ValueError("inconsistent task decision")
     return dict(
-        schema=2, status="short_and_depth_numerical_pass_task_performance_pending",
+        schema=3, status="numerical_pass_not_admitted_task_finding",
         performance_claim=False, promotion_claim=False,
         raw_sha256=hashlib.sha256(raw).hexdigest(),
         capture=packet,
         depth_raw_sha256=hashlib.sha256(depth_raw).hexdigest(), depth_capture=depth,
+        task_review=task_review,
         limits=[
-            "One incomplete rate-limiter code response differs; this is not a semantic rejection.",
+            "Complete rate-limiter requested API review finds no new defect; shared omitted tests remain.",
             "The single-column GDN task failure does not automatically reject this different variant.",
-            "Applicable complete tasks, dynamic isolation and current-model performance are not qualified here.",
+            "Multi-column has its own native-support prose task finding; no isolation or timing promotion follows.",
+            "One Japanese-plan pair is truncated; complete-EOS suite certification is not claimed.",
             "Historical short capture retains T1 metadata; current review and depth arm classify this as T2.",
         ],
     )

@@ -111,10 +111,16 @@
   recovered UD production profile; remove the multi-column
   path if the numerical or operation-complete performance gate rejects it.
 
-  Current blocker: full594-row candidate passes overall maxKL0.048222 and
-  590/594 top1, but Japanese and prefill-last scopes fail. Do not promote
-  before the incumbent envelope is localized and the complete candidate
-  packet passes; do not reject solely because it differs in FP32 bits.
+  Historical old-stack594-row scope failures remain evidence, but are not
+  the current blocker. Over corrected Q8/QSA production, short594 and
+  canonical780-row numerical gates pass. The complete quantization task
+  introduces a materially misleading native-INT8 support explanation;
+  the current per-prompt task rule does not admit this composition.
+  See `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`.
+  One Japanese-plan pair remains truncated; no extension or timing is
+  spent after the separate task finding. This is not a numerical rejection
+  or proof of worse expected quality. Do not rerun the unchanged composition
+  or promote it merely because its numerical envelope passes.
 
 ## Journey GDN DPP Experiment
 
