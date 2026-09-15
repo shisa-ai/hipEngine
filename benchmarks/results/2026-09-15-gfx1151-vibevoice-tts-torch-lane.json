@@ -13,7 +13,23 @@
         "verified": true
       }
     },
-    "random_draws": "this lane's own torch stream (not shared with the HIP lane)"
+    "random_draws": "the fixture's recorded operands (encode_draw0/encode_draw1 and callN_initial_noise), served by shape, so both lanes consume the same request",
+    "recorded_operands_served_cold_run": {
+      "encode_draw0": 1,
+      "encode_draw1": 1,
+      "frame_noise": 25,
+      "unmatched_frames": 0
+    },
+    "recorded_frames_available": 25,
+    "eps_check": {
+      "compared": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "reference_abs_max": 1.164062,
+      "max_abs_diff_relative": 0.0,
+      "matches": true,
+      "basis": "served noise must reproduce the fixture's call0_eps[0] to within 5% of its peak magnitude; the two lanes run bf16 with different kernel decompositions, so exact equality is not expected"
+    }
   },
   "workload": {
     "generated_tokens": 27,
@@ -27,10 +43,10 @@
   },
   "command": "/home/lhl/venvs/vibevoice-tts-oracle/bin/python scripts/vibevoice_tts_torch_bench.py",
   "torch_version": "2.13.0+rocm10.0.0",
-  "weight_load_seconds": 2.376,
-  "cold_start_seconds": 6.293,
-  "warm_synthesis_seconds": 4.343,
+  "weight_load_seconds": 1.907,
+  "cold_start_seconds": 6.107,
+  "warm_synthesis_seconds": 4.454,
   "time_to_first_audio_seconds": null,
-  "pooled_rtf": 1.303,
+  "pooled_rtf": 1.336,
   "note": "time_to_first_audio is None because the fork's generate() exposes no streaming callback here; it is reported by the HIP lane only."
 }

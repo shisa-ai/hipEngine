@@ -1223,21 +1223,22 @@ torch oracle venv.
 | Lane | Pooled RTF | Warm | Time to first audio | LM | Diffusion | Decode | Semantic |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | hipEngine | 1.337 | 4.457 s | 0.395 s | 1.518 s | 1.314 s | 0.327 s | 1.108 s |
-| torch (oracle venv) | 1.303 | 4.343 s | — | — | — | — | — |
+| torch (oracle venv) | 1.336 | 4.454 s | — | — | — | — | — |
+
+Both lanes are timed on **the same request with the same random operands**. The
+torch lane previously drew its own voice-prompt VAE noise and its own diffusion
+noise; it now serves the fixture's recorded operands (`encode_draw0`,
+`encode_draw1` and one `callN_initial_noise` per diffusion call), matched by shape
+so an unrecognised draw falls through to the normal RNG. The cold run consumes
+exactly the recorded set — 1, 1 and 25 draws with nothing unmatched — and
+reproduces the fixture's step-0 `eps` to `max_abs_diff` 0.0, so the two rows
+describe one request rather than two draws from the same distribution.
 
 Four hipEngine runs of this protocol measured pooled RTF 1.315, 1.333, 1.337 and
-1.355 on this host, so the row above is the median. Decode is stable across all
-four (0.323-0.327 s). The two lanes are not yet a like-for-like comparison: they
-draw different random operands, and the hipEngine lane's generation budget is
-declared by the request (`max_audio_seconds` 4.333 s, a 35-token cap) rather than
-sized from the oracle's token count, so it reaches EOS with headroom.
-
-The 27-token constrained chain is exact on the same run and the session's own
-negative conditions match the recorded ones, with no prompt embeddings or
-negative conditions injected. A seed does not align torch and HIP random
-streams, so the torch lane is a duration comparison that draws its own noise.
-Evidence: [hipEngine](results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json),
-[torch](results/2026-09-15-gfx1151-vibevoice-tts-torch-lane.json).
+1.355 on this host (median 1.337); three torch runs measured 1.325, 1.336 and
+1.336 (median 1.336). Decode is stable across the hipEngine runs (0.323-0.327 s).
+Generation budget comes from the request's declared `max_audio_seconds` (4.333 s,
+a 35-token cap) in both lanes, and both reach EOS at 27 tokens.
 
 ### Radeon 8060S: VibeVoice-TTS 1.5B generated-audio quality
 
