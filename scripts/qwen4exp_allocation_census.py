@@ -53,6 +53,10 @@ class CountingRuntime:
     def device_synchronize(self):
         pass
 
+    def mem_get_info(self):
+        capacity = 1 << 60
+        return capacity - sum(self.live.values()), capacity
+
 
 def attribute_allocations(runner, runtime):
     from hipengine.core.memory import DeviceBuffer

@@ -115,3 +115,69 @@ def test_extra_input_failure_closes_scratch_and_partial_inputs(monkeypatch):
         assert runtime.live == before
         assert len(runner._prefill_buffers) == 5
         assert len(runner._prefill_workspaces) == 1
+
+
+def test_prepared_selection_uses_smallest_fitting_owner_and_restores_views(monkeypatch):
+    with simulated_runner(config(), context=256, chunk=32) as (runner, runtime):
+        big = runner._prefill_workspaces[0]
+        small = runner._allocate_extra_prefill_workspace(16)
+        runner._configure_prefill_workspace_selection([big, small], reserve_bytes=4 << 30)
+        allocations = dict(runtime.live)
+        observed = []
+
+        def implementation(tokens, **kwargs):
+            observed.append((runner.prefill_chunk_size, runner.gdn_prefill_scratch,
+                             kwargs["capture_logits"]))
+            return len(tokens)
+
+        monkeypatch.setattr(runner, "_prefill_chunked_impl", implementation)
+        monkeypatch.setattr(runtime, "device_synchronize",
+                            lambda: pytest.fail("selector added a device barrier"))
+        for length in (1, 16, 17, 32, 33):
+            assert runner.prefill_chunked(list(range(length)), capture_logits=False) == length
+            assert runner.prefill_chunk_size == 32
+            assert runner.gdn_prefill_scratch is big.gdn_prefill_scratch
+        assert [row[0] for row in observed] == [16, 16, 32, 32, 32]
+        assert observed[0][1] is small.gdn_prefill_scratch
+        assert all(not row[2] for row in observed)
+        assert runtime.live == allocations
+
+
+def test_prepared_selection_restores_after_failure_and_can_be_disabled(monkeypatch):
+    with simulated_runner(config(), context=256, chunk=32) as (runner, _):
+        big = runner._prefill_workspaces[0]
+        small = runner._allocate_extra_prefill_workspace(16)
+        runner._configure_prefill_workspace_selection([small, big], reserve_bytes=4 << 30)
+
+        def failure(*args, **kwargs):
+            assert runner.prefill_chunk_size == 16
+            raise RuntimeError("prefill failed")
+
+        monkeypatch.setattr(runner, "_prefill_chunked_impl", failure)
+        with pytest.raises(RuntimeError, match="prefill failed"):
+            runner.prefill_chunked([1])
+        assert runner.gdn_prefill_scratch is big.gdn_prefill_scratch
+        assert runner.prefill_chunk_size == 32
+        runner._configure_prefill_workspace_selection(None, reserve_bytes=4 << 30)
+        monkeypatch.setattr(runner, "_prefill_chunked_impl", lambda *a, **kw: runner.prefill_chunk_size)
+        assert runner.prefill_chunked([1]) == 32
+
+
+def test_selection_rejects_unowned_duplicate_unstaged_and_low_reserve(monkeypatch):
+    with simulated_runner(config(), context=256, chunk=32) as (runner, runtime):
+        big = runner._prefill_workspaces[0]
+        foreign = Qwen4ExpPrefillWorkspace.allocate_scratch(runner, 16)
+        foreign.allocate_inputs()
+        try:
+            with pytest.raises(ValueError, match="live owners"):
+                runner._configure_prefill_workspace_selection([foreign], reserve_bytes=0)
+        finally:
+            foreign.close()
+        with pytest.raises(ValueError, match="invalid"):
+            runner._configure_prefill_workspace_selection([big, big], reserve_bytes=0)
+        larger = runner._allocate_extra_prefill_workspace(64)
+        with pytest.raises(ValueError, match="staging"):
+            runner._configure_prefill_workspace_selection([larger], reserve_bytes=0)
+        monkeypatch.setattr(runtime, "mem_get_info", lambda: (1, 1))
+        with pytest.raises(MemoryError, match="reserve"):
+            runner._configure_prefill_workspace_selection([big], reserve_bytes=2)
