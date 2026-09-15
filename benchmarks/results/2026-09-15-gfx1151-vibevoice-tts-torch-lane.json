@@ -1,0 +1,36 @@
+{
+  "lane": "torch-bf16-sdpa",
+  "measurement_basis": "real-request-path",
+  "request": {
+    "script": "Speaker 1: The quick brown fox jumps over the lazy dog.",
+    "cfg_scale": 1.3,
+    "ddpm_steps": 20,
+    "seed": 20260915,
+    "voice_files": {
+      "en-Alice_woman.wav": {
+        "expected": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "actual": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "verified": true
+      }
+    },
+    "random_draws": "this lane's own torch stream (not shared with the HIP lane)"
+  },
+  "workload": {
+    "generated_tokens": 27,
+    "diffusion_frames": 25,
+    "output_audio_seconds": 3.333,
+    "sample_rate": 24000
+  },
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics"
+  },
+  "command": "/home/lhl/venvs/vibevoice-tts-oracle/bin/python scripts/vibevoice_tts_torch_bench.py",
+  "torch_version": "2.13.0+rocm10.0.0",
+  "weight_load_seconds": 2.376,
+  "cold_start_seconds": 6.293,
+  "warm_synthesis_seconds": 4.343,
+  "time_to_first_audio_seconds": null,
+  "pooled_rtf": 1.303,
+  "note": "time_to_first_audio is None because the fork's generate() exposes no streaming callback here; it is reported by the HIP lane only."
+}
