@@ -1,0 +1,14 @@
+{
+  "tokens": 10,
+  "hidden_vs_oracle": {
+    "max_abs": 1.0100439190864563,
+    "mean_abs": 0.02398672482339433,
+    "max_rel_to_peak": 0.04841441835289247
+  },
+  "logits_vs_oracle": {
+    "max_abs": 1.108048439025879,
+    "mean_abs": 0.015321304709919579,
+    "max_rel_to_peak": 0.026325311649176925
+  },
+  "top1_agreement": 1.0
+}
