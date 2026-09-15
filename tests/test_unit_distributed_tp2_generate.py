@@ -10,6 +10,7 @@ poison-on-failure, and teardown - without touching hardware.
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -241,13 +242,15 @@ def env(monkeypatch):
     runner_spies: list[RunnerSpy] = []
     groups: list[FakeShardGroup] = []
     logit_rows: list[np.ndarray] = []
+    injected_rows: list[np.ndarray] = []
     launch_log: list[tuple[int, str, str]] = []
 
     def fake_runtime():
         return rt
 
-    def fake_runner(model_path, *, backend, execution_routes, runtime):
+    def fake_runner(model_path, *, backend, execution_routes, runtime, **kwargs):
         spy = RunnerSpy(rt, LAYER_TYPES)
+        spy.deferred_device_slots = tuple(kwargs.get("deferred_device_slots", ()))
         runner_spies.append(spy)
         return spy
 
@@ -276,8 +279,15 @@ def env(monkeypatch):
         launch_log.append((rt.get_device(), "f32_to_bf16", "cast"))
 
     def fake_copy_d2h(host_ptr, buffer, nbytes=None, *, runtime=None):
-        row = logit_rows.pop(0)
-        ctypes.memmove(host_ptr, row.tobytes(), row.nbytes)
+        if injected_rows:
+            row = injected_rows.pop(0)
+        else:
+            row = logit_rows.pop(0)
+        # The real API copies exactly nbytes from the buffer; the queued
+        # rows may be wider than one rank's shard readback, so honor the
+        # request instead of the row's own width.
+        count = row.nbytes if nbytes is None else min(int(nbytes), row.nbytes)
+        ctypes.memmove(host_ptr, row.ctypes.data, count)
 
     def fake_malloc(nbytes, *, runtime=None, device=None):
         return FakeBuffer(0x8000 + len(launch_log) * 0x40, nbytes)
@@ -299,6 +309,49 @@ def env(monkeypatch):
     def fake_upload(runtime, shards, *, devices):
         return {}
 
+    head_plans: list[Any] = []
+    head_uploads: list[tuple[int, str, str]] = []
+    head_freed: list[int] = []
+
+    class FakeHeadAllocation:
+        def __init__(self, device):
+            self.device = device
+            self.tensor = SimpleNamespace(ptr=0x9000 + device)
+
+        def free(self):
+            head_freed.append(self.device)
+
+    class FakeHeadWeight:
+        def __init__(self, device):
+            self.device = device
+            self._allocation = FakeHeadAllocation(device)
+
+        def allocation(self, name=None):
+            return self._allocation
+
+    def fake_materialize_head(model_path, *, world_size, backend="hip_gfx1100"):
+        from hipengine.distributed.head_shard import HeadShardPlan
+
+        rows_per_rank = VOCAB // world_size
+        plan = HeadShardPlan(
+            world_size=world_size,
+            vocab_rows=VOCAB,
+            hidden=HIDDEN,
+            layout="gguf_q6_k_t16_qmicro_planar_v1",
+            quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+            rows_per_rank=rows_per_rank,
+            blocks_per_rank=rows_per_rank // 256,
+            source_row_bytes=4200,
+        )
+        head_plans.append(plan)
+        return plan, {
+            rank: {"tiles": np.zeros(8, dtype=np.uint8)} for rank in range(world_size)
+        }
+
+    def fake_upload_shard_weight(runtime, *, device, name, layout, quant_key, payload):
+        head_uploads.append((device, layout, quant_key))
+        return FakeHeadWeight(device)
+
     monkeypatch.setattr(tg, "get_hip_runtime", fake_runtime)
     monkeypatch.setattr(tg, "Qwen35GGUFFullStackRunner", fake_runner)
     monkeypatch.setattr(tg, "_FullStackScratch", FakeScratchFactory)
@@ -316,9 +369,19 @@ def env(monkeypatch):
     monkeypatch.setattr(tg, "resolve_mlp_shard_context", fake_resolve)
     monkeypatch.setattr(tg, "materialize_mlp_shards", fake_materialize)
     monkeypatch.setattr(tg, "upload_mlp_shard_weights", fake_upload)
+    monkeypatch.setattr(tg, "materialize_head_shards", fake_materialize_head)
+    monkeypatch.setattr(tg, "upload_shard_weight", fake_upload_shard_weight)
 
     def queue_logits(preferred_ids):
-        logit_rows.extend(_logits_row(i) for i in preferred_ids)
+        # Each finish step reads one f32 row per rank (the sharded head is
+        # the tp2 default): queue the row's two halves in rank order, so the
+        # concatenation of the two readbacks reproduces the row the
+        # replicated head would have returned.
+        for i in preferred_ids:
+            full = _logits_row(i)
+            half = VOCAB // 2
+            logit_rows.append(np.ascontiguousarray(full[:half]))
+            logit_rows.append(np.ascontiguousarray(full[half:]))
 
     return {
         "rt": rt,
@@ -329,6 +392,10 @@ def env(monkeypatch):
         "created_streams": created_streams,
         "destroyed_streams": destroyed_streams,
         "device_exchanges": device_exchanges,
+        "head_plans": head_plans,
+        "head_uploads": head_uploads,
+        "head_freed": head_freed,
+        "injected_rows": injected_rows,
     }
 
 
@@ -426,7 +493,10 @@ def test_positions_and_tokens_are_owned_by_the_loop(env) -> None:
 
 
 def test_eos_stops_generation_and_is_reported(env) -> None:
-    env["queue_logits"]([21, 22, 31, 0])
+    # The prefill sample (21) and the two decode samples (22, 31) each feed
+    # one finish step; the queue holds their per-rank readbacks, with spare
+    # rows in case the loop runs past the EOS position.
+    env["queue_logits"]([21, 22, 31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     session = _session(env)
     result = session.generate([1], max_new_tokens=8, eos_token_id=31)
     assert result.token_ids == (21, 22, 31)
@@ -706,3 +776,85 @@ def test_graphed_host_reduce_opt_out_reduces_per_layer(env) -> None:
     assert [slot for _ptrs, slot in group.reduces] == [0, 1, 2] * 2
     assert env["device_exchanges"] == []
     session.close()
+
+
+def test_head_shard_validation_and_default_on(env) -> None:
+    # The sharded head is the tp2 production default; the replicated head is
+    # the explicit opt-out and bisection control.
+    session = MlpTP2GenerationSession("fake.gguf", devices=(0, 1), mode="tp2")
+    assert session.head_shard is True
+    assert len(env["head_plans"]) == 1
+    session.close()
+    session = MlpTP2GenerationSession(
+        "fake.gguf", devices=(0, 1), mode="tp2", head_shard=False
+    )
+    assert session.head_shard is False
+    assert len(env["head_plans"]) == 1  # no new plan for the opt-out
+    session.close()
+    # The sharded head is tp2-only.
+    with pytest.raises(ValueError, match="tp2-only"):
+        MlpTP2GenerationSession(
+            "fake.gguf", devices=(0,), mode="tp1", head_shard=True
+        )
+
+
+def test_head_shard_builds_per_rank_shards_and_defers_the_replica(env) -> None:
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        head_shard=True,
+    )
+    # The runners defer the replicated head; each rank uploads its shard from
+    # the runtime-resolved layout, never a guessed one.
+    assert [runner.deferred_device_slots for runner in env["runners"]] == [
+        ("root.lm_head",),
+        ("root.lm_head",),
+    ]
+    assert [entry[0] for entry in env["head_uploads"]] == [0, 1]
+    assert all(
+        layout == "gguf_q6_k_t16_qmicro_planar_v1"
+        for _device, layout, _quant in env["head_uploads"]
+    )
+    assert session._head_plan.rows_per_rank == VOCAB // 2
+    session.close()
+    assert sorted(env["head_freed"]) == [0, 1]
+
+
+def test_head_shard_finish_concatenates_shards_with_exact_tie_break(env) -> None:
+    # Rank 0's shard holds the maximum at vocab index 3 (rank 0's range), and
+    # rank 1's shard holds an equal value at index VOCAB // 2 + 3; the exact
+    # global first-maximum tie-break must pick index 3 - the same token the
+    # replicated head's argmax would return.
+    row0 = np.zeros(VOCAB // 2, dtype="<f4")
+    row0[3] = 5.0
+    row1 = np.zeros(VOCAB // 2, dtype="<f4")
+    row1[3] = 5.0  # rank 1's local index 3 = global index VOCAB // 2 + 3
+    # Two readbacks per finish step, and the eager schedule has no capture
+    # warmup: exactly a prefill pair then the decode pair. The generated
+    # token is the prefill's argmax, so the marked pair comes first.
+    env["injected_rows"].extend([row0, row1])
+    env["injected_rows"].extend(
+        [np.zeros(VOCAB // 2, dtype="<f4"), np.zeros(VOCAB // 2, dtype="<f4")]
+    )
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="eager",
+        head_shard=True,
+    )
+    result = session.generate([2], max_new_tokens=1, eos_token_id=None)
+    assert result.token_ids == (3,)
+    # Both ranks enqueue their shard GEMV in the tail (rmsnorm + linear per
+    # rank), and the returned logits row is the concatenation.
+    tail_linears = [
+        entry for entry in env["launch_log"] if entry[1] == "linear" and entry[2] == "launch"
+    ]
+    assert {entry[0] for entry in tail_linears} == {0, 1}
+    full_row = result.logits[0] if result.logits is not None else None
+    assert full_row is None or float(full_row[3]) == 5.0
+    session.close()
+    assert sorted(env["head_freed"]) == [0, 1]

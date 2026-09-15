@@ -48,15 +48,16 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
 from hipengine.core.device import scoped_current_device
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, malloc
-from hipengine.core.runtime import MemcpyKind
 from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
+from hipengine.distributed.head_shard import materialize_head_shards
+from hipengine.distributed.shard_exec import upload_shard_weight
 from hipengine.distributed.shard_group import MlpShardGroup
 from hipengine.distributed.shard_weights import (
     materialize_mlp_shards,
@@ -129,6 +130,7 @@ class MlpTP2GenerationSession:
         driver: str = "compiled",
         schedule: str | None = None,
         reduce_mode: str | None = None,
+        head_shard: bool | None = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -174,6 +176,19 @@ class MlpTP2GenerationSession:
             )
         self.schedule = str(schedule)
         self.reduce_mode = str(reduce_mode)
+        if head_shard is None:
+            # The sharded head is the tp2 production default: bit-identical
+            # teacher gates and determinism at fixture and model scale,
+            # -3.2% decode p50 vs the replicated head (the single largest
+            # per-token weight read now runs concurrently as two shards).
+            # head_shard=False is the explicit opt-out and bisection control.
+            head_shard = self.mode == "tp2"
+        self.head_shard = bool(head_shard)
+        if self.head_shard and self.mode != "tp2":
+            raise ValueError("the sharded head is tp2-only")
+        self._head_plan: Any | None = None
+        self._head_weights: dict[int, Any] = {}
+        self._head_logits_bufs: dict[int, Any] = {}
         self.driver = str(driver)
         self.devices = tuple(int(d) for d in devices)
         if not self.devices:
@@ -225,6 +240,8 @@ class MlpTP2GenerationSession:
             self._config = self._runners[self.control_device].weights.config
             if self.mode == "tp2":
                 self._build_shard_group()
+            if self.head_shard:
+                self._build_head_shards()
             for device in self.devices:
                 self._alloc_step_buffers(device)
         except Exception:
@@ -256,6 +273,7 @@ class MlpTP2GenerationSession:
                 backend="hip_gfx1100",
                 execution_routes=("eager",),
                 runtime=self.runtime,
+                deferred_device_slots=("root.lm_head",) if self.head_shard else (),
             )
             scratch = _FullStackScratch.allocate(
                 runner,
@@ -323,7 +341,7 @@ class MlpTP2GenerationSession:
             buffers["token_buf"] = malloc(np.int64().nbytes, runtime=self.runtime)
             buffers["hidden_a"] = malloc(hidden_size * 2, runtime=self.runtime)
             buffers["hidden_b"] = malloc(hidden_size * 2, runtime=self.runtime)
-            if device == self.control_device:
+            if device == self.control_device and not self.head_shard:
                 buffers["logits_buf"] = malloc(
                     runner.vocab_size * 4, runtime=self.runtime
                 )
@@ -976,7 +994,49 @@ class MlpTP2GenerationSession:
         )
         return buffers["mlp_out"].ptr
 
+    # -- sharded output head -------------------------------------------------
+
+    def _build_head_shards(self) -> None:
+        """One block-aligned head row shard per rank, plus its logits buffer.
+
+        Each rank's runner defers the replicated head allocation; the shard is
+        a contiguous Q6_K block range of the source tensor repacked to the
+        runtime-resolved layout and uploaded device-scoped to its rank.
+        """
+
+        if self.mode != "tp2":
+            raise TP2GroupError("the sharded head is tp2-only")
+        plan, rank_payloads = materialize_head_shards(
+            self.model_path, world_size=len(self.devices)
+        )
+        self._head_plan = plan
+        for device in self.devices:
+            payload = rank_payloads[device]["tiles"]
+            with scoped_current_device(self.runtime, device):
+                weight = upload_shard_weight(
+                    self.runtime,
+                    device=device,
+                    name="tiles",
+                    layout=plan.layout,
+                    quant_key=plan.quant_key,
+                    payload=payload,
+                )
+                self._head_weights[device] = weight
+                buf = malloc(plan.rows_per_rank * 4, runtime=self.runtime)
+                self._head_logits_bufs[device] = buf
+                self._extra_buffers[device].append(buf)
+
     def _finish_step(self, stages: dict[str, float]) -> np.ndarray:
+        if self.head_shard:
+            return self._finish_step_sharded_head(stages)
+        return self._finish_step_replicated_head(stages)
+
+    def _finish_step_replicated_head(
+        self,
+        stages: dict[str, float],
+    ) -> np.ndarray:
+        """The committed default: the full head GEMV on the control rank."""
+
         mark = time.perf_counter()
         device = self.control_device
         stream = self._rank_stream(device)
@@ -1020,6 +1080,64 @@ class MlpTP2GenerationSession:
         stages["head_sample"] = time.perf_counter() - mark
         return logits
 
+    def _finish_step_sharded_head(
+        self,
+        stages: dict[str, float],
+    ) -> np.ndarray:
+        """Both ranks run their contiguous head row shard concurrently.
+
+        By this point the last layer's exchange has synchronized both rank
+        streams, so the two shard GEMVs overlap; the host then reads both f32
+        rows back and takes the concatenated argmax - the exact global greedy
+        token with the replicated head's first-maximum tie-break, because the
+        GEMV is row-independent and the shards are contiguous vocab ranges.
+        """
+
+        mark = time.perf_counter()
+        plan = self._head_plan
+        rows = int(plan.rows_per_rank)
+        for device in self.devices:
+            stream = self._rank_stream(device)
+            with scoped_current_device(self.runtime, device):
+                runner = self._runners[device]
+                scratch = self._scratches[device]
+                src, _dst = self._hidden[device]
+                gguf_rmsnorm_bf16_f32_weight(
+                    src,
+                    runner.weights.root("output_norm").allocation().tensor.ptr,
+                    scratch.norm.ptr,
+                    1,
+                    runner.hidden_size,
+                    runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=self.runtime,
+                )
+                launch_gguf_linear(
+                    self._head_weights[device],
+                    scratch.norm.ptr,
+                    self._head_logits_bufs[device].ptr,
+                    1,
+                    runner.hidden_size,
+                    rows,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=self.runtime,
+                )
+        logits = np.empty(plan.vocab_rows, dtype="<f4")
+        for device in self.devices:
+            stream = self._rank_stream(device)
+            with scoped_current_device(self.runtime, device):
+                if stream:
+                    self.runtime.stream_synchronize(stream)
+                copy_device_to_host(
+                    logits[plan.rank_row_start(device):].ctypes.data,
+                    self._head_logits_bufs[device],
+                    rows * 4,
+                    runtime=self.runtime,
+                )
+        stages["head_sample"] = time.perf_counter() - mark
+        return logits
+
     def _add_norm_kernel(self, runner: Qwen35GGUFFullStackRunner) -> Any:
         """The runner's resolved add+RMSNorm leaf for rows=1 at hidden size."""
 
@@ -1055,6 +1173,15 @@ class MlpTP2GenerationSession:
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None
+        for device, weight in self._head_weights.items():
+            try:
+                with scoped_current_device(self.runtime, device):
+                    weight.allocation().free()
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+        self._head_weights.clear()
+        self._head_logits_bufs.clear()
+        self._head_plan = None
         for device, buffers in self._extra_buffers.items():
             for buffer in buffers:
                 try:

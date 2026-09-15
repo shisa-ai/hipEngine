@@ -1110,14 +1110,20 @@ refused with HIP error 900), and the reduction runs inside those graphs:
 each rank's graph stages its down partial into a host-mapped slot, publishes
 a system-scope flag, and a bounded spin-sum kernel locksteps against the
 other rank's flag before adding the staged row to its own device partial -
-the host submits 128 graph launches per token and never waits per layer.
-Per token the loop also submits the token H2D and pinned position/context
-refresh and the control rank's head. Measured decode p50 **50.65 -> 24.87
-ms/token (-50.9%)** at the matched composition (W7900 TP1 31.8 ms, RX 7900
-XTX TP1 26.3 ms) - the TP2 group now outpaces the faster single-GPU control
-by ~1.4 ms/token while carrying the full replicated attention/GDN cost, so
-a matched-composition TP2 advantage is real at this workload; the remaining
-wall is device weight reads and the end-of-step sampling sync. Capture
+the host submits 128 graph launches per token and never waits per layer,
+and the output head's vocabulary rows are split into contiguous Q6_K
+block-aligned shards (124,160 rows per rank) that both ranks run
+concurrently in the tail, with the host taking the concatenated argmax -
+the exact greedy first-maximum tie-break, because the head GEMV is
+row-independent. The head is the single largest per-token weight read
+(1.04 GB), and sharding it roughly halved its cost. Per token the loop
+also submits the token H2D and pinned position/context refresh. Measured
+decode p50 **50.65 -> 24.15 ms/token (-52.3%)** at the matched composition
+(W7900 TP1 31.8 ms, RX 7900 XTX TP1 26.3 ms) - the TP2 group now outpaces
+the faster single-GPU control by ~2.2 ms/token while carrying the full
+replicated attention/GDN cost, so a matched-composition TP2 advantage is
+real at this workload; the remaining wall is device weight reads and the
+end-of-step sampling sync. Capture
 happens once at the session capacity bound (2047), which bakes the
 full-attention split-decode config for that context; the measured envelope
 against the eager per-position schedule is KL <= 3e-04 per position (top-1

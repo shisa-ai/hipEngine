@@ -206,6 +206,7 @@ def run_arm(
     driver: str = "python",
     schedule: str = "eager",
     reduce_mode: str = "host",
+    head_shard: bool = False,
 ) -> tuple[dict[str, Any], np.ndarray]:
     """One fresh session: generations + teacher-forced logits.
 
@@ -222,6 +223,7 @@ def run_arm(
         driver=driver,
         schedule=schedule,
         reduce_mode=reduce_mode,
+        head_shard=head_shard,
     )
     built_s = time.perf_counter() - started
     record: dict[str, Any] = {
@@ -230,6 +232,7 @@ def run_arm(
         "driver": driver if mode == "tp2" else None,
         "schedule": schedule if mode == "tp2" else None,
         "reduce_mode": reduce_mode if mode == "tp2" else None,
+        "head_shard": head_shard if mode == "tp2" else None,
         "mlp_decode_variant": (
             session._shard_group.mlp_decode_variant
             if mode == "tp2" and session._shard_group is not None
@@ -305,6 +308,21 @@ def main(argv: list[str] | None = None) -> int:
         "the captured graphs (default, the graphed production default) or the "
         "host-summed transport (opt-out)",
     )
+    parser.add_argument(
+        "--head-shard",
+        dest="head_shard",
+        action="store_true",
+        default=None,
+        help="split the output head's vocabulary rows across the group "
+        "(default: on for tp2, the production default; --no-head-shard opts "
+        "out to the replicated head)",
+    )
+    parser.add_argument(
+        "--no-head-shard",
+        dest="head_shard",
+        action="store_false",
+        help="run the replicated head (the opt-out control)",
+    )
     args = parser.parse_args(argv)
 
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -334,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
             driver=args.driver,
             schedule=args.schedule if mode == "tp2" else "eager",
             reduce_mode=args.reduce_mode if mode == "tp2" else "host",
+            head_shard=args.head_shard if mode == "tp2" else False,
         )
         arms.append(record)
         logits_by_label[label] = teacher_logits

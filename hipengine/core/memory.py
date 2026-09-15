@@ -187,11 +187,18 @@ def copy_host_to_device(
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
     device = _buffer_device(buffer)
-    if device is None:
-        runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
-    else:
+    ptr = buffer.ptr
+    if device is not None:
         with scoped_current_device(runtime, device.index):
-            runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
+            # Very large synchronous H2D copies are rejected by the driver
+            # (hard abort, not an error code), so multi-gigabyte resident
+            # uploads go through bounded chunks.
+            chunk = 1 << 28  # 256 MiB
+            offset = 0
+            while offset < count:
+                n = min(chunk, count - offset)
+                runtime.memcpy(ptr + offset, host_ptr + offset, n, MemcpyKind.HOST_TO_DEVICE)
+                offset += n
 
 
 def copy_host_array_to_device(
