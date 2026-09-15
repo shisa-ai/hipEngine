@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-14**
+Last updated: **2026-09-15**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -1052,6 +1052,41 @@ code, so it measures what the protocol costs when driven natively and not what t
 engine currently does. The 0% row is also the optimistic end of the fixed-cost
 assumption, which is itself unmeasured. The exchange is therefore a viable
 transport candidate with a measured budget, not a delivered speedup.
+
+**One MLP block, executed on two GPUs and timed.** The MLP slice now exists as
+working code, not a projection: each rank's shard payloads are materialized from
+the incumbent planner onto that rank's own device (device 0 and device 1), the
+gate/up/down chain runs there, the partials cross the staged exchange (per-rank
+D2H into pinned host, host f32 sum, H2D to both ranks), and every stage is
+validated against an independent host oracle computed from the dequantized GGUF
+weights. With f32 partials the summed TP2 output agrees with the TP1 teacher to
+f32 accumulation noise (mean relative error 1.4e-07 against 2.0e-03 to a float64
+truth, which is the bf16 activation contract both paths share), and the reduced
+vector plus the residual add and next RMSNorm - what the next block consumes -
+match TP1 the same way. A fused gate/up+SiLU candidate at the shard shape was
+compared against the unfused chain and is bit-identical on both ranks; it is not
+added to the production policy table.
+
+The measured walls on one block (W7900 pair, one token, hidden 5120, intermediate
+17408, 200 timed steps):
+
+| route | step wall p50 | chains | exchange |
+| --- | ---: | ---: | ---: |
+| TP1 (fused pair+SiLU + down) | 323.8 us | 305.6 us device | - |
+| TP2, fused shard route | 335.6 us | 246.9 us | 85.2 us |
+| TP2, unfused (resolves today) | 401.6 us | 307.2 us | 90.7 us |
+
+So the two-GPU block is at parity with the single-GPU block, not faster, and the
+gap is the exchange driven from Python. Profiled part by part, the gather (both
+D2H submissions, both waits, the host sum) takes 28.6 us and the H2D return to
+both ranks another 29.0 us, while the transport A/B's compiled runner measured
+20.8 us per reduction for the same batched protocol. The gap is protocol overhead
+(twelve device switches and eight ctypes submissions per reduction), not copy
+bandwidth. The tuning targets this sets, in order: drive the exchange from
+compiled code like every other kernel, remove the return path (mapped pinned
+memory lets both ranks read the reduced vector zero-copy), and admit the fused
+shard shape to the policy table under the gate the existing entries used -
+together worth roughly 1.15x on this segment if the compiled rate holds.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
