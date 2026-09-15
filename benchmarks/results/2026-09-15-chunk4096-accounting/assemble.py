@@ -4,6 +4,10 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from scripts.qwen4exp_chunk_c2_gate import validate_traces
 
 
 def assemble(root):
@@ -14,6 +18,7 @@ def assemble(root):
         "resume-chunk4096-depth.json",
         "resume-chunk4096-boundaries.json",
         "resume-chunk4096-active-tasks.json",
+        "resume-chunk4096-c2.json", "resume-chunk4096-c2-deferred.json",
     )
     packets, hashes = {}, {}
     for name in names:
@@ -155,13 +160,45 @@ def assemble(root):
                 or before["runs"][0]["ids"] != after["runs"][0]["ids"]
                 or before["runs"][0]["state_sha256"] != after["runs"][0]["state_sha256"]):
             raise ValueError("active task parity does not reproduce")
+    for name, mode, checkpoints in (
+        ("resume-chunk4096-c2.json", "each_checkpoint", 28),
+        ("resume-chunk4096-c2-deferred.json", "deferred", 2),
+    ):
+        c2 = packets[name]
+        if (c2["status"] != "passed" or not c2["source"]["tracked_clean"]
+                or c2["model"] != depth["model"] or c2["manifest"] != native["manifest_sha256"]
+                or c2["host"]["machine_id"] != native["host"]["machine_id"]
+                or c2["protocol"] != {
+                    "capacity": 4352, "chunk": 4096, "resident_runners": 2,
+                    "compact_outputs": True, "repeats": 3, "decode_steps": 8,
+                    "inspection_mode": mode}
+                or not c2["disjoint_owner_ranges"] or len(c2["owner_range_counts"]) != 2
+                or min(c2["owner_range_counts"]) <= 0
+                or c2["repair_queues"] != [row["queues"] for row in native["lazy_group_risk"]]
+                or len(c2["repeats"]) != 3
+                or c2["memory_after_close"]["current_allocated_bytes"]):
+            raise ValueError("invalid chunk4096 c2 gate")
+        if validate_traces(c2["chunk_traces"], {
+                "a": range(2052), "b": range(4097), "c": range(2049)}, chunk=4096) != c2["trace_gate"]:
+            raise ValueError("c2 chunk traces do not reproduce")
+        if {row["owners"]["a"] for row in c2["repeats"]} != {0, 1}:
+            raise ValueError("c2 physical owner coverage missing")
+        for index, row in enumerate(c2["repeats"]):
+            if (row["repeat"] != index or row["checkpoints"] != checkpoints
+                    or set(row["owners"].values()) != {0, 1}
+                    or row["peer_cancel_tokens"] != 2 or row["partial_cancel_tokens"] != 0
+                    or row["active_cancel_tokens"] != 8 or row["replacement_cancel_tokens"] != 8):
+                raise ValueError("c2 lifecycle comparison incomplete")
+    if packets["resume-chunk4096-c2.json"]["references"] != packets[
+            "resume-chunk4096-c2-deferred.json"]["references"]:
+        raise ValueError("c2 isolated references differ across inspection modes")
     return dict(
         schema=2, status="accounting_and_canonical_numerics_passed_more_gates_pending",
         performance_claim=False, promotion_claim=False,
         raw_sha256=hashes, bounded_reconciliation=reconciled,
         captures=packets,
         limits=[
-            "Canonical, boundary/reuse and active-task gates pass; c2 inference and performance gates remain.",
+            "Canonical, boundary/reuse, active-task and detailed/deferred c2 gates pass; performance remains.",
             "Native-c2 allocation is not native-depth generation qualification.",
             "The mandatory footprint excludes optional MMQ, graph, verification and transaction resources.",
             "The4GiB scratch floor and separate4GiB reserve remain; larger mandatory buffers raise accounting.",

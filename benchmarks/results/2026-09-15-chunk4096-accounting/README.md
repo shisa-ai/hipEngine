@@ -65,7 +65,7 @@ All48 chunk traces match the declared sizes; at4K the candidate executes
 one4096-token call versus four1024-token reference calls.
 
 This is a bounded numerical pass, not a new default or speed claim.
-c2 inference and timing remain.
+Timing remains.
 Exact capture argv and manifests are in `artifact.json`.
 
 ## Boundary And Reuse Gate
@@ -80,7 +80,7 @@ match strict at prefill and final decode endpoints. Intervening257-token
 prefills do not change the repeated result. All declared chunk traces
 match and tracked allocations return to zero.
 
-This is c1 full-payload/reuse evidence; c2 remains separate.
+This is c1 full-payload/reuse evidence; c2 is recorded separately below.
 
 ## Active Tasks
 
@@ -92,7 +92,25 @@ one4096-token chunk, versus four1024 calls for each strict generation.
 
 The existing embedded non-thinking template and task criterion are unchanged.
 This supplements the numerical and boundary gates; it is not a new full-EOS
-factual-quality certificate. c2 and performance qualification remain.
+factual-quality certificate. Performance qualification remains.
+
+## Two-Runner Lifecycle
+
+Clean `1df91bdbc`: detailed and deferred-inspection c2 gates pass, both with
+three repeats at capacity4352. They exercise both physical runners, delayed
+peer prefill, decode-order permutation, peer cancellation, admission rollback,
+partial-prefix cancellation and reuse of the released runner.
+
+The detailed arm compares84 checkpoints. The deferred arm makes no diagnostic
+reads during interleaving, then checks six final A/C states. Compared logits,
+full KV, live index and recurrent state match isolated production references;
+those references also match across arms. Token accounting and disjoint observed
+owner ranges pass. Both trace12 model prefills/16 chunks; cancelled partial
+prefixes execute no model prefill.
+
+Peak tracked allocation is96,121,434,128 bytes, with zero after close.
+Normal compact output calls stay enabled. This is native-pool evidence,
+not HTTP/SSE load testing, native-depth generation or throughput measurement.
 
 ## Reproduction
 
