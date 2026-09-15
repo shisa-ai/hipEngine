@@ -34,7 +34,14 @@ from scripts.qwen4exp_canonical_ar_bench import (
     token_ids_sha256,
 )
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary
-from scripts.qwen4exp_profile_gap import RoleMarkers, Roctx, RuntimeCensus, _graph_snapshot
+from scripts.qwen4exp_profile_gap import (
+    RoleMarkers,
+    Roctx,
+    RuntimeCensus,
+    _apply_post_binder_overrides,
+    _graph_snapshot,
+    _parse_overrides,
+)
 
 
 def _select_case(fixture: Mapping[str, Any], case_id: str) -> Mapping[str, Any]:
@@ -131,6 +138,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hip-arch", default="gfx1151")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="HIPENGINE_KEY=VALUE",
+        help=(
+            "Diagnostic runtime override applied after the named profile "
+            "binder; repeat for multiple keys"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -189,6 +206,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         prefill_chunk_size=int(args.prefill_chunk_size),
     )
     generator, resolved, _index = _make_generator(factory_args, "production")
+    overrides = _parse_overrides(list(getattr(args, "override", ()) or ()))
+    bound_route_env, route_env = _apply_post_binder_overrides(overrides)
     roctx = Roctx() if args.profile else None
     contexts: list[dict[str, Any]] = []
     memory_after_warmup: dict[str, Any] | None = None
@@ -372,6 +391,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "manifest_sha256": resolved.manifest_sha256,
             "strict_manifest_sha256": resolved.strict_manifest_sha256,
             "fell_back_to_strict": resolved.fell_back_to_strict,
+            "named_profile_intact": not bool(overrides),
+            "configuration_class": (
+                "diagnostic_post_binder_override"
+                if overrides
+                else "named_profile"
+            ),
+            "overrides": dict(overrides),
+            "override_stage": "post_profile_binder_pre_measurement",
+            "bound_route_env": bound_route_env,
+            "route_env": route_env,
         },
         "protocol": {
             "allocated_capacity": max_sequence_length,
