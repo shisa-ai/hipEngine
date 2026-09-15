@@ -10,7 +10,17 @@ from hipengine.kernels.hip_gfx1100.rotary import qwen35_rotary
 
 
 def frontend_gemm(x,w,out,rows,inputs,outputs,*,runtime):
-    fn = dense_gemv.dense_prefill_wmma_out_bf16 if outputs % 128 == 0 and inputs % 32 == 0 else dense_gemv.dense_prefill_gemm_out_bf16
+    # The semantic encoder's deep stages collapse to a handful of rows while their
+    # width grows to 2048, so the GEMMs are weight-traffic bound and the BM=128
+    # tile leaves only 64 workgroups for 40 CUs. The BM=64 twin carries the same
+    # arithmetic -- per-element accumulation is k0-major then kk-major, which the
+    # column tile does not affect -- and is verified bit-identical, so this is a
+    # pure scheduling change, not a numerical one.
+    if outputs % 128 == 0 and inputs % 32 == 0:
+        fn = (dense_gemv.dense_prefill_wmma_out_bf16_m64 if rows < 64
+              else dense_gemv.dense_prefill_wmma_out_bf16)
+    else:
+        fn = dense_gemv.dense_prefill_gemm_out_bf16
     fn(x,w,out,rows,inputs,outputs,stream=0,runtime=runtime)
 
 

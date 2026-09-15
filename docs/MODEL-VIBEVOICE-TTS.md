@@ -541,7 +541,14 @@ inside the first turn on one seed, so the encoder-based attribution sees a spuri
 speaker flip; its transcript is unaffected and its other nine seeds reproduce
 `[0,1]` cleanly.
 
-The semantic encoder's one-row GEMV dispatch is a 3.00x win on that stage in
+The semantic encoder's deep stages are **weight-traffic bound**: they run at 1-40
+rows against widths up to 2048, so the GEMMs stream large weight matrices while
+the compute is nearly idle. A **BM=64 twin** of the prefill WMMA kernel doubles
+the workgroup count without changing the per-element accumulation order and is
+verified bit-identical, taking the stage from 1.108 s to 0.781 s and pooled RTF
+from 1.337 to 1.201 -- faster than the torch lane's 1.336 on the same request.
+
+The one-row GEMV dispatch is a 3.00x win on that stage in
 isolation (55.22 -> 18.42 ms per chunk) and is **not** landed: over ten seeds it
 takes the suite from 58/60 to 54/60 and reproduces a WER-0.6471 runaway with
 repeated speech. A boundary perturbation of about one bf16 ulp is enough to move
