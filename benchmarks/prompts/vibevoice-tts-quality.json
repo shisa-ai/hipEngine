@@ -1,0 +1,67 @@
+{
+  "suite": "vibevoice-tts-quality",
+  "version": 1,
+  "model_id": "microsoft/VibeVoice-1.5B",
+  "purpose": "Held-out requests for the unassisted generated-audio quality suite. Every request uses a script the pinned oracle fixtures do not contain, so nothing about its prompt, token count, turn structure or output duration is recorded anywhere; the model computes all of it.",
+  "reference_sets": {
+    "single": {
+      "fixture": "single_reference.npz",
+      "voices": ["en-Alice_woman.wav"],
+      "note": "One speaker. Reference PCM and per-speaker voice-prompt token counts come from this fixture, which records the fork's own preprocessing output for this voice file."
+    },
+    "two": {
+      "fixture": "two_reference.npz",
+      "voices": ["en-Alice_woman.wav", "en-Carter_man.wav"],
+      "note": "Two speakers. Both references are the fork's own output for these two files."
+    }
+  },
+  "limitations": [
+    "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
+    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected, so a request is not bit-reproducible across runs. The checks are chosen to be robust to that.",
+    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output."
+  ],
+  "requests": [
+    {
+      "name": "single-short",
+      "reference_set": "single",
+      "turns": 1,
+      "script": "Speaker 1: Good morning, and welcome to the show.",
+      "max_audio_seconds": 8.0
+    },
+    {
+      "name": "single-medium",
+      "reference_set": "single",
+      "turns": 1,
+      "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
+      "max_audio_seconds": 12.0
+    },
+    {
+      "name": "single-numbers",
+      "reference_set": "single",
+      "turns": 1,
+      "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
+      "max_audio_seconds": 12.0
+    },
+    {
+      "name": "two-2turn",
+      "reference_set": "two",
+      "turns": 2,
+      "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
+      "max_audio_seconds": 14.0
+    },
+    {
+      "name": "two-4turn",
+      "reference_set": "two",
+      "turns": 4,
+      "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
+      "max_audio_seconds": 16.0
+    },
+    {
+      "name": "two-long",
+      "reference_set": "two",
+      "turns": 2,
+      "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+      "max_audio_seconds": 24.0
+    }
+  ]
+}

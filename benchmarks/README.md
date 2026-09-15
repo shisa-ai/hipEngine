@@ -1232,6 +1232,39 @@ streams, so the torch lane is a duration comparison that draws its own noise.
 Evidence: [hipEngine](results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json),
 [torch](results/2026-09-15-gfx1151-vibevoice-tts-torch-lane.json).
 
+### Radeon 8060S: VibeVoice-TTS 1.5B generated-audio quality
+
+Six held-out scripts (one to four turns, 7 to 40 words) over the same two voice
+sets, run with nothing injected: the session draws its own voice-prompt VAE
+noise, its own diffusion noise and its own negative-LM branch, and each request's
+generation budget comes from its declared `max_audio_seconds` rather than from the
+oracle's token count. Three seeds per request.
+
+| Request | Turns | WER (3 seeds) | Duration ratio | Voice attribution |
+| --- | ---: | --- | ---: | :-: |
+| `single-short` | 1 | 0.0 / 0.0 / 0.0 | 0.81-0.95 | n/a |
+| `single-medium` | 1 | 0.0 / 0.0 / 0.0 | 0.64-0.80 | n/a |
+| `single-numbers` | 1 | 0.0 / 0.0 / 0.0 | 0.83-1.03 | n/a |
+| `two-2turn` | 2 | **0.353** / 0.059 / 0.059 | 0.96-1.08 | 3/3 |
+| `two-4turn` | 4 | 0.0 / 0.0 / 0.0 | 1.01-1.07 | 3/3 |
+| `two-long` | 2 | 0.025 / 0.025 / 0.05 | 0.78-0.81 | 3/3 |
+
+17 of 18 request-runs pass. Every request reaches EOS, no output clips, the
+longest internal gap is 0.98 s, and no repeated 4-gram appears. The one failure
+is the shortest two-speaker script's first turn on one seed, where "I think the
+meeting went well this morning" came back as "I can see you in the world this
+morning"; its second turn is word-perfect on all three seeds.
+
+Voice attribution is measured on the acoustic encoder's own window assignment,
+not on the ASR's speaker labels: the ASR reports a single speaker for two-speaker
+scripts that contain both voices (the 2-turn script on all three seeds, the long
+2-turn script on two of three), while the encoder assignment makes a clean single
+transition between the two references in every case. The three non-zero WER
+values below 0.06 are single words, one of them the `cancelled`/`canceled`
+spelling difference.
+
+Evidence: [quality suite](results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json).
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

@@ -53,6 +53,9 @@ venv/
 # Local generated Worklog2 view
 .worklog/
 
+# Local PCM written by scripts/vibevoice_tts_quality_suite.py
+.vibevoice-tts-quality/
+
 # OS
 .DS_Store
 Thumbs.db

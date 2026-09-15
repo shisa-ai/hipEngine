@@ -478,6 +478,80 @@ request. Before any timing is retained:
 - RTF here is wall time over **output** audio seconds, the inverse convention of
   ASR's wall time over input audio. Every reported number must say which it uses.
 
+### Generated-audio quality suite
+
+`scripts/vibevoice_tts_quality_suite.py` implements the intelligibility,
+attribution, duration and repetition checks on held-out requests. Numerical
+agreement with the oracle cannot carry those requests: the two-speaker fixture's
+first diffusion solve is chaotic, so its late trajectory is unreproducible by
+construction. The suite qualifies the audio instead of widening a tolerance.
+
+Run it with:
+
+```bash
+uv run --with jiwer --with transformers python scripts/vibevoice_tts_quality_suite.py \
+    --seeds 20260915,20260916,20260917
+```
+
+The request set is `benchmarks/prompts/vibevoice-tts-quality.json`: six scripts
+the fixtures never recorded, over one- and two-speaker voice sets, with one to
+four turns and 7 to 40 words. Nothing is injected. Each request builds its prompt
+in-tree, draws its own voice-prompt VAE noise, its own diffusion noise and its own
+negative conditions, and caps generation from the request's declared
+`max_audio_seconds` rather than from the oracle's token count, so `finish_reason`
+reports a truncated utterance as truncated. Each request is reseeded to
+`base_seed + its index`, because the session's generator is shared across
+requests and without that a request's audio depends on how many ran before it.
+
+Checks per request, with thresholds declared in the script:
+
+| Check | Threshold |
+| --- | --- |
+| Transcript well formed | the ASR's segment array parses |
+| Not truncated | `finish_reason == "stop"` |
+| Audible, not clipping | RMS >= 0.005, peak <= 1.0 |
+| No long silence | longest internal gap <= 1.5 s |
+| Duration plausible | output seconds within 0.5-2.5x of words / 2.5 per second |
+| Intelligible | word error rate <= 0.10 |
+| Word count plausible | transcript words within 0.5-2.5x of the script |
+| No repeated speech | no repeated 4-gram |
+| Turn count | at least one ASR segment |
+| Voice attribution | for a multi-speaker script, the encoder's window assignment opens on the script's first speaker and closes on its last |
+
+Measured over three seeds, 17 of 18 request-runs pass. The single failure is a
+real one: the shortest two-speaker script's first turn came back as "I can see you
+in the world this morning" instead of "I think the meeting went well this
+morning" on one seed, word error rate 0.353. The other two seeds of that request
+measure 0.059, and the second turn is word-perfect on all three. Every other
+request measures 0.0 to 0.05, where the non-zero values are single words
+including one spelling difference (`cancelled` against `canceled`) rather than
+mispronunciation.
+
+#### Attribution is measured on the encoder, not on the ASR
+
+The ASR lane's speaker labels are not usable as an attribution gate here. On
+these requests it reports a single speaker for two-speaker scripts that contain
+both voices: for the 2-turn script on all three seeds, and for the long 2-turn
+script on two of three. In each case the acoustic encoder's window assignment
+makes a clean single transition between the two references, for example
+`000000000000011111111111` on the long script.
+
+The suite therefore assigns each 1 s window of generated audio to the reference
+voice with the higher cosine similarity to its mean `encode_reference` latent,
+ignoring windows where neither leads by 0.10. That instrument is deterministic,
+because `encode_reference` does not sample the VAE. It passes all nine
+two-speaker request-runs. As a negative control it does not manufacture a second
+voice where the script has one: against their own single reference, all nine
+single-speaker request-runs assign every window to that reference. A single-voice
+reading of a two-speaker script would fail the check in one direction or the
+other, because the opening and closing windows would carry the same voice. The
+ASR's labels and segment boundaries are recorded per request as a diagnostic.
+
+The suite's limitation is that its held-out axis is the script. Using any other
+voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz
+resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference
+is a subtly different request. Only the two voice sets the fixtures pin are used.
+
 ## Milestone closure and failure accounting
 
 ### Milestone 1 closure

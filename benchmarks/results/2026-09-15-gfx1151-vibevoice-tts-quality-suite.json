@@ -1,0 +1,2623 @@
+{
+  "suite": "vibevoice-tts-quality",
+  "suite_version": 1,
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "measurement_basis": "unassisted-generated-audio-quality",
+  "asr_lane": "microsoft/VibeVoice-ASR-HF",
+  "tokenizer": "microsoft/VibeVoice-ASR-HF",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
+  },
+  "command": "uv run --with jiwer --with transformers python scripts/vibevoice_tts_quality_suite.py",
+  "injected": "nothing (own VAE draw, own diffusion noise, own negative LM)",
+  "seeding": "each request is reseeded to base_seed + its index, so a request does not depend on how many requests ran before it",
+  "gates": {
+    "wer_max": 0.1,
+    "duration_ratio_range": [
+      0.5,
+      2.5
+    ],
+    "max_internal_silence_seconds": 1.5,
+    "min_rms": 0.005,
+    "max_abs": 1.0,
+    "max_repeated_4grams": 0,
+    "turn_count_min": 1,
+    "voice_attribution": "for a script with more than one speaker, the encoder's window assignment must open on the script's first speaker and close on its last"
+  },
+  "attribution_instrument": {
+    "method": "hipengine.runtime.vibevoice_encoder.encode_reference (deterministic, no VAE sampling); each window assigned to the reference voice with the higher cosine similarity to its mean latent",
+    "window_seconds": 1.0,
+    "hop_seconds": 0.5,
+    "decision_margin": 0.1,
+    "min_decided_windows": 3,
+    "asr_speaker_labels": "reported per request as a diagnostic, not gated: on these requests the ASR reports one speaker for two-speaker scripts that contain both voices"
+  },
+  "limitations": [
+    "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
+    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected, so a request is not bit-reproducible across runs. The checks are chosen to be robust to that.",
+    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output."
+  ],
+  "stability": {
+    "seeds": 3,
+    "requests": {
+      "single-short": {
+        "seeds": 3,
+        "passed": 3,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 3
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          }
+        },
+        "stable": true
+      },
+      "single-medium": {
+        "seeds": 3,
+        "passed": 3,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 3
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          }
+        },
+        "stable": true
+      },
+      "single-numbers": {
+        "seeds": 3,
+        "passed": 3,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 3
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          }
+        },
+        "stable": true
+      },
+      "two-2turn": {
+        "seeds": 3,
+        "passed": 2,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 2
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          },
+          "voice_attribution": {
+            "passed": 3
+          }
+        },
+        "stable": false
+      },
+      "two-4turn": {
+        "seeds": 3,
+        "passed": 3,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 3
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          },
+          "voice_attribution": {
+            "passed": 3
+          }
+        },
+        "stable": true
+      },
+      "two-long": {
+        "seeds": 3,
+        "passed": 3,
+        "checks": {
+          "transcript_well_formed": {
+            "passed": 3
+          },
+          "not_truncated": {
+            "passed": 3
+          },
+          "has_audio": {
+            "passed": 3
+          },
+          "audible": {
+            "passed": 3
+          },
+          "not_clipping": {
+            "passed": 3
+          },
+          "no_long_silence": {
+            "passed": 3
+          },
+          "duration_plausible": {
+            "passed": 3
+          },
+          "intelligible": {
+            "passed": 3
+          },
+          "word_count_plausible": {
+            "passed": 3
+          },
+          "no_repeated_speech": {
+            "passed": 3
+          },
+          "turn_count": {
+            "passed": 3
+          },
+          "voice_attribution": {
+            "passed": 3
+          }
+        },
+        "stable": true
+      }
+    }
+  },
+  "runs": [
+    {
+      "seed": 20260915,
+      "requests": [
+        {
+          "name": "single-short",
+          "base_seed": 20260915,
+          "request_seed": 20260915,
+          "pcm": ".vibevoice-tts-quality/seed20260915/single-short.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: Good morning, and welcome to the show.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 120,
+          "max_audio_seconds": 8.0,
+          "token_cap": 62,
+          "generated_tokens": 22,
+          "diffusion_frames": 20,
+          "finish_reason": "stop",
+          "synthesis_seconds": 4.554,
+          "output_audio_seconds": 2.6667,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.3595
+            ],
+            [
+              0.4956
+            ],
+            [
+              0.6095
+            ],
+            [
+              0.563
+            ]
+          ],
+          "transcribe_seconds": 80.3,
+          "transcript_status": "ok",
+          "transcript": "Good morning and welcome to the show.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 2.67,
+              "speaker": "0",
+              "content": "Good morning and welcome to the show."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 7,
+          "transcript_words": 7,
+          "repeated_ngrams": [],
+          "rms": 0.055671,
+          "absmax": 0.435547,
+          "longest_silence_seconds": 0.124,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 2.8,
+          "duration_ratio": 0.952,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-medium",
+          "base_seed": 20260915,
+          "request_seed": 20260916,
+          "pcm": ".vibevoice-tts-quality/seed20260915/single-medium.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 128,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 31,
+          "diffusion_frames": 29,
+          "finish_reason": "stop",
+          "synthesis_seconds": 6.152,
+          "output_audio_seconds": 3.8667,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.4507
+            ],
+            [
+              0.46
+            ],
+            [
+              0.5055
+            ],
+            [
+              0.497
+            ],
+            [
+              0.4602
+            ],
+            [
+              0.4211
+            ]
+          ],
+          "transcribe_seconds": 9.56,
+          "transcript_status": "ok",
+          "transcript": "The library opens at nine and the reading room closes at six in the evening.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 3.87,
+              "speaker": "0",
+              "content": "The library opens at nine and the reading room closes at six in the evening."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 15,
+          "transcript_words": 15,
+          "repeated_ngrams": [],
+          "rms": 0.057685,
+          "absmax": 0.376953,
+          "longest_silence_seconds": 0.015,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 6.0,
+          "duration_ratio": 0.644,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-numbers",
+          "base_seed": 20260915,
+          "request_seed": 20260917,
+          "pcm": ".vibevoice-tts-quality/seed20260915/single-numbers.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 126,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 34,
+          "diffusion_frames": 32,
+          "finish_reason": "stop",
+          "synthesis_seconds": 6.811,
+          "output_audio_seconds": 4.2667,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.3497
+            ],
+            [
+              0.4213
+            ],
+            [
+              0.41
+            ],
+            [
+              0.3868
+            ],
+            [
+              0.4921
+            ],
+            [
+              0.4741
+            ],
+            [
+              0.5401
+            ]
+          ],
+          "transcribe_seconds": 9.78,
+          "transcript_status": "ok",
+          "transcript": "The train to Bristol leaves from platform twelve at half past four.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 4.27,
+              "speaker": "0",
+              "content": "The train to Bristol leaves from platform twelve at half past four."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 12,
+          "transcript_words": 12,
+          "repeated_ngrams": [],
+          "rms": 0.046177,
+          "absmax": 0.433594,
+          "longest_silence_seconds": 0.041,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 4.8,
+          "duration_ratio": 0.889,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "two-2turn",
+          "base_seed": 20260915,
+          "request_seed": 20260918,
+          "pcm": ".vibevoice-tts-quality/seed20260915/two-2turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 350,
+          "max_audio_seconds": 14.0,
+          "token_cap": 107,
+          "generated_tokens": 52,
+          "diffusion_frames": 50,
+          "finish_reason": "stop",
+          "synthesis_seconds": 11.562,
+          "output_audio_seconds": 6.6667,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.2141,
+              -0.1989
+            ],
+            [
+              -0.0239,
+              -0.246
+            ],
+            [
+              0.1819,
+              -0.0806
+            ],
+            [
+              0.3668,
+              0.0528
+            ],
+            [
+              0.4491,
+              0.1154
+            ],
+            [
+              0.2724,
+              0.1877
+            ],
+            [
+              0.3087,
+              0.473
+            ],
+            [
+              0.2647,
+              0.5906
+            ],
+            [
+              0.2545,
+              0.5383
+            ],
+            [
+              0.3139,
+              0.5284
+            ],
+            [
+              0.3721,
+              0.5899
+            ],
+            [
+              0.2907,
+              0.662
+            ]
+          ],
+          "transcribe_seconds": 11.77,
+          "transcript_status": "ok",
+          "transcript": "I can see you in the world this morning. I agree, and the budget question is finally settled.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 6.67,
+              "speaker": "0",
+              "content": "I can see you in the world this morning. I agree, and the budget question is finally settled."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 17,
+          "transcript_words": 18,
+          "repeated_ngrams": [],
+          "rms": 0.047198,
+          "absmax": 0.5,
+          "longest_silence_seconds": 0.45,
+          "wer": 0.3529,
+          "word_count_ratio": 1.0588,
+          "expected_seconds": 6.8,
+          "duration_ratio": 0.98,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": false,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 11,
+          "passed": false
+        },
+        {
+          "name": "two-4turn",
+          "base_seed": 20260915,
+          "request_seed": 20260919,
+          "pcm": ".vibevoice-tts-quality/seed20260915/two-4turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
+          "turns": 4,
+          "turn_speakers": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 367,
+          "max_audio_seconds": 16.0,
+          "token_cap": 122,
+          "generated_tokens": 78,
+          "diffusion_frames": 70,
+          "finish_reason": "stop",
+          "synthesis_seconds": 15.78,
+          "output_audio_seconds": 9.3333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.417,
+              0.2043
+            ],
+            [
+              0.4721,
+              0.3538
+            ],
+            [
+              0.4383,
+              0.4147
+            ],
+            [
+              0.2805,
+              0.3009
+            ],
+            [
+              0.2229,
+              0.4324
+            ],
+            [
+              0.3016,
+              0.5334
+            ],
+            [
+              0.266,
+              0.5633
+            ],
+            [
+              0.2948,
+              0.5375
+            ],
+            [
+              0.6079,
+              0.3732
+            ],
+            [
+              0.5942,
+              0.117
+            ],
+            [
+              0.5989,
+              0.3988
+            ],
+            [
+              0.4914,
+              0.3234
+            ],
+            [
+              0.4446,
+              0.2775
+            ],
+            [
+              0.3954,
+              0.2564
+            ],
+            [
+              0.3088,
+              0.2446
+            ],
+            [
+              0.1696,
+              0.4938
+            ],
+            [
+              0.0988,
+              0.5252
+            ]
+          ],
+          "transcribe_seconds": 19.02,
+          "transcript_status": "ok",
+          "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 1.97,
+              "speaker": "0",
+              "content": "Did you finish the report?"
+            },
+            {
+              "start": 2.09,
+              "end": 4.64,
+              "speaker": "1",
+              "content": "Almost, I need one more figure."
+            },
+            {
+              "start": 4.64,
+              "end": 6.99,
+              "speaker": "0",
+              "content": "Send it over when it is ready."
+            },
+            {
+              "start": 7.01,
+              "end": 9.33,
+              "speaker": "1",
+              "content": "I will later this afternoon."
+            }
+          ],
+          "transcript_speakers": [
+            "0",
+            "1"
+          ],
+          "expected_words": 23,
+          "transcript_words": 23,
+          "repeated_ngrams": [],
+          "rms": 0.057343,
+          "absmax": 0.431641,
+          "longest_silence_seconds": 0.956,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 9.2,
+          "duration_ratio": 1.014,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 14,
+          "passed": true
+        },
+        {
+          "name": "two-long",
+          "base_seed": 20260915,
+          "request_seed": 20260920,
+          "pcm": ".vibevoice-tts-quality/seed20260915/two-long.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 374,
+          "max_audio_seconds": 24.0,
+          "token_cap": 182,
+          "generated_tokens": 100,
+          "diffusion_frames": 96,
+          "finish_reason": "stop",
+          "synthesis_seconds": 21.549,
+          "output_audio_seconds": 12.8,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.5016,
+              0.2812
+            ],
+            [
+              0.6497,
+              0.3396
+            ],
+            [
+              0.5489,
+              0.3925
+            ],
+            [
+              0.4962,
+              0.4875
+            ],
+            [
+              0.5338,
+              0.4607
+            ],
+            [
+              0.5442,
+              0.3734
+            ],
+            [
+              0.4172,
+              0.293
+            ],
+            [
+              0.4346,
+              0.3524
+            ],
+            [
+              0.539,
+              0.4833
+            ],
+            [
+              0.5277,
+              0.4265
+            ],
+            [
+              0.6001,
+              0.3762
+            ],
+            [
+              0.6062,
+              0.4394
+            ],
+            [
+              0.3987,
+              0.3486
+            ],
+            [
+              0.099,
+              0.2273
+            ],
+            [
+              0.067,
+              0.3039
+            ],
+            [
+              0.1096,
+              0.3491
+            ],
+            [
+              0.0574,
+              0.4772
+            ],
+            [
+              0.1189,
+              0.455
+            ],
+            [
+              0.1809,
+              0.4445
+            ],
+            [
+              0.2258,
+              0.4294
+            ],
+            [
+              0.2503,
+              0.4756
+            ],
+            [
+              0.1468,
+              0.517
+            ],
+            [
+              0.087,
+              0.4935
+            ],
+            [
+              0.2199,
+              0.5264
+            ]
+          ],
+          "transcribe_seconds": 17.69,
+          "transcript_status": "ok",
+          "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 12.8,
+              "speaker": "0",
+              "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 40,
+          "transcript_words": 40,
+          "repeated_ngrams": [],
+          "rms": 0.065327,
+          "absmax": 0.671875,
+          "longest_silence_seconds": 0.489,
+          "wer": 0.025,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 16.0,
+          "duration_ratio": 0.8,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 19,
+          "passed": true
+        }
+      ],
+      "failed_requests": [
+        "two-2turn"
+      ]
+    },
+    {
+      "seed": 20260916,
+      "requests": [
+        {
+          "name": "single-short",
+          "base_seed": 20260916,
+          "request_seed": 20260916,
+          "pcm": ".vibevoice-tts-quality/seed20260916/single-short.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: Good morning, and welcome to the show.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 120,
+          "max_audio_seconds": 8.0,
+          "token_cap": 62,
+          "generated_tokens": 20,
+          "diffusion_frames": 18,
+          "finish_reason": "stop",
+          "synthesis_seconds": 3.994,
+          "output_audio_seconds": 2.4,
+          "voice_assignment": [
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.3156
+            ],
+            [
+              0.4617
+            ],
+            [
+              0.516
+            ]
+          ],
+          "transcribe_seconds": 8.03,
+          "transcript_status": "ok",
+          "transcript": "Good morning and welcome to the show.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 2.4,
+              "speaker": "0",
+              "content": "Good morning and welcome to the show."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 7,
+          "transcript_words": 7,
+          "repeated_ngrams": [],
+          "rms": 0.062853,
+          "absmax": 0.341797,
+          "longest_silence_seconds": 0.002,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 2.8,
+          "duration_ratio": 0.857,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-medium",
+          "base_seed": 20260916,
+          "request_seed": 20260917,
+          "pcm": ".vibevoice-tts-quality/seed20260916/single-medium.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 128,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 38,
+          "diffusion_frames": 36,
+          "finish_reason": "stop",
+          "synthesis_seconds": 7.674,
+          "output_audio_seconds": 4.8,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.3154
+            ],
+            [
+              0.3538
+            ],
+            [
+              0.4418
+            ],
+            [
+              0.5013
+            ],
+            [
+              0.3903
+            ],
+            [
+              0.2401
+            ],
+            [
+              0.2873
+            ],
+            [
+              0.303
+            ]
+          ],
+          "transcribe_seconds": 10.17,
+          "transcript_status": "ok",
+          "transcript": "The library opens at nine and the reading room closes at six in the evening.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 4.8,
+              "speaker": "0",
+              "content": "The library opens at nine and the reading room closes at six in the evening."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 15,
+          "transcript_words": 15,
+          "repeated_ngrams": [],
+          "rms": 0.049213,
+          "absmax": 0.419922,
+          "longest_silence_seconds": 0.001,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 6.0,
+          "duration_ratio": 0.8,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-numbers",
+          "base_seed": 20260916,
+          "request_seed": 20260918,
+          "pcm": ".vibevoice-tts-quality/seed20260916/single-numbers.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 126,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 39,
+          "diffusion_frames": 37,
+          "finish_reason": "stop",
+          "synthesis_seconds": 7.981,
+          "output_audio_seconds": 4.9333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.5289
+            ],
+            [
+              0.4333
+            ],
+            [
+              0.392
+            ],
+            [
+              0.4629
+            ],
+            [
+              0.4789
+            ],
+            [
+              0.3715
+            ],
+            [
+              0.5458
+            ],
+            [
+              0.5708
+            ]
+          ],
+          "transcribe_seconds": 10.3,
+          "transcript_status": "ok",
+          "transcript": "The train to Bristol leaves from platform twelve at half past four.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 4.93,
+              "speaker": "0",
+              "content": "The train to Bristol leaves from platform twelve at half past four."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 12,
+          "transcript_words": 12,
+          "repeated_ngrams": [],
+          "rms": 0.047901,
+          "absmax": 0.417969,
+          "longest_silence_seconds": 0.326,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 4.8,
+          "duration_ratio": 1.028,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "two-2turn",
+          "base_seed": 20260916,
+          "request_seed": 20260919,
+          "pcm": ".vibevoice-tts-quality/seed20260916/two-2turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 350,
+          "max_audio_seconds": 14.0,
+          "token_cap": 107,
+          "generated_tokens": 51,
+          "diffusion_frames": 49,
+          "finish_reason": "stop",
+          "synthesis_seconds": 11.363,
+          "output_audio_seconds": 6.5333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              -0.041,
+              -0.1071
+            ],
+            [
+              0.2574,
+              0.0645
+            ],
+            [
+              0.4949,
+              0.178
+            ],
+            [
+              0.5414,
+              0.2761
+            ],
+            [
+              0.2335,
+              0.0537
+            ],
+            [
+              0.1089,
+              -0.1668
+            ],
+            [
+              0.1416,
+              -0.0021
+            ],
+            [
+              0.1965,
+              0.3418
+            ],
+            [
+              0.2804,
+              0.4967
+            ],
+            [
+              0.4073,
+              0.5195
+            ],
+            [
+              0.2871,
+              0.4318
+            ],
+            [
+              0.3908,
+              0.4926
+            ]
+          ],
+          "transcribe_seconds": 11.78,
+          "transcript_status": "ok",
+          "transcript": "I think meeting went well this morning. I agree, and the budget question is finally settled.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 6.53,
+              "speaker": "0",
+              "content": "I think meeting went well this morning. I agree, and the budget question is finally settled."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 17,
+          "transcript_words": 16,
+          "repeated_ngrams": [],
+          "rms": 0.056936,
+          "absmax": 0.648438,
+          "longest_silence_seconds": 0.001,
+          "wer": 0.0588,
+          "word_count_ratio": 0.9412,
+          "expected_seconds": 6.8,
+          "duration_ratio": 0.961,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 11,
+          "passed": true
+        },
+        {
+          "name": "two-4turn",
+          "base_seed": 20260916,
+          "request_seed": 20260920,
+          "pcm": ".vibevoice-tts-quality/seed20260916/two-4turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
+          "turns": 4,
+          "turn_speakers": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 367,
+          "max_audio_seconds": 16.0,
+          "token_cap": 122,
+          "generated_tokens": 78,
+          "diffusion_frames": 70,
+          "finish_reason": "stop",
+          "synthesis_seconds": 16.1,
+          "output_audio_seconds": 9.3333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.5978,
+              0.3968
+            ],
+            [
+              0.7188,
+              0.4072
+            ],
+            [
+              0.4252,
+              0.4145
+            ],
+            [
+              0.3642,
+              0.5093
+            ],
+            [
+              0.3633,
+              0.3082
+            ],
+            [
+              0.4181,
+              0.5167
+            ],
+            [
+              0.3357,
+              0.4884
+            ],
+            [
+              0.2435,
+              0.4436
+            ],
+            [
+              0.138,
+              0.3868
+            ],
+            [
+              0.5193,
+              0.3449
+            ],
+            [
+              0.6051,
+              0.4371
+            ],
+            [
+              0.4977,
+              0.5468
+            ],
+            [
+              0.4544,
+              0.3759
+            ],
+            [
+              0.4841,
+              0.4022
+            ],
+            [
+              0.1859,
+              0.2176
+            ],
+            [
+              0.1793,
+              0.6419
+            ],
+            [
+              0.233,
+              0.6691
+            ]
+          ],
+          "transcribe_seconds": 19.14,
+          "transcript_status": "ok",
+          "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 2.09,
+              "speaker": "0",
+              "content": "Did you finish the report?"
+            },
+            {
+              "start": 2.09,
+              "end": 4.44,
+              "speaker": "1",
+              "content": "Almost, I need one more figure."
+            },
+            {
+              "start": 4.44,
+              "end": 7.16,
+              "speaker": "0",
+              "content": "Send it over when it is ready."
+            },
+            {
+              "start": 7.16,
+              "end": 9.33,
+              "speaker": "1",
+              "content": "I will later this afternoon."
+            }
+          ],
+          "transcript_speakers": [
+            "0",
+            "1"
+          ],
+          "expected_words": 23,
+          "transcript_words": 23,
+          "repeated_ngrams": [],
+          "rms": 0.0337,
+          "absmax": 0.351562,
+          "longest_silence_seconds": 1.015,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 9.2,
+          "duration_ratio": 1.014,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 10,
+          "passed": true
+        },
+        {
+          "name": "two-long",
+          "base_seed": 20260916,
+          "request_seed": 20260921,
+          "pcm": ".vibevoice-tts-quality/seed20260916/two-long.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 374,
+          "max_audio_seconds": 24.0,
+          "token_cap": 182,
+          "generated_tokens": 97,
+          "diffusion_frames": 93,
+          "finish_reason": "stop",
+          "synthesis_seconds": 20.812,
+          "output_audio_seconds": 12.4,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.4619,
+              0.2825
+            ],
+            [
+              0.5698,
+              0.2094
+            ],
+            [
+              0.6309,
+              0.296
+            ],
+            [
+              0.5542,
+              0.4575
+            ],
+            [
+              0.5623,
+              0.5299
+            ],
+            [
+              0.4532,
+              0.4567
+            ],
+            [
+              0.4481,
+              0.3391
+            ],
+            [
+              0.583,
+              0.2787
+            ],
+            [
+              0.5203,
+              0.4132
+            ],
+            [
+              0.5795,
+              0.3492
+            ],
+            [
+              0.6515,
+              0.3294
+            ],
+            [
+              0.5445,
+              0.3871
+            ],
+            [
+              0.3658,
+              0.397
+            ],
+            [
+              0.2432,
+              0.2734
+            ],
+            [
+              0.1563,
+              0.4008
+            ],
+            [
+              0.0207,
+              0.493
+            ],
+            [
+              0.1812,
+              0.4522
+            ],
+            [
+              0.2829,
+              0.5057
+            ],
+            [
+              0.2408,
+              0.5624
+            ],
+            [
+              0.1156,
+              0.4698
+            ],
+            [
+              0.336,
+              0.5616
+            ],
+            [
+              0.1676,
+              0.678
+            ],
+            [
+              0.1929,
+              0.5647
+            ]
+          ],
+          "transcribe_seconds": 17.58,
+          "transcript_status": "ok",
+          "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 12.4,
+              "speaker": "0",
+              "content": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 40,
+          "transcript_words": 40,
+          "repeated_ngrams": [],
+          "rms": 0.062992,
+          "absmax": 0.605469,
+          "longest_silence_seconds": 0.629,
+          "wer": 0.025,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 16.0,
+          "duration_ratio": 0.775,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 18,
+          "passed": true
+        }
+      ],
+      "failed_requests": []
+    },
+    {
+      "seed": 20260917,
+      "requests": [
+        {
+          "name": "single-short",
+          "base_seed": 20260917,
+          "request_seed": 20260917,
+          "pcm": ".vibevoice-tts-quality/seed20260917/single-short.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: Good morning, and welcome to the show.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 120,
+          "max_audio_seconds": 8.0,
+          "token_cap": 62,
+          "generated_tokens": 19,
+          "diffusion_frames": 17,
+          "finish_reason": "stop",
+          "synthesis_seconds": 3.826,
+          "output_audio_seconds": 2.2667,
+          "voice_assignment": [
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.301
+            ],
+            [
+              0.3647
+            ],
+            [
+              0.3518
+            ]
+          ],
+          "transcribe_seconds": 8.3,
+          "transcript_status": "ok",
+          "transcript": "Good morning and welcome to the show.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 2.27,
+              "speaker": "0",
+              "content": "Good morning and welcome to the show."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 7,
+          "transcript_words": 7,
+          "repeated_ngrams": [],
+          "rms": 0.054298,
+          "absmax": 0.382812,
+          "longest_silence_seconds": 0.07,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 2.8,
+          "duration_ratio": 0.81,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-medium",
+          "base_seed": 20260917,
+          "request_seed": 20260918,
+          "pcm": ".vibevoice-tts-quality/seed20260917/single-medium.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The library opens at nine, and the reading room closes at six in the evening.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 128,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 36,
+          "diffusion_frames": 34,
+          "finish_reason": "stop",
+          "synthesis_seconds": 7.434,
+          "output_audio_seconds": 4.5333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.2167
+            ],
+            [
+              0.3167
+            ],
+            [
+              0.2891
+            ],
+            [
+              0.2354
+            ],
+            [
+              0.2509
+            ],
+            [
+              0.2015
+            ],
+            [
+              0.1439
+            ],
+            [
+              0.0006
+            ]
+          ],
+          "transcribe_seconds": 10.22,
+          "transcript_status": "ok",
+          "transcript": "The library opens at nine and the reading room closes at six in the evening.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 4.53,
+              "speaker": "0",
+              "content": "The library opens at nine and the reading room closes at six in the evening."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 15,
+          "transcript_words": 15,
+          "repeated_ngrams": [],
+          "rms": 0.083788,
+          "absmax": 0.453125,
+          "longest_silence_seconds": 0.055,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 6.0,
+          "duration_ratio": 0.756,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "single-numbers",
+          "base_seed": 20260917,
+          "request_seed": 20260919,
+          "pcm": ".vibevoice-tts-quality/seed20260917/single-numbers.npy",
+          "reference_set": "single",
+          "script": "Speaker 1: The train to Bristol leaves from platform 12 at half past four.",
+          "turns": 1,
+          "turn_speakers": [
+            0
+          ],
+          "voice_prompt_token_counts": [
+            70
+          ],
+          "prompt_tokens": 126,
+          "max_audio_seconds": 12.0,
+          "token_cap": 92,
+          "generated_tokens": 32,
+          "diffusion_frames": 30,
+          "finish_reason": "stop",
+          "synthesis_seconds": 6.552,
+          "output_audio_seconds": 4.0,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.1137
+            ],
+            [
+              0.1924
+            ],
+            [
+              0.2332
+            ],
+            [
+              0.3824
+            ],
+            [
+              0.3227
+            ],
+            [
+              0.2456
+            ],
+            [
+              0.3665
+            ]
+          ],
+          "transcribe_seconds": 9.57,
+          "transcript_status": "ok",
+          "transcript": "The train to Bristol leaves from platform twelve at half past four.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 4.0,
+              "speaker": "0",
+              "content": "The train to Bristol leaves from platform twelve at half past four."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 12,
+          "transcript_words": 12,
+          "repeated_ngrams": [],
+          "rms": 0.068429,
+          "absmax": 0.695312,
+          "longest_silence_seconds": 0.118,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 4.8,
+          "duration_ratio": 0.833,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true
+          },
+          "attribution_decided_windows": null,
+          "passed": true
+        },
+        {
+          "name": "two-2turn",
+          "base_seed": 20260917,
+          "request_seed": 20260920,
+          "pcm": ".vibevoice-tts-quality/seed20260917/two-2turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: I think the meeting went well this morning.\nSpeaker 2: I agree, and the budget question is finally settled.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 350,
+          "max_audio_seconds": 14.0,
+          "token_cap": 107,
+          "generated_tokens": 59,
+          "diffusion_frames": 55,
+          "finish_reason": "stop",
+          "synthesis_seconds": 12.937,
+          "output_audio_seconds": 7.3333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.5818,
+              0.3687
+            ],
+            [
+              0.7035,
+              0.3762
+            ],
+            [
+              0.5823,
+              0.3967
+            ],
+            [
+              0.6402,
+              0.4828
+            ],
+            [
+              0.3304,
+              0.3521
+            ],
+            [
+              0.3078,
+              0.5464
+            ],
+            [
+              0.2731,
+              0.6698
+            ],
+            [
+              0.2049,
+              0.5434
+            ],
+            [
+              0.1992,
+              0.4649
+            ],
+            [
+              0.257,
+              0.4994
+            ],
+            [
+              0.4659,
+              0.4586
+            ],
+            [
+              0.4052,
+              0.5877
+            ],
+            [
+              0.3465,
+              0.456
+            ]
+          ],
+          "transcribe_seconds": 12.68,
+          "transcript_status": "ok",
+          "transcript": "I think the meeting went well this morning. Dimwits, I agree, and the budget question is finally settled.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 7.33,
+              "speaker": "0",
+              "content": "I think the meeting went well this morning. Dimwits, I agree, and the budget question is finally settled."
+            }
+          ],
+          "transcript_speakers": [
+            "0"
+          ],
+          "expected_words": 17,
+          "transcript_words": 18,
+          "repeated_ngrams": [],
+          "rms": 0.06308,
+          "absmax": 0.695312,
+          "longest_silence_seconds": 0.621,
+          "wer": 0.0588,
+          "word_count_ratio": 1.0588,
+          "expected_seconds": 6.8,
+          "duration_ratio": 1.078,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 11,
+          "passed": true
+        },
+        {
+          "name": "two-4turn",
+          "base_seed": 20260917,
+          "request_seed": 20260921,
+          "pcm": ".vibevoice-tts-quality/seed20260917/two-4turn.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: Did you finish the report?\nSpeaker 2: Almost, I need one more figure.\nSpeaker 1: Send it over when it is ready.\nSpeaker 2: I will, later this afternoon.",
+          "turns": 4,
+          "turn_speakers": [
+            0,
+            1,
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 367,
+          "max_audio_seconds": 16.0,
+          "token_cap": 122,
+          "generated_tokens": 82,
+          "diffusion_frames": 74,
+          "finish_reason": "stop",
+          "synthesis_seconds": 17.391,
+          "output_audio_seconds": 9.8667,
+          "voice_assignment": [
+            1,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.3047,
+              0.3449
+            ],
+            [
+              0.4853,
+              0.2656
+            ],
+            [
+              0.5563,
+              0.3201
+            ],
+            [
+              0.2852,
+              0.3735
+            ],
+            [
+              0.1676,
+              0.3541
+            ],
+            [
+              0.255,
+              0.4149
+            ],
+            [
+              0.2227,
+              0.5422
+            ],
+            [
+              0.2914,
+              0.5456
+            ],
+            [
+              0.3391,
+              0.5786
+            ],
+            [
+              0.3148,
+              0.5051
+            ],
+            [
+              0.278,
+              0.4047
+            ],
+            [
+              0.349,
+              0.2274
+            ],
+            [
+              0.5679,
+              0.5417
+            ],
+            [
+              0.6146,
+              0.4544
+            ],
+            [
+              0.5335,
+              0.3806
+            ],
+            [
+              0.2868,
+              0.4598
+            ],
+            [
+              0.1171,
+              0.3847
+            ],
+            [
+              0.1252,
+              0.5275
+            ]
+          ],
+          "transcribe_seconds": 19.83,
+          "transcript_status": "ok",
+          "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 2.1,
+              "speaker": "0",
+              "content": "Did you finish the report?"
+            },
+            {
+              "start": 2.65,
+              "end": 5.32,
+              "speaker": "1",
+              "content": "Almost, I need one more figure."
+            },
+            {
+              "start": 6.17,
+              "end": 7.66,
+              "speaker": "0",
+              "content": "Send it over when it is ready."
+            },
+            {
+              "start": 7.84,
+              "end": 9.87,
+              "speaker": "1",
+              "content": "I will later this afternoon."
+            }
+          ],
+          "transcript_speakers": [
+            "0",
+            "1"
+          ],
+          "expected_words": 23,
+          "transcript_words": 23,
+          "repeated_ngrams": [],
+          "rms": 0.07188,
+          "absmax": 0.644531,
+          "longest_silence_seconds": 1.255,
+          "wer": 0.0,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 9.2,
+          "duration_ratio": 1.072,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 15,
+          "passed": true
+        },
+        {
+          "name": "two-long",
+          "base_seed": 20260917,
+          "request_seed": 20260922,
+          "pcm": ".vibevoice-tts-quality/seed20260917/two-long.npy",
+          "reference_set": "two",
+          "script": "Speaker 1: The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled.\nSpeaker 2: Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "turns": 2,
+          "turn_speakers": [
+            0,
+            1
+          ],
+          "voice_prompt_token_counts": [
+            70,
+            208
+          ],
+          "prompt_tokens": 374,
+          "max_audio_seconds": 24.0,
+          "token_cap": 182,
+          "generated_tokens": 103,
+          "diffusion_frames": 97,
+          "finish_reason": "stop",
+          "synthesis_seconds": 22.42,
+          "output_audio_seconds": 12.9333,
+          "voice_assignment": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "voice_assignment_cosines": [
+            [
+              0.5065,
+              0.3967
+            ],
+            [
+              0.5684,
+              0.3707
+            ],
+            [
+              0.649,
+              0.3762
+            ],
+            [
+              0.5465,
+              0.4798
+            ],
+            [
+              0.5683,
+              0.5812
+            ],
+            [
+              0.5293,
+              0.4963
+            ],
+            [
+              0.65,
+              0.2857
+            ],
+            [
+              0.6472,
+              0.3928
+            ],
+            [
+              0.5185,
+              0.4706
+            ],
+            [
+              0.5625,
+              0.4124
+            ],
+            [
+              0.4975,
+              0.3451
+            ],
+            [
+              0.4661,
+              0.3895
+            ],
+            [
+              0.125,
+              0.1698
+            ],
+            [
+              0.3319,
+              0.391
+            ],
+            [
+              0.1431,
+              0.3704
+            ],
+            [
+              0.2091,
+              0.4938
+            ],
+            [
+              0.3021,
+              0.6261
+            ],
+            [
+              0.2505,
+              0.4755
+            ],
+            [
+              0.3259,
+              0.4779
+            ],
+            [
+              0.2127,
+              0.4463
+            ],
+            [
+              0.2566,
+              0.4801
+            ],
+            [
+              0.2491,
+              0.5815
+            ],
+            [
+              0.1226,
+              0.6263
+            ],
+            [
+              0.2203,
+              0.5394
+            ]
+          ],
+          "transcribe_seconds": 20.02,
+          "transcript_status": "ok",
+          "transcript": "The bewildered forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+          "segments": [
+            {
+              "start": 0.0,
+              "end": 6.34,
+              "speaker": "0",
+              "content": "The bewildered forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled."
+            },
+            {
+              "start": 6.68,
+              "end": 12.93,
+              "speaker": "1",
+              "content": "Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks."
+            }
+          ],
+          "transcript_speakers": [
+            "0",
+            "1"
+          ],
+          "expected_words": 40,
+          "transcript_words": 40,
+          "repeated_ngrams": [],
+          "rms": 0.060814,
+          "absmax": 0.613281,
+          "longest_silence_seconds": 1.019,
+          "wer": 0.05,
+          "word_count_ratio": 1.0,
+          "expected_seconds": 16.0,
+          "duration_ratio": 0.808,
+          "checks": {
+            "transcript_well_formed": true,
+            "not_truncated": true,
+            "has_audio": true,
+            "audible": true,
+            "not_clipping": true,
+            "no_long_silence": true,
+            "duration_plausible": true,
+            "intelligible": true,
+            "word_count_plausible": true,
+            "no_repeated_speech": true,
+            "turn_count": true,
+            "voice_attribution": true
+          },
+          "attribution_decided_windows": 17,
+          "passed": true
+        }
+      ],
+      "failed_requests": []
+    }
+  ],
+  "failed_requests": [
+    "two-2turn"
+  ],
+  "passed": false
+}
