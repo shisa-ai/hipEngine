@@ -8,7 +8,7 @@ architecture branches to the engine or dispatch layer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 import time
 from types import MappingProxyType
@@ -187,6 +187,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
+from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFConfig
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 from hipengine.runtime.moe_graph import MoeGraphCache
 
@@ -5968,6 +5969,98 @@ class Qwen4ExpTargetAcceptResult:
     replayed: bool
 
 
+@dataclass
+class Qwen4ExpPrefillWorkspace:
+    """Own prefill storage independently of decode state and borrowed views."""
+
+    config: Qwen4ExpGGUFConfig
+    runtime: HipRuntime
+    resident: Qwen4ExpResidentWeights | None
+    backend: str | None
+    max_sequence_length: int
+    prefill_chunk_size: int
+    gdn_prefill_scratch: Qwen4ExpGDNLayerScratch
+    qsa_prefill_scratch: Qwen4ExpQSALayerScratch
+    ple_prefill_scratch: Qwen4ExpPLEScratch
+    qsa_prefill_metadata: Qwen4ExpQSAPrefillMetadata
+    _prefill_buffers: list[DeviceBuffer] = field(default_factory=list)
+    closed: bool = False
+
+    @classmethod
+    def allocate_scratch(cls, runner, chunk_size):
+        cfg = runner.config
+        rows = min(int(chunk_size), runner.max_sequence_length)
+        if rows <= 0:
+            raise ValueError("prefill workspace chunk must be positive")
+        owners = []
+        try:
+            gdn = Qwen4ExpGDNLayerScratch.allocate(
+                rows=rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+                low_rank=cfg.residual_low_rank,
+                qkv_width=2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size,
+                core_width=cfg.gdn_inner_size, scalar_width=cfg.gdn_time_step_rank,
+                ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
+                top_k=cfg.expert_used_count, runtime=runner.runtime)
+            owners.append(gdn)
+            qsa = Qwen4ExpQSALayerScratch.allocate(
+                rows=rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+                low_rank=cfg.residual_low_rank, query_heads=cfg.attention_head_count,
+                kv_heads=cfg.attention_kv_head_count, head_dim=cfg.attention_key_length,
+                ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
+                top_k=cfg.expert_used_count, index_heads=cfg.indexer_head_count,
+                index_dim=cfg.indexer_key_length, runtime=runner.runtime)
+            owners.append(qsa)
+            ple = Qwen4ExpPLEScratch.allocate(
+                rows=rows, branches=cfg.residual_branch_count,
+                hidden=cfg.hidden_size, runtime=runner.runtime)
+            owners.append(ple)
+            metadata = Qwen4ExpQSAPrefillMetadata.allocate(
+                runner.attention_states[0], rows=rows,
+                selection_capacity=cfg.qsa_dense_equivalent_max_tokens,
+                score_blocks=(runner.max_sequence_length + cfg.qsa_compression_ratio - 1)
+                // cfg.qsa_compression_ratio)
+            owners.append(metadata)
+            return cls(cfg, runner.runtime, getattr(runner, "resident", None),
+                       getattr(runner, "backend", None), runner.max_sequence_length,
+                       int(chunk_size), gdn, qsa, ple, metadata)
+        except BaseException:
+            for owner in reversed(owners):
+                owner.close()
+            raise
+
+    def allocate_inputs(self):
+        if self.closed or self._prefill_buffers:
+            raise RuntimeError("prefill inputs already allocated or owner closed")
+        cfg = self.config
+        rows = min(self.prefill_chunk_size, self.max_sequence_length)
+        try:
+            for nbytes in (
+                rows * np.dtype(np.int64).itemsize,
+                rows * cfg.hidden_size * DType.BF16.itemsize,
+                rows * cfg.hidden_size * DType.FP32.itemsize,
+                rows * cfg.residual_branch_count * cfg.hidden_size * DType.BF16.itemsize,
+                3 * rows * np.dtype(np.int64).itemsize,
+            ):
+                self._prefill_buffers.append(malloc(nbytes, runtime=self.runtime))
+        except BaseException:
+            self.close_inputs()
+            raise
+
+    def close_inputs(self):
+        for buffer in reversed(self._prefill_buffers):
+            free(buffer, runtime=self.runtime)
+        self._prefill_buffers.clear()
+
+    def close(self):
+        if self.closed:
+            return
+        self.close_inputs()
+        for owner in (self.qsa_prefill_metadata, self.ple_prefill_scratch,
+                      self.qsa_prefill_scratch, self.gdn_prefill_scratch):
+            owner.close()
+        self.closed = True
+
+
 class Qwen4ExpGGUFResidentModelRunner:
     """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
 
@@ -6036,6 +6129,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.index_states: tuple[Qwen4ExpQSAIndexDeviceState, ...] = ()
         self._buffers: list[DeviceBuffer] = []
         self._prefill_buffers: list[DeviceBuffer] = []
+        self._prefill_workspaces: list[Qwen4ExpPrefillWorkspace] = []
         self._q8_mmq_weight_sidecars = None
         self._ple_hash_states: dict[int, PLEHashState] = {}
         self.moe_graph_cache: MoeGraphCache | None = None
@@ -6170,35 +6264,12 @@ class Qwen4ExpGGUFResidentModelRunner:
             )
             for attention in self.attention_states
         )
-        prefill_rows = min(self.prefill_chunk_size, self.max_sequence_length)
-        self.gdn_prefill_scratch = Qwen4ExpGDNLayerScratch.allocate(
-            rows=prefill_rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
-            low_rank=cfg.residual_low_rank, qkv_width=qkv_width,
-            core_width=cfg.gdn_inner_size, scalar_width=cfg.gdn_time_step_rank,
-            ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
-            top_k=cfg.expert_used_count, runtime=self.runtime,
-        )
-        self.qsa_prefill_scratch = Qwen4ExpQSALayerScratch.allocate(
-            rows=prefill_rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
-            low_rank=cfg.residual_low_rank, query_heads=cfg.attention_head_count,
-            kv_heads=cfg.attention_kv_head_count, head_dim=cfg.attention_key_length,
-            ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
-            top_k=cfg.expert_used_count, index_heads=cfg.indexer_head_count,
-            index_dim=cfg.indexer_key_length, runtime=self.runtime,
-        )
-        self.ple_prefill_scratch = Qwen4ExpPLEScratch.allocate(
-            rows=prefill_rows, branches=cfg.residual_branch_count,
-            hidden=cfg.hidden_size, runtime=self.runtime,
-        )
-        self.qsa_prefill_metadata = Qwen4ExpQSAPrefillMetadata.allocate(
-            self.attention_states[0],
-            rows=prefill_rows,
-            selection_capacity=cfg.qsa_dense_equivalent_max_tokens,
-            score_blocks=(
-                self.max_sequence_length + cfg.qsa_compression_ratio - 1
-            )
-            // cfg.qsa_compression_ratio,
-        )
+        workspace = Qwen4ExpPrefillWorkspace.allocate_scratch(self, self.prefill_chunk_size)
+        self._prefill_workspaces = [workspace]
+        self.gdn_prefill_scratch = workspace.gdn_prefill_scratch
+        self.qsa_prefill_scratch = workspace.qsa_prefill_scratch
+        self.ple_prefill_scratch = workspace.ple_prefill_scratch
+        self.qsa_prefill_metadata = workspace.qsa_prefill_metadata
         argmax_blocks = lm_head_argmax_stage1_blocks(cfg.vocab_size, threads=256)
         for nbytes in (
             np.dtype(np.int64).itemsize,
@@ -6212,19 +6283,28 @@ class Qwen4ExpGGUFResidentModelRunner:
             DType.FP32.itemsize,
         ):
             self._buffers.append(malloc(nbytes, runtime=self.runtime))
-        for nbytes in (
-            prefill_rows * np.dtype(np.int64).itemsize,
-            prefill_rows * cfg.hidden_size * DType.BF16.itemsize,
-            prefill_rows * cfg.hidden_size * DType.FP32.itemsize,
-            prefill_rows * cfg.residual_branch_count * cfg.hidden_size * DType.BF16.itemsize,
-            3 * prefill_rows * np.dtype(np.int64).itemsize,
-        ):
-            self._prefill_buffers.append(malloc(nbytes, runtime=self.runtime))
+        # Keep primary input allocations after decode I/O, preserving allocation order.
+        workspace.allocate_inputs()
+        self._prefill_buffers = workspace._prefill_buffers
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers: tuple[DeviceBuffer, ...] = ()
         self._configure_q8_mmq_prefill_resources()
         self._configure_q8_mmq_weight_sidecars()
+
+    def _allocate_extra_prefill_workspace(self, chunk_size):
+        """Prepare an inactive owner; callers must admit its additional memory."""
+        self._require_open()
+        if self._q8_mmq_buffers or self._q8_mmq_weight_sidecars is not None:
+            raise ValueError("extra prefill workspaces require no global MMQ resources")
+        workspace = Qwen4ExpPrefillWorkspace.allocate_scratch(self, chunk_size)
+        try:
+            workspace.allocate_inputs()
+        except BaseException:
+            workspace.close()
+            raise
+        self._prefill_workspaces.append(workspace)
+        return workspace
 
     def _configure_q8_mmq_weight_sidecars(self) -> None:
         if self._q8_mmq_weight_sidecars is not None or os.environ.get(
@@ -7427,8 +7507,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers = ()
-        for buffer in reversed(self._prefill_buffers):
-            free(buffer, runtime=self.runtime)
+        for workspace in reversed(getattr(self, "_prefill_workspaces", ())):
+            workspace.close_inputs()
         self._prefill_buffers = []
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
@@ -7443,11 +7523,10 @@ class Qwen4ExpGGUFResidentModelRunner:
             free(self._shared_position_context, runtime=self.runtime)
             self._shared_position_context = None
             self._shared_position_context_host = None
+        for workspace in reversed(getattr(self, "_prefill_workspaces", ())):
+            workspace.close()
+        self._prefill_workspaces = []
         for owner in (
-            self.qsa_prefill_metadata,
-            self.ple_prefill_scratch,
-            self.qsa_prefill_scratch,
-            self.gdn_prefill_scratch,
             self.head_scratch,
             self.ple_scratch,
             self.qsa_scratch,

@@ -1,5 +1,18 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Prefill-Only Workspace Ownership
+
+- `Qwen4ExpPrefillWorkspace` owns prefill scratch and input buffers without
+  another decoder/KV allocation. The ordinary runner still allocates one
+  workspace in the original order; dispatch and default chunk are unchanged.
+- `_allocate_extra_prefill_workspace` prepares an inactive, runner-owned
+  workspace. Callers must admit its extra memory before preparing it.
+  Automatic selection is not enabled by this ownership refactor.
+- Use the owned-workspace gate before replacing the benchmark's full donor
+  runner or adding shape-dependent dispatch. Keep historical donor commands
+  source-pinned; remove duplicated donor plumbing once a qualified replacement
+  covers state, lifetime, memory and matched performance.
+
 ## Qualified Chunk Tradeoffs
 
 - The explicit2048 path passes canonical numerics, active4K tasks,
