@@ -5,6 +5,9 @@
 - `scripts/qwen4exp_dense_q8_nongr_gate.py` temporarily clears the existing
   generic Q8 selector only inside GR reads, with counted exclusions.
   It is single-threaded attribution code, not a production dispatch policy.
+- The counted780-row arm fails mean/p95/max KL with21744 non-GR IU8
+  calls and6912 excluded GR reads. Preserve its evidence; do not rerun
+  unchanged or treat passing overall top1 as admission.
 - If non-GR restoration qualifies, express its scope through the registered
   production plan and remove the diagnostic monkeypatch after equivalent
   role/count coverage exists. If rejected, preserve its capture and avoid

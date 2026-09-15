@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-def assemble(path):
+def assemble(path, nongr_path):
     raw = path.read_bytes()
     packet = json.loads(raw)
     flags = {
@@ -35,13 +35,39 @@ def assemble(path):
             or not packet["deterministic"] or not packet["state_gate"]["passed"]
             or any(row["current_allocated_bytes"] for row in packet["lifecycle"].values())):
         raise ValueError("capture does not establish the declared generic Q8 failure")
+    nongr_raw = nongr_path.read_bytes()
+    nongr = json.loads(nongr_raw)
+    nongr_shapes = [row for row in shapes if row["arguments"][1:] != [10240, 320]]
+    if (nongr["status"] != "completed" or not nongr["source"]["tracked_clean"]
+            or nongr["candidate"] != packet["candidate"]
+            or nongr["overrides"] != flags or nongr["protocol"] != protocol
+            or nongr["host"]["machine_id"] != packet["host"]["machine_id"]
+            or nongr["model"] != packet["model"]
+            or nongr["strict_manifest"] != packet["strict_manifest"]
+            or nongr["production_base_manifest"] != packet["production_base_manifest"]
+            or nongr["candidate_dispatch_mode"] != "registry"
+            or nongr["candidate_dispatch_calls"] != 21744
+            or nongr["candidate_dispatch_shapes"] != nongr_shapes
+            or nongr["role_exclusion"] != {
+                "scope": "run_qwen4_exp_gr_read",
+                "flag": "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM",
+                "eligible_calls": 6912,
+                "rows": [{"rows": 512, "calls": 1152}, {"rows": 1024, "calls": 5760}],
+                "production_policy": False}
+            or nongr["quality"]["summary"]["rows"] != 780
+            or nongr["quality"]["hard_gates_passed"]
+            or not nongr["deterministic"] or not nongr["state_gate"]["passed"]
+            or any(row["current_allocated_bytes"] for row in nongr["lifecycle"].values())):
+        raise ValueError("capture does not establish the declared non-GR Q8 failure")
     return dict(
-        schema=1, status="generic_q8_iu8_numerical_failure",
+        schema=2, status="generic_and_nongr_q8_iu8_numerical_failure",
         performance_claim=False, promotion_claim=False,
         raw_sha256=hashlib.sha256(raw).hexdigest(), capture=packet,
+        nongr_raw_sha256=hashlib.sha256(nongr_raw).hexdigest(), nongr_capture=nongr,
         limitations=[
             "Generic coverage includes 6912 GR-down calls; this is not a non-GR-only ablation.",
-            "This rejects the generic switch as tested, not each covered projection independently.",
+            "The separate counted non-GR arm also fails; this does not reject each projection independently.",
+            "Non-monotonic tail changes do not support subtracting errors to attribute individual roles.",
             "No task or performance run follows the binding numerical failure.",
             "Sampled state checks do not establish complete dynamic-serving isolation.",
         ])
@@ -50,6 +76,7 @@ def assemble(path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capture", type=Path, required=True)
+    parser.add_argument("--nongr-capture", type=Path, required=True)
     args = parser.parse_args()
     Path(__file__).with_name("artifact.json").write_text(
-        json.dumps(assemble(args.capture), indent=2) + "\n")
+        json.dumps(assemble(args.capture, args.nongr_capture), indent=2) + "\n")
