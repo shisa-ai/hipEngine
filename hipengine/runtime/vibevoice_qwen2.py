@@ -372,6 +372,17 @@ class VibevoiceQwen2Runtime:
                                   self._hidden.ptr, hidden, hidden,
                                   library=self.library, runtime=self.runtime)
 
+    def hidden_state(self) -> np.ndarray:
+        """Post-final-norm last hidden row (the fork's ``last_hidden_state[-1]``)."""
+        spec = self.spec
+        hidden = spec.hidden_size
+        self.kernels.vv_rmsnorm_bf16(self._hidden.ptr, self.final_ln.ptr, self._normed.ptr,
+                        1, hidden, spec.rms_norm_eps,
+                        library=self.library, runtime=self.runtime)
+        bits = np.empty(hidden, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(bits), self._normed)
+        return (bits.astype(np.uint32) << 16).view(np.float32)
+
     def logits_argmax(self) -> tuple[np.ndarray, int]:
         """Final norm + lm head + host argmax over the staged hidden row."""
         spec = self.spec
