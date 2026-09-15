@@ -25,6 +25,16 @@
   setup, and measure short/long requests on the same prepared owners.
   Remove this experimental setup route after a qualified public policy
   replaces it, or remove the selector if that policy is rejected.
+- **Parked 2026-09-15 (deliberate, not abandoned).** Automatic selection stays
+  default-off and unqualified. Its remaining value is bounded by the explicit
+  chunk tradeoffs below: the best case is the 4K prefill gain already measured
+  for the explicit options (2.32-3.94%), against short-request regressions of
+  0.18-0.40%. Open work is a ~1.6x arithmetic recovery and a ~2.5x structural
+  gap to the same-host external comparator, both of which dominate it by an
+  order of magnitude. Resume only after the gap-attribution work ranks it back
+  into the top of the seconds-recoverable list, or if a default chunk change
+  makes the ownership split load-bearing. The private route and its tests stay
+  in place; nothing else depends on it.
 
 ## Qualified Chunk Tradeoffs
 
