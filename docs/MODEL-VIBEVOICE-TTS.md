@@ -109,18 +109,24 @@ the oracle instead of being reverse-engineered.
 Moonshine's text output and cross-attention loop cannot substitute for this
 design.
 
-- **`speech_scaling_factor` and `speech_bias_factor` are not in the checkpoint.**
-  Verified against `microsoft/VibeVoice-1.5B` at revision `c00898d25`: the config
-  has no such keys. The reference implementation registers them as buffers
-  initialized to `NaN`, then computes them on the first request from the
-  reference-audio latents: `scale = 1 / std(latents)`, `bias = -mean(latents)`.
-  The loop then encodes as `(latent + bias) * scale` and decodes as
-  `latent / scale - bias`. A `NaN` value is therefore the *designed* initial
-  state, not a loader error. Two consequences: an implementation that tries to
-  load them finds nothing, and because they are model buffers they are **cached
-  after the first request**, so a later request with a different reference voice
-  silently reuses the first request's scale unless they are reset. Per-request
-  ownership covers these two values, not only the RNG.
+- Load `speech_scaling_factor` and `speech_bias_factor` from the checkpoint.
+  The loop decodes `latent / scale - bias`; the acoustic feedback connector
+  receives the generated model-space latent. Missing/NaN scale values are a
+  loader error, not a reason to recompute training statistics at inference.
+
+  Measured detail, because these two scalars are easy to misplace: they are
+  **weights**, not config values. `config.json` has no such keys, but the state
+  dict carries `model.speech_scaling_factor` and `model.speech_bias_factor` as
+  bf16 scalars in shard 1 (`0.1962890625` and `-0.04931640625` for
+  `microsoft/VibeVoice-1.5B`). The module registers them as `NaN` buffers at
+  construction time, which is the default for a from-scratch model; a weight
+  load overwrites that default. The inference path only ever *applies* them
+  (`(latent + bias) * scale` on encode, `latent / scale - bias` on decode); the
+  `NaN`-triggered recomputation exists only in the training model
+  (`modeling_vibevoice.py:307`). So the failure mode is real and one-directional:
+  a model built from config without a weight load keeps `NaN` and poisons every
+  speech embedding downstream. Reading the config to find them will not work;
+  reading the state dict will.
 - Each speech frame has an inner denoising loop. Do not increment KV position
   per solver step; advance the language model according to its control sequence.
 - Capture initial noise and scheduler state for fixtures. A seed alone does not
@@ -182,6 +188,30 @@ fails with `model type 'vibevoice'`. Use the fork's own classes:
 
 Confirmed working: a single-speaker and a two-speaker script both produce
 non-empty PCM at 24 kHz through `VibeVoiceProcessor` + `model.generate(...)`.
+
+`scripts/vibevoice_tts_oracle_torch.py` is the oracle. It writes
+`tests/fixtures/vibevoice_tts/` and must run under the oracle venv:
+
+```
+PYTHONPATH=/home/lhl/VibeVoice-community \
+    /home/lhl/venvs/vibevoice-tts-oracle/bin/python \
+    scripts/vibevoice_tts_oracle_torch.py
+```
+
+It captures by wrapping the reference module or method that does each piece of
+work, so no arithmetic is reimplemented and a fixture cannot disagree with the
+reference by construction. Two runs produce byte-identical artifacts. Per
+request it writes `manifest.json`, and `<name>_reference`, `_lm`, `_diffusion`,
+`_feedback` and `_audio` `.npz` files.
+
+Two argument shapes are easy to get wrong and both fail quietly:
+
+- `voice_samples=[[alice, carter]]` is one batch item with two speakers.
+  `[[alice], [carter]]` is two batch items with one voice each: generation still
+  runs and still produces audio, but the reference audio covers only the first
+  voice and the prompt is roughly half its correct length.
+- The shipped reference voices are **16 kHz**, not 24 kHz. Take `speech_tensors`
+  from the processor, which owns resampling, rather than reading the WAV files.
 
 ## Initial API and scope
 
