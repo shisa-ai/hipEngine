@@ -1106,24 +1106,25 @@ shape through the shape-qualified decode policy.
 and residual add, attention/GDN, add+norm, the D2D input copy, and the shard
 chain down to the down partial - is captured into one instantiated HIP graph
 on a per-rank non-blocking stream (capture on the legacy default stream is
-refused with HIP error 900), and the transport reduction runs host-driven
-between graph segments, publishing into that layer's fixed mapped payload
-slot so the captured consumer reads a stable pointer. Per token the loop
-submits 128 graph launches, the token H2D and pinned position/context
-refresh, 64 host-driven exchanges, and the control rank's head. Measured
-decode p50 **50.65 -> 27.44 ms/token (-45.8%)** at the matched composition
-(W7900 TP1 31.8 ms, RX 7900 XTX TP1 26.3 ms) - TP2 is now within one layer
-of the matched single-GPU control while carrying the full replicated
-attention/GDN cost; the remaining wall is device weight reads plus the
-per-layer host-mediated exchange dependency, so no TP2 speedup is claimed
-for it. Capture happens once at the session capacity bound (2047), which
-bakes the full-attention split-decode config for that context; the measured
-envelope against the eager per-position schedule is KL <= 3e-04 per position
-(top-1 100%), and capture at an exact short bound is bit-identical to eager.
-The in-step exchange wall attribution is 367 us p50 across the retained run
-(9,216 reductions) - larger than the eager schedule's 156-169 us because the
-exchange's stream wait now spans the whole layer graph: the loop is
-device-bound, which is the point of the lever. What the checkpoint
+refused with HIP error 900), and the reduction runs inside those graphs:
+each rank's graph stages its down partial into a host-mapped slot, publishes
+a system-scope flag, and a bounded spin-sum kernel locksteps against the
+other rank's flag before adding the staged row to its own device partial -
+the host submits 128 graph launches per token and never waits per layer.
+Per token the loop also submits the token H2D and pinned position/context
+refresh and the control rank's head. Measured decode p50 **50.65 -> 24.87
+ms/token (-50.9%)** at the matched composition (W7900 TP1 31.8 ms, RX 7900
+XTX TP1 26.3 ms) - the TP2 group now outpaces the faster single-GPU control
+by ~1.4 ms/token while carrying the full replicated attention/GDN cost, so
+a matched-composition TP2 advantage is real at this workload; the remaining
+wall is device weight reads and the end-of-step sampling sync. Capture
+happens once at the session capacity bound (2047), which bakes the
+full-attention split-decode config for that context; the measured envelope
+against the eager per-position schedule is KL <= 3e-04 per position (top-1
+100%), and capture at an exact short bound is bit-identical to eager. The
+device reduction's spin-sums are bounded: a stalled or missing peer fails
+the step within the spin budget instead of hanging the group. What the
+checkpoint
 certifies is arithmetic and control: the sharded model stays inside the
 calibrated production envelope against both per-GPU TP1 controls (full-logit
 teacher-forced mean KL 3.945e-04, max KL 2.365e-03, top-1 agreement 100%

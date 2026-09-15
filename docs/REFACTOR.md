@@ -1,5 +1,32 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## TP2 `reduce_mode` knob (device default for graphed, 2026-09-15)
+
+- `MlpTP2GenerationSession` `reduce_mode="device"` is the graphed schedule's
+  production default: the per-layer exchange runs inside each rank's captured
+  graph (D2H staging node, system-scope flag publish, bounded spin-sum kernel;
+  `hipengine/distributed/device_exchange_host.cpp` +
+  `device_exchange_compiled.py`). No host wait per layer; the host loop
+  collapsed from ~10-16 ms/token to ~0.3 ms/token. Measured on
+  W7900 + RX 7900 XTX: decode p50 27.44 -> 24.87 ms/token (-9.4%) vs the
+  host-summed graphed run, with identical teacher gates to all recorded
+  digits (mean KL 3.945e-04, max KL 2.365e-03, top-1 100%) - the device sum
+  is bit-identical to the host sum (same widen/add/narrow arithmetic;
+  pinned by fixture and model-scale evidence). Artifacts:
+  `benchmarks/results/2026-09-15-w7900-tp2-device-reduce-e2e.json` (candidate
+  A/B) and `...-tp2-graphed-schedule-e2e.json` (default-path protocol).
+- Failure contract: every spin is bounded (`max_spins`, default 2,000,000
+  lead-thread sleeps); a stalled/missing peer exits its spin kernel, sets a
+  device timeout flag, and the host's `wait` raises instead of hanging the
+  group. The flags reset at each `step_begin`.
+- `reduce_mode="host"` is the explicit opt-out and the eager schedule's path
+  (the eager schedule reduces through the host transport; device requires
+  graphed).
+- Removal condition: the host-reduce path stays as the bisection control and
+  the eager schedule's reducer. Both go away together with the eager schedule
+  only after the full TP2 plan retires the per-layer exchange design (see the
+  schedule knob entry below).
+
 ## TP2 `schedule` knob (graphed default 2026-09-15)
 
 - `MlpTP2GenerationSession` `schedule="graphed"` is the production default for

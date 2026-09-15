@@ -230,3 +230,123 @@ def test_reduce_at_publishes_into_fixed_slots_and_consumers_read_them() -> None:
         for device in (0, 1):
             with scoped_current_device(rt, device):
                 rt.stream_destroy(streams[device])
+
+
+def test_device_exchange_sums_bit_identically_and_locksteps_on_flags() -> None:
+    """The device-side reduction: bit-parity with the host sum, and the
+    published-flag spin that lets captured graphs lockstep without any host
+    wait - the graphed schedule's production reduction path."""
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import (
+        CompiledDeviceExchange,
+    )
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden = 4096
+    rng = np.random.default_rng(41)
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt, devices=(0, 1), streams=streams, num_layers=3, hidden=hidden
+    )
+    try:
+        partials = {}
+        host_rows = {}
+        for device in (0, 1):
+            bits = rng.integers(0, 2**16, size=hidden, dtype=np.uint16)
+            host_rows[device] = bits
+            with scoped_current_device(rt, device):
+                buffer = rt.malloc(hidden * 2)
+                rt.memcpy(buffer, bits.ctypes.data, hidden * 2, 3)
+                partials[device] = buffer
+        outs = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                outs[device] = rt.malloc(hidden * 2)
+
+        exchange.step_begin()
+        for rank, device in enumerate((0, 1)):
+            exchange.enqueue_rank(rank, partials[device], 0, outs[device])
+        exchange.wait()
+        got = {}
+        for device in (0, 1):
+            bits = np.empty(hidden, dtype="<u2")
+            with scoped_current_device(rt, device):
+                rt.memcpy(bits.ctypes.data, outs[device], hidden * 2, 2)
+            got[device] = bits
+
+        def widen(bits: np.ndarray) -> np.ndarray:
+            return (bits.astype("<u4") << 16).view("<f4")
+
+        expected = (widen(host_rows[0]).astype("<f4") + widen(host_rows[1]).astype("<f4"))
+        # RNE narrow, the boundary-cast kernel's bit arithmetic.
+        u = expected.view("<u4")
+        expected_bits = ((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype("<u2")
+        for device in (0, 1):
+            np.testing.assert_array_equal(
+                got[device], expected_bits,
+                err_msg=f"device exchange output on device {device} is not bit-identical to the host sum",
+            )
+
+        # A second step reuses slot 0; the lockstep must still hold.
+        exchange.step_begin()
+        for rank, device in enumerate((0, 1)):
+            exchange.enqueue_rank(rank, partials[device], 0, outs[device])
+        exchange.wait()
+        for device in (0, 1):
+            bits = np.empty(hidden, dtype="<u2")
+            with scoped_current_device(rt, device):
+                rt.memcpy(bits.ctypes.data, outs[device], hidden * 2, 2)
+            np.testing.assert_array_equal(bits, expected_bits)
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_destroy(streams[device])
+
+
+def test_device_exchange_spin_timeout_fails_instead_of_hanging() -> None:
+    """A missing/stalled peer must fail the exchange within the spin budget,
+    not hang the group: the spin kernel exits, and the host's wait surfaces
+    the timeout as a transport error."""
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import (
+        CompiledDeviceExchange,
+    )
+    from hipengine.distributed.transport import TransportStateError
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden = 5120
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt, devices=(0, 1), streams=streams, num_layers=1, hidden=hidden,
+        max_spins=20_000,
+    )
+    try:
+        with scoped_current_device(rt, 0):
+            partial = rt.malloc(hidden * 2)
+            out = rt.malloc(hidden * 2)
+            rt.memset(partial, 0, hidden * 2)
+        exchange.step_begin()
+        # Only rank 0 exchanges; rank 1's spin has no peer publication to see.
+        exchange.enqueue_rank(0, partial, 0, out)
+        with pytest.raises(TransportStateError, match="spin timeout"):
+            exchange.wait()
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_destroy(streams[device])

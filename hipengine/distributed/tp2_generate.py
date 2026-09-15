@@ -56,6 +56,7 @@ from hipengine.core.device import scoped_current_device
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, malloc
 from hipengine.core.runtime import MemcpyKind
+from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
 from hipengine.distributed.shard_group import MlpShardGroup
 from hipengine.distributed.shard_weights import (
     materialize_mlp_shards,
@@ -127,6 +128,7 @@ class MlpTP2GenerationSession:
         stage_trace: bool = True,
         driver: str = "compiled",
         schedule: str | None = None,
+        reduce_mode: str | None = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -154,7 +156,24 @@ class MlpTP2GenerationSession:
                 "the graphed schedule needs the compiled staged-exchange driver "
                 "for fixed per-layer payload slots"
             )
+        if reduce_mode is None:
+            # The device-side exchange is the graphed schedule's production
+            # default (validated: bit-identical teacher gates at fixture and
+            # model scale, bounded spin-timeout failure, -9.4% decode p50 vs
+            # the host-summed reduction). The host-summed transport reduction
+            # stays the eager schedule's path and the explicit opt-out.
+            reduce_mode = "device" if schedule == "graphed" else "host"
+        if reduce_mode not in {"host", "device"}:
+            raise ValueError(
+                f"unknown reduce_mode {reduce_mode!r}; expected 'host' or 'device'"
+            )
+        if reduce_mode == "device" and schedule != "graphed":
+            raise ValueError(
+                "the device-side reduction needs the graphed schedule; the eager "
+                "schedule reduces through the host transport"
+            )
         self.schedule = str(schedule)
+        self.reduce_mode = str(reduce_mode)
         self.driver = str(driver)
         self.devices = tuple(int(d) for d in devices)
         if not self.devices:
@@ -187,6 +206,7 @@ class MlpTP2GenerationSession:
         self._graph_schedule_ready = False
         self._capture_position = max(int(max_sequence_length) - 1, 1)
         self._created_streams: dict[int, int] = {}
+        self._device_exchange: CompiledDeviceExchange | None = None
         # Graph capture is not permitted on the legacy default stream, so the
         # graphed schedule creates one non-blocking stream per rank and runs
         # ALL of that rank's work on it; the eager schedule keeps stream 0.
@@ -643,6 +663,18 @@ class MlpTP2GenerationSession:
 
     def _build_graph_schedule(self) -> None:
         capture_position = self._capture_position
+        # The device-side exchange serves one slot per layer; the config is
+        # only known after the ranks are built.
+        if self.reduce_mode == "device" and self._device_exchange is None:
+            self._device_exchange = CompiledDeviceExchange(
+                self.runtime,
+                devices=self.devices,
+                streams={
+                    device: self._created_streams[device] for device in self.devices
+                },
+                num_layers=len(self._config.layer_types),
+                hidden=self.hidden_size,
+            )
         # Warmup: one eager token forces every lazy allocation (split-decode
         # rows, launcher workspaces) and JIT build, so nothing allocates or
         # compiles inside a capture.
@@ -690,18 +722,31 @@ class MlpTP2GenerationSession:
         with scoped_current_device(self.runtime, device):
             runtime.stream_begin_capture(stream)
             try:
-                # The prior layer's reduced row: cast to bf16 and add the
-                # residual it was computed from, producing this layer's input.
-                # Pointers are stable: one fixed mapped payload slot per layer.
+                # The prior layer's reduced row. Device mode: this rank's
+                # exchange for the prior slot (stage own partial, publish the
+                # flag, spin-sum the other rank's staged row) writes the bf16
+                # output directly - no host wait. Host mode: cast the fixed
+                # mapped payload slot the host transport published. Pointers
+                # are stable either way: one slot per layer.
                 if layer_id > 0:
-                    prior_reduced = group.reduced_payload_ptr(layer_id - 1)
-                    f32_to_bf16(
-                        prior_reduced,
-                        out_buf,
-                        self.hidden_size,
-                        stream=stream,
-                        runtime=runtime,
-                    )
+                    prior_partial = self._layer_partials[(layer_id - 1, device)]
+                    if self.reduce_mode == "device":
+                        rank_index = self.devices.index(device)
+                        self._device_exchange.enqueue_rank(
+                            rank_index,
+                            prior_partial,
+                            layer_id - 1,
+                            out_buf,
+                        )
+                    else:
+                        prior_reduced = group.reduced_payload_ptr(layer_id - 1)
+                        f32_to_bf16(
+                            prior_reduced,
+                            out_buf,
+                            self.hidden_size,
+                            stream=stream,
+                            runtime=runtime,
+                        )
                     prior_residual = scratch.residual.ptr
                     gguf_bf16_add(
                         prior_residual,
@@ -779,7 +824,10 @@ class MlpTP2GenerationSession:
         try:
             # Eager per-token metadata: token id and the pinned position/
             # context refresh the captured kernels read through device
-            # tensors, then the token embedding.
+            # tensors, then the token embedding. The device exchange's step
+            # counters bump once per rank, before any graph reads them.
+            if self.reduce_mode == "device":
+                self._device_exchange.step_begin()
             self._enqueue_embedding(token_id, position, stages)
             mark = time.perf_counter()
             for layer_id, _layer_type in enumerate(self._config.layer_types):
@@ -789,31 +837,45 @@ class MlpTP2GenerationSession:
                             self._layer_execs[(layer_id, device)],
                             self._rank_stream(device),
                         )
-                partials = {
-                    d: self._layer_partials[(layer_id, d)] for d in self.devices
-                }
-                group.reduce_partials(partials, slot=layer_id)
+                if self.reduce_mode == "host":
+                    partials = {
+                        d: self._layer_partials[(layer_id, d)] for d in self.devices
+                    }
+                    group.reduce_partials(partials, slot=layer_id)
             stages["layers"] = time.perf_counter() - mark
             mark = time.perf_counter()
             # The tail writes the LAST layer's destination buffer - the one
             # the head reads - not the unswapped embedding pair: layer L-1
             # swaps the pair iff L-1 is odd.
             layer_count = len(self._config.layer_types)
+            last_slot = layer_count - 1
+            if self.reduce_mode == "device":
+                # The last layer's exchange runs eagerly (nothing follows it
+                # in the step to carry it); one wait per rank covers both
+                # spin-sums, then the residual adds.
+                for device in self.devices:
+                    rank_index = self.devices.index(device)
+                    self._device_exchange.enqueue_rank(
+                        rank_index,
+                        self._layer_partials[(last_slot, device)],
+                        last_slot,
+                        group.output_ptr(device),
+                    )
+                self._device_exchange.wait()
             for device in self.devices:
                 stream = self._rank_stream(device)
                 with scoped_current_device(self.runtime, device):
                     scratch = self._scratches[device]
                     dst = self._hidden[device][1 - ((layer_count - 1) % 2)]
                     out_buf = group.output_ptr(device)
-                    f32_to_bf16(
-                        group.reduced_payload_ptr(
-                            len(self._config.layer_types) - 1
-                        ),
-                        out_buf,
-                        self.hidden_size,
-                        stream=stream,
-                        runtime=self.runtime,
-                    )
+                    if self.reduce_mode == "host":
+                        f32_to_bf16(
+                            group.reduced_payload_ptr(last_slot),
+                            out_buf,
+                            self.hidden_size,
+                            stream=stream,
+                            runtime=self.runtime,
+                        )
                     gguf_bf16_add(
                         scratch.residual.ptr,
                         out_buf,
@@ -984,6 +1046,12 @@ class MlpTP2GenerationSession:
             return
         self._closed = True
         self._destroy_graphs()
+        if self._device_exchange is not None:
+            try:
+                self._device_exchange.close()
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+            self._device_exchange = None
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None

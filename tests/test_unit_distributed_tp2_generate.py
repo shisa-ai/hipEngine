@@ -167,6 +167,27 @@ class FakeShardGroup:
         self.closed += 1
 
 
+class FakeDeviceExchange:
+    def __init__(self) -> None:
+        self.step_begins = 0
+        self.enqueues: list[tuple[int, int, int]] = []
+        self.waits = 0
+        self.closed = 0
+
+    def step_begin(self) -> None:
+        self.step_begins += 1
+
+    def enqueue_rank(self, rank, own_partial, slot, out_payload):
+        self.enqueues.append((int(rank), int(slot), int(own_partial)))
+        return int(out_payload)
+
+    def wait(self) -> None:
+        self.waits += 1
+
+    def close(self) -> None:
+        self.closed += 1
+
+
 @pytest.fixture()
 def env(monkeypatch):
     rt = FakeHipRuntime(device_count=2)
@@ -181,6 +202,14 @@ def env(monkeypatch):
 
     rt.stream_create = fake_stream_create
     rt.stream_destroy = lambda handle: destroyed_streams.append(int(handle))
+    device_exchanges: list[FakeDeviceExchange] = []
+
+    class FakeDeviceExchangeFactory(FakeDeviceExchange):
+        def __init__(self, runtime, **kwargs):
+            super().__init__()
+            device_exchanges.append(self)
+
+    monkeypatch.setattr(tg, "CompiledDeviceExchange", FakeDeviceExchangeFactory)
     graph_counter = [0]
 
     def fake_begin_capture(stream, mode=2):
@@ -299,6 +328,7 @@ def env(monkeypatch):
         "queue_logits": queue_logits,
         "created_streams": created_streams,
         "destroyed_streams": destroyed_streams,
+        "device_exchanges": device_exchanges,
     }
 
 
@@ -517,12 +547,15 @@ def test_graphed_schedule_needs_the_compiled_driver() -> None:
 
 
 def _graphed_session(env) -> MlpTP2GenerationSession:
+    # The device-side exchange is the graphed default (see the host opt-out
+    # test below).
     return MlpTP2GenerationSession(
         "fake.gguf",
         devices=(0, 1),
         mode="tp2",
         max_sequence_length=64,
         schedule="graphed",
+        reduce_mode="device",
     )
 
 
@@ -547,7 +580,7 @@ def test_graphed_schedule_captures_one_graph_per_layer_rank(env) -> None:
     session.close()
 
 
-def test_graphed_steps_launch_one_graph_per_layer_rank_and_reduce_per_layer(env) -> None:
+def test_graphed_steps_launch_graphs_and_reduce_on_device(env) -> None:
     env["queue_logits"]([0, 1, 2, 3])
     session = _graphed_session(env)
     session.generate([2], max_new_tokens=1, eos_token_id=None)
@@ -562,12 +595,20 @@ def test_graphed_steps_launch_one_graph_per_layer_rank_and_reduce_per_layer(env)
     per_device = {c[1] for c in launches}
     assert per_device == {0, 1}
     group = env["groups"][0]
-    # Every layer's exchange publishes into that layer's fixed payload slot,
-    # on both steps.
-    assert [slot for _ptrs, slot in group.reduces] == [0, 1, 2] * 2
-    assert [ptrs for ptrs, _slot in group.reduces] == [
-        (0x5200 + 0 + 64 * l, 0x5200 + 1 + 64 * l) for l in range(3)
-    ] * 2
+    # Device mode: the host never reduces per layer - the exchange runs
+    # inside the captured graphs (one enqueue per prior layer per rank at
+    # capture: layers 1,2 x 2 ranks) plus the eager tail (slot 2 x 2 ranks).
+    assert group.reduces == []
+    exchange = env["device_exchanges"][0]
+    # Two steps, each bumping both ranks' counters once.
+    assert exchange.step_begins == 2
+    assert exchange.waits == 2
+    slots = sorted(slot for _rank, slot, _ptr in exchange.enqueues)
+    assert slots == [0, 0, 1, 1, 2, 2, 2, 2], (
+        "capture-time enqueues for prior slots 0,1 (x2 ranks, once) and the tail's slot 2 (x2 ranks per step)"
+    )
+    ranks = sorted(rank for rank, _slot, _ptr in exchange.enqueues)
+    assert ranks == [0, 0, 0, 0, 1, 1, 1, 1]
     session.close()
 
 
@@ -623,10 +664,45 @@ def test_graphed_close_destroys_every_captured_graph(env) -> None:
 def test_tp2_sessions_default_to_the_graphed_schedule(env) -> None:
     session = MlpTP2GenerationSession("fake.gguf", devices=(0, 1), mode="tp2")
     assert session.schedule == "graphed"
+    # The graphed default reduces on device inside the captured graphs; the
+    # host-summed transport is the explicit opt-out.
+    assert session.reduce_mode == "device"
     session.close()
 
 
 def test_tp1_controls_default_to_the_eager_schedule(env) -> None:
     session = _session(env, devices=(0,), mode="tp1")
     assert session.schedule == "eager"
+    session.close()
+
+
+def test_reduce_mode_defaults_and_validation() -> None:
+    # Graphed tp2 defaults to the device-side reduction; eager to the host
+    # transport. Device requires graphed.
+    with pytest.raises(ValueError, match="device-side reduction needs the graphed"):
+        tg.MlpTP2GenerationSession(
+            "fake.gguf", devices=(0,), mode="tp1", schedule="eager", reduce_mode="device"
+        )
+    with pytest.raises(ValueError, match="unknown reduce_mode"):
+        tg.MlpTP2GenerationSession(
+            "fake.gguf", devices=(0, 1), mode="tp2", reduce_mode="p2p"
+        )
+
+
+def test_graphed_host_reduce_opt_out_reduces_per_layer(env) -> None:
+    env["queue_logits"]([0, 1, 2, 3])
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="graphed",
+        reduce_mode="host",
+    )  # the explicit opt-out
+    session.generate([2], max_new_tokens=1, eos_token_id=None)
+    group = env["groups"][0]
+    # Host mode keeps the per-layer host-driven transport reduction, with the
+    # captured prefix casting the fixed mapped payload slot.
+    assert [slot for _ptrs, slot in group.reduces] == [0, 1, 2] * 2
+    assert env["device_exchanges"] == []
     session.close()
