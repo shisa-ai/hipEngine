@@ -5969,7 +5969,7 @@ class Qwen4ExpTargetAcceptResult:
     replayed: bool
 
 
-@dataclass
+@dataclass(eq=False)
 class Qwen4ExpPrefillWorkspace:
     """Own prefill storage independently of decode state and borrowed views."""
 
@@ -6305,6 +6305,27 @@ class Qwen4ExpGGUFResidentModelRunner:
             raise
         self._prefill_workspaces.append(workspace)
         return workspace
+
+    def _configure_prefill_workspace_selection(self, workspaces, *, reserve_bytes):
+        """Select only prepared, owned workspaces; this does not admit or allocate them."""
+        self._require_open()
+        if workspaces is None:
+            self._prefill_workspace_selection = None
+            return
+        choices = tuple(sorted(workspaces, key=lambda item: item.prefill_chunk_size))
+        if (not choices or reserve_bytes < 0
+                or len({item.prefill_chunk_size for item in choices}) != len(choices)
+                or self._q8_mmq_buffers or self._q8_mmq_weight_sidecars is not None):
+            raise ValueError("invalid prepared prefill selection")
+        for item in choices:
+            if (not any(item is owner for owner in self._prefill_workspaces)
+                    or item.closed or len(item._prefill_buffers) != 5
+                    or item.prefill_chunk_size > self._prefill_workspaces[0].prefill_chunk_size):
+                raise ValueError("selection requires live owners within original staging capacity")
+        available, _ = self.runtime.mem_get_info()
+        if available < reserve_bytes:
+            raise MemoryError("prepared workspace selection would violate reserve")
+        self._prefill_workspace_selection = choices
 
     def _configure_q8_mmq_weight_sidecars(self) -> None:
         if self._q8_mmq_weight_sidecars is not None or os.environ.get(
@@ -7328,6 +7349,39 @@ class Qwen4ExpGGUFResidentModelRunner:
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
+        options = dict(
+            capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,
+            capture_target_hidden=capture_target_hidden,
+            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions)
+        choices = getattr(self, "_prefill_workspace_selection", None)
+        if not choices:
+            return self._prefill_chunked_impl(token_ids, **options)
+        self._require_open()
+        selected = next((item for item in choices if len(token_ids) <= item.prefill_chunk_size), choices[-1])
+        if selected.closed or len(selected._prefill_buffers) != 5:
+            raise RuntimeError("selected prefill workspace is not live")
+        names = (
+            "prefill_chunk_size", "gdn_prefill_scratch", "qsa_prefill_scratch",
+            "ple_prefill_scratch", "qsa_prefill_metadata", "_prefill_buffers")
+        saved = {name: getattr(self, name) for name in names}
+        try:
+            for name in names:
+                setattr(self, name, getattr(selected, name))
+            return self._prefill_chunked_impl(token_ids, **options)
+        finally:
+            for name, value in saved.items():
+                setattr(self, name, value)
+
+    def _prefill_chunked_impl(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+        capture_logits: bool = True,
+        capture_target_hidden: bool = True,
+        embedding_overrides: Mapping[int, np.ndarray] | None = None,
+        mrope_positions: np.ndarray | None = None,
+    ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
         if len(token_ids) > self.max_sequence_length:
@@ -7526,6 +7580,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         for workspace in reversed(getattr(self, "_prefill_workspaces", ())):
             workspace.close()
         self._prefill_workspaces = []
+        self._prefill_workspace_selection = None
         for owner in (
             self.head_scratch,
             self.ple_scratch,

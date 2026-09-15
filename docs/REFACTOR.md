@@ -15,6 +15,16 @@
   separate qualification steps. Keep historical donor commands
   source-pinned; remove duplicated donor plumbing once a qualified replacement
   covers state, lifetime, memory and matched performance.
+- `_configure_prefill_workspace_selection` is a private, default-disabled
+  selector over already prepared owners. It allocates nothing, rejects owners
+  beyond original staging capacity, and restores borrowed fields on failure.
+  Its CPU tests pass; automatic selection has no GPU or performance
+  qualification yet. The reserve check is not public memory admission.
+  Before enabling it, qualify full state/lifetime and c2 behavior, account
+  for all owners and host staging in public construction, preserve strict
+  setup, and measure short/long requests on the same prepared owners.
+  Remove this experimental setup route after a qualified public policy
+  replaces it, or remove the selector if that policy is rejected.
 
 ## Qualified Chunk Tradeoffs
 
