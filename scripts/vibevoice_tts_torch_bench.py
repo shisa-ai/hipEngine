@@ -6,10 +6,13 @@ a same-host reference to compare against. The request comes from the committed
 manifest: script, speaker-reference WAV (hash-verified), CFG scale, solver step
 count and seed.
 
-This lane draws its own random tensors, because a torch seed does not align with
-the HIP lane's numpy stream. So this is the same *request* but not the same
-*random draw*; the comparison is duration-based, and the HIP lane's
-chain-exactness is gated separately against the frozen oracle fixtures.
+This lane consumes the same random operands as the HIP lane. The fork draws
+randomness in exactly three places on this path -- a ``randn(batch)`` and a
+``randn_like(mean)`` for the voice-prompt VAE latent, and one ``randn(2,
+vae_dim)`` per diffusion call -- and the committed fixture records all three, so
+``install_recorded_operands`` serves them in place of fresh draws. The served set
+is checked against the fixture's recorded step-0 ``eps``; a shim that is subtly
+wrong still produces plausible audio, but it does not reproduce that tensor.
 
 Reference-audio preprocessing is included here (librosa resample from the 16 kHz
 WAV plus the fork's dB normalizer) because it is the fork's own path; the HIP
@@ -44,6 +47,92 @@ def _gpu_name() -> str:
         return torch.cuda.get_device_name(0)
     except Exception:
         return "unknown"
+
+
+def install_recorded_operands(diff, ref, device, dtype):
+    """Serve the fixture's recorded random operands in place of fresh draws.
+
+    The fork draws randomness in exactly three places on this path, and the fixture
+    records all three, so the two lanes can be made to consume the same request
+    instead of two independent draws from the same distribution:
+
+    * ``modular_vibevoice_tokenizer.py`` gaussian sampling: ``randn(batch)``
+      (``encode_draw0``) and ``randn_like(mean)`` (``encode_draw1``), for the
+      voice-prompt VAE latent;
+    * ``modeling_vibevoice_inference.py:sample_speech_tokens``: one
+      ``randn(2, acoustic_vae_dim)`` per diffusion call (``callN_initial_noise``).
+
+    Serving by shape rather than by call order means the shim is a no-op for any
+    draw it does not recognise, and the returned ledger says which recorded
+    operands were actually consumed. Returns ``(uninstall, ledger)``.
+    """
+    draw0 = torch.as_tensor(ref["encode_draw0"])
+    draw1 = torch.as_tensor(ref["encode_draw1"])
+    n_calls = int(diff["num_calls_recorded"])
+    frame_noise = [torch.as_tensor(diff[f"call{i}_initial_noise"]) for i in range(n_calls)]
+
+    served = {"encode_draw0": 0, "encode_draw1": 0, "frame_noise": 0, "unmatched_frames": 0}
+    state = {"frame": 0}
+    real_randn, real_randn_like = torch.randn, torch.randn_like
+    frame_shape = tuple(int(s) for s in frame_noise[0].shape)
+    draw0_shape = tuple(int(s) for s in draw0.shape)
+    draw1_shape = tuple(int(s) for s in draw1.shape)
+
+    def randn(*size, **kw):
+        if kw.get("generator") is None:
+            shape = tuple(int(s) for s in size)
+            if shape == draw0_shape:
+                served["encode_draw0"] += 1
+                return draw0.to(device=device, dtype=dtype).clone()
+            if shape == frame_shape:
+                if state["frame"] < len(frame_noise):
+                    out = frame_noise[state["frame"]]
+                    state["frame"] += 1
+                    served["frame_noise"] += 1
+                    return out.to(device=device, dtype=dtype).clone()
+                served["unmatched_frames"] += 1
+        return real_randn(*size, **kw)
+
+    def randn_like(t, **kw):
+        if kw.get("generator") is None and tuple(int(s) for s in t.shape) == draw1_shape:
+            served["encode_draw1"] += 1
+            return draw1.to(device=t.device, dtype=t.dtype).clone()
+        return real_randn_like(t, **kw)
+
+    torch.randn, torch.randn_like = randn, randn_like
+
+    def uninstall():
+        torch.randn, torch.randn_like = real_randn, real_randn_like
+
+    return uninstall, served
+
+
+def install_eps_capture(model):
+    """Capture the diffusion head's step-0 output so it can be checked against the
+    fixture's ``call0_eps``. A served-noise shim that is subtly wrong still produces
+    plausible audio; it does not reproduce the recorded eps."""
+    captured: dict[str, np.ndarray] = {}
+    inner = model.model.prediction_head
+
+    class _Capture(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.inner = inner
+
+        # The fork reads `prediction_head.device` directly, so the shim has to
+        # answer for it rather than only for forward().
+        @property
+        def device(self):
+            return self.inner.device
+
+        def forward(self, *a, **kw):
+            out = self.inner(*a, **kw)
+            if "eps0" not in captured:
+                captured["eps0"] = out.detach().float().cpu().numpy()
+            return out
+
+    model.model.prediction_head = _Capture()
+    return captured
 
 
 def main() -> None:
@@ -102,6 +191,13 @@ def main() -> None:
     )
     moved = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in inputs.items()}
 
+    # Share the recorded random operands with the HIP lane so the two rows describe
+    # the same request, and check the served noise against the fixture's eps.
+    diff_npz = np.load(fixtures / f"{request['name']}_diffusion.npz")
+    ref_npz = np.load(fixtures / f"{request['name']}_reference.npz")
+    uninstall, served = install_recorded_operands(diff_npz, ref_npz, device, dtype)
+    captured = install_eps_capture(model)
+
     def timed() -> tuple[float, float, int]:
         """Returns (wall seconds, time to first audible chunk, new tokens)."""
         torch.manual_seed(int(request["seed"]))
@@ -127,8 +223,35 @@ def main() -> None:
         return elapsed, first, n_new
 
     cold_wall, _, n_new = timed()
+    cold_served = dict(served)
     warm = [timed() for _ in range(max(args.repeats - 1, 1))]
     warm_wall = float(np.mean([w[0] for w in warm]))
+    uninstall()
+
+    # A served-noise shim that is subtly wrong still produces plausible audio; it does
+    # not reproduce the fixture's recorded step-0 eps. This is the check that the two
+    # lanes really are consuming the same request.
+    ref_eps0 = diff_npz["call0_eps"][0].astype(np.float32)
+    eps0 = captured.get("eps0")
+    if eps0 is None or eps0.shape != ref_eps0.shape:
+        eps_check = {"compared": False, "captured_shape": None if eps0 is None else list(eps0.shape),
+                     "reference_shape": list(ref_eps0.shape)}
+    else:
+        absdiff = np.abs(eps0 - ref_eps0)
+        scale = max(float(np.abs(ref_eps0).max()), 1e-6)
+        eps_check = {
+            "compared": True,
+            "max_abs_diff": round(float(absdiff.max()), 6),
+            "mean_abs_diff": round(float(absdiff.mean()), 6),
+            "reference_abs_max": round(scale, 6),
+            "max_abs_diff_relative": round(float(absdiff.max()) / scale, 6),
+            "matches": bool(float(absdiff.max()) / scale <= 0.05),
+            "basis": (
+                "served noise must reproduce the fixture's call0_eps[0] to within 5% of "
+                "its peak magnitude; the two lanes run bf16 with different kernel "
+                "decompositions, so exact equality is not expected"
+            ),
+        }
 
     # Output duration from the audio this lane produced.
     frames = max(n_new - 2, 0)
@@ -143,7 +266,14 @@ def main() -> None:
             "ddpm_steps": request["ddpm_inference_steps"],
             "seed": request["seed"],
             "voice_files": voice_hashes,
-            "random_draws": "this lane's own torch stream (not shared with the HIP lane)",
+            "random_draws": (
+                "the fixture's recorded operands (encode_draw0/encode_draw1 and "
+                "callN_initial_noise), served by shape, so both lanes consume the same "
+                "request"
+            ),
+            "recorded_operands_served_cold_run": cold_served,
+            "recorded_frames_available": int(diff_npz["num_calls_recorded"]),
+            "eps_check": eps_check,
         },
         "workload": {
             "generated_tokens": n_new,
