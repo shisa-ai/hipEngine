@@ -779,6 +779,18 @@ hashes and repetition counts. Treat the ratios as indicative until that
 validation lands. The halo-box rows differ by source (`5f85164` against
 `69946438a`) and that difference is not yet explained.
 
+The measurement floor for any per-component version of that comparison is now
+known, and it is not small. Three captures of the same 4K prefill - two at the
+production default, one with warm PLE - hold an identical 2007-row
+(role, kernel) set and attribute 100% of kernels. Between two runs of the *same*
+configuration, per-(role, kernel) times at or above 20 ms move by median -0.3%
+and **stdev 5.1%, range -32% to +36%**, while family aggregates move 0.5-2.1%.
+The scatter grows with row size rather than shrinking, which is the opposite of
+averaging noise. **So gap attribution is interpretable at the family level and
+not at the individual-component level**, and a per-component "recoverable ms"
+figure needs repetitions rather than a single pair of captures.
+[Measurement floor](results/2026-09-16-flashnext-profile-measurement-floor/README.md).
+
 **The gap has not been decomposed.** An earlier revision of this file split the
 4K difference into a 1.65x conservative-arithmetic factor and a 3.38x
 kernel-quality factor and multiplied them. That is withdrawn: telescoping two

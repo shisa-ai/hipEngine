@@ -1,5 +1,23 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: Established the run-to-run measurement floor for the
+  Flash-Next prefill profile. Three captures of the same 4K `code-p4096`
+  prefill (two at the production default, one with
+  `HIPENGINE_QWEN4_EXP_PLE_WARM=1`) contain an identical 2007-row (role, kernel)
+  set and attribute 100% of kernels, so the flag is not visible in the kernel
+  set. Per-(role, kernel) times at or above 20 ms move by median -0.3%, stdev
+  5.1%, range -32% to +36% between two runs of the *same* configuration, while
+  family aggregates move 0.5-2.1% and the prefill total spans 22053-22561 ms
+  (1.4%). The scatter grows with row size (stdev 1.3% at 20-50 ms, 7.5% at
+  50-100 ms), which is the opposite of averaging noise and indicates a
+  systematic drift that is not identified. Warm PLE is a decode-gather page
+  cache hint costing +15.4 s per runner construction, so it cannot help a
+  prefill-only profile; an apparent 15% speedup on the five largest rows was
+  driven by a single outlier layer and does not survive inspection. Consequence
+  for the gap attribution: per-component claims need family-level aggregation or
+  repetitions. No hipEngine rate changed.
+  [Artifact](results/2026-09-16-flashnext-profile-measurement-floor/README.md).
+
 - **2026-09-16 UTC**: Corrected the previous entry's dense-projection ceiling.
   Counting issue slots one per cycle predicted a 22.1%-of-peak ceiling for the
   dense GGUF projection; a probe holding that exact instruction mix (40 FMA +
