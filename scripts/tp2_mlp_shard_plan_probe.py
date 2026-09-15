@@ -60,6 +60,7 @@ from hipengine.loading.qwen35_gguf_admission import (  # noqa: E402
     build_qwen35_gguf_role_manifest,
 )
 from hipengine.kernels.backends import backend_package_capability  # noqa: E402
+from hipengine.kernels.policy import GGUFModelGeometry  # noqa: E402
 from hipengine.loading.qwen35_gguf_materialize import (  # noqa: E402
     gguf_decode_repack_enabled,
     materialize_qwen35_gguf_weights,
@@ -327,27 +328,34 @@ def device_stage(
 
 def fused_path_admission(
     *,
-    hidden_size: int,
-    intermediate: int,
-    quant_type: str = "Q4_K",
+    geometry: Any,
+    file_type_name: str | None,
     backend: str = "hip_gfx1100",
+    world_size: int = 2,
 ) -> dict[str, Any]:
     """Whether the incumbent fused gate/up+SiLU decode path admits a shard shape.
 
-    The dense-pair fused route is chosen by
-    ``_gguf_dense_pair_silu_decode_variant``, which looks the variant up by the
-    exact key ``(rows, in_features, out_features)``. The kernel behind that
-    variant accepts a shape whenever ``dense_t16_pair_decode_shape_error``
-    returns None (``rows == 1``, ``in_features`` a positive multiple of 256,
-    ``out_features`` a positive multiple of 16), so a half-intermediate shard is
-    *inside the kernel's shape contract* but is *not admitted by the policy
-    table* unless its shape is listed. That distinction decides whether a shard
-    segment pays for one fused launch or for two separate GEMV launches plus a
-    SiLU-multiply, so it is reported rather than assumed.
+    Two lookups decide this, and neither is approximated:
 
-    The shape contract is asked through the kernel module's pure validator, never
-    through the launcher: calling a launcher with valid shapes and null pointers
-    enqueues an invalid device launch on a host where the library is loaded.
+    1. *Which policy row* the artifact resolves to. The route is selected by an
+       exact ``(geometry, file_type_name)`` identity - the same key
+       ``_gguf_policy_identity`` builds for the resident artifact - so the
+       variant is read from that row only. Shapes admitted by other model/quant
+       rows are reported separately and never read as this artifact's
+       admission, because a row that happens to admit a shape is not evidence
+       that this artifact's row does.
+    2. *Whether the partition is valid.* A non-integral or tile-inadmissible
+       partition is rejected, not floored: an even split of an odd intermediate
+       does not exist, and reporting ``floor(n/2)`` would describe a shape
+       nobody launches.
+
+    The kernel's own pure shape contract
+    (``dense_t16_pair_decode_shape_error``) is then consulted for both shapes,
+    which is the same check the launcher performs before any HIP contact. The
+    shape contract is asked through the kernel module's pure validator, never
+    through the launcher: calling a launcher with valid shapes and null
+    pointers enqueues an invalid device launch on a host where the library is
+    loaded.
     """
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
@@ -356,52 +364,103 @@ def fused_path_admission(
 
     from hipengine.kernels.backends import backend_package_capability
 
-    half = int(intermediate) // 2
+    geometry = (
+        geometry
+        if isinstance(geometry, GGUFModelGeometry)
+        else GGUFModelGeometry.try_from_config(geometry)
+    )
+    if geometry is None:
+        raise ValueError("fused_path_admission requires a GGUFModelGeometry or a config")
+    if int(world_size) <= 0:
+        raise ValueError("world_size must be positive")
+    identity_key = (geometry, None if file_type_name is None else str(file_type_name))
     policies = backend_package_capability(
         backend, "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES", {}
     )
-    admitted_shapes: set[tuple[int, int, int]] = set()
-    for shapes in policies.values():
-        if isinstance(shapes, dict):
-            admitted_shapes.update(k for k in shapes if isinstance(k, tuple))
-    tp1_key = (1, int(hidden_size), int(intermediate))
-    shard_key = (1, int(hidden_size), half)
+    row = policies.get(identity_key)
+    row_found = isinstance(row, dict)
+    row_shapes = {k for k in row if isinstance(k, tuple)} if row_found else set()
+    # What the other rows admit, kept separate so it can never be read as this
+    # artifact's admission.
+    other_row_shapes: set[tuple[int, int, int]] = set()
+    for key, shapes in policies.items():
+        if key != identity_key and isinstance(shapes, dict):
+            other_row_shapes.update(k for k in shapes if isinstance(k, tuple))
+
+    hidden = int(geometry.hidden_size)
+    intermediate = int(geometry.feed_forward_length)
+    partition_error: str | None = None
+    if intermediate % int(world_size):
+        # No per-rank width exists, so there is no shard shape to describe and
+        # any number reported here would be a fabrication. Refuse loudly.
+        raise ValueError(
+            f"intermediate {intermediate} does not partition integrally across "
+            f"{world_size} ranks; no shard shape exists"
+        )
+    half = intermediate // int(world_size)
+    if half % GGUF_T16_COLS:
+        # The partition exists but is outside the kernel's column contract. That
+        # is a real shape with real layout work attached, so it is recorded for
+        # the execution test to investigate rather than raised.
+        partition_error = (
+            f"the per-rank intermediate {half} is not a multiple of the t16 "
+            f"tile width {GGUF_T16_COLS}, so the shard shape is outside the "
+            "kernel's column contract"
+        )
+
+    tp1_key = (1, hidden, intermediate)
+    shard_key = (1, hidden, half)
 
     # Ask the kernel module's pure shape contract, which is the same check the
     # launcher performs before any HIP contact. No pointers are involved.
     tp1_shape_error = dense_t16_pair_decode_shape_error(
         rows=tp1_key[0], in_features=tp1_key[1], out_features=tp1_key[2]
     )
-    shard_shape_error = dense_t16_pair_decode_shape_error(
-        rows=shard_key[0], in_features=shard_key[1], out_features=shard_key[2]
+    shard_shape_error = (
+        dense_t16_pair_decode_shape_error(
+            rows=shard_key[0], in_features=shard_key[1], out_features=shard_key[2]
+        )
+        if partition_error is None
+        else partition_error
     )
 
     return {
         "route": "launch_gguf_linear_pair_silu -> _gguf_dense_pair_silu_decode_variant",
+        "policy_identity": {
+            "architecture": str(geometry.architecture),
+            "file_type_name": None if file_type_name is None else str(file_type_name),
+        },
+        "policy_row_found": row_found,
+        "admitted_shapes_this_row": [list(k) for k in sorted(row_shapes)],
+        "admitted_shapes_other_rows": [list(k) for k in sorted(other_row_shapes)],
         "lookup_key": "(rows, in_features, out_features)",
         "shape_contract": "dense_t16_pair_decode_shape_error",
+        "partition": {
+            "world_size": int(world_size),
+            "intermediate": intermediate,
+            "per_rank_intermediate": half,
+            "error": partition_error,
+        },
         "tp1_key": list(tp1_key),
-        "tp1_variant": next(
-            (
-                shapes[tp1_key]
-                for shapes in policies.values()
-                if isinstance(shapes, dict) and tp1_key in shapes
-            ),
-            None,
-        ),
+        "tp1_variant": row.get(tp1_key) if row_found else None,
+        "tp1_admitted": tp1_key in row_shapes,
         "shard_key": list(shard_key),
-        "admitted_shapes": [list(k) for k in sorted(admitted_shapes)],
-        "tp1_admitted": tp1_key in admitted_shapes,
-        "shard_admitted": shard_key in admitted_shapes,
+        "shard_admitted": shard_key in row_shapes,
         "tp1_shape_error": tp1_shape_error,
         "shard_shape_error": shard_shape_error,
         "gap": (
             "the shard shape is inside the kernel's shape contract but absent "
-            "from the policy table, so a shard segment would take the unfused "
-            "chain (two GEMV launches plus a separate SiLU-multiply) unless the "
-            "policy admits it"
+            f"from the {geometry.architecture}/{file_type_name} policy row, so a "
+            "shard segment would take the unfused chain (two GEMV launches plus "
+            "a separate SiLU-multiply) unless the policy admits it"
         )
-        if shard_key not in admitted_shapes
+        # A missing policy row is a different condition: the helper cannot say
+        # what this artifact's admission is at all, so it must not borrow the
+        # vocabulary of a known row and must not borrow that row's shapes.
+        if row_found
+        and shard_key not in row_shapes
+        and partition_error is None
+        and shard_shape_error is None
         else None,
     }
 
@@ -731,8 +790,9 @@ def probe(
     # Reported, not gated: this is a known gap in the fused route's shape-keyed
     # admission, and the execution test has to resolve it rather than this probe.
     report["fused_path_admission"] = fused_path_admission(
-        hidden_size=int(config.hidden_size),
-        intermediate=int(by_name[f"blk.{int(layer)}.ffn_gate.weight"].source_shape[0]),
+        geometry=config,
+        file_type_name=getattr(info, "file_type_name", None),
+        world_size=int(world_size),
     )
 
     report["next"] = (

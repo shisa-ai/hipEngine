@@ -36,6 +36,36 @@ def mod():
     return _load()
 
 
+VALID_KERNEL_JSON = {
+    "kind": "shard-kernel-smoke",
+    "kernels": [
+        {"Kernel_Name": "gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out", "DurationNs": 971796639},
+        {"Kernel_Name": "gguf_q6_k_t16_qmicro_planar_gemm_bf16_out", "DurationNs": 16331988},
+    ],
+}
+
+
+@pytest.fixture
+def evidence_root(tmp_path, monkeypatch):
+    """A benchmarks/results/ tree whose cwd is the tmp repo root."""
+
+    root = tmp_path / "benchmarks" / "results"
+    root.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    return root
+
+
+def _write_kernel_artifact(root, name="shard-kernel-smoke.json", payload=VALID_KERNEL_JSON):
+    path = root / name
+    path.write_text(json.dumps(payload) if isinstance(payload, dict) else payload)
+    return str(path)
+
+
+@pytest.fixture
+def evidence_path(evidence_root):
+    return _write_kernel_artifact(evidence_root)
+
+
 # -- baseline parsing ---------------------------------------------------------
 
 
@@ -369,7 +399,7 @@ def test_build_report_withholds_certification_on_mismatched_protocols(mod) -> No
     assert any("different protocols" in reason for reason in report["verdict"]["withheld_reasons"])
 
 
-def test_build_report_withholds_certification_without_the_gate(mod) -> None:
+def test_build_report_withholds_certification_without_the_gate(mod, evidence_path, evidence_root) -> None:
     devices = [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")]
     report = mod.build_report(devices, collective_ms=(1.0,), fixed_shares=(0.0,))
     assert report["pre_packet3_gate"]["satisfied"] is False
@@ -380,7 +410,8 @@ def test_build_report_withholds_certification_without_the_gate(mod) -> None:
         devices,
         collective_ms=(1.0,),
         fixed_shares=(0.0,),
-        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+        shard_kernel_evidence=[evidence_path],
+        results_root=evidence_root,
     )
     assert with_evidence["pre_packet3_gate"]["satisfied"] is True
     assert with_evidence["verdict"]["certified"] is True
@@ -465,7 +496,7 @@ def test_build_report_reports_a_losing_projection(mod) -> None:
     assert json.loads(json.dumps(report))["kind"] == "tp2_break_even"
 
 
-def test_build_report_is_json_serializable_across_the_share_range(mod) -> None:
+def test_build_report_is_json_serializable_across_the_share_range(mod, evidence_path, evidence_root) -> None:
     devices = [
         mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
         mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
@@ -474,25 +505,34 @@ def test_build_report_is_json_serializable_across_the_share_range(mod) -> None:
         devices,
         collective_ms=(1.3, 1.5),
         fixed_shares=(0.0, 0.2),
-        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+        shard_kernel_evidence=[evidence_path],
+        results_root=evidence_root,
     )
     assert len(report["rows"]) == 4
     assert report["verdict"]["worst_case_speedup"] <= report["verdict"]["best_case_speedup"]
     assert json.loads(json.dumps(report))["verdict"]["certified"] is True
 
 
-def test_build_report_pins_the_share_sensitivity_of_the_matched_pair(mod) -> None:
+def test_build_report_pins_the_share_sensitivity_of_the_matched_pair(mod, evidence_path, evidence_root) -> None:
     devices = [
         mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv"),
         mod.parse_tp1("XTX=29.82:15.652:7.009:512/128/int8-kv"),
     ]
-    evidence = ["benchmarks/results/shard-kernel-smoke.json"]
+    evidence = [evidence_path]
     passing = mod.build_report(
-        devices, collective_ms=(1.3,), fixed_shares=(0.0, 0.2), shard_kernel_evidence=evidence
+        devices,
+        collective_ms=(1.3,),
+        fixed_shares=(0.0, 0.2),
+        shard_kernel_evidence=evidence,
+        results_root=evidence_root,
     )
     assert passing["verdict"]["passes_target_in_every_row"] is True
     dipping = mod.build_report(
-        devices, collective_ms=(1.3,), fixed_shares=(0.3,), shard_kernel_evidence=evidence
+        devices,
+        collective_ms=(1.3,),
+        fixed_shares=(0.3,),
+        shard_kernel_evidence=evidence,
+        results_root=evidence_root,
     )
     assert dipping["verdict"]["passes_target_in_every_row"] is False
     assert dipping["rows"][0]["projected_speedup"] == pytest.approx(1.294, abs=0.005)
@@ -508,7 +548,7 @@ def test_build_report_pins_the_share_sensitivity_of_the_matched_pair(mod) -> Non
     )
 
 
-def test_the_two_thresholds_are_reported_separately(mod) -> None:
+def test_the_two_thresholds_are_reported_separately(mod, evidence_path, evidence_root) -> None:
     """A 1.1x-class result is a qualified win, not a failure."""
 
     devices = [
@@ -523,7 +563,8 @@ def test_the_two_thresholds_are_reported_separately(mod) -> None:
         devices,
         collective_ms=(3.2,),
         fixed_shares=(0.0, 0.1, 0.2, 0.3),
-        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+        shard_kernel_evidence=[evidence_path],
+        results_root=evidence_root,
     )
     verdict = report["verdict"]
     speedups = [row["projected_speedup"] for row in report["rows"]]
@@ -683,3 +724,141 @@ def test_main_reads_the_marginal_from_a_chain_artifact(tmp_path: pathlib.Path, m
     assert payload["collective_ms_per_token"] == [pytest.approx(22.758)]
     assert payload["collective_source"]["mode"] == "per_step"
     assert payload["collective_source"]["case"] == "all_reduce:rows1:fp32"
+
+
+# -- shard-kernel evidence validation -----------------------------------------
+
+
+def test_a_dangling_evidence_path_does_not_certify(mod, evidence_root) -> None:
+    """The old defect: any nonempty list satisfied the gate."""
+
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=["benchmarks/results/shard-kernel-smoke.json"],
+        results_root=evidence_root,
+    )
+    gate = report["pre_packet3_gate"]
+    assert gate["satisfied"] is False
+    assert gate["evidence"][0]["error"] == "not a file"
+    assert any(
+        "shard-kernel evidence" in reason for reason in report["verdict"]["withheld_reasons"]
+    )
+    assert report["verdict"]["certified"] is False
+
+
+def test_evidence_with_no_kernel_record_does_not_certify(mod, evidence_root) -> None:
+    """A real JSON file whose contents prove nothing must fail the same way."""
+
+    path = _write_kernel_artifact(evidence_root, payload={"note": "smoke passed", "ok": True})
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[path],
+        results_root=evidence_root,
+    )
+    gate = report["pre_packet3_gate"]
+    assert gate["satisfied"] is False
+    assert "no kernel record" in gate["evidence"][0]["error"]
+    assert report["verdict"]["certified"] is False
+
+
+def test_a_zero_or_negative_duration_does_not_certify(mod, evidence_root) -> None:
+    """A name with no runtime is not evidence that a kernel executed."""
+
+    path = _write_kernel_artifact(
+        evidence_root,
+        payload={"kernels": [{"Kernel_Name": "k", "DurationNs": 0}]},
+    )
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[path],
+        results_root=evidence_root,
+    )
+    assert report["pre_packet3_gate"]["satisfied"] is False
+    assert report["verdict"]["certified"] is False
+
+
+def test_an_artifact_outside_results_does_not_certify(mod, tmp_path) -> None:
+    """The artifacts directory is part of the evidence convention."""
+
+    outside = tmp_path / "scratch.json"
+    outside.write_text(json.dumps(VALID_KERNEL_JSON))
+    root = tmp_path / "benchmarks" / "results"
+    root.mkdir(parents=True)
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[str(outside)],
+        results_root=root,
+    )
+    assert report["pre_packet3_gate"]["evidence"][0]["error"] == "not under benchmarks/results/"
+    assert report["verdict"]["certified"] is False
+
+
+def test_a_real_kernel_trace_artifact_certifies(mod, evidence_root) -> None:
+    """The gate opens only on contents that show a kernel ran with a duration."""
+
+    path = _write_kernel_artifact(evidence_root)
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[path],
+        results_root=evidence_root,
+    )
+    gate = report["pre_packet3_gate"]
+    assert gate["satisfied"] is True
+    assert gate["evidence"][0]["kernel_records"] == 2
+    assert gate["evidence"][0]["example"]["duration_ns"] == 971796639
+    assert report["verdict"]["certified"] is True
+
+
+def test_a_rocprof_csv_trace_certifies_and_a_headerless_one_does_not(
+    mod, evidence_root
+) -> None:
+    """rocprofv3 --kernel-trace writes CSV; that form must be accepted as-is."""
+
+    csv_trace = (
+        "Kernel_Name,DurationNs,Calls\n"
+        '"gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out",971796639,4080\n'
+    )
+    good = _write_kernel_artifact(evidence_root, name="trace.csv", payload=csv_trace)
+    bad = _write_kernel_artifact(
+        evidence_root, name="empty.csv", payload="a,b\n1,2\n"
+    )
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[good, bad],
+        results_root=evidence_root,
+    )
+    gate = report["pre_packet3_gate"]
+    assert gate["satisfied"] is False, "one invalid artifact must fail the whole gate"
+    by_path = {e["path"]: e for e in gate["evidence"]}
+    assert by_path[good]["kernel_records"] == 1
+    assert "no Kernel_Name/DurationNs" in by_path[bad]["error"]
+    assert report["verdict"]["certified"] is False
+
+
+def test_one_invalid_artifact_names_itself_in_the_verdict(mod, evidence_root) -> None:
+    """Mixed evidence must be attributable, not merged into one blob."""
+
+    good = _write_kernel_artifact(evidence_root, name="good.json")
+    bad = _write_kernel_artifact(evidence_root, name="bad.json", payload={"kernels": []})
+    report = mod.build_report(
+        [mod.parse_tp1("W7900=27.9:15.652:8.646:512/128/int8-kv")],
+        collective_ms=(1.0,),
+        fixed_shares=(0.0,),
+        shard_kernel_evidence=[good, bad],
+        results_root=evidence_root,
+    )
+    reasons = report["verdict"]["withheld_reasons"]
+    assert any("good.json" not in r and "bad.json" in r for r in reasons)
+    assert not any("good.json" in r for r in reasons)

@@ -18,6 +18,8 @@ import sys
 
 import pytest
 
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "tp2_mlp_shard_plan_probe.py"
 GGUF_PATH = pathlib.Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
@@ -332,23 +334,90 @@ def test_the_device_stage_is_opt_in(mod) -> None:
 # ---------------------------------------------------------------------------
 
 
+Q4KM = "MOSTLY_Q4_K_M"
+
+
+def _geometry_with(feed_forward_length: int):
+    """The qualified H5120 geometry with one field overridden."""
+
+    fields = (
+        "architecture",
+        "block_count",
+        "hidden_size",
+        "vocab_size",
+        "head_count",
+        "head_count_kv",
+        "key_length",
+        "value_length",
+        "full_attention_interval",
+        "layer_types",
+        "ssm_inner_size",
+        "ssm_group_count",
+        "ssm_state_size",
+        "ssm_conv_kernel",
+        "ssm_time_step_rank",
+        "expert_count",
+        "expert_used_count",
+        "expert_feed_forward_length",
+        "expert_shared_feed_forward_length",
+    )
+    return QWEN35_DENSE_H5120_GEOMETRY.__class__(
+        **{
+            **{f: getattr(QWEN35_DENSE_H5120_GEOMETRY, f) for f in fields},
+            "feed_forward_length": feed_forward_length,
+        }
+    )
+
+
 def test_the_fused_decode_route_is_shape_keyed(mod) -> None:
     """The gap is admission, not the kernel: record both facts."""
 
-    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17408)
+    admission = mod.fused_path_admission(
+        geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=Q4KM
+    )
     assert admission["lookup_key"] == "(rows, in_features, out_features)"
+    assert admission["policy_row_found"] is True
+    assert admission["policy_identity"] == {
+        "architecture": "qwen35",
+        "file_type_name": Q4KM,
+    }
     assert admission["tp1_key"] == [1, 5120, 17408]
     assert admission["tp1_admitted"] is True
     assert admission["tp1_variant"] == "dense_dual_local32_bf16_bf16_out"
-    # The shard's half-intermediate shape is not in the table.
+    # The shard's half-intermediate shape is not in this row.
     assert admission["shard_key"] == [1, 5120, 8704]
     assert admission["shard_admitted"] is False
     assert admission["gap"] is not None
     assert "inside the kernel's shape contract" in admission["gap"]
+    assert "qwen35/MOSTLY_Q4_K_M policy row" in admission["gap"]
     # Both shapes are inside the kernel's contract, so the gap is purely
     # admission: no kernel work and no shape work is required.
     assert admission["tp1_shape_error"] is None
     assert admission["shard_shape_error"] is None
+    assert admission["partition"]["error"] is None
+    assert admission["partition"]["per_rank_intermediate"] == 8704
+
+
+def test_shapes_from_other_policy_rows_are_not_read_as_admission(mod) -> None:
+    """A shape another model/quant row admits says nothing about this row.
+
+    Every existing row happens to admit the same TP1 key, so a union over rows
+    would pass this test by accident. The check is that the *row* is resolved by
+    identity: an unknown quant must find no row, report no variant, and refuse to
+    borrow shapes from rows that do exist.
+    """
+
+    admission = mod.fused_path_admission(
+        geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name="MOSTLY_Q8_0"
+    )
+    assert admission["policy_row_found"] is False
+    assert admission["tp1_admitted"] is False
+    assert admission["tp1_variant"] is None
+    assert admission["shard_admitted"] is False
+    # The existing rows' shapes are still reported, labelled as what they are.
+    assert admission["admitted_shapes_this_row"] == []
+    assert admission["admitted_shapes_other_rows"] != []
+    assert admission["gap"] is None, "an unknown quant is not evidence of a gap"
 
 
 def test_the_shard_shape_satisfies_the_pure_shape_contract() -> None:
@@ -431,15 +500,38 @@ def test_the_probe_answers_the_admission_question_without_hip(monkeypatch) -> No
         probe = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = probe
         spec.loader.exec_module(probe)
-    admission = probe.fused_path_admission(hidden_size=5120, intermediate=17408)
+    admission = probe.fused_path_admission(
+        geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=Q4KM
+    )
     assert admission["shard_admitted"] is False
     assert admission["shard_shape_error"] is None
 
 
-def test_an_odd_intermediate_reports_a_non_integral_shard(mod) -> None:
-    """The probe must not silently floor a shape that does not split evenly."""
+def test_a_non_integral_partition_is_rejected_not_floored(mod) -> None:
+    """An odd intermediate has no even split; the helper must refuse it."""
 
-    admission = mod.fused_path_admission(hidden_size=5120, intermediate=17409)
-    assert admission["shard_key"] == [1, 5120, 8704]
+    odd = _geometry_with(feed_forward_length=17409)
+    with pytest.raises(ValueError, match="does not partition integrally"):
+        mod.fused_path_admission(geometry=odd, file_type_name=Q4KM, world_size=2)
+
+
+def test_a_tile_inadmissible_partition_is_rejected_not_floored(mod) -> None:
+    """A per-rank width off the t16 column contract must be refused too."""
+
+    # 17410 / 2 = 8705, integral but not a multiple of 16.
+    geometry = _geometry_with(feed_forward_length=17410)
+    admission = mod.fused_path_admission(geometry=geometry, file_type_name=Q4KM)
+    assert admission["partition"]["error"] is not None
+    assert "multiple of the t16 tile width" in admission["partition"]["error"]
     assert admission["shard_admitted"] is False
-    assert admission["gap"] is not None
+    assert admission["gap"] is None
+
+
+def test_world_size_must_be_positive(mod) -> None:
+    with pytest.raises(ValueError, match="world_size"):
+        mod.fused_path_admission(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=Q4KM, world_size=0
+        )
+
+
+
