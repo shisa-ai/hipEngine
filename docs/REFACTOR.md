@@ -7659,40 +7659,41 @@ To remove this entry: it would need a mechanism that removes the trajectory
 sensitivity, not a re-measurement. The isolated stage win is real and stays on
 record in this file so it is not re-attempted from scratch.
 
-## VibeVoice-TTS LM decode gate+up: the thread count is not the lever
+## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality, ~1.2x)
 
 `vibevoice_qwen2.py`'s decode gate+up projection calls `dense_dual_gemv_out_bf16`
-at the `threads=256` default. An isolated benchmark suggested `threads=64` was
-**3.8x faster** (283.0 -> 74.8 us, "586 GB/s"), and applying it took the LM stage
-from 1.450 s to 1.266 s. **That 3.8x is an artifact and the entry is corrected
-here.**
+at the `threads=256` default. **This entry has been wrong twice; the numbers below
+are the corrected ones.**
 
-The benchmark reused one weight buffer across 30 iterations, so 55 MB of weights
-stayed resident in L2 and the measurement was reading cache, not DRAM. Repeating
-it with a 256 MB flush buffer between calls -- which is what the real workload
-does, since 28 layers x 55 MB far exceeds L2 -- gives:
+What is solid:
 
-| threads | us | GB/s |
-| --- | ---: | ---: |
-| 64 | 1419.4 | 38.8 |
-| 128 | 1464.2 | 37.6 |
-| 256 | 1478.5 | 37.2 |
+- Under DRAM streaming the kernel reaches **169.5 GB/s at `threads=64` against
+  138.1 GB/s at `threads=256`** (55.1 MB of weights per call, 256 MB flush drained
+  and synchronized before timing, median of 12). That is a real **~1.23x**, not the
+  3.8x an earlier draft claimed and not zero as a later draft claimed.
+- End-to-end, applying it took the LM stage from **1.450 s to 1.266 s** and pooled
+  RTF from 1.201 to 1.174. That is consistent with ~1.2x on this kernel, which is
+  the useful cross-check on any isolated figure here.
+- **It is rejected anyway.** It moves 5 of 17920 outputs by one ulp, keeps
+  `chain_exact` true, keeps the correctness suite green at 126 passed, and still
+  takes the ten-seed generated-audio suite from **58/60 to 57/60** by adding a
+  `single-numbers` failure at WER 0.1667.
 
-**The thread count is irrelevant under DRAM streaming.** `threads=256` shows no
-cold/warm difference at all (264.7 vs 263.9 us), confirming it already streams
-from DRAM, while `threads=64`'s warm figure (82.1 us) was pure cache reuse.
+Two measurement traps were hit while establishing this, both worth avoiding:
 
-Two consequences. First, the real lever on this kernel is the ~37 GB/s achieved
-against roughly 200 GB/s available, which is a memory-access-pattern problem
-rather than a launch-configuration one. Second, the change is **still correctly
-rejected**: it moved 5 of 17920 outputs by one ulp and took the ten-seed quality
-suite from 58/60 to 57/60, adding a `single-numbers` failure at WER 0.1667, while
-`chain_exact` stayed true and the correctness suite stayed green.
+1. **Reusing one input buffer measures L2, not the workload.** A benchmark that
+   ran 30 iterations against one 55 MB weight buffer reported 74.8 us at
+   `threads=64` (an impossible 736 GB/s) because the weights stayed cached.
+2. **An unsynchronized flush steals the bandwidth you are measuring.** Writing a
+   256 MB buffer between calls without draining it first dropped the apparent rate
+   to ~37 GB/s for every thread count, which is how an earlier draft concluded the
+   thread count was irrelevant. The memset and the kernel were competing.
 
-To remove this entry: pursue the bandwidth gap (access pattern, wider loads, or
-fewer redundant reads), not the thread count. Any change that moves the
-summation order still needs the generated-audio quality suite.
+To remove this entry: the ~1.2x is worth having but must arrive without moving the
+summation order, which is what the 5-of-17920 ulp change does. Any variant that
+keeps the exact per-thread element sets and tree pairing is safe by construction;
+a bare thread-count change is not, however it measures.
 
-**Method note for future work:** an isolated kernel benchmark that reuses one
-input buffer measures L2, not the workload. Flush between calls or vary the
-buffer before drawing conclusions about a streaming kernel.
+**Method note:** for a streaming kernel, flush between calls AND synchronize the
+flush before timing, then cross-check the isolated figure against the end-to-end
+stage delta.
