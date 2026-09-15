@@ -1,0 +1,10 @@
+{
+  "prefill_tokens": 64,
+  "decode_steps": 32,
+  "repeats": 8,
+  "prefill_mean_ms": 42.29342972394079,
+  "prefill_per_token_us": 660.8348394365748,
+  "decode_mean_ms": 31.87312648515217,
+  "decode_p50_ms": 31.955108512192965,
+  "decode_p95_ms": 35.2191804908216
+}

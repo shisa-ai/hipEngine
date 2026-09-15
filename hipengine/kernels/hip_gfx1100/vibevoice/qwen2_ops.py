@@ -57,10 +57,17 @@ _I = ctypes.c_int64
 _S = ctypes.c_void_p
 
 
+_Fn_CACHE: dict[tuple[int, str], "ctypes._FuncPtr"] = {}
+
+
 def _fn(library: ctypes.CDLL, symbol: str, argtypes: list) -> "ctypes._FuncPtr":
-    fn = getattr(library, symbol)
-    fn.argtypes = argtypes
-    fn.restype = ctypes.c_int
+    key = (id(library), symbol)
+    fn = _Fn_CACHE.get(key)
+    if fn is None:
+        fn = getattr(library, symbol)
+        fn.argtypes = argtypes
+        fn.restype = ctypes.c_int
+        _Fn_CACHE[key] = fn
     return fn
 
 
@@ -134,6 +141,30 @@ def prefill_attn_f16(
              _I(past), _I(tokens),
              _F(scale if scale is not None else 1.0 / math.sqrt(head_dim)),
              _S(stream)))
+
+
+def add_f16(
+    library: ctypes.CDLL, a_ptr: int, b_ptr: int, out_ptr: int, total: int, *,
+    stream: int = 0, runtime: HipRuntime | None = None) -> None:
+    _launch(runtime, library, "vv_qwen2_add_f16",
+            [_P, _P, _P, _I, _S],
+            (_P(a_ptr), _P(b_ptr), _P(out_ptr), _I(total), _S(stream)))
+
+
+def silu_mul_f16(
+    library: ctypes.CDLL, gate_ptr: int, up_ptr: int, total: int, *,
+    stream: int = 0, runtime: HipRuntime | None = None) -> None:
+    _launch(runtime, library, "vv_qwen2_silu_mul_f16",
+            [_P, _P, _I, _S],
+            (_P(gate_ptr), _P(up_ptr), _I(total), _S(stream)))
+
+
+def bias_add_f16(
+    library: ctypes.CDLL, out_ptr: int, bias_ptr: int, n: int, total: int, *,
+    stream: int = 0, runtime: HipRuntime | None = None) -> None:
+    _launch(runtime, library, "vv_qwen2_bias_add_f16",
+            [_P, _P, _I, _I, _S],
+            (_P(out_ptr), _P(bias_ptr), _I(n), _I(total), _S(stream)))
 
 
 def append_kv_f16(

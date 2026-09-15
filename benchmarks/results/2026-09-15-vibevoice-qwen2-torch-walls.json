@@ -1,0 +1,13 @@
+{
+  "device": "cuda",
+  "dtype": "float16",
+  "attn_implementation": "eager",
+  "prefill_tokens": 64,
+  "decode_steps": 32,
+  "repeats": 7,
+  "prefill_mean_ms": 18.147028982639313,
+  "prefill_per_token_us": 283.54732785373926,
+  "decode_mean_ms": 18.782497762003914,
+  "decode_p50_ms": 18.580123782157898,
+  "decode_p95_ms": 19.85955322161317
+}
