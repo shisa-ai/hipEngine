@@ -13,6 +13,7 @@ def assemble(root):
         "resume-chunk4096-native-c2-accounted.json",
         "resume-chunk4096-depth.json",
         "resume-chunk4096-boundaries.json",
+        "resume-chunk4096-active-tasks.json",
     )
     packets, hashes = {}, {}
     for name in names:
@@ -124,13 +125,43 @@ def assemble(root):
             count, tail = divmod(case["prompt_tokens"], size)
             if row["chunks"] != [size] * count + ([tail] if tail else []):
                 raise ValueError("boundary chunk trace mismatch")
+    tasks = packets["resume-chunk4096-active-tasks.json"]
+    if (tasks["status"] != "passed_supplemental" or not tasks["source"]["tracked_clean"]
+            or tasks["candidate"] != "production_baseline" or tasks["overrides"]
+            or tasks["model"] != depth["model"]
+            or tasks["protocol"] != {
+                "context": 4096, "repeats": 3, "max_tokens": 64,
+                "strict_chunk": 1024, "candidate_chunk": 4096}
+            or len(tasks["comparisons"]) != 6
+            or any(not all(row[key] for key in (
+                "valid", "strict_correct", "candidate_correct", "output_ids_exact"))
+                   for row in tasks["comparisons"])
+            or any(row["current_allocated_bytes"] for row in tasks["lifecycle"].values())):
+        raise ValueError("invalid chunk4096 active tasks")
+    for arm, chunks in (("strict", [1024] * 4), ("candidate", [4096])):
+        cases = tasks["cases"][arm]
+        if [case["id"] for case in cases] != [row["id"] for row in tasks["comparisons"]]:
+            raise ValueError("active task coverage mismatch")
+        for case in cases:
+            if (not case["correct"] or not case["repeated"] or len(case["runs"]) != 3
+                    or case["prompt"]["prompt_format"] != "qwen4exp_embedded"
+                    or case["prompt"]["enable_thinking"]
+                    or any(run != case["runs"][0] or not run["finite"]
+                           or run["finish"] != "eos" or run["prefill_chunks"] != chunks
+                           for run in case["runs"])):
+                raise ValueError("invalid active task repetition or chunk")
+    for before, after in zip(tasks["cases"]["strict"], tasks["cases"]["candidate"], strict=True):
+        if (before["prompt"] != after["prompt"]
+                or before["runs"][0]["ids"] != after["runs"][0]["ids"]
+                or before["runs"][0]["state_sha256"] != after["runs"][0]["state_sha256"]):
+            raise ValueError("active task parity does not reproduce")
     return dict(
         schema=2, status="accounting_and_canonical_numerics_passed_more_gates_pending",
         performance_claim=False, promotion_claim=False,
         raw_sha256=hashes, bounded_reconciliation=reconciled,
         captures=packets,
         limits=[
-            "Canonical and full-payload boundary/reuse gates pass; active-task, c2 inference and performance gates remain.",
+            "Canonical, boundary/reuse and active-task gates pass; c2 inference and performance gates remain.",
             "Native-c2 allocation is not native-depth generation qualification.",
             "The mandatory footprint excludes optional MMQ, graph, verification and transaction resources.",
             "The4GiB scratch floor and separate4GiB reserve remain; larger mandatory buffers raise accounting.",

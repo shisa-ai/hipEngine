@@ -65,7 +65,7 @@ All48 chunk traces match the declared sizes; at4K the candidate executes
 one4096-token call versus four1024-token reference calls.
 
 This is a bounded numerical pass, not a new default or speed claim.
-Active tasks, c2 inference and timing remain.
+c2 inference and timing remain.
 Exact capture argv and manifests are in `artifact.json`.
 
 ## Boundary And Reuse Gate
@@ -80,7 +80,19 @@ match strict at prefill and final decode endpoints. Intervening257-token
 prefills do not change the repeated result. All declared chunk traces
 match and tracked allocations return to zero.
 
-This is c1 full-payload/reuse evidence; c2 and active tasks remain separate.
+This is c1 full-payload/reuse evidence; c2 remains separate.
+
+## Active Tasks
+
+Clean `949447117`: all six4K active tasks return the correct whole option
+letter and reach EOS at strict1024 and production4096, three repeats each.
+Within-arm repeats, cross-arm output IDs and sampled state hashes match;
+finiteness and tracked teardown pass. All18 candidate generations use
+one4096-token chunk, versus four1024 calls for each strict generation.
+
+The existing embedded non-thinking template and task criterion are unchanged.
+This supplements the numerical and boundary gates; it is not a new full-EOS
+factual-quality certificate. c2 and performance qualification remain.
 
 ## Reproduction
 
