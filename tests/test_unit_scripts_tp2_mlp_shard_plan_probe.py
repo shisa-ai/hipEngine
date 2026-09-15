@@ -259,3 +259,69 @@ def test_every_rank_local_slice_covers_half_the_split_axis(mod) -> None:
             covered += stop - start
             assert (stop - start) == total // 2, name
         assert covered == total, name
+
+
+# ---------------------------------------------------------------------------
+# Device stage
+# ---------------------------------------------------------------------------
+
+
+def _rocm_available() -> bool:
+    import ctypes
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+requires_rocm = pytest.mark.skipif(not _rocm_available(), reason="no ROCm HIP runtime")
+
+
+@requires_rocm
+@requires_model
+def test_the_device_stage_matches_the_incumbent_resident_bytes(mod) -> None:
+    """The shard must be a sub-range of what the engine actually puts on the card.
+
+    Without this, a shard could be constructed correctly in isolation yet not be
+    a slice of the resident weight the TP1 path uses, and every segment time
+    measured on it would describe a different tensor.
+    """
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2, device=True)
+    stage = report["device_stage"]
+    assert stage["ran"] is not False
+    for name, entry in stage["slots"].items():
+        assert entry["resident_matches_host_repack"] is True, name
+        assert entry["device_nbytes"] == entry["host_repack_nbytes"], name
+        assert entry["allocation"] == "tiles"
+        for rank, shard in entry["ranks"].items():
+            assert shard["device_slice_equals_rank_payload"] is True, f"{name} rank {rank}"
+            assert shard["device_slice_compared"]
+    assert report["questions"]["device_resident_bytes_match_the_host_repack"]["answer"] is True
+    assert (
+        report["questions"]["rank_shard_is_a_sub_range_of_the_resident_weight"]["answer"]
+        is True
+    )
+
+
+@requires_rocm
+@requires_model
+def test_the_device_stage_does_not_claim_kernel_execution(mod) -> None:
+    """Reading back bytes is not running the segment; the scope must say so."""
+
+    report = mod.probe(model=GGUF_PATH, layer=0, world_size=2, device=True)
+    assert "does not qualify device" in report["scope"]
+    # No question may assert anything about kernel acceptance or execution.
+    for question in report["questions"]:
+        assert "kernel" not in question
+        assert "execute" not in question
+
+
+def test_the_device_stage_is_opt_in(mod) -> None:
+    """A host-only run must record that the device stage did not run."""
+
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert '"ran": False' in source
+    assert "run with --device on a ROCm host" in source

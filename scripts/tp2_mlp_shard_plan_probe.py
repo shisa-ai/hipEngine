@@ -62,6 +62,7 @@ from hipengine.loading.qwen35_gguf_admission import (  # noqa: E402
 from hipengine.kernels.backends import backend_package_capability  # noqa: E402
 from hipengine.loading.qwen35_gguf_materialize import (  # noqa: E402
     gguf_decode_repack_enabled,
+    materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
 )
 from hipengine.loading.qwen35_gguf_policy import resolve_gguf_dense_flags  # noqa: E402
@@ -190,6 +191,140 @@ def _t16_repack_tiles(
     return np.asarray(repack(expert).tiles)
 
 
+def device_stage(
+    *,
+    model: Path,
+    layer: int,
+    names: tuple[str, ...],
+    by_name: Mapping[str, Any],
+    reader: Any,
+    backend: str = "hip_gfx1100",
+) -> dict[str, Any]:
+    """Materialize the MLP slots on device through the incumbent path and check
+    that each rank's shard bytes are the corresponding sub-range of the TP1
+    resident bytes.
+
+    This is the device half of the prerequisite: the host probe shows the rank
+    payloads are the right bytes, and this shows those bytes are what the engine
+    actually puts on the card for the same plan - so the shard is a view of the
+    real resident layout rather than a parallel construction that happens to
+    match.
+    """
+
+    import ctypes
+
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.memory import copy_device_to_host
+
+    slots = []
+    for name in names:
+        slot = name.split(".", 2)[2]
+        slots.append(slot[: -len(".weight")] if slot.endswith(".weight") else slot)
+    selected = [f"layers.{int(layer)}.{slot}" for slot in slots]
+
+    resident = materialize_qwen35_gguf_weights(
+        str(model),
+        selected_slots=selected,
+        device=Device("hip", 0),
+        backend=backend,
+    )
+    try:
+        layer_weights = next(
+            entry for entry in resident.layers if int(entry.layer_id) == int(layer)
+        )
+        report: dict[str, Any] = {"ran": True, "slots": {}, "checked": True}
+        for name, slot in zip(names, slots):
+            weight = layer_weights.weight(slot)
+            allocation = weight.allocation(str(weight.spec.allocation_names[0]))
+            buffer = allocation.buffer
+            host = (ctypes.c_ubyte * int(buffer.nbytes))()
+            copy_device_to_host(ctypes.addressof(host), buffer)
+            device_bytes = bytes(host)
+
+            plan = by_name[name]
+            tensor = reader.tensor_info(name)
+            source = source_payload(
+                reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes
+            )
+            repack = _t16_repack_for(str(weight.spec.layout), str(tensor.ggml_type_name))
+            if repack is None:
+                raise ValueError(
+                    f"{name}: the incumbent resident layout {weight.spec.layout!r} is raw, "
+                    "so the device stage cannot compare repacked tiles"
+                )
+            full_tiles = np.ascontiguousarray(
+                _t16_repack_tiles(
+                    source,
+                    rows=int(plan.source_shape[0]),
+                    bytes_per_row=int(plan.source_row_bytes),
+                    quant_type=str(tensor.ggml_type_name),
+                    repack=repack,
+                )
+            )
+            # The resident allocation is the tiles array; compare it byte-wise
+            # against the host repack of the same source payload.
+            resident_matches_host = bool(device_bytes == full_tiles.tobytes())
+            entry: dict[str, Any] = {
+                "layout": str(weight.spec.layout),
+                "allocation": str(weight.spec.allocation_names[0]),
+                "device_nbytes": int(buffer.nbytes),
+                "host_repack_nbytes": int(full_tiles.nbytes),
+                "resident_matches_host_repack": resident_matches_host,
+                "ranks": {},
+            }
+            # Each rank's shard tiles must be a contiguous sub-range of the
+            # resident tiles, on the axis its split moves.
+            for shard in plan.slices:
+                local = materialize_slice(source, shard)
+                axis_start, axis_stop = shard.axis_ranges[0]
+                if plan.kind == "column":
+                    local_tiles = np.ascontiguousarray(
+                        _t16_repack_tiles(
+                            local,
+                            rows=int(axis_stop - axis_start),
+                            bytes_per_row=int(plan.source_row_bytes),
+                            quant_type=str(tensor.ggml_type_name),
+                            repack=repack,
+                        )
+                    )
+                    tile_start = int(axis_start) // GGUF_T16_COLS
+                    tile_stop = int(axis_stop) // GGUF_T16_COLS
+                    same = bool(
+                        np.array_equal(local_tiles[0], full_tiles[0, tile_start:tile_stop])
+                    )
+                    where = f"out_tiles[{tile_start}:{tile_stop}]"
+                else:
+                    local_bytes_per_row = int(shard.local_nbytes) // max(
+                        1, int(shard.local_shape[0])
+                    )
+                    local_tiles = np.ascontiguousarray(
+                        _t16_repack_tiles(
+                            local,
+                            rows=int(shard.local_shape[0]),
+                            bytes_per_row=local_bytes_per_row,
+                            quant_type=str(tensor.ggml_type_name),
+                            repack=repack,
+                        )
+                    )
+                    block_start = int(axis_start) // int(plan.block_size)
+                    block_stop = int(axis_stop) // int(plan.block_size)
+                    same = bool(
+                        np.array_equal(local_tiles[0], full_tiles[0, :, block_start:block_stop])
+                    )
+                    where = f"blocks[{block_start}:{block_stop}]"
+                entry["ranks"][str(shard.rank)] = {
+                    "device_slice_equals_rank_payload": same,
+                    "device_slice_compared": where,
+                }
+            report["slots"][name] = entry
+            del source, full_tiles, device_bytes, host
+        return report
+    finally:
+        resident.free()
+
+
 def _t16_admissible(*, out_features: int, bytes_per_row: int, block_bytes: int) -> dict[str, Any]:
     """The t16 repack's own admissibility test, applied to a local shape."""
 
@@ -213,6 +348,7 @@ def probe(
     world_size: int,
     activation_dtype: str = "bf16",
     output_dtype: str = "bf16",
+    device: bool = False,
 ) -> dict[str, Any]:
     info = scan_gguf(str(model))
     config = qwen35_gguf_config_from_metadata(info)
@@ -472,6 +608,45 @@ def probe(
             "chain. Resolve in the execution test."
         ),
     }
+    if device:
+        report["device_stage"] = device_stage(
+            model=model,
+            layer=int(layer),
+            names=names,
+            by_name=by_name,
+            reader=reader,
+        )
+        stage = report["device_stage"]
+        report["questions"]["device_resident_bytes_match_the_host_repack"] = {
+            "answer": bool(
+                all(
+                    entry["resident_matches_host_repack"] for entry in stage["slots"].values()
+                )
+            ),
+            "evidence": (
+                "the resident tiles allocation read back from the device equals the host "
+                "repack of the same source payload, through the incumbent materializer"
+            ),
+        }
+        report["questions"]["rank_shard_is_a_sub_range_of_the_resident_weight"] = {
+            "answer": bool(
+                all(
+                    shard["device_slice_equals_rank_payload"]
+                    for entry in stage["slots"].values()
+                    for shard in entry["ranks"].values()
+                )
+            ),
+            "evidence": (
+                "each rank's repacked shard tiles equal the corresponding slice of the "
+                "device-resident tiles on the axis its split moves"
+            ),
+        }
+    else:
+        report["device_stage"] = {
+            "ran": False,
+            "note": "run with --device on a ROCm host to materialize through the incumbent path",
+        }
+
     report["next"] = (
         "measure complete TP1 and local-shard MLP segment walls on both cards, connect the "
         "shard outputs through the native exchange into the next consumer, and validate "
@@ -487,9 +662,19 @@ def main() -> int:
     parser.add_argument("--layer", type=int, default=0)
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--json", type=Path, default=None)
+    parser.add_argument(
+        "--device",
+        action="store_true",
+        help="also materialize the MLP slots through the incumbent path and compare on device",
+    )
     args = parser.parse_args()
 
-    report = probe(model=args.model, layer=args.layer, world_size=args.world_size)
+    report = probe(
+        model=args.model,
+        layer=args.layer,
+        world_size=args.world_size,
+        device=bool(args.device),
+    )
     text = json.dumps(report, indent=2) + "\n"
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
