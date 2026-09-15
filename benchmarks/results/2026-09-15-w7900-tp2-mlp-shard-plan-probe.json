@@ -1,15 +1,42 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-shard-plan-probe",
-  "generated_at": "2026-09-14T20:56:42Z",
+  "generated_at": "2026-09-15T02:36:32Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
-  "model_hash": "mlp-probe",
+  "model_hash": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
   "layer": 0,
   "world_size": 2,
   "hidden_size": 5120,
-  "manifest_hash": "a3c81c9993a3578fca786c9146cc212603833d2d4dbcfdddedd73bd86279c7e6",
+  "manifest_hash": "5b2051b1349fe3c820bcc63d2e5359af7dd3b8cc328fefa5d0c71064e9bff958",
   "activation_dtype": "bf16",
   "output_dtype": "bf16",
+  "plan_context": {
+    "decode_repack": true,
+    "dense_flags": {
+      "dense_q4_qmicro_t16_gate_up": false,
+      "dense_q4_t16": true,
+      "dense_q4_t16_attn_q_08b": false,
+      "dense_q5_qmicro_planar_ssm_out": false,
+      "dense_q5_raw_mmq_ssm_out": true,
+      "dense_q5_t16_h5120": true,
+      "dense_q5_t16_qkv": false,
+      "dense_q5_t16_ssm_out": true,
+      "dense_q5_t16_ssm_out_08b": false,
+      "dense_q6_qmicro_planar": true,
+      "dense_q6_qmicro_planar_excluded_slots": []
+    },
+    "backend": "hip_gfx1100"
+  },
+  "inventory": {
+    "ar_blocks": 64,
+    "full_attention_blocks": 16,
+    "linear_attention_gdn_blocks": 48,
+    "excluded_blocks": [
+      64
+    ],
+    "note": "the excluded block is the MTP/NextN block and is not part of the AR cost model; the AR model is 16 full-attention + 48 GDN blocks"
+  },
+  "scope": "host-payload prerequisite only: this artifact does not qualify device execution, and passing it does not show that any kernel consumes these bytes correctly",
   "tensors": {
     "blk.0.ffn_gate.weight": {
       "source_shape": [
@@ -22,12 +49,14 @@
       "split_axis": 0,
       "block_size": 256,
       "type_size": 144,
-      "resident_layout": "gguf_q4_k_t16_v1",
-      "quant_key": "gguf_q4_k_t16_v1",
-      "tp1_dispatch": {
-        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-        "abi": "t16"
+      "incumbent_spec": {
+        "layout": "gguf_q4_k_t16_v1",
+        "quant_key": "gguf_q4_k_t16_v1",
+        "allocation_names": [
+          "tiles"
+        ]
       },
+      "repack": "repack_gguf_q4_k_tile16",
       "ranks": {
         "0": {
           "axis_ranges": [
@@ -51,9 +80,8 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true,
-          "repack_commutes_with_split": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "out_tiles[0:544]"
         },
         "1": {
           "axis_ranges": [
@@ -77,9 +105,8 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true,
-          "repack_commutes_with_split": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "out_tiles[544:1088]"
         }
       },
       "repack_commutes_with_split": true,
@@ -96,12 +123,14 @@
       "split_axis": 0,
       "block_size": 256,
       "type_size": 144,
-      "resident_layout": "gguf_q4_k_t16_v1",
-      "quant_key": "gguf_q4_k_t16_v1",
-      "tp1_dispatch": {
-        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-        "abi": "t16"
+      "incumbent_spec": {
+        "layout": "gguf_q4_k_t16_v1",
+        "quant_key": "gguf_q4_k_t16_v1",
+        "allocation_names": [
+          "tiles"
+        ]
       },
+      "repack": "repack_gguf_q4_k_tile16",
       "ranks": {
         "0": {
           "axis_ranges": [
@@ -125,9 +154,8 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true,
-          "repack_commutes_with_split": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "out_tiles[0:544]"
         },
         "1": {
           "axis_ranges": [
@@ -151,9 +179,8 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
-          "dispatch_matches_tp1": true,
-          "repack_commutes_with_split": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "out_tiles[544:1088]"
         }
       },
       "repack_commutes_with_split": true,
@@ -170,12 +197,14 @@
       "split_axis": 1,
       "block_size": 256,
       "type_size": 210,
-      "resident_layout": "raw_gguf",
-      "quant_key": "gguf_q6_k",
-      "tp1_dispatch": {
-        "key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
-        "abi": "raw"
+      "incumbent_spec": {
+        "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+        "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+        "allocation_names": [
+          "tiles"
+        ]
       },
+      "repack": "repack_gguf_q6_k_tile16_qmicro_planar",
       "ranks": {
         "0": {
           "axis_ranges": [
@@ -199,8 +228,8 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "blocks[0:34]"
         },
         "1": {
           "axis_ranges": [
@@ -224,11 +253,11 @@
             "bytes_per_row_divisible": true,
             "admissible": true
           },
-          "dispatch_key": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k', variant='gemv_bf16_bf16_out')",
-          "dispatch_matches_tp1": true
+          "repack_commutes_with_split": true,
+          "repack_slice_compared": "blocks[34:68]"
         }
       },
-      "repack_commutes_with_split": null,
+      "repack_commutes_with_split": true,
       "round_trip_bit_exact": true
     }
   },
@@ -248,29 +277,70 @@
       "answer": true,
       "evidence": "the t16 repack's own divisibility test applied to each local shape"
     },
-    "t16_repack_commutes_with_the_split": {
+    "repack_commutes_with_the_split": {
       "answer": true,
-      "evidence": "repack of each rank-local slice equals the corresponding tile range of the full-tensor repack, so a rank repacks its own slice",
+      "evidence": "repack of each rank-local slice equals the corresponding range of the full-tensor repack, on the axis the split actually moves",
       "tensors_checked": [
         "blk.0.ffn_gate.weight",
-        "blk.0.ffn_up.weight"
-      ],
-      "not_applicable": [
+        "blk.0.ffn_up.weight",
         "blk.0.ffn_down.weight"
-      ]
+      ],
+      "not_applicable": []
     },
-    "shard_dispatch_needs_no_new_kernel": {
+    "layouts_resolved_from_the_incumbent_planner": {
       "answer": true,
-      "evidence": "resolve_gguf_linear_dispatch for the shard-shaped weight equals the TP1 dispatch key; the weight row count is a launch parameter, not a dispatch key"
+      "evidence": "each tensor's layout, quant_key and allocations come from plan_qwen35_gguf_materialization under the capability and environment flags a real load resolves, not from a hardcoded table",
+      "tensors": {
+        "blk.0.ffn_gate.weight": {
+          "layout": "gguf_q4_k_t16_v1",
+          "quant_key": "gguf_q4_k_t16_v1",
+          "allocation_names": [
+            "tiles"
+          ]
+        },
+        "blk.0.ffn_up.weight": {
+          "layout": "gguf_q4_k_t16_v1",
+          "quant_key": "gguf_q4_k_t16_v1",
+          "allocation_names": [
+            "tiles"
+          ]
+        },
+        "blk.0.ffn_down.weight": {
+          "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+          "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+          "allocation_names": [
+            "tiles"
+          ]
+        }
+      }
     }
   },
   "reduction_point": {
     "kind": "all_reduce",
     "per_layer_count": 1,
     "elements": 5120,
-    "dtype": "fp32",
-    "payload_bytes": 20480,
-    "note": "the down projection is row-parallel, so each rank holds a partial output over the full hidden size and the partials are summed once per layer; this is the payload the transport screen already measured"
+    "options": [
+      {
+        "name": "fp32_partials",
+        "partial_dtype": "f32",
+        "reduce_dtype": "f32",
+        "payload_bytes": 20480,
+        "note": "the down projection must emit f32 for this option",
+        "incumbent_down_output_dtype": "bf16",
+        "requires_output_dtype_change": true
+      },
+      {
+        "name": "bf16_partials_then_fp32_sum",
+        "partial_dtype": "bf16",
+        "reduce_dtype": "f32",
+        "payload_bytes": 10240,
+        "note": "converting bf16 partials to f32 before summing does not recover the precision already lost at the bf16 rounding of each partial; the conversion also costs host or device time that the payload halves",
+        "incumbent_down_output_dtype": "bf16",
+        "requires_output_dtype_change": false
+      }
+    ],
+    "selected": null,
+    "selection_reason": "unresolved: the partial dtype must match the down projection's actual output dtype, and the incumbent down spec resolves to 'gguf_q6_k_t16_qmicro_planar_v1' with output 'bf16'. Choosing the payload before resolving that would compare a bf16 exchange against an f32 arithmetic chain. Resolve in the execution test."
   },
   "next": "measure complete TP1 and local-shard MLP segment walls on both cards, connect the shard outputs through the native exchange into the next consumer, and validate against the CPU split oracle and the TP1 teacher under the production numerical contract"
 }

@@ -133,6 +133,14 @@ def test_verification_checks_both_ranks_and_rejects_nonfinite() -> None:
     assert "elements_per_rank" in source
 
 
+def _driver_source() -> str:
+    return (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "tp_staged_exchange_native_ab.py"
+    ).read_text(encoding="utf-8")
+
+
 def test_the_timed_recurrence_is_checked_where_it_is_representable() -> None:
     """The timed path's own arithmetic must be verified, not only the bounded one."""
 
@@ -141,3 +149,42 @@ def test_the_timed_recurrence_is_checked_where_it_is_representable() -> None:
     # Saturation is allowed only when the closed form itself overflows fp32.
     assert "saturation_expected" in source
     assert "closed form overflows fp32" in source
+
+
+def test_the_driver_keeps_every_repetition_verdict() -> None:
+    """Timing from a failed repetition must not ride on a later passing verdict."""
+
+    source = _driver_source()
+    assert "python_ladders: list[dict[str, Any]] = []" in source
+    assert "python_ladders.append(result)" in source
+    # The verdict is an aggregate over repetitions, not the last one alone.
+    assert "python_verdicts" in source
+    assert "python_repetitions_passed" in source
+    assert '"python_repetitions_passed"' in source
+    assert '"native_repetitions_passed"' in source
+    assert "len(python_verdicts) == args.reps" in source
+
+
+def test_a_missing_vector_check_is_a_failure_not_an_unknown() -> None:
+    """Every repetition must verify the whole vector on both ranks."""
+
+    source = _driver_source()
+    assert "full_vector_matches" in source
+    assert "ranks_agree" in source
+    assert "rank_seeds_differ" in source
+    assert "A missing vector check is a failure, not an unknown" in source
+
+
+def test_the_python_arm_closes_its_transport() -> None:
+    """A live RCCL communicator holds device handles across repetitions."""
+
+    source = _driver_source()
+    assert "transport.close()" in source
+    # Buffers first, then the transport.
+    assert source.index("free(buffer)") < source.index("transport.close()")
+
+
+def test_the_provisional_flag_is_derived_from_every_check() -> None:
+    source = _driver_source()
+    assert "matched = all(match.values())" in source
+    assert '"provisional": not matched' in source
