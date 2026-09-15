@@ -2992,6 +2992,7 @@ class Qwen35GGUFFullStackRunner:
     execution_routes: tuple[str, ...] = ("eager",)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
+    deferred_device_slots: tuple[str, ...] = ()
     use_selective_weight_arena: bool = False
     selective_weight_max_allocation_bytes: int = (
         GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
@@ -3049,7 +3050,14 @@ class Qwen35GGUFFullStackRunner:
                 )
                 materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
             if placement == "host":
-                materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
+                materialize_kwargs["deferred_device_slots"] = (
+                    "root.token_embedding",
+                )
+            if self.deferred_device_slots:
+                merged = tuple(materialize_kwargs.get("deferred_device_slots", ()))
+                materialize_kwargs["deferred_device_slots"] = tuple(
+                    dict.fromkeys(merged + tuple(self.deferred_device_slots))
+                )
             if self.use_selective_weight_arena:
                 materialize_kwargs["use_selective_weight_arena"] = True
                 materialize_kwargs["selective_weight_max_allocation_bytes"] = int(

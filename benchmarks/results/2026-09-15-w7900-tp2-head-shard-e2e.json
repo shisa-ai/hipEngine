@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "kind": "tp2-mlp-generate-e2e",
- "generated_at": "2026-09-15T20:22:05Z",
+ "generated_at": "2026-09-15T20:09:22Z",
  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
  "model_fingerprint": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
  "world_size": 2,
@@ -91,7 +91,7 @@
      "total_gib": 44.984
     }
    },
-   "build_s": 88.9,
+   "build_s": 88.12,
    "generations": [
     {
      "prompt": "Write a Python function that reverses a list.",
@@ -127,20 +127,20 @@
      ],
      "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 109.77,
+     "prefill_first_token_ms": 116.62,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 31.793,
-      "min": 31.715,
-      "max": 31.879
+      "p50": 31.81,
+      "min": 31.718,
+      "max": 31.984
      },
      "stage_sums_s": {
-      "add_norm": 0.0435,
-      "attention": 0.3247,
-      "embedding": 0.0436,
-      "head_sample": 0.3299,
-      "mlp": 0.1132,
-      "residual_add": 0.0414
+      "add_norm": 0.045,
+      "attention": 0.3406,
+      "embedding": 0.0429,
+      "head_sample": 0.3159,
+      "mlp": 0.1166,
+      "residual_add": 0.0427
      }
     },
     {
@@ -171,20 +171,20 @@
      ],
      "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 31.84,
+     "prefill_first_token_ms": 31.24,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 31.802,
-      "min": 31.707,
-      "max": 32.275
+      "p50": 31.79,
+      "min": 31.701,
+      "max": 31.891
      },
      "stage_sums_s": {
-      "add_norm": 0.0335,
-      "attention": 0.2223,
-      "embedding": 0.0033,
-      "head_sample": 0.2591,
-      "mlp": 0.0851,
-      "residual_add": 0.0313
+      "add_norm": 0.0339,
+      "attention": 0.2234,
+      "embedding": 0.0031,
+      "head_sample": 0.2554,
+      "mlp": 0.0858,
+      "residual_add": 0.0316
      }
     },
     {
@@ -214,20 +214,20 @@
      ],
      "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 31.8,
+     "prefill_first_token_ms": 31.86,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 31.786,
-      "min": 31.724,
-      "max": 31.885
+      "p50": 31.781,
+      "min": 31.695,
+      "max": 31.927
      },
      "stage_sums_s": {
-      "add_norm": 0.0314,
-      "attention": 0.206,
-      "embedding": 0.0028,
-      "head_sample": 0.254,
-      "mlp": 0.079,
-      "residual_add": 0.0292
+      "add_norm": 0.0317,
+      "attention": 0.2094,
+      "embedding": 0.0029,
+      "head_sample": 0.2478,
+      "mlp": 0.081,
+      "residual_add": 0.0299
      }
     },
     {
@@ -259,20 +259,20 @@
      ],
      "generated_text": " France and the largest city in the country. It is located in the north-central",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 31.74,
+     "prefill_first_token_ms": 31.82,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 31.785,
-      "min": 31.741,
-      "max": 31.915
+      "p50": 31.8,
+      "min": 31.75,
+      "max": 31.891
      },
      "stage_sums_s": {
-      "add_norm": 0.0356,
-      "attention": 0.2353,
+      "add_norm": 0.036,
+      "attention": 0.2375,
       "embedding": 0.0032,
-      "head_sample": 0.2677,
-      "mlp": 0.0905,
-      "residual_add": 0.0332
+      "head_sample": 0.2643,
+      "mlp": 0.0914,
+      "residual_add": 0.0337
      }
     }
    ]
@@ -297,7 +297,7 @@
      "total_gib": 23.984
     }
    },
-   "build_s": 86.36,
+   "build_s": 88.64,
    "generations": [
     {
      "prompt": "Write a Python function that reverses a list.",
@@ -333,19 +333,19 @@
      ],
      "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 51.92,
+     "prefill_first_token_ms": 57.07,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 26.311,
-      "min": 26.203,
-      "max": 27.593
+      "p50": 26.293,
+      "min": 26.204,
+      "max": 26.378
      },
      "stage_sums_s": {
-      "add_norm": 0.0437,
-      "attention": 0.3077,
-      "embedding": 0.0054,
-      "head_sample": 0.1939,
-      "mlp": 0.1117,
+      "add_norm": 0.0446,
+      "attention": 0.3183,
+      "embedding": 0.0055,
+      "head_sample": 0.1832,
+      "mlp": 0.114,
       "residual_add": 0.0414
      }
     },
@@ -377,20 +377,20 @@
      ],
      "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 26.32,
+     "prefill_first_token_ms": 26.11,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 26.281,
-      "min": 26.219,
-      "max": 26.396
+      "p50": 26.27,
+      "min": 26.217,
+      "max": 26.367
      },
      "stage_sums_s": {
-      "add_norm": 0.0327,
-      "attention": 0.2137,
-      "embedding": 0.0028,
-      "head_sample": 0.1619,
-      "mlp": 0.0824,
-      "residual_add": 0.0305
+      "add_norm": 0.0335,
+      "attention": 0.221,
+      "embedding": 0.0029,
+      "head_sample": 0.1492,
+      "mlp": 0.0851,
+      "residual_add": 0.0312
      }
     },
     {
@@ -420,20 +420,20 @@
      ],
      "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 26.3,
+     "prefill_first_token_ms": 26.22,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 26.311,
-      "min": 26.239,
-      "max": 26.413
+      "p50": 26.274,
+      "min": 26.217,
+      "max": 26.353
      },
      "stage_sums_s": {
-      "add_norm": 0.0315,
-      "attention": 0.2077,
-      "embedding": 0.0029,
-      "head_sample": 0.1471,
-      "mlp": 0.0797,
-      "residual_add": 0.0294
+      "add_norm": 0.0318,
+      "attention": 0.2101,
+      "embedding": 0.0026,
+      "head_sample": 0.1423,
+      "mlp": 0.081,
+      "residual_add": 0.0297
      }
     },
     {
@@ -465,20 +465,20 @@
      ],
      "generated_text": " France and the largest city in the country. It is located in the north-central",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 26.26,
+     "prefill_first_token_ms": 26.38,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 26.299,
-      "min": 26.246,
-      "max": 26.385
+      "p50": 26.302,
+      "min": 26.223,
+      "max": 26.422
      },
      "stage_sums_s": {
-      "add_norm": 0.0348,
-      "attention": 0.2279,
-      "embedding": 0.0029,
-      "head_sample": 0.1639,
-      "mlp": 0.0881,
-      "residual_add": 0.0326
+      "add_norm": 0.0357,
+      "attention": 0.2352,
+      "embedding": 0.003,
+      "head_sample": 0.1531,
+      "mlp": 0.0906,
+      "residual_add": 0.0331
      }
     }
    ]
@@ -489,7 +489,7 @@
    "driver": "compiled",
    "schedule": "graphed",
    "reduce_mode": "device",
-   "head_shard": null,
+   "head_shard": true,
    "mlp_decode_variant": "dense_dual_local32_bf16_bf16_out",
    "devices": [
     0,
@@ -509,7 +509,7 @@
      "total_gib": 23.984
     }
    },
-   "build_s": 245.1,
+   "build_s": 255.11,
    "generations": [
     {
      "prompt": "Write a Python function that reverses a list.",
@@ -545,18 +545,18 @@
      ],
      "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 26.69,
+     "prefill_first_token_ms": 26.5,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 24.146,
-      "min": 24.012,
-      "max": 24.255
+      "p50": 24.096,
+      "min": 24.0,
+      "max": 24.164
      },
      "stage_sums_s": {
-      "embedding": 0.0069,
-      "head_sample": 0.027,
-      "layers": 0.027,
-      "tail": 0.5651
+      "embedding": 0.0067,
+      "head_sample": 0.0271,
+      "layers": 0.0258,
+      "tail": 0.5655
      }
     },
     {
@@ -587,18 +587,18 @@
      ],
      "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 24.2,
+     "prefill_first_token_ms": 24.29,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 24.148,
-      "min": 24.098,
-      "max": 24.256
+      "p50": 24.067,
+      "min": 23.979,
+      "max": 24.134
      },
      "stage_sums_s": {
-      "embedding": 0.0055,
-      "head_sample": 0.021,
-      "layers": 0.0205,
-      "tail": 0.4357
+      "embedding": 0.0051,
+      "head_sample": 0.0204,
+      "layers": 0.0172,
+      "tail": 0.4382
      }
     },
     {
@@ -628,18 +628,18 @@
      ],
      "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 24.19,
+     "prefill_first_token_ms": 24.14,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 24.091,
-      "min": 24.031,
-      "max": 24.296
+      "p50": 24.055,
+      "min": 23.981,
+      "max": 24.175
      },
      "stage_sums_s": {
-      "embedding": 0.005,
+      "embedding": 0.0048,
       "head_sample": 0.0194,
-      "layers": 0.0172,
-      "tail": 0.4161
+      "layers": 0.0167,
+      "tail": 0.4158
      }
     },
     {
@@ -671,18 +671,18 @@
      ],
      "generated_text": " France and the largest city in the country. It is located in the north-central",
      "finished_on_eos": false,
-     "prefill_first_token_ms": 24.31,
+     "prefill_first_token_ms": 24.22,
      "decode_walls_ms": {
       "n": 16,
-      "p50": 24.198,
-      "min": 24.001,
-      "max": 24.387
+      "p50": 24.094,
+      "min": 24.02,
+      "max": 24.313
      },
      "stage_sums_s": {
-      "embedding": 0.0058,
-      "head_sample": 0.022,
-      "layers": 0.0212,
-      "tail": 0.458
+      "embedding": 0.0056,
+      "head_sample": 0.0216,
+      "layers": 0.0185,
+      "tail": 0.4603
      }
     }
    ],
@@ -702,9 +702,9 @@
  ],
  "comparison": {
   "decode_p50_ms": {
-   "tp1_device0": 31.79,
-   "tp1_device1": 26.305,
-   "tp2": 24.147
+   "tp1_device0": 31.795,
+   "tp1_device1": 26.284,
+   "tp2": 24.081
   },
   "reading": "matched-composition decode walls on the diagnostic schedule; the TP2 wall includes the replicated attention/GDN cost and one staged reduction per layer"
  }
