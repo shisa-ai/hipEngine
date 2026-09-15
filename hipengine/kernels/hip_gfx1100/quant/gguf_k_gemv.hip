@@ -752,11 +752,11 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
 // activation staging (fp32 scales; T1 production-correctness candidate for
 // the GR up owner). The raw signed Q8_0 codes are the integer B operand
 // (weight path has no requantization at all; Q8_0 has no min-offset term).
-constexpr int GR_IU8_ACT_PLANES = 3;
 constexpr int GR_IU8_LDS_ROW_STRIDE = 256 + 16;  // bank-conflict padding
 typedef int __attribute__((vector_size(8 * sizeof(int)))) gr_iu8_int32x8;
 typedef int __attribute__((vector_size(4 * sizeof(int)))) gr_iu8_int32x4;
 
+template <int GR_IU8_ACT_PLANES = 3, bool COMPENSATED = false>
 __global__ __launch_bounds__(128, 2)
 void q8_0_iu8_wmma_prefill_f32_f32_kernel(
     const float* __restrict__ x,
@@ -787,6 +787,7 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
       : nullptr;
 
   float sum[16];
+  float sum_error[16] = {};
 #pragma unroll
   for (int r = 0; r < 16; ++r) {
     sum[r] = 0.0f;
@@ -930,7 +931,14 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
             const int* cr = reinterpret_cast<const int*>(&acc[plane]);
             main_sum += da * static_cast<float>(cr[i]);
           }
-          sum[r] += dsub * main_sum;
+          if constexpr (COMPENSATED) {
+            const float term = dsub * main_sum - sum_error[r];
+            const float updated = sum[r] + term;
+            sum_error[r] = (updated - sum[r]) - term;
+            sum[r] = updated;
+          } else {
+            sum[r] += dsub * main_sum;
+          }
         }
       }
     }
@@ -4786,6 +4794,7 @@ int launch_gguf_k_selected_silu_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int PLANES = 3, bool COMPENSATED = false>
 static int launch_q8_0_iu8_wmma_prefill_f32_f32(
     const float* x,
     const uint8_t* qweight,
@@ -4804,7 +4813,7 @@ static int launch_q8_0_iu8_wmma_prefill_f32_f32(
       static_cast<unsigned int>((out_features + 127) / 128),
       static_cast<unsigned int>(row_tiles));
   hipLaunchKernelGGL(
-      (q8_0_iu8_wmma_prefill_f32_f32_kernel),
+      (q8_0_iu8_wmma_prefill_f32_f32_kernel<PLANES, COMPENSATED>),
       grid, block, 0, stream,
       x, qweight, out,
       static_cast<int>(rows),
@@ -4845,6 +4854,24 @@ extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t(
       static_cast<const uint8_t*>(qweight),
       static_cast<float*>(out),
       rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_iu8_p4_prefill_f32_f32_t(
+    const void* x, const void* qweight, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  (void)threads;
+  return launch_q8_0_iu8_wmma_prefill_f32_f32<4, false>(
+      static_cast<const float*>(x), static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out), rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_iu8_compensated_prefill_f32_f32_t(
+    const void* x, const void* qweight, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  (void)threads;
+  return launch_q8_0_iu8_wmma_prefill_f32_f32<3, true>(
+      static_cast<const float*>(x), static_cast<const uint8_t*>(qweight),
+      static_cast<float*>(out), rows, in_features, out_features, stream);
 }
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \

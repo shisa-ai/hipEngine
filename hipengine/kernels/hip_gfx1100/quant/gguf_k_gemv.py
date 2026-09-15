@@ -1554,6 +1554,10 @@ gguf_q8_0_iu8_wmma_prefill_f32_f32_t = _make_wrapper(
     "gguf_q8_0",
     "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t",
 )
+gguf_q8_0_iu8_p4_prefill_f32_f32_t = _make_wrapper(
+    "gguf_q8_0", "hipengine_gguf_q8_0_iu8_p4_prefill_f32_f32_t")
+gguf_q8_0_iu8_compensated_prefill_f32_f32_t = _make_wrapper(
+    "gguf_q8_0", "hipengine_gguf_q8_0_iu8_compensated_prefill_f32_f32_t")
 
 
 _WRAPPERS = {

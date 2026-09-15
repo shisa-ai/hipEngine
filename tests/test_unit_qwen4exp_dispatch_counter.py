@@ -87,9 +87,11 @@ def test_explicit_direct_reference_does_not_count_compatibility_wrapper(monkeypa
 
 def test_real_gr_alias_and_candidate_scopes_match():
     from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
-    from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
-    resolve_allocation_profile()
+    register_gguf_k_gemv_kernels(replace=True)
+    register_gfx1151_kernels()
     for name, enabled in (
         ("production_gr_up_restore", "GR_IU8"),
         ("production_gr_down_restore", "GR_IU8_DOWN"),

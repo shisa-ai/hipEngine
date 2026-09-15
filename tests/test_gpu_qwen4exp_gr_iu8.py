@@ -207,7 +207,7 @@ class Qwen4ExpQ8Iu8DenseDispatchTests(unittest.TestCase):
     def test_dense_dispatch_default_off_and_gated(self):
         import hipengine.runtime.gguf_linear as gl
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
-        register_gguf_k_gemv_kernels(replace=False)
+        register_gguf_k_gemv_kernels(replace=True)
         saved = os.environ.pop(self.FLAG, None)
         try:
             registered = gl.is_registered(
