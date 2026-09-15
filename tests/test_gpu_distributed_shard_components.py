@@ -187,3 +187,160 @@ def test_two_rank_shard_chain_matches_the_cpu_oracle() -> None:
             rank.close()
         for stream in streams.values():
             runtime.stream_destroy(stream)
+
+
+@needs_two_gpus
+def test_shard_rank_stages_its_input_from_a_device_row() -> None:
+    """write_input_from_device is a same-device D2D copy with host staging."""
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.runtime import MemcpyKind
+    from hipengine.distributed.shard_exec import MlpShardRank, upload_shard_weight
+
+    runtime = get_hip_runtime()
+    device = 1  # the second physical GPU, not the process default
+    with scoped_current_device(runtime, device):
+        stream = runtime.stream_create(nonblocking=True)
+    weights = {
+        role: upload_shard_weight(
+            runtime,
+            device=device,
+            name=f"raw.{role}",
+            layout="dense_bf16",
+            quant_key="dense_bf16",
+            payload=np.full((4, 8), 3, dtype=np.uint8),
+        )
+        for role in ("ffn_gate", "ffn_up", "ffn_down")
+    }
+    rank = MlpShardRank(
+        runtime, device=device, stream=stream, weights=weights, hidden=8, per_rank_ffn=4
+    )
+    try:
+        source = np.arange(16, dtype=np.uint8).reshape(-1)
+        with scoped_current_device(runtime, device):
+            src_buf = int(runtime.malloc(16))
+            runtime.memcpy(
+                src_buf,
+                source.ctypes.data,
+                16,
+                MemcpyKind.HOST_TO_DEVICE,
+            )
+        rank.write_input_from_device(src_buf)
+        readback = rank.read_input()
+        assert np.array_equal(readback, source), (
+            "the D2D stage must land the same bytes the device row holds"
+        )
+    finally:
+        with scoped_current_device(runtime, device):
+            runtime.free(src_buf)
+        rank.close()
+        runtime.stream_destroy(stream)
+
+
+@needs_two_gpus
+def test_the_shard_group_runs_both_ranks_and_reduces_to_bf16() -> None:
+    """The group forward: real ranks, real exchange, bf16 boundary per rank.
+
+    Tiny bf16 shards; the oracle is the same per-rank f32 chain the component
+    test above pins, summed and rounded to bf16 at the group's boundary.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.runtime import MemcpyKind
+    from hipengine.distributed.shard_exec import upload_shard_weight
+    from hipengine.distributed.shard_group import MlpShardGroup
+
+    runtime = get_hip_runtime()
+    devices = (0, 1)
+    hidden, full_ffn = 16, 8
+    per_rank = full_ffn // 2
+    scale = 0.05
+    rng = np.random.default_rng(11)
+
+    gate_f = (rng.standard_normal((full_ffn, hidden)) * scale).astype(np.float32)
+    up_f = (rng.standard_normal((full_ffn, hidden)) * scale).astype(np.float32)
+    down_f = (rng.standard_normal((hidden, full_ffn)) * scale).astype(np.float32)
+    gate_b = _bf16_bytes(gate_f)
+    up_b = _bf16_bytes(up_f)
+    down_b = _bf16_bytes(down_f)
+    x_f32 = (rng.standard_normal(hidden) * scale).astype(np.float32)
+    x_bf16 = _bf16_round(x_f32)
+    x_bf16_bytes = _bf16_bytes(x_f32).reshape(-1)
+
+    gate_v = _bf16_values_from_bytes(gate_b)
+    up_v = _bf16_values_from_bytes(up_b)
+    down_v = _bf16_values_from_bytes(down_b)
+    partials = []
+    for rank in range(2):
+        g = (x_bf16 @ gate_v[rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32)
+        u = (x_bf16 @ up_v[rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32)
+        act = _bf16_round(_silu(g) * u)
+        partials.append((act @ down_v[:, rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32))
+    expected_bf16 = _bf16_round(partials[0] + partials[1])
+
+    streams = {}
+    for d in devices:
+        with scoped_current_device(runtime, d):
+            streams[d] = runtime.stream_create(nonblocking=True)
+    weights = {
+        0: {
+            d: {
+                role: upload_shard_weight(
+                    runtime,
+                    device=d,
+                    name="raw",
+                    layout="dense_bf16",
+                    quant_key="dense_bf16",
+                    payload=(
+                        gate_b[d * per_rank : (d + 1) * per_rank]
+                        if role == "ffn_gate"
+                        else up_b[d * per_rank : (d + 1) * per_rank]
+                        if role == "ffn_up"
+                        else down_b[:, d * per_rank : (d + 1) * per_rank]
+                    ),
+                )
+                for role in ("ffn_gate", "ffn_up", "ffn_down")
+            }
+            for d in devices
+        }
+    }
+    group = MlpShardGroup(
+        runtime,
+        devices=devices,
+        streams=streams,
+        hidden=hidden,
+        per_rank_ffn=per_rank,
+        weights=weights,
+    )
+    inputs = {}
+    try:
+        for d in devices:
+            with scoped_current_device(runtime, d):
+                buf = runtime.malloc(hidden * 2)
+                runtime.memcpy(
+                    int(buf),
+                    x_bf16_bytes.ctypes.data,
+                    hidden * 2,
+                    MemcpyKind.HOST_TO_DEVICE,
+                )
+                inputs[d] = int(buf)
+        outputs = group.forward(0, inputs)
+        assert group.reductions == 1
+        for d in devices:
+            out = np.empty(hidden, dtype="<u2")
+            with scoped_current_device(runtime, d):
+                runtime.memcpy(
+                    out.ctypes.data, outputs[d], hidden * 2, MemcpyKind.DEVICE_TO_HOST
+                )
+            got = (out.astype("<u4") << 16).view("<f4")
+            assert np.abs(got - expected_bf16).max() < 2e-2, (
+                f"rank {d}'s bf16 output left the contract"
+            )
+    finally:
+        group.close()
+        for d in devices:
+            with scoped_current_device(runtime, d):
+                runtime.free(inputs[d])
+                runtime.stream_destroy(streams[d])

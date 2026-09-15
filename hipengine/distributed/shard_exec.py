@@ -138,12 +138,19 @@ class MlpShardRank:
         weights: Mapping[str, ShardWeight],
         hidden: int,
         per_rank_ffn: int,
+        partial_dtype: str = "f32",
     ) -> None:
+        if partial_dtype not in {"f32", "bf16"}:
+            raise ValueError(
+                f"unsupported partial dtype {partial_dtype!r}; expected 'f32' or 'bf16'"
+            )
         self._runtime = runtime
         self.device = int(device)
         self.stream = int(stream)
         self.hidden = int(hidden)
         self.per_rank_ffn = int(per_rank_ffn)
+        self.partial_dtype = str(partial_dtype)
+        self.partial_itemsize = 4 if partial_dtype == "f32" else 2
         self._closed = False
         self._weights: dict[str, ShardWeight] = dict(weights)
         for role in ("ffn_gate", "ffn_up", "ffn_down"):
@@ -151,13 +158,13 @@ class MlpShardRank:
                 raise ValueError(f"MLP shard weights are missing {role!r}")
 
         # Persistent activations, allocated once. Sizes: the bf16 input row,
-        # bf16 gate/up/act intermediates, and the f32 down partial the
-        # exchange reduces from.
+        # bf16 gate/up/act intermediates, and the down partial the exchange
+        # reduces from, in this rank's partial dtype.
         self.x_ptr = self._alloc(self.hidden * 2)
         self.gate_ptr = self._alloc(self.per_rank_ffn * 2)
         self.up_ptr = self._alloc(self.per_rank_ffn * 2)
         self.act_ptr = self._alloc(self.per_rank_ffn * 2)
-        self.down_partial_ptr = self._alloc(self.hidden * 4)
+        self.down_partial_ptr = self._alloc(self.hidden * self.partial_itemsize)
 
     # -- execution --------------------------------------------------------
 
@@ -179,19 +186,44 @@ class MlpShardRank:
             runtime=self._runtime,
         )
 
+    def write_input_from_device(self, src_ptr: int) -> None:
+        """Copy one bf16 input row from a device-resident buffer on this rank.
+
+        The producer is a kernel on this rank's device (for example the
+        replicated post-attention norm's output row), so the copy is a
+        same-device D2D on this rank's own stream: no host round trip, no
+        cross-device visibility assumed. The copy is stream-ordered behind
+        that producer and ahead of ``forward_partial``.
+        """
+
+        self._require_live()
+        nbytes = self.hidden * 2
+        from hipengine.core.runtime import MemcpyKind  # noqa: PLC0415
+
+        with scoped_current_device(self._runtime, self.device):
+            self._runtime.memcpy_async(
+                self.x_ptr,
+                int(src_ptr),
+                nbytes,
+                MemcpyKind.DEVICE_TO_DEVICE,
+                self.stream,
+            )
+
     def forward_partial(
         self,
         *,
         fused: bool = False,
         fused_variant: str | None = None,
     ) -> int:
-        """Enqueue this rank's MLP chain; return the f32 partial's device pointer.
+        """Enqueue this rank's MLP chain; return the down partial's device pointer.
 
         The chain is stream-ordered behind whatever the caller enqueued on
         this rank's stream (including ``write_input``'s copy), and the
-        returned pointer is the producer for the cross-rank reduction. With
-        ``fused`` the gate/up+SiLU candidate kernel runs at the shard shape;
-        it is a candidate route, not a production admission.
+        returned pointer is the producer for the cross-rank reduction. The
+        partial's dtype is this rank's ``partial_dtype``: f32 where the
+        layer's registered down consumer admits it, bf16 where it does not.
+        With ``fused`` the gate/up+SiLU candidate kernel runs at the shard
+        shape; it is a candidate route, not a production admission.
         """
 
         self._require_live()
@@ -258,6 +290,13 @@ class MlpShardRank:
                     stream=self.stream,
                     runtime=runtime,
                 )
+            down_kwargs = {
+                "use_gemv_decode": True,
+                "stream": self.stream,
+                "runtime": runtime,
+            }
+            if self.partial_dtype == "f32":
+                down_kwargs["output_dtype"] = "f32"
             launch_gguf_linear(
                 self._weights["ffn_down"],
                 self.act_ptr,
@@ -265,10 +304,7 @@ class MlpShardRank:
                 1,
                 self.per_rank_ffn,
                 self.hidden,
-                use_gemv_decode=True,
-                output_dtype="f32",
-                stream=self.stream,
-                runtime=runtime,
+                **down_kwargs,
             )
         return self.down_partial_ptr
 
@@ -280,17 +316,38 @@ class MlpShardRank:
             self._runtime.stream_synchronize(self.stream)
 
     def read_partial(self) -> np.ndarray:
-        """Read the f32 partial back (diagnostics only, never the serving path)."""
+        """Read the down partial back (diagnostics only, never the serving path)."""
 
         self._require_live()
         from hipengine.core.memory import copy_device_to_host  # noqa: PLC0415
 
-        out = np.empty(self.hidden, dtype="<f4")
+        nbytes = self.hidden * self.partial_itemsize
+        out = np.empty(nbytes, dtype=np.uint8)
         with scoped_current_device(self._runtime, self.device):
             copy_device_to_host(
-                _DeviceBufferProxy(self.down_partial_ptr, self.hidden * 4, self.device),
                 out.ctypes.data,
-                self.hidden * 4,
+                _DeviceBufferProxy(self.down_partial_ptr, nbytes, self.device),
+                nbytes,
+                runtime=self._runtime,
+            )
+        if self.partial_dtype == "f32":
+            return out.view("<f4")
+        bits = out.view("<u2").astype(np.uint32) << 16
+        return bits.view(np.float32)
+
+    def read_input(self) -> np.ndarray:
+        """Read the staged bf16 input row back (diagnostics only)."""
+
+        self._require_live()
+        from hipengine.core.memory import copy_device_to_host  # noqa: PLC0415
+
+        nbytes = self.hidden * 2
+        out = np.empty(nbytes, dtype=np.uint8)
+        with scoped_current_device(self._runtime, self.device):
+            copy_device_to_host(
+                out.ctypes.data,
+                _DeviceBufferProxy(self.x_ptr, nbytes, self.device),
+                nbytes,
                 runtime=self._runtime,
             )
         return out

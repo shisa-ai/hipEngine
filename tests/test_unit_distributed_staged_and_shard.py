@@ -9,6 +9,7 @@ serving path depends on - without touching hardware.
 from __future__ import annotations
 
 import ctypes
+import math
 
 import numpy as np
 import pytest
@@ -96,9 +97,17 @@ class FakeStream:
     H2D = 1
 
 
-def _transport(runtime: FakeHipRuntime, *, devices=(0, 1), hidden=8) -> StagedExchangeTransport:
+def _transport(
+    runtime: FakeHipRuntime,
+    *,
+    devices=(0, 1),
+    hidden=8,
+    staging_dtype="f32",
+) -> StagedExchangeTransport:
     streams = {d: 100 + d for d in devices}
-    return StagedExchangeTransport(runtime, devices=devices, streams=streams, hidden=hidden)
+    return StagedExchangeTransport(
+        runtime, devices=devices, streams=streams, hidden=hidden, staging_dtype=staging_dtype
+    )
 
 
 # -- staged exchange ----------------------------------------------------------
@@ -161,6 +170,51 @@ def test_staging_slots_alternate_across_calls() -> None:
     assert transport._arena_nbytes == 2 * 2 * 16
     assert transport.reductions == 2
     transport.close()
+
+
+def test_bf16_staging_sums_bf16_partials_in_f32() -> None:
+    """The uniform-bf16 schedule: staged bf16 rows widen to f32, sum once."""
+
+    rt = FakeHipRuntime()
+    transport = _transport(rt, hidden=4, staging_dtype="bf16")
+    assert transport.staging_nbytes == 8
+    assert transport._arena_nbytes == 2 * 2 * 8
+
+    # bf16 bit patterns: 1.0 -> 0x3F80, 2.0 -> 0x4000, -0.5 -> 0xBF00, inf -> 0x7F80.
+    def bf16_bits(*words: int) -> np.ndarray:
+        return np.array(words, dtype="<u2").tobytes()
+
+    rows = {
+        0: bf16_bits(0x3F80, 0x4000, 0xBF00, 0x3F80),  # 1, 2, -0.5, 1
+        1: bf16_bits(0x3F80, 0x3F80, 0xBF00, 0x7F80),  # 1, 1, -0.5, inf
+    }
+    ptrs = {}
+    keepalive = []
+    for rank, payload in rows.items():
+        buf = ctypes.create_string_buffer(payload, len(payload))
+        keepalive.append(buf)
+        ptrs[rank] = ctypes.addressof(buf)
+        rt.regions[ptrs[rank]] = len(payload)
+    reduced = transport.reduce(ptrs)
+    # The reduced payload is f32: the widened sum, exact for these values.
+    expected = [2.0, 3.0, -1.0, float("inf")]
+    for device in (0, 1):
+        region = ctypes.string_at(reduced[device], 16)
+        got = np.frombuffer(region, dtype="<f4").tolist()
+        assert got[0] == pytest.approx(expected[0])
+        assert got[1] == pytest.approx(expected[1])
+        assert got[2] == pytest.approx(expected[2])
+        assert math.isinf(got[3]) and got[3] > 0, "bf16 inf widens and survives the sum"
+    transport.close()
+
+
+def test_bf16_staging_refuses_unknown_dtypes() -> None:
+    rt = FakeHipRuntime()
+    streams = {0: 100, 1: 101}
+    with pytest.raises(TransportStateError, match="staging dtype"):
+        StagedExchangeTransport(
+            rt, devices=(0, 1), streams=streams, hidden=8, staging_dtype="fp64"
+        )
 
 
 def test_a_failed_wait_poisons_the_transport() -> None:

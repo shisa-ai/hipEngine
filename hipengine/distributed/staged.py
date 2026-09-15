@@ -42,12 +42,18 @@ from hipengine.distributed.transport import (
     TransportStateError,
 )
 
-#: The staging arena holds ``slots`` slot sets of one f32 row per rank. Two
+#: The staging arena holds ``slots`` slot sets of one row per rank. Two
 #: slot sets keep a host write from racing the H2D that reads the reduced
 #: payload of the previous call even if a caller pipelines reductions without
 #: waiting; under the intended discipline one wait per stream per call already
 #: guards reuse (see the module docstring).
 _SLOT_SETS = 2
+
+#: Supported partial staging dtypes and their element sizes. The partial
+#: dtype is whatever the layer's registered down-GEMV consumer writes: f32
+#: where the layout admits an f32 partial, bf16 where it does not (for
+#: example Q4_K t16). The reduced payload is always published as f32.
+_STAGING_DTYPE_BYTES = {"f32": 4, "bf16": 2}
 
 
 class StagedExchangeTransport:
@@ -67,6 +73,7 @@ class StagedExchangeTransport:
         devices: tuple[int, ...],
         streams: Mapping[int, int],
         hidden: int,
+        staging_dtype: str = "f32",
     ) -> None:
         if not devices:
             raise TransportStateError("a staged exchange needs at least one rank")
@@ -75,11 +82,18 @@ class StagedExchangeTransport:
         missing = [d for d in devices if d not in streams]
         if missing:
             raise TransportStateError(f"no stream given for ranks {missing}")
+        if staging_dtype not in _STAGING_DTYPE_BYTES:
+            raise TransportStateError(
+                f"unsupported staging dtype {staging_dtype!r}; "
+                f"expected one of {sorted(_STAGING_DTYPE_BYTES)}"
+            )
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
         self._streams = {int(d): int(streams[d]) for d in devices}
         self.hidden = int(hidden)
-        self._slot_nbytes = self.hidden * 4
+        self.staging_dtype = str(staging_dtype)
+        self.staging_nbytes = self.hidden * _STAGING_DTYPE_BYTES[staging_dtype]
+        self._slot_nbytes = self.hidden * 4  # the published payload is f32
         self._poisoned = False
         self.reductions = 0
 
@@ -90,12 +104,12 @@ class StagedExchangeTransport:
             with scoped_current_device(runtime, device):
                 self._reduced_ptrs[device] = int(runtime.malloc(self._slot_nbytes))
 
-        # Pinned staging: ``_SLOT_SETS`` slot sets of one f32 row per rank,
-        # page-locked so a D2H does not stage through a driver bounce buffer.
-        # A separate pinned reduced-payload region holds what the H2D reads;
-        # it alternates with the same slot index as the D2H slots so the
-        # documented wait guard covers both directions.
-        self._arena_nbytes = _SLOT_SETS * len(self.devices) * self._slot_nbytes
+        # Pinned staging: ``_SLOT_SETS`` slot sets of one partial row per rank
+        # in the staging dtype, page-locked so a D2H does not stage through a
+        # driver bounce buffer. A separate pinned f32 reduced-payload region
+        # holds what the H2D reads; it alternates with the same slot index as
+        # the D2H slots so the documented wait guard covers both directions.
+        self._arena_nbytes = _SLOT_SETS * len(self.devices) * self.staging_nbytes
         self._host = (ctypes.c_ubyte * self._arena_nbytes)()
         self._arena_ptr = ctypes.addressof(self._host)
         runtime.host_register(self._arena_ptr, self._arena_nbytes)
@@ -126,9 +140,10 @@ class StagedExchangeTransport:
         """Reduce one partial per rank into every rank's reduced buffer.
 
         Both ranks' D2H copies are submitted on their own streams before any
-        wait, each stream is awaited once, the host sums the staging slots in
-        f32, and every rank's H2D is submitted with no return wait. Returns
-        the reduced device pointer per rank; the value is stream-ordered after
+        wait, each stream is awaited once, the host sums the staged rows in
+        f32 (reading them in this transport's staging dtype), and every rank's
+        H2D of the f32 sum is submitted with no return wait. Returns the
+        reduced device pointer per rank; the value is stream-ordered after
         the H2D on that rank's stream, so the caller's next consumer needs no
         host synchronization.
         """
@@ -142,7 +157,7 @@ class StagedExchangeTransport:
         try:
             slot = self._slot
             self._slot = 1 - slot
-            partial_base = self._arena_ptr + slot * len(self.devices) * self._slot_nbytes
+            partial_base = self._arena_ptr + slot * len(self.devices) * self.staging_nbytes
 
             # Batch every rank's D2H before awaiting any stream: the measured
             # protocol. Each copy rides its own rank's stream, so stream order
@@ -150,9 +165,9 @@ class StagedExchangeTransport:
             for index, device in enumerate(self.devices):
                 with scoped_current_device(runtime, device):
                     runtime.memcpy_async(
-                        partial_base + index * self._slot_nbytes,
+                        partial_base + index * self.staging_nbytes,
                         int(partial_ptrs[device]),
-                        self._slot_nbytes,
+                        self.staging_nbytes,
                         MemcpyKind.DEVICE_TO_HOST,
                         self._streams[device],
                     )
@@ -165,20 +180,24 @@ class StagedExchangeTransport:
                 with scoped_current_device(runtime, device):
                     runtime.stream_synchronize(self._streams[device])
 
-            # Single f32 reduction over the contiguous (ranks, hidden) view.
-            slots = np.frombuffer(self._host, dtype=np.uint8)
-            rows = np.frombuffer(
-                slots[
-                    slot
-                    * len(self.devices)
-                    * self._slot_nbytes : slot
-                    * len(self.devices)
-                    * self._slot_nbytes
-                    + len(self.devices) * self._slot_nbytes
-                ].tobytes(),
-                dtype="<f4",
-            ).reshape(len(self.devices), self.hidden)
-            reduced = rows.sum(axis=0, dtype=np.float32)
+            # Single reduction over the contiguous (ranks, hidden) view: the
+            # staged rows are read in their partial dtype and summed in f32.
+            row_start = slot * len(self.devices) * self.staging_nbytes
+            row_stop = row_start + len(self.devices) * self.staging_nbytes
+            staged = np.frombuffer(self._host, dtype=np.uint8)[row_start:row_stop]
+            if self.staging_dtype == "f32":
+                rows = np.frombuffer(staged.tobytes(), dtype="<f4").reshape(
+                    len(self.devices), self.hidden
+                )
+                reduced = rows.sum(axis=0, dtype=np.float32)
+            else:
+                # bf16 bits: widen each row to f32 by shifting into the high
+                # half, then sum in f32.
+                bits = np.frombuffer(staged.tobytes(), dtype="<u2").reshape(
+                    len(self.devices), self.hidden
+                )
+                wide = (bits.astype(np.uint32) << 16).view(np.float32)
+                reduced = wide.sum(axis=0, dtype=np.float32)
 
             # Publish into this call's pinned payload slot, then submit every
             # rank's H2D from it with no return wait. The next call's write

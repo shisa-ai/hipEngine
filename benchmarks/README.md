@@ -1088,6 +1088,29 @@ memory lets both ranks read the reduced vector zero-copy), and admit the fused
 shard shape to the policy table under the gate the existing entries used -
 together worth roughly 1.15x on this segment if the compiled rate holds.
 
+**The whole model generates tokens on both GPUs.** The MLP-only TP2 group now
+drives the full Qwen3.8-27B `Q4_K_M` stack end to end: replicated attention and
+GDN on every rank, sharded MLP with one staged bf16-partial reduction per layer,
+single residual add per rank, and actual generated text out of the session. Each
+decode token makes 64 reductions; the in-step exchange wall lands at 201 us p50
+(238 us p95), which prices the Python-driven protocol plus the per-layer
+dependency wait inside a real schedule - the isolated idle-buffer protocol is
+~58 us, so a compiled exchange caps the recoverable share at roughly 4-5% of a
+token, and the replicated attention enqueue dominates instead. Decode p50 at the
+matched composition: W7900 TP1 31.8 ms/token, RX 7900 XTX TP1 26.3 ms/token, TP2
+group 56.5 ms/token on the diagnostic schedule - TP2 is not faster here, and no
+speedup is claimed for it. What the checkpoint certifies is arithmetic and
+control: the sharded model stays inside the calibrated production envelope
+against both per-GPU TP1 controls (full-logit teacher-forced mean KL 6.4e-04,
+max KL 5.2e-03, top-1 agreement 100% over a 16-token sequence, identical
+against both controls), the two TP1 controls agree bit-identically with each
+other, and a repeated TP2 run reproduces both tokens and logits bit-exactly.
+The partial-staging dtype is uniform bf16 because the artifact's Q4_K down
+projections register only a bf16 partial consumer; the Q6_K layers' registered
+f32 partial variant is a per-layer numerical candidate, not this run's schedule.
+Device 1 (23.98 GiB XTX) holds the full 16.5 GiB replica plus a 5.6 GiB shard
+set with 0.75 GiB free after load.
+
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its
 own stream, all 40 probes across chain depths 1/4/8/16/24 (rows 1 and 4, fp32 and
@@ -1156,6 +1179,7 @@ loader path.
 [break-even projection, replayed](results/tp2_break_even_per_step_alternating_graph.json),
 [break-even projection, serial host exchange](results/tp2_break_even_staged_exchange_host_sync.json),
 [break-even projection, batched host exchange](results/tp2_break_even_staged_exchange_batched.json),
+[full-model generation checkpoint](results/2026-09-15-w7900-tp2-mlp-generate-e2e.json),
 [matched W7900 TP1 arm](results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json),
 [matched XTX TP1 arm](results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
