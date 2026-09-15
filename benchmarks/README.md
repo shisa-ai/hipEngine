@@ -1238,6 +1238,13 @@ Four hipEngine runs of this protocol measured pooled RTF 1.315, 1.333, 1.337 and
 takes the semantic stage from 1.108 s to 0.781 s and pooled RTF to 1.201. Three torch
 runs measured 1.325, 1.336 and 1.336 (median 1.336), so the HIP lane is now faster on
 this request. Decode is stable across the hipEngine runs (0.301-0.327 s).
+
+A later verification re-run of the same protocol at HEAD measured pooled RTF **1.228**
+(warm 4.092 s, diffusion 1.230 s, semantic 0.837 s), so the retained 1.201 is a
+favorable run and the post-tile margin over torch is **~9%** rather than the ~11% the
+headline alone implies. The HIP lane is still faster on this request, but read 1.201
+as the top of the observed band, not as a reproducible figure. Artifact:
+[session verification](results/2026-09-15-gfx1151-vibevoice-tts-session-verify.json).
 Generation budget comes from the request's declared `max_audio_seconds` (4.333 s,
 a 35-token cap) in both lanes, and both reach EOS at 27 tokens.
 
