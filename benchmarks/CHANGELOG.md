@@ -1,6 +1,12 @@
 # hipEngine Benchmark Changelog
 
 - **2026-09-15 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 qualifies explicit
+  chunk4096:matched4K PP183.116->190.333 (+3.94%),TG10.091->10.203 (+1.11%),
+  complete4K requests+2.26-3.82%. Short request costs reach0.31%, so default
+  stays1024. Allocation,numerical,boundary,task,c2 and72-sample parity gates pass.
+  [Evidence](results/2026-09-15-chunk4096-accounting/README.md).
+
+- **2026-09-15 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 qualifies explicit
   chunk2048 after numerical/task/boundary and detailed/deferred c2 gates.
   Matched4K PP182.802 ->187.042 (+2.32%), TG10.075 ->10.198 (+1.22%);
   512/1K PP falls0.34%/0.18%, so the global default stays1024.

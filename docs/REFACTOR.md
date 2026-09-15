@@ -1,6 +1,6 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qualified Chunk2048 Tradeoff
+## Qualified Chunk Tradeoffs
 
 - The explicit2048 path passes canonical numerics, active4K tasks,
   full-payload boundary/reuse and detailed/deferred-inspection c2 gates.
@@ -14,8 +14,10 @@
 - Chunk4096 accounting is repaired by the chunk/context-derived mandatory
   footprint; native-c2 allocation matches the estimate with reserve unchanged.
   See `benchmarks/results/2026-09-15-chunk4096-accounting/`.
-  Chunk4096 canonical780-row numerics also pass exactly; full-payload
-  boundary, task, c2 inference and performance gates remain before admission.
+  Chunk4096 canonical780-row, full-payload boundary, active-task and
+  detailed/deferred c2 gates pass. Its matched4K PP/TG improves3.94%/1.11%,
+  but short complete-request changes include-0.31%; it is explicit, not the
+  global default. Do not claim a direct2048/4096 comparison from separate runs.
 
 ## Non-GR Q8 Diagnostic Scope
 
