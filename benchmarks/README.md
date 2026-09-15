@@ -750,6 +750,49 @@ The Vulkan Japanese result does not pass the every-category non-regression requi
 [Comparison evidence](results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json)
 and [campaign plan](../docs/QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md).
 
+### Same-file prefill against every llama.cpp-family engine
+
+The comparison above uses whatever file each lane could run. This one holds the
+file fixed: unsloth Qwen3.8-Flash-Next `UD-Q4_K_XL`, twelve canonical cases,
+prefill only, one warmup and three measured repetitions, same host. Every row
+is an engine that can actually open that file.
+
+| Engine | Source | KV | 512 | 1K | 4K |
+| --- | --- | --- | ---: | ---: | ---: |
+| pwilkin `strix-halo` | `40a9f4d01` | f16 | 339.2 | 858.9 | **1061.9** |
+| halo-box `strix-llama.cpp` | `69946438a` | f16 | 451.6 | 620.7 | 660.6 |
+| halo-box `strix-llama.cpp` | `69946438a` | bf16 | 410.0 | 553.3 | 653.2 |
+| halo-box `strix-llama.cpp` | `5f85164` | bf16 | 468.1 | 606.9 | 712.2 |
+| upstream llama.cpp | `6011c34ce` | f16 | 321.3 | 415.1 | 459.0 |
+| upstream llama.cpp | `6011c34ce` | bf16 | 321.0 | 420.3 | 452.9 |
+| **hipEngine current default** | `ddfc2a746` | bf16 | **185.2** | **190.6** | **183.6** |
+
+hipEngine's 4K coefficient of variation is 0.32% and its per-case medians span
+183.1-184.2, so it is flat across categories. The engines ahead of it are not,
+and a single-prompt number for them is not a rate.
+
+The 4K gap splits into two measured parts in the same unit, device milliseconds
+per 4096-token prefill: **1.65x conservative arithmetic** (the arithmetic-restored
+census at `53512b509` is 13440.9 ms against the current default's 22206.4 ms;
+six of the fifteen recovery selectors were on there, so this is a lower bound)
+and **3.38x kernel quality at equal arithmetic** (3972.8 ms for pwilkin).
+
+The largest single item is not conservative arithmetic. hipEngine's generic
+K-quant dense prefill kernel takes 10095.6 ms of the 22206.4 against about
+2770 ms for pwilkin's dense and fused-split variants, a 3.6x difference in the
+default dense path. The sparse exact repair passes that conservative arithmetic
+requires cost 1396.6 ms, or 6.3% of the prefill.
+
+Not a numerics result: no engine's output was compared against another's, and
+hipEngine's conservative arithmetic is in place because the fast composition
+failed its numerical and task gates. Not an MTP or long-context result. KV dtype
+is not matched - pwilkin `40a9f4d01` asserts at load with BF16 KV - but the
+effect is bounded at about 1% by re-running two engines in both dtypes.
+pwilkin `master` and halogen cannot be included: the former has no `qwen4exp`
+architecture, and the latter refuses this quant family by name and publishes its
+figures on `UD-IQ4_XS` instead.
+[Full comparison, kernel attribution and excluded engines](results/2026-09-15-flashnext-engine-comparison/README.md).
+
 ## Current Qwen3.6-35B quantization quality
 
 The current gate scores 90 full-vocabulary BF16-teacher positions across all ten
