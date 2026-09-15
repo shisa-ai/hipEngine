@@ -1,20 +1,17 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## GR Correction Candidates
+## Removed GR Corrections
 
-- gfx1151 `iu8_p4_prefill_f32_f32_out` and
-  `iu8_compensated_prefill_f32_f32_out` are default-off diagnostic variants.
-  Same-input replay, full model quality and complete-owner cost decide retention.
-- Both variants pass the operand screen in their intended roles. Profile-owned
-  `GR_IU8_UP_VARIANT` and `GR_IU8_DOWN_VARIANT` are cleared by the binder and
-  used only by post-binder diagnostic candidates while GR arithmetic is off.
-- Remove rejected specializations/exports/registrations and selectors after
-  full model/cost comparison; use the profile plan directly for a retained path.
-  Keep the strict coltile/fused-GR fallback and original failure evidence.
-- Compensated GR-down now fails the780-row model gate (mean0.001316,
-  p950.006668,max0.050293,top1769/780). It is not a repair for production.
-  Keep it only through the paired correction comparison, then remove the
-  rejected path; P4-up model qualification is the remaining arm.
+- P4-up and compensated-down specializations, wrappers, registry entries,
+  runtime selectors and candidate-only tests are removed after independent
+  780-row production failures. The existing strict paths remain unchanged.
+- P4-up: meanKL0.001614,p950.007593,max0.068096,top1770/780.
+  Compensated-down: mean0.001316,p950.006668,max0.050293,top1769/780.
+  Both improved sampled FP64 projection MSE but failed the model envelope.
+- Preserve evidence at `benchmarks/results/2026-09-15-journey-gr-corrections/`.
+  Do not repeat these unchanged variants or silently grandfather their
+  operand results as model admission. Parent-order tiling and other
+  structurally different optimizations remain separate candidates.
 
 ## Isolated GR-Up IU8
 

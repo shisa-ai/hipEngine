@@ -71,20 +71,37 @@ def assemble(root, trace):
             or not model_gate["deterministic"] or not model_gate["state_gate"]["passed"]
             or any(row["current_allocated_bytes"] for row in model_gate["lifecycle"].values())):
         raise ValueError("invalid compensated model rejection evidence")
+    p4_path = root / "resume-gr-up-p4-depth.json"
+    p4_raw = p4_path.read_bytes()
+    p4_gate = json.loads(p4_raw)
+    hashes[p4_path.name] = hashlib.sha256(p4_raw).hexdigest()
+    if (p4_gate["status"] != "completed" or not p4_gate["source"]["tracked_clean"]
+            or p4_gate["candidate"] != "production_gr_up_p4"
+            or p4_gate["candidate_dispatch_mode"] != "registry"
+            or p4_gate["candidate_dispatch_calls"] != 6912
+            or p4_gate["candidate_dispatch_shapes"] != [
+                {"arguments": [512, 320, 10240], "calls": 1152},
+                {"arguments": [1024, 320, 10240], "calls": 5760}]
+            or p4_gate["quality"]["summary"]["rows"] != 780
+            or p4_gate["quality"]["hard_gates_passed"]
+            or not p4_gate["deterministic"] or not p4_gate["state_gate"]["passed"]
+            or any(row["current_allocated_bytes"] for row in p4_gate["lifecycle"].values())):
+        raise ValueError("invalid P4 model rejection evidence")
     for packet in captures.values():
         packet["records"] = [{key: value for key, value in row.items()
                               if key not in ("sampled_fp64", "sampled_parent", "sampled_candidate")}
                              for row in packet["records"]]
     return dict(
-        schema=1, status="compensated_down_model_failure_p4_up_model_pending",
+        schema=1, status="both_corrections_fail_model_gates_removed",
         performance_claim=False, promotion_claim=False, raw_sha256=hashes,
-        captures=captures, ratios=ratios, compensated_model_gate=model_gate,
+        captures=captures, ratios=ratios, compensated_model_gate=model_gate, p4_model_gate=p4_gate,
         trace=dict(sha256=hashlib.sha256(trace.read_bytes()).hexdigest(), kernels=kernels),
         limits=[
             "Sampled FP64 MSE is not the production model admission criterion.",
             "P4 carries higher VGPR/LDS use; throughput is not measured here.",
             "Compensated down fails full model numerics despite better projection MSE; no cost/task run follows.",
-            "P4-up remains off by default and still needs its independent model gate.",
+            "P4-up also fails full model numerics; both correction paths and selectors are removed.",
+            "Historical replay and gate commands require their pinned source revisions.",
         ])
 
 

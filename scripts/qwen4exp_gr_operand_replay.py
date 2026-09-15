@@ -52,7 +52,6 @@ def main():
     from hipengine.core.runtime import MemcpyKind
     from hipengine.runtime import qwen4_exp_runner as runtime_module
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import gguf_q8_0_iu8_wmma_prefill_f32_f32
-    from hipengine.kernels.registry import resolve
     from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary
     from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile
     from scripts.qwen4exp_q8_boundary_replay import dequant
@@ -64,8 +63,6 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--case-id", default="general_ja-p512")
-    parser.add_argument("--projection-variant", choices=("original", "p4", "compensated"),
-                        default="original")
     args = parser.parse_args()
     check_host()
     source = _git_metadata(ROOT)
@@ -82,7 +79,6 @@ def main():
                   model=model_identity(args.model_root), command=sys.argv,
                   fixture_sha256=fixture_hash, case_id=args.case_id, records=[],
                   performance_claim=False, promotion_claim=False,
-                  projection_variant=args.projection_variant,
                   sampling="Layers0/23/47, both GR roles, 3 evenly spaced rows and64 output columns",
                   limits="CPU plane simulation is diagnostic, not captured GPU quantizer output; "
                          "FP64 sample is a projection oracle, not a full-model teacher.")
@@ -91,10 +87,6 @@ def main():
         resolve_allocation_profile()
         generator, profile, _ = _make_generator(args, "production")
         runtime = generator.runner.runtime
-        projection = (
-            gguf_q8_0_iu8_wmma_prefill_f32_f32 if args.projection_variant == "original"
-            else resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
-                         variant=f"iu8_{args.projection_variant}_prefill_f32_f32_out"))
         original = runtime_module.run_qwen4_exp_gr_read
         seen = set()
 
@@ -113,7 +105,7 @@ def main():
                 runtime_module.launch_gguf_linear(
                     weight, x_ptr, buffers[0].ptr, rows, k, n,
                     activation_dtype="f32", output_dtype="f32", runtime=runtime)
-                projection(
+                gguf_q8_0_iu8_wmma_prefill_f32_f32(
                     x_ptr, weight.allocation("raw").tensor.ptr, buffers[1].ptr,
                     rows, k, n, runtime=runtime)
                 runtime.device_synchronize()
@@ -126,8 +118,7 @@ def main():
                                          (row_bytes,), np.uint8) for col in ci])
                 weights = dequant(raw, k)
                 oracle = x.astype(np.float64) @ weights.T
-                reconstructed = reconstruct_planes(
-                    x, planes=4 if args.projection_variant == "p4" else 3)
+                reconstructed = reconstruct_planes(x)
                 quantized_oracle = reconstructed @ weights.T
                 record = dict(
                     weight=weight.spec.slot_path, leg=leg, shape=[rows, k, n],

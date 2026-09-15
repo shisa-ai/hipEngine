@@ -338,29 +338,6 @@ CANDIDATES["production_dense_q8_restore"] = replace(
     fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
     direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
 )
-CANDIDATES["production_gr_down_compensated"] = replace(
-    CANDIDATES["production_gr_down_restore"], name="production_gr_down_compensated",
-    mechanism="GR-down three-plane IU8 with compensated block accumulation",
-    scenario_id="qwen4exp-gr-down-compensated",
-    environment={
-        **CANDIDATES["production_gr_down_restore"].environment,
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN_VARIANT": "iu8_compensated_prefill_f32_f32_out",
-    },
-    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
-                   "iu8_compensated_prefill_f32_f32_out"),
-    direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
-)
-CANDIDATES["production_gr_up_p4"] = replace(
-    CANDIDATES["production_gr_up_restore"], name="production_gr_up_p4",
-    mechanism="GR-up four-plane residual IU8 activation reconstruction",
-    scenario_id="qwen4exp-gr-up-p4",
-    environment={
-        **CANDIDATES["production_gr_up_restore"].environment,
-        "HIPENGINE_QWEN4_EXP_GR_IU8_UP_VARIANT": "iu8_p4_prefill_f32_f32_out",
-    },
-    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0", "iu8_p4_prefill_f32_f32_out"),
-    direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
-)
 
 
 class GateError(RuntimeError):

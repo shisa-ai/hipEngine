@@ -3325,17 +3325,6 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
 
     for module_name in _GFX1100_MODULES:
         import_module(module_name)
-    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
-        gguf_q8_0_iu8_p4_prefill_f32_f32_t,
-        gguf_q8_0_iu8_compensated_prefill_f32_f32_t,
-    )
-    for variant, fn in (
-        ("iu8_p4_prefill_f32_f32_out", gguf_q8_0_iu8_p4_prefill_f32_f32_t),
-        ("iu8_compensated_prefill_f32_f32_out", gguf_q8_0_iu8_compensated_prefill_f32_f32_t),
-    ):
-        key = KernelKey(BACKEND, "linear", "gguf_q8_0", variant)
-        if replace or not is_registered(key):
-            register(key, fn, replace=replace)
     from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
         gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out,
         gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,

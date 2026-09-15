@@ -2932,15 +2932,6 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     return scratch.output
 
 
-def _qwen4_exp_gr_iu8_projection(weight: GGUFDeviceWeight, *, down: bool):
-    flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN_VARIANT" if down else "HIPENGINE_QWEN4_EXP_GR_IU8_UP_VARIANT"
-    variant = os.environ.get(flag, "")
-    if not variant:
-        return gguf_q8_0_iu8_wmma_prefill_f32_f32
-    return resolve(backend=weight.backend, layer="linear",
-                   quant=weight.spec.quant_key, variant=variant)
-
-
 def run_qwen4_exp_gr_read(
     residual_ptr: int,
     norm_weight_ptr: int,
@@ -2986,7 +2977,7 @@ def run_qwen4_exp_gr_read(
         # T1 candidate for the GR down leg (10240->320, Q8_0, F32 in/out):
         # same dense iu8-WMMA three-plane chain as the up route; the exact
         # coltile parent stays the fallback.
-        _qwen4_exp_gr_iu8_projection(down_weight, down=True)(
+        gguf_q8_0_iu8_wmma_prefill_f32_f32(
             scratch.normalized.ptr,
             down_weight.allocation("raw").tensor.ptr,
             scratch.low_rank.ptr,
@@ -3032,7 +3023,7 @@ def run_qwen4_exp_gr_read(
     if gr_iu8:
         # T1 candidate: iu8-WMMA projection + separate sigmoid/gated-mean
         # epilogue (the unfused epilogue kernels are the retained exact ones).
-        _qwen4_exp_gr_iu8_projection(up_weight, down=False)(
+        gguf_q8_0_iu8_wmma_prefill_f32_f32(
             scratch.low_rank.ptr,
             up_weight.allocation("raw").tensor.ptr,
             scratch.gate.ptr,
