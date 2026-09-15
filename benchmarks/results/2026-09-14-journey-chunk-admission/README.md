@@ -17,10 +17,17 @@ allowances are unchanged.
 | 2048 | 86.055 | 3.229 | +1.066 | Prepared allocation passes |
 | 4096 | 89.322 | 6.455 | -2.160 | Scratch accounting fails |
 
-GB are decimal. Both close with zero tracked allocations. The 4096 failure
+GB are decimal. These are the original probe's margins, which include the
+host-staging reservation in its non-scratch components. Both close with zero
+tracked allocations. The original4096 failure
 is not device OOM: allocation succeeds, but exceeds the modeled scratch
 allowance. Correct the accounting from actual allocation structure before
 using that shape; do not spend the reserve to hide it.
+
+**September15 follow-up:** this accounting is now repaired and the native-c2
+allocation passes without consuming reserve. The new device-only check does
+not credit host staging against device scratch.
+[Derived accounting and allocation evidence](../2026-09-15-chunk4096-accounting/README.md).
 
 The earlier 2048 constructor-only pass is preserved as diagnostic evidence.
 These current-profile results differ from the pre-recovery probes because
@@ -183,9 +190,9 @@ while using2048 for long prefill. The existing explicit
 `prefill_chunk_size=2048` factory/benchmark setting is preserved. Do not
 repeat unchanged arithmetic or claim every shape benefits.
 
-Chunk4096 remains a separate accounting problem: it allocated physically
-but exceeded the modeled scratch allowance. That investigation is not
-closed by the2048 qualification.
+Chunk4096's separate accounting problem is now repaired with a derived
+mandatory footprint and a native-c2 allocation check. Its inference
+qualification remains separate from2048.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
