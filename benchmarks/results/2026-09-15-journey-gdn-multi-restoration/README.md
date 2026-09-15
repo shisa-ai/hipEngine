@@ -39,6 +39,36 @@ admission criterion. These state checks do not certify dynamic isolation.
 applicable isolation and a current-model performance comparison remain.
 The earlier old-stack numerical rejection remains recorded separately.
 
+## Targeted Complete Code Review
+
+Clean `cc592ceca`, the rate-limiter heldout reaches EOS at656 strict and680
+candidate tokens, with two identical repeats per arm,30 counted candidate
+GDN calls and zero tracked allocations after teardown.
+
+Both implementations pass36000 independent `allow(key,timestamp)` oracle
+checks covering capacities, windows, expiry, repeated monotone timestamps and
+independent keys. Both use the same amortized deque expiry/append algorithm.
+Both omit the explicitly requested pytest tests and emit a code fence: these
+are shared instruction-following defects, not new candidate regressions.
+
+The extra, unrequested `remaining()` method differs: candidate scans the
+stored window, whereas strict expires deque heads then reads its length.
+A128-entry/100-query probe counts12800 candidate iteration visits versus0
+strict iteration visits. This is a real optional-method complexity regression,
+not a timing measurement; it is not used as a veto for the requested `allow`
+API. The constructor keyword-name difference is outside the specified API.
+
+**No new requested-API regression found on this prompt.** This scoped paired
+review is not a full task-suite pass or proof of complete instruction following.
+Other prompts, isolation and timing remain. `rate-limiter-review.json`
+preserves both complete outputs and the shared defects. Its reproduction
+script executes only the inspected source hashes:
+
+```bash
+.venv/bin/python benchmarks/results/2026-09-15-journey-gdn-multi-restoration/review_rate_limiter.py \
+  --capture /tmp/hipengine-journey-execute-20260914/resume-gdn-multi-rate-limiter-task.json
+```
+
 Exact commands, overrides, source/host/profile metadata and raw hash are
 preserved in `artifact.json`. The qualification ran in its own clean
 worktree, so main-tree backend-cache preparation did not change its source.

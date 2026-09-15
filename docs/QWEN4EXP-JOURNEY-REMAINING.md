@@ -17,7 +17,7 @@ improvements require the applicable unchanged production quality gates.
 | ID | Concrete experiment | State / prerequisite |
 | --- | --- | --- |
 | R01 | Existing tiled GDN/DPP suffix on corrected production | Numerical/state pass; targeted EOS task fails predeclared no-new-material-error rule; not promoted ([evidence](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
-| R02 | Multi-column GDN on corrected production | Short and780-row depth numerical/state gates pass; depth mean0.0000892/max0.004455/top1777/780; complete task/isolation/perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md)) |
+| R02 | Multi-column GDN on corrected production | Short/depth numerical gates pass; complete rate-limiter requested API noninferior with shared omitted tests; other tasks/isolation/perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md)) |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
 | R04 | Dense Q8 iu8 independently | Generic and counted non-GR-only780-row gates fail; non-GR mean0.001383/p950.006963/max0.105117; individual operand localization precedes correction ([evidence](../benchmarks/results/2026-09-15-journey-dense-q8/README.md)) |
 | R05 | GR iu8 up independently | Original/P4 model gates fail; P4 removed despite better operand MSE; structurally different optimization still open ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
