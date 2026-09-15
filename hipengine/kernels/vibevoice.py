@@ -7,7 +7,7 @@ PRIMITIVES = (
     'build_vibevoice_encoder','vv_add_bias_bf16','vv_add_bias_f32','vv_rmsnorm_bf16',
     'vv_depthwise_accumulate_f32','vv_depthwise_residual_bf16',
     'vv_gelu_bf16','vv_scale_residual_bf16','vv_depthwise_conv_bf16','vv_conv_gemm_bf16',
-    'vv_im2col_bf16','vv_add_scaled_noise_bf16','vv_rope_positions_f32',
+    'vv_convtr_gemm_bf16','vv_im2col_bf16','vv_add_scaled_noise_bf16','vv_rope_positions_f32',
     'vv_kv_write_spans','vv_attention_spans','bf16_to_f32','bf16_to_fp16','f32_to_bf16','f32_to_fp16',
     'silu_mul_dual_out_bf16','silu_mul_separate_out_bf16','dense_dual_gemv_out_bf16',
     'dense_gemv_bf16_f32_out','dense_gemv_f32_bf16w_f32_out','dense_gemv_out_bf16',

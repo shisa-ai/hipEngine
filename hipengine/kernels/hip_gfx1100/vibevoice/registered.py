@@ -1,6 +1,7 @@
 """Shared gfx11 VibeVoice registrations, installed by each backend peer."""
 from hipengine.kernels.registry import KernelKey, register, is_registered
 from hipengine.kernels.hip_gfx1100.vibevoice import encoder
+from hipengine.kernels.hip_gfx1100.vibevoice import decoder as tts_decoder
 from hipengine.kernels.hip_gfx1100.convert import cast
 from hipengine.kernels.hip_gfx1100.fused import paro_silu
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv
@@ -31,7 +32,7 @@ def batched_prefill(runner,hidden_rows,rows,start):
 
 def register_vibevoice_kernels(backend):
     from hipengine.kernels.vibevoice import PRIMITIVES
-    modules=(encoder,cast,paro_silu,dense_gemv,qwen35_rotary)
+    modules=(encoder,tts_decoder,cast,paro_silu,dense_gemv,qwen35_rotary)
     for name in PRIMITIVES:
         fn=next(getattr(module,name) for module in modules if hasattr(module,name))
         if name == 'vv_depthwise_conv_bf16':
