@@ -462,6 +462,9 @@ def _launch_selected_grouped(
     if num_experts <= 0:
         raise ValueError("num_experts must be positive")
     _validate(quant, rows, in_features, out_features, threads)
+    launch_census.record_launch(
+        quant, symbol, rows, in_features, out_features, num_experts
+    )
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -1421,6 +1424,9 @@ def _launch_selected(
     if num_experts <= 0:
         raise ValueError("num_experts must be positive")
     _validate(quant, rows, in_features, out_features, threads, require_pack8=require_pack8)
+    launch_census.record_launch(
+        quant, symbol, rows, in_features, out_features, num_experts
+    )
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -1480,6 +1486,9 @@ def _launch_selected_silu(
     if num_experts <= 0:
         raise ValueError("num_experts must be positive")
     _validate(quant, rows, in_features, out_features, threads)
+    launch_census.record_launch(
+        quant, symbol, rows, in_features, out_features, num_experts
+    )
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(
