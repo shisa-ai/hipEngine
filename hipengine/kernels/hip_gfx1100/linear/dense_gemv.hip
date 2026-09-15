@@ -1470,6 +1470,45 @@ extern "C" int hipengine_dense_prefill_wmma_out_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+// Low-row variant: same BM=128 accumulation order, but BM=64 halves the tile so
+// the grid carries twice as many workgroups. The semantic encoder's deep stages
+// run at rows=1 with K up to 8192, where the kernel is weight-traffic bound and
+// 64 workgroups on 40 CUs cannot hide the K-loop's shared-memory latency; the
+// per-element accumulation order (k0 ascending, then kk ascending) is unchanged,
+// so results stay bit-identical to the BM=128 path.
+extern "C" int hipengine_dense_prefill_wmma_out_bf16_m64(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int BM = 64;
+  constexpr int BN = 64;
+  constexpr int BK = 32;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % BK) != 0 || (out_features % BM) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_prefill_wmma_out_kernel<BM, BN, BK, false>),
+      dim3(
+          static_cast<unsigned int>(out_features / BM),
+          static_cast<unsigned int>((rows + BN - 1) / BN)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      nullptr,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dense_prefill_wmma_out_bf16_residual_bf16_out(
     const uint16_t* x,
     const uint16_t* weight,
