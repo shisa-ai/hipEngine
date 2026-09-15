@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Non-GR Q8 Diagnostic Scope
+
+- `scripts/qwen4exp_dense_q8_nongr_gate.py` temporarily clears the existing
+  generic Q8 selector only inside GR reads, with counted exclusions.
+  It is single-threaded attribution code, not a production dispatch policy.
+- If non-GR restoration qualifies, express its scope through the registered
+  production plan and remove the diagnostic monkeypatch after equivalent
+  role/count coverage exists. If rejected, preserve its capture and avoid
+  rerunning unchanged arithmetic.
+
 ## Removed GR Corrections
 
 - P4-up and compensated-down specializations, wrappers, registry entries,
