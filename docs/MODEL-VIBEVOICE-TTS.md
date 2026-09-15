@@ -4,7 +4,8 @@ Status: **milestones 1 (frozen torch oracle), 2 (the acoustic decoder),
 3 (the diffusion head + DPMSolver) and 4 (the torch-free generation session)
 closed 2026-09-15.** The session runs the generation loop on HIP without torch
 and reproduces the frozen oracle's 27-token constrained greedy chain exactly
-(25 diffusion frames, 25 decoded chunks) on the pinned single-speaker request.
+(25 diffusion frames, 25 decoded chunks) on the pinned single-speaker request,
+end-to-end from its own reference-audio encode.
 The API, benchmark protocol and closure criteria below are specified.
 
 The open work is integration correctness on the unassisted request path. The
@@ -92,7 +93,18 @@ present for the two-speaker call and load-bearing there.
 This also constrains anything that feeds diffusion output back into the LM: a
 chaotic trajectory makes the feedback embedding reproducible only to the
 trajectory's band, so agreement downstream of it cannot be tightened by making
-the head more accurate.
+the head more accurate. The sensitivity is a threshold rather than a smooth
+gain, and the condition reaches it as well as the initial noise does. On the
+two-speaker call, white noise added to the oracle's condition at 2% of its peak
+leaves the solved latent within about 0.2 of the oracle's, while 5% jumps it to
+about 3.5; the single-speaker call gains smoothly across the same range (0.013
+at 2%, 0.10 at 5%).
+
+The session's feedback loop is nevertheless stable. Forcing the oracle's
+condition for the first call alone keeps calls 1-10 within 0.08 of the oracle's
+latents, with no growth in depth, so it is the bifurcation at the loop's entry
+point rather than a compounding loop that makes the two-speaker chain
+unreproducible.
 
 ```text
 speaker references → acoustic encoder → sampled/scaled latent → connector ┐
@@ -313,26 +325,41 @@ chain is **not yet exact**. The first 31 tokens match and the divergence is the
 32nd, the first span's end, where the oracle emits `speech_end` and this session
 emits another `speech_diffusion` (top-2 gap 9 logits, so not a near tie).
 
-The fault is the diffusion **condition** — the prefill hidden at the step that
-produced each diffusion token — and nothing downstream of it. Injecting the
-oracle's recorded per-call condition while running this session's own 20-step
-solve, decoder, semantic feedback and LM makes the chain exact, at 59 tokens and
-55 diffusion calls. Blending the two conditions as
-`oracle + a * (ours - oracle)` keeps the chain exact up to `a = 0.25` and breaks
-it at `a = 0.5`, so the condition error has to fall by about 4x. It is inherited
-from the connected rows: the 208-frame voice's worst row is 0.206 off against
-0.06 for the 70-frame voice, because the encoder's bf16 drift on the longer
-reference is amplified by the connector. The first diffusion call of this
-request is also a chaotic trajectory (see "Trajectory sensitivity in the frozen
-fixtures"), which is why a systematic condition error is amplified far more than
-white noise of the same size; the chaos is not the binding constraint, though,
-since the chain is exact once the condition is right.
+The prompt rows are not the cause. The chain breaks at the same token with our
+encoder's rows, with the generation's own `connected` rows, and with the
+separate prefill pass's rows, and the solved call-0 latent is 3.6 off in all
+three. The single-speaker request, which shares the entire path, is exact
+end-to-end from our own encoder rows.
+
+What breaks it is the bifurcation in this request's first diffusion solve
+described above. Our own call-0 condition error is 1.8% of peak, just inside
+the threshold, so the solve lands on the wrong branch and call 1 inherits it
+(its condition is 1.27 off). Forcing the oracle's condition for call 0 alone
+restores the branch and the rest of the trajectory tracks the oracle; forcing it
+for all 55 calls makes the chain exact at 59 tokens. That last number is the
+requirement, and it is why this cannot be closed by degrees: the loop needs
+essentially zero error rather than a smaller one, which a bf16 language model
+accumulating over a 352-token prompt cannot supply. The two-speaker request is
+therefore compared numerically rather than token for token.
 
 `test_two_speaker_prompt_rows_match_reference`,
-`test_two_speaker_prefill_logits_match_reference` and
-`test_two_speaker_chain_is_exact_with_the_oracle_condition` gate the parts that
-do hold; `test_two_speaker_greedy_chain_matches_torch` is a strict xfail that
-fails loudly once the chain is exact.
+`test_two_speaker_prefill_logits_match_reference`,
+`test_two_speaker_chain_is_exact_with_the_oracle_condition` and
+`test_two_speaker_trajectory_is_stable_once_call0_is_on_branch` gate the parts
+that do hold; `test_two_speaker_greedy_chain_matches_torch` is a strict xfail
+that fails loudly once the chain is exact.
+
+### Two recorded passes per fixture
+
+The recorder runs an explicit prefill forward and then the generation, so each
+fixture holds two independently sampled encoder draws: `connected` in
+`<name>_reference.npz` is what the generation consumed and what produced
+`generated_ids`, while `prefill_connected` in `<name>_lm.npz` belongs to the
+extra prefill forward. Their encoder means are identical (`encode0_mean` agrees
+to the printed zero) and they differ only through the sampling draw — 0.185
+relative on the single request, 0.135 on the two-speaker one. Chain tests must
+use the generation's rows; only comparisons against `prefill_last_hidden` and
+`prefill_logits` should use `prefill_connected`.
 
 ## Initial API and scope
 
