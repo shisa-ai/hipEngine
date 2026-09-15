@@ -1,0 +1,19 @@
+{
+  "tokens": 10,
+  "geometry": {
+    "hidden_size": 1536,
+    "num_hidden_layers": 28
+  },
+  "hidden_vs_oracle": {
+    "max_abs": 0.00017750263214111328,
+    "mean_abs": 2.788375972192133e-06,
+    "max_rel_to_peak": 8.508230710395323e-06
+  },
+  "logits_vs_oracle": {
+    "max_abs": 9.918212890625e-05,
+    "mean_abs": 2.1842317080348626e-06,
+    "max_rel_to_peak": 2.356395588428684e-06
+  },
+  "hidden_peak": 20.86246109008789,
+  "logits_peak": 42.09061050415039
+}
