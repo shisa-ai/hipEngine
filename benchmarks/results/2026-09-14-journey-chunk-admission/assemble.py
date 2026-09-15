@@ -18,7 +18,8 @@ def assemble(root):
                  "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json",
                  "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json",
                  "resume-chunk2048-native-c2-allocation.json",
-                 "resume-chunk2048-embedded-active-tasks.json"):
+                 "resume-chunk2048-embedded-active-tasks.json",
+                 "resume-chunk2048-boundaries.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -199,6 +200,42 @@ def assemble(root):
                 or before["runs"][0]["state_sha256"] != after["runs"][0]["state_sha256"]
                 or before["runs"][0]["ids"] != after["runs"][0]["ids"]):
             raise ValueError("active-task recorded parity does not reproduce")
+    boundary = packets["resume-chunk2048-boundaries.json"]
+    lengths = (2047, 2048, 2049, 2051, 2052, 4095, 4097)
+    ids = [f"{category}-boundary{length}" for category in ("code", "general_ja")
+           for length in lengths]
+    if (boundary["status"] != "completed" or not boundary["source"]["tracked_clean"]
+            or boundary["host"]["machine_id"] != left["host"]["machine_id"]
+            or boundary["model"] != depth["model"]
+            or boundary["protocol"] != {
+                "steps": 64, "candidate_repeats": 3, "capacity": 4352,
+                "strict_chunk": 1024, "candidate_chunk": 2048, "complete_matrix": True}
+            or not boundary["quality"]["hard_gates_passed"]
+            or boundary["quality"]["summary"]["rows"] != 910
+            or boundary["quality"]["summary"]["max_abs_logit_delta"] != 0
+            or not boundary["deterministic"] or not boundary["state_gate"]["passed"]
+            or not boundary["payload_exact_vs_strict"]
+            or [row["id"] for row in boundary["cases"]] != ids
+            or any(row["current_allocated_bytes"] for row in boundary["lifecycle"].values())):
+        raise ValueError("invalid boundary/reuse gate")
+    for case in boundary["cases"]:
+        if (not all(case[key] for key in (
+                "deterministic", "payload_exact_vs_strict", "control_exact", "state_finite"))
+                or case["intervening_prefill_chunks"] != [[257], [257]]
+                or len(case["candidate_payloads"]) != 3):
+            raise ValueError("boundary repeat or reuse evidence missing")
+        for phase in ("prefill", "final"):
+            expected = case["strict_payload"][phase]
+            if (expected["full_kv_bytes"] <= 0 or expected["live_index_bytes"] <= 0
+                    or not expected["full_kv_finite"] or not expected["live_index_finite"]
+                    or not expected["recurrent"]["finite"]
+                    or any(payload[phase] != expected for payload in case["candidate_payloads"])):
+                raise ValueError("boundary payload evidence does not reproduce")
+        for payload, size in [(case["strict_payload"], 1024),
+                              *((payload, 2048) for payload in case["candidate_payloads"])]:
+            count, tail = divmod(case["prompt_tokens"], size)
+            if payload["chunks"] != [size] * count + ([tail] if tail else []):
+                raise ValueError("boundary chunk trace mismatch")
     return dict(
         schema=1, performance_claim=True, promotion_claim=False,
         source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
@@ -219,7 +256,7 @@ def assemble(root):
         limits=[
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
             "2048 improves measured 4K performance but has small short-prompt costs; default remains1024.",
-            "Six 4K active tasks pass with observed chunks; boundary/isolation and wider admission remain.",
+            "Six 4K active tasks and 910 boundary/reuse rows pass; true c2 isolation/default decision remain.",
             "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
             "No hidden-seed export, graph capture, driver scratch, native-depth or c2 inference claim.",
         ],

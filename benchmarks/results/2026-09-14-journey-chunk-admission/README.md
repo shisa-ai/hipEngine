@@ -41,7 +41,7 @@ All48 case/arm/repeat chunk records are checked. The strict reference's chunk
 size did not move with the candidate.
 
 This passes the production numerical envelope, without changing its limits.
-Boundary/isolation and wider admission remain before
+c2 isolation and wider admission remain before
 default promotion. Native-context/c2 inference, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
@@ -90,7 +90,7 @@ All four worst-case repair queues are prepared and reconcile to the tracked
 allocation increase.
 
 This is an allocation-only result, not262K generation, retrieval or c2
-inference qualification. Boundary/isolation checks remain.
+inference qualification. True c2 isolation checks remain.
 
 ## Active 4K Tasks
 
@@ -114,8 +114,32 @@ and adjusts only filler budget to keep4096 total tokens. The invalid capture
 is documented in `../2026-09-15-chunk-active-task-template.json`.
 
 This is supplementary task evidence, not a complete long-form factual-quality
-certificate or full KV/isolation gate. Boundary/isolation and the default
+certificate or full KV/isolation gate. True c2 isolation and the default
 chunk-policy decision remain; chunk1024 is still the default.
+
+## Boundaries And c1 Reuse
+
+Clean `51e3e9a2b`, same host/model/BF16 lane, capacity4352. Canonical code
+and Japanese prefixes cover2047/2048/2049/2051/2052/4095/4097 tokens.
+Strict1024 supplies64 teacher transitions for each case; production2048
+repeats three times with unrelated257-token prefills between repeats.
+
+All910 scored rows have zero KL, zero logit delta and100% top1.
+Control metadata, finiteness and determinism pass. Recurrent state, complete
+BF16 KV-buffer hashes and live raw/pooled QSA index hashes match strict at
+both prefill and final decode boundaries. Main and intervening prefill calls
+are traced; ownership closes to zero.
+
+Full KV bytes are read explicitly; `snapshot()` is not treated as an
+append-only KV copy. Only live index keys are compared, since inactive
+index storage is not a semantic input. Temporary selection scores are
+outside these payload hashes. Arithmetic identity is an observed result,
+separate from the production numerical/control gates.
+
+This closes c1 boundary/reuse evidence, not simultaneous c2 ownership,
+cancellation or native-depth inference. The real serving pool accumulates
+scheduler chunks before invoking model prefill; no GPU-prefill interleaving
+claim is made. True c2 pool isolation and the default decision remain.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
