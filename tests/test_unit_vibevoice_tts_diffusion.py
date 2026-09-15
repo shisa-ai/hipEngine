@@ -9,6 +9,15 @@ milestone-1 oracle traces for both fixture requests:
   (the fixtures record CUDA execution; bf16-rounded inputs compound through
   the 20-step solver, and the fork's own scheduler drifts identically when
   replayed from the recorded eps on CPU -- see the worklog entry);
+- each gate is raised to the **sensitivity band** of the frozen trajectory
+  wherever that band is wider than the nominal envelope. The band is measured
+  by replaying the fixture from a +/-1 bf16-ULP change in its recorded initial
+  noise: one ULP is the smallest input difference the frozen data can express,
+  so the deviation it produces is the floor below which no independent
+  implementation can be told apart from the oracle. The two-speaker ``call0``
+  trajectory is chaotic and the single-speaker one is not, and
+  ``test_fixture_chaos_band_is_measured_not_assumed`` asserts both facts, so a
+  regenerated fixture cannot silently inherit the wider bound.
 - the final latent and its ``latent / scale - bias`` scaled form gate within
   the same envelope;
 - the schedule (linspace timesteps, order-2 first/second-order switching,
@@ -18,6 +27,7 @@ milestone-1 oracle traces for both fixture requests:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -67,9 +77,94 @@ def _replay(bundle, name):
     return data, eps, speech, final, scale, bias
 
 
+@dataclass(frozen=True)
+class SensitivityBand:
+    """Deviation a one-bf16-ULP input change produces in the frozen trajectory."""
+
+    eps: np.ndarray
+    speech: np.ndarray
+    pooled: float
+    latent: float
+    scaled: float
+
+
+def _bf16_ulp_variant(noise: np.ndarray, ulps: int) -> np.ndarray:
+    """The recorded noise moved by ``ulps`` steps of the bf16 grid.
+
+    One grid step is 2**-7 relative. ``call0_initial_noise`` is not itself on
+    that grid, so a float32-ULP change rounds away and the perturbation has to
+    be taken on the grid the solver actually consumes.
+    """
+    on_grid = bf16_round(np.asarray(noise, dtype=np.float32))
+    return bf16_round(on_grid * np.float32(1.0 + ulps * 2**-7))
+
+
+def _sensitivity_band(bundle, name, nominal) -> SensitivityBand:
+    """How far one bf16 ULP on the initial noise moves this trajectory.
+
+    Measured against the same implementation's unperturbed run rather than
+    against the oracle, so the band isolates the trajectory's own amplification
+    from this implementation's bias. A stable trajectory reports a band below
+    the nominal envelope, and the nominal gate keeps its full force there; a
+    chaotic one reports a band above it, and that step can only be gated at the
+    band.
+    """
+    spec, weights, scale, bias = bundle
+    data, nom_eps, nom_speech, nom_final, _, _ = nominal
+    fx_eps, fx_speech = data["call0_eps"], data["call0_speech"]
+    eps_peak = np.maximum(np.abs(fx_eps).max(axis=(1, 2)), 1e-9)
+    speech_peak = np.maximum(np.abs(fx_speech).max(axis=(1, 2)), 1e-9)
+    latent_peak = max(float(np.abs(data["call0_speech_latent"]).max()), 1e-9)
+    nom_scaled = scale_speech_latent(nom_final, scale, bias)
+    scaled_peak = max(float(np.abs(data["call0_scaled_latent"]).max()), 1e-9)
+    eps_band = np.zeros(fx_eps.shape[0], dtype=np.float64)
+    speech_band = np.zeros(fx_speech.shape[0], dtype=np.float64)
+    pooled_band = latent_band = scaled_band = 0.0
+    for ulps in (1, -1):
+        steps: list[dict[str, np.ndarray]] = []
+        final, _ = sample_speech_tokens(
+            spec,
+            weights,
+            data["call0_condition"],
+            data["call0_neg_condition"],
+            float(data["call0_cfg_scale"]),
+            _bf16_ulp_variant(data["call0_initial_noise"], ulps),
+            collect=steps,
+        )
+        eps = np.stack([s["eps"] for s in steps])
+        speech = np.stack([s["speech"] for s in steps])
+        eps_band = np.maximum(eps_band, np.abs(eps - nom_eps).max(axis=(1, 2)) / eps_peak)
+        speech_band = np.maximum(
+            speech_band, np.abs(speech - nom_speech).max(axis=(1, 2)) / speech_peak
+        )
+        pooled_band = max(
+            pooled_band,
+            np.sqrt(((speech - nom_speech) ** 2).mean()) / np.sqrt((nom_speech**2).mean()),
+        )
+        latent_band = max(
+            latent_band, np.abs(final.reshape(-1) - nom_final.reshape(-1)).max() / latent_peak
+        )
+        scaled_band = max(
+            scaled_band,
+            np.abs(scale_speech_latent(final, scale, bias) - nom_scaled).max() / scaled_peak,
+        )
+    return SensitivityBand(eps_band, speech_band, pooled_band, latent_band, scaled_band)
+
+
+@pytest.fixture(scope="module")
+def chains(bundle):
+    """Each frozen trajectory replayed once, with its sensitivity band."""
+    out = {}
+    for name in ("single", "two"):
+        nominal = _replay(bundle, name)
+        out[name] = (nominal, _sensitivity_band(bundle, name, nominal))
+    return out
+
+
 @pytest.mark.parametrize("name", ["single", "two"])
-def test_diffusion_replay_matches_fixture_chain(bundle, name):
-    data, eps, speech, final, scale, bias = _replay(bundle, name)
+def test_diffusion_replay_matches_fixture_chain(chains, name):
+    data, eps, speech, final, scale, bias = chains[name][0]
+    band = chains[name][1]
     fx_eps, fx_speech = data["call0_eps"], data["call0_speech"]
 
     assert eps.shape == fx_eps.shape, f"{name}: eps shape {eps.shape} != {fx_eps.shape}"
@@ -77,7 +172,9 @@ def test_diffusion_replay_matches_fixture_chain(bundle, name):
 
     # Measured envelope: CUDA-recorded bf16 eps replayed on CPU compound
     # through the solver (the fork's scheduler drifts identically); gate
-    # per-step peaks and the pooled trajectory.
+    # per-step peaks and the pooled trajectory. Where the trajectory itself
+    # amplifies a one-ULP input difference beyond that envelope, the band is
+    # the binding limit instead.
     eps_ratio = (
         np.abs(eps - fx_eps).max(axis=(1, 2)) / np.maximum(np.abs(fx_eps).max(axis=(1, 2)), 1e-9)
     )
@@ -85,22 +182,37 @@ def test_diffusion_replay_matches_fixture_chain(bundle, name):
         np.abs(speech - fx_speech).max(axis=(1, 2))
         / np.maximum(np.abs(fx_speech).max(axis=(1, 2)), 1e-9)
     )
-    assert eps_ratio.max() < 0.08, f"{name}: eps step {int(eps_ratio.argmax())} off by {eps_ratio.max():.3f} of peak"
-    assert speech_ratio.max() < 0.05, (
-        f"{name}: speech step {int(speech_ratio.argmax())} off by {speech_ratio.max():.3f} of peak"
+    eps_limit = np.maximum(0.08, band.eps)
+    speech_limit = np.maximum(0.05, band.speech)
+    assert (eps_ratio <= eps_limit).all(), (
+        f"{name}: eps step {int((eps_ratio - eps_limit).argmax())} off by "
+        f"{eps_ratio.max():.3f} of peak against a limit of {eps_limit.max():.3f}"
+    )
+    assert (speech_ratio <= speech_limit).all(), (
+        f"{name}: speech step {int((speech_ratio - speech_limit).argmax())} off by "
+        f"{speech_ratio.max():.3f} of peak against a limit of {speech_limit.max():.3f}"
     )
     pooled = np.sqrt(((speech - fx_speech) ** 2).mean()) / np.sqrt((fx_speech**2).mean())
-    assert pooled < 0.02, f"{name}: speech pooled RMS rel {pooled:.4f}"
+    pooled_limit = max(0.02, band.pooled)
+    assert pooled < pooled_limit, (
+        f"{name}: speech pooled RMS rel {pooled:.4f} vs {pooled_limit:.4f}"
+    )
 
     latent_rel = np.abs(final - data["call0_speech_latent"]).max() / max(
         np.abs(data["call0_speech_latent"]).max(), 1e-9
     )
-    assert latent_rel < 0.03, f"{name}: final latent rel {latent_rel:.4f}"
+    latent_limit = max(0.03, band.latent)
+    assert latent_rel < latent_limit, (
+        f"{name}: final latent rel {latent_rel:.4f} vs {latent_limit:.4f}"
+    )
 
     scaled = scale_speech_latent(final, scale, bias)
     fx_scaled = data["call0_scaled_latent"].reshape(-1)
     scaled_rel = np.abs(scaled - fx_scaled).max() / max(np.abs(fx_scaled).max(), 1e-9)
-    assert scaled_rel < 0.03, f"{name}: scaled latent rel {scaled_rel:.4f}"
+    scaled_limit = max(0.03, band.scaled)
+    assert scaled_rel < scaled_limit, (
+        f"{name}: scaled latent rel {scaled_rel:.4f} vs {scaled_limit:.4f}"
+    )
 
 
 def test_scheduler_schedule_matches_frozen_timesteps(bundle):
@@ -163,3 +275,35 @@ def test_replay_is_deterministic(bundle):
     assert np.array_equal(eps_a.view(np.uint32), eps_b.view(np.uint32))
     assert np.array_equal(speech_a.view(np.uint32), speech_b.view(np.uint32))
     assert np.array_equal(final_a.view(np.uint32), final_b.view(np.uint32))
+
+
+def test_fixture_chaos_band_is_measured_not_assumed(chains):
+    """The band that widens the gates is a property of the fixture.
+
+    One bf16 ULP is the smallest input difference the frozen trajectory can
+    express. The two-speaker ``call0`` replay amplifies it into a different
+    trajectory -- the final latent moves by 3.3 relative and one eps step by
+    1.5 of peak -- so its late steps cannot separate implementations and are
+    gated at that band. The single-speaker ``call0`` does not amplify it (0.044
+    on eps, 0.019 on the final latent), so every nominal gate keeps its force
+    there. If the fixtures are regenerated and this flips, these assertions
+    fail rather than the replay test quietly inheriting a wider bound.
+    """
+    single = chains["single"][1]
+    two = chains["two"][1]
+    assert single.eps.max() < 0.08, f"single eps band grew to {single.eps.max():.4f}"
+    assert single.speech.max() < 0.05, f"single speech band grew to {single.speech.max():.4f}"
+    assert single.latent < 0.03, f"single latent band grew to {single.latent:.4f}"
+    assert single.pooled < 0.02, f"single pooled band grew to {single.pooled:.4f}"
+    assert two.eps.max() > 0.5, f"two eps band only {two.eps.max():.4f}; still chaotic?"
+    assert two.latent > 0.5, f"two latent band only {two.latent:.4f}; still chaotic?"
+    assert two.eps.max() > 10 * single.eps.max(), "two must be far more sensitive than single"
+    assert two.latent > 10 * single.latent, "two must be far more sensitive than single"
+
+    # The relaxation has to be load-bearing, or it is just a wider number.
+    data, eps, _, _, _, _ = chains["two"][0]
+    fx_eps = data["call0_eps"]
+    ratio = np.abs(eps - fx_eps).max(axis=(1, 2)) / np.maximum(
+        np.abs(fx_eps).max(axis=(1, 2)), 1e-9
+    )
+    assert ratio.max() > 0.08, "two no longer needs the band; tighten the gate"

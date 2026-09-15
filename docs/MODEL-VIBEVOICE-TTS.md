@@ -69,6 +69,31 @@ consult the pinned card when defining a distributable product. [Card][card]
 order/history, CFG scale and step count are part of the oracle contract.
 A generic DDPM sampler is not interchangeable with the inspected DPM solver.
 
+### Trajectory sensitivity in the frozen fixtures
+
+The solver's 20-step trajectory is not uniformly well conditioned, so a single
+frozen call cannot carry a tight numerical gate. Replaying the two-speaker
+request's first diffusion call from a **one bf16-ULP** change in its recorded
+initial noise produces a different trajectory: the final latent moves by 3.3
+relative and one eps step by 1.5 of its peak. The single-speaker call does not
+amplify that change (0.044 on eps, 0.019 on the final latent). Both the CPU
+reference and the device head behave this way, so the spread is a property of
+the frozen trajectory and not of either implementation: on that call the CPU
+reference lands 0.27 relative from the oracle and the device head 0.036, and
+moving either one by a single ULP moves both to about 3.4.
+
+The diffusion unit gate therefore measures each trajectory's own sensitivity
+band, by replaying it from +/-1 bf16 ULP on the initial noise, and uses the band
+as the limit wherever the band is wider than the nominal envelope. Every
+nominal gate keeps its full force on the single-speaker call, and
+`test_fixture_chaos_band_is_measured_not_assumed` asserts that the band is both
+present for the two-speaker call and load-bearing there.
+
+This also constrains anything that feeds diffusion output back into the LM: a
+chaotic trajectory makes the feedback embedding reproducible only to the
+trajectory's band, so agreement downstream of it cannot be tightened by making
+the head more accurate.
+
 ```text
 speaker references → acoustic encoder → sampled/scaled latent → connector ┐
 script + speaker controls → token embeddings                              ┴ Qwen2
@@ -291,7 +316,11 @@ localized to the prompt rows rather than the LM or the diffusion head: the
 head reproduces the oracle's own per-call latents to 0.036 and the LM reproduces
 the oracle's prefill hidden to 0.05 given the oracle's own connected rows, while
 the 208-frame voice's connected rows are 0.206 off because the encoder's bf16
-drift on that voice is amplified by the connector.
+drift on that voice is amplified by the connector. One open question remains:
+the first diffusion call of this request is a chaotic trajectory (see
+"Trajectory sensitivity in the frozen fixtures"), so the feedback embedding that
+feeds the LM may itself be reproducible only to that band, which would make the
+span end inherently unreproducible rather than fixable by accuracy work.
 `test_two_speaker_prompt_rows_match_reference` and
 `test_two_speaker_prefill_logits_match_reference` gate the parts that do hold;
 `test_two_speaker_greedy_chain_matches_torch` is a strict xfail that fails
