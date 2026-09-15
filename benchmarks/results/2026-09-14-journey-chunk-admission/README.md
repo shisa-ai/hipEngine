@@ -41,7 +41,7 @@ All48 case/arm/repeat chunk records are checked. The strict reference's chunk
 size did not move with the candidate.
 
 This passes the production numerical envelope, without changing its limits.
-Active-shape task/isolation and wider admission remain before
+Boundary/isolation and wider admission remain before
 default promotion. Native-context/c2 inference, hidden-seed export, graph-capture and
 driver-owned scratch claims are outside this packet. State summaries do not
 copy the complete append-only KV payload.
@@ -90,7 +90,32 @@ All four worst-case repair queues are prepared and reconcile to the tracked
 allocation increase.
 
 This is an allocation-only result, not262K generation, retrieval or c2
-inference qualification. Boundary/isolation and active long-task checks remain.
+inference qualification. Boundary/isolation checks remain.
+
+## Active 4K Tasks
+
+Clean `bb043e38b`, same Framework/model/BF16 lane: all six long-task
+fixtures pass at strict chunk1024 and production chunk2048, three repeats
+per arm. Each generation reaches EOS, stays finite and produces the correct
+whole option letter. All36 outputs repeat identically; cross-arm IDs and
+sampled state hashes match.
+
+Actual calls are recorded for every generation: strict uses four1024-token
+chunks and candidate uses two2048-token chunks. Prompt contents and embedded
+non-thinking chat-template hashes match across arms. Tracked allocations
+close to zero. These are ordinary autoregressive requests despite the
+fixture IDs' historical `mtp_` prefix; no MTP performance claim is made.
+
+The first capture was stopped during strict because the legacy hand-built
+chat wrapper emitted thinking and exhausted the output cap. It never ran
+the candidate and is not a candidate failure. The repaired harness uses the
+model's embedded renderer with thinking disabled, preserves all task facts
+and adjusts only filler budget to keep4096 total tokens. The invalid capture
+is documented in `../2026-09-15-chunk-active-task-template.json`.
+
+This is supplementary task evidence, not a complete long-form factual-quality
+certificate or full KV/isolation gate. Boundary/isolation and the default
+chunk-policy decision remain; chunk1024 is still the default.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-14-journey-chunk-admission/assemble.py \
