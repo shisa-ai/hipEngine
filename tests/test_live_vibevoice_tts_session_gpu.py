@@ -413,9 +413,60 @@ def test_two_speaker_prefill_logits_match_reference(two_session) -> None:
     assert int(np.asarray(logits).argmax()) == int(oracle.argmax())
 
 
+def test_two_speaker_chain_is_exact_with_the_oracle_condition(two_session, monkeypatch) -> None:
+    """Everything downstream of the diffusion condition is already correct.
+
+    The two-speaker chain diverges at the first span end. Injecting the oracle's
+    recorded per-call condition and then running **this session's own** 20-step
+    solve, decoder, semantic feedback and LM makes the chain exact -- 59 tokens
+    and 55 diffusion calls. That places the fault in the condition the prefill
+    produces, and rules out the solver, the decoder, the semantic encoder, the
+    feedback path and the LM.
+
+    Measured tolerance: blending our condition with the oracle's as
+    ``oracle + a * (ours - oracle)`` keeps the chain exact up to ``a = 0.25``
+    and breaks it at ``a = 0.5``, so the condition error has to fall by about
+    4x. It is inherited from the connected rows (0.206 worst on the 208-frame
+    voice against 0.06 for the 70-frame one), so that is the target.
+    """
+    ref = _npz("two_reference.npz")
+    lm = _npz("two_lm.npz")
+    dif = _npz("two_diffusion.npz")
+    calls = int(dif["num_calls_recorded"])
+    rows = _two_prompt_rows(two_session, ref, lm)
+    original = two_session.diffusion.sample_speech_tokens
+    seen = {"count": 0}
+
+    def with_oracle_condition(condition, neg_condition, cfg_scale, initial_noise, *, collect=None):
+        index = min(seen["count"], calls - 1)
+        seen["count"] += 1
+        oracle = np.asarray(dif[f"call{index}_condition"], dtype=np.float32).reshape(1, -1)
+        return original(oracle, neg_condition, cfg_scale, initial_noise, collect=collect)
+
+    # Restored by monkeypatch at the end of this test. The strict xfail below
+    # runs next and asserts the chain is *not* exact, so a leaked patch turns
+    # into an XPASS failure rather than a silent pass.
+    monkeypatch.setattr(two_session.diffusion, "sample_speech_tokens", with_oracle_condition)
+    res = two_session.generate(
+        rows,
+        cfg_scale=1.3,
+        max_new_tokens=59,
+        noise_hook=lambda i: dif[f"call{min(i, calls - 1)}_initial_noise"],
+        neg_hook=lambda i: dif[f"call{min(i, calls - 1)}_neg_condition"],
+    )
+    gen = np.asarray(lm["generated_ids"])[0]
+    expected = [int(t) for t in gen[len(np.asarray(lm["input_ids"])[0]) :]]
+    assert len(res.chunks) == calls, (
+        f"oracle condition should give {calls} diffusion calls, got {len(res.chunks)}"
+    )
+    assert res.ids == expected, "chain moved off the oracle with the oracle's condition"
+
+
 @pytest.mark.xfail(
     strict=True,
-    reason="two-speaker chain diverges at the first span end; see "
+    reason="two-speaker chain diverges at the first span end because the "
+    "diffusion condition is off; with the oracle's condition and this "
+    "session's own solve it is exact. See "
     "worklog/entries/20260915T091156.145004Z-lhl-vibevoice-tts-two-speaker-prompt-f6fe75.md",
 )
 def test_two_speaker_greedy_chain_matches_torch(two_session) -> None:
