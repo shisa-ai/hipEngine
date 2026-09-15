@@ -119,11 +119,17 @@ class MlpTP2GenerationSession:
         mode: str = "tp2",
         max_sequence_length: int = 2048,
         stage_trace: bool = True,
+        driver: str = "compiled",
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
         if self.mode not in {"tp1", "tp2"}:
             raise ValueError(f"unknown mode {self.mode!r}; expected 'tp1' or 'tp2'")
+        if driver not in {"python", "compiled"}:
+            raise ValueError(
+                f"unknown exchange driver {driver!r}; expected 'python' or 'compiled'"
+            )
+        self.driver = str(driver)
         self.devices = tuple(int(d) for d in devices)
         if not self.devices:
             raise ValueError("at least one device is required")
@@ -218,6 +224,7 @@ class MlpTP2GenerationSession:
             # The Q6_K layers' registered f32 partial variant is a per-layer
             # numerical candidate, not this run's schedule.
             staging_dtype="bf16",
+            driver=self.driver,
         )
 
     def _alloc_step_buffers(self, device: int) -> None:

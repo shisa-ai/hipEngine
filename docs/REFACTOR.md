@@ -1,5 +1,25 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## TP2 staged-exchange `driver` knob (compiled default 2026-09-15)
+
+- `MlpShardGroup`/`MlpTP2GenerationSession` `driver="compiled"` is the default
+  per-layer TP2 exchange transport: the hipcc-built host driver
+  (`hipengine/distributed/staged_exchange_host.cpp`) with the H2D return path
+  removed (consumers read the mapped pinned payload zero-copy). Measured
+  in-schedule on W7900 + RX 7900 XTX: exchange wall p50 201.18 -> 156.18 us
+  over 9,216 reductions, decode p50 56.45 -> 53.12 ms, production gates
+  bit-identical to the Python route's run (mean KL 6.425e-04, max KL
+  5.246e-03, top-1 100%, bit-exact repeat). Artifact:
+  `benchmarks/results/2026-09-15-w7900-tp2-mlp-generate-e2e-compiled-exchange.json`.
+- `driver="python"` (`hipengine/distributed/staged.py`) is the registered
+  fallback route and the world != 2 general transport; the compiled driver
+  rejects world != 2 at create.
+- Removal condition: keep the Python route as the transport fallback until a
+  batched/graphed TP2 schedule retires the eager per-layer exchange entirely
+  (at which point both transports and the knob go together). Do not remove
+  the Python route while the slice/e2e A/B evidence chain still cites it as
+  the control arm.
+
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 
 - Three profile modules are named after models but register architecture-scoped

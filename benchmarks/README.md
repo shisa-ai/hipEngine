@@ -1088,19 +1088,24 @@ memory lets both ranks read the reduced vector zero-copy), and admit the fused
 shard shape to the policy table under the gate the existing entries used -
 together worth roughly 1.15x on this segment if the compiled rate holds.
 
-**The whole model generates tokens on both GPUs.** The MLP-only TP2 group now
+**The whole model generates tokens on both GPUs.** The MLP-only TP2 group
 drives the full Qwen3.8-27B `Q4_K_M` stack end to end: replicated attention and
 GDN on every rank, sharded MLP with one staged bf16-partial reduction per layer,
-single residual add per rank, and actual generated text out of the session. Each
-decode token makes 64 reductions; the in-step exchange wall lands at 201 us p50
-(238 us p95), which prices the Python-driven protocol plus the per-layer
-dependency wait inside a real schedule - the isolated idle-buffer protocol is
-~58 us, so a compiled exchange caps the recoverable share at roughly 4-5% of a
-token, and the replicated attention enqueue dominates instead. Decode p50 at the
-matched composition: W7900 TP1 31.8 ms/token, RX 7900 XTX TP1 26.3 ms/token, TP2
-group 56.5 ms/token on the diagnostic schedule - TP2 is not faster here, and no
-speedup is claimed for it. What the checkpoint certifies is arithmetic and
-control: the sharded model stays inside the calibrated production envelope
+single residual add per rank, and actual generated text out of the session.
+Each decode token makes 64 reductions. The exchange runs on the compiled host
+driver (`hipengine/distributed/staged_exchange_host.cpp`): both ranks' D2H
+submits, one wait per stream, a compiled f32 sum, and no H2D return copy - both
+ranks' boundary-cast kernels read the mapped pinned payload zero-copy over the
+bus. Its in-step wall is 156 us p50 (187 us p95) over 9,216 reductions, against
+201 us p50 (238 us p95) for the Python-driven route with the H2D return, and
+decode p50 moves 56.5 -> 53.1 ms/token at the matched composition (W7900 TP1
+31.8 ms, RX 7900 XTX TP1 26.3 ms) - the remaining wall is the per-layer
+dependency wait plus the replicated attention enqueue, and TP2 is still not
+faster, so no speedup is claimed for it. The compiled driver's reduced payload
+is bit-identical to the Python route's (same f32 sum in the same rank order;
+the Python route stays the registered fallback and the world != 2 general
+transport). What the checkpoint certifies is arithmetic and control: the
+sharded model stays inside the calibrated production envelope
 against both per-GPU TP1 controls (full-logit teacher-forced mean KL 6.4e-04,
 max KL 5.2e-03, top-1 agreement 100% over a 16-token sequence, identical
 against both controls), the two TP1 controls agree bit-identically with each
