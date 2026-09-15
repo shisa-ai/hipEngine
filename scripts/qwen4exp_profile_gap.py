@@ -352,11 +352,27 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
 
 
 def _apply_post_binder_overrides(
-    overrides: dict[str, str],
+    overrides: dict[str, str], runner: Any = None
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """Apply diagnostic overrides after the profile binder has run.
+
+    Some selectors own resources that the binder allocates during its own
+    pass, so flipping the flag afterwards is not enough: the binder reads
+    ``HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`` when deciding whether to build the
+    MMQ sidecars, and with the production default it has already returned
+    early. Re-run the same hook the binder would have run, so an override that
+    turns the selector on is actually in effect rather than silently inert.
+    """
+
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
+    if runner is not None:
+        configure = getattr(runner, "configure_mmq_prefill_resources", None)
+        if callable(configure) and os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
+        ) not in {"", "0", "false", "False"}:
+            configure()
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
 
@@ -552,7 +568,7 @@ def main() -> None:
     try:
         runner = generator.runner
         report["bound_route_env"], report["route_env"] = (
-            _apply_post_binder_overrides(overrides)
+            _apply_post_binder_overrides(overrides, runner)
         )
         if args.mode == "prefill":
             ids = (

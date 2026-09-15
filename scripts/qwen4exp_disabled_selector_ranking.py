@@ -47,13 +47,22 @@ CHILD = REPO_ROOT / "scripts" / "qwen4exp_profile_gap.py"
 _L = lambda layers: ",".join(str(layer) for layer in layers)  # noqa: E731
 
 # Arm name -> overrides. Each re-enables exactly one disabled selector, with the
-# layer companion the production binder would have supplied for it.
+# layer companion the production binder would have supplied for it, plus any
+# flag that would otherwise shadow it.
+#
+# Shadowing notes, read from the dispatch rather than assumed:
+# * ``Q4_IU8_PREFILL`` is unreachable while ``EXACT_GROUPED_Q4=1`` (the
+#   production default), because the exact-risk+repair branch is an earlier arm
+#   of the same ``if``/``elif`` chain in ``qwen4_exp_runner``. Enabling the fast
+#   suffix therefore requires turning the exact route off, and an arm that only
+#   sets ``Q4_IU8_PREFILL=1`` measures the exact route twice.
 ARMS: dict[str, dict[str, str]] = {
     "baseline": {},
     "moe": {"HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"},
-    "q4_iu8": {
+    "q4_iu8_fast": {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
     },
     "q8_mmq": {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
     "q8_iu8_wmm": {"HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1"},
@@ -85,6 +94,7 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",

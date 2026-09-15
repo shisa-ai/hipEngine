@@ -207,7 +207,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     generator, resolved, _index = _make_generator(factory_args, "production")
     overrides = _parse_overrides(list(getattr(args, "override", ()) or ()))
-    bound_route_env, route_env = _apply_post_binder_overrides(overrides)
+    bound_route_env, route_env = _apply_post_binder_overrides(
+        overrides, getattr(generator, "runner", None)
+    )
     roctx = Roctx() if args.profile else None
     contexts: list[dict[str, Any]] = []
     memory_after_warmup: dict[str, Any] | None = None
