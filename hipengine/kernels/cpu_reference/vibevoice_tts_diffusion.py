@@ -237,6 +237,37 @@ def diffusion_head_forward(
     return out
 
 
+_ALPHA_BAR_TABLES: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+
+def _alpha_bar_tables(num_train_timesteps: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(alphas_cumprod, init_sigmas)`` for a training schedule.
+
+    Both arrays depend only on ``num_train_timesteps``, but the cumulative
+    product below is a Python-level loop over every training step (1000 for
+    this checkpoint) using fp32 scalar arithmetic. It matches torch's
+    sequential fp32 accumulation, so it cannot be vectorised without changing
+    the values. Rebuilding it per scheduler instance made the TTS session pay
+    ~495 us on every diffusion frame -- 25 times per request -- to recompute a
+    constant. The scheduler never mutates either table, so sharing them across
+    instances is safe.
+    """
+    cached = _ALPHA_BAR_TABLES.get(num_train_timesteps)
+    if cached is not None:
+        return cached
+    betas = betas_for_alpha_bar(num_train_timesteps)
+    alphas = 1.0 - betas
+    # FP32 cumprod matches torch's sequential FP32 accumulation.
+    ac = np.empty_like(alphas)
+    acc = np.float32(1.0)
+    for i, a in enumerate(alphas):
+        acc = np.float32(acc * a)
+        ac[i] = acc
+    init_sigmas = (((1.0 - ac) / ac) ** 0.5).astype(np.float32)
+    _ALPHA_BAR_TABLES[num_train_timesteps] = (ac, init_sigmas)
+    return ac, init_sigmas
+
+
 class DPMSolverMultistepScheduler:
     """The fork's vendored scheduler, narrowed to the checkpoint configuration.
 
@@ -252,16 +283,9 @@ class DPMSolverMultistepScheduler:
         if spec.solver_order != 2 or spec.solver_type != "midpoint":
             raise ValueError("only order-2 midpoint solver is modelled")
         self.spec = spec
-        betas = betas_for_alpha_bar(spec.num_train_timesteps)
-        alphas = 1.0 - betas
-        # FP32 cumprod matches torch's sequential FP32 accumulation.
-        ac = np.empty_like(alphas)
-        acc = np.float32(1.0)
-        for i, a in enumerate(alphas):
-            acc = np.float32(acc * a)
-            ac[i] = acc
-        self.alphas_cumprod = ac
-        self.init_sigmas = (((1.0 - ac) / ac) ** 0.5).astype(np.float32)
+        self.alphas_cumprod, self.init_sigmas = _alpha_bar_tables(
+            spec.num_train_timesteps
+        )
 
     def set_timesteps(self, num_inference_steps: int) -> None:
         # lambda_min_clipped = -inf -> clipped_idx = 0 -> last_timestep = T.
