@@ -83,6 +83,9 @@ __global__ void hipengine_vv_conv1d_valid_depthwise_f32(
 // Causal transposed conv: one thread per (out_channel, output position).
 // Output j collects input positions i = (j - tap) / s for taps with
 // tap == j mod s; taps feeding only the trimmed right padding are skipped.
+// Only positions j >= keep_from are written, compacted densely to the first
+// kept_len columns of the output, so streaming callers can read the kept
+// tail as a dense [out_c, kept_len] tensor without a host-side view.
 __global__ void hipengine_vv_conv_transpose1d_causal_f32(
     const float* __restrict__ x,
     const float* __restrict__ w,
@@ -92,13 +95,16 @@ __global__ void hipengine_vv_conv_transpose1d_causal_f32(
     int64_t out_c,
     int64_t k,
     int64_t stride,
-    int64_t l_out) {
+    int64_t l_out,
+    int64_t keep_from,
+    int64_t kept_len) {
+  const int64_t total = out_c * kept_len;
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= out_c * l_out) {
+  if (index >= total) {
     return;
   }
-  const int64_t o = index / l_out;
-  const int64_t j = index % l_out;
+  const int64_t o = index / kept_len;
+  const int64_t j = keep_from + (index % kept_len);
   const int64_t l_in = (l_out + stride - 1) / stride;  // ceil: input positions
   const int64_t tap0 = j % stride;
   float acc = 0.0f;
@@ -191,6 +197,34 @@ __global__ void hipengine_vv_channel_scale_f32(
   out[index] = x[index] * scale[index / length];
 }
 
+// ------------------------------------------------- conv window assembly
+
+// Assemble a conv window buffer from a device-resident cache tail and a new
+// contiguous input: dst[c, 0:keep] = last `keep` columns of cache_src,
+// dst[c, keep:keep+new_len] = x_src. One thread per element; keep == 0 (an
+// empty convtr cache on its first chunk) skips the cache half entirely.
+__global__ void hipengine_vv_concat_gather_f32(
+    const float* __restrict__ cache_src,
+    const float* __restrict__ x_src,
+    float* __restrict__ dst,
+    int64_t channels,
+    int64_t keep,
+    int64_t cache_len,
+    int64_t new_len) {
+  const int64_t row_len = keep + new_len;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= channels * row_len) {
+    return;
+  }
+  const int64_t c = index / row_len;
+  const int64_t j = index % row_len;
+  if (j < keep) {
+    dst[index] = cache_src[c * cache_len + (cache_len - keep + j)];
+  } else {
+    dst[index] = x_src[c * new_len + (j - keep)];
+  }
+}
+
 // ------------------------------------------------------------- linear
 
 // out[o * l + j] = sum_i w[o * in + i] * x[i * l + j] + b[o].
@@ -245,13 +279,13 @@ hipError_t hipengine_vv_conv1d_valid_depthwise(
 hipError_t hipengine_vv_conv_transpose1d_causal(
     const float* x, const float* w, const float* b, float* out,
     int64_t in_c, int64_t out_c, int64_t k, int64_t stride, int64_t l_out,
-    hipStream_t stream) {
-  const int64_t total = out_c * l_out;
-  if (total <= 0) return hipSuccess;
+    int64_t keep_from, int64_t kept_len, hipStream_t stream) {
+  if (kept_len <= 0) return hipSuccess;
   const int threads = 256;
-  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  const int blocks = static_cast<int>((out_c * kept_len + threads - 1) / threads);
   hipLaunchKernelGGL(hipengine_vv_conv_transpose1d_causal_f32, dim3(blocks), dim3(threads),
-                     0, stream, x, w, b, out, in_c, out_c, k, stride, l_out);
+                     0, stream, x, w, b, out, in_c, out_c, k, stride, l_out,
+                     keep_from, kept_len);
   return hipGetLastError();
 }
 
@@ -305,6 +339,20 @@ hipError_t hipengine_vv_linear(
   const int blocks = static_cast<int>((total + threads - 1) / threads);
   hipLaunchKernelGGL(hipengine_vv_linear_f32, dim3(blocks), dim3(threads), 0, stream,
                      x, w, b, out, in_features, out_features, length);
+  return hipGetLastError();
+}
+
+hipError_t hipengine_vv_concat_gather(
+    const float* cache_src, const float* x_src, float* dst,
+    int64_t channels, int64_t keep, int64_t cache_len, int64_t new_len,
+    hipStream_t stream) {
+  const int64_t total = channels * (keep + new_len);
+  if (total <= 0) return hipSuccess;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(hipengine_vv_concat_gather_f32, dim3(blocks), dim3(threads),
+                     0, stream, cache_src, x_src, dst, channels, keep,
+                     cache_len, new_len);
   return hipGetLastError();
 }
 

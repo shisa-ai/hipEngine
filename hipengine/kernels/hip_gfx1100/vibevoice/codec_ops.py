@@ -131,6 +131,8 @@ def _conv_transpose1d_causal(
     k: int,
     stride: int,
     l_out: int,
+    keep_from: int,
+    kept_len: int,
     *,
     stream: int,
     runtime: HipRuntime | None,
@@ -138,11 +140,12 @@ def _conv_transpose1d_causal(
     fn = _fn(
         library,
         "hipengine_vv_conv_transpose1d_causal",
-        [_P, _P, _P, _P, _I, _I, _I, _I, _I, _S],
+        [_P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _I, _S],
     )
     err = fn(
         _P(x_ptr), _P(w_ptr), _P(b_ptr), _P(out_ptr),
-        _I(in_c), _I(out_c), _I(k), _I(stride), _I(l_out), _S(stream),
+        _I(in_c), _I(out_c), _I(k), _I(stride), _I(l_out),
+        _I(keep_from), _I(kept_len), _S(stream),
     )
     _check_launch(runtime or get_hip_runtime(), err)
 
@@ -240,6 +243,31 @@ def _linear(
     _check_launch(runtime or get_hip_runtime(), err)
 
 
+def _concat_gather(
+    library: ctypes.CDLL,
+    cache_ptr: int,
+    x_ptr: int,
+    out_ptr: int,
+    channels: int,
+    keep: int,
+    cache_len: int,
+    new_len: int,
+    *,
+    stream: int,
+    runtime: HipRuntime | None,
+) -> None:
+    fn = _fn(
+        library,
+        "hipengine_vv_concat_gather",
+        [_P, _P, _P, _I, _I, _I, _I, _S],
+    )
+    err = fn(
+        _P(cache_ptr), _P(x_ptr), _P(out_ptr), _I(channels), _I(keep),
+        _I(cache_len), _I(new_len), _S(stream),
+    )
+    _check_launch(runtime or get_hip_runtime(), err)
+
+
 _VARIANT = "vv_codec_v1"
 
 
@@ -270,8 +298,10 @@ def register_codec_ops_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "conv_transpose1d", "fp32", _VARIANT),
-        lambda x_ptr, w_ptr, b_ptr, out_ptr, in_c, out_c, k, stride, l_out, **kw: _conv_transpose1d_causal(
-            library, x_ptr, w_ptr, b_ptr, out_ptr, in_c, out_c, k, stride, l_out, **kw
+        lambda x_ptr, w_ptr, b_ptr, out_ptr, in_c, out_c, k, stride, l_out,
+        keep_from=0, kept_len=None, **kw: _conv_transpose1d_causal(
+            library, x_ptr, w_ptr, b_ptr, out_ptr, in_c, out_c, k, stride,
+            l_out, keep_from, l_out if kept_len is None else kept_len, **kw
         ),
         replace=replace,
     )
@@ -303,6 +333,13 @@ def register_codec_ops_kernels(*, replace: bool = True) -> None:
         KernelKey("hip_gfx1100", "linear", "fp32", _VARIANT),
         lambda x_ptr, w_ptr, b_ptr, out_ptr, in_features, out_features, length, **kw: _linear(
             library, x_ptr, w_ptr, b_ptr, out_ptr, in_features, out_features, length, **kw
+        ),
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "concat_gather", "fp32", _VARIANT),
+        lambda cache_ptr, x_ptr, out_ptr, channels, keep, cache_len, new_len, **kw: _concat_gather(
+            library, cache_ptr, x_ptr, out_ptr, channels, keep, cache_len, new_len, **kw
         ),
         replace=replace,
     )

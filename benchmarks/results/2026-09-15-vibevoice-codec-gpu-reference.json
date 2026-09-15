@@ -1,0 +1,48 @@
+{
+  "frames": 6,
+  "samples_per_frame": 3200,
+  "gpu_full_vs_ref_full": {
+    "max_abs": 3.055902197957039e-10,
+    "mean_abs": 6.053480679687103e-12,
+    "max_rel_to_peak": 3.5231355503754276e-06
+  },
+  "gpu_stream_vs_ref_stream": {
+    "max_abs": 2.837623469531536e-10,
+    "mean_abs": 6.011748136340127e-12,
+    "max_rel_to_peak": 3.2714838343401116e-06
+  },
+  "gpu_stream_vs_gpu_full": {
+    "max_abs": 0.0,
+    "bit_exact": true
+  },
+  "gpu_chunked_vs_ref_stream": {
+    "max_abs": 2.837623469531536e-10,
+    "mean_abs": 6.011748136340127e-12,
+    "max_rel_to_peak": 3.2714838343401116e-06
+  },
+  "gpu_reset_stream_vs_ref_stream": {
+    "max_abs": 2.837623469531536e-10,
+    "mean_abs": 6.011748136340127e-12,
+    "max_rel_to_peak": 3.2714838343401116e-06
+  },
+  "waveform_peak": {
+    "reference_full": 8.673813863424584e-05,
+    "gpu_full": 8.6738116806373e-05,
+    "oracle_full": 8.673802949488163e-05
+  },
+  "gpu_full_vs_oracle_full": {
+    "max_abs": 2.908109308918938e-10,
+    "mean_abs": 7.472846276964281e-12,
+    "max_rel_to_peak": 3.3527500288561943e-06
+  },
+  "gpu_stream_vs_oracle_stream": {
+    "max_abs": 5.003357728128321e-10,
+    "mean_abs": 7.486712679203681e-12,
+    "max_rel_to_peak": 5.768351436668413e-06
+  },
+  "ref_full_vs_oracle_full": {
+    "max_abs": 3.4424374462105334e-10,
+    "mean_abs": 6.823062653066314e-12,
+    "max_rel_to_peak": 3.968775249169881e-06
+  }
+}

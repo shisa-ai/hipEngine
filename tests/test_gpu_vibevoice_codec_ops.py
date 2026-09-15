@@ -160,6 +160,7 @@ class TestCodecKernelsAgainstReference:
                     _ptr(x_buf), _ptr(w_buf), _ptr(b_buf), _ptr(out_buf),
                     ctypes.c_int64(in_c), ctypes.c_int64(out_c),
                     ctypes.c_int64(k), ctypes.c_int64(stride),
+                    ctypes.c_int64(l_out), ctypes.c_int64(0),
                     ctypes.c_int64(l_out), ctypes.c_void_p(0),
                 ],
                 runtime,
