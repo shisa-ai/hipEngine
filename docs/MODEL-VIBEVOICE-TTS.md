@@ -95,16 +95,42 @@ passed a production gate.
 
 What is **not** available to reuse: the diffusion head with its solver, and the
 language-model generation loop that drives text/speech transitions. Those exist
-only in the community fork and must be ported.
+only in the community fork and must be ported. transformers 5.15.0 has exactly
+two VibeVoice families, `vibevoice_acoustic_tokenizer` and `vibevoice_asr`;
+there is no `vibevoice` causal-LM or diffusion-head model. (The `Diffusion*`
+symbols it does export are `DiffusionGemma`, unrelated.)
 
-The acoustic waveform decoder is a **correction to an earlier assumption in this
-document**: it is not new work. `transformers` 5.15.0 ships
-`VibeVoiceAcousticTokenizerModel` (and `...DecoderModel`) natively, with a
-streaming `forward(hidden_states, padding_cache, use_cache)` and
-`decoder_ratios [8, 5, 5, 4, 2, 2]` (x3200) and `vae_dim` 64, matching the
-checkpoint's `acoustic_tokenizer_config`. The port still has to reproduce chunk
-flush and sample accounting, but the reference topology can be used directly as
-the oracle instead of being reverse-engineered.
+**The acoustic waveform decoder: native classes exist, but not for this
+checkpoint.** An earlier revision of this document said the decoder must be built
+new. That was too strong, but the opposite reading — that transformers ships it
+ready to use — is wrong in a way that matters more.
+
+transformers 5.15.0 does ship `VibeVoiceAcousticTokenizerModel` and
+`VibeVoiceAcousticTokenizerDecoderModel`, with a streaming
+`forward(hidden_states, padding_cache=None, use_cache=False)`. They implement the
+**`vibevoice/VibeVoice-1.5B-hf`** conversion, not `microsoft/VibeVoice-1.5B`,
+and the two are different audio-tokenizer topologies:
+
+| | `microsoft/VibeVoice-1.5B` (this lane) | `vibevoice/VibeVoice-1.5B-hf` (native) |
+| --- | --- | --- |
+| Decoder key shape | `stages.N.M`, `upsample_layers.N` | `conv_layers.N.stage.M`, `conv_layers.N.convtr` |
+| Decoder stage counts | `[8, 3, 3, 3, 3, 3, 3]` | `[3, 3, 3, 3, 3, 3, 8]` |
+| Decoder parameters | 343,695,969 | 175,793,409 |
+| Depth source | `reversed(encoder_depths)` when `decoder_depths` is null | `depths` stored directly |
+| Scale/bias keys | `speech_scaling_factor`, `speech_bias_factor` | `latent_scaling_factor`, `latent_bias_factor` |
+
+Building the native decoder from this checkpoint's `acoustic_tokenizer_config`
+produces a 175,793,409-parameter network, not the checkpoint's 343,695,969. The
+native module ignores `decoder_depths` entirely: forcing
+`decoder_depths="8-3-3-3-3-3-3"` changes nothing. The checkpoint's decoder
+weights therefore cannot be loaded into it.
+
+The consequence for the port is that the decoder still has to be built against
+the original's weights. The native implementation is worth reading for the
+streaming and padding-cache mechanics and is a second reference for the module
+structure, but it is not a substitute and it is not the oracle. Do not let a
+matching `vae_dim` (64) or `decoder_ratios` (`[8, 5, 5, 4, 2, 2]`) suggest
+the rest matches: those two values do match, and they are not sufficient.
 
 Moonshine's text output and cross-attention loop cannot substitute for this
 design.
@@ -169,9 +195,12 @@ ValueError: '<class 'vibevoice.modular.configuration_vibevoice.VibeVoiceAcoustic
 is already used by a Transformers model.
 ```
 
-The same finding is what makes the acoustic decoder reusable: 5.15.0's native
-`VibeVoiceAcousticTokenizerModel` and the fork's model share a model type, i.e.
-the same architecture. What 5.15.0 does **not** have is any `vibevoice`
+The same finding is what makes the acoustic decoder *look* reusable, and the
+appearance is misleading: sharing a `model_type` string means only that both
+implementations claim the name, not that they build the same network. 5.15.0's
+native tokenizer targets the `-hf` conversion, whose decoder has a different
+topology from this checkpoint's. See "The acoustic waveform decoder" above for
+the measured comparison. What 5.15.0 does **not** have is any `vibevoice`
 `AutoModelForCausalLM` entry, so the diffusion head and the generation loop exist
 only in the fork.
 
