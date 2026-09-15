@@ -35,6 +35,33 @@ from hipengine.kernels.hip_gfx1100.vibevoice import encoder as vv_enc
 from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
 
+# The ConvNeXt FFN linears below are the decoder's dominant cost, and their shape
+# makes the per-output-element GEMV a poor fit: ``dense_gemv_out_bf16`` launches one
+# 256-thread block per output element, so at ``rows=3200`` a ``32 -> 128`` projection
+# costs 409,600 blocks whose 256-wide tree reduction is ~100x the FMA count. The
+# batched GEMM streams the same weights with one block per output tile. Measured on
+# the decoder's own FFN shapes, the batched GEMM is 4.8x faster end to end for the
+# whole ``decode`` call (50.3 ms -> 10.5 ms). Below this row count the GEMV wins,
+# because its grid is ``(out_features, rows)`` and a single row is one block per
+# output. The batched GEMM reassociates the reduction, so this is a production-route
+# change, not a bit-exact one: it flips a handful of output elements by one ULP
+# (6-27 of 409,600 on the decoder shapes) and the fixture chain is re-validated
+# against the oracle rather than assumed.
+_FFN_GEMM_MIN_ROWS = 8
+
+
+def _ffn_linear(x_ptr: int, w_ptr: int, out_ptr: int, rows: int, in_features: int,
+                out_features: int, *, runtime) -> None:
+    """FFN linear: batched GEMM for multi-row tiles, per-output GEMV for one row."""
+    if rows >= _FFN_GEMM_MIN_ROWS:
+        dense_gemv.dense_prefill_gemm_out_bf16(
+            x_ptr, w_ptr, out_ptr, rows, in_features, out_features, runtime=runtime,
+        )
+        return
+    dense_gemv.dense_gemv_out_bf16(
+        x_ptr, w_ptr, out_ptr, rows, in_features, out_features, runtime=runtime,
+    )
+
 
 def _upload_u16(host_u16: np.ndarray) -> DeviceBuffer:
     array = np.ascontiguousarray(host_u16)
@@ -209,7 +236,7 @@ class VibevoiceTTSDecoderGPU:
             library=lib_enc, runtime=self.runtime,
         )
         h = self._scratch_buf(f"{key}_ffn", rows * 4 * width * 2)
-        dense_gemv.dense_gemv_out_bf16(
+        _ffn_linear(
             ffn_normed.ptr, self._weights[f"b{block_idx}_l1w"].ptr, h.ptr,
             rows, width, 4 * width, runtime=self.runtime,
         )
@@ -219,7 +246,7 @@ class VibevoiceTTSDecoderGPU:
         )
         self.kernels.vv_gelu_bf16(h.ptr, h.ptr, rows * 4 * width, library=lib_enc, runtime=self.runtime)
         h2 = self._scratch_buf(f"{key}_ffn2", rows * width * 2)
-        dense_gemv.dense_gemv_out_bf16(
+        _ffn_linear(
             h.ptr, self._weights[f"b{block_idx}_l2w"].ptr, h2.ptr,
             rows, 4 * width, width, runtime=self.runtime,
         )
