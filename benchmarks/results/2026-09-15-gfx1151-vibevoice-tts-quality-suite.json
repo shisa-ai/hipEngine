@@ -40,8 +40,28 @@
     "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
     "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected. A request IS reproducible at a fixed seed, because the suite reseeds the session per request; it is not comparable to the torch lane, whose stream differs.",
     "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output.",
-    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated."
+    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated.",
+    "The WER gate is measured by the same runtime it qualifies. The suite transcribes the reference implementation's own PCM as an evaluator floor, which bounds the ASR lane's systematic error, but a floor of 0.0 does not make every non-zero WER attributable to the TTS lane: the evaluator can still mishear audio whose phonetics differ from the reference. Separating those two needs an independent ASR on the same waveform, which this suite does not run."
   ],
+  "evaluator_floor": {
+    "method": "the ASR lane transcribes the reference implementation's own PCM for the pinned requests (single_audio.npz / two_audio.npz), which contains every word; the WER it reports there is the evaluator's, not the TTS lane's",
+    "requests": [
+      {
+        "reference": "single",
+        "seconds": 3.333,
+        "transcript": "The quick brown fox jumps over the lazy dog.",
+        "wer": 0.0
+      },
+      {
+        "reference": "two",
+        "seconds": 7.333,
+        "transcript": "I heard there is big news in text to speech lately. Yes, and it runs locally on this machine.",
+        "wer": 0.0
+      }
+    ],
+    "max_wer": 0.0,
+    "interpretation": "a request whose WER is at or below max_wer is not evidence of a synthesis defect. A floor of 0.0 means the evaluator reads the reference implementation's audio exactly; it does NOT mean every non-zero WER on this lane's audio is a synthesis defect, because the evaluator can still mishear audio whose phonetics differ from the reference. Establishing that case needs an independent ASR on the same waveform"
+  },
   "stability": {
     "seeds": 3,
     "requests": {
@@ -357,7 +377,7 @@
               0.273
             ]
           ],
-          "transcribe_seconds": 76.67,
+          "transcribe_seconds": 7.61,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
@@ -379,6 +399,7 @@
           "longest_silence_seconds": 0.124,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 2.8,
           "duration_ratio": 0.762,
           "checks": {
@@ -510,7 +531,7 @@
               0.4376
             ]
           ],
-          "transcribe_seconds": 9.35,
+          "transcribe_seconds": 9.22,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
@@ -532,6 +553,7 @@
           "longest_silence_seconds": 0.008,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 6.0,
           "duration_ratio": 0.667,
           "checks": {
@@ -663,7 +685,7 @@
               0.3789
             ]
           ],
-          "transcribe_seconds": 9.54,
+          "transcribe_seconds": 9.36,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
@@ -685,6 +707,7 @@
           "longest_silence_seconds": 0.041,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 4.8,
           "duration_ratio": 0.889,
           "checks": {
@@ -875,7 +898,7 @@
               0.5201
             ]
           ],
-          "transcribe_seconds": 11.51,
+          "transcribe_seconds": 11.24,
           "transcript_status": "ok",
           "transcript": "I think the meeting went well this morning. I agree, and the budget question is finally settled.",
           "segments": [
@@ -897,6 +920,7 @@
           "longest_silence_seconds": 0.824,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 6.8,
           "duration_ratio": 0.961,
           "checks": {
@@ -1132,7 +1156,7 @@
               0.6589
             ]
           ],
-          "transcribe_seconds": 18.55,
+          "transcribe_seconds": 18.18,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
@@ -1173,6 +1197,7 @@
           "longest_silence_seconds": 1.055,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 9.2,
           "duration_ratio": 1.014,
           "checks": {
@@ -1492,7 +1517,7 @@
               0.2209
             ]
           ],
-          "transcribe_seconds": 17.75,
+          "transcribe_seconds": 17.33,
           "transcript_status": "ok",
           "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
@@ -1514,6 +1539,7 @@
           "longest_silence_seconds": 0.49,
           "wer": 0.025,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": true,
           "expected_seconds": 16.0,
           "duration_ratio": 0.842,
           "checks": {
@@ -1626,7 +1652,7 @@
               0.4464
             ]
           ],
-          "transcribe_seconds": 8.33,
+          "transcribe_seconds": 8.15,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
@@ -1648,6 +1674,7 @@
           "longest_silence_seconds": 0.065,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 2.8,
           "duration_ratio": 1.143,
           "checks": {
@@ -1797,7 +1824,7 @@
               0.258
             ]
           ],
-          "transcribe_seconds": 10.21,
+          "transcribe_seconds": 9.93,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
@@ -1819,6 +1846,7 @@
           "longest_silence_seconds": 0.004,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 6.0,
           "duration_ratio": 0.844,
           "checks": {
@@ -1959,7 +1987,7 @@
               0.3966
             ]
           ],
-          "transcribe_seconds": 9.91,
+          "transcribe_seconds": 9.62,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
@@ -1981,6 +2009,7 @@
           "longest_silence_seconds": 0.326,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 4.8,
           "duration_ratio": 0.972,
           "checks": {
@@ -2175,7 +2204,7 @@
               0.5887
             ]
           ],
-          "transcribe_seconds": 11.5,
+          "transcribe_seconds": 11.16,
           "transcript_status": "ok",
           "transcript": "I think meeting went well this morning. I agree. And the budget question is finally settled.",
           "segments": [
@@ -2197,6 +2226,7 @@
           "longest_silence_seconds": 0.001,
           "wer": 0.0588,
           "word_count_ratio": 0.9412,
+          "wer_above_evaluator_floor": true,
           "expected_seconds": 6.8,
           "duration_ratio": 0.961,
           "checks": {
@@ -2432,7 +2462,7 @@
               0.67
             ]
           ],
-          "transcribe_seconds": 18.75,
+          "transcribe_seconds": 18.13,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
@@ -2473,6 +2503,7 @@
           "longest_silence_seconds": 1.015,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 9.2,
           "duration_ratio": 1.014,
           "checks": {
@@ -2762,7 +2793,7 @@
               0.4614
             ]
           ],
-          "transcribe_seconds": 16.74,
+          "transcribe_seconds": 16.09,
           "transcript_status": "ok",
           "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then they should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
@@ -2784,6 +2815,7 @@
           "longest_silence_seconds": 0.628,
           "wer": 0.05,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": true,
           "expected_seconds": 16.0,
           "duration_ratio": 0.733,
           "checks": {
@@ -2878,7 +2910,7 @@
               0.3101
             ]
           ],
-          "transcribe_seconds": 7.89,
+          "transcribe_seconds": 7.61,
           "transcript_status": "ok",
           "transcript": "Good morning and welcome to the show.",
           "segments": [
@@ -2900,6 +2932,7 @@
           "longest_silence_seconds": 0.001,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 2.8,
           "duration_ratio": 0.762,
           "checks": {
@@ -3049,7 +3082,7 @@
               0.2791
             ]
           ],
-          "transcribe_seconds": 10.5,
+          "transcribe_seconds": 10.09,
           "transcript_status": "ok",
           "transcript": "The library opens at nine and the reading room closes at six in the evening.",
           "segments": [
@@ -3071,6 +3104,7 @@
           "longest_silence_seconds": 0.261,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 6.0,
           "duration_ratio": 0.867,
           "checks": {
@@ -3202,7 +3236,7 @@
               0.255
             ]
           ],
-          "transcribe_seconds": 9.38,
+          "transcribe_seconds": 8.99,
           "transcript_status": "ok",
           "transcript": "The train to Bristol leaves from platform twelve at half past four.",
           "segments": [
@@ -3224,6 +3258,7 @@
           "longest_silence_seconds": 0.118,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 4.8,
           "duration_ratio": 0.833,
           "checks": {
@@ -3394,7 +3429,7 @@
               0.4189
             ]
           ],
-          "transcribe_seconds": 11.19,
+          "transcribe_seconds": 10.7,
           "transcript_status": "ok",
           "transcript": "I think the meeting went well this morning. I agree, and the budget question is finally settled.",
           "segments": [
@@ -3416,6 +3451,7 @@
           "longest_silence_seconds": 0.621,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 6.8,
           "duration_ratio": 0.863,
           "checks": {
@@ -3661,7 +3697,7 @@
               0.5252
             ]
           ],
-          "transcribe_seconds": 19.4,
+          "transcribe_seconds": 18.52,
           "transcript_status": "ok",
           "transcript": "Did you finish the report? Almost, I need one more figure. Send it over when it is ready. I will later this afternoon.",
           "segments": [
@@ -3702,6 +3738,7 @@
           "longest_silence_seconds": 1.26,
           "wer": 0.0,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": false,
           "expected_seconds": 9.2,
           "duration_ratio": 1.072,
           "checks": {
@@ -4041,7 +4078,7 @@
               0.4975
             ]
           ],
-          "transcribe_seconds": 20.12,
+          "transcribe_seconds": 19.18,
           "transcript_status": "ok",
           "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
           "segments": [
@@ -4070,6 +4107,7 @@
           "longest_silence_seconds": 0.574,
           "wer": 0.025,
           "word_count_ratio": 1.0,
+          "wer_above_evaluator_floor": true,
           "expected_seconds": 16.0,
           "duration_ratio": 0.875,
           "checks": {

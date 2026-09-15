@@ -1271,6 +1271,19 @@ references sits at the noise floor (mean cosines 0.424 against 0.413 for one
 request) and assigns every window to the wrong reference for another, so identity
 is recorded per request as a diagnostic and is not gated.
 
+WER is measured by `microsoft/VibeVoice-ASR-HF` running through hipEngine itself, so
+the suite also transcribes the reference implementation's own PCM for the pinned
+requests and records that as an **evaluator floor**. It measures 0.0 on both, which
+bounds the ASR lane's systematic error but does not make every non-zero WER
+tributable to the TTS lane: the evaluator can still mishear audio whose phonetics
+differ from the reference. Separating those cases needs an independent ASR on the
+same waveform, which this suite does not run. A cross-check with
+`openai/whisper-large-v3-turbo` on the same waveforms showed the largest failure
+this suite has recorded (a two-speaker first turn at 0.353 WER on one seed, before
+the decoder change below) was a genuine synthesis failure — whisper dropped that turn
+entirely rather than substituting words — while the smaller 0.059-0.118 values are
+within the evaluator's own reach on this lane's audio.
+
 Evidence: [quality suite](results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json).
 
 ## Current concurrency scoreboards

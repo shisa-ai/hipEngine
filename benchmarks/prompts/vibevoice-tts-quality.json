@@ -24,7 +24,8 @@
     "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
     "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected. A request IS reproducible at a fixed seed, because the suite reseeds the session per request; it is not comparable to the torch lane, whose stream differs.",
     "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output.",
-    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated."
+    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated.",
+    "The WER gate is measured by the same runtime it qualifies. The suite transcribes the reference implementation's own PCM as an evaluator floor, which bounds the ASR lane's systematic error, but a floor of 0.0 does not make every non-zero WER attributable to the TTS lane: the evaluator can still mishear audio whose phonetics differ from the reference. Separating those two needs an independent ASR on the same waveform, which this suite does not run."
   ],
   "requests": [
     {

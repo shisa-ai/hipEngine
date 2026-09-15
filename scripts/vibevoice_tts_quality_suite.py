@@ -395,7 +395,66 @@ def _expected_words(script: str) -> list[str]:
     return _normalized_words(text)
 
 
-def score(records, asr_model_id: str) -> list[dict]:
+def _evaluator_floor(engine, fixtures: Path, manifest: dict) -> dict:
+    """Measure the ASR lane on audio that is known good.
+
+    ``single_audio.npz`` and ``two_audio.npz`` hold the *reference implementation's*
+    own PCM for the pinned requests, so transcribing them isolates the evaluator:
+    every word is there, and any WER is the ASR lane's own. Without this, a request's
+    WER cannot be attributed -- a small non-zero value could be the TTS lane or the
+    transcript. The measured floor is recorded in the artifact and is the level below
+    which a request's WER is not evidence of a synthesis defect.
+    """
+    from hipengine.generation.vibevoice_protocol import parse_transcript
+
+    wer = _load_wer_module()
+    entries = []
+    for request in manifest["requests"]:
+        path = fixtures / f"{request['name']}_audio.npz"
+        if not path.is_file():
+            continue
+        audio = np.load(path)["pcm"].astype(np.float32)
+        text = engine.transcribe(audio, max_new_tokens=256, seed=TRANSCRIBE_SEED).text
+        segments = parse_transcript(text)
+        content = " ".join(str(s["Content"]) for s in segments) if segments else text
+        expected = " ".join(_expected_words(request["script"]))
+        entries.append(
+            {
+                "reference": request["name"],
+                "seconds": round(audio.size / 24000, 3),
+                "transcript": content,
+                "wer": (
+                    round(float(wer._wer_content([expected], [content])), 4)
+                    if segments is not None
+                    else None
+                ),
+            }
+        )
+        print(
+            f"evaluator floor {request['name']}: wer={entries[-1]['wer']} {content!r}",
+            flush=True,
+        )
+    wers = [e["wer"] for e in entries if e["wer"] is not None]
+    return {
+        "method": (
+            "the ASR lane transcribes the reference implementation's own PCM for the "
+            "pinned requests (single_audio.npz / two_audio.npz), which contains every "
+            "word; the WER it reports there is the evaluator's, not the TTS lane's"
+        ),
+        "requests": entries,
+        "max_wer": max(wers) if wers else None,
+        "interpretation": (
+            "a request whose WER is at or below max_wer is not evidence of a synthesis "
+            "defect. A floor of 0.0 means the evaluator reads the reference "
+            "implementation's audio exactly; it does NOT mean every non-zero WER on "
+            "this lane's audio is a synthesis defect, because the evaluator can still "
+            "mishear audio whose phonetics differ from the reference. Establishing "
+            "that case needs an independent ASR on the same waveform"
+        ),
+    }
+
+
+def score(records, asr_model_id: str, fixtures: Path, manifest: dict):
     """Transcribe each synthesized request and apply the quality checks."""
     from hipengine import LLM
     from hipengine.generation.vibevoice_protocol import parse_transcript
@@ -404,6 +463,7 @@ def score(records, asr_model_id: str) -> list[dict]:
     engine = LLM(asr_model_id, max_sequence_length=4096)
     scored: list[dict] = []
     try:
+        floor = _evaluator_floor(engine, fixtures, manifest)
         for record in records:
             path = ROOT / record["pcm"]
             audio = np.load(path) if path.is_file() else np.zeros(0, dtype=np.float32)
@@ -460,6 +520,14 @@ def score(records, asr_model_id: str) -> list[dict]:
             entry["word_count_ratio"] = (
                 round(len(hypothesis_words) / len(expected), 4) if expected else None
             )
+            # Whether this WER is above what the evaluator itself contributes on audio
+            # that is known good. A failure below the floor is not attributable to the
+            # TTS lane.
+            entry["wer_above_evaluator_floor"] = (
+                None
+                if entry["wer"] is None or floor.get("max_wer") is None
+                else bool(entry["wer"] > floor["max_wer"])
+            )
             entry["expected_seconds"] = round(len(expected) / WORDS_PER_SECOND, 3)
             entry["duration_ratio"] = (
                 round(entry["output_audio_seconds"] / entry["expected_seconds"], 3)
@@ -500,7 +568,7 @@ def score(records, asr_model_id: str) -> list[dict]:
             )
     finally:
         engine.close()
-    return scored
+    return scored, floor
 
 
 def _decided_windows(cosines) -> list[int]:
@@ -651,9 +719,14 @@ def main() -> None:
             raise SystemExit("no synthesis records match --only/--seeds")
 
     if args.phase in ("all", "score"):
-        scored = score(records, args.asr_model)
+        scored, evaluator_floor = score(
+            records,
+            args.asr_model,
+            fixtures,
+            json.loads((fixtures / "manifest.json").read_text()),
+        )
     else:
-        scored = []
+        scored, evaluator_floor = [], None
 
     if not scored:
         # A synthesize-only run has no verdict to publish; writing an artifact
@@ -729,6 +802,7 @@ def main() -> None:
             ),
         },
         "limitations": suite["limitations"],
+        "evaluator_floor": evaluator_floor,
         "stability": _stability(runs),
         "runs": runs,
         "failed_requests": failed_any,
