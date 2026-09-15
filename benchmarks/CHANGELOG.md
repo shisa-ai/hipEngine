@@ -1,5 +1,17 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-15 UTC**: Added a same-file Flash-Next prefill comparison against
+  every llama.cpp-family engine that can open `UD-Q4_K_XL`. hipEngine current
+  default 183.6 tok/s at 4K; pwilkin `strix-halo` `40a9f4d01` 1061.9 (5.78x),
+  halo-box `69946438a` 653.2 (3.56x), upstream `6011c34ce` 452.9 (2.47x). New
+  rows; no prior hipEngine rate changed. Kernel attribution on `code-p4096`
+  splits the 4K device gap into 1.65x conservative arithmetic (lower bound,
+  census at `53512b509`) and 3.38x kernel quality at equal arithmetic, and
+  shows the generic K-quant dense kernel at 10095.6 ms against pwilkin's ~2770 ms.
+  pwilkin `master` and halogen are recorded as unable to run this file rather
+  than dropped.
+  [Evidence](results/2026-09-15-flashnext-engine-comparison/README.md).
+
 - **2026-09-15 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 qualifies explicit
   chunk4096:matched4K PP183.116->190.333 (+3.94%),TG10.091->10.203 (+1.11%),
   complete4K requests+2.26-3.82%. Short request costs reach0.31%, so default

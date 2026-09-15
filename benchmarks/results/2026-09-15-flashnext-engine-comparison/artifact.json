@@ -1,0 +1,720 @@
+{
+ "schema": 1,
+ "kind": "flashnext_same_file_engine_comparison",
+ "performance_claim": true,
+ "numerics_evaluated": false,
+ "question": "On one host and one GGUF, how fast is prefill in hipEngine's current production default against every llama.cpp-family engine that can open the same file?",
+ "model": "unsloth Qwen3.8-Flash-Next UD-Q4_K_XL, 4 shards, /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "host": "Framework gfx1151, Radeon 8060S, machine 55ea6c509d0b49eea8de7094a1023668",
+ "protocol": {
+  "phase": "prefill only, n_predict=1",
+  "prompts": "exact token ids from the committed canonical fixture",
+  "cases": "12 (4 categories x 512/1024/4096)",
+  "llamacpp_server_args": "-ngl 999 -fa on -c 4352 -b 8192 -ub 2048 -t 4, --parallel 1",
+  "warmups_per_case": 1,
+  "measured_repetitions_per_case": 3,
+  "aggregation": "median per case, then equal-weight mean across cases",
+  "hipengine_protocol": {
+   "case_ids": [
+    "code-p512",
+    "code-p1024",
+    "code-p4096",
+    "general_en-p512",
+    "general_en-p1024",
+    "general_en-p4096",
+    "general_ja-p512",
+    "general_ja-p1024",
+    "general_ja-p4096",
+    "mixed_ja_en-p512",
+    "mixed_ja_en-p1024",
+    "mixed_ja_en-p4096"
+   ],
+   "ple_cache_mode": "warm",
+   "ple_cache_scope": "per_layer_token_embd.weight file range only",
+   "ple_telemetry": false,
+   "ple_random_access": "off",
+   "warmups_per_case": 1,
+   "measured_repetitions": 3,
+   "decode_transitions": 128,
+   "visible_output_tokens": 129,
+   "prefill_chunk_size": 1024,
+   "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+  }
+ },
+ "rates": [
+  {
+   "label": "pwilkin-40a9f4d01",
+   "kv_dtype": "f16",
+   "server": "/home/lhl/comparators-20260915/build-pwilkin/bin/llama-server",
+   "server_sha256": "3dbe113a29fa8b4ca267a9260d933db6233a614544932c4090ba108021e8882b",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/pwilkin-llamacpp",
+    "head": "40a9f4d01b69314d0f75c9120abe8e199e49111d",
+    "describe": "40a9f4d01 2026-09-15 hip: extend MMB quants and fuse Flash-Next F32 PLE",
+    "dirty": false,
+    "remote": "https://github.com/pwilkin/llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 858.86,
+    "4096": 1061.87,
+    "512": 339.18
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 290.3,
+    "code-p1024": 859.63,
+    "code-p4096": 1053.95,
+    "general_en-p512": 354.25,
+    "general_en-p1024": 869.95,
+    "general_en-p4096": 1068.58,
+    "general_ja-p512": 367.37,
+    "general_ja-p1024": 880.43,
+    "general_ja-p4096": 1071.51,
+    "mixed_ja_en-p512": 344.79,
+    "mixed_ja_en-p1024": 825.45,
+    "mixed_ja_en-p4096": 1053.43
+   },
+   "stalled_reps": 0
+  },
+  {
+   "label": "halobox-69946438a-f16",
+   "kv_dtype": "f16",
+   "server": "/home/lhl/comparators-20260915/build-halobox/bin/llama-server",
+   "server_sha256": "17b45672140d36cf8309d5245a0568007008f4bd9fab36a193c9ea27f6c93420",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/halobox-strix",
+    "head": "69946438aa2c432ba365e40bec35c38f6e1de5bb",
+    "describe": "69946438a 2026-09-13 Merge pull request #32 from halo-box/rocmfpx/vulkan-2026-09-07",
+    "dirty": false,
+    "remote": "https://github.com/halo-box/strix-llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 620.67,
+    "4096": 660.57,
+    "512": 451.59
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 380.18,
+    "code-p1024": 611.4,
+    "code-p4096": 734.57,
+    "general_en-p512": 475.24,
+    "general_en-p1024": 625.78,
+    "general_en-p4096": 748.5,
+    "general_ja-p512": 486.73,
+    "general_ja-p1024": 635.4,
+    "general_ja-p4096": 750.86,
+    "mixed_ja_en-p512": 464.21,
+    "mixed_ja_en-p1024": 610.1,
+    "mixed_ja_en-p4096": 408.33
+   },
+   "stalled_reps": 0
+  },
+  {
+   "label": "halobox-69946438a-bf16",
+   "kv_dtype": "bf16",
+   "server": "/home/lhl/comparators-20260915/build-halobox/bin/llama-server",
+   "server_sha256": "17b45672140d36cf8309d5245a0568007008f4bd9fab36a193c9ea27f6c93420",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/halobox-strix",
+    "head": "69946438aa2c432ba365e40bec35c38f6e1de5bb",
+    "describe": "69946438a 2026-09-13 Merge pull request #32 from halo-box/rocmfpx/vulkan-2026-09-07",
+    "dirty": false,
+    "remote": "https://github.com/halo-box/strix-llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 553.28,
+    "4096": 653.17,
+    "512": 409.95
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 470.78,
+    "code-p1024": 610.62,
+    "code-p4096": 738.68,
+    "general_en-p512": 474.22,
+    "general_en-p1024": 626.74,
+    "general_en-p4096": 753.54,
+    "general_ja-p512": 485.57,
+    "general_ja-p1024": 623.95,
+    "general_ja-p4096": 756.81,
+    "mixed_ja_en-p512": 209.22,
+    "mixed_ja_en-p1024": 351.81,
+    "mixed_ja_en-p4096": 363.65
+   },
+   "stalled_reps": 1
+  },
+  {
+   "label": "halobox-5f85164",
+   "kv_dtype": "bf16",
+   "server": "/home/lhl/halo-box-strix-llama-src-5f85164/build-hip-release-5f85164/bin/llama-server",
+   "server_sha256": "3a5190deb1bdd28f060fc443f80e9a2dc57496d841771c4c461c4db212bc995b",
+   "source": {
+    "path": "/home/lhl/halo-box-strix-llama-src-5f85164",
+    "head": "5f851647fe5ed795dfd6c0a3fba543114879e874",
+    "describe": "5f851647f 2026-09-08 Merge pull request #17 from halo-box/strix/vulkan-stack-only",
+    "dirty": false,
+    "remote": "https://github.com/halo-box/strix-llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 606.88,
+    "4096": 712.16,
+    "512": 468.11
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 469.8,
+    "code-p1024": 607.49,
+    "code-p4096": 712.03,
+    "general_en-p512": 473.39,
+    "general_en-p1024": 622.98,
+    "general_en-p4096": 726.05,
+    "general_ja-p512": 477.31,
+    "general_ja-p1024": 624.56,
+    "general_ja-p4096": 698.83,
+    "mixed_ja_en-p512": 451.94,
+    "mixed_ja_en-p1024": 572.48,
+    "mixed_ja_en-p4096": 711.74
+   },
+   "stalled_reps": 0
+  },
+  {
+   "label": "upstream-6011c34ce-f16",
+   "kv_dtype": "f16",
+   "server": "/home/lhl/comparators-20260915/build-upstream/bin/llama-server",
+   "server_sha256": "c888d82bdbdd2f38f12d90fbbf06fed8e10122b9cc7b16ba6d57043c3f6d5507",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/upstream-llamacpp",
+    "head": "6011c34ce6099646ccdf0d39a61c6e681477c178",
+    "describe": "6011c34ce 2026-09-15 docs: Rule of thumb for AI review time [no ci] (#28945)",
+    "dirty": false,
+    "remote": "https://github.com/ggml-org/llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 415.14,
+    "4096": 458.96,
+    "512": 321.33
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 318.75,
+    "code-p1024": 408.96,
+    "code-p4096": 456.29,
+    "general_en-p512": 318.79,
+    "general_en-p1024": 419.72,
+    "general_en-p4096": 446.54,
+    "general_ja-p512": 333.32,
+    "general_ja-p1024": 422.08,
+    "general_ja-p4096": 470.71,
+    "mixed_ja_en-p512": 314.47,
+    "mixed_ja_en-p1024": 409.82,
+    "mixed_ja_en-p4096": 462.3
+   },
+   "stalled_reps": 0
+  },
+  {
+   "label": "upstream-6011c34ce-bf16",
+   "kv_dtype": "bf16",
+   "server": "/home/lhl/comparators-20260915/build-upstream/bin/llama-server",
+   "server_sha256": "c888d82bdbdd2f38f12d90fbbf06fed8e10122b9cc7b16ba6d57043c3f6d5507",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/upstream-llamacpp",
+    "head": "6011c34ce6099646ccdf0d39a61c6e681477c178",
+    "describe": "6011c34ce 2026-09-15 docs: Rule of thumb for AI review time [no ci] (#28945)",
+    "dirty": false,
+    "remote": "https://github.com/ggml-org/llama.cpp.git"
+   },
+   "warmups": null,
+   "repetitions": null,
+   "prefill_tok_s_by_shape": {
+    "1024": 420.29,
+    "4096": 452.88,
+    "512": 320.98
+   },
+   "prefill_tok_s_by_case": {
+    "code-p512": 319.31,
+    "code-p1024": 411.88,
+    "code-p4096": 446.3,
+    "general_en-p512": 322.05,
+    "general_en-p1024": 424.89,
+    "general_en-p4096": 456.91,
+    "general_ja-p512": 328.49,
+    "general_ja-p1024": 433.0,
+    "general_ja-p4096": 458.71,
+    "mixed_ja_en-p512": 314.05,
+    "mixed_ja_en-p1024": 411.4,
+    "mixed_ja_en-p4096": 449.61
+   },
+   "stalled_reps": 0
+  }
+ ],
+ "hipengine_current": {
+  "label": "hipengine-current",
+  "kv_dtype": "bf16",
+  "harness": "scripts/qwen4exp_canonical_ar_bench.py hipengine",
+  "source": {
+   "path": "/home/lhl/hipEngine",
+   "head": "ddfc2a746eb144b9faaf966d388863ca468753d5",
+   "tracked_clean": true
+  },
+  "protocol": {
+   "case_ids": [
+    "code-p512",
+    "code-p1024",
+    "code-p4096",
+    "general_en-p512",
+    "general_en-p1024",
+    "general_en-p4096",
+    "general_ja-p512",
+    "general_ja-p1024",
+    "general_ja-p4096",
+    "mixed_ja_en-p512",
+    "mixed_ja_en-p1024",
+    "mixed_ja_en-p4096"
+   ],
+   "ple_cache_mode": "warm",
+   "ple_cache_scope": "per_layer_token_embd.weight file range only",
+   "ple_telemetry": false,
+   "ple_random_access": "off",
+   "warmups_per_case": 1,
+   "measured_repetitions": 3,
+   "decode_transitions": 128,
+   "visible_output_tokens": 129,
+   "prefill_chunk_size": 1024,
+   "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+  },
+  "prefill_tok_s_by_shape": {
+   "1024": 190.6,
+   "4096": 183.58,
+   "512": 185.15
+  },
+  "prefill_tok_s_median_by_shape": {
+   "1024": 190.65,
+   "4096": 183.72,
+   "512": 185.21
+  },
+  "prefill_coefficient_of_variation": {
+   "1024": 0.00426,
+   "4096": 0.00319,
+   "512": 0.00546
+  },
+  "decode_tok_s_weighted_by_shape": {
+   "1024": 15.7,
+   "4096": 9.5,
+   "512": 16.56
+  },
+  "all_cases_deterministic": true,
+  "owner_ms": {
+   "boundary": 94.729113,
+   "gdn": 837.642907,
+   "gr_read": 3788.6409320000002,
+   "linear": 8630.383748999999,
+   "moe": 7413.013398000001,
+   "ple": 15.382824,
+   "qsa": 1422.147685
+  },
+  "owner_total_device_ms": 22201.940608,
+  "owner_profiled_window_ms": 22733.126004
+ },
+ "ratio_vs_hipengine": {
+  "pwilkin-40a9f4d01": {
+   "1024": 4.506,
+   "4096": 5.784,
+   "512": 1.832
+  },
+  "halobox-69946438a-f16": {
+   "1024": 3.256,
+   "4096": 3.598,
+   "512": 2.439
+  },
+  "halobox-69946438a-bf16": {
+   "1024": 2.903,
+   "4096": 3.558,
+   "512": 2.214
+  },
+  "halobox-5f85164": {
+   "1024": 3.184,
+   "4096": 3.879,
+   "512": 2.528
+  },
+  "upstream-6011c34ce-f16": {
+   "1024": 2.178,
+   "4096": 2.5,
+   "512": 1.736
+  },
+  "upstream-6011c34ce-bf16": {
+   "1024": 2.205,
+   "4096": 2.467,
+   "512": 1.734
+  }
+ },
+ "kernel_profiles": [
+  {
+   "label": "pwilkin-40a9f4d01",
+   "kv_dtype": "f16",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/pwilkin-llamacpp",
+    "head": "40a9f4d01b69314d0f75c9120abe8e199e49111d",
+    "describe": "40a9f4d01 2026-09-15 hip: extend MMB quants and fuse Flash-Next F32 PLE",
+    "dirty": false,
+    "remote": "https://github.com/pwilkin/llama.cpp.git"
+   },
+   "case_id": "code-p4096",
+   "profiled_prompt_ms": [
+    3951.241
+   ],
+   "measurement_class": "diagnostic_profiled_not_performance"
+  },
+  {
+   "label": "halobox-69946438a-bf16",
+   "kv_dtype": "bf16",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/halobox-strix",
+    "head": "69946438aa2c432ba365e40bec35c38f6e1de5bb",
+    "describe": "69946438a 2026-09-13 Merge pull request #32 from halo-box/rocmfpx/vulkan-2026-09-07",
+    "dirty": false,
+    "remote": "https://github.com/halo-box/strix-llama.cpp.git"
+   },
+   "case_id": "code-p4096",
+   "profiled_prompt_ms": [
+    5530.972
+   ],
+   "measurement_class": "diagnostic_profiled_not_performance"
+  },
+  {
+   "label": "upstream-6011c34ce-bf16",
+   "kv_dtype": "bf16",
+   "source": {
+    "path": "/home/lhl/comparators-20260915/upstream-llamacpp",
+    "head": "6011c34ce6099646ccdf0d39a61c6e681477c178",
+    "describe": "6011c34ce 2026-09-15 docs: Rule of thumb for AI review time [no ci] (#28945)",
+    "dirty": false,
+    "remote": "https://github.com/ggml-org/llama.cpp.git"
+   },
+   "case_id": "code-p4096",
+   "profiled_prompt_ms": [
+    9332.68
+   ],
+   "measurement_class": "diagnostic_profiled_not_performance"
+  }
+ ],
+ "per_prefill_kernel_attribution": [
+  {
+   "label": "hipengine-current",
+   "trace_dir": "/tmp/hipengine-gap-20260915/current-4k-profiled.raw/code-p4096-prefill/trace",
+   "prefills_in_window": 2,
+   "kernels_in_window": 19648,
+   "window_device_ms": 44412.7,
+   "per_prefill_device_ms": 22206.4,
+   "per_prefill_ms": {
+    "dense_matmul": 10749.6,
+    "moe_gate_up": 3291.2,
+    "gr_read": 2579.8,
+    "moe_down": 2301.1,
+    "attention": 1420.3,
+    "gdn": 842.0,
+    "router_index": 619.6,
+    "elementwise_norm": 227.3,
+    "unattributed": 175.6
+   },
+   "top_kernels_per_prefill_ms": {
+    "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, 8, 4, true>(float const*, unsigned char const*, float*, int, int, int)": 10095.6,
+    "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)": 2710.8,
+    "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)": 2493.6,
+    "(anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)": 1484.9,
+    "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 801.5,
+    "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)": 781.5,
+    "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)": 675.2,
+    "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)": 619.6,
+    "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)": 580.4,
+    "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)": 455.4,
+    "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)": 277.6,
+    "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)": 202.1,
+    "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)": 141.0,
+    "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)": 115.6,
+    "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)": 106.3
+   }
+  },
+  {
+   "label": "pwilkin-40a9f4d01",
+   "trace_dir": "/tmp/comparators-20260915/prof-pwilkin-40a9f4d01-f16/trace",
+   "prefills_in_window": 2,
+   "kernels_in_window": 24943,
+   "window_device_ms": 7945.6,
+   "per_prefill_device_ms": 3972.8,
+   "per_prefill_ms": {
+    "dense_matmul": 1485.2,
+    "moe_gate_up": 749.8,
+    "moe_down": 509.9,
+    "gr_read": 321.3,
+    "gdn": 269.9,
+    "unattributed": 200.2,
+    "elementwise_norm": 179.1,
+    "router_index": 171.5,
+    "attention": 82.1,
+    "quantize_pack": 3.7
+   },
+   "top_kernels_per_prefill_ms": {
+    "void (anonymous namespace)::mmb_dense_kernel<128, 128, 32, 64, 1>(unsigned char const*, unsigned short const*, float*, unsigned short*, bool, int, int, int)": 508.7,
+    "void (anonymous namespace)::mmb_routed_glu_kernel<64, 32, 16, 16, 44>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)": 495.8,
+    "void (anonymous namespace)::mmb_dense_kernel<128, 256, 64, 64, 1>(unsigned char const*, unsigned short const*, float*, unsigned short*, bool, int, int, int)": 446.1,
+    "void (anonymous namespace)::mmb_f32split_kernel<128, 128, 32, 64, true>(float const*, float const*, float*, int, int, int)": 429.3,
+    "void (anonymous namespace)::mmb_routed_kernel<128, 32, 32, 16, 39>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)": 265.5,
+    "void gated_delta_net_tiled_cuda<128, 8, 8, 16, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, long, int)": 207.6,
+    "void (anonymous namespace)::mmb_routed_glu_kernel<64, 128, 32, 32, 44>(unsigned char const*, unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)": 203.7,
+    "hc_combine_norm_f32_b256(float const*, float const*, float const*, float const*, float*, float*, unsigned short*, bool, unsigned short const*, unsigned short*, unsigned short const*, int, float, float, float, float, float)": 191.8,
+    "void mm_ids_helper<10>(int const*, int*, int*, int*, int, int, int, int, int, bool)": 164.8,
+    "void (anonymous namespace)::hc_gate_mix_kernel<4, 1>(unsigned char const*, unsigned short const*, unsigned short const*, float*, unsigned short*, bool, int, int, int, float, float)": 129.1,
+    "void (anonymous namespace)::mmb_routed_kernel<128, 128, 32, 64, 39>(unsigned char const*, unsigned long, unsigned short const*, float*, unsigned short*, bool, int const*, int const*, int const*, unsigned int const*, int, int)": 107.0,
+    "moe_weighted_reduction_f32_v4(float const*, float const*, float const*, float*, long, int)": 98.1,
+    "void flash_attn_ext_f16<256, 256, 16, 4, false, false, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)": 74.7,
+    "qsa3_attn_kernel(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short const*, int const*, float*, qsa3_layout)": 66.9,
+    "void gdn_conv_direct_kernel<true, 128>(float const*, float const*, float const*, float*, int, int)": 58.8
+   }
+  },
+  {
+   "label": "halobox-69946438a",
+   "trace_dir": "/tmp/comparators-20260915/prof-halobox-69946438a-bf16/trace",
+   "prefills_in_window": 2,
+   "kernels_in_window": 26502,
+   "window_device_ms": 10856.3,
+   "per_prefill_device_ms": 5428.1,
+   "per_prefill_ms": {
+    "dense_matmul": 2536.7,
+    "moe_gate_up": 800.2,
+    "unattributed": 625.9,
+    "gr_read": 421.5,
+    "elementwise_norm": 397.8,
+    "gdn": 294.2,
+    "moe_down": 199.5,
+    "attention": 140.2,
+    "router_index": 8.6,
+    "quantize_pack": 3.4
+   },
+   "top_kernels_per_prefill_ms": {
+    "void mul_mat_q<(ggml_type)7, 128, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 1150.7,
+    "void mul_mat_q<(ggml_type)8, 128, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 824.2,
+    "void mul_mat_q_routed_compact<(ggml_type)12, 48, false>(char const*, int const*, int const*, int const*, unsigned int const*, int, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, HIP_vector_type<unsigned int, 3u>, int, HIP_vector_type<unsigned int, 3u>, int)": 742.5,
+    "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 486.4,
+    "hc_combine_norm_f32(float const*, float const*, float const*, float const*, float*, float*, int, float, float, float, float, float)": 236.1,
+    "void gated_delta_net_tiled_cuda<128, 8, 8, 16, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, long, int)": 206.5,
+    "moe_weighted_reduction_f32(float const*, float const*, float const*, float*, long, int)": 199.5,
+    "void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0, false>(float const*, int const*, void*, long, long, long, long, long, int, int, int)": 199.1,
+    "hc_mix_reduce_f32(float const*, float const*, float*, long, long, int, float, float)": 185.4,
+    "void flash_attn_ext_f16<256, 256, 16, 4, false, false, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)": 135.5,
+    "void mul_mat_q<(ggml_type)8, 128, true>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 112.4,
+    "void concat_transposed_src1_dim0<unsigned int>(char const*, char const*, char*, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)": 87.9,
+    "void ssm_conv_long_token_f32<true, 128ul, 4ul, 32l>(float const*, float const*, float const*, int, int, int, int, float*, int, int, int, long)": 77.4,
+    "void mul_mat_q<(ggml_type)8, 16, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 68.9,
+    "void unary_gated_op_kernel<&(op_sigmoid(float)), float>(float const*, float const*, float*, long, long, long, long)": 65.1
+   }
+  },
+  {
+   "label": "upstream-6011c34ce",
+   "trace_dir": "/tmp/comparators-20260915/prof-upstream-6011c34ce-bf16/trace",
+   "prefills_in_window": 2,
+   "kernels_in_window": 38652,
+   "window_device_ms": 19267.0,
+   "per_prefill_device_ms": 9633.5,
+   "per_prefill_ms": {
+    "dense_matmul": 3133.5,
+    "gdn": 1835.6,
+    "elementwise_norm": 1505.1,
+    "moe_gate_up": 1451.3,
+    "unattributed": 662.0,
+    "quantize_pack": 445.0,
+    "router_index": 230.4,
+    "moe_down": 200.7,
+    "attention": 169.8
+   },
+   "top_kernels_per_prefill_ms": {
+    "void gated_delta_net_cuda<128, false, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, long, int)": 1750.1,
+    "void mul_mat_q<(ggml_type)12, 128, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 1451.3,
+    "void mul_mat_q<(ggml_type)8, 128, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 1189.5,
+    "void mul_mat_q<(ggml_type)7, 128, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 1168.9,
+    "Cijk_Alik_Bljk_SB_MT32x32x8_SN_1LDSB0_AMAS0_BL1_BS1_EPS0_GLVWA1_GLVWB1_GRVW1_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LRVW1_MIAV0_MMFGLC_NLCA1_NLCB1_PGR0_PLR1_SIA1_SS0_SU32_SUS256_SVW4_TT2_2_TLDS0_UMLDSA0_UMLDSB0_USFGROn1_VAW1_VSn1_VW1_VWB1_WSGRA0_WSGRB0_WS64_WG16_16_1_WGM8": 573.0,
+    "void concat_non_cont<unsigned int, 0>(char const*, char const*, char*, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long)": 443.2,
+    "void k_bin_bcast<&(op_add(float, float)), float, float, float, float const*>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, float const*)": 429.0,
+    "void unary_gated_op_kernel<&(op_sigmoid(float)), float>(float const*, float const*, float*, long, long, long, long)": 294.3,
+    "void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0, false>(float const*, int const*, void*, long, long, long, long, long, int, int, int)": 290.1,
+    "void rms_norm_f32<1024, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)": 215.0,
+    "moe_weighted_reduction_f32(float const*, float const*, float const*, float*, long, int)": 200.7,
+    "void mm_ids_helper<10>(int const*, int*, int*, int*, int, int, int, int, int, bool)": 185.5,
+    "void mul_mat_q<(ggml_type)8, 128, true>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)": 184.9,
+    "void flash_attn_ext_f16<256, 256, 16, 4, false, false, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)": 166.3,
+    "void k_bin_bcast<&(op_mul(float, float)), float, float, float, float const*>(float const*, float const*, float*, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, float const*)": 144.2
+   }
+  }
+ ],
+ "attribution_vs_owner_reconciliation": {
+  "why": "The bucket table attributes by kernel name and the owner table by marker span. Kernels shared between owners (the generic K-quant dense kernel runs under both linear and the MoE down projection) are split by marker but not by name, so the two views differ on those rows while their totals agree.",
+  "rows": [
+   {
+    "work": "MoE (gate/up + down)",
+    "buckets_compared": [
+     "moe_gate_up",
+     "moe_down"
+    ],
+    "owners_compared": [
+     "moe"
+    ],
+    "owner_ms": 7413.0,
+    "bucket_ms": 5592.3,
+    "delta_ms": -1820.7
+   },
+   {
+    "work": "hyper-connection / GR",
+    "buckets_compared": [
+     "gr_read"
+    ],
+    "owners_compared": [
+     "gr_read"
+    ],
+    "owner_ms": 3788.6,
+    "bucket_ms": 2579.8,
+    "delta_ms": -1208.8
+   },
+   {
+    "work": "attention",
+    "buckets_compared": [
+     "attention"
+    ],
+    "owners_compared": [
+     "qsa"
+    ],
+    "owner_ms": 1422.1,
+    "bucket_ms": 1420.3,
+    "delta_ms": -1.8
+   },
+   {
+    "work": "Gated DeltaNet",
+    "buckets_compared": [
+     "gdn"
+    ],
+    "owners_compared": [
+     "gdn"
+    ],
+    "owner_ms": 837.6,
+    "bucket_ms": 842.0,
+    "delta_ms": 4.4
+   },
+   {
+    "work": "dense matmul",
+    "buckets_compared": [
+     "dense_matmul"
+    ],
+    "owners_compared": [
+     "linear"
+    ],
+    "owner_ms": 8630.4,
+    "bucket_ms": 10749.6,
+    "delta_ms": 2119.2
+   },
+   {
+    "work": "TOTAL",
+    "buckets_compared": [
+     "all buckets"
+    ],
+    "owners_compared": [
+     "all owners"
+    ],
+    "owner_ms": 22201.9,
+    "bucket_ms": 22206.5,
+    "delta_ms": 4.6
+   }
+  ]
+ },
+ "arithmetic_restored_census": {
+  "label": "arithmetic-restored-census",
+  "source": {
+   "path": "/home/lhl/hipEngine",
+   "head": "53512b50952c43655495249ae2231fe949923adf",
+   "tracked_clean": true
+  },
+  "case_id": "code-p4096",
+  "command": [
+   "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+   "--kernel-trace",
+   "--hip-trace",
+   "--marker-trace",
+   "--output-format",
+   "csv",
+   "-d",
+   "/tmp/hipengine-journey-execute-20260914/owner-refresh-code4k.raw/code-p4096-prefill/trace",
+   "--",
+   "/home/lhl/hipEngine/.venv/bin/python",
+   "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+   "--model-root",
+   "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--case-id",
+   "code-p4096",
+   "--profile",
+   "--role-markers",
+   "--compiler-version-file",
+   "/tmp/hipengine-journey-hipcc-version-20260913.txt",
+   "--require-cached-build",
+   "--output",
+   "/tmp/hipengine-journey-execute-20260914/owner-refresh-code4k.raw/code-p4096-prefill/child.json",
+   "--prefill-chunk-size",
+   "1024",
+   "--mode",
+   "prefill",
+   "--repetitions",
+   "1"
+  ],
+  "owner_ms": {
+   "boundary": 106.00927,
+   "gdn": 791.690724,
+   "gr_read": 1459.70471,
+   "linear": 3461.4085240000004,
+   "moe": 6273.416494,
+   "ple": 16.27226,
+   "qsa": 1332.420689
+  },
+  "total_device_ms": 13440.922671,
+  "profiled_window_ms": 14268.350184,
+  "coverage_fraction": 1.0,
+  "derived_window_tok_s": 287.07,
+  "derived_device_tok_s": 304.74,
+  "performance_claim": false,
+  "limits": "Profiling capture, not a harness rate: the two derived rates divide 4096 tokens by the marker-delimited window and by device time. It is usable as a same-case device-time divisor and not as a throughput result."
+ },
+ "gap_decomposition": {
+  "basis": "device milliseconds per 4096-token prefill, code-p4096",
+  "current_default_ms": 22206.4,
+  "arithmetic_restored_census_ms": 13440.9,
+  "pwilkin_ms": 3972.8,
+  "conservative_arithmetic_factor": 1.652,
+  "implementation_factor": 3.383,
+  "total_factor": 5.59,
+  "note": "The census restored six of the fifteen recovery selectors, so the arithmetic factor is a lower bound and the implementation factor is the matching upper bound."
+ },
+ "raw_sha256": {
+  "/tmp/comparators-20260915/r2/pwilkin-40a9f4d01-f16.json": "bc3e0e1730320143a395025cab603d83a8050c3966f8b58eaffb24cf68dd2fd0",
+  "/tmp/comparators-20260915/r2/halobox-69946438a-f16.json": "63c76da8a136c8d35debd105b0a2a31c9b9f366f0ec32a2cf5774f1c7672cada",
+  "/tmp/comparators-20260915/r2/halobox-69946438a.json": "f06d546de2880689a76404730caaedff52e853ade01ff9b26d05f03559e196ee",
+  "/tmp/comparators-20260915/r2/halobox-5f85164.json": "7ace4644aa623d5b8bdc69ab9ff2034b70f0c142df4a0e4e834826437a410554",
+  "/tmp/comparators-20260915/r2/upstream-6011c34ce-f16.json": "bc8601d558d42087b98836ca68e4495ca2744eadfe8c221535eb524900a8214a",
+  "/tmp/comparators-20260915/r2/upstream-6011c34ce.json": "149246e475a2e5d715dc566177edfcccd2a5896cd6de693c456a27b57a1d4e21",
+  "/tmp/comparators-20260915/r2/prof-pwilkin-40a9f4d01-f16.json": "2dbab9469a5f339963841d2a36cd448284432cc02fde7eecc213de80b8b904cf",
+  "/tmp/comparators-20260915/r2/prof-halobox-69946438a-bf16.json": "1a659dd6e45b83ac67e5266352b57c30ea67d235a35834276c50abfc1516cb44",
+  "/tmp/comparators-20260915/r2/prof-upstream-6011c34ce-bf16.json": "c3ee89ae373b91b34abf674444b9952e3c0c0d5ab4b7baf1e4ec3c5dfbeb8181",
+  "/tmp/comparators-20260915/r2/hipengine-current.json": "8fe9624ed9375b97255c827c99a5fb5952b93b84211deed985eae496f1204d25",
+  "/tmp/comparators-20260915/per-prefill-attribution.json": "4ab23bbd638c88c2a3ad0cd77364d4d687912c68f95a849fcc0e9ec5a6532899",
+  "/tmp/hipengine-gap-20260915/current-4k-profiled.json": "955030d11f02e73d54eb87c8a517832cd7e577e5df4f6dc886ed4b8f7a70e9d3",
+  "benchmarks/results/2026-09-14-journey-progress/artifact.json": "7243d06959ed1087ed9179118d283e4511bc1ce4712830b1a447cadae4f5597b"
+ },
+ "findings": [
+  "Upstream llama.cpp supports this model: LLM_ARCH_QWEN4EXP is in origin/master, so the upstream row is a same-file comparator.",
+  "pwilkin's default branch (master, e8e6c7af2, 2026-07-22) has no qwen4exp support at all. The live Flash-Next work is on branch strix-halo, head 40a9f4d01 (2026-09-15).",
+  "pwilkin 40a9f4d01 asserts at model load with BF16 KV: src/models/qwen4exp.cpp:1360 requires k/v F16 on the sparse-QSA direct-indices path. Its arm therefore runs F16 KV.",
+  "KV dtype is worth about 1% at 4K (halobox 661 f16 vs 653 bf16; upstream 459 f16 vs 453 bf16), so it does not explain any row.",
+  "halogen refuses UD-Q4_K_XL by name at startup (its README lists Q4_K/Q5_K/Q5_1/Q4_1 as refused); its published 1246-1424 tok/s GGUF figures are on UD-IQ4_XS. It is out of scope for a same-file comparison.",
+  "halo-box 69946438a runs code/general_en/general_ja at 735-757 tok/s at 4K but mixed_ja_en at 374-429, stable across two runs; pwilkin runs the same prompt at 1053. A single-category or single-prompt comparator number is not a rate."
+ ]
+}
