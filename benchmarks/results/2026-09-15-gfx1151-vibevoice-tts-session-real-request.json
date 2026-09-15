@@ -21,7 +21,14 @@
     },
     "injected": "recorded random operands only (voice VAE draws, per-frame initial noise)",
     "not_injected": "prompt embeddings, negative conditions",
-    "tracing_during_timing": false
+    "tracing_during_timing": false,
+    "max_audio_seconds": 4.333,
+    "token_cap": 35,
+    "finish_reason": "stop",
+    "timed_finish_reasons": [
+      "stop"
+    ],
+    "oracle_generated_tokens": 27
   },
   "workload": {
     "output_audio_seconds": 3.333,
@@ -32,18 +39,18 @@
     "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
   },
   "command": "uv run python scripts/vibevoice_tts_session_bench.py",
-  "weight_load_seconds": 3.339,
-  "cold_start_seconds": 4.725,
-  "warm_synthesis_seconds": 4.603,
-  "time_to_first_audio_seconds": 0.411,
-  "pooled_rtf": 1.381,
+  "weight_load_seconds": 3.242,
+  "cold_start_seconds": 4.568,
+  "warm_synthesis_seconds": 4.457,
+  "time_to_first_audio_seconds": 0.397,
+  "pooled_rtf": 1.337,
   "chain_exact": true,
   "negative_conditions_match": true,
   "stages": {
-    "lm_total_seconds": 1.547,
-    "prompt_seconds": 0.195,
-    "diffusion_seconds": 1.383,
-    "decode_seconds": 0.343,
-    "semantic_seconds": 1.135
+    "lm_total_seconds": 1.518,
+    "prompt_seconds": 0.191,
+    "diffusion_seconds": 1.314,
+    "decode_seconds": 0.327,
+    "semantic_seconds": 1.108
   }
 }

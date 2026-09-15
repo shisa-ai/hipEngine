@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import time
 from pathlib import Path
 
@@ -36,6 +37,20 @@ import numpy as np
 from hipengine.loading.vibevoice_tts_session import load_vibevoice_tts_session
 from hipengine.runtime.vibevoice_tts_session import VibevoiceTtsSession, SessionTrace
 from hipengine.core.hip import get_hip_runtime
+
+SAMPLE_RATE = 24000
+FRAME_SAMPLES = 3200
+
+
+def _frame_token_cap(max_audio_seconds: float) -> int:
+    """Token budget from a declared audio budget, not from the oracle's answer.
+
+    Two tokens of overhead (the speech-start and speech-end markers) plus one
+    diffusion token per 3200 samples of output audio, the same rule the
+    generated-audio quality suite uses.
+    """
+    frames = math.ceil(float(max_audio_seconds) * SAMPLE_RATE / FRAME_SAMPLES)
+    return 2 + frames
 
 
 def _sync() -> None:
@@ -83,7 +98,7 @@ def _verify_voice_hashes(request: dict) -> dict:
     return result
 
 
-def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
+def bench(model_id: str, fixtures: Path, repeats: int, max_audio_seconds_arg: float | None = None) -> dict:
     manifest = json.loads((fixtures / "manifest.json").read_text())
     request = manifest["requests"][0]
     lm = _npz(fixtures / "single_lm.npz")
@@ -105,6 +120,15 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     mask = np.asarray(lm["speech_input_mask"], dtype=bool).reshape(-1)
     expected = [int(t) for t in np.asarray(lm["generated_ids"])[0][len(in_ids):]]
     sample_rate = int(manifest.get("sampling_rate", 24000))
+    # Declared generation budget for the frozen request: the oracle's own audio
+    # duration plus one second of headroom, so a correct chain reaches EOS with
+    # room to spare and a runaway one is still cut off and reported as truncated.
+    # It is fixed by the request, not by the number of tokens under test.
+    max_audio_seconds = float(
+        max_audio_seconds_arg
+        if max_audio_seconds_arg is not None
+        else round(float(request["pcm_seconds"]) + 1.0, 3)
+    )
 
     t0 = time.perf_counter()
     weights = load_vibevoice_tts_session(model_id)
@@ -154,7 +178,7 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
         _sync(); timers["prompt"] += time.perf_counter() - t
         return rows
 
-    def run(*, trace: SessionTrace | None = None) -> tuple[list[int], list[np.ndarray], float]:
+    def run(*, trace: SessionTrace | None = None) -> tuple[list[int], list[np.ndarray], float, str]:
         for k in timers:
             timers[k] = 0.0
         ttfa[0] = None
@@ -163,17 +187,26 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
         res = sess.generate(
             rows,
             cfg_scale=request["cfg_scale"],
-            max_new_tokens=len(expected),
+            # A declared audio budget, not the oracle's token count. Sizing the
+            # budget from the answer under test would make truncation
+            # unobservable and the output duration self-fulfilling; the cap is
+            # generous enough that an exact chain still stops on EOS.
+            max_new_tokens=_frame_token_cap(max_audio_seconds),
             # No neg_hook: the session's own negative LM runs.
             noise_hook=lambda i: dif[f"call{i}_initial_noise"],
             trace=trace,
         )
         _sync(); elapsed = time.perf_counter() - request_start[0]
-        return res.ids, res.chunks, elapsed
+        return res.ids, res.chunks, elapsed, res.finish_reason
+
+    # Cold start: the first synthesis after load, before anything else runs.
+    # Previously the traced correctness run went first, so the reported "cold"
+    # figure was a warm synthesis and the label was wrong.
+    cold_ids, cold_chunks, cold_wall, cold_finish = run()
 
     # Correctness: one traced, untimed run against the frozen oracle chain.
     trace = SessionTrace()
-    ids_ref, chunks_ref, _ = run(trace=trace)
+    ids_ref, chunks_ref, _, ref_finish = run(trace=trace)
     chain_exact = ids_ref == expected
     neg_ok = True
     for call in (0, 1, 2, 12, 24):
@@ -186,8 +219,8 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     # Timing: untraced runs only.
     runs = []
     for _ in range(repeats):
-        ids, chunks, elapsed = run()
-        runs.append((ids, chunks, elapsed, dict(timers), ttfa[0]))
+        ids, chunks, elapsed, finish = run()
+        runs.append((ids, chunks, elapsed, dict(timers), ttfa[0], finish))
 
     sess.diffusion.sample_speech_tokens = real_diffusion
     sess.decoder.decode = real_decode
@@ -198,8 +231,7 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     # Output duration comes from the waveform this lane produced, not the oracle.
     out_seconds = float(sum(int(c.size) for c in runs[0][1])) / sample_rate
 
-    cold = runs[0]
-    warm = runs[1:] or runs
+    warm = runs
     warm_wall = [r[2] for r in warm]
     warm_stages = {k: float(np.mean([r[3][k] for r in warm])) for k in timers}
     lm_time = float(np.mean(warm_wall)) - sum(warm_stages.values())
@@ -224,6 +256,12 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
                         "per-frame initial noise)",
             "not_injected": "prompt embeddings, negative conditions",
             "tracing_during_timing": False,
+            "max_audio_seconds": round(max_audio_seconds, 3),
+            "token_cap": int(_frame_token_cap(max_audio_seconds)),
+            "generated_tokens": len(cold_ids),
+            "finish_reason": cold_finish,
+            "timed_finish_reasons": sorted({r[5] for r in runs}),
+            "oracle_generated_tokens": len(expected),
         },
         "workload": {
             "output_audio_seconds": round(out_seconds, 3),
@@ -232,7 +270,7 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
         "host": {"name": Path("/etc/hostname").read_text().strip(), "gpu": _gpu_name()},
         "command": "uv run python scripts/vibevoice_tts_session_bench.py",
         "weight_load_seconds": round(t_load, 3),
-        "cold_start_seconds": round(cold[2], 3),
+        "cold_start_seconds": round(cold_wall, 3),
         "warm_synthesis_seconds": round(float(np.mean(warm_wall)), 3),
         "time_to_first_audio_seconds": round(float(np.mean(warm_ttfa)), 3) if warm_ttfa else None,
         "pooled_rtf": round(float(np.mean(warm_wall)) / out_seconds, 3),
@@ -251,11 +289,18 @@ def main() -> None:
     ap.add_argument("--fixtures", default="tests/fixtures/vibevoice_tts")
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument(
+        "--max-audio-seconds",
+        type=float,
+        default=None,
+        help="declared generation budget; defaults to the request's recorded "
+             "duration plus one second",
+    )
+    ap.add_argument(
         "--out",
         default="benchmarks/results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json",
     )
     args = ap.parse_args()
-    result = bench(args.model, Path(args.fixtures), args.repeats)
+    result = bench(args.model, Path(args.fixtures), args.repeats, args.max_audio_seconds)
     print(json.dumps(result, indent=2))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
