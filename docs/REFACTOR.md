@@ -8,8 +8,11 @@
 - `_allocate_extra_prefill_workspace` prepares an inactive, runner-owned
   workspace. Callers must admit its extra memory before preparing it.
   Automatic selection is not enabled by this ownership refactor.
-- Use the owned-workspace gate before replacing the benchmark's full donor
-  runner or adding shape-dependent dispatch. Keep historical donor commands
+- The GPU owned-workspace gate passes with exact frozen-reference state
+  and1,633,867,320 additional bytes at chunk1024/capacity4352.
+  Evidence: `benchmarks/results/2026-09-15-prefill-workspace-owner/`.
+  Replacing the benchmark's full donor and shape-dependent dispatch remain
+  separate qualification steps. Keep historical donor commands
   source-pinned; remove duplicated donor plumbing once a qualified replacement
   covers state, lifetime, memory and matched performance.
 

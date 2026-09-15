@@ -1,0 +1,1387 @@
+{
+  "schema": 1,
+  "status": "owned_prefill_storage_verified_automatic_selection_pending",
+  "performance_claim": false,
+  "promotion_claim": false,
+  "raw_sha256": "162a19f4a357f7b94969dee9a26faf1e09707b6e61356f892cfdcabd91eb4f2e",
+  "reference_sha256": "adc8ddbeeb8036fb7ffc2b68ecb11f836143c8cf0fc36f012dd85685683b0899",
+  "census_sha256": "7d9161ec9d590c383e64db22816ea884ef820b4e01edb1ff9a32b9154262ed53",
+  "capture": {
+    "status": "passed",
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "fabd2da766d88ce4d7165a0700c44a8da0c8bbdc",
+      "tracked_clean": true
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": "10.0.0",
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "model": {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+      "fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+        "size_bytes": 111334654784,
+        "sampled_bytes": 12582912,
+        "file_count": 4,
+        "exists": true,
+        "path_type": "directory"
+      }
+    },
+    "command": [
+      "scripts/qwen4exp_owned_workspace_check.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-journey-hipcc-version-20260913.txt",
+      "--allocation-evidence",
+      "/tmp/hipengine-journey-execute-20260914/resume-chunk4096-native-c2-accounted.json",
+      "--reference-capture",
+      "/tmp/hipengine-journey-execute-20260914/resume-chunk4096-c2-deferred.json",
+      "--output",
+      "/tmp/hipengine-journey-execute-20260914/resume-owned-workspace-check.json"
+    ],
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "cases": [
+      {
+        "role": "a",
+        "repeat": 0,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2052
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          4
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "b540132ef32a9811da4179fdea61594230f1abcc0a35f729a5d6f8f37a77a711",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2060,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2060
+              }
+            },
+            "attention_positions": [
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ]
+            ],
+            "index_counts": [
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ]
+            ]
+          },
+          "full_kv_sha256": "268b2b904c521ae08ad69a48631845c2476c0eb3838ae500b719ed45565b3190",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "7bd9fbbf188f20fd09c860a2f6cf7ab0e08061ab6fea853cb1e35fadfd899d30",
+          "full_kv_finite": true,
+          "live_index_bytes": 15820800,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "a",
+        "repeat": 1,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2052
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          4
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "b540132ef32a9811da4179fdea61594230f1abcc0a35f729a5d6f8f37a77a711",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2060,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2060
+              }
+            },
+            "attention_positions": [
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ]
+            ],
+            "index_counts": [
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ]
+            ]
+          },
+          "full_kv_sha256": "268b2b904c521ae08ad69a48631845c2476c0eb3838ae500b719ed45565b3190",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "7bd9fbbf188f20fd09c860a2f6cf7ab0e08061ab6fea853cb1e35fadfd899d30",
+          "full_kv_finite": true,
+          "live_index_bytes": 15820800,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "a",
+        "repeat": 2,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2052
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          4
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "b540132ef32a9811da4179fdea61594230f1abcc0a35f729a5d6f8f37a77a711",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2060,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2060
+              }
+            },
+            "attention_positions": [
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ],
+              [
+                2059,
+                2060
+              ]
+            ],
+            "index_counts": [
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ],
+              [
+                2060,
+                515
+              ]
+            ]
+          },
+          "full_kv_sha256": "268b2b904c521ae08ad69a48631845c2476c0eb3838ae500b719ed45565b3190",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "7bd9fbbf188f20fd09c860a2f6cf7ab0e08061ab6fea853cb1e35fadfd899d30",
+          "full_kv_finite": true,
+          "live_index_bytes": 15820800,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "b",
+        "repeat": 0,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          4096,
+          1
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "d6990e8477169f50a340ffb9decaf707b7c9c2c5087930db980b41356a5ff8e1",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4105,
+            "ple": {
+              "0": {
+                "tokens": [
+                  264,
+                  1546
+                ],
+                "next_position": 4105
+              }
+            },
+            "attention_positions": [
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ]
+            ],
+            "index_counts": [
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ]
+            ]
+          },
+          "full_kv_sha256": "254c620618010357256c0460cd6a3c64cedb65571d4bbc0e2a80582523a84e8d",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "38dee8e7b580c8c87ee8ed33ecd193b332d95d778fe5d2f3d26aa26ee9f7f829",
+          "full_kv_finite": true,
+          "live_index_bytes": 31524864,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "b",
+        "repeat": 1,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          4096,
+          1
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "d6990e8477169f50a340ffb9decaf707b7c9c2c5087930db980b41356a5ff8e1",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4105,
+            "ple": {
+              "0": {
+                "tokens": [
+                  264,
+                  1546
+                ],
+                "next_position": 4105
+              }
+            },
+            "attention_positions": [
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ]
+            ],
+            "index_counts": [
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ]
+            ]
+          },
+          "full_kv_sha256": "254c620618010357256c0460cd6a3c64cedb65571d4bbc0e2a80582523a84e8d",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "38dee8e7b580c8c87ee8ed33ecd193b332d95d778fe5d2f3d26aa26ee9f7f829",
+          "full_kv_finite": true,
+          "live_index_bytes": 31524864,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "b",
+        "repeat": 2,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          4096,
+          1
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "d6990e8477169f50a340ffb9decaf707b7c9c2c5087930db980b41356a5ff8e1",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 4105,
+            "ple": {
+              "0": {
+                "tokens": [
+                  264,
+                  1546
+                ],
+                "next_position": 4105
+              }
+            },
+            "attention_positions": [
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ],
+              [
+                4104,
+                4105
+              ]
+            ],
+            "index_counts": [
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ],
+              [
+                4105,
+                1026
+              ]
+            ]
+          },
+          "full_kv_sha256": "254c620618010357256c0460cd6a3c64cedb65571d4bbc0e2a80582523a84e8d",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "38dee8e7b580c8c87ee8ed33ecd193b332d95d778fe5d2f3d26aa26ee9f7f829",
+          "full_kv_finite": true,
+          "live_index_bytes": 31524864,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "c",
+        "repeat": 0,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2049
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "2899c12db680cbffd38545255016e61040db530ae6394a68274187e3e3576101",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2057,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2057
+              }
+            },
+            "attention_positions": [
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ]
+            ],
+            "index_counts": [
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ]
+            ]
+          },
+          "full_kv_sha256": "1e4543fbfa72d622fadff34c670c002f46044342bbb23fab65bc391199882146",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "bb11e2e4f5d8ce4687d415ec251c1e7562f2b46ddc4f754a2cfd5bdc2cbd5d86",
+          "full_kv_finite": true,
+          "live_index_bytes": 15796224,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "c",
+        "repeat": 1,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2049
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "2899c12db680cbffd38545255016e61040db530ae6394a68274187e3e3576101",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2057,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2057
+              }
+            },
+            "attention_positions": [
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ]
+            ],
+            "index_counts": [
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ]
+            ]
+          },
+          "full_kv_sha256": "1e4543fbfa72d622fadff34c670c002f46044342bbb23fab65bc391199882146",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "bb11e2e4f5d8ce4687d415ec251c1e7562f2b46ddc4f754a2cfd5bdc2cbd5d86",
+          "full_kv_finite": true,
+          "live_index_bytes": 15796224,
+          "live_index_finite": true
+        }
+      },
+      {
+        "role": "c",
+        "repeat": 2,
+        "rows": 9,
+        "exact": true,
+        "native_chunks": [
+          2049
+        ],
+        "borrowed_chunks": [
+          1024,
+          1024,
+          1
+        ],
+        "final_state": {
+          "recurrent": {
+            "state_sha256": "2899c12db680cbffd38545255016e61040db530ae6394a68274187e3e3576101",
+            "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+            "buffer_bytes": {
+              "gdn_conv": 5898240,
+              "gdn_matrix": 113246208,
+              "ple_conv": 368640,
+              "residual": 20480
+            },
+            "finite": true,
+            "position": 2057,
+            "ple": {
+              "0": {
+                "tokens": [
+                  198,
+                  760
+                ],
+                "next_position": 2057
+              }
+            },
+            "attention_positions": [
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ],
+              [
+                2056,
+                2057
+              ]
+            ],
+            "index_counts": [
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ],
+              [
+                2057,
+                514
+              ]
+            ]
+          },
+          "full_kv_sha256": "1e4543fbfa72d622fadff34c670c002f46044342bbb23fab65bc391199882146",
+          "full_kv_bytes": 106954752,
+          "live_index_sha256": "bb11e2e4f5d8ce4687d415ec251c1e7562f2b46ddc4f754a2cfd5bdc2cbd5d86",
+          "full_kv_finite": true,
+          "live_index_bytes": 15796224,
+          "live_index_finite": true
+        }
+      }
+    ],
+    "reference_sha256": "adc8ddbeeb8036fb7ffc2b68ecb11f836143c8cf0fc36f012dd85685683b0899",
+    "performance_claim": false,
+    "promotion_claim": false,
+    "limits": "Prefill-only owner preparation/borrowing; automatic selection is not enabled.",
+    "manifest": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+    "extra_workspace_bytes": 1633867320,
+    "free_before_extra": 38996414464,
+    "free_after_extra": 37327081472,
+    "reserve_bytes": 4294967296,
+    "owner_count": 2,
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 90956330304,
+      "total_allocated_bytes": 90956330304,
+      "total_freed_bytes": 90956330304,
+      "active_allocations": 0,
+      "peak_allocations": 1745
+    }
+  },
+  "allocation_comparison": {
+    "context": 4352,
+    "extra_chunk": 1024,
+    "measured_prefill_owner_bytes": 1633867320,
+    "full_runner_recipe_bytes": 1897478408,
+    "derived_duplicate_state_bytes_avoided": 263611088
+  },
+  "limits": [
+    "No automatic dispatch or new throughput claim.",
+    "27 unique logit rows repeated three times; this is an ownership regression check, not a new statistical numerical gate.",
+    "Avoided duplicate-state bytes are derived from the matched-capacity validated allocation census.",
+    "Primary allocation order and sizes match the frozen CPU census; no kernel arithmetic changed."
+  ]
+}

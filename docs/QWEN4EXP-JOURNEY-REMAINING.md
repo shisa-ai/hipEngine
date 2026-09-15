@@ -26,7 +26,7 @@ improvements require the applicable unchanged production quality gates.
 | R08 | Approximate MoE grouped and Q4 iu8 restoration | Separate families, real routing/repair counts, then composition |
 | R09 | Decode DP4A restoration | Full category/heldout numerical/task gates and true AR cost |
 | R10 | Real expert populations and repair telemetry | Capture updated baseline before ranking new matrix tiles |
-| R11 | Chunk scratch model and larger chunks | 2048/4096 qualified explicit options;4096 matched4K PP/TG +3.94/+1.11%, short costs keep default1024. Shape-dependent workspace selection remains ([evidence](../benchmarks/results/2026-09-15-chunk4096-accounting/README.md)) |
+| R11 | Chunk scratch model and larger chunks | 2048/4096 qualified explicit options;4096 matched4K PP/TG +3.94/+1.11%, short costs keep default1024. Prefill-only ownership validated; automatic policy/timing remain ([owner](../benchmarks/results/2026-09-15-prefill-workspace-owner/README.md)) |
 | R12 | Other mixed-quant matrix geometry/dequant-on-load | Actual Q4_K/Q5_K/Q5_1 roles and whole-owner cost, not IQ4_NL transfer |
 | R13 | PLE copy elision / sorted dedup | Existing one-pair screen mixed; isolate gather/scatter savings on unique and duplicate rows |
 | R14 | Persistent pread / direct-I/O and row cache | Existing cold gain/warm loss; cache-state policy and new-row workload required |
