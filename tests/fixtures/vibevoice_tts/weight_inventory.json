@@ -1,0 +1,104 @@
+{
+  "model_id": "microsoft/VibeVoice-1.5B",
+  "model_revision": "c00898d257e6b46004e3e2866a47534085fb685a",
+  "total_tensors": 1204,
+  "total_params": 2704021987,
+  "total_bytes": 5408043974,
+  "total_gib": 5.0366,
+  "components": [
+    {
+      "component": "model.language_model",
+      "tensors": 338,
+      "params": 1543714304,
+      "bytes": 3087428608,
+      "gib": 2.8754,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.acoustic_tokenizer",
+      "tensors": 552,
+      "params": 687392001,
+      "bytes": 1374784002,
+      "gib": 1.2804,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.semantic_tokenizer",
+      "tensors": 276,
+      "params": 344613600,
+      "bytes": 689227200,
+      "gib": 0.6419,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.prediction_head",
+      "tensors": 26,
+      "params": 123279360,
+      "bytes": 246558720,
+      "gib": 0.2296,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.semantic_connector",
+      "tensors": 5,
+      "params": 2560512,
+      "bytes": 5121024,
+      "gib": 0.0048,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.acoustic_connector",
+      "tensors": 5,
+      "params": 2462208,
+      "bytes": 4924416,
+      "gib": 0.0046,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.speech_scaling_factor",
+      "tensors": 1,
+      "params": 1,
+      "bytes": 2,
+      "gib": 0.0,
+      "dtypes": [
+        "BF16"
+      ]
+    },
+    {
+      "component": "model.speech_bias_factor",
+      "tensors": 1,
+      "params": 1,
+      "bytes": 2,
+      "gib": 0.0,
+      "dtypes": [
+        "BF16"
+      ]
+    }
+  ],
+  "model_cross_check": {
+    "checkpoint_keys": 1204,
+    "model_state_keys": 1205,
+    "orphan_keys": [],
+    "missing_keys": [
+      "lm_head.weight"
+    ],
+    "lm_head_tied_to_embed_tokens": true,
+    "parameter_count": 2704021985,
+    "buffer_parameter_delta": 2,
+    "stored_parameter_count": 2704021987,
+    "header_parameter_count": 2704021987,
+    "parameter_counts_agree": true
+  }
+}

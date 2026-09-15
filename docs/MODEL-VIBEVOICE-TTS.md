@@ -332,6 +332,17 @@ its outputs are captured as fixtures. Concretely, all of:
 - the oracle is known to work on the *reviewed* fork revision rather than a newer
   one, and any difference is recorded if it does not.
 
+**Status: closed (2026-09-15).** All six criteria are met. The frozen fixtures
+are `tests/fixtures/vibevoice_tts/` (10 `.npz` files plus `manifest.json`, 8.0 MB,
+281 arrays) and a fresh run reproduces every one of them byte-identically. The
+weight inventory is `tests/fixtures/vibevoice_tts/weight_inventory.json`, produced
+by `scripts/vibevoice_tts_weight_inventory.py`: 1204 tensors,
+2,704,021,987 parameters, 5.037 GiB, zero orphan keys. The one key absent from
+the checkpoint, `lm_head.weight`, is tied to `embed_tokens.weight` with verified
+shared storage. The two scaling factors are buffers rather than parameters, which
+is why a `.parameters()` sum undercounts the checkpoint by exactly 2. See
+`worklog/entries/20260915T032856.748048Z-lhl-vibevoice-tts-milestone1-closure-511389.md`.
+
 Out of scope for milestone 1: batching, concurrency, hour-scale continuity,
 kernel porting, quantization, and any quality or speed claim.
 
