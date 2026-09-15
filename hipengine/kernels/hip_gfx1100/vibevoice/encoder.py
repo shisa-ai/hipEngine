@@ -32,11 +32,11 @@ _ARGTYPES_ADD_BIAS_F32 = (_P, _P, _P, _I, _I, _S)
 _ARGTYPES_ELEMENTWISE_2PTR = (_P, _P, _I, _S)
 _ARGTYPES_SCALE_RESIDUAL = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_DEPTHWISE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
-_ARGTYPES_CONV_GEMM = (_P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _S)
+_ARGTYPES_CONV_GEMM = (_P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _I, _S)
 _ARGTYPES_ADD_NOISE = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_ROPE_POS = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
 _ARGTYPES_PREFILL_ATTN = (_P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
-_ARGTYPES_IM2COL = (_P, _P, _I, _I, _I, _I, _I, _S)
+_ARGTYPES_IM2COL = (_P, _P, _I, _I, _I, _I, _I, _I, _S)
 
 
 def plan_vibevoice_encoder_build(
@@ -223,17 +223,25 @@ def vv_conv_gemm_bf16(
     c_out: int,
     k_len: int,
     stride: int,
+    rows_in: int = -1,
     *,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
+    """Strided causal conv. ``rows_in`` bounds the taps read from ``x``.
+
+    ``rows_in < 0`` (the default) leaves the bound off, so the caller must
+    guarantee every tap is in range. Pass the true input row count to get the
+    fork's right zero padding: taps past it contribute zero, which is what
+    makes a non-streaming pass emit ``ceil(rows/stride)`` outputs.
+    """
     if rows_out <= 0:
         raise ValueError("rows_out must be positive")
     library = library or _library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, "hipengine_vv_conv_gemm_bf16", _ARGTYPES_CONV_GEMM, ctypes.c_int)
-    err = fn(prefix_ptr, x_ptr, w_t_ptr, b_ptr, out_ptr, prefix_rows, rows_out, c_in, c_out, k_len, stride, stream)
+    err = fn(prefix_ptr, x_ptr, w_t_ptr, b_ptr, out_ptr, prefix_rows, rows_out, c_in, c_out, k_len, stride, rows_in, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -273,16 +281,21 @@ def vv_im2col_bf16(
     k_len: int,
     stride: int,
     prefix_rows: int,
+    rows_in: int = -1,
     *,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """im2col for strided causal convs: (rows_out, C_in*K) bf16."""
+    """im2col for strided causal convs: (rows_out, C_in*K) bf16.
+
+    ``rows_in < 0`` leaves the input bound off; otherwise taps at or past
+    ``rows_in`` are written as zero (the fork's right zero padding).
+    """
     library = library or _library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, "hipengine_vv_im2col_bf16", _ARGTYPES_IM2COL, ctypes.c_int)
-    err = fn(x_ptr, out_ptr, rows_out, c_in, k_len, stride, prefix_rows, stream)
+    err = fn(x_ptr, out_ptr, rows_out, c_in, k_len, stride, prefix_rows, rows_in, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 

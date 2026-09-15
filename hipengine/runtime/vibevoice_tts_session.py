@@ -119,18 +119,17 @@ class VibevoiceTtsSession:
                           noise: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
         """Reference PCM -> (sampled latents, connected rows) for the prompt.
 
-        Acoustic-encodes the 24 kHz mono reference, samples the VAE with the
-        supplied recorded operands (or the session generator), applies the
-        checkpoint ``(latent + bias) * scale`` factors, and connects to LM
-        space. Matches the fork's ``_process_speech_inputs`` audio path.
+        Acoustic-encodes the 24 kHz mono reference in one non-streaming pass,
+        samples the VAE with the supplied recorded operands (or the session
+        generator), applies the checkpoint ``(latent + bias) * scale`` factors,
+        and connects to LM space. Matches the fork's ``_process_speech_inputs``
+        audio path, which encodes the whole waveform with per-stage right zero
+        padding rather than in aligned chunks.
         """
         pcm = np.asarray(ref_pcm, dtype=np.float32).reshape(-1)
         if not pcm.size:
             raise ValueError('reference PCM must be nonempty')
-        pad = (-pcm.size) % 3200
-        latent = self.frontend.encode_chunk_streaming(
-            'acoustic', np.pad(pcm, (0, pad)) if pad else pcm, {}
-        )
+        latent = self.frontend.encode_reference(pcm)
         # ``encode_chunk_streaming`` returns (frames, hidden); take the frame
         # count from the encoder rather than recomputing it, so the sampled
         # shape can never disagree with what was actually encoded.

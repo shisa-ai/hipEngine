@@ -1,8 +1,7 @@
 """VibeVoice-TTS session on HIP/GPU against the frozen torch-oracle chain.
 
 Gates, in execution order: the voice-prompt entry point (called directly, plus
-its checkpoint scale/bias step), the reference tail frame (strict xfail until
-the padding semantics match the fork), the session's own negative-LM branch with
+its checkpoint scale/bias step), the session's own negative-LM branch with
 recorded noise and no injected condition, the 121-position prefill trace, the
 constrained greedy chain (exact), the negative-LM accumulation under injected
 conditions, per-frame diffusion latents, and the decoded PCM.
@@ -108,40 +107,18 @@ def test_voice_prompt_rows_matches_reference(session) -> None:
     )
     assert sampled.shape == (frames, 64), f"{sampled.shape} != {(frames, 64)}"
     peak = float(np.abs(ref_lat).max())
-    # Frames 0..68 sit on the fork's GPU-bf16 noise floor (measured 0.87 abs
-    # across the 26-block stack); the tail frame is gated separately.
-    assert np.abs(sampled[:-1] - ref_lat[:-1]).max() / peak <= 0.045, "sampled latents drifted"
+    # The whole frame range now meets one gate. Frames 0..68 sit on the fork's
+    # GPU-bf16 noise floor; the tail frame was 0.39 before the encoder
+    # reproduced the fork's per-stage right zero padding and is now below the
+    # interior frames, so it needs no separate tolerance.
+    assert np.abs(sampled - ref_lat).max() / peak <= 0.045, "sampled latents drifted"
+    assert np.abs(sampled[-1] - ref_lat[-1]).max() / peak <= 0.045, "tail frame drifted"
 
     ref_conn = np.asarray(ref["connected"])
     assert connected.shape == ref_conn.shape, f"{connected.shape} != {ref_conn.shape}"
     assert np.abs(connected[:-1] - ref_conn[:-1]).max() <= 0.06 * float(
         np.abs(ref_conn[:-1]).max()
     ), "connected rows drifted"
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="reference tail frame: the port zero-pads the waveform to a 3200 "
-    "multiple while the fork appends per-layer stride padding, so the last "
-    "frame is built from a different input extent",
-)
-def test_voice_prompt_tail_frame_matches_reference(session) -> None:
-    """The final reference frame must meet the interior-frame gate.
-
-    This is a strict xfail: it documents a known semantic gap and turns into a
-    failure once the gap closes, so the fix must flip it to a plain assertion.
-    """
-    ref = _npz("single_reference.npz")
-    pcm = np.asarray(ref["ref_pcm"])[0]
-    ref_lat = np.asarray(ref["encode0_latents"]).reshape(-1, 64)
-    frames = ref_lat.shape[0]
-    sampled, _ = session.voice_prompt_rows(
-        pcm,
-        noise=np.asarray(ref["encode_draw1"]).reshape(frames, 64),
-        noise_scale=np.asarray(ref["encode_draw0"]).reshape(1),
-    )
-    peak = float(np.abs(ref_lat).max())
-    assert np.abs(sampled[-1] - ref_lat[-1]).max() / peak <= 0.045, "tail frame drifted"
 
 
 def test_session_negative_path_without_injection(session, lm, dif) -> None:

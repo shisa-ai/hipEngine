@@ -172,7 +172,8 @@ __global__ void vv_conv_gemm_kernel(
     int64_t c_in,
     int64_t c_out,
     int64_t k_len,
-    int64_t stride) {
+    int64_t stride,
+    int64_t rows_in) {
   const int64_t n = static_cast<int64_t>(blockIdx.x) * VV_CONV_TN + threadIdx.x;
   const int64_t p = static_cast<int64_t>(blockIdx.y) * VV_CONV_TM + threadIdx.y;
   if (p >= rows_out || n >= c_out) {
@@ -182,11 +183,17 @@ __global__ void vv_conv_gemm_kernel(
   float acc = bf16_bits_to_float(b[n]);
   for (int64_t k = 0; k < k_len; ++k) {
     const int64_t ii = row0 + k;
-    const uint16_t* src = (ii < prefix_rows) ? prefix : x;
-    const int64_t base = (ii < prefix_rows ? ii : ii - prefix_rows) * c_in;
+    const bool from_x = ii >= prefix_rows;
+    const int64_t row = from_x ? ii - prefix_rows : ii;
+    // ``rows_in < 0`` means the caller guarantees every tap is in range.
+    // Otherwise taps past the input are the fork's right zero padding, which
+    // is what makes a non-streaming pass produce ceil(rows/stride) outputs.
+    const bool valid = !from_x || rows_in < 0 || row < rows_in;
+    const uint16_t* src = valid ? ((from_x ? x : prefix) + row * c_in) : nullptr;
     const uint16_t* wbase = w_t + k * c_in * c_out + n;
     for (int64_t ci = 0; ci < c_in; ++ci) {
-      acc = fmaf(bf16_bits_to_float(src[base + ci]), bf16_bits_to_float(wbase[ci * c_out]), acc);
+      const float xv = src ? bf16_bits_to_float(src[ci]) : 0.0f;
+      acc = fmaf(xv, bf16_bits_to_float(wbase[ci * c_out]), acc);
     }
   }
   out[p * c_out + n] = float_to_bf16_bits(acc);
@@ -323,8 +330,10 @@ __global__ void vv_prefill_attention_kernel(
 }
 
 // im2col for a strided causal conv: A[p, ci*K + k] = X(p*stride + k
-// - prefix_rows, ci), with zero for pre-history taps. Matches the raw
-// nn.Conv1d weight layout [C_out, C_in, K] flattened to [C_out, C_in*K].
+// - prefix_rows, ci), with zero for pre-history taps and, when ``rows_in`` is
+// non-negative, for taps past the input (the fork's right zero padding).
+// Matches the raw nn.Conv1d weight layout [C_out, C_in, K] flattened to
+// [C_out, C_in*K].
 __global__ void vv_im2col_kernel(
     const uint16_t* __restrict__ x,
     uint16_t* __restrict__ out,
@@ -332,7 +341,8 @@ __global__ void vv_im2col_kernel(
     int64_t c_in,
     int64_t k_len,
     int64_t stride,
-    int64_t prefix_rows) {
+    int64_t prefix_rows,
+    int64_t rows_in) {
   const int64_t total = rows_out * c_in * k_len;
   for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        idx < total;
@@ -342,7 +352,7 @@ __global__ void vv_im2col_kernel(
     const int64_t ci = rest / k_len;
     const int64_t k = rest - ci * k_len;
     const int64_t row = p * stride + k - prefix_rows;
-    out[idx] = (row < 0) ? 0 : x[row * c_in + ci];
+    out[idx] = (row < 0 || (rows_in >= 0 && row >= rows_in)) ? 0 : x[row * c_in + ci];
   }
 }
 
@@ -514,6 +524,7 @@ extern "C" int hipengine_vv_conv_gemm_bf16(
     int64_t c_out,
     int64_t k_len,
     int64_t stride,
+    int64_t rows_in,
     hipStream_t stream) {
   if (rows_out <= 0 || c_in <= 0 || c_out <= 0 || k_len <= 0 || stride <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -524,7 +535,7 @@ extern "C" int hipengine_vv_conv_gemm_bf16(
       static_cast<unsigned int>((rows_out + VV_CONV_TM - 1) / VV_CONV_TM));
   hipLaunchKernelGGL(
       vv_conv_gemm_kernel, grid, block,
-      0, stream, prefix, x, w_t, b, out, prefix_rows, rows_out, c_in, c_out, k_len, stride);
+      0, stream, prefix, x, w_t, b, out, prefix_rows, rows_out, c_in, c_out, k_len, stride, rows_in);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -591,6 +602,7 @@ extern "C" int hipengine_vv_im2col_bf16(
     int64_t k_len,
     int64_t stride,
     int64_t prefix_rows,
+    int64_t rows_in,
     hipStream_t stream) {
   if (rows_out <= 0 || c_in <= 0 || k_len <= 0 || stride <= 0 || prefix_rows < 0) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -599,7 +611,7 @@ extern "C" int hipengine_vv_im2col_bf16(
   const int64_t blocks = (total + 255) / 256;
   hipLaunchKernelGGL(
       vv_im2col_kernel, dim3(static_cast<unsigned int>(blocks)), dim3(256),
-      0, stream, x, out, rows_out, c_in, k_len, stride, prefix_rows);
+      0, stream, x, out, rows_out, c_in, k_len, stride, prefix_rows, rows_in);
   return static_cast<int>(hipGetLastError());
 }
 
