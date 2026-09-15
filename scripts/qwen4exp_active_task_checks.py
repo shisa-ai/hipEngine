@@ -21,7 +21,9 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary, CANDIDATES
-from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile, validate_chunk_allocation
+from scripts.qwen4exp_q8_repair_depth_gate import (
+    observe_prefill_chunks, resolve_allocation_profile, validate_chunk_allocation,
+)
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -61,6 +63,12 @@ def completion(runner, tokenizer, prompt, limit):
     return dict(ids=tokens, text=tokenizer.decode(visible, skip_special=False),
                 finish=finish, finite=finite and state["finite"],
                 state_sha256=state["state_sha256"])
+
+
+def traced_completion(runner, tokenizer, prompt, limit, chunk):
+    with observe_prefill_chunks(runner, tokens=len(prompt), size=chunk) as chunks:
+        result = completion(runner, tokenizer, prompt, limit)
+    return {**result, "prefill_chunks": chunks}
 
 
 def main():
@@ -132,7 +140,9 @@ def main():
                     for task in tasks:
                         prompt, prompt_info = _build_prompt_tokens(
                             _TokenizerAdapter(generator.tokenizer), task, context_tokens=4096)
-                        runs = [completion(generator.runner, generator.tokenizer, prompt, args.max_tokens)
+                        runs = [traced_completion(
+                            generator.runner, generator.tokenizer, prompt,
+                            args.max_tokens, arm_args.prefill_chunk_size)
                                 for _ in range(3)]
                         packet["cases"][arm].append(dict(
                             id=task["id"], category=task["category"], prompt=prompt_info,
