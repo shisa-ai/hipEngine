@@ -168,10 +168,23 @@ def _generation_record(
     }
 
 
-def _exchange_summary(group: Any) -> dict[str, Any]:
+def _exchange_summary(group: Any, session: Any) -> dict[str, Any]:
     walls = np.array(group.exchange_walls_s, dtype=np.float64)
+    if walls.size == 0 and getattr(session, "reduce_mode", "host") == "device":
+        # Device mode: the exchange runs inside the captured graphs, so the
+        # host records no per-layer walls. Report the exchange's step
+        # counters instead; per-slot device timing is a rocprof question.
+        exchange = session._device_exchange
+        return {
+            "reductions": int(group.reductions),
+            "mode": "device",
+            "step_begins": int(exchange.step_begins),
+            "enqueues": int(len(exchange.enqueues)),
+            "waits": int(exchange.waits),
+        }
     return {
         "reductions": int(group.reductions),
+        "mode": "host",
         "wall_us": {
             "n": int(walls.size),
             "p50": round(float(np.percentile(walls, 50)) * 1e6, 2),
@@ -192,6 +205,7 @@ def run_arm(
     label: str,
     driver: str = "python",
     schedule: str = "eager",
+    reduce_mode: str = "host",
 ) -> tuple[dict[str, Any], np.ndarray]:
     """One fresh session: generations + teacher-forced logits.
 
@@ -207,6 +221,7 @@ def run_arm(
         max_sequence_length=2048,
         driver=driver,
         schedule=schedule,
+        reduce_mode=reduce_mode,
     )
     built_s = time.perf_counter() - started
     record: dict[str, Any] = {
@@ -214,6 +229,7 @@ def run_arm(
         "mode": mode,
         "driver": driver if mode == "tp2" else None,
         "schedule": schedule if mode == "tp2" else None,
+        "reduce_mode": reduce_mode if mode == "tp2" else None,
         "mlp_decode_variant": (
             session._shard_group.mlp_decode_variant
             if mode == "tp2" and session._shard_group is not None
@@ -253,7 +269,7 @@ def run_arm(
                 float(np.abs(repeat_logits - teacher_logits).max()), 9
             ),
         }
-        record["exchange"] = _exchange_summary(session._shard_group)
+        record["exchange"] = _exchange_summary(session._shard_group, session)
     session.close()
     return record, teacher_logits
 
@@ -280,6 +296,14 @@ def main(argv: list[str] | None = None) -> int:
         help="the TP2 arm's token schedule: the captured per-layer graphs with "
         "fixed per-layer payload slots (default, the production default) or the "
         "per-launch eager enqueue (opt-out)",
+    )
+    parser.add_argument(
+        "--reduce-mode",
+        default="device",
+        choices=("host", "device"),
+        help="the TP2 graphed arm's reduction: the device-side exchange inside "
+        "the captured graphs (default, the graphed production default) or the "
+        "host-summed transport (opt-out)",
     )
     args = parser.parse_args(argv)
 
@@ -309,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
             label=label,
             driver=args.driver,
             schedule=args.schedule if mode == "tp2" else "eager",
+            reduce_mode=args.reduce_mode if mode == "tp2" else "host",
         )
         arms.append(record)
         logits_by_label[label] = teacher_logits
@@ -319,11 +344,20 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
         if record.get("exchange") is not None:
-            print(
-                f"exchange: {record['exchange']['reductions']} reductions, "
-                f"p50 wall {record['exchange']['wall_us']['p50']} us",
-                flush=True,
-            )
+            summary = record["exchange"]
+            if "wall_us" in summary:
+                print(
+                    f"exchange: {summary['reductions']} reductions, "
+                    f"p50 wall {summary['wall_us']['p50']} us",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"exchange: {summary['reductions']} reductions, "
+                    f"device mode ({summary['step_begins']} step begins, "
+                    f"{summary['waits']} waits)",
+                    flush=True,
+                )
 
     by_label = {arm["label"]: arm for arm in arms}
 

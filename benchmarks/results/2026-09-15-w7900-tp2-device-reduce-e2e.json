@@ -1,0 +1,708 @@
+{
+ "schema_version": 1,
+ "kind": "tp2-mlp-generate-e2e",
+ "generated_at": "2026-09-15T18:37:09Z",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_fingerprint": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
+ "world_size": 2,
+ "host": {
+  "machine": "x86_64",
+  "python": "3.12.9"
+ },
+ "hardware_labels": {
+  "device0": "AMD Radeon Pro W7900",
+  "device1": "AMD Radeon RX 7900 XTX",
+  "note": "two distinct physical cards on one host; earlier TP2 worklog entries that said 'two W7900s' were wrong - the artifact always recorded W7900 + RX 7900 XTX"
+ },
+ "sharding_scope": "MLP-only TP2: replicated attention/GDN weights and compute on every rank (full replicated cost inside the walls), MLP gate/up column-sharded and down row-sharded, one staged bf16-partial reduction per layer per token, single residual add per rank",
+ "no_speedup_claim": "diagnostic schedule (eager unfused route, Python-driven staged exchange, sequential token prefill); walls attribute the schedule, they do not promote TP2",
+ "production_gate": {
+  "mean_kl": 0.001,
+  "p95_kl": 0.005,
+  "p99_kl": 0.02,
+  "max_kl": 0.05,
+  "top1_agreement": 0.99
+ },
+ "gates": {
+  "tp2_vs_tp1_teacher_device0": {
+   "teacher": "tp1-device0-W7900",
+   "student": "tp2-W7900+RX7900XTX",
+   "metrics": {
+    "rows": 16,
+    "mean_kl": 0.0003945191170716943,
+    "p95_kl": 0.0012274272062752969,
+    "p99_kl": 0.0021372729472932733,
+    "max_kl": 0.002364734382547768,
+    "top1_agreement": 1.0,
+    "flipped_rows": 0
+   },
+   "passed": true,
+   "failures": []
+  },
+  "tp2_vs_tp1_teacher_device1": {
+   "teacher": "tp1-device1-RX7900XTX",
+   "student": "tp2-W7900+RX7900XTX",
+   "metrics": {
+    "rows": 16,
+    "mean_kl": 0.0003945191170716943,
+    "p95_kl": 0.0012274272062752969,
+    "p99_kl": 0.0021372729472932733,
+    "max_kl": 0.002364734382547768,
+    "top1_agreement": 1.0,
+    "flipped_rows": 0
+   },
+   "passed": true,
+   "failures": []
+  },
+  "tp1_device0_vs_device1_control": {
+   "teacher": "tp1-device0-W7900",
+   "student": "tp1-device1-RX7900XTX",
+   "metrics": {
+    "rows": 16,
+    "mean_kl": 0.0,
+    "p95_kl": 0.0,
+    "p99_kl": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "flipped_rows": 0
+   },
+   "passed": true,
+   "failures": []
+  }
+ },
+ "arms": [
+  {
+   "label": "tp1-device0-W7900",
+   "mode": "tp1",
+   "driver": null,
+   "schedule": null,
+   "reduce_mode": null,
+   "mlp_decode_variant": null,
+   "devices": [
+    0
+   ],
+   "device_names": {
+    "0": "AMD Radeon Pro W7900"
+   },
+   "memory_after_load": {
+    "0": {
+     "free_gib": 27.287,
+     "total_gib": 44.984
+    }
+   },
+   "build_s": 87.44,
+   "generations": [
+    {
+     "prompt": "Write a Python function that reverses a list.",
+     "prompt_tokens": [
+      7734,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13
+     ],
+     "generated_tokens": [
+      271,
+      248068,
+      198,
+      760,
+      1156,
+      6587,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13,
+      6558
+     ],
+     "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 105.25,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 31.815,
+      "min": 31.742,
+      "max": 31.958
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0439,
+      "attention": 0.3227,
+      "embedding": 0.046,
+      "head_sample": 0.3248,
+      "mlp": 0.1145,
+      "residual_add": 0.0405
+     }
+    },
+    {
+     "prompt": "The weather today is",
+     "prompt_tokens": [
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_tokens": [
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369,
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 31.86,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 31.778,
+      "min": 31.731,
+      "max": 31.862
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0336,
+      "attention": 0.2226,
+      "embedding": 0.0031,
+      "head_sample": 0.2575,
+      "mlp": 0.086,
+      "residual_add": 0.0313
+     }
+    },
+    {
+     "prompt": "\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "prompt_tokens": [
+      161607,
+      110161,
+      14876
+     ],
+     "generated_tokens": [
+      115197,
+      173399,
+      10992,
+      59,
+      77,
+      1639,
+      151992,
+      5205,
+      115197,
+      36298,
+      64638,
+      77,
+      12512,
+      161607,
+      110161,
+      14876
+     ],
+     "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 31.8,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 31.791,
+      "min": 31.659,
+      "max": 31.877
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0318,
+      "attention": 0.2089,
+      "embedding": 0.0027,
+      "head_sample": 0.2476,
+      "mlp": 0.0816,
+      "residual_add": 0.0296
+     }
+    },
+    {
+     "prompt": "Paris is the capital of",
+     "prompt_tokens": [
+      57590,
+      369,
+      279,
+      6511,
+      314
+     ],
+     "generated_tokens": [
+      9338,
+      321,
+      279,
+      7526,
+      3177,
+      303,
+      279,
+      3046,
+      13,
+      1049,
+      369,
+      7172,
+      303,
+      279,
+      9897,
+      81183
+     ],
+     "generated_text": " France and the largest city in the country. It is located in the north-central",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 31.88,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 31.808,
+      "min": 31.731,
+      "max": 31.869
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0359,
+      "attention": 0.2373,
+      "embedding": 0.0031,
+      "head_sample": 0.2639,
+      "mlp": 0.0925,
+      "residual_add": 0.0333
+     }
+    }
+   ]
+  },
+  {
+   "label": "tp1-device1-RX7900XTX",
+   "mode": "tp1",
+   "driver": null,
+   "schedule": null,
+   "reduce_mode": null,
+   "mlp_decode_variant": null,
+   "devices": [
+    1
+   ],
+   "device_names": {
+    "1": "AMD Radeon RX 7900 XTX"
+   },
+   "memory_after_load": {
+    "1": {
+     "free_gib": 6.287,
+     "total_gib": 23.984
+    }
+   },
+   "build_s": 84.68,
+   "generations": [
+    {
+     "prompt": "Write a Python function that reverses a list.",
+     "prompt_tokens": [
+      7734,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13
+     ],
+     "generated_tokens": [
+      271,
+      248068,
+      198,
+      760,
+      1156,
+      6587,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13,
+      6558
+     ],
+     "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 51.86,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 26.333,
+      "min": 26.252,
+      "max": 26.392
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0429,
+      "attention": 0.3028,
+      "embedding": 0.0049,
+      "head_sample": 0.2005,
+      "mlp": 0.1107,
+      "residual_add": 0.0402
+     }
+    },
+    {
+     "prompt": "The weather today is",
+     "prompt_tokens": [
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_tokens": [
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369,
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 26.25,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 26.315,
+      "min": 26.264,
+      "max": 26.372
+     },
+     "stage_sums_s": {
+      "add_norm": 0.033,
+      "attention": 0.2179,
+      "embedding": 0.0029,
+      "head_sample": 0.1561,
+      "mlp": 0.0845,
+      "residual_add": 0.0303
+     }
+    },
+    {
+     "prompt": "\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "prompt_tokens": [
+      161607,
+      110161,
+      14876
+     ],
+     "generated_tokens": [
+      115197,
+      173399,
+      10992,
+      59,
+      77,
+      1639,
+      151992,
+      5205,
+      115197,
+      36298,
+      64638,
+      77,
+      12512,
+      161607,
+      110161,
+      14876
+     ],
+     "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 26.27,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 26.313,
+      "min": 26.24,
+      "max": 26.464
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0313,
+      "attention": 0.2072,
+      "embedding": 0.0027,
+      "head_sample": 0.1476,
+      "mlp": 0.0806,
+      "residual_add": 0.029
+     }
+    },
+    {
+     "prompt": "Paris is the capital of",
+     "prompt_tokens": [
+      57590,
+      369,
+      279,
+      6511,
+      314
+     ],
+     "generated_tokens": [
+      9338,
+      321,
+      279,
+      7526,
+      3177,
+      303,
+      279,
+      3046,
+      13,
+      1049,
+      369,
+      7172,
+      303,
+      279,
+      9897,
+      81183
+     ],
+     "generated_text": " France and the largest city in the country. It is located in the north-central",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 26.23,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 26.321,
+      "min": 26.263,
+      "max": 26.371
+     },
+     "stage_sums_s": {
+      "add_norm": 0.0347,
+      "attention": 0.2291,
+      "embedding": 0.0029,
+      "head_sample": 0.163,
+      "mlp": 0.0892,
+      "residual_add": 0.0323
+     }
+    }
+   ]
+  },
+  {
+   "label": "tp2-W7900+RX7900XTX",
+   "mode": "tp2",
+   "driver": "compiled",
+   "schedule": "graphed",
+   "reduce_mode": "device",
+   "mlp_decode_variant": "dense_dual_local32_bf16_bf16_out",
+   "devices": [
+    0,
+    1
+   ],
+   "device_names": {
+    "0": "AMD Radeon Pro W7900",
+    "1": "AMD Radeon RX 7900 XTX"
+   },
+   "memory_after_load": {
+    "0": {
+     "free_gib": 21.75,
+     "total_gib": 44.984
+    },
+    "1": {
+     "free_gib": 0.752,
+     "total_gib": 23.984
+    }
+   },
+   "build_s": 258.25,
+   "generations": [
+    {
+     "prompt": "Write a Python function that reverses a list.",
+     "prompt_tokens": [
+      7734,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13
+     ],
+     "generated_tokens": [
+      271,
+      248068,
+      198,
+      760,
+      1156,
+      6587,
+      264,
+      12654,
+      709,
+      421,
+      16915,
+      287,
+      264,
+      1103,
+      13,
+      6558
+     ],
+     "generated_text": "\n\n<think>\nThe user wants a Python function that reverses a list. Let",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 27.37,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 24.862,
+      "min": 24.759,
+      "max": 25.01
+     },
+     "stage_sums_s": {
+      "embedding": 0.0072,
+      "head_sample": 0.0452,
+      "layers": 0.0266,
+      "tail": 0.5664
+     }
+    },
+    {
+     "prompt": "The weather today is",
+     "prompt_tokens": [
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_tokens": [
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369,
+      1546,
+      6217,
+      13,
+      198,
+      760,
+      8831,
+      3242,
+      369
+     ],
+     "generated_text": " very nice.\nThe weather today is very nice.\nThe weather today is",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 25.08,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 24.865,
+      "min": 24.759,
+      "max": 25.003
+     },
+     "stage_sums_s": {
+      "embedding": 0.0057,
+      "head_sample": 0.0347,
+      "layers": 0.019,
+      "tail": 0.4373
+     }
+    },
+    {
+     "prompt": "\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "prompt_tokens": [
+      161607,
+      110161,
+      14876
+     ],
+     "generated_tokens": [
+      115197,
+      173399,
+      10992,
+      59,
+      77,
+      1639,
+      151992,
+      5205,
+      115197,
+      36298,
+      64638,
+      77,
+      12512,
+      161607,
+      110161,
+      14876
+     ],
+     "generated_text": "\u6771\u4eac\u3067\u3059\u304b\uff1f\\n\\n\u306f\u3044\u3001\u6771\u4eac\u3067\u3059\u3002\\n\u300c\u65e5\u672c\u306e\u9996\u90fd\u306f",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 24.97,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 24.872,
+      "min": 24.763,
+      "max": 25.059
+     },
+     "stage_sums_s": {
+      "embedding": 0.0052,
+      "head_sample": 0.0329,
+      "layers": 0.0178,
+      "tail": 0.4163
+     }
+    },
+    {
+     "prompt": "Paris is the capital of",
+     "prompt_tokens": [
+      57590,
+      369,
+      279,
+      6511,
+      314
+     ],
+     "generated_tokens": [
+      9338,
+      321,
+      279,
+      7526,
+      3177,
+      303,
+      279,
+      3046,
+      13,
+      1049,
+      369,
+      7172,
+      303,
+      279,
+      9897,
+      81183
+     ],
+     "generated_text": " France and the largest city in the country. It is located in the north-central",
+     "finished_on_eos": false,
+     "prefill_first_token_ms": 24.93,
+     "decode_walls_ms": {
+      "n": 16,
+      "p50": 24.87,
+      "min": 24.771,
+      "max": 25.007
+     },
+     "stage_sums_s": {
+      "embedding": 0.0058,
+      "head_sample": 0.0361,
+      "layers": 0.0188,
+      "tail": 0.4612
+     }
+    }
+   ],
+   "determinism": {
+    "tokens_identical": true,
+    "logits_bit_identical": true,
+    "logits_max_abs_diff": 0.0
+   },
+   "exchange": {
+    "reductions": 64,
+    "mode": "device",
+    "step_begins": 144,
+    "enqueues": 414,
+    "waits": 144
+   }
+  }
+ ],
+ "comparison": {
+  "decode_p50_ms": {
+   "tp1_device0": 31.8,
+   "tp1_device1": 26.318,
+   "tp2": 24.867
+  },
+  "reading": "matched-composition decode walls on the diagnostic schedule; the TP2 wall includes the replicated attention/GDN cost and one staged reduction per layer"
+ }
+}
