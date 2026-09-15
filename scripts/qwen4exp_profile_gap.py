@@ -41,6 +41,10 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
+    "HIPENGINE_QWEN4_EXP_PLE_WARM",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
@@ -380,6 +384,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Collect diagnostic per-layer selected-expert row distributions",
     )
+    parser.add_argument(
+        "--risk-diagnostics",
+        action="store_true",
+        help=(
+            "Collect opt-in iu8 risk+repair trigger rates per route/role/layer. "
+            "Diagnostic only: the readback synchronizes each repair call's "
+            "stream, so do not combine it with a performance claim."
+        ),
+    )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decode-steps", type=int, default=16)
     parser.add_argument(
@@ -433,6 +446,8 @@ def main() -> None:
         raise SystemExit("--moe-telemetry is supported only in prefill mode")
     if args.moe_telemetry and args.profile:
         raise SystemExit("run --moe-telemetry separately from --profile")
+    if args.risk_diagnostics and args.mode != "prefill":
+        raise SystemExit("--risk-diagnostics is supported only in prefill mode")
     fixture_case: dict[str, Any] | None = None
     fixture_sha256: str | None = None
     if args.case_id is not None:
@@ -451,7 +466,6 @@ def main() -> None:
         os.environ.setdefault("HIPENGINE_COMPILER_VERSION_FILE", str(args.compiler_version_file))
     if args.require_cached_build:
         os.environ.setdefault("HIPENGINE_REQUIRE_CACHED_BUILD", "1")
-
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
@@ -465,6 +479,12 @@ def main() -> None:
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
     import hipengine.runtime.qwen4_exp_runner as runner_module
+
+    if args.risk_diagnostics:
+        os.environ[runner_module.RISK_DIAGNOSTICS_ENV] = "1"
+    else:
+        os.environ.pop(runner_module.RISK_DIAGNOSTICS_ENV, None)
+    runner_module.reset_qwen4_exp_risk_diagnostics()
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
@@ -577,6 +597,10 @@ def main() -> None:
                 report["lifecycle"]["after_measurement"] = memory_stats()
                 if telemetry is not None:
                     report["moe_telemetry"] = telemetry.snapshot()
+                if args.risk_diagnostics:
+                    report["risk_diagnostics"] = (
+                        runner_module.summarize_qwen4_exp_risk_diagnostics()
+                    )
             finally:
                 if telemetry is not None:
                     telemetry.close()
