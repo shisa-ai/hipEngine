@@ -1,0 +1,49 @@
+{
+ "schema": 1,
+ "kind": "roofline_probe",
+ "performance_claim": false,
+ "status": "diagnostic",
+ "hardware": {
+  "compute_units": 40,
+  "clock_ghz": 2.9,
+  "theoretical_fp32_gflops": 29696.0,
+  "theoretical_dram_bytes_per_second": 256000000000.0
+ },
+ "config": {
+  "blocks": 2048,
+  "threads": 256,
+  "iterations": 20000,
+  "repetitions": 5
+ },
+ "measured": {
+  "fma_peak": {
+   "ms": 11.765,
+   "gflops": 28520.9,
+   "flops": 335544320000
+  },
+  "mixed_fma40_int105": {
+   "ms": 50.942,
+   "gflops": 16467.0,
+   "flops": 838860800000,
+   "fma_per_iteration": 40,
+   "int_per_iteration": 105
+  },
+  "stream_copy": {
+   "ms": 5.087,
+   "bytes_moved": 1073741824,
+   "gb_per_second": 211.1,
+   "buffer_mib": 512
+  }
+ },
+ "derived": {
+  "fp32_practical_share_of_theoretical_pct": 96.0,
+  "mixed_share_of_measured_fma_peak_pct": 57.7,
+  "mixed_share_of_theoretical_fp32_pct": 55.5,
+  "stream_share_of_theoretical_dram_pct": 82.5
+ },
+ "notes": [
+  "Diagnostic only; no production path is exercised.",
+  "The mixed kernel holds the dense GGUF projection's measured 40-FMA to 105-integer issue ratio, so its rate is the issue-mix ceiling measured rather than inferred from disassembly.",
+  "Stream bandwidth counts read plus write bytes."
+ ]
+}

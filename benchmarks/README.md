@@ -798,20 +798,30 @@ down 1588 ms, repair 1370 ms and routing/scatter 931 ms. Every dense projection
 Those dense projections run at 2650 GFLOP/s. Quoted against this part's FP32
 peak of 29696 GFLOP/s (40 CUs at 2.9 GHz) that is 8.9%, and the denominator
 matters: an earlier revision of this file quoted 14.8 TFLOP/s, which is neither
-this machine's FP32 rate nor its BF16 matrix-core rate.
+this machine's FP32 rate nor its BF16 matrix-core rate. A register-resident FMA
+probe reaches 96.0% of that 29696, so the denominator is honest.
 
-**Tuning the dense projection is exhausted.** Every registered coltile/rowbatch
-instantiation was swept on identical operands across five real GDN layers and
-row counts 1 to 1024: the production instantiation is already the fastest, and
-the next best is 12-14% slower. The kernel has no spills and sits at the
-register-only occupancy maximum, so the limit is the instruction mix. Counting
-issue slots in its inner loop gives 145 instructions per k-iteration, of which
-40 are FMA-class: the design's own ceiling is 6554 GFLOP/s, 22.1% of peak. The
-kernel reaches 40% of that ceiling, and the 72.4% of issue slots that do not
-multiply are fixed by dequantizing each weight element inside the loop. About
-2.5x is available from latency hiding within the design; the remaining ~4.5x
-needs a different execution mechanism.
-[Per-operation cost and why the tuning path is exhausted](results/2026-09-16-flashnext-per-role-cost/README.md).
+**The tile space is exhausted; the kernel is not.** Every registered
+coltile/rowbatch instantiation was swept on identical operands across five real
+GDN layers and row counts 1 to 1024: the production instantiation is already the
+fastest, and the next best is 12-14% slower. The kernel has no spills and sits
+at the register-only occupancy maximum.
+
+The limit is therefore not the tile shape. A probe holding the projection's own
+instruction mix (40 FMA and 105 integer instructions per iteration, from its
+disassembly) sustains **16467 GFLOP/s, 57.7% of the measured FP32 peak**. The
+projection runs at 2650 GFLOP/s, **16.1% of what its own mix can sustain**. An
+earlier revision of this file inferred a 22.1% ceiling by counting issue slots
+one per cycle; that model is wrong for RDNA3, which co-issues integer and FP32
+work, and it understated the ceiling by more than 2x.
+
+So there is roughly 6x of headroom that does not require changing the
+arithmetic, in memory latency and scheduling rather than tiling. One caveat is
+flagged rather than asserted: `attn_qkv` reads and writes about 80.3 MB per
+1024-row launch in 17.32 ms, or 4.6 TB/s, which exceeds both the measured
+211 GB/s stream rate and the 32 MB MALL. The byte accounting does not close and
+a memory-counter capture is the next measurement.
+[Per-operation cost, the measured roofline, and the open byte accounting](results/2026-09-16-flashnext-per-role-cost/README.md).
 
 Not a numerics result: no engine's output was compared against another's, and
 hipEngine's conservative arithmetic is in place because the fast composition
