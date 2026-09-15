@@ -290,6 +290,15 @@ __global__ void vv_qwen2_append_kv_f16_k(
     v_cache[((size_t)(start + t) * kv_heads * head_dim) + rest] = v[idx];
 }
 
+__global__ void vv_qwen2_bias_add_f16_k(
+    unsigned short* __restrict__ out, const float* __restrict__ bias,
+    int64_t n, int64_t total) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= total) return;
+  int64_t col = i % n;
+  out[i] = vv_f32_to_f16(vv_f16_to_f32(out[i]) + bias[col]);
+}
+
 extern "C" {
 
 hipError_t vv_qwen2_rmsnorm_f16(
@@ -362,6 +371,66 @@ hipError_t vv_qwen2_append_kv_f16(
   hipLaunchKernelGGL(vv_qwen2_append_kv_f16_k, dim3(blocks), dim3(threads), 0, stream,
                      k, v, kc, vc, static_cast<int>(kv_heads), static_cast<int>(head_dim),
                      static_cast<int>(start), static_cast<int>(tokens));
+  return hipGetLastError();
+}
+
+hipError_t vv_qwen2_bias_add_f16(
+    unsigned short* out, const float* bias, int64_t n, int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) return hipSuccess;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(vv_qwen2_bias_add_f16_k, dim3(blocks), dim3(threads), 0,
+                     stream, out, bias, n, total);
+  return hipGetLastError();
+}
+
+}  // extern "C"
+
+// out = a + b elementwise (f16 storage, f32 arithmetic).
+__global__ void vv_qwen2_add_f16_k(
+    const unsigned short* __restrict__ a, const unsigned short* __restrict__ b,
+    unsigned short* __restrict__ out, int64_t total) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= total) return;
+  out[i] = vv_f32_to_f16(vv_f16_to_f32(a[i]) + vv_f16_to_f32(b[i]));
+}
+
+// gate = silu(gate) * up elementwise.
+__global__ void vv_qwen2_silu_mul_f16_k(
+    unsigned short* __restrict__ gate, const unsigned short* __restrict__ up,
+    int64_t total) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= total) return;
+  float g = vv_f16_to_f32(gate[i]);
+  float u = vv_f16_to_f32(up[i]);
+  gate[i] = vv_f32_to_f16(g / (1.0f + __expf(-g)) * u);
+}
+
+
+// out[row, n] += bias[n] (f16 storage, f32 arithmetic).
+
+extern "C" {
+
+hipError_t vv_qwen2_add_f16(
+    const unsigned short* a, const unsigned short* b, unsigned short* out,
+    int64_t total, hipStream_t stream) {
+  if (total <= 0) return hipSuccess;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(vv_qwen2_add_f16_k, dim3(blocks), dim3(threads), 0, stream,
+                     a, b, out, total);
+  return hipGetLastError();
+}
+
+hipError_t vv_qwen2_silu_mul_f16(
+    unsigned short* gate, const unsigned short* up, int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) return hipSuccess;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(vv_qwen2_silu_mul_f16_k, dim3(blocks), dim3(threads), 0,
+                     stream, gate, up, total);
   return hipGetLastError();
 }
 
