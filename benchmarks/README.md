@@ -658,6 +658,23 @@ factual quality. The rates above have their own paired denominator and
 must not be compared as an update to the separate host-cache table.
 [Chunk comparison and qualification](results/2026-09-14-journey-chunk-admission/README.md).
 
+A separate1024/4096 comparison uses the same counterbalanced, shared-graph
+protocol and unchanged model/BF16 configuration:
+
+| Prefill Chunk | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| 1024 | 185.25 / 17.50 | 190.57 / 16.74 | 183.12 / 10.09 |
+| 4096 | 184.99 / 17.50 | 190.64 / 16.72 | 190.33 / 10.20 |
+
+At4K, PP improves3.94%, TG1.11%, and every complete-request case improves
+2.26-3.82%. Short complete-request changes range from-0.31% to+0.32%;
+chunk4096 is a qualified explicit option, not the global default.
+Numerical, boundary, active-task and native c2 gates pass; all72 timing
+samples match IDs,final logits and sampled state. These are separate
+paired denominators, not a direct2048/4096 comparison. No native-depth,
+full-EOS factual-quality or decode-kernel speed claim is added.
+[4096 comparison and qualification](results/2026-09-15-chunk4096-accounting/README.md).
+
 Exact DPP reductions improved the previously active tiled-GDN prefill suffix:
 matched warm PP295.765/312.115/286.962 ->296.136/312.942/287.713 tok/s
 at512/1K/4K (+0.125%/+0.265%/+0.262%). Full72-sample output/state A/B is

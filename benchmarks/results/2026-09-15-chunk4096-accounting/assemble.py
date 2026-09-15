@@ -3,11 +3,13 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from scripts.qwen4exp_chunk_c2_gate import validate_traces
+from scripts.qwen4exp_conservative_cost import summarize_cost
 
 
 def assemble(root):
@@ -19,6 +21,7 @@ def assemble(root):
         "resume-chunk4096-boundaries.json",
         "resume-chunk4096-active-tasks.json",
         "resume-chunk4096-c2.json", "resume-chunk4096-c2-deferred.json",
+        "resume-chunk4096-workspace-check.json", "resume-chunk4096-workspace-ab.json",
     )
     packets, hashes = {}, {}
     for name in names:
@@ -192,13 +195,93 @@ def assemble(root):
     if packets["resume-chunk4096-c2.json"]["references"] != packets[
             "resume-chunk4096-c2-deferred.json"]["references"]:
         raise ValueError("c2 isolated references differ across inspection modes")
+    workspace = packets["resume-chunk4096-workspace-check.json"]
+    if (workspace["status"] != "workspace_check_passed" or not workspace["source"]["tracked_clean"]
+            or workspace["workspace_check"] != {
+                "case_id": "code-p4096", "rows": 5, "logits_exact": True,
+                "reference_profile": "production", "state_exact": True,
+                "native_chunks": [1024] * 4, "borrowed_chunks": [1024] * 4}
+            or workspace["after_close"]["current_allocated_bytes"]):
+        raise ValueError("invalid workspace control")
+    ab = packets["resume-chunk4096-workspace-ab.json"]
+    samples = ab["samples"]
+    cases = depth["protocol"]["case_ids"]
+    expected = {(case, arm, repeat) for case in cases
+                for arm in ("before", "production_baseline") for repeat in range(3)}
+    if (ab["status"] != "completed" or not ab["source"]["tracked_clean"]
+            or ab["model"] != depth["model"] or ab["host"]["machine_id"] != native["host"]["machine_id"]
+            or ab["base_manifest"] != native["manifest_sha256"]
+            or len(samples) != 72
+            or {(r["case_id"], r["arm"], r["repetition"]) for r in samples} != expected
+            or ab["arm_overrides"] != {"before": {}, "production_baseline": {}}
+            or not ab["protocol"]["shared_decode_graphs"]
+            or ab["protocol"]["chunk_by_arm"] != {"before": 1024, "production_baseline": 4096}
+            or ab["after_close"]["current_allocated_bytes"]
+            or any(value for stats in ab["donor_graph_stats"].values() for value in stats.values())):
+        raise ValueError("invalid matched chunk timing")
+    if (ab["graph_stats"]["before"] != ab["graph_stats"]["production_baseline"]
+            or ab["graph_stats"]["before"]["moe_graph_cache"]["capture"] != 48
+            or ab["graph_stats"]["before"]["moe_graph_cache"]["replay"] <= 0):
+        raise ValueError("shared decode graph evidence differs")
+    for arm, size in (("before", 1024), ("production_baseline", 4096)):
+        if any(ab["workspaces"][arm][key] != size
+               for key in ("chunk_size", "token_capacity", "metadata_rows")):
+            raise ValueError("timed workspace dimensions differ")
+    guard = ab["workspace_memory_guard"]
+    if (guard["reserve_bytes"] != 4 * 1024**3
+            or guard["free_before_donor"] < guard["extra_runner_bound"] + guard["reserve_bytes"]
+            or guard["free_after_setup"] < guard["reserve_bytes"]):
+        raise ValueError("timed workspace consumed reserve")
+    request_speedups = {}
+    for case in cases:
+        rows = [row for row in samples if row["case_id"] == case]
+        if any(len({row[key] for row in rows}) != 1
+               for key in ("output_token_ids_sha256", "logits_sha256", "state_sha256")):
+            raise ValueError("timed output/state parity failed")
+        for row in rows:
+            chunk = 1024 if row["arm"] == "before" else 4096
+            tokens = int(case.rsplit("p", 1)[1])
+            count, tail = divmod(tokens, chunk)
+            if (row["active_chunk_size"] != chunk or row["prompt_tokens"] != tokens
+                    or row["prefill_chunks"] != [chunk] * count + ([tail] if tail else [])
+                    or row["decode_transitions"] != 128 or not row["finite"]
+                    or any(not math.isfinite(row[key]) or row[key] <= 0
+                           for key in ("prefill_ms", "decode_ms", "client_wall_s"))):
+                raise ValueError("timed workload differs")
+        walls = {arm: sum(row["client_wall_s"] for row in rows if row["arm"] == arm)
+                 for arm in ("before", "production_baseline")}
+        request_speedups[case] = walls["before"] / walls["production_baseline"]
+    summary = summarize_cost(samples, 3)
+    if summary != ab["comparisons"]["production_baseline"]:
+        raise ValueError("timing summary does not reproduce")
+    compact_keys = (
+        "case_id", "category", "prompt_tokens", "repetition", "arm", "mode", "sequence_slot",
+        "prefill_ms", "decode_ms", "client_wall_s", "active_chunk_size", "prefill_chunks",
+        "decode_transitions", "output_token_count", "output_token_ids_sha256",
+        "logits_sha256", "state_sha256", "finite", "memory_delta")
+    packets["resume-chunk4096-workspace-ab.json"] = {
+        **ab, "samples": [{key: row[key] for key in compact_keys} for row in samples]}
     return dict(
-        schema=2, status="accounting_and_canonical_numerics_passed_more_gates_pending",
-        performance_claim=False, promotion_claim=False,
+        schema=3, status="qualified_explicit4096_tradeoff_default1024",
+        performance_claim=True, promotion_claim=False,
+        source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
+        execution_profile="production", quant="UD-Q4_K_XL", kv="BF16",
+        environment={
+            "HIPENGINE_HIP_ARCH": "gfx1151", "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+            "GPU_MAX_HW_QUEUES": "2", "PYTHONPATH": ".",
+            "PATH": "/home/lhl/miniforge3/envs/therock/bin:/usr/bin:/bin",
+            "LD_LIBRARY_PATH": ":".join(
+                "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/"
+                "_rocm_sdk_devel/" + suffix for suffix in ("lib", "lib64", "lib/llvm/lib")),
+        },
+        performance_summary=summary, complete_request_speedups=request_speedups,
+        default_decision="Keep1024 globally because short-request costs remain;4096 is a qualified explicit option.",
         raw_sha256=hashes, bounded_reconciliation=reconciled,
         captures=packets,
         limits=[
-            "Canonical, boundary/reuse, active-task and detailed/deferred c2 gates pass; performance remains.",
+            "4096 improves4K in its matched comparison; short-request costs prevent an unscoped default change.",
+            "This is not a direct2048-versus4096 experiment; do not compare independent session rates as a paired gain.",
+            "Shared decode graphs control graph-instance differences, not CPU/GPU frequency; no cause is assigned to TG movement.",
             "Native-c2 allocation is not native-depth generation qualification.",
             "The mandatory footprint excludes optional MMQ, graph, verification and transaction resources.",
             "The4GiB scratch floor and separate4GiB reserve remain; larger mandatory buffers raise accounting.",

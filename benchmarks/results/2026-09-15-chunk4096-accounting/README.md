@@ -64,8 +64,7 @@ recurrent-state/metadata check and zero-allocation teardown passes.
 All48 chunk traces match the declared sizes; at4K the candidate executes
 one4096-token call versus four1024-token reference calls.
 
-This is a bounded numerical pass, not a new default or speed claim.
-Timing remains.
+This is a bounded numerical pass; the separate timing result is below.
 Exact capture argv and manifests are in `artifact.json`.
 
 ## Boundary And Reuse Gate
@@ -92,7 +91,7 @@ one4096-token chunk, versus four1024 calls for each strict generation.
 
 The existing embedded non-thinking template and task criterion are unchanged.
 This supplements the numerical and boundary gates; it is not a new full-EOS
-factual-quality certificate. Performance qualification remains.
+factual-quality certificate.
 
 ## Two-Runner Lifecycle
 
@@ -111,6 +110,38 @@ prefixes execute no model prefill.
 Peak tracked allocation is96,121,434,128 bytes, with zero after close.
 Normal compact output calls stay enabled. This is native-pool evidence,
 not HTTP/SSE load testing, native-depth generation or throughput measurement.
+
+## Matched Throughput
+
+Clean `b4ecdd98f`, same host/model/BF16 lane, three counterbalanced pairs
+per canonical case:72 measured samples and24 warmups,128 decode transitions.
+Correctly sized1024/4096 prefill workspaces share one active runner's
+unchanged KV/recurrent owners and decode graphs. The donor's non-prefill
+allocations and maximum-size PLE staging are common to both arms; the donor
+executes no graphs during timing. No tests/builds overlapped the run.
+
+| Chunk | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| 1024 | 185.245 / 17.501 | 190.573 / 16.745 | 183.116 / 10.091 |
+| 4096 | 184.988 / 17.502 | 190.641 / 16.721 | 190.333 / 10.203 |
+| PP delta | -0.14% | +0.04% | +3.94% |
+| TG delta | +0.006% | -0.14% | +1.11% |
+
+Weighted tok/s. Every4K complete-request case improves2.26-3.82%.
+Short complete-request changes range from-0.31% to+0.32%; those costs are
+not averaged away. All72 samples match in output IDs,final logits and
+sampled state; finiteness and teardown pass. Measured disk reads and major
+faults are zero. Shared graphs control graph-instance differences, not
+frequency; no decode-kernel or clock mechanism is inferred from TG movement.
+
+The pre-timing borrowed-workspace control matches five native1024 rows and
+sampled state. Reserve checks pass before/after donor allocation.
+
+**Qualified explicit option; default remains1024.** Chunk4096 provides the
+measured4K gain but is not universally non-regressive at short workloads.
+Shape-dependent workspace selection remains the automatic-selection task.
+This is not a direct2048-versus4096 trial, so do not turn the independent
+session rates into a claimed paired gain between those sizes.
 
 ## Reproduction
 
