@@ -30,6 +30,12 @@ from hipengine.core.memory import (
 from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
 
+# Block size for the head's GEMVs. The shared default of 256 spends most of the
+# call in the block-wide reduction tree: this head is 123M params over 17 GEMVs
+# with only 2 rows, so each block reduces 1536-4608 values for one output. At 64
+# threads a full head call measures 2.08 ms against 3.33 ms at 256.
+_GEMV_THREADS = 64
+
 
 def _bf16_u16(array: np.ndarray) -> np.ndarray:
     """bf16-rounded FP32 values as uint16 bit patterns."""
@@ -122,7 +128,13 @@ class VibevoiceTTSDiffusionHeadGPU:
     def _gemv(self, key: str, x_ptr: int, out_ptr: int, rows: int) -> None:
         weight, out_features, in_features = self._linears[key]
         self.kernels.dense_gemv_out_bf16(
-            x_ptr, weight.ptr, out_ptr, rows, in_features, out_features
+            x_ptr,
+            weight.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=_GEMV_THREADS,
         )
 
     def _silu(self, x: DeviceBuffer, out: DeviceBuffer, n: int) -> None:
@@ -194,12 +206,13 @@ class VibevoiceTTSDiffusionHeadGPU:
                 rows, h_dim, 3 * h_dim, self.spec.rms_norm_eps,
             )
 
-            # ffn: gate/up -> silu_mul -> down (dual gemv: one launch)
-            self.kernels.dense_dual_gemv_separate_out_bf16(
-                b["modulated"].ptr, self._linears[f"L{i}_gate"][0].ptr,
-                self._linears[f"L{i}_up"][0].ptr, b[f"gate_h{i}"].ptr,
-                b[f"up_h{i}"].ptr, rows, h_dim, spec.ffn_dim, spec.ffn_dim,
-            )
+            # ffn: gate/up -> silu_mul -> down. Two single GEMVs beat the fused
+            # dual variant here: measured 2.08 vs 2.95 ms per head call at the
+            # same thread count, because the dual kernel's two-output block
+            # costs more than the x re-read it saves (x is 2x1536 bf16 against
+            # 28 MB of weights per layer).
+            self._gemv(f"L{i}_gate", b["modulated"].ptr, b[f"gate_h{i}"].ptr, rows)
+            self._gemv(f"L{i}_up", b["modulated"].ptr, b[f"up_h{i}"].ptr, rows)
             self.kernels.silu_mul_separate_out_bf16(
                 b[f"gate_h{i}"].ptr, b[f"up_h{i}"].ptr, b["ffn_gated"].ptr, rows, spec.ffn_dim
             )

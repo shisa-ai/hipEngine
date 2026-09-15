@@ -1222,7 +1222,7 @@ torch oracle venv.
 
 | Lane | Pooled RTF | Warm | Time to first audio | LM | Diffusion | Decode | Semantic |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | 1.868 | 6.227 s | 0.444 s | 1.614 s | 2.125 s | 1.292 s | 1.021 s |
+| hipEngine | 1.642 | 5.474 s | 0.422 s | 1.587 s | 1.390 s | 1.303 s | 1.013 s |
 | torch (oracle venv) | **1.303** | 4.343 s | — | — | — | — | — |
 
 The 27-token constrained chain is exact on the same run and the session's own
