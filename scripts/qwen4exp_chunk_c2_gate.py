@@ -34,6 +34,8 @@ from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile, va
 def capture(runner):
     from hipengine.core.memory import copy_device_to_host, host_array_ptr
 
+    if runner.closed:
+        raise ValueError("cannot inspect a released runner allocation")
     runner.runtime.device_synchronize()
     logits = np.empty(runner.config.vocab_size, dtype=np.float32)
     copy_device_to_host(host_array_ptr(logits), runner.logits_buffer, runtime=runner.runtime)
@@ -103,7 +105,7 @@ def disjoint(left, right):
     return all(a1 <= b0 or b1 <= a0 for a0, a1 in left for b0, b1 in right)
 
 
-def exercise(pool, prompts, capture_fn=capture):
+def exercise(pool, prompts, capture_fn=capture, *, checkpoint_each=True):
     references = {}
     for index, (name, prompt) in enumerate(prompts.items()):
         rid = index + 1
@@ -134,6 +136,8 @@ def exercise(pool, prompts, capture_fn=capture):
 
         def compare(rid):
             nonlocal checks
+            if not checkpoint_each:
+                return None
             actual = capture_fn(pool._row(rid).runner)
             if actual != references[names[rid]][progress[rid]]:
                 raise ValueError(f"c2 request {names[rid]} differs at step{progress[rid]}")
@@ -187,11 +191,17 @@ def exercise(pool, prompts, capture_fn=capture):
         while progress[a] < 8:
             advance((a,))
         compare(d)
+        finished_a = pool._row(a).runner
         if cancel(pool, a) != 8:
             raise ValueError("active-request cancellation accounting drift")
         compare(d)
         while progress[d] < 8:
             advance((d,))
+        if not checkpoint_each:
+            for runner, name in ((finished_a, "a"), (pool._row(d).runner, "c")):
+                if capture_fn(runner) != references[name][8]:
+                    raise ValueError(f"deferred c2 state differs for {name}")
+                checks += 1
         if cancel(pool, d) != 8:
             raise ValueError("replacement-request cancellation accounting drift")
         if pool.active_request_ids or len(pool._available) != 2 or pool._outputs:
@@ -230,6 +240,8 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--allocation-evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--defer-inspection", action="store_true",
+                        help="Inspect only final A/C state after the interleaved sequence")
     args = parser.parse_args()
     check_host()
     source = _git_metadata(ROOT)
@@ -259,7 +271,8 @@ def main():
         report = dict(status="running", source=source, host=host, model=model,
                       command=sys.argv, fixture_sha256=fixture_hash,
                       protocol=dict(capacity=4352, chunk=2048, resident_runners=2,
-                                    compact_outputs=True, repeats=3, decode_steps=8),
+                                    compact_outputs=True, repeats=3, decode_steps=8,
+                                    inspection_mode="deferred" if args.defer_inspection else "each_checkpoint"),
                       performance_claim=False, promotion_claim=False,
                       limitations=["Native pool work items, not HTTP/SSE or concurrent GPU-prefill scheduling.",
                                    "Reference is the same production2048 arithmetic in isolation, not strict.",
@@ -298,7 +311,7 @@ def main():
 
                 runner._prefill_chunk = counted
                 stack.callback(delattr, runner, "_prefill_chunk")
-            report.update(exercise(pool, prompts))
+            report.update(exercise(pool, prompts, checkpoint_each=not args.defer_inspection))
             report["trace_gate"] = validate_traces(traces, prompts)
             report["status"] = "passed"
         except BaseException as error:
