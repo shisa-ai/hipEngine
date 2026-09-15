@@ -771,23 +771,41 @@ hipEngine's 4K coefficient of variation is 0.32% and its per-case medians span
 183.1-184.2, so it is flat across categories. The engines ahead of it are not,
 and a single-prompt number for them is not a rate.
 
-The 4K gap splits into two measured parts in the same unit, device milliseconds
-per 4096-token prefill: **1.65x conservative arithmetic** (the arithmetic-restored
-census at `53512b509` is 13440.9 ms against the current default's 22206.4 ms;
-six of the fifteen recovery selectors were on there, so this is a lower bound)
-and **3.38x kernel quality at equal arithmetic** (3972.8 ms for pwilkin).
+These rate rows are not yet a frozen comparison. The estimator is being
+reconciled across engines - the llama.cpp-family rows were an equal-weight mean
+of per-case medians while hipEngine's row was total tokens over total prefill
+time - and the runs have not been validated for identical case IDs, prompt token
+hashes and repetition counts. Treat the ratios as indicative until that
+validation lands. The halo-box rows differ by source (`5f85164` against
+`69946438a`) and that difference is not yet explained.
 
-The largest single item is not conservative arithmetic. hipEngine's generic
-K-quant dense prefill kernel takes 10095.6 ms of the 22206.4 against about
-2770 ms for pwilkin's dense and fused-split variants, a 3.6x difference in the
-default dense path. The sparse exact repair passes that conservative arithmetic
-requires cost 1396.6 ms, or 6.3% of the prefill.
+**The gap has not been decomposed.** An earlier revision of this file split the
+4K difference into a 1.65x conservative-arithmetic factor and a 3.38x
+kernel-quality factor and multiplied them. That is withdrawn: telescoping two
+ratios is algebra, not a causal decomposition, and equal arithmetic was never
+demonstrated. The historical arithmetic-restored census is also not a
+measurement of today's code with every selector restored.
+
+What the profiles do establish is the target. A request-delimited, role-marked
+capture of the current default attributes 100% of kernels by tensor role and
+puts `moe:expert_gate` first at 6667.6 ms of a 22368.1 ms prefill (29.8%), with
+the Q8_0 dense projections next. Every Q8_0 projection runs at 2140-3466
+GFLOP/s, 14.5-23.4% of this part's 14.8 TFLOP/s FP32 peak, across shapes from a
+10240x320 skinny projection to a 2560x12288 wide one. That range excludes
+dequantization work, so it is not by itself an efficiency verdict, but the tile
+geometry is concrete: hipEngine decodes 8 weights per `k` and does 32 FMAs
+(COL_TILE=8, ROW_BATCH=4), while pwilkin's MMB dense kernels decode 128 and do
+16384 to 32768.
+[Per-role cost and the tile comparison](results/2026-09-16-flashnext-per-role-cost/README.md).
 
 Not a numerics result: no engine's output was compared against another's, and
 hipEngine's conservative arithmetic is in place because the fast composition
 failed its numerical and task gates. Not an MTP or long-context result. KV dtype
 is not matched - pwilkin `40a9f4d01` asserts at load with BF16 KV - but the
-effect is bounded at about 1% by re-running two engines in both dtypes.
+effect is bounded at about 1% by re-running two engines in both dtypes. The
+hyper-connection row is not comparable across engines: upstream reports no
+dedicated hyper-connection kernels because that work runs through its generic
+matmuls.
 pwilkin `master` and halogen cannot be included: the former has no `qwen4exp`
 architecture, and the latter refuses this quant family by name and publishes its
 figures on `UD-IQ4_XS` instead.

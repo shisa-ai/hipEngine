@@ -1,5 +1,45 @@
 # Flash-Next Prefill: Same-File Engine Comparison
 
+> **Correction, 2026-09-16.** Two claims in this record are withdrawn, and one
+> number is corrected. The rate table and the per-prefill kernel totals stand;
+> see the notes below before quoting anything else.
+>
+> 1. **The 1.65x x 3.38x gap decomposition is withdrawn.** Telescoping two
+>    ratios is algebra, not a causal decomposition. "Kernel quality at equal
+>    arithmetic" was never demonstrated: accumulation, operand precision,
+>    repair strategy, KV type and execution shape all differ. "1.65x is a lower
+>    bound" also does not follow, because selector count does not bound
+>    performance and the effects can interact non-monotonically. The historical
+>    census is not a measurement of today's code with every selector restored.
+> 2. **"Repair is only 6.3%, so correctness is not the bottleneck" is
+>    withdrawn.** Explicit repair kernels are only part of the cost of
+>    preserving arithmetic. Multi-plane computation, staging and choosing slower
+>    primary kernels also contribute, and the dominant projection kernel may
+>    itself be a correctness-driven fallback. Slow implementation and
+>    arithmetic-policy cost are not mutually exclusive.
+> 3. **The dense comparison figure was wrong.** This record said pwilkin's dense
+>    and fused-split variants total "about 2770 ms". That was a whole-window sum
+>    used as a per-prefill figure. The per-prefill total is **1387.5 ms**
+>    (`mmb_dense_kernel<128,128,32,64,1>` 508.7 + `<128,256,64,64,1>` 446.1 +
+>    `mmb_f32split_kernel` 429.3 + 3.4), so the dense ratio is **7.3x**, not 3.6x.
+> 4. **The `gr_read` row is not comparable across engines.** Upstream reports
+>    0.0 ms because it has no hyper-connection kernels at all; that work runs
+>    through its generic matmuls and elementwise ops. A zero here means
+>    "classified elsewhere", not "not computed".
+> 5. **The per-prefill attribution divided a whole-server trace by a supplied
+>    prefill count.** It did not delimit measured requests, so startup, warmup
+>    and initialization were included. The bucketer also mis-assigned
+>    `quantize_mmq_q8_1` to `dense_matmul`, dropped `qsa3_attn_kernel` and the
+>    rocBLAS `Cijk_*` GEMM to `unattributed`, and that row's totals are
+>    superseded by the request-delimited per-role table in
+>    [the 2026-09-16 artifact](../2026-09-16-flashnext-per-role-cost/README.md),
+>    which attributes 100% of kernels by tensor role.
+>
+> The defensible headline is: the profiles identify projection kernels as the
+> dominant optimization target, and the historical faster hipEngine profile
+> still substantially trails pwilkin, but neither establishes an equal-arithmetic
+> comparison.
+
 Measured September 15, 2026 on Framework `gfx1151`, machine
 `55ea6c509d0b49eea8de7094a1023668`, Radeon 8060S/40CU. One file throughout:
 unsloth Qwen3.8-Flash-Next `UD-Q4_K_XL` (four shards). Every engine below can
@@ -31,31 +71,25 @@ per-case medians span 183.1-184.2 at 4K, so its row is flat across categories
 and shapes. The engines ahead of it are not flat, which is the first reason a
 single headline number for them is misleading.
 
-## How the 4K gap splits
+## How the 4K gap was previously split (withdrawn)
 
-Both parts are measured, in the same unit (device milliseconds for one
-4096-token prefill on `code-p4096`), so they multiply to the total rather than
-being two estimates of it.
+This section previously multiplied a conservative-arithmetic factor by a
+kernel-quality factor and presented the product as the gap. That is withdrawn;
+see the correction at the top of this file. The two device-time measurements it
+used are kept below only because they are still real measurements of their own
+configurations.
 
-| Step | Device ms | Factor |
+| Step | Device ms | Ratio |
 | --- | ---: | ---: |
 | hipEngine current default | 22206.4 | 1.00x |
 | Arithmetic-restored census, `53512b509` | 13440.9 | 1.65x |
-| pwilkin `40a9f4d01` | 3972.8 | 5.59x total |
+| pwilkin `40a9f4d01` | 3972.8 | 5.59x |
 
-- **Conservative arithmetic: 1.65x, a lower bound.** The census is the
-  role-marked capture at `53512b509`, which had six of the fifteen recovery
-  selectors enabled; `Q8_IU8_WMM`, `GR_IU8`, `GR_IU8_DOWN` and
-  `GDN_PEER_PREFILL` were still off there. Restoring everything the recovery
-  disabled is worth **more** than 1.65x, not less.
-- **Kernel quality at equal arithmetic: 3.38x, the matching upper bound.**
-  This is what remains when the conservative selectors are assumed fully
-  restored and the gap is still three and a half times.
-
-The census row is a profiling capture with `performance_claim: false`. Its
-device total is a same-case divisor for this decomposition, and the 287.07
-tok/s that can be derived from its profiled window is recorded in the artifact
-for traceability, not as a throughput result.
+The census is a profiling capture with `performance_claim: false` and it enabled
+six of the fifteen recovery selectors. It is a same-case device total and
+nothing more: it does not measure today's code, it does not bound the effect of
+the selectors it left off, and the ratio between it and the current default is
+not a causal factor in the difference against pwilkin.
 
 ## Per-prefill kernel attribution
 
@@ -87,16 +121,18 @@ The dense row is the single largest item and it is **not** conservative
 arithmetic. hipEngine's `gguf_k_prefill_out_coltile_rowbatch_kernel` accounts
 for 10095.6 ms of it in 3184 launches - the ordinary K-quant dense prefill
 kernel. pwilkin's equivalent work runs in three `mmb_dense_kernel` /
-`mmb_f32split_kernel` variants totalling about 2770 ms. That is a 3.6x
-difference in the default dense path.
+`mmb_f32split_kernel` variants totalling **1387.5 ms** per prefill. That is a
+**7.3x** difference in the default dense path. (An earlier revision of this
+file quoted 2770 ms here, which was a whole-window sum used as a per-prefill
+figure.)
 
-Conservative arithmetic is visible and small by comparison. The sparse exact
-repair passes - `gguf_q4_k_selected_dual_sparse_exact_repair_bf16`,
+The sparse exact repair passes - `gguf_q4_k_selected_dual_sparse_exact_repair_bf16`,
 `q5_1_selected_sparse_exact_repair_row_publish`, `q8_0_selected_sparse_repair` -
 cost 1396.6 ms, or 6.3% of hipEngine's prefill and 7.7% of the gap. The
 risk-collecting iu8 kernels they repair into cost a further 4195.7 ms against
-the fork's 1260 ms of fused routed GLU, but that difference is kernel quality,
-not a correctness tax.
+the fork's 1260 ms of fused routed GLU. An earlier revision described that as
+"kernel quality, not a correctness tax"; that is withdrawn, because the
+primary kernels may themselves be slower in order to preserve arithmetic.
 
 ### Why this table is not hipEngine's owner table
 

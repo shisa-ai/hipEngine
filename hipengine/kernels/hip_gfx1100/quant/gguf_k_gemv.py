@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels import launch_census
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_k_gemv.hip")
@@ -1148,6 +1149,7 @@ def _launch(
     require_pack8: bool = False,
 ) -> None:
     _validate(quant, rows, in_features, out_features, threads, require_pack8=require_pack8)
+    launch_census.record_launch(quant, symbol, rows, in_features, out_features)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])

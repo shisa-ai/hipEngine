@@ -27,16 +27,24 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-# Order matters: the first match wins, so the specific families come first.
-# Both engines' names are covered, because the point is to put the same *work*
-# side by side even though hipEngine names owners and llama.cpp names kernels.
+# Order matters: the first match wins. Two orderings are load-bearing.
+#
+# * ``moe_gate_up`` precedes ``moe_down`` because ``mmb_routed_glu`` contains
+#   ``mmb_routed``.
+# * ``quantize_pack`` precedes ``dense_matmul`` because ``quantize_mmq_q8_1``
+#   contains ``mmq``. Ordering these the other way counted an activation
+#   packer as a matmul.
+#
+# Patterns are matched against a lowercased name, so they must be lowercase:
+# ``Cijk`` never matched and the rocBLAS/Tensile GEMM fell into
+# ``unattributed`` for every llama.cpp-family engine.
 BUCKETS: tuple[tuple[str, str], ...] = (
     # MoE expert gate/up (hipEngine iu8 risk+repair pair; fork fused GLU).
     ("moe_gate_up",
      r"q4_k_selected_dual_wmma_iu8_risk|q4_k_selected_dual_sparse_exact_repair"
      r"|mmb_routed_glu|mul_mat_q_routed|expert_gate|routed_glu"
      # Plain llama.cpp routes the Q4_K experts through the un-suffixed MMQ
-     # kernel; ggml_type 12 is Q4_K, and every dense tensor in this file is
+     # kernel; ggml_type 12 is Q4_K and every dense tensor in this file is
      # Q8_0/Q5_1/Q6_K, so this name is the expert gate/up there.
      r"|mul_mat_q<\(ggml_type\)12"),
     # MoE expert down and its reduction.
@@ -45,32 +53,35 @@ BUCKETS: tuple[tuple[str, str], ...] = (
      r"|q8_0_selected_sparse_repair|mmb_routed_kernel|moe_weighted_reduction"
      r"|grouped_down|expert_down"),
     # Hyper-connection / GR projections and their reduce-combine tails.
-    ("gr_read",
-     r"gr_up|gr_down|gr_write|gr_read|hc_|hyper"),
-    # QSA and paged attention.
-    ("attention", r"qsa_|flash_attn|fattn|paged_full_attn|\battn"),
+    ("gr_read", r"gr_up|gr_down|gr_write|gr_read|hc_|hyper"),
+    # QSA and paged attention. `attn` alone catches names like `qsa3_attn_kernel`
+    # that neither `qsa_` nor `\battn` matched.
+    ("attention", r"qsa|flash_attn|fattn|paged_full_attn|attn|softmax"),
     # Gated DeltaNet / SSM and its convolution.
-    ("gdn", r"gated_delta|gdn_prefill|gdn_|ssm_|mamba|\.*conv"),
+    ("gdn", r"gated_delta|gdn_prefill|gdn_|ssm_|mamba|conv"),
     # Expert routing and index bookkeeping.
     ("router_index", r"router_logits|ids_helper|topk|top_k|argsort|\bsort|index"),
+    # Operand staging, packing and dtype conversion. Ahead of the matmul row so
+    # an activation quantizer is not counted as matrix arithmetic.
+    ("quantize_pack",
+     r"quantize|dequantize|im2col|\bpack|concat|transpose|permute|convert"),
     # Dense quantized matmuls, whatever the kernel is called.
     ("dense_matmul",
-     r"gguf_k_prefill_out|mul_mat|mmb_dense|mmb_f32split|gemm|mmq|wmma|Cijk"
-     r"|rocblas|dense_gemv|grouped_wmma"),
-    # Activation packing for the matmul kernels.
-    ("quantize_pack", r"quantize|dequantize|im2col|\bpack|concat_non_cont"),
+     r"gguf_k_prefill_out|mul_mat|mmb_dense|mmb_f32split|gemm|mmq|wmma|cijk"
+     r"|rocblas|tensile|dense_gemv|grouped_wmma"),
     # Normalisation and elementwise tails.
     ("elementwise_norm",
      r"norm|silu|gelu|sigmoid|\badd|mul_f32|scale|cpy|sqrt|tanh|clamp|rope"
-     r"|bin_bcast|unary|activation|weighted_lanes|softmax"),
+     r"|bin_bcast|unary|activation|weighted_lanes"),
 )
 
 
-def _bucket(name: str) -> str:
+def bucket(name: str) -> str:
+    """Classify one kernel name. Unmatched names return ``unattributed``."""
     lowered = name.lower()
-    for bucket, pattern in BUCKETS:
+    for label, pattern in BUCKETS:
         if re.search(pattern, lowered):
-            return bucket
+            return label
     return "unattributed"
 
 
@@ -90,7 +101,7 @@ def _read_trace(trace_dir: Path) -> tuple[dict[str, float], dict[str, float], in
             if not name or not duration:
                 continue
             ms = int(float(duration)) / 1e6
-            buckets[_bucket(name)] += ms
+            buckets[bucket(name)] += ms
             kernels[name] += ms
             count += 1
     return dict(buckets), dict(kernels), count
