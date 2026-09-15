@@ -30,6 +30,22 @@ def _sync() -> None:
     get_hip_runtime().device_synchronize()
 
 
+def _gpu_name() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["rocminfo"], capture_output=True, text=True, timeout=30
+        ).stdout
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("Marketing Name:") and "Radeon" in line:
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
 def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     manifest = json.loads((fixtures / "manifest.json").read_text())
     request = manifest["requests"][0]
@@ -133,7 +149,7 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
             "output_audio_seconds": round(out_seconds, 3),
             "sample_rate": int(audio["sample_rate"]),
         },
-        "host": {"name": Path("/etc/hostname").read_text().strip(), "gpu": "AMD Radeon Pro W7900 (gfx1100)"},
+        "host": {"name": Path("/etc/hostname").read_text().strip(), "gpu": _gpu_name()},
         "command": "uv run python scripts/vibevoice_tts_session_bench.py",
         "weight_load_seconds": round(t_load, 3),
         "cold_start_seconds": round(cold[2], 3),
