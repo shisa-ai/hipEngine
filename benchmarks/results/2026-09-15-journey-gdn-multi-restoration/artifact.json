@@ -1,6 +1,6 @@
 {
-  "schema": 2,
-  "status": "short_and_depth_numerical_pass_task_performance_pending",
+  "schema": 3,
+  "status": "numerical_pass_not_admitted_task_finding",
   "performance_claim": false,
   "promotion_claim": false,
   "raw_sha256": "4774d6a171117b3dad6e1878d6b83acf9e1bcad6e93f21bebda45616497847c3",
@@ -2541,10 +2541,147 @@
     ],
     "candidate_dispatch_mode": "registry"
   },
+  "task_review": {
+    "schema": 1,
+    "date": "2026-09-15",
+    "candidate": "production_gdn_multi_restore",
+    "verdict": "not_admitted_material_native_support_misstatement",
+    "numerical_gate_passed": true,
+    "full_task_suite_passed": false,
+    "promotion_claim": false,
+    "criterion": "Preserve requested facts, constraints, code behavior and language with no new material per-prompt regression versus strict. Different token IDs alone are not failure.",
+    "evidence": {
+      "remaining_capture": "remaining-task-capture.json",
+      "remaining_capture_sha256": "ec57bb8cfac54baa827e04a7d978ce02c6a8340c8c5d0e1747d591f9e2c6e818",
+      "rate_limiter_review": "rate-limiter-review.json",
+      "rate_limiter_review_sha256": "2c83293f1d207f90625f723c8b3e63bdd6e36441542a537ebae54669d0056fa4",
+      "unique_prompt_union": 18,
+      "complete_eos_pairs": 17,
+      "exact_complete_pairs": 6,
+      "truncated_pairs": [
+        "general_ja_plan"
+      ],
+      "repeats_per_arm": 2,
+      "candidate_dispatch_calls_remaining": 510,
+      "candidate_dispatch_calls_rate_limiter": 30
+    },
+    "binding_finding": {
+      "prompt_id": "heldout_general_en_quant",
+      "requested_scope": "Practical INT4, W8A8 and BF16 tradeoffs, explicitly distinguishing memory capacity, bandwidth and native arithmetic support.",
+      "candidate_claim": "AMD RX 7000: Limited or no native INT8 matrix multiplication support in consumer drivers. Often falls back to FP16 emulation, negating speed gains.",
+      "strict_comparison": "Strict says RDNA3 has some INT8 support but its software stack is immature. It does not introduce the same absent-native-support/FP16-emulation explanation for AMD.",
+      "assessment": "The candidate conflates framework/kernel availability with native arithmetic capability in the very distinction requested. RDNA3 provides native IU8 WMMA, and AMD demonstrates the supported HIP compiler path on Radeon RX 7900 XTX. Presenting native INT8 support as absent or driver-emulated is materially misleading.",
+      "qualification": "The source establishes native instructions and a supported HIP path. It does not measure fallback prevalence across all libraries; this review does not claim to have disproved a frequency statistic experimentally.",
+      "primary_source": {
+        "title": "How to accelerate AI applications on RDNA 3 using WMMA",
+        "publisher": "AMD GPUOpen",
+        "url": "https://gpuopen.com/learn/wmma_on_rdna3/",
+        "published": "2023-01-10",
+        "accessed": "2026-09-15",
+        "support": "Documents IU8/BF16/FP16 WMMA intrinsics, HIP/ROCm support and an RX 7900 XTX implementation."
+      }
+    },
+    "paired_review": [
+      {
+        "prompts": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review",
+          "heldout_mixed_review"
+        ],
+        "verdict": "complete_outputs_exact",
+        "limit": "Equality establishes no new output defect, not absolute correctness of the reference."
+      },
+      {
+        "prompts": [
+          "code_markdown_table"
+        ],
+        "verdict": "no_new_requested_behavior_failure_found",
+        "basis": "Both generated test suites pass; each passes 1000 shared column-order/missing-key/pipe/primitive-value cases. None formatting is unspecified and differs without violating the requested interface."
+      },
+      {
+        "prompts": [
+          "heldout_code_interval_schedule"
+        ],
+        "verdict": "no_new_requested_behavior_failure_found",
+        "basis": "Both generated test suites pass; each passes 500 nonempty half-open interval cases against exhaustive subset cardinality and the declared tie case. The algorithm is unchanged."
+      },
+      {
+        "prompts": [
+          "heldout_code_rate_limiter"
+        ],
+        "verdict": "requested_allow_api_noninferior_with_shared_defects",
+        "basis": "See rate-limiter-review.json: each passes 36000 allow cases. Both omit requested tests. Candidate's extra remaining method is slower in asymptotic work, but was not requested and is not the binding veto."
+      },
+      {
+        "prompts": [
+          "general_en_plan"
+        ],
+        "verdict": "no_separate_binding_finding",
+        "basis": "Both cover sequencing, validation and rollback but are not safe turnkey migration runbooks. Both inadequately protect post-cutover writes during rollback. Candidate's precreated DDL may be replaced by pgloader defaults; this additional concern is disclosed, not used as the binding finding.",
+        "source": "https://pgloader.readthedocs.io/en/latest/ref/sqlite.html"
+      },
+      {
+        "prompts": [
+          "general_en_explain",
+          "general_ja_explain"
+        ],
+        "verdict": "no_separate_binding_finding",
+        "basis": "Both explain low-intensity decode and weight/KV traffic. Shared overgeneralizations and hardware-number simplifications remain. Candidate's added Llama2-70B GQA example is consistent with the model paper.",
+        "source": "https://arxiv.org/abs/2307.09288"
+      },
+      {
+        "prompts": [
+          "heldout_general_en_incident",
+          "heldout_general_ja_migration"
+        ],
+        "verdict": "no_separate_binding_finding",
+        "basis": "Both preserve the requested containment/compatibility, monitoring, rollback and follow-up sections. Suggested operational thresholds are examples, not measured service guarantees. Neither is a fully qualified operational runbook."
+      },
+      {
+        "prompts": [
+          "heldout_general_ja_speculative"
+        ],
+        "verdict": "prior_single_column_failure_not_reproduced",
+        "basis": "Multi-column output describes parallel verification, amortized weight reads and a possible compute-bound transition. It does not repeat the single-column causal-mask sequential-dependence explanation. Its universal-sounding acceptance and cache-allocation advice still needs contextual qualification; this is not a blanket factual-quality certificate."
+      },
+      {
+        "prompts": [
+          "heldout_mixed_summary"
+        ],
+        "verdict": "no_separate_binding_finding",
+        "basis": "Japanese summary preserves the supplied facts. English mitigation changes to a global cache option; both proposed mitigations need validation against key semantics and regional requirements. No additional context was supplied to establish a definite new violation."
+      },
+      {
+        "prompts": [
+          "general_ja_plan"
+        ],
+        "verdict": "unresolved_truncation",
+        "basis": "Both hit the 2048-token cap. Neither is counted as complete. No extension is run after the separate binding task finding."
+      },
+      {
+        "prompts": [
+          "heldout_general_en_quant"
+        ],
+        "verdict": "binding_native_support_finding",
+        "basis": "See binding_finding. Strict also contains material oversimplifications: blanket denial of consumer INT4 units, broad W8A8 accuracy/throughput rankings and a 7B-BF16 capacity recommendation below its stated weight footprint. Those shared/reference problems are not hidden or used to claim candidate-wide expected-quality degradation."
+      }
+    ],
+    "limits": [
+      "This is a deterministic paired task review under the existing per-prompt rule, not a blinded statistical quality comparison.",
+      "Passing teacher-forced numerics and failing one prose criterion do not establish a GDN implementation bug or lower expected task quality.",
+      "One task finding does not invalidate the measured numerical pass or all GDN optimizations.",
+      "No timing, isolation promotion or truncated-prompt extension follows this task finding.",
+      "No production default or quality threshold changes."
+    ]
+  },
   "limits": [
-    "One incomplete rate-limiter code response differs; this is not a semantic rejection.",
+    "Complete rate-limiter requested API review finds no new defect; shared omitted tests remain.",
     "The single-column GDN task failure does not automatically reject this different variant.",
-    "Applicable complete tasks, dynamic isolation and current-model performance are not qualified here.",
+    "Multi-column has its own native-support prose task finding; no isolation or timing promotion follows.",
+    "One Japanese-plan pair is truncated; complete-EOS suite certification is not claimed.",
     "Historical short capture retains T1 metadata; current review and depth arm classify this as T2."
   ]
 }

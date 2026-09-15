@@ -1,0 +1,800 @@
+{
+  "schema": 1,
+  "status": "captured_for_paired_review",
+  "raw_sha256": "b933a932ab37879f680d0f69745531c968c649d8f6683f25cd0fd675d769441d",
+  "metadata": {
+    "status": "captured_requires_manual_review",
+    "command": [
+      "scripts/qwen4exp_q8_repair_tasks.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-journey-hipcc-version-20260913.txt",
+      "--candidate",
+      "production_gdn_multi_restore",
+      "--max-tokens",
+      "2048",
+      "--prompt-id",
+      "code_merge_intervals",
+      "--prompt-id",
+      "code_topological_sort",
+      "--prompt-id",
+      "code_lru_cache",
+      "--prompt-id",
+      "code_markdown_table",
+      "--prompt-id",
+      "general_en_plan",
+      "--prompt-id",
+      "general_en_explain",
+      "--prompt-id",
+      "general_ja_plan",
+      "--prompt-id",
+      "general_ja_explain",
+      "--prompt-id",
+      "mixed_ja_en_translate",
+      "--prompt-id",
+      "mixed_ja_en_review",
+      "--prompt-id",
+      "heldout_code_interval_schedule",
+      "--prompt-id",
+      "heldout_general_en_incident",
+      "--prompt-id",
+      "heldout_general_en_quant",
+      "--prompt-id",
+      "heldout_general_ja_migration",
+      "--prompt-id",
+      "heldout_general_ja_speculative",
+      "--prompt-id",
+      "heldout_mixed_summary",
+      "--prompt-id",
+      "heldout_mixed_review",
+      "--output",
+      "/tmp/hipengine-journey-execute-20260914/resume-gdn-multi-remaining-tasks.json"
+    ],
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "b6f8418324f5105763e5394f62ab4a66bb58722e",
+      "tracked_clean": true
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": "10.0.0",
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "model": {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+      "fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+        "size_bytes": 111334654784,
+        "sampled_bytes": 12582912,
+        "file_count": 4,
+        "exists": true,
+        "path_type": "directory"
+      }
+    },
+    "protocol": "Capture complete paired task outputs for manual non-inferiority review.\n\nPredeclared review: each prompt must preserve requested facts, constraints,\ncode behavior and language. No per-prompt degradation versus strict allowed.\nTruncated responses require further review, never an automatic pass.\n",
+    "prompts": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+        "source": {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "prompt": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+        "source": {
+          "id": "code_topological_sort",
+          "category": "code",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "prompt": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.",
+        "source": {
+          "id": "code_lru_cache",
+          "category": "code",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "prompt": "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.",
+        "source": {
+          "id": "code_markdown_table",
+          "category": "code",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "prompt": "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.",
+        "source": {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "prompt": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.",
+        "source": {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "prompt": "小規模な社内Pythonツールを運用環境へ移行するための実践的な計画を日本語で作成してください。リスク、手順、検証方法を含めてください。",
+        "source": {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "messages": [
+            {
+              "role": "user",
+              "content": "小規模な社内Pythonツールを運用環境へ移行するための実践的な計画を日本語で作成してください。リスク、手順、検証方法を含めてください。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "prompt": "ローカルGPUでLLMの推論速度がメモリ帯域に制約されやすい理由を、日本語で技術的かつ具体的に説明してください。",
+        "source": {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "messages": [
+            {
+              "role": "user",
+              "content": "ローカルGPUでLLMの推論速度がメモリ帯域に制約されやすい理由を、日本語で技術的かつ具体的に説明してください。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "prompt": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。",
+        "source": {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "prompt": "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n新しい推論モードでは MTP を有効にすると生成速度が向上します。ただし、長いコンテキストでは KV cache の使用量が増えるため、メモリ監視を推奨します。",
+        "source": {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n新しい推論モードでは MTP を有効にすると生成速度が向上します。ただし、長いコンテキストでは KV cache の使用量が増えるため、メモリ監視を推奨します。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "prompt": "Write a Python function max_non_overlapping(intervals) that returns a maximum-size subset of half-open intervals. State the tie-breaking rule in a docstring and include compact tests. Return only code.",
+        "source": {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a Python function max_non_overlapping(intervals) that returns a maximum-size subset of half-open intervals. State the tie-breaking rule in a docstring and include compact tests. Return only code."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "prompt": "Draft a concise incident-response checklist for a production API whose p99 latency doubled after a deploy. Cover containment, evidence collection, rollback criteria, and follow-up.",
+        "source": {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Draft a concise incident-response checklist for a production API whose p99 latency doubled after a deploy. Cover containment, evidence collection, rollback criteria, and follow-up."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "prompt": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+        "source": {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+        "source": {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "messages": [
+            {
+              "role": "user",
+              "content": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "prompt": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。",
+        "source": {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "messages": [
+            {
+              "role": "user",
+              "content": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "prompt": "Summarize this English operations note in Japanese, then give one short mitigation in English:\n\nThe cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased.",
+        "source": {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Summarize this English operations note in Japanese, then give one short mitigation in English:\n\nThe cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased."
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "prompt": "Review the following bilingual alert for clarity. Respond with Japanese bullets while preserving English metric names:\n\np99 latency が閾値を超え、error rate も上昇しています。新しい retry policy の影響を確認してください。",
+        "source": {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Review the following bilingual alert for clarity. Respond with Japanese bullets while preserving English metric names:\n\np99 latency が閾値を超え、error rate も上昇しています。新しい retry policy の影響を確認してください。"
+            }
+          ]
+        },
+        "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      }
+    ],
+    "lifecycle": {
+      "strict": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 84168528400,
+        "total_allocated_bytes": 84168528400,
+        "total_freed_bytes": 84168528400,
+        "active_allocations": 0,
+        "peak_allocations": 1617
+      },
+      "production_gdn_multi_restore": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 84183069208,
+        "total_allocated_bytes": 168397882448,
+        "total_freed_bytes": 168397882448,
+        "active_allocations": 0,
+        "peak_allocations": 1621
+      }
+    },
+    "candidate": "production_gdn_multi_restore",
+    "complete_suite": false,
+    "max_tokens": 2048,
+    "repeats": 2,
+    "performance_claim": false,
+    "task_passed": false
+  },
+  "arm_metadata": {
+    "strict": {
+      "manifest": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+      "overrides": {}
+    },
+    "production_gdn_multi_restore": {
+      "manifest": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+      "overrides": {
+        "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1",
+        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": ""
+      },
+      "dispatch": {
+        "calls": 510,
+        "shapes": [],
+        "key": [
+          "hip_gfx1151",
+          "gdn_recurrence_norm_gate",
+          "f32_state",
+          "qwen4exp_gdn_tiled16_multi_prefill"
+        ],
+        "direct_target": null,
+        "required": true
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "arms": {
+        "strict": {
+          "tokens": 477,
+          "text": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    \n    # Sort intervals by start time\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    \n    merged = [sorted_intervals[0]]\n    \n    for current in sorted_intervals[1:]:\n        last = merged[-1]\n        # If current interval overlaps with the last merged interval\n        if current[0] <= last[1]:\n            # Merge them by updating the end of the last interval\n            merged[-1] = (last[0], max(last[1], current[1]))\n        else:\n            merged.append(current)\n    \n    return merged\n\n\nimport pytest\n\ndef test_merge_intervals():\n    # Test case 1: Overlapping intervals\n    assert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n    \n    # Test case 2: No overlap\n    assert merge_intervals([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test case 3: All overlapping\n    assert merge_intervals([(1, 10), (2, 5), (3, 7)]) == [(1, 10)]\n    \n    # Test case 4: Empty input\n    assert merge_intervals([]) == []\n    \n    # Test case 5: Single interval\n    assert merge_intervals([(1, 5)]) == [(1, 5)]\n    \n    # Test case 6: Adjacent intervals (touching)\n    assert merge_intervals([(1, 3), (3, 5)]) == [(1, 5)]\n    \n    # Test case 7: Unsorted input\n    assert merge_intervals([(8, 10), (1, 3), (2, 6), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "3043f806a416aa6334a415340021fe642b522715b2326336b552e10b97561e79"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 477,
+          "text": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    \n    # Sort intervals by start time\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    \n    merged = [sorted_intervals[0]]\n    \n    for current in sorted_intervals[1:]:\n        last = merged[-1]\n        # If current interval overlaps with the last merged interval\n        if current[0] <= last[1]:\n            # Merge them by updating the end of the last interval\n            merged[-1] = (last[0], max(last[1], current[1]))\n        else:\n            merged.append(current)\n    \n    return merged\n\n\nimport pytest\n\ndef test_merge_intervals():\n    # Test case 1: Overlapping intervals\n    assert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n    \n    # Test case 2: No overlap\n    assert merge_intervals([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test case 3: All overlapping\n    assert merge_intervals([(1, 10), (2, 5), (3, 7)]) == [(1, 10)]\n    \n    # Test case 4: Empty input\n    assert merge_intervals([]) == []\n    \n    # Test case 5: Single interval\n    assert merge_intervals([(1, 5)]) == [(1, 5)]\n    \n    # Test case 6: Adjacent intervals (touching)\n    assert merge_intervals([(1, 3), (3, 5)]) == [(1, 5)]\n    \n    # Test case 7: Unsorted input\n    assert merge_intervals([(8, 10), (1, 3), (2, 6), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "3043f806a416aa6334a415340021fe642b522715b2326336b552e10b97561e79"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "arms": {
+        "strict": {
+          "tokens": 767,
+          "text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edge from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    # Build adjacency list and in-degree count\n    adj = {node: [] for node in nodes}\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        if u not in adj or v not in adj:\n            raise ValueError(f\"Edge ({u}, {v}) references unknown node\")\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque()\n    for node in nodes:\n        if in_degree[node] == 0:\n            queue.append(node)\n    \n    topo_order = []\n    while queue:\n        node = queue.popleft()\n        topo_order.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(topo_order) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return topo_order\n\n\n# Tests\ndef test_dag():\n    nodes = ['A', 'B', 'C', 'D', 'E']\n    edges = [('A', 'B'), ('A', 'C'), ('B', 'D'), ('C', 'D'), ('D', 'E')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == len(nodes)\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge ({u}, {v}) violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n    print(\"test_dag passed\")\n\n\ndef test_cyclic():\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'A')]\n    try:\n        topo_sort(nodes, edges)\n        assert False, \"Should have raised ValueError\"\n    except ValueError as e:\n        assert \"cycle\" in str(e).lower()\n        print(\"test_cyclic passed\")\n\n\ndef test_single_node():\n    nodes = ['A']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert result == ['A']\n    print(\"test_single_node passed\")\n\n\ndef test_disconnected():\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('C', 'D')]\n    result = topo_sort(nodes, edges)\n    assert len(result) == 4\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v]\n    print(\"test_disconnected passed\")\n\n\nif __name__ == \"__main__\":\n    test_dag()\n    test_cyclic()\n    test_single_node()\n    test_disconnected()\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "de5bb2996eb5dbdb9dfde15d856e660a9930453064d375618482a6b9a0828f6d"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 767,
+          "text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edge from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    # Build adjacency list and in-degree count\n    adj = {node: [] for node in nodes}\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        if u not in adj or v not in adj:\n            raise ValueError(f\"Edge ({u}, {v}) references unknown node\")\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque()\n    for node in nodes:\n        if in_degree[node] == 0:\n            queue.append(node)\n    \n    topo_order = []\n    while queue:\n        node = queue.popleft()\n        topo_order.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(topo_order) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return topo_order\n\n\n# Tests\ndef test_dag():\n    nodes = ['A', 'B', 'C', 'D', 'E']\n    edges = [('A', 'B'), ('A', 'C'), ('B', 'D'), ('C', 'D'), ('D', 'E')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == len(nodes)\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge ({u}, {v}) violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n    print(\"test_dag passed\")\n\n\ndef test_cyclic():\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'A')]\n    try:\n        topo_sort(nodes, edges)\n        assert False, \"Should have raised ValueError\"\n    except ValueError as e:\n        assert \"cycle\" in str(e).lower()\n        print(\"test_cyclic passed\")\n\n\ndef test_single_node():\n    nodes = ['A']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert result == ['A']\n    print(\"test_single_node passed\")\n\n\ndef test_disconnected():\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('C', 'D')]\n    result = topo_sort(nodes, edges)\n    assert len(result) == 4\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v]\n    print(\"test_disconnected passed\")\n\n\nif __name__ == \"__main__\":\n    test_dag()\n    test_cyclic()\n    test_single_node()\n    test_disconnected()\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "de5bb2996eb5dbdb9dfde15d856e660a9930453064d375618482a6b9a0828f6d"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "arms": {
+        "strict": {
+          "tokens": 538,
+          "text": "```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}\n        # Use OrderedDict for O(1) move_to_end and popitem\n        from collections import OrderedDict\n        self.cache = OrderedDict()\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n            return -1\n        # Move to end to mark as recently used\n        self.cache.move_to_end(key)\n        return self.cache[key]\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            # Update value and move to end\n            self.cache.move_to_end(key)\n            self.cache[key] = value\n        else:\n            if len(self.cache) >= self.capacity:\n                # Remove least recently used (first item)\n                self.cache.popitem(last=False)\n            self.cache[key] = value\n\n\n# Tests\ndef test_lru_cache():\n    # Test 1: Basic get and put\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    assert cache.get(1) == 1\n    cache.put(3, 3)  # evicts key 2\n    assert cache.get(2) == -1\n    assert cache.get(3) == 3\n\n    # Test 2: Update existing key doesn't evict\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.put(1, 10)  # update key 1, no eviction\n    assert cache.get(1) == 10\n    assert cache.get(2) == 2\n\n    # Test 3: Access order affects eviction\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.get(1)      # key 1 is now most recently used\n    cache.put(3, 3)   # evicts key 2 (least recently used)\n    assert cache.get(2) == -1\n    assert cache.get(1) == 1\n    assert cache.get(3) == 3\n\n\nif __name__ == \"__main__\":\n    test_lru_cache()\n    print(\"All tests passed.\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "376bd09ab1da93fa1d6f2977c561e4677c53b5bf4f8782166d1617310fb12bee"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 538,
+          "text": "```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}\n        # Use OrderedDict for O(1) move_to_end and popitem\n        from collections import OrderedDict\n        self.cache = OrderedDict()\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n            return -1\n        # Move to end to mark as recently used\n        self.cache.move_to_end(key)\n        return self.cache[key]\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            # Update value and move to end\n            self.cache.move_to_end(key)\n            self.cache[key] = value\n        else:\n            if len(self.cache) >= self.capacity:\n                # Remove least recently used (first item)\n                self.cache.popitem(last=False)\n            self.cache[key] = value\n\n\n# Tests\ndef test_lru_cache():\n    # Test 1: Basic get and put\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    assert cache.get(1) == 1\n    cache.put(3, 3)  # evicts key 2\n    assert cache.get(2) == -1\n    assert cache.get(3) == 3\n\n    # Test 2: Update existing key doesn't evict\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.put(1, 10)  # update key 1, no eviction\n    assert cache.get(1) == 10\n    assert cache.get(2) == 2\n\n    # Test 3: Access order affects eviction\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.get(1)      # key 1 is now most recently used\n    cache.put(3, 3)   # evicts key 2 (least recently used)\n    assert cache.get(2) == -1\n    assert cache.get(1) == 1\n    assert cache.get(3) == 3\n\n\nif __name__ == \"__main__\":\n    test_lru_cache()\n    print(\"All tests passed.\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "376bd09ab1da93fa1d6f2977c561e4677c53b5bf4f8782166d1617310fb12bee"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "arms": {
+        "strict": {
+          "tokens": 943,
+          "text": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n    if not rows:\n        return \"\"\n    \n    # Determine column order based on first appearance\n    columns = []\n    seen = set()\n    for row in rows:\n        for key in row:\n            if key not in seen:\n                seen.add(key)\n                columns.append(key)\n    \n    if not columns:\n        return \"\"\n    \n    # Build header row\n    header = \"| \" + \" | \".join(str(col) for col in columns) + \" |\"\n    \n    # Build separator row\n    separator = \"| \" + \" | \".join(\"---\" for _ in columns) + \" |\"\n    \n    # Build data rows\n    data_rows = []\n    for row in rows:\n        cells = []\n        for col in columns:\n            value = row.get(col, \"\")\n            # Convert value to string, handle None\n            if value is None:\n                cell_str = \"\"\n            else:\n                cell_str = str(value)\n            # Escape pipe characters in cell content\n            cell_str = cell_str.replace(\"|\", \"\\\\|\")\n            cells.append(cell_str)\n        data_rows.append(\"| \" + \" | \".join(cells) + \" |\")\n    \n    # Combine all parts\n    lines = [header, separator] + data_rows\n    return \"\\n\".join(lines)\n\n\n# Tests\ndef test_markdown_table_basic():\n    rows = [\n        {\"Name\": \"Alice\", \"Age\": 30},\n        {\"Name\": \"Bob\", \"Age\": 25},\n    ]\n    expected = \"| Name | Age |\\n| --- | --- |\\n| Alice | 30 |\\n| Bob | 25 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_empty():\n    assert markdown_table([]) == \"\"\n\n\ndef test_markdown_table_single_row():\n    rows = [{\"A\": 1, \"B\": 2}]\n    expected = \"| A | B |\\n| --- | --- |\\n| 1 | 2 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_missing_keys():\n    rows = [\n        {\"A\": 1, \"B\": 2},\n        {\"A\": 3},\n    ]\n    expected = \"| A | B |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 |  |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_column_order_first_appearance():\n    rows = [\n        {\"B\": 1, \"A\": 2},\n        {\"C\": 3, \"A\": 4},\n    ]\n    # Columns should be in order: B, A, C (first appearance)\n    expected = \"| B | A | C |\\n| --- | --- | --- |\\n| 1 | 2 |  |\\n|  | 4 | 3 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_pipe_escaping():\n    rows = [{\"Name\": \"A|B\", \"Value\": 1}]\n    expected = \"| Name | Value |\\n| --- | --- |\\n| A\\\\|B | 1 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_none_values():\n    rows = [{\"A\": None, \"B\": 2}]\n    expected = \"| A | B |\\n| --- | --- |\\n|  | 2 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_no_columns():\n    rows = [{}, {}]\n    assert markdown_table(rows) == \"\"\n\n\nif __name__ == \"__main__\":\n    test_markdown_table_basic()\n    test_markdown_table_empty()\n    test_markdown_table_single_row()\n    test_markdown_table_missing_keys()\n    test_markdown_table_column_order_first_appearance()\n    test_markdown_table_pipe_escaping()\n    test_markdown_table_none_values()\n    test_markdown_table_no_columns()\n    print(\"All tests passed!\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "6fe667ed101641014bee9868647e078b309275e3b90ae6f49932abcebc6ca0dc"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 886,
+          "text": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n    if not rows:\n        return \"\"\n    \n    # Determine column order based on first appearance\n    columns = []\n    seen = set()\n    for row in rows:\n        for key in row:\n            if key not in seen:\n                seen.add(key)\n                columns.append(key)\n    \n    if not columns:\n        return \"\"\n    \n    # Build header row\n    header = \"| \" + \" | \".join(str(col) for col in columns) + \" |\"\n    \n    # Build separator row\n    separator = \"| \" + \" | \".join(\"---\" for _ in columns) + \" |\"\n    \n    # Build data rows\n    data_rows = []\n    for row in rows:\n        cells = []\n        for col in columns:\n            value = row.get(col, \"\")\n            # Convert value to string and escape pipes\n            cell_str = str(value).replace(\"|\", \"\\\\|\")\n            cells.append(cell_str)\n        data_rows.append(\"| \" + \" | \".join(cells) + \" |\")\n    \n    # Combine all parts\n    lines = [header, separator] + data_rows\n    return \"\\n\".join(lines)\n\n\n# Tests\ndef test_markdown_table():\n    # Test with empty list\n    assert markdown_table([]) == \"\"\n    \n    # Test with single row\n    rows = [{\"name\": \"Alice\", \"age\": 30}]\n    expected = \"| name | age |\\n| --- | --- |\\n| Alice | 30 |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with multiple rows\n    rows = [\n        {\"name\": \"Alice\", \"age\": 30},\n        {\"name\": \"Bob\", \"age\": 25}\n    ]\n    expected = \"| name | age |\\n| --- | --- |\\n| Alice | 30 |\\n| Bob | 25 |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with different keys in different rows (stable column order from first appearance)\n    rows = [\n        {\"name\": \"Alice\", \"age\": 30},\n        {\"name\": \"Bob\", \"city\": \"NYC\"}\n    ]\n    expected = \"| name | age | city |\\n| --- | --- | --- |\\n| Alice | 30 |  |\\n| Bob |  | NYC |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with values containing pipes\n    rows = [{\"name\": \"A|B\", \"value\": \"C|D\"}]\n    expected = \"| name | value |\\n| --- | --- |\\n| A\\\\|B | C\\\\|D |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with non-string values\n    rows = [{\"a\": 1, \"b\": 2.5, \"c\": True}]\n    expected = \"| a | b | c |\\n| --- | --- | --- |\\n| 1 | 2.5 | True |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with None values\n    rows = [{\"a\": None, \"b\": \"test\"}]\n    expected = \"| a | b |\\n| --- | --- |\\n| None | test |\"\n    assert markdown_table(rows) == expected\n    \n    # Test with empty dictionaries\n    rows = [{}, {}]\n    expected = \"\"\n    assert markdown_table(rows) == \"\"\n    \n    # Test with mixed empty and non-empty\n    rows = [{}, {\"a\": 1}]\n    expected = \"| a |\\n| --- |\\n|  |\\n| 1 |\"\n    assert markdown_table(rows) == expected\n\n\nif __name__ == \"__main__\":\n    test_markdown_table()\n    print(\"All tests passed!\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "da79b786d65c6a26ba282ac4a876efec9b89915638118cd651d5ca0e84eff894"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "arms": {
+        "strict": {
+          "tokens": 1287,
+          "text": "# Migration Plan: Flask (SQLite) → PostgreSQL\n\n## 1. Pre-Migration Assessment\n\n### Inventory & Compatibility Check\n- **Schema Audit**: Identify SQLite-specific features (e.g., `AUTOINCREMENT`, implicit type coercion, lack of strict typing).\n- **Data Volume**: Estimate row counts and table sizes.\n- **Dependencies**: Check for raw SQL queries, ORM-specific behaviors (SQLAlchemy dialect differences), and custom functions.\n- **Environment**: Ensure PostgreSQL server is provisioned, accessible, and tuned.\n\n### Key Risks\n| Risk | Mitigation |\n|------|------------|\n| **Data Loss** | Full backup before any change; test restore procedure. |\n| **Schema Incompatibility** | Use `pgloader` or custom scripts to handle type mismatches (e.g., SQLite `TEXT` → PG `VARCHAR`). |\n| **Performance Regression** | Benchmark critical queries on PG before cutover. |\n| **Downtime** | Schedule during low-traffic window; prepare rollback plan. |\n| **ORM Behavior Differences** | Test all model operations (CRUD, relationships, transactions) in staging. |\n\n---\n\n## 2. Migration Strategy: **Parallel Run with Cutover**\n\n> **Why?** Minimizes risk by allowing validation before full switch. Suitable for small apps with manageable downtime.\n\n### Phase 1: Preparation (No Downtime)\n1. **Backup SQLite Database**\n   ```bash\n   cp app.db app.db.backup.$(date +%Y%m%d)\n   ```\n2. **Set Up PostgreSQL**\n   - Create database, user, and schema.\n   - Install `pgloader` (recommended for automated schema/data migration).\n3. **Update Flask Configuration**\n   - Add PostgreSQL connection string to config (e.g., `postgresql://user:pass@host/dbname`).\n   - Use environment variables to toggle between SQLite and PG.\n4. **Run Schema Migration**\n   - Use `pgloader` to convert schema and data:\n     ```bash\n     pgloader sqlite:///app.db postgresql://user:pass@host/dbname\n     ```\n   - **Review** generated schema for type mismatches (e.g., `INTEGER` → `BIGINT`, `TEXT` → `VARCHAR`).\n   - Manually adjust if needed (e.g., add indexes, constraints).\n\n### Phase 2: Validation (Staging/Shadow Mode)\n1. **Deploy Updated App to Staging**\n   - Point staging app to PostgreSQL.\n   - Run full test suite (unit, integration, E2E).\n2. **Data Integrity Checks**\n   - Compare row counts per table:\n     ```sql\n     -- SQLite\n     SELECT COUNT(*) FROM users;\n     -- PostgreSQL\n     SELECT COUNT(*) FROM users;\n     ```\n   - Spot-check critical records (e.g., latest 10 orders, user profiles).\n   - Validate foreign key integrity and unique constraints.\n3. **Performance Testing**\n   - Run key queries with `EXPLAIN ANALYZE` on PG.\n   - Compare response times vs. SQLite baseline.\n4. **ORM Compatibility Test**\n   - Test all model operations: inserts, updates, deletes, joins, transactions.\n   - Verify auto-increment IDs, timestamps, and JSON fields (if used).\n\n### Phase 3: Cutover (Minimal Downtime)\n1. **Announce Maintenance Window**\n2. **Stop Application Writes**\n   - Put app in read-only mode or halt traffic.\n3. **Final Delta Sync** (if data changed during Phase 2)\n   - Re-run `pgloader` or use a script to sync only new/changed rows.\n4. **Switch Production to PostgreSQL**\n   - Update environment variable/config to point to PG.\n   - Restart Flask app.\n5. **Smoke Test**\n   - Verify critical user flows (login, create, read, update).\n   - Monitor logs for errors.\n\n### Phase 4: Post-Migration\n1. **Monitor**\n   - Watch error rates, latency, and database metrics for 24–48 hours.\n2. **Decommission SQLite**\n   - Keep SQLite backup for 30 days.\n   - Remove SQLite code paths/config after stability confirmed.\n3. **Optimize**\n   - Add missing indexes based on query patterns.\n   - Tune PostgreSQL settings (e.g., `shared_buffers`, `work_mem`).\n\n---\n\n## 3. Rollback Plan\n- **Trigger**: Critical data corruption, unrecoverable errors, or performance degradation.\n- **Steps**:\n  1. Revert Flask config to SQLite connection string.\n  2. Restart app.\n  3. Restore SQLite DB from backup if writes occurred during PG phase.\n  4. Investigate root cause before retrying.\n\n---\n\n## 4. Validation Checklist\n- [ ] All tables migrated with correct row counts.\n- [ ] No data truncation or type conversion errors.\n- [ ] All Flask routes return expected responses.\n- [ ] ORM transactions commit/rollback correctly.\n- [ ] Indexes and constraints are present and functional.\n- [ ] Application logs show no database errors.\n- [ ] Performance meets or exceeds baseline.\n\n---\n\n## Tools & Commands Reference\n```bash\n# Install pgloader\nbrew install pgloader  # macOS\napt-get install pgloader  # Ubuntu\n\n# Migrate with pgloader\npgloader --type=sqlite --encoding=utf8 \\\n  sqlite:///app.db \\\n  postgresql://user:pass@localhost/mydb\n\n# Verify row counts\npsql -U user -d mydb -c \"SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY n_live_tup DESC;\"\n```\n\n> **Note**: For very small apps (<10k rows), a simple `pgloader` run + manual schema tweaks is often sufficient. For larger apps, consider logical replication or application-level dual-write strategies.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "0cc3440b1a1d383b5bebc2030b79c418f242a9c7af02c5ca7b8197a40f6088a2"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 1329,
+          "text": "# Migration Plan: Flask (SQLite) → PostgreSQL\n\n## 1. Pre-Migration Assessment\n\n### Inventory & Compatibility Check\n- **Schema Audit**: Identify SQLite-specific features (e.g., `AUTOINCREMENT`, implicit type coercion, lack of strict typing).\n- **Data Volume**: Estimate row counts and table sizes.\n- **Dependencies**: Check for raw SQL queries, ORM-specific behaviors (SQLAlchemy dialect differences), and custom functions.\n- **Environment**: Ensure PostgreSQL server is provisioned, accessible, and tuned.\n\n### Key Risks\n| Risk | Mitigation |\n|------|------------|\n| **Data Loss** | Full backup before any change; test restore procedure. |\n| **Schema Incompatibility** | Use `pgloader` or custom scripts to handle type mismatches (e.g., SQLite `TEXT` → PG `VARCHAR`). |\n| **Performance Regression** | Benchmark critical queries on PG before cutover. |\n| **Downtime** | Schedule during low-traffic window; prepare rollback plan. |\n| **ORM Behavior Differences** | Test all model operations (CRUD, relationships, transactions) in staging. |\n\n---\n\n## 2. Migration Strategy: **Parallel Run with Cutover**\n\n> **Why?** Minimizes downtime and allows validation before full switch.\n\n### Phase 1: Preparation (No Downtime)\n1. **Backup SQLite**:\n   ```bash\n   sqlite3 app.db \".backup 'backup_$(date +%Y%m%d).db'\"\n   ```\n2. **Provision PostgreSQL**:\n   - Create database, user, and schema.\n   - Set up connection pooling (e.g., `psycopg2` + `SQLAlchemy` pool).\n3. **Update Flask Config**:\n   - Add `DATABASE_URL` for PostgreSQL (keep SQLite as fallback).\n   - Use environment variables to switch databases.\n4. **Schema Conversion**:\n   - Export SQLite schema:\n     ```bash\n     sqlite3 app.db .schema > schema.sql\n     ```\n   - Convert to PostgreSQL-compatible DDL:\n     - Replace `AUTOINCREMENT` with `SERIAL`/`BIGSERIAL`.\n     - Replace `TEXT` with `VARCHAR(n)` or `TEXT` (PG supports `TEXT` natively).\n     - Add explicit `NOT NULL` constraints if missing.\n   - Apply schema to PostgreSQL:\n     ```bash\n     psql -U user -d dbname -f schema_pg.sql\n     ```\n\n### Phase 2: Data Migration (Low Downtime)\n1. **Use `pgloader`** (recommended for simplicity):\n   ```bash\n   pgloader sqlite:///app.db postgresql://user:pass@host:5432/dbname\n   ```\n   - Handles type conversion, indexes, and constraints automatically.\n   - **Validate**: Compare row counts and checksums for critical tables.\n2. **Alternative: Custom Script** (if complex transformations needed):\n   - Read from SQLite, transform, insert into PG in batches.\n   - Use `COPY` command for bulk inserts (fastest).\n\n### Phase 3: Validation (Staging/Shadow Mode)\n1. **Data Integrity Checks**:\n   - Row counts per table.\n   - Sample data comparison (first/last 100 rows).\n   - Foreign key integrity.\n2. **Application Testing**:\n   - Run full test suite against PostgreSQL.\n   - Test critical user flows (login, create, update, delete).\n   - Verify ORM relationships and lazy loading.\n3. **Performance Benchmarking**:\n   - Compare query execution times for top 10 slow queries.\n   - Check connection pooling behavior.\n\n### Phase 4: Cutover (Downtime Window)\n1. **Freeze Writes**: Put app in maintenance mode.\n2. **Final Delta Sync** (if using parallel run):\n   - Capture changes since initial migration.\n   - Apply deltas to PostgreSQL.\n3. **Switch Database URL**:\n   - Update `DATABASE_URL` to PostgreSQL.\n   - Restart Flask app.\n4. **Smoke Test**:\n   - Verify health endpoint.\n   - Test 2–3 critical user actions.\n5. **Resume Traffic**: Remove maintenance mode.\n\n### Phase 5: Post-Migration\n1. **Monitor**:\n   - Error logs, query performance, connection pool usage.\n   - Set up alerts for slow queries or errors.\n2. **Optimize**:\n   - Add missing indexes identified during benchmarking.\n   - Tune PostgreSQL configuration (`shared_buffers`, `work_mem`).\n3. **Decommission SQLite**:\n   - Keep SQLite backup for 30 days.\n   - Remove SQLite code paths after stability confirmed.\n\n---\n\n## 3. Rollback Plan\n- **Trigger**: Critical data corruption, performance degradation, or functional failure.\n- **Steps**:\n  1. Switch `DATABASE_URL` back to SQLite.\n  2. Restore SQLite from pre-migration backup if data was modified.\n  3. Restart Flask app.\n  4. Investigate root cause before retrying.\n\n---\n\n## 4. Tools & Commands Summary\n| Task | Tool/Command |\n|------|-------------|\n| Backup SQLite | `sqlite3 app.db \".backup 'backup.db'\"` |\n| Schema Export | `sqlite3 app.db .schema` |\n| Data Migration | `pgloader sqlite:///app.db postgresql://...` |\n| Row Count Check | `SELECT COUNT(*) FROM table;` (both DBs) |\n| Query Benchmark | `EXPLAIN ANALYZE <query>;` (PG) |\n| Connection Test | `psql -U user -d dbname -c \"SELECT 1;\"` |\n\n---\n\n## 5. Success Criteria\n- ✅ All data migrated with zero loss.\n- ✅ All tests pass on PostgreSQL.\n- ✅ Critical queries perform within acceptable thresholds.\n- ✅ No errors in production logs for 24–48 hours post-cutover.\n- ✅ Rollback plan tested and ready.\n\n> **Tip**: Always test the full migration process in a staging environment that mirrors production data volume and complexity before touching production.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "e48641d76325f73628fd50e7ec473aecdfbd69c2bedad0c8d1f19208f76d709a"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "arms": {
+        "strict": {
+          "tokens": 1595,
+          "text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and the **memory access patterns** of the attention mechanism.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Issue: Arithmetic Intensity in Autoregressive Decoding\n\nDuring **training** or **prefill** (processing the prompt), the model processes a sequence of tokens in parallel. This results in high **arithmetic intensity** (FLOPs per byte of memory accessed), making the operation **compute-bound**.\n\nHowever, during **autoregressive generation** (token-by-token decoding), the model generates one token at a time. For each new token:\n- The model must read the entire **Key-Value (KV) cache** for all previous tokens.\n- It performs a small amount of computation (matrix-vector multiplications) relative to the amount of data read.\n\nThis results in **low arithmetic intensity**, making the operation **memory-bandwidth-bound**.\n\n#### Concrete Example:\nConsider a 7B parameter model with FP16 weights (2 bytes/param):\n- **Weight size**: ~14 GB.\n- **KV Cache size**: For a 2048-token context, with 32 layers, 32 heads, and head_dim=128:\n  - KV cache per token ≈ 2 (K+V) × 32 layers × 32 heads × 128 dim × 2 bytes ≈ 524 KB/token.\n  - For 2048 tokens: ~1 GB.\n- **Total memory read per token**: ~15 GB (weights + KV cache).\n- **Computation per token**: ~14 GFLOPs (roughly 2 × params for a forward pass).\n\nOn a modern GPU like an RTX 4090:\n- **Memory Bandwidth**: ~1 TB/s.\n- **Compute Throughput**: ~80 TFLOPs (FP16).\n\n**Time to read memory**: 15 GB / 1 TB/s = **15 ms**.  \n**Time to compute**: 14 GFLOPs / 80 TFLOPs = **0.175 ms**.\n\nThe GPU spends **~99% of its time waiting for memory**, not computing. This is the definition of memory-bandwidth limitation.\n\n### 2. Why Local GPUs Are Particularly Affected\n\nLocal consumer GPUs (e.g., NVIDIA RTX 4090, AMD RX 7900 XTX) have:\n- **High compute power** (TFLOPs) relative to their **memory bandwidth**.\n- **Limited VRAM** (24 GB on 4090), which constrains batch size and context length.\n\nIn contrast, data-center GPUs (e.g., H100) have:\n- **Higher memory bandwidth** (3.35 TB/s on H100 vs. 1 TB/s on 4090).\n- **Larger VRAM** (80 GB), allowing larger batches that can amortize memory reads.\n\n### 3. What Changes Throughput?\n\nSince throughput is limited by how fast you can read weights and KV cache from VRAM to SRAM, any optimization that **reduces memory traffic** or **increases effective bandwidth** will improve throughput.\n\n#### A. Quantization (Reduces Memory Traffic)\n- **FP16 → INT8/INT4**: Halving or quartering the weight size directly reduces the amount of data read per token.\n  - **Example**: Quantizing a 7B model from FP16 (14 GB) to INT4 (3.5 GB) reduces memory reads by ~4x. Throughput can increase by **3–4x** if bandwidth is the bottleneck.\n  - **Caveat**: KV cache quantization (e.g., FP8 KV cache) also helps, especially for long contexts.\n\n#### B. Batching (Amortizes Weight Reads)\n- **Increase batch size**: When generating multiple sequences in parallel, the model weights are read **once** but used for **multiple tokens**.\n  - **Example**: With batch size 1, you read 14 GB of weights for 1 token. With batch size 8, you read 14 GB of weights for 8 tokens. The **effective bandwidth per token** improves by ~8x.\n  - **Limitation**: Local GPUs have limited VRAM. Larger batches require more KV cache memory, which may exceed VRAM capacity.\n\n#### C. FlashAttention & PagedAttention (Optimizes KV Cache Access)\n- **FlashAttention**: Reduces memory reads/writes for attention by tiling computations in SRAM. It doesn’t change the fundamental bandwidth limit for weights but reduces overhead for long contexts.\n- **PagedAttention (vLLM)**: Reduces memory fragmentation and allows larger effective batch sizes, indirectly improving throughput by keeping the GPU busy.\n\n#### D. Speculative Decoding (Reduces Number of Forward Passes)\n- **Mechanism**: A small \"draft\" model proposes multiple tokens, and the large model verifies them in a single forward pass.\n  - **Example**: If the draft model proposes 4 tokens and all are accepted, you generate 4 tokens with **one** memory read of the large model’s weights. This effectively **quadruples throughput** if acceptance rate is high.\n  - **Impact**: This is one of the most effective ways to break the memory-bandwidth bottleneck for local inference.\n\n#### E. Hardware Upgrades (Increases Bandwidth)\n- **GPU Choice**: Moving from an RTX 3090 (936 GB/s) to an RTX 4090 (1 TB/s) gives a ~7% bandwidth increase. Moving to an H100 (3.35 TB/s) gives a **3.5x** bandwidth increase.\n- **CPU Offloading**: Not recommended for throughput. CPU RAM bandwidth is ~50–100 GB/s, which is **10–20x slower** than GPU VRAM. Offloading weights to CPU RAM will drastically reduce throughput.\n\n### Summary Table: Impact on Throughput\n\n| Optimization | Mechanism | Throughput Impact |\n|--------------|-----------|-------------------|\n| **INT4 Quantization** | Reduces weight size by 4x | **3–4x** faster |\n| **Batch Size 1 → 8** | Amortizes weight reads | **~5–8x** faster (if VRAM allows) |\n| **Speculative Decoding** | Reduces forward passes | **2–4x** faster (depends on acceptance rate) |\n| **FP16 → FP8 KV Cache** | Reduces KV cache reads | **1.2–1.5x** faster (for long contexts) |\n| **RTX 4090 → H100** | Increases memory bandwidth | **~3x** faster |\n\n### Conclusion\n\nTransformer inference on local GPUs is memory-bandwidth limited because **autoregressive decoding requires reading large amounts of weights and KV cache for minimal computation**. To improve throughput, focus on **reducing memory traffic** (quantization, speculative decoding) or **amortizing memory reads** (batching). Compute upgrades (more TFLOPs) will have little effect unless memory bandwidth is also increased.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "35440282f2c6ce195905610e86d4aad41259b24042ff1e902806bcf030f83a8e"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 1527,
+          "text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and the **memory access patterns** of the attention mechanism.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Issue: Arithmetic Intensity in Autoregressive Decoding\n\nDuring **training** or **prefill** (processing the prompt), the model processes a sequence of tokens in parallel. This results in high **arithmetic intensity** (FLOPs per byte of memory accessed), making the operation **compute-bound**.\n\nHowever, during **autoregressive generation** (token-by-token decoding), the model generates one token at a time. For each new token:\n- The model must read the entire **Key-Value (KV) cache** for all previous tokens.\n- It performs a small amount of computation (matrix-vector multiplications) relative to the amount of data read.\n\nThis results in **low arithmetic intensity**, making the operation **memory-bandwidth-bound**.\n\n#### Concrete Example:\nConsider a 7B parameter model with FP16 weights (2 bytes/param):\n- **Weight size**: ~14 GB.\n- **KV Cache size**: For a 2048-token context, with 32 layers, 32 heads, and head_dim=128:\n  - KV cache per token ≈ 2 (K+V) × 32 layers × 32 heads × 128 dim × 2 bytes ≈ 524 KB/token.\n  - For 2048 tokens: ~1 GB.\n- **Total memory read per token**: ~15 GB (weights + KV cache).\n- **Computation per token**: ~14 GFLOPs (for a 7B model, roughly 2×params FLOPs per token).\n\nOn a modern GPU like an RTX 4090:\n- **Memory Bandwidth**: ~1 TB/s.\n- **Compute Throughput**: ~80 TFLOPs (FP16).\n\n**Time to read memory**: 15 GB / 1 TB/s = **15 ms**.  \n**Time to compute**: 14 GFLOPs / 80 TFLOPs = **0.175 ms**.\n\nThe GPU spends **~99% of its time waiting for memory**, not computing. This is the definition of memory-bandwidth limitation.\n\n### 2. Why Local GPUs Are Particularly Affected\n\nLocal consumer GPUs (e.g., NVIDIA RTX 4090, AMD RX 7900 XTX) have:\n- **High compute power** (TFLOPs) relative to their **memory bandwidth**.\n- **Limited VRAM** (24 GB on 4090), which constrains batch size and context length.\n\nIn contrast, data-center GPUs (e.g., H100) have:\n- **Higher memory bandwidth** (3.35 TB/s on H100 vs. 1 TB/s on 4090).\n- **Larger VRAM** (80 GB), allowing larger batches that can amortize memory reads.\n\n### 3. What Changes Throughput?\n\nSince inference is memory-bound, **throughput is determined by how much data you can read per second**, not how fast you can compute. Here’s what changes throughput:\n\n#### A. Quantization (Reduces Memory Footprint)\n- **FP16 → INT8/INT4**: Reduces the size of weights and KV cache.\n  - **Effect**: Directly reduces memory reads per token.\n  - **Example**: Quantizing weights from FP16 (2 bytes) to INT4 (0.5 bytes) reduces weight read time by **4×**. If the model was 90% memory-bound, throughput can increase by **~3–4×**.\n  - **Caveat**: KV cache quantization (e.g., FP8 KV cache) also helps, especially for long contexts.\n\n#### B. Batch Size (Amortizes Memory Reads)\n- **Small batch (1 token)**: Each token requires reading all weights. Highly memory-bound.\n- **Large batch (N tokens)**: Weights are read once and reused for N tokens. Arithmetic intensity increases.\n  - **Effect**: Throughput (tokens/sec) increases sub-linearly with batch size until compute becomes the bottleneck.\n  - **Example**: On a 4090, increasing batch size from 1 to 8 might increase throughput by **5–6×** because memory reads are amortized.\n  - **Limitation**: VRAM limits batch size. Larger models or longer contexts reduce max batch size.\n\n#### C. Context Length (KV Cache Size)\n- **Longer context**: Larger KV cache → more memory reads per token.\n  - **Effect**: Throughput decreases as context length increases.\n  - **Example**: At 4096 tokens, KV cache reads may dominate over weight reads, further reducing throughput.\n\n#### D. Model Architecture (GQA/MQA)\n- **Multi-Query Attention (MQA)** or **Grouped-Query Attention (GQA)**: Reduces the number of KV heads.\n  - **Effect**: Smaller KV cache → less memory read per token.\n  - **Example**: Llama 2 70B uses GQA, reducing KV cache size by ~8× compared to MHA, significantly improving long-context throughput.\n\n#### E. Hardware: Memory Bandwidth vs. Compute\n- **Upgrading GPU**: Moving from RTX 3090 (936 GB/s) to RTX 4090 (1 TB/s) gives ~7% bandwidth increase, but ~2× compute increase. Since inference is memory-bound, throughput only improves by ~7–10%, not 2×.\n- **Upgrading to H100**: 3.35 TB/s bandwidth → ~3.3× throughput improvement for memory-bound workloads.\n\n### 4. Summary Table\n\n| Factor | Impact on Throughput | Why |\n|--------|----------------------|-----|\n| **Quantization (INT4)** | **High** | Reduces bytes read per token. |\n| **Batch Size** | **Medium-High** | Amortizes weight reads across tokens. |\n| **Context Length** | **Negative** | Larger KV cache → more memory reads. |\n| **GQA/MQA** | **Medium** | Smaller KV cache → less memory reads. |\n| **GPU Compute (TFLOPs)** | **Low** | Compute is not the bottleneck. |\n| **GPU Bandwidth (TB/s)** | **High** | Directly limits tokens/sec. |\n\n### Conclusion\n\nTransformer inference on local GPUs is memory-bandwidth limited because **autoregressive decoding requires reading large amounts of data (weights + KV cache) for minimal computation**. To improve throughput, focus on **reducing memory footprint** (quantization, GQA) and **amortizing memory reads** (larger batch sizes), rather than increasing compute power.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "dc1faea80ebf74519bc7cebf7dd0cf28b8b0af82d1bb2b949d8380ee6dcc3465"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "arms": {
+        "strict": {
+          "tokens": 2048,
+          "text": "# 小規模社内Pythonツールの運用環境移行計画\n\n## 1. 概要と前提条件\n\n### 1.1 目的\n開発環境で動作確認済みの小規模Pythonツールを、安定性・セキュリティ・監視性を考慮した運用環境へ安全に移行する。\n\n### 1.2 前提条件\n- **ツール規模**: 単一リポジトリ、依存パッケージ数 < 50、実行時間 < 5分/回\n- **実行形態**: CLIツール、バッチジョブ、または軽量Web API（Flask/FastAPI）\n- **既存環境**: 開発環境（個人PC or 開発サーバー）、運用環境（社内サーバー or クラウドVM）\n- **チーム体制**: 開発者1〜2名、運用担当1名（兼任可）\n\n### 1.3 成功基準\n- 移行後72時間以内に重大な障害が発生しない\n- 既存機能の100%が運用環境で再現される\n- 監視・ログ・アラートが設定済みである\n\n---\n\n## 2. リスク評価と対策\n\n| リスクカテゴリ | 具体的なリスク | 影響度 | 発生確率 | 対策 |\n|---|---|---|---|---|\n| **環境差異** | Pythonバージョン、OSライブラリ、環境変数の不一致 | 高 | 高 | コンテナ化（Docker）または仮想環境の完全再現 |\n| **依存関係** | パッケージのバージョン衝突、非公開パッケージの取得失敗 | 高 | 中 | `requirements.txt` のピン留め、社内PyPIミラーの活用 |\n| **データアクセス** | 本番データへの誤書き込み、権限不足 | 高 | 低 | 読み取り専用アカウントの初期設定、テストデータでの検証 |\n| **スケジューリング** | ジョブの重複実行、タイムアウト、リソース競合 | 中 | 中 | ロックファイル、タイムアウト設定、リソース制限 |\n| **セキュリティ** | 秘密情報のハードコード、脆弱な依存パッケージ | 高 | 中 | 環境変数/シークレットマネージャー、`pip-audit` による脆弱性スキャン |\n| **障害復旧** | 障害時のロールバック手順が不明確 | 高 | 低 | 事前のロールバック手順書作成、バックアップ取得 |\n| **監視不足** | 障害の検知遅延、原因特定困難 | 中 | 高 | ログ出力、メトリクス収集、アラート設定 |\n\n---\n\n## 3. 移行前準備（Pre-Migration）\n\n### 3.1 コードの整理とベストプラクティス適用\n\n```python\n# 例: 設定の外部化（環境変数から読み込み）\nimport os\nfrom dataclasses import dataclass\n\n@dataclass\nclass Config:\n    db_host: str = os.getenv(\"DB_HOST\", \"localhost\")\n    db_port: int = int(os.getenv(\"DB_PORT\", \"5432\"))\n    log_level: str = os.getenv(\"LOG_LEVEL\", \"INFO\")\n    timeout_seconds: int = int(os.getenv(\"TIMEOUT_SECONDS\", \"300\"))\n\nconfig = Config()\n```\n\n**チェックリスト:**\n- [ ] 秘密情報（パスワード、APIキー）をコードから削除し、環境変数またはシークレットマネージャーへ移行\n- [ ] 設定値をハードコードせず、環境変数または設定ファイルで管理\n- [ ] エラーハンドリングを強化（特にネットワーク、ファイルI/O、DB接続）\n- [ ] ログ出力を標準化（`logging` モジュールを使用、構造化ログを推奨）\n- [ ] 依存パッケージを `requirements.txt` または `pyproject.toml` でピン留め\n- [ ] 型ヒントを追加し、`mypy` で静的解析を通す\n- [ ] 単体テストを作成し、カバレッジ80%以上を確保\n\n### 3.2 依存関係の固定と検証\n\n```bash\n# 依存関係の固定\npip freeze > requirements.txt\n\n# 脆弱性スキャン\npip install pip-audit\npip-audit -r requirements.txt\n\n# 新規環境での再現性確認\npython -m venv test_env\nsource test_env/bin/activate  # Windows: test_env\\Scripts\\activate\npip install -r requirements.txt\npython -m pytest tests/\n```\n\n### 3.3 コンテナ化（推奨）\n\n```dockerfile\n# Dockerfile\nFROM python:3.11-slim\n\nWORKDIR /app\n\n# システム依存パッケージのインストール\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    gcc \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Python依存パッケージのインストール\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\n# アプリケーションコードのコピー\nCOPY . .\n\n# 非rootユーザーで実行\nRUN useradd --create-home appuser\nUSER appuser\n\n# エントリポイント\nENTRYPOINT [\"python\", \"main.py\"]\n```\n\n```bash\n# ビルドとローカルテスト\ndocker build -t my-tool:1.0.0 .\ndocker run --rm \\\n  -e DB_HOST=test-db \\\n  -e DB_PORT=5432 \\\n  -e LOG_LEVEL=DEBUG \\\n  my-tool:1.0.0 --dry-run\n```\n\n### 3.4 運用環境の準備\n\n| 項目 | 内容 |\n|---|---|\n| **サーバー/コンテナ** | 運用環境用のVMまたはコンテナ基盤を準備 |\n| **ネットワーク** | 必要な外部サービス（DB、API）へのアクセス許可を申請 |\n| **アカウント** | 最小権限のサービスアカウントを作成（読み取り専用から開始） |\n| **スケジューラ** | cron / systemd timer / Airflow / Cloud Scheduler を設定 |\n| **監視基盤** | ログ集約（ELK/CloudWatch）、メトリクス（Prometheus）、アラート（PagerDuty/Slack） |\n| **バックアップ** | 設定ファイル、ログ、出力データのバックアップ方針を決定 |\n\n### 3.5 検証用テストデータの準備\n\n- 本番データのコピー（マスキング済み）または合成データを作成\n- 期待される出力結果を事前に記録（ゴールデンファイル）\n\n---\n\n## 4. 移行手順（Migration Steps）\n\n### フェーズ1: ステージング環境での検証（1〜2日）\n\n```\nステップ1: ステージング環境へデプロイ\n  ├─ Dockerイメージをステージングレジストリへプッシュ\n  ├─ ステージングサーバーでコンテナ起動\n  └─ 環境変数をステージング用設定で注入\n\nステップ2: 機能検証\n  ├─ 単体テスト実行: pytest tests/\n  ├─ 統合テスト実行: 実際のステージングDB/APIに対して実行\n  ├─ 出力結果の比較: ゴールデンファイルと差分確認\n  └─ パフォーマンステスト: 実行時間、メモリ使用量を確認\n\nステップ3: 障害シナリオテスト\n  ├─ DB接続失敗時の挙動確認\n  ├─ タイムアウト時のリトライ動作確認\n  ├─ 不正な入力データでのエラーハンドリング確認\n  └─ 強制終了時のクリーンアップ確認\n\nステップ4: 監視・ログ検証\n  ├─ ログが正しく集約基盤に届いているか確認\n  ├─ メトリクスが収集されているか確認\n  └─ アラートが正しく発火するかテスト\n```\n\n### フェーズ2: 本番環境へのデプロイ（当日）\n\n```\nステップ1: 事前準備（デプロイ前1時間）\n  ├─ 現在の状態のスナップショット取得\n  │   ├─ 設定ファイルのバックアップ\n  │   ├─ 出力データのバックアップ\n  │   └─ 実行中のジョブがないことを確認\n  ├─ 関係者へデプロイ開始を通知\n  └─ ロールバック手順を再確認\n\nステップ2: デプロイ実行\n  ├─ 本番環境へDockerイメージをプッシュ\n  ├─ 環境変数/シークレットを本番用設定で注入\n  ├─ コンテナを起動（または既存サービスを停止→新バージョン起動）\n  └─ ヘルスチェックエンドポイントで起動確認\n\nステップ3: 即時検証（デプロイ後30分以内）\n  ├─ 起動ログを確認（エラーがないか）\n  ├─ 簡易機能テスト: --dry-run または --test モードで実行\n  ├─ 出力ファイルが正しく生成されているか確認\n  └─ 監視ダッシュボードでメトリクスを確認\n\nステップ4: 本番データでの初回実行\n  ├─ 手動で初回実行（またはスケジューラで初回ジョブトリガー）\n  ├─ 実行ログをリアルタイム監視\n  ├─ 出力結果をサンプル検証\n  └─ 実行時間、リソース使用量を確認\n```\n\n### フェーズ3: 安定化期間（デプロイ後72時間）\n\n```\nステップ1:",
+          "finish": "length",
+          "ids_sha256": "4a08a2d21385dc8cdd34a6da3e28b981c75cd0266801fbe754ed1322357495a6"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 2048,
+          "text": "# 小規模社内Pythonツールの運用環境移行計画\n\n## 1. 概要と前提条件\n\n### 1.1 目的\n開発環境で動作確認済みの小規模Pythonツールを、安定性・セキュリティ・監視性を考慮した運用環境へ安全に移行する。\n\n### 1.2 前提条件\n- **ツール規模**: 単一リポジトリ、依存パッケージ数 < 50、実行時間 < 5分/回\n- **実行形態**: CLIツール / 定期バッチ / 簡易Web API（いずれか）\n- **既存環境**: 開発環境（個人PC or 開発サーバー）、運用環境（社内サーバー or クラウドVM）\n- **チーム体制**: 開発者1〜2名、運用担当1名（兼任可）\n\n### 1.3 成功基準\n- 移行後72時間以内に重大な障害が発生しない\n- 既存機能の100%が運用環境で再現される\n- 障害発生時に30分以内にロールバック可能\n\n---\n\n## 2. リスク分析と対策\n\n| リスクカテゴリ | 具体的なリスク | 影響度 | 対策 |\n|---|---|---|---|\n| **環境差異** | Pythonバージョン、OSライブラリ、環境変数の不一致 | 高 | コンテナ化または仮想環境の完全再現 |\n| **依存関係** | パッケージのバージョン衝突、非公開パッケージの取得失敗 | 高 | `requirements.txt` のピン留め + 社内PyPIミラー |\n| **データ/設定** | 本番用設定ファイルの誤記、機密情報の漏洩 | 高 | 設定ファイルの分離、シークレット管理の導入 |\n| **権限/セキュリティ** | 実行ユーザー権限の過剰付与、ネットワークアクセス制限 | 中 | 最小権限原則、ファイアウォール設定 |\n| **監視不足** | 障害の検知遅延、ログ不足による原因特定困難 | 中 | 標準ログ出力 + アラート設定 |\n| **ロールバック不可** | 移行後の問題で元に戻せない | 高 | 事前バックアップ + 段階的リリース |\n| **スケジュール** | 移行作業中の業務停止 | 中 | 低負荷時間帯の実施 + 並行稼働期間 |\n\n---\n\n## 3. 移行手順（詳細）\n\n### フェーズ0: 準備（移行1週間前）\n\n#### 3.0.1 環境の標準化\n```bash\n# 開発環境で依存関係を固定\npip freeze > requirements.txt\n\n# 仮想環境の再現性を確認\npython -m venv venv_test\nsource venv_test/bin/activate\npip install -r requirements.txt\npython -c \"import <main_module>; print('OK')\"\n```\n\n#### 3.0.2 設定ファイルの分離\n```\nproject/\n├── config/\n│   ├── dev.yaml      # 開発用（Git管理）\n│   ├── prod.yaml     # 本番用（Git管理、機密情報なし）\n│   └── secrets.env   # 機密情報（Git除外、運用サーバーのみ）\n├── src/\n├── tests/\n└── requirements.txt\n```\n\n#### 3.0.3 運用環境の事前準備\n- [ ] 運用サーバーのOS・Pythonバージョン確認\n- [ ] 実行ユーザー作成（最小権限）\n- [ ] 必要なディレクトリ構造作成\n- [ ] ネットワークアクセス許可（外部API、DB等）\n- [ ] 監視エージェントのインストール（Prometheus Node Exporter等）\n\n#### 3.0.4 バックアップ取得\n```bash\n# 開発環境の完全バックアップ\ntar czf backup_dev_$(date +%Y%m%d).tar.gz ./project/\n\n# 運用環境の既存状態スナップショット\nsudo systemctl status existing_services > pre_migration_status.txt\n```\n\n---\n\n### フェーズ1: 移行前検証（移行前日）\n\n#### 3.1.1 静的解析・テスト実行\n```bash\n# 型チェック\nmypy src/\n\n# リンティング\nflake8 src/ --max-line-length=120\n\n# 単体テスト\npytest tests/ -v --cov=src --cov-report=term-missing\n\n# 統合テスト（本番相当データで）\npytest tests/integration/ -v --env=prod_simulated\n```\n\n#### 3.1.2 本番相当環境でのスモークテスト\n```bash\n# 運用サーバー上で仮想環境を作成し、ツールを実行\nssh prod-server\ncd /opt/tools/mytool\npython -m venv venv\nsource venv/bin/activate\npip install -r requirements.txt\n\n# 設定ファイルの読み込み確認\npython -c \"from config import load_config; print(load_config('prod'))\"\n\n# ドライラン（副作用なし）\npython main.py --dry-run --config config/prod.yaml\n```\n\n#### 3.1.3 ロールバック手順の事前確認\n```bash\n# ロールバックスクリプトの作成\ncat > rollback.sh << 'EOF'\n#!/bin/bash\nset -e\necho \"Rolling back to previous version...\"\n# 1. 現在のバージョンをアーカイブ\ntar czf /opt/tools/mytool_backup_$(date +%Y%m%d_%H%M%S).tar.gz /opt/tools/mytool/\n# 2. 前バージョンを復元\ntar xzf /opt/tools/mytool_prev.tar.gz -C /opt/tools/\n# 3. サービス再起動\nsudo systemctl restart mytool.service\necho \"Rollback completed\"\nEOF\nchmod +x rollback.sh\n```\n\n---\n\n### フェーズ2: 移行実施（当日）\n\n#### 3.2.1 移行ウィンドウの確保\n- **推奨時間帯**: 業務終了後（18:00〜20:00）または週末\n- **通知**: 関係者へ移行予定と影響範囲を事前連絡\n\n#### 3.2.2 段階的リリース（推奨）\n\n**ステップ1: 並行稼働（Shadow Mode）**\n```bash\n# 開発環境と運用環境で同時に実行し、結果を比較\n# 開発環境\npython main.py --config config/dev.yaml > dev_output.json\n\n# 運用環境\npython main.py --config config/prod.yaml > prod_output.json\n\n# 結果比較\ndiff <(jq -S . dev_output.json) <(jq -S . prod_output.json)\n```\n\n**ステップ2: 本番切替**\n```bash\n# 1. 開発環境のサービスを停止\nsudo systemctl stop mytool-dev.service\n\n# 2. 運用環境でサービス起動\nsudo systemctl start mytool-prod.service\n\n# 3. 起動確認\nsudo systemctl status mytool-prod.service\ncurl -s http://localhost:8080/health | jq .\n```\n\n**ステップ3: トラフィック移行（Web APIの場合）**\n```nginx\n# Nginx設定で段階的にトラフィックを移行\nupstream backend {\n    server dev-server:8080 weight=100;  # 初期: 開発100%\n    # server prod-server:8080 weight=0;\n}\n\n# 段階的にプロダクションへ移行\n# 10% → 50% → 100%\n```\n\n#### 3.2.3 即時検証（切替後15分以内）\n```bash\n# ヘルスチェック\ncurl -f http://localhost:8080/health || exit 1\n\n# 主要機能の動作確認\npython -c \"\nfrom mytool.core import process_data\nresult = process_data(test_input)\nassert result['status'] == 'success', 'Core function failed'\nprint('Core function OK')\n\"\n\n# ログ出力の確認\ntail -n 50 /var/log/mytool/app.log | grep -i error\n```\n\n---\n\n### フェーズ3: 移行後監視（72時間）\n\n#### 3.3.1 監視項目\n| 項目 | 閾値 | アラート先 |\n|---|---|---|\n| CPU使用率 | > 80% 5分間 | Slack #ops-alert |\n| メモリ使用率 | > 90% | Slack #ops-alert |\n| エラーログ件数 | > 10件/時間 | Slack #ops-alert |\n| レイテンシ（API） | p95 > 2秒 | Slack #ops-alert |\n| 定期ジョブの成功 | 失敗時 | Slack #ops-alert |\n\n#### 3.3.2 ログ監視\n```bash\n# リアルタイムログ監視\ntail -f /var/log/mytool/app.log | grep --line-buffered -i \"error\\|exception\\|critical\"\n\n# 構造化ログの確認（JSON形式推奨）\njournalctl -u mytool-prod.service --since \"1 hour ago\" | jq 'select(.level==\"ERROR\")'\n```\n\n#### 3.3.3 日次レビュー\n- 移行後1日目、2日目、3日目の朝にログ・メトリクスを確認\n- 異常が",
+          "finish": "length",
+          "ids_sha256": "3ae0a792887d05c44262baa02c33a44597fe6ecf1d197ccf85fb26e936be5839"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": false
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "arms": {
+        "strict": {
+          "tokens": 1631,
+          "text": "ローカルGPU環境において、LLM（大規模言語モデル）の推論速度が計算能力（FLOPS）よりも**メモリ帯域幅（Memory Bandwidth）**に強く依存する主な理由は、推論プロセスの性質が「メモリバウンド（Memory-bound）」な演算に偏っているためです。\n\n以下に、その技術的・具体的な理由を段階的に解説します。\n\n### 1. 推論のフェーズ：Prefill vs Decode\n\nLLMの推論は大きく2つのフェーズに分かれますが、ユーザーが体感する「生成速度（トークン/秒）」を決定するのは主に**Decodeフェーズ**です。\n\n*   **Prefillフェーズ（入力処理）**:\n    *   プロンプト全体を一度に処理し、KVキャッシュを生成する段階。\n    *   行列演算が並列に実行されるため、GPUの計算能力（FLOPS）がボトルネックになりやすい（Compute-bound）。\n*   **Decodeフェーズ（出力生成）**:\n    *   1トークンずつ逐次的に生成する段階。\n    *   **ここがボトルネック**: 1トークン生成するたびに、モデルパラメータ全体をメモリから読み出す必要があるため、**メモリ帯域幅がボトルネック**になります。\n\n---\n\n### 2. Decodeフェーズにおける「メモリバウンド」の構造\n\nDecodeフェーズでは、各トークンを生成するたびに以下の操作が繰り返されます。\n\n#### (1) 重み行列の読み出し（Weight Loading）\nLLMの推論は、入力ベクトルと重み行列の行列積（Matrix-Vector Multiplication, GEMV）が中心です。\n*   例: 7Bパラメータのモデル（FP16）の場合、約14GBの重みデータがVRAMに存在します。\n*   **1トークン生成するたびに、この14GBの重みデータをGPUメモリから読み出す必要があります。**\n*   計算自体は軽量（ベクトル×行列）ですが、データ転送量が膨大です。\n\n#### (2) KVキャッシュの読み出し\nTransformerアーキテクチャでは、過去のトークンのKey/Valueベクトルをキャッシュとして保持します。\n*   生成が進むにつれてKVキャッシュは増加し、各層で読み出されるデータ量が増えます。\n*   これもメモリ帯域を消費します。\n\n#### (3) 計算密度（Arithmetic Intensity）の低さ\n*   **計算密度** = 演算回数 / メモリアクセス量\n*   DecodeフェーズのGEMV演算は、**1回のメモリ読み出しに対して行われる演算回数が非常に少ない**（O(1)に近い）ため、計算密度が極めて低くなります。\n*   GPUの計算ユニット（CUDAコア）は、メモリからデータが届くのを待っている時間が長く、**アイドル状態**になります。\n\n---\n\n### 3. 具体的な数値例：なぜ帯域幅が支配的か？\n\n例えば、**NVIDIA RTX 4090**（メモリ帯域幅: 約1 TB/s）で**Llama-3-8B**（FP16, 約16GB）を推論する場合を考えます。\n\n1.  **理論上の最大トークン生成速度**:\n    *   1トークン生成に必要なデータ転送量 ≈ モデルサイズ（16GB） + KVキャッシュ読み出し\n    *   帯域幅1 TB/s = 1000 GB/s\n    *   理論上限 ≈ 1000 GB/s ÷ 16 GB/token ≈ **62.5 tokens/s**\n\n2.  **実際のボトルネック**:\n    *   GPUの計算能力（FP16で約165 TFLOPS）は、この程度のデータ転送速度に対して**過剰**です。\n    *   計算は数ミリ秒で終わるが、メモリ転送に数十ミリ秒かかるため、**計算能力の大部分が遊んでいる**状態です。\n\n> **結論**: 推論速度は「GPUがどれだけ速く計算できるか」ではなく、「**VRAMからどれだけ速く重みデータを読み出せるか**」で決まります。\n\n---\n\n### 4. ローカルGPU特有の制約要因\n\nクラウド環境（A100/H100など）とローカルGPU（RTX 4090/3090など）では、メモリ帯域幅の差が顕著です。\n\n| GPU | メモリ帯域幅 | 特徴 |\n|------|-------------|------|\n| **RTX 4090** | ~1 TB/s | ローカル最高峰だが、データセンターGPU比で1/3〜1/5 |\n| **A100 (80GB)** | ~2 TB/s | HBM2e採用、帯域幅が広い |\n| **H100** | ~3.35 TB/s | HBM3採用、さらに広い |\n\n*   **ローカルGPUの限界**:\n    *   ローカルGPUはGDDR6Xメモリを使用しており、データセンターGPUのHBM（High Bandwidth Memory）と比較して帯域幅が狭い。\n    *   したがって、同じモデルサイズでもローカル環境では推論速度が大幅に低下する。\n\n---\n\n### 5. 対策と最適化技術\n\nメモリ帯域幅の制約を緩和するために、以下の技術が用いられます。\n\n#### (1) 量子化（Quantization）\n*   **原理**: 重みデータをFP16（2バイト）からINT4（0.5バイト）などに圧縮する。\n*   **効果**:\n    *   モデルサイズが1/4になる → 読み出しデータ量が1/4になる。\n    *   理論上の推論速度が**約4倍**向上する可能性がある。\n    *   例: GGUF形式のQ4_K_Mモデルなど。\n\n#### (2) バッチサイズ（Batch Size）の活用\n*   **原理**: 複数のリクエストを同時に処理する。\n*   **効果**:\n    *   1回の重み読み出しで複数の入力ベクトルを処理できるため、**計算密度が向上**する。\n    *   メモリ帯域幅の効率が改善され、GPUの計算能力を活かしやすくなる。\n    *   ただし、ローカル環境ではVRAM容量の制約からバッチサイズを大きくしにくい。\n\n#### (3) KVキャッシュの最適化\n*   **PagedAttention**（vLLMなど）: KVキャッシュのメモリ管理を最適化し、断片化を防ぎ、帯域幅の無駄を減らす。\n*   **GQA/MQA**: Multi-Query AttentionやGrouped-Query Attentionを用いることで、KVキャッシュのサイズ自体を削減する。\n\n---\n\n### まとめ\n\nローカルGPUでLLM推論が遅いのは、**「計算能力が不足しているから」ではなく、「VRAMから重みデータを読み出す速度（メモリ帯域幅）が追いつかないから」**です。\n\n特にDecodeフェーズでは、1トークン生成ごとにモデルパラメータ全体をメモリから読み出す必要があるため、**メモリ帯域幅が推論速度の上限を決定する支配的な要因**となります。これを克服するには、量子化によるデータ量削減や、バッチ処理による計算密度の向上が有効です。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "061741f24f894f5f9ed0c7a67c0eae52fff9b2862c7961e4d2bdd4702bb4b2b6"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 1323,
+          "text": "ローカルGPU環境において、LLM（大規模言語モデル）の推論速度が計算能力（FLOPS）よりも**メモリ帯域幅（Memory Bandwidth）**に強く依存する主な理由は、推論プロセスの性質が「メモリバウンド（Memory-bound）」な演算に偏っているためです。\n\n以下に、その技術的・具体的な理由を段階的に解説します。\n\n### 1. 推論のボトルネック：メモリ読み出しの遅延\nLLMの推論（特にデコーディング段階）では、入力トークンごとにモデルパラメータをメモリから読み出し、計算を実行する必要があります。\n\n- **パラメータの読み出し**: 7BパラメータのモデルをFP16で動かす場合、約14GBの重みデータをメモリから読み出す必要があります。\n- **計算の軽さ**: 一方、実際の演算（行列積など）は、GPUの計算コア（CUDAコアやTensorコア）にとっては非常に高速です。\n- **結果**: GPUの計算ユニットが演算を完了しても、次のデータがメモリから届くのを待たなければならない「アイドル状態」が発生します。この待ち時間が全体の推論時間を支配します。\n\n### 2. デコーディング段階の特性：バッチサイズ1の行列ベクトル積\nLLMの推論は大きく分けて「プリフィル（Prefill）」と「デコーディング（Decoding）」の2段階があります。ユーザーが体感する「文字が出力される速度」は主にデコーディング段階で決まります。\n\n- **プリフィル**: 入力プロンプト全体を並列処理するため、行列×行列の演算となり、計算バウンド（Compute-bound）になりやすい。\n- **デコーディング**: 1トークンずつ生成するため、**行列×ベクトル（GEMV: General Matrix-Vector Multiplication）**の演算が繰り返されます。\n  - GEMVは、メモリから読み出したデータ量に対して、実行される演算数が非常に少ない（演算強度が低い）操作です。\n  - 例: 1つの重みパラメータを読み出すごとに、1回の乗算と1回の加算しか行わないため、計算リソースが余り、メモリ転送がボトルネックになります。\n\n### 3. KVキャッシュのメモリ帯域圧迫\nTransformerアーキテクチャでは、自己注意機構（Self-Attention）の計算効率化のために、過去のキー（Key）とバリュー（Value）をメモリにキャッシュする「KVキャッシュ」が使用されます。\n\n- **キャッシュの読み出し**: 各トークンを生成するたびに、現在のクエリと、過去すべてのトークンのKVキャッシュとの内積を計算する必要があります。\n- **コンテキスト長の影響**: コンテキスト長が長くなるほど、KVキャッシュのサイズは線形に増加し、毎ステップで読み出すデータ量も増加します。\n- **帯域幅の消費**: この大量のKVキャッシュ読み出しが、メモリ帯域幅をさらに圧迫し、推論速度を低下させます。\n\n### 4. ローカルGPUのメモリ帯域幅の限界\nローカルで利用される一般的なGPU（例: NVIDIA RTX 4090, 3090, 4080など）は、データセンター向けGPU（例: H100, A100）と比較して、メモリ帯域幅が大幅に低いです。\n\n| GPUモデル | メモリ帯域幅 (概算) | 備考 |\n|-----------|---------------------|------|\n| RTX 4090  | ~1 TB/s             | ローカル最高峰 |\n| RTX 3090  | ~936 GB/s           | 人気モデル |\n| H100 SXM  | ~3.35 TB/s          | データセンター向け |\n| A100 80GB | ~2 TB/s             | データセンター向け |\n\n- **計算能力 vs 帯域幅**: RTX 4090は計算能力（FLOPS）ではA100に匹敵または上回る場合もありますが、メモリ帯域幅はA100の約半分以下です。\n- **結果**: LLM推論のようなメモリバウンドなワークロードでは、計算能力が高くても、データ転送速度が追いつかないため、性能が頭打ちになります。\n\n### 5. 具体的な数値例\n7BパラメータのモデルをFP16で推論する場合：\n\n- **読み出しデータ量**: 約14 GB（モデル重み） + KVキャッシュ\n- **RTX 4090の帯域幅**: 約1 TB/s = 1000 GB/s\n- **理論上の最大トークン生成速度**:  \n  \\( \\frac{1000 \\text{ GB/s}}{14 \\text{ GB/token}} \\approx 71 \\text{ tokens/s} \\)\n\n実際には、KVキャッシュの読み出し、オーバーヘッド、メモリ階層の効率低下などにより、実測値はこれより低くなります（例: 30〜50 tokens/s程度）。一方、計算能力だけで見れば、RTX 4090ははるかに多くのトークンを処理できるポテンシャルを持っていますが、メモリ帯域幅がそれを制限しています。\n\n### 結論\nローカルGPUでLLM推論が遅い主な理由は、**デコーディング段階におけるGEMV演算とKVキャッシュ読み出しが、GPUの計算能力に対してメモリ帯域幅が相対的に不足しているため**です。\n\nこのボトルネックを緩和するためには、以下のような技術が有効です：\n- **量子化（Quantization）**: FP16をINT8やINT4に変換し、メモリ読み出し量を削減する。\n- **推論エンジン最適化**: llama.cpp, vLLM, TensorRT-LLMなど、メモリアクセスパターンを最適化するフレームワークの使用。\n- **GPUの選択**: 計算能力よりもメモリ帯域幅の高いGPU（例: RTX 4090 > RTX 4080）を選ぶ。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "74786aad5cf21b7c490d5e395c63289bf3cb089e4ae752f7322e7dbeecd113ed"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "arms": {
+        "strict": {
+          "tokens": 58,
+          "text": "**Summary:**\nFor next week's release, I want to prioritize verifying changes to the log output format, the cache invalidation option, and API response backward compatibility.\n\n**Japanese Reply:**\n承知しました。来週のリリースに向けて、その3点を重点的に確認します。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "e0758dd882061cfb81ee92ce4f4f6770910069f212cc3c8fb45fef25172d82f7"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 58,
+          "text": "**Summary:**\nFor next week's release, I want to prioritize verifying changes to the log output format, the cache invalidation option, and API response backward compatibility.\n\n**Japanese Reply:**\n承知しました。来週のリリースに向けて、その3点を重点的に確認します。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "e0758dd882061cfb81ee92ce4f4f6770910069f212cc3c8fb45fef25172d82f7"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "arms": {
+        "strict": {
+          "tokens": 31,
+          "text": "- Enabling MTP in the new inference mode improves generation speed.\n- Memory monitoring is recommended for long contexts due to increased KV cache usage.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "8dd729ed86467f8a2694bd2eb1f031a621059f7793b4f61b9863255f00fc2618"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 31,
+          "text": "- Enabling MTP in the new inference mode improves generation speed.\n- Memory monitoring is recommended for long contexts due to increased KV cache usage.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "8dd729ed86467f8a2694bd2eb1f031a621059f7793b4f61b9863255f00fc2618"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "arms": {
+        "strict": {
+          "tokens": 681,
+          "text": "```python\ndef max_non_overlapping(intervals):\n    \"\"\"\n    Returns a maximum-size subset of non-overlapping half-open intervals.\n    \n    Intervals are represented as tuples (start, end) where the interval is [start, end).\n    \n    Tie-breaking rule: When multiple intervals have the same end time, the one with the \n    smallest start time is preferred. If start times are also equal, the original order \n    is preserved (stable selection).\n    \n    The algorithm uses a greedy approach: sort intervals by end time (with tie-breaking \n    on start time), then select intervals in order, skipping any that overlap with the \n    last selected interval.\n    \"\"\"\n    if not intervals:\n        return []\n    \n    # Sort by end time, then by start time for tie-breaking\n    sorted_intervals = sorted(intervals, key=lambda x: (x[1], x[0]))\n    \n    result = []\n    last_end = float('-inf')\n    \n    for start, end in sorted_intervals:\n        if start >= last_end:\n            result.append((start, end))\n            last_end = end\n    \n    return result\n\n\n# Compact tests\nif __name__ == \"__main__\":\n    # Test 1: Basic case\n    intervals1 = [(1, 3), (2, 4), (3, 5), (4, 6)]\n    assert max_non_overlapping(intervals1) == [(1, 3), (3, 5)] or max_non_overlapping(intervals1) == [(2, 4), (4, 6)]\n    \n    # Test 2: Empty input\n    assert max_non_overlapping([]) == []\n    \n    # Test 3: Single interval\n    assert max_non_overlapping([(1, 2)]) == [(1, 2)]\n    \n    # Test 4: Non-overlapping intervals\n    intervals4 = [(1, 2), (3, 4), (5, 6)]\n    assert max_non_overlapping(intervals4) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test 5: All overlapping\n    intervals5 = [(1, 5), (2, 6), (3, 7)]\n    assert len(max_non_overlapping(intervals5)) == 1\n    \n    # Test 6: Tie-breaking on end time - prefer smaller start\n    intervals6 = [(1, 3), (2, 3), (3, 4)]\n    result6 = max_non_overlapping(intervals6)\n    assert len(result6) == 2\n    assert result6[0] == (1, 3)  # (1,3) preferred over (2,3) due to smaller start\n    \n    # Test 7: Half-open intervals - touching is allowed\n    intervals7 = [(1, 2), (2, 3), (3, 4)]\n    assert max_non_overlapping(intervals7) == [(1, 2), (2, 3), (3, 4)]\n    \n    print(\"All tests passed!\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "475029e75b9cceef66ee613912ed41ac1c744c593c5e431a8b026e2bfde2c1be"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 614,
+          "text": "```python\ndef max_non_overlapping(intervals):\n    \"\"\"\n    Returns a maximum-size subset of non-overlapping half-open intervals.\n    \n    Intervals are represented as tuples (start, end) where the interval is [start, end).\n    \n    Tie-breaking rule: When multiple intervals have the same end time, the one with the\n    smallest start time is preferred. If start times are also equal, the original order\n    is preserved (stable selection).\n    \n    The algorithm uses a greedy approach: sort intervals by end time (ascending), then\n    by start time (ascending) for tie-breaking. Iterate through sorted intervals and\n    select an interval if it doesn't overlap with the last selected interval.\n    \n    Args:\n        intervals: A list of tuples (start, end) representing half-open intervals.\n        \n    Returns:\n        A list of tuples representing the maximum-size subset of non-overlapping intervals.\n    \"\"\"\n    if not intervals:\n        return []\n    \n    # Sort by end time, then by start time for tie-breaking\n    sorted_intervals = sorted(intervals, key=lambda x: (x[1], x[0]))\n    \n    result = []\n    last_end = float('-inf')\n    \n    for start, end in sorted_intervals:\n        if start >= last_end:\n            result.append((start, end))\n            last_end = end\n    \n    return result\n\n\n# Compact tests\nif __name__ == \"__main__\":\n    # Test 1: Basic case\n    assert max_non_overlapping([(1, 3), (2, 4), (3, 5)]) == [(1, 3), (3, 5)]\n    \n    # Test 2: Empty input\n    assert max_non_overlapping([]) == []\n    \n    # Test 3: Single interval\n    assert max_non_overlapping([(1, 2)]) == [(1, 2)]\n    \n    # Test 4: All overlapping\n    assert max_non_overlapping([(1, 5), (2, 4), (3, 6)]) == [(2, 4)]\n    \n    # Test 5: No overlaps\n    assert max_non_overlapping([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test 6: Tie-breaking by start time\n    assert max_non_overlapping([(1, 3), (2, 3), (3, 4)]) == [(1, 3), (3, 4)]\n    \n    # Test 7: Half-open intervals touching\n    assert max_non_overlapping([(1, 2), (2, 3)]) == [(1, 2), (2, 3)]\n    \n    print(\"All tests passed!\")\n```<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "28162b40b2c9c7872f989660ff6bec3e2a27d72af5bb6e08ea04c4ff302d8d25"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "arms": {
+        "strict": {
+          "tokens": 1098,
+          "text": "# Incident Response Checklist: Production API Latency Spike (p99 Doubled)\n\n**Trigger:** p99 latency increased by ≥100% within 15 minutes of a deploy.  \n**Severity:** High (User-facing degradation)  \n**Timebox:** Containment within 10 minutes; Root Cause Analysis (RCA) within 24 hours.\n\n---\n\n## 1. Containment (0–10 Minutes)\n*Goal: Stop the bleeding. Restore service health.*\n\n- [ ] **Acknowledge & Declare Incident**  \n  - Post in #incident-channel with severity, impact, and owner.  \n  - Assign Incident Commander (IC) and Communications Lead.\n\n- [ ] **Verify Deploy Correlation**  \n  - Confirm deploy timestamp aligns with latency spike onset.  \n  - Check if spike is global or isolated to specific regions/endpoints.\n\n- [ ] **Immediate Mitigation Options**  \n  - **Option A (Preferred): Rollback**  \n    - Trigger automated rollback to previous stable version.  \n    - Monitor p99 latency for recovery (target: return to baseline within 5 mins).  \n  - **Option B: Feature Flag Disable**  \n    - If new code is behind a flag, disable it immediately.  \n  - **Option C: Scale Out**  \n    - If rollback is unsafe, scale up instances to absorb load (temporary fix only).\n\n- [ ] **Communicate Status**  \n  - Update status page if user impact is significant.  \n  - Notify stakeholders (Product, Support, Execs) of containment action.\n\n---\n\n## 2. Evidence Collection (Concurrent with Containment)\n*Goal: Preserve data for RCA. Do not restart pods/services until evidence is captured.*\n\n- [ ] **Metrics & Dashboards**  \n  - Export graphs: p50/p95/p99 latency, error rates, CPU/Memory, DB connections, queue depth.  \n  - Capture time range: 30 mins pre-deploy to 30 mins post-spike.\n\n- [ ] **Logs**  \n  - Save application logs (ERROR/WARN) from affected instances.  \n  - Save infrastructure logs (load balancer, API gateway, database slow query logs).  \n  - Preserve logs for at least 7 days (prevent auto-deletion).\n\n- [ ] **Traces**  \n  - Export 5–10 sample traces showing high-latency requests.  \n  - Identify slow spans (e.g., DB query, external API call, internal function).\n\n- [ ] **Deploy Artifacts**  \n  - Save commit SHA, diff, and build logs of the problematic deploy.  \n  - Note any config changes (env vars, feature flags, DB migrations).\n\n- [ ] **System State**  \n  - Capture thread dumps or heap profiles if CPU/memory saturation is suspected.  \n  - Record current instance count and resource utilization.\n\n---\n\n## 3. Rollback Criteria & Decision Tree\n*Goal: Decide whether to rollback, hotfix, or monitor.*\n\n| Condition | Action |\n|-----------|--------|\n| **p99 > 2x baseline for >5 mins** after deploy | **ROLLBACK IMMEDIATELY** |\n| **Error rate > 1%** or **5xx errors spiking** | **ROLLBACK IMMEDIATELY** |\n| **Latency spike isolated to 1 endpoint** | Disable feature flag or route traffic away from affected service |\n| **Latency spike global but stable** | Investigate DB/external dependency; consider scaling out |\n| **Rollback fails or causes new issues** | Escalate to SRE/Platform team; consider traffic shifting to canary |\n\n**Rollback Validation:**  \n- [ ] p99 latency returns to baseline within 5–10 mins.  \n- [ ] Error rates normalize.  \n- [ ] No new alerts triggered.\n\n---\n\n## 4. Follow-Up & Post-Incident Review (Within 24–48 Hours)\n*Goal: Prevent recurrence. Improve resilience.*\n\n- [ ] **Root Cause Analysis (RCA)**  \n  - Identify primary cause (e.g., N+1 query, missing index, inefficient algorithm, resource contention).  \n  - Determine why it wasn’t caught in staging/load testing.\n\n- [ ] **Action Items**  \n  - **Fix:** Code change to resolve latency issue.  \n  - **Test:** Add load test or performance regression test to CI/CD.  \n  - **Monitor:** Add alert for p99 latency > threshold (e.g., 2x baseline for 5 mins).  \n  - **Process:** Review deploy checklist (e.g., require canary analysis before full rollout).\n\n- [ ] **Blameless Post-Mortem**  \n  - Document timeline, impact, root cause, and action items.  \n  - Share with engineering team.  \n  - Track action items to completion in ticketing system.\n\n- [ ] **Update Runbook**  \n  - Add specific steps for this type of latency incident.  \n  - Clarify rollback procedures and evidence collection steps.\n\n---\n\n**Key Principle:** *Contain first, investigate second. Never debug in production without preserving evidence.*<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "1310fee24cf6f32d1098da0bcecbb7d297d3851f1449de223c2bc749f5d5e1c4"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 1039,
+          "text": "# Incident Response Checklist: Production API Latency Spike (p99 Doubled)\n\n**Trigger:** p99 latency increased by ≥100% within 5–15 minutes of a deploy.  \n**Severity:** High (User-facing degradation).  \n**Time Goal:** Contain within 10 minutes; Resolve within 30 minutes.\n\n---\n\n## 1. Containment (0–5 Minutes)\n*Goal: Stop the bleeding. Prioritize user experience over root cause analysis.*\n\n- [ ] **Declare Incident:** Open incident channel (e.g., Slack `#incidents`), assign Incident Commander (IC) and Scribe.\n- [ ] **Verify Impact:** Confirm p99 spike is real (not a monitoring artifact) and affects all users or specific segments.\n- [ ] **Immediate Mitigation Options (Choose One):**\n  - **Option A (Preferred): Rollback Deploy**  \n    - Trigger automated rollback to previous stable version.  \n    - Confirm rollback completion and monitor p99 for 5 minutes.\n  - **Option B (If Rollback Not Possible): Feature Flag Disable**  \n    - Disable newly introduced features via feature flag system.  \n    - Monitor p99 for 5 minutes.\n  - **Option C (Last Resort): Scale Out**  \n    - Increase replica count by 50–100% to absorb load.  \n    - *Note: Only if latency is due to resource saturation, not code inefficiency.*\n- [ ] **Communicate:** Post status update to stakeholders: “Mitigation in progress. Expected resolution: <30 mins.”\n\n---\n\n## 2. Evidence Collection (Parallel to Containment)\n*Goal: Capture state before it’s lost. Do not delay mitigation for this.*\n\n- [ ] **Metrics Snapshot:**\n  - Export p50, p95, p99 latency graphs (last 1 hour).\n  - Capture CPU, memory, I/O, and network metrics for affected services.\n  - Record error rates (5xx, timeouts) and throughput (RPS).\n- [ ] **Logs & Traces:**\n  - Save slow request traces (e.g., Jaeger/Zipkin) for requests exceeding p99 threshold.\n  - Export application logs (ERROR/WARN) from the last 15 minutes.\n  - Capture database slow query logs (if applicable).\n- [ ] **Deploy Metadata:**\n  - Record exact commit SHA, deploy timestamp, and changed files.\n  - Note any config changes (env vars, feature flags, DB schema migrations).\n- [ ] **Dependency Health:**\n  - Check status of downstream services (DB, cache, third-party APIs) for correlated latency.\n\n---\n\n## 3. Rollback Criteria & Decision Tree\n*Goal: Make a clear, data-driven decision.*\n\n| Condition | Action |\n|-----------|--------|\n| **p99 remains >2x baseline after 5 mins of mitigation** | **ESCALATE:** Engage senior engineers. Consider full service restart or failover. |\n| **Rollback fails or causes new errors** | **HOLD:** Freeze all deploys. Investigate rollback failure. Do not retry blindly. |\n| **Latency improves but not to baseline** | **INVESTIGATE:** Likely partial mitigation. Check for residual issues (e.g., cache cold start, DB connection pool exhaustion). |\n| **Latency returns to baseline** | **STABILIZE:** Monitor for 15 mins. Confirm no secondary effects (e.g., error rate spike). |\n\n> **Rule of Thumb:** If root cause is not obvious within 10 minutes, **rollback**. Debugging can happen post-incident.\n\n---\n\n## 4. Follow-Up & Post-Incident Review (Within 24–48 Hours)\n*Goal: Prevent recurrence. Blameless culture.*\n\n- [ ] **Root Cause Analysis (RCA):**\n  - Identify the specific change (code, config, dependency) that caused latency.\n  - Determine why it wasn’t caught in staging/load testing.\n- [ ] **Action Items:**\n  - **Fix:** Implement permanent fix for the latency issue.\n  - **Test:** Add regression test or load test scenario to CI/CD pipeline.\n  - **Monitor:** Add alert for p99 latency with tighter thresholds or anomaly detection.\n  - **Process:** Review deploy checklist (e.g., canary analysis, auto-rollback triggers).\n- [ ] **Documentation:**\n  - Publish incident report with timeline, impact, root cause, and action items.\n  - Share learnings with engineering team.\n- [ ] **Blameless Retrospective:**\n  - Discuss what went well, what didn’t, and how to improve response time.\n\n---\n\n**Key Principle:** *Mitigate first, investigate later. User experience is the priority.*<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "5cdbe48a476e0f65e4a1f399d8bc2eb027c0ceff32688b4c464680081559e61a"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "arms": {
+        "strict": {
+          "tokens": 1991,
+          "text": "To understand the tradeoffs among **Weight-only INT4**, **W8A8 INT8**, and **BF16** inference on consumer GPUs (e.g., NVIDIA RTX 30/40 series, AMD RX 7000 series), we must analyze three distinct hardware bottlenecks:\n\n1.  **Memory Capacity** (How much data fits in VRAM?)\n2.  **Memory Bandwidth** (How fast can data move from VRAM to compute units?)\n3.  **Native Arithmetic Support** (How fast can the GPU perform the math?)\n\nBelow is a detailed breakdown of each format, followed by a comparative summary.\n\n---\n\n### 1. BF16 (BFloat16)\n**Status:** The current \"gold standard\" for high-quality inference on modern consumer GPUs.\n\n- **Memory Capacity:**  \n  - 2 bytes per parameter.  \n  - A 7B model requires ~14 GB VRAM.  \n  - A 13B model requires ~26 GB VRAM (exceeds most consumer GPUs).\n- **Memory Bandwidth:**  \n  - High bandwidth requirement. For a 7B model, each token generation requires reading ~14 GB of weights.  \n  - On an RTX 4090 (~1 TB/s bandwidth), this limits throughput to ~70 tokens/sec *if* bandwidth-bound.\n- **Native Arithmetic Support:**  \n  - **Excellent.** Modern consumer GPUs (Ampere, Ada Lovelace, RDNA 3) have dedicated Tensor Cores/Matrix Cores that natively support BF16.  \n  - Compute is fast and energy-efficient. No dequantization overhead.\n- **Accuracy:**  \n  - Near-FP32 accuracy. Minimal degradation. Ideal for tasks requiring high precision (code generation, complex reasoning).\n\n**Tradeoff:** High VRAM usage and high bandwidth demand limit batch size and model size. Compute is not the bottleneck; memory is.\n\n---\n\n### 2. Weight-only INT4 (e.g., GPTQ, AWQ, GGUF Q4_K_M)\n**Status:** The most popular choice for running large models on consumer hardware.\n\n- **Memory Capacity:**  \n  - ~0.5–0.6 bytes per parameter (including scale/zero-point overhead).  \n  - A 7B model requires ~4–5 GB VRAM.  \n  - A 13B model requires ~8–10 GB VRAM.  \n  - A 70B model can fit in ~40 GB VRAM (possible on RTX 4090 with offloading or multi-GPU).\n- **Memory Bandwidth:**  \n  - **Massively reduced.** Reading 4-bit weights reduces bandwidth pressure by ~4x compared to BF16.  \n  - This allows for much higher token throughput, especially for small batch sizes (batch=1), which is typical for consumer inference.\n- **Native Arithmetic Support:**  \n  - **Poor.** Consumer GPUs do **not** have native INT4 matrix multiplication units.  \n  - **Dequantization Overhead:** Weights must be dequantized to FP16/BF16 on-the-fly before multiplication. This adds compute overhead and kernel launch latency.  \n  - However, because the model is memory-bound, the extra compute cost is often hidden by the reduced memory wait time.\n- **Accuracy:**  \n  - **Moderate degradation.** INT4 quantization introduces noise.  \n  - Modern methods (AWQ, GPTQ) mitigate this by protecting salient weights.  \n  - Perplexity increases slightly; may struggle with very fine-grained tasks (e.g., exact code syntax, long-context retrieval).\n\n**Tradeoff:** Huge VRAM savings and high throughput for small batches. Accuracy loss is acceptable for most chat/generation tasks. Compute overhead is manageable due to memory-bound nature.\n\n---\n\n### 3. W8A8 INT8 (Weight 8-bit, Activation 8-bit)\n**Status:** Rarely used on consumer GPUs for LLMs; more common in server/datacenter inference (e.g., NVIDIA H100 with TensorRT-LLM).\n\n- **Memory Capacity:**  \n  - 1 byte per parameter.  \n  - A 7B model requires ~7 GB VRAM.  \n  - Better than BF16, worse than INT4.\n- **Memory Bandwidth:**  \n  - Reduced by ~2x compared to BF16.  \n  - Activations are also 8-bit, reducing intermediate memory traffic.\n- **Native Arithmetic Support:**  \n  - **Mixed.**  \n    - **NVIDIA Consumer GPUs (RTX 30/40):** Have INT8 Tensor Cores, but **lack efficient INT8 matrix multiplication for large matrices** in the same way datacenter GPUs do. Driver/kernel support for W8A8 LLM inference is poor or non-existent in mainstream frameworks (vLLM, TGI).  \n    - **AMD RDNA 3:** Has some INT8 support, but software stack is immature.  \n  - **Critical Issue:** Activations must be quantized/dequantized dynamically, adding significant compute overhead. Without fused kernels (which are mostly optimized for datacenter GPUs), this overhead can **negate** bandwidth savings.\n- **Accuracy:**  \n  - **Significant degradation.** Quantizing activations (A8) is much harder than quantizing weights (W8).  \n  - LLMs are sensitive to activation outliers. W8A8 often requires complex calibration (e.g., SmoothQuant) and still suffers noticeable accuracy loss compared to W4A16 or BF16.\n\n**Tradeoff:** Poor fit for consumer GPUs. The compute overhead of dynamic activation quantization/dequantization often makes it **slower** than BF16 or INT4, despite lower bandwidth usage. Accuracy is worse than INT4 weight-only.\n\n---\n\n### Comparative Summary Table\n\n| Feature | BF16 | Weight-only INT4 | W8A8 INT8 |\n| :--- | :--- | :--- | :--- |\n| **VRAM Usage** | High (2 bytes/param) | Very Low (~0.5 bytes/param) | Medium (1 byte/param) |\n| **Memory Bandwidth** | High (Bottleneck) | Low (High Throughput) | Medium |\n| **Native Compute** | ✅ Excellent (Tensor Cores) | ❌ None (Requires Dequant) | ⚠️ Partial (Poor Kernel Support) |\n| **Compute Overhead** | None | Moderate (Dequantization) | High (Dynamic Quant/Dequant) |\n| **Accuracy** | Near-FP32 | Good (with AWQ/GPTQ) | Poor (Activation quantization issues) |\n| **Best For** | Small models, high precision | Large models, consumer GPUs | Datacenter GPUs (H100/A100) |\n| **Throughput (Batch=1)** | Low (Memory-bound) | **High** (Memory-bound but less data) | Low/Medium (Compute-bound overhead) |\n\n---\n\n### Practical Recommendations for Consumer GPUs\n\n1. **Use BF16 if:**\n   - The model fits in VRAM (e.g., 7B model on 12GB+ GPU).\n   - You need maximum accuracy (e.g., code generation, mathematical reasoning).\n   - You are using a high-end GPU (RTX 4090) with high bandwidth.\n\n2. **Use Weight-only INT4 if:**\n   - The model does **not** fit in VRAM in BF16 (e.g., 13B, 34B, 70B models).\n   - You want the best balance of speed and accuracy for chat/generation.\n   - You are using frameworks like `llama.cpp`, `vLLM` (with AWQ/GPTQ), or `AutoGPTQ`.\n   - **This is the sweet spot for most consumer users.**\n\n3. **Avoid W8A8 INT8 on Consumer GPUs unless:**\n   - You are using a specialized framework with fused kernels (e.g., TensorRT-LLM on RTX 4090, but even then, gains are marginal).\n   - You are experimenting with research code.\n   - In most cases, **W8A8 is slower and less accurate than INT4 weight-only** on consumer hardware due to lack of optimized kernels and activation quantization overhead.\n\n### Key Insight: The \"Memory-Bound\" Reality\nLLM inference (especially at batch size 1) is **memory-bandwidth-bound**, not compute-bound.  \n- **INT4** wins because it reduces the amount of data moved from VRAM to compute units by 4x.  \n- **BF16** is compute-efficient but moves 4x more data.  \n- **W8A8** moves 2x less data than BF16 but adds significant compute overhead (dynamic quantization) that consumer GPUs handle poorly, often making it slower than BF16.\n\n**Conclusion:** For consumer GPUs, **Weight-only INT4** offers the best practical tradeoff between accuracy, throughput, and VRAM capacity. **BF16** is preferred when VRAM allows and maximum accuracy is critical. **W8A8 INT8** is generally not recommended for consumer LLM inference.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "c5ee7ac62783221a8c16746fefc6cc20f95e6e849816674e3c075b0172598010"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 2045,
+          "text": "To understand the tradeoffs among **Weight-only INT4**, **W8A8 INT8**, and **BF16** inference on consumer GPUs (e.g., NVIDIA RTX 30/40 series, AMD RX 7000 series), we must analyze three distinct hardware bottlenecks:\n\n1.  **Memory Capacity** (How much data fits in VRAM?)\n2.  **Memory Bandwidth** (How fast can data move from VRAM to compute units?)\n3.  **Native Arithmetic Support** (How fast can the GPU perform the math?)\n\nBelow is a detailed breakdown of each format, followed by a comparative summary.\n\n---\n\n### 1. BF16 (BFloat16)\n**Status:** The current \"gold standard\" for high-quality inference on modern consumer GPUs.\n\n- **Memory Capacity:**  \n  - 2 bytes per parameter.  \n  - A 7B model requires ~14 GB VRAM (plus KV cache).  \n  - A 13B model requires ~26 GB VRAM (often too large for 24 GB cards without offloading).\n\n- **Memory Bandwidth:**  \n  - Bandwidth-bound for large batch sizes or long sequences.  \n  - For small batch sizes (e.g., batch=1), inference is often **memory-bandwidth-bound** because the GPU must load all weights for every token generated.\n\n- **Native Arithmetic Support:**  \n  - **Excellent.** Modern consumer GPUs (RTX 30/40, RX 7000) have dedicated Tensor Cores/Matrix Cores that natively support BF16.  \n  - Throughput is high, but not as high as INT8/INT4 due to larger data movement.\n\n- **Accuracy:**  \n  - **Highest.** BF16 has the same exponent range as FP32, making it robust against overflow/underflow. Minimal accuracy loss compared to FP32.\n\n- **Practical Tradeoff:**  \n  - Best quality, but highest VRAM usage.  \n  - Throughput is limited by memory bandwidth for small batches.  \n  - Ideal for models that fit entirely in VRAM.\n\n---\n\n### 2. W8A8 INT8 (Weight 8-bit, Activation 8-bit)\n**Status:** A balanced approach for throughput, but with significant accuracy risks on consumer hardware.\n\n- **Memory Capacity:**  \n  - 1 byte per parameter.  \n  - A 7B model requires ~7 GB VRAM.  \n  - A 13B model requires ~13 GB VRAM.  \n  - **Advantage:** Allows larger models to fit in VRAM compared to BF16.\n\n- **Memory Bandwidth:**  \n  - **Half the bandwidth requirement** of BF16.  \n  - This can double theoretical throughput if the bottleneck is memory bandwidth.\n\n- **Native Arithmetic Support:**  \n  - **Mixed.**  \n    - **NVIDIA RTX 30/40:** Have INT8 Tensor Cores. However, **consumer drivers and libraries (e.g., PyTorch, TensorRT) often lack optimized INT8 kernels for LLMs** compared to datacenter GPUs (A100/H100).  \n    - **AMD RX 7000:** Limited or no native INT8 matrix multiplication support in consumer drivers. Often falls back to FP16 emulation, negating speed gains.  \n  - **Critical Issue:** INT8 requires **calibration** (determining scaling factors for weights and activations). Poor calibration leads to catastrophic accuracy loss.\n\n- **Accuracy:**  \n  - **Moderate to Poor.**  \n  - Quantizing **activations** (A8) is risky because activation distributions are dynamic and outlier-heavy.  \n  - Without sophisticated techniques (e.g., SmoothQuant, AWQ), W8A8 can degrade perplexity significantly.\n\n- **Practical Tradeoff:**  \n  - Theoretical 2x speedup over BF16, but **rarely achieved on consumer GPUs** due to lack of optimized kernels and calibration overhead.  \n  - Not recommended for most consumer users unless using specialized frameworks (e.g., TensorRT-LLM on RTX 4090 with careful tuning).\n\n---\n\n### 3. Weight-only INT4 (e.g., GPTQ, AWQ, ExLlama)\n**Status:** The most practical choice for consumer GPUs with limited VRAM.\n\n- **Memory Capacity:**  \n  - 0.5 bytes per parameter.  \n  - A 7B model requires ~3.5–4 GB VRAM.  \n  - A 13B model requires ~7–8 GB VRAM.  \n  - A 70B model can fit in ~35–40 GB VRAM (possible on 48 GB cards or multi-GPU setups).  \n  - **Advantage:** Maximizes model size that fits in VRAM.\n\n- **Memory Bandwidth:**  \n  - **Quarter the bandwidth requirement** of BF16.  \n  - For small batch sizes (batch=1), inference is **memory-bandwidth-bound**.  \n  - **Throughput Gain:** Can achieve **2–4x faster token generation** than BF16 for small batches because the GPU spends less time waiting for weights to load.\n\n- **Native Arithmetic Support:**  \n  - **Poor Native Support.**  \n    - Consumer GPUs do **not** have native INT4 matrix multiplication units.  \n    - **Workaround:** Weights are stored in INT4 but **dequantized to FP16/BF16 on-the-fly** during computation.  \n    - This adds computational overhead (dequantization kernels), but the **memory bandwidth savings outweigh the compute cost** for small batches.  \n    - Libraries like **ExLlamaV2**, **AutoGPTQ**, and **AWQ** are highly optimized for this dequantization path.\n\n- **Accuracy:**  \n  - **Good to Very Good.**  \n    - Modern methods (AWQ, GPTQ) use **per-group quantization** and **outlier handling** to minimize accuracy loss.  \n    - Perplexity degradation is often <1–2% compared to BF16 for 7B–13B models.  \n    - Larger models (70B+) may show more degradation.\n\n- **Practical Tradeoff:**  \n  - **Best throughput for small batches** on consumer GPUs.  \n  - **Best VRAM efficiency.**  \n  - Slight accuracy loss, but negligible for most applications.  \n  - **Not ideal for large batch sizes** because dequantization overhead becomes a compute bottleneck.\n\n---\n\n### Comparative Summary Table\n\n| Feature | BF16 | W8A8 INT8 | Weight-only INT4 |\n| :--- | :--- | :--- | :--- |\n| **VRAM Usage** | High (2 bytes/param) | Medium (1 byte/param) | **Low (0.5 bytes/param)** |\n| **Memory Bandwidth** | High | Medium | **Low (Best for small batches)** |\n| **Native Compute** | **Excellent** (Tensor Cores) | Mixed (Poor consumer support) | **Poor** (Requires dequantization) |\n| **Throughput (Batch=1)** | Baseline | Rarely 2x (kernel issues) | **2–4x faster** (bandwidth-bound) |\n| **Throughput (Large Batch)** | **Best** (compute-bound) | Potentially 2x (if kernels exist) | Slower (dequant overhead) |\n| **Accuracy** | **Highest** | Moderate (calibration-sensitive) | Good (with AWQ/GPTQ) |\n| **Ease of Use** | Easy (native support) | Hard (calibration, kernels) | Easy (mature libraries) |\n| **Best For** | Models that fit in VRAM; high-quality needs | Datacenter GPUs; specialized setups | **Consumer GPUs; large models; small batches** |\n\n---\n\n### Key Insights for Consumer GPUs\n\n1. **Memory Bandwidth is the Bottleneck for Small Batches:**  \n   On consumer GPUs, when generating text one token at a time (batch=1), the GPU is idle waiting for weights to load from VRAM. **Weight-only INT4** reduces the amount of data loaded by 4x, leading to significant speedups despite the lack of native INT4 compute.\n\n2. **W8A8 INT8 is Not a \"Free Lunch\" on Consumer Hardware:**  \n   While INT8 halves memory bandwidth, the lack of optimized INT8 kernels for LLMs on consumer GPUs (especially AMD) and the complexity of activation quantization make it **less practical** than INT4 for most users.\n\n3. **BF16 is Best for Large Batches or When VRAM is Not a Constraint:**  \n   If you have a 24 GB GPU and are running a 7B model, BF16 fits easily. For large batch inference (e.g., server-like workloads), BF16’s native compute efficiency outperforms INT4’s dequantization overhead.\n\n4. **Recommendation:**  \n   - **For most consumer users:** Use **Weight-only INT4** (via AWQ or GPTQ) for the best balance of speed, VRAM efficiency, and accuracy.  \n   - **For maximum quality:** Use **BF16** if the model fits in VRAM.  \n   - **Avoid W8A8 INT8** unless you are using specialized frameworks (e.g., TensorRT-LLM on RTX 4090) and have expertise in quantization calibration.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "8f71d5cfd7903974dfb030e4b0e95367988b43d8f254f14fd9aa75bfbc32caf3"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "arms": {
+        "strict": {
+          "tokens": 921,
+          "text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 背景と目的\n現在、高負荷な処理（レポート生成、大量データ変換など）を同期レスポンスで返却しており、タイムアウトやリソース枯渇のリスクがある。これを非同期ジョブ方式へ移行し、システム安定性とスループットを向上させる。\n\n## 2. 移行アーキテクチャ概要\n- **API層**: リクエスト受付後、ジョブIDを即座に返却（HTTP 202 Accepted）。\n- **ジョブ管理層**: メッセージキュー（例: RabbitMQ, SQS, Kafka）経由でバックグラウンドワーカーへ処理を委譲。\n- **結果取得**: クライアントはジョブIDを用いて結果取得エンドポイント（`GET /jobs/{id}`）をポーリング、またはWebhookで通知。\n\n## 3. 互換性確保戦略\n- **段階的移行**:\n  1. **Phase 1**: 新規エンドポイントとして非同期APIを追加。既存同期APIは維持。\n  2. **Phase 2**: クライアント側で非同期APIへの切替を段階的に実施（Feature Flagで制御）。\n  3. **Phase 3**: 全クライアント移行完了後、同期APIを廃止。\n- **APIバージョン管理**: `/v1/`（同期）と `/v2/`（非同期）を並行運用。\n- **レスポンス形式の統一**: 非同期APIでも、完了時の結果形式は既存同期APIと同一構造を維持し、クライアント改修コストを最小化。\n\n## 4. 監視体制\n- **主要メトリクス**:\n  - ジョブキューの滞留数・滞留時間\n  - ワーカーの稼働率・エラー率\n  - ジョブ完了までの平均時間（P95, P99）\n  - APIレイテンシ（受付〜ジョブID返却）\n- **アラート設定**:\n  - キュー滞留数が閾値超過時\n  - ジョブ失敗率が5%超過時\n  - ワーカープロセスの異常終了時\n- **トレーシング**: 分散トレーシング（例: OpenTelemetry）で、API受付からジョブ完了までの全リンクを追跡可能にする。\n\n## 5. ロールバック条件と手順\n### ロールバックトリガー（いずれか該当時）\n- 非同期APIのエラー率が10%を15分間継続\n- ジョブキューの滞留が30分以内に解消されず、業務影響が発生\n- 結果取得APIの応答遅延がSLA（例: 2秒）を大幅に超過\n\n### ロールバック手順\n1. **Feature Flag切替**: クライアント側で非同期API呼び出しを無効化し、同期APIへ自動フォールバック。\n2. **キュー処理停止**: 新規ジョブの投入を停止し、既存ジョブは完了まで監視。\n3. **原因調査**: 監視ログ・トレーシングデータからボトルネックを特定。\n4. **修正・再検証**: 問題解決後、テスト環境で再検証してから再移行。\n\n## 6. 移行スケジュール（例）\n- **週1-2**: 非同期API開発・テスト環境検証\n- **週3**: 本番環境デプロイ（Feature Flag OFF）\n- **週4**: 一部クライアントで非同期API利用開始（Canaryリリース）\n- **週5-8**: 全クライアントへ段階的に展開\n- **週9以降**: 同期APIの廃止検討\n\n## 7. リスクと対策\n- **リスク**: クライアント側のポーリング負荷増大\n  - **対策**: 指数バックオフの推奨、Webhook通知の提供\n- **リスク**: ジョブの重複実行\n  - **対策**: 冪等性キーの実装、キューのat-least-once配信に対応した処理設計\n\n---\n**備考**: 本計画は社内環境の技術スタック（クラウド/オンプレ、言語、既存ミドルウェア）に応じて調整が必要です。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "03961ad0bfc61ee23ab5f14ef3f52bc6112eafba78d4bc952ddec716ebf85b60"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 937,
+          "text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 背景と目的\n現在、高負荷な処理（レポート生成、大量データ変換など）を同期レスポンスで返却しており、タイムアウトやサーバー負荷集中が発生している。これを非同期ジョブ方式へ移行し、応答性向上とシステム安定化を図る。\n\n## 2. 移行アーキテクチャ概要\n- **API層**: リクエスト受付後、ジョブIDを即座に返却（HTTP 202 Accepted）\n- **ジョブキュー**: Redis/RabbitMQ/SQS 等のメッセージブローカー経由でタスクを分散\n- **ワーカー**: 非同期で処理を実行し、結果をDBまたはストレージに保存\n- **結果取得**: クライアントはジョブIDを用いて結果取得エンドポイントへポーリング、またはWebhookで通知\n\n## 3. 互換性確保策\n- **段階的移行**:\n  - Phase 1: 新規エンドポイントのみ非同期化（既存同期APIは維持）\n  - Phase 2: ヘッダー `X-Async-Mode: true` で非同期モードをオプトイン可能に\n  - Phase 3: 全クライアント移行完了後、同期APIを廃止\n- **レスポンス形式**: 非同期モードでも、ジョブ完了後は既存の同期APIと同一のJSONスキーマを返却\n- **クライアントSDK**: 内部ライブラリで非同期処理を抽象化し、呼び出し側の変更を最小限に抑える\n\n## 4. 監視体制\n- **メトリクス**:\n  - ジョブキュー滞留数、ワーカー稼働率、ジョブ平均処理時間\n  - APIレイテンシ（P95/P99）、エラー率（4xx/5xx）\n- **アラート閾値**:\n  - キュー滞留 > 100件 かつ 5分間継続 → 警告\n  - ジョブ失敗率 > 5% → 緊急アラート\n- **トレーシング**: 分散トレーシング（OpenTelemetry等）でジョブIDを全サービス間で追跡可能に\n- **ダッシュボード**: Grafana等でリアルタイム可視化\n\n## 5. ロールバック条件と手順\n### ロールバックトリガー（いずれか該当時）\n- 非同期ジョブの失敗率が10%を超え、30分間改善しない\n- キュー滞留が1,000件を超え、ワーカー増設でも解消しない\n- 結果取得APIのP99レイテンシが5秒を超え、業務影響が重大\n\n### ロールバック手順\n1. **即時**: APIゲートウェイで非同期モードを無効化し、全リクエストを同期処理へ振り分け\n2. **データ整合性**: 未完了ジョブはキューから取り出し、同期処理で再実行または手動対応\n3. **通知**: 影響を受けるクライアントへステータス変更を通知\n4. **事後分析**: 原因究明後、修正版で再移行\n\n## 6. 移行スケジュール（例）\n| フェーズ | 期間 | 内容 |\n|----------|------|------|\n| 準備 | 2週間 | インフラ構築、テスト環境検証 |\n| パイロット | 1週間 | 低リスクAPIで非同期化、監視確認 |\n| 段階展開 | 4週間 | 主要APIへ順次適用、クライアント移行支援 |\n| 完了・廃止 | 2週間 | 同期API廃止、ドキュメント更新 |\n\n## 7. リスクと対策\n- **データ不整合**: ジョブ実行中にデータが変更されるケース → 楽観的ロックまたはバージョン管理で対応\n- **重複実行**: メッセージ再配信による二重処理 → 冪等性キー（Idempotency Key）を必須化\n- **ワーカー障害**: ワーカー停止時のジョブ再投入 → キューの再試行ポリシーとデッドレターキューで対応\n\n---\n**備考**: 本計画は社内環境の技術スタック（クラウド/オンプレ、言語、既存ミドルウェア）に応じて調整が必要です。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "aa7dd08047ea92e9afa681f88b99d655369821b8ceec8486527e69689cf73833"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "arms": {
+        "strict": {
+          "tokens": 1187,
+          "text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で複数のトークンを予測し、大きな「ターゲットモデル」で並列に検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの効率性は、ドラフトモデルが生成したトークンがターゲットモデルによって受け入れられる確率、すなわち**受理率**に強く依存します。\n\n*   **メカニズム**: ドラフトモデルが生成した $k$ 個のトークン候補のうち、ターゲットモデルが一致と判定したトークン数だけ進みます。一致しなかったトークン以降は破棄され、ターゲットモデルの出力で置き換えられます。\n*   **問題点**:\n    *   **ドラフトモデルの質が低い場合**: ドラフトモデルがターゲットモデルと異なる分布を持つ場合、受理率が低下します。受理率が低いと、多くの計算が無駄になり、最終的にターゲットモデルが1トークンずつ生成するのとほぼ同じ、あるいはそれ以上の時間がかかります。\n    *   **タスクの難易度**: 創造的な文章生成や、ドラフトモデルが苦手な専門的なドメインでは、受理率が著しく低下する傾向があります。\n    *   **理論的上限**: 受理率が100%でない限り、ドラフト生成と検証のオーバーヘッドが常に発生するため、単純な逐次デコードより遅くなるケースがあります。\n\n### 2. 検証コスト（Verification Cost）の非線形な増加\n\nターゲットモデルによる検証は、ドラフトトークン数 $k$ に比例して計算量が増加するわけではなく、**メモリ帯域幅（Memory Bandwidth）**と**計算リソース**のボトルネックに依存します。\n\n*   **メモリ帯域幅のボトルネック**:\n    *   LLMの推論は、特にバッチサイズが小さい場合、計算能力（FLOPS）よりも**メモリ帯域幅**がボトルネックになります（メモリバウンド）。\n    *   検証ステップでは、ドラフトトークン数 $k$ に対するアテンション計算とFFN（Feed-Forward Network）計算を行うため、メモリ読み込み量が増加します。\n    *   $k$ を大きくすると、検証ステップのメモリ帯域幅使用量が増え、GPUのメモリ帯域幅が飽和すると、検証自体がボトルネックとなり、全体のレイテンシが増加します。\n*   **計算オーバーヘッド**:\n    *   ドラフトモデルの推論自体にも時間がかかります。ドラフトモデルが小さくても、$k$ 回の逐次推論（または並列推論）のコストは無視できません。\n    *   検証ステップでは、ドラフトトークンだけでなく、過去のコンテキスト全体に対するアテンション計算が必要になるため、$k$ が大きくなるほど検証コストが急増します。\n    *   結果として、**「ドラフト生成コスト + 検証コスト」が「通常の逐次デコードコスト」を上回る**場合があります。\n\n### 3. メモリ使用量（Memory Usage）の増加とキャッシュ管理の複雑化\n\n投機的デコードは、通常のデコードと比較してメモリ使用量が増加し、これがキャッシュヒット率やメモリ帯域幅の効率に影響を与えます。\n\n*   **KVキャッシュの増加**:\n    *   ドラフトトークン $k$ 個分のKVキャッシュを一時的に保持する必要があります。これにより、アクティブなメモリ使用量が増加し、バッチサイズを制限する要因となります。\n    *   バッチサイズが制限されると、GPUの並列処理効率が低下し、スループットが低下する可能性があります。\n*   **メモリ帯域幅の競合**:\n    *   ドラフトモデルとターゲットモデルの両方のモデルパラメータをメモリにロードする必要があります。これにより、メモリ帯域幅の競合が発生し、特にメモリ帯域幅が限られている環境では性能低下を招きます。\n*   **キャッシュの破棄と再計算**:\n    *   受理されなかったトークンのKVキャッシュは破棄されますが、この破棄と再計算のオーバーヘッドが、特に $k$ が大きい場合や受理率が低い場合に顕著になります。\n\n### 結論：高速化が成立する条件\n\n投機的デコードが高速化につながるためには、以下の条件が満たされる必要があります。\n\n1.  **高い受理率**: ドラフトモデルがターゲットモデルと十分に類似した分布を持つこと。\n2.  **適切なドラフトトークン数 $k$**: 検証コストがメモリ帯域幅のボトルネックを超えない範囲で、受理率とのトレードオフを最適化すること。\n3.  **メモリ帯域幅の余裕**: ドラフトモデルとターゲットモデルの両方を効率的にロード・実行できるだけのメモリ帯域幅と容量があること。\n\nこれらの条件が満たされない場合、投機的デコードは**追加の計算オーバーヘッドとメモリ使用量**により、通常の逐次デコードよりも遅くなる可能性があります。したがって、実装時には、対象タスクやハードウェア環境に応じたチューニングが不可欠です。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "338b44b59775ab3217683eed68a47e8b71d74ef9fe518dee8b5360653bb67c36"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 1279,
+          "text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で複数のトークンを予測し、大きな「ターゲットモデル」で並列に検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの効率性は、ドラフトモデルが生成したトークンがターゲットモデルによって受け入れられる確率、すなわち**受理率**に強く依存します。\n\n*   **メカニズム**: ドラフトモデルが生成した $k$ 個のトークン候補のうち、ターゲットモデルが一致と判定したトークン数だけ進みます。一致しなかったトークン以降は破棄され、ターゲットモデルの出力で置き換えられます。\n*   **問題点**:\n    *   **ドラフトモデルの質が低い場合**: ドラフトモデルがターゲットモデルと異なる分布を持つ場合、受理率が低下します。受理率が低いと、多くの計算が無駄になり、最終的にターゲットモデルが1トークンずつ生成するのとほぼ同じ、あるいはそれ以上の時間がかかります。\n    *   **タスクの難易度**: 創造的な文章生成や、ドラフトモデルが苦手な専門的なドメインでは、受理率が著しく低下する傾向があります。\n    *   **理論的上限**: 受理率が100%でない限り、ドラフト生成と検証のオーバーヘッドが常に発生するため、単純な逐次デコードより遅くなるケースがあります。\n\n### 2. 検証コスト（Verification Cost）の非線形な増加\n\nターゲットモデルによる検証は、ドラフトトークン数 $k$ に比例して計算量が増加しますが、その増加率はハードウェアの特性により非線形になります。\n\n*   **バッチサイズとメモリ帯域幅**:\n    *   LLMの推論は通常、**メモリ帯域幅律速（Memory-Bound）**です。逐次デコードでは、1トークンごとにモデルパラメータをメモリから読み込む必要があります。\n    *   投機的デコードでは、$k$ 個のトークンを一度に検証するため、パラメータの読み込み回数を減らし、計算をバッチ化できます。これは理論的に高速化につながります。\n*   **問題点**:\n    *   **計算律速（Compute-Bound）への移行**: $k$ が大きくなると、検証ステップがメモリ帯域幅律速から計算律速（GPUの演算能力がボトルネック）に移行する可能性があります。この場合、検証自体の計算時間が大幅に増加し、得られる高速化効果が相殺されます。\n    *   **ドラフト生成のコスト**: ドラフトモデル自体の推論にも時間がかかります。ドラフトモデルが小さくても、$k$ 回の逐次推論を行うため、そのコストが無視できなくなります。特に、ドラフトモデルとターゲットモデルのアーキテクチャが異なる場合、ドラフト生成のオーバーヘッドが検証の利得を上回ることがあります。\n\n### 3. メモリ使用量（Memory Usage）の増加とキャッシュ管理\n\n投機的デコードは、追加のメモリリソースを消費し、KVキャッシュの管理を複雑にします。\n\n*   **KVキャッシュの肥大化**:\n    *   通常のデコードでは、生成したトークンごとにKVキャッシュが1ステップずつ追加されます。\n    *   投機的デコードでは、ドラフトトークンが検証されるまで、その分のKVキャッシュが「仮想的」に確保されます。検証後に破棄されるトークンのキャッシュも一時的にメモリを占有します。\n    *   $k$ が大きい場合、バッチサイズが大きい場合、または長いコンテキストを扱う場合、**メモリ使用量が急増**し、GPUのメモリ容量を圧迫します。これにより、バッチサイズを小さくせざるを得なくなり、結果としてスループットが低下します。\n*   **キャッシュの破棄と再計算**:\n    *   検証で拒否されたトークンのKVキャッシュは破棄されますが、そのメモリ解放と再割り当てのオーバーヘッドが発生します。\n    *   また、拒否されたトークン以降のキャッシュを正しく管理するため、通常のデコードよりも複雑なキャッシュ管理ロジックが必要となり、実装のオーバーヘッドやバグのリスクが増加します。\n\n### 結論：高速化が成立する条件\n\n投機的デコードが高速化につながるためには、以下の条件が同時に満たされる必要があります。\n\n1.  **高い受理率**: ドラフトモデルがターゲットモデルと十分に類似した分布を持つこと（通常、受理率70〜80%以上が望ましい）。\n2.  **適切なドラフトトークン数 $k$**: $k$ が大きすぎると検証コストとメモリ使用量が増加し、小さすぎると高速化効果が限定的になる。最適な $k$ はタスクやハードウェアに依存します。\n3.  **メモリ帯域幅律速の環境**: GPUの計算能力が十分にあり、メモリ帯域幅がボトルネックである場合、バッチ化による検証の利得が最大化されます。\n4.  **軽量なドラフトモデル**: ドラフトモデルの推論コストが、検証による高速化効果を上回らないこと。\n\nしたがって、**ドラフトモデルの質が低く、受理率が低い場合**や、**$k$ が大きすぎて検証が計算律速になる場合**、あるいは**メモリ使用量の増加によりバッチサイズを制限せざるを得ない場合**には、投機的デコードは通常のデコードより遅くなる可能性があります。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "089ac350cf0dd311b9ecbc2ed3bdb6b665ee81870ec8783becb9a579aa24ed52"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "arms": {
+        "strict": {
+          "tokens": 66,
+          "text": "**日本語要約:**\nキーにリージョン名を付与した結果、キャッシュヒット率が低下し、データベースの負荷とタイムアウトエラーが増加しました。\n\n**Mitigation:**\nImplement a consistent hashing strategy or pre-warm the cache for each region to maintain high hit rates despite namespacing.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "8257b4ef371f2c9b269870231b08864d286aaf57e7cc512a3f9c183ff245a2b9"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 60,
+          "text": "**日本語要約:**\nキーにリージョン名を付与した結果、キャッシュヒット率が低下し、データベースの負荷とタイムアウトエラーが増加しました。\n\n**Mitigation:**\nImplement a consistent hashing strategy or use a global cache layer to maintain cache affinity across regions.<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "2b16935a0e962f8737fde6239d1ce0ff2b0af2f80fd6692e311eb7b8507054a3"
+        }
+      },
+      "output_ids_exact": false,
+      "both_eos": true
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "arms": {
+        "strict": {
+          "tokens": 56,
+          "text": "- p99 latency が閾値を超えているため、パフォーマンスの劣化を確認してください。\n- error rate も上昇傾向にあるため、安定性の低下を懸念してください。\n- 新しい retry policy の影響を調査し、原因の特定を行ってください。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "4ef531daeae3b9625e95972ccc2fccb539dda5ffdf3ce4ecd6332aedc40efb07"
+        },
+        "production_gdn_multi_restore": {
+          "tokens": 56,
+          "text": "- p99 latency が閾値を超えているため、パフォーマンスの劣化を確認してください。\n- error rate も上昇傾向にあるため、安定性の低下を懸念してください。\n- 新しい retry policy の影響を調査し、原因の特定を行ってください。<|im_end|>",
+          "finish": "eos",
+          "ids_sha256": "4ef531daeae3b9625e95972ccc2fccb539dda5ffdf3ce4ecd6332aedc40efb07"
+        }
+      },
+      "output_ids_exact": true,
+      "both_eos": true
+    }
+  ],
+  "code_checks": {
+    "strict:code_markdown_table": {
+      "source_sha256": "c74023f8283f773e7281a7358d990650f51588ff37b462b789f4f05cea474365",
+      "generated_tests_passed": true,
+      "oracle_cases": 1000,
+      "none_rendering": "| a |\n| --- |\n|  |"
+    },
+    "production_gdn_multi_restore:code_markdown_table": {
+      "source_sha256": "3ac92eea92a175f56bc885fa1b7c33473794ed20ebb7f2cc570a643407318a84",
+      "generated_tests_passed": true,
+      "oracle_cases": 1000,
+      "none_rendering": "| a |\n| --- |\n| None |"
+    },
+    "strict:heldout_code_interval_schedule": {
+      "source_sha256": "ed8b4e8ac9a3bbc438c0d826597b6a9ace18152b838450c10ea02d18c7756df4",
+      "generated_tests_passed": true,
+      "oracle_cases": 500,
+      "domain": "nonempty half-open intervals",
+      "tie_case_passed": true
+    },
+    "production_gdn_multi_restore:heldout_code_interval_schedule": {
+      "source_sha256": "4621fcc8e42d8386cf74aae40635dc44979e9ee6dfa1019bb44313d2b1ee4359",
+      "generated_tests_passed": true,
+      "oracle_cases": 500,
+      "domain": "nonempty half-open intervals",
+      "tie_case_passed": true
+    }
+  },
+  "summary": {
+    "prompts": 17,
+    "complete_pairs": 16,
+    "exact_pairs": 6,
+    "truncated_prompts": [
+      "general_ja_plan"
+    ]
+  },
+  "limits": [
+    "Capture completion and executable code checks do not decide prose task quality.",
+    "Japanese plan is truncated in both arms and must not be counted as a completed task.",
+    "The separate rate-limiter capture supplies the eighteenth prompt."
+  ]
+}
