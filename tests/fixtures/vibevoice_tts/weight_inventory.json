@@ -1,6 +1,7 @@
 {
   "model_id": "microsoft/VibeVoice-1.5B",
   "model_revision": "c00898d257e6b46004e3e2866a47534085fb685a",
+  "model_revision_expected": "c00898d257e6b46004e3e2866a47534085fb685a",
   "total_tensors": 1204,
   "total_params": 2704021987,
   "total_bytes": 5408043974,
