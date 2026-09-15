@@ -1,0 +1,128 @@
+{
+  "hipengine": {
+    "file_bytes": 6748861024,
+    "tensors": 901,
+    "parameters": 8330325888,
+    "groups": {
+      "output/BF16": {
+        "tensors": 1,
+        "bytes": 1089994752
+      },
+      "output_norm/BF16": {
+        "tensors": 1,
+        "bytes": 7168
+      },
+      "token_embd/Q4_K": {
+        "tensors": 1,
+        "bytes": 306561024
+      },
+      "blk/BF16": {
+        "tensors": 140,
+        "bytes": 659456
+      },
+      "blk/Q4_K": {
+        "tensors": 168,
+        "bytes": 3121348608
+      },
+      "blk/Q6_K": {
+        "tensors": 28,
+        "bytes": 800808960
+      },
+      "ate/BF16": {
+        "tensors": 276,
+        "bytes": 687392064
+      },
+      "mmp/BF16": {
+        "tensors": 10,
+        "bytes": 52799488
+      },
+      "ste/BF16": {
+        "tensors": 276,
+        "bytes": 689227200
+      }
+    },
+    "sha256": "2caf6170b98a2ac339f54018a6b9f7571ff24f3b69ba35aa5f40a52a692df1e2",
+    "filename": "vibevoice-asr-q4km.gguf"
+  },
+  "cstr": {
+    "file_bytes": 4811829376,
+    "tensors": 901,
+    "parameters": 8330325888,
+    "groups": {
+      "lm/Q4_K": {
+        "tensors": 197,
+        "bytes": 3977035776
+      },
+      "lm/F32": {
+        "tensors": 141,
+        "bytes": 1333248
+      },
+      "at_enc/F32": {
+        "tensors": 190,
+        "bytes": 913792
+      },
+      "at_enc/F16": {
+        "tensors": 34,
+        "bytes": 82971776
+      },
+      "at_enc/Q4_0": {
+        "tensors": 12,
+        "bytes": 152064
+      },
+      "at_enc/Q4_K": {
+        "tensors": 40,
+        "bytes": 169712640
+      },
+      "at_conn/F32": {
+        "tensors": 3,
+        "bytes": 43008
+      },
+      "at_conn/Q4_0": {
+        "tensors": 1,
+        "bytes": 129024
+      },
+      "at_conn/Q4_K": {
+        "tensors": 1,
+        "bytes": 7225344
+      },
+      "se_conn/F32": {
+        "tensors": 3,
+        "bytes": 43008
+      },
+      "se_conn/Q4_0": {
+        "tensors": 1,
+        "bytes": 258048
+      },
+      "se_conn/Q4_K": {
+        "tensors": 1,
+        "bytes": 7225344
+      },
+      "st_enc/F32": {
+        "tensors": 190,
+        "bytes": 914048
+      },
+      "st_enc/F16": {
+        "tensors": 34,
+        "bytes": 84806784
+      },
+      "st_enc/Q4_0": {
+        "tensors": 12,
+        "bytes": 152064
+      },
+      "st_enc/Q4_K": {
+        "tensors": 40,
+        "bytes": 169712640
+      },
+      "lm_head/Q4_K": {
+        "tensors": 1,
+        "bytes": 306561024
+      }
+    },
+    "repo": "cstr/vibevoice-asr-GGUF",
+    "revision": "f316299d4b39b2990d751c55b3dd6daab61677c7",
+    "filename": "vibevoice-asr-q4_k.gguf",
+    "inspection": "Remote first 8 MiB only, parsed tensor directory; payload not downloaded or evaluated."
+  },
+  "comparison_scope": "Storage and metadata only. No matched speed or accuracy comparison with cstr.",
+  "original_hf_weight_bytes": 16660770768
+}
