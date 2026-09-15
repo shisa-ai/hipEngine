@@ -128,13 +128,14 @@ class Qwen4ExpGGUFTextGenerator:
                 plan,available_device_bytes=free_bytes-vision_reserve,
                 requested_context=max_sequence_length,
                 native_context_length=getattr(model_plugin,"native_context_length",model_map.config.context_length),
-                resident_capacity=self._configured_resident_capacity)
+                resident_capacity=self._configured_resident_capacity,
+                prefill_chunk_size=prefill_chunk_size)
             self.context_admission = {
                 "mode": "auto" if max_sequence_length is None else "explicit",
                 "device_free_bytes": free_bytes,"device_total_bytes": total_bytes,
                 "vision_weight_reserve_bytes": vision_reserve,
                 "plan": asdict(admission),
-                "scratch_policy": "4GiB per runner includes current MMQ sidecars and prefill scratch",
+                "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification",
             }
             self._resident = materialize_qwen4_exp_weights(
                 readers,

@@ -1,5 +1,14 @@
 # Qwen4Exp context capacity: the 2051 boundary, the cap that was raised, and what it cost
 
+**September15 accounting update:** the public generator supplies its prefill
+chunk size to admission. Per-runner scratch is now the larger of the4GiB
+floor and the mandatory allocation footprint, including full-capacity repair
+queues and context-scaled QSA metadata. The separate4GiB reserve and staging
+reservation are unchanged. This fixes the fixed-budget undercount at chunk4096;
+it does not itself qualify4096 inference or optional MMQ/graph/verification
+resources. Sizing is checked against the real allocation recipes by
+`scripts/qwen4exp_allocation_census.py`.
+
 **September7 UTC chunk1024 allocation follow-up:** two native262144-context
 Framework runners prepare with106,866,880,936 tracked bytes and clean teardown.
 The existing4GiB-per-runner scratch allowance has1,462,550,456 bytes of
@@ -427,10 +436,11 @@ plugin metadata through `resolve_qwen4_exp_context`, using the existing memory
 admission planner plus256-token physical KV rounding. Auto selects the largest
 fitting capacity (minimum one compression block); explicit limits never silently
 shrink. Default residency is c2 unless a caller configures c1. Admission reserves
-4GiB per runner for current scratch and MMQ sidecars, plus4GiB free reserve;
-optional vision payload is separately reserved. This conservative policy is not
-a byte-exact estimate of every allocation, and current sidecar/scratch growth must
-be kept within it or reflected in the policy.
+at least4GiB per runner for scratch, increased when the mandatory chunk/context
+footprint exceeds it, plus4GiB free reserve; optional vision payload is separately
+reserved. This is not a byte-exact estimate of every optional resource. Sidecar,
+graph, verification and transaction growth still need separate qualification.
+Direct resolver callers that omit the chunk retain the legacy floor-only behavior.
 
 `LLM` forwards optional context/residency only to factories explicitly declaring
 those parameters. The generator's `prepare()` reports the admitted capacity or

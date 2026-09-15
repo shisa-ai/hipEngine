@@ -45,6 +45,9 @@ def resolve_allocation_profile():
 
 
 def validate_chunk_allocation(packet, *, chunk, context, manifest, host, model):
+    if packet.get("schema", 0) >= 3 and packet.get(
+            "device_allocation_margins", {}).get("device_scratch_margin_bytes", -1) < 0:
+        raise ValueError("device scratch must fit without crediting host staging")
     if (packet.get("schema", 0) < 2 or packet["status"] != "passed"
             or not packet["source"]["tracked_clean"]
             or packet["chunk_size"] < chunk or packet["prepared_context"] < context

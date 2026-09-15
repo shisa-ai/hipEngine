@@ -6,6 +6,7 @@ from hipengine.loading.qwen4_exp_materialize import (
     Qwen4ExpResidencyPlan,
     plan_qwen4_exp_memory_admission,
 )
+from hipengine.loading.qwen4_exp_scratch import qwen4_exp_scratch_breakdown
 
 
 def resolve_qwen4_exp_context(
@@ -13,6 +14,7 @@ def resolve_qwen4_exp_context(
     requested_context: int | None = None, native_context_length: int | None = None,
     resident_capacity: int = 1, scratch_bytes_per_runner: int = 4 * 1024**3,
     reserve_bytes: int = 4 * 1024**3,
+    prefill_chunk_size: int | None = None,
 ) -> Qwen4ExpMemoryAdmissionPlan:
     native = min(residency.config.context_length,
                  residency.config.context_length if native_context_length is None else int(native_context_length))
@@ -21,12 +23,20 @@ def resolve_qwen4_exp_context(
     minimum = residency.config.qsa_compression_ratio
     if native < minimum:
         raise ValueError("native context must contain one QSA compression block")
+    if scratch_bytes_per_runner < 0 or (prefill_chunk_size is not None and prefill_chunk_size <= 0):
+        raise ValueError("scratch floor must be nonnegative and chunk size positive")
 
     def admission(context):
+        scratch = scratch_bytes_per_runner
+        if prefill_chunk_size is not None:
+            mandatory = sum(qwen4_exp_scratch_breakdown(
+                residency.config, context_tokens=context,
+                prefill_chunk_size=prefill_chunk_size).values())
+            scratch = max(scratch, mandatory)
         plan = plan_qwen4_exp_memory_admission(
             residency,available_device_bytes=available_device_bytes,
             context_tokens=context,resident_capacity=resident_capacity,
-            scratch_bytes=scratch_bytes_per_runner*resident_capacity,reserve_bytes=reserve_bytes)
+            scratch_bytes=scratch*resident_capacity,reserve_bytes=reserve_bytes)
         # The logical memory planner omits the runner's physical 256-token KV page tail.
         kv = ((context+255)//256*256)*residency.config.bf16_kv_bytes_per_token*resident_capacity
         return replace(plan,kv_bytes=kv,required_bytes=plan.required_bytes+kv-plan.kv_bytes)
