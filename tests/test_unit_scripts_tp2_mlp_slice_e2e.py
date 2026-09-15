@@ -181,3 +181,14 @@ def test_the_two_gpu_slice_matches_the_oracle_and_the_teacher(mod) -> None:
     # truth - the slice does not lose accuracy relative to the unsharded path.
     assert stages["tp2_sum_vs_tp1_teacher"]["mean_rel_err"] < 5e-3
     assert stages["tp1_teacher_vs_truth"]["mean_rel_err"] < 5e-3
+
+    # The fused candidate runs at the shard shape and is bit-exact with the
+    # unfused baseline on both ranks; it stays a candidate - the policy table
+    # is not touched by this run.
+    fused = report["fused_candidate"]
+    assert fused["policy_admitted"] is False
+    assert fused["shape"] == [1, report["hidden_size"], report["per_rank_ffn"]]
+    assert fused["sum_vs_unfused_sum"]["max_abs_err"] == 0.0
+    for rank in fused["per_rank"]:
+        assert rank["activated_vs_unfused"]["max_abs_err"] == 0.0
+        assert rank["down_partial_vs_unfused"]["max_abs_err"] == 0.0
