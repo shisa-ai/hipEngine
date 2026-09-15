@@ -227,6 +227,20 @@ def test_the_two_gpu_slice_matches_the_oracle_and_the_teacher(mod) -> None:
     # The exchange delivered the same reduced vector to every rank.
     for verified in report["reduction"]["exchange"]["verified_ranks"]:
         assert verified["h2d_roundtrip_max_abs"] == 0.0
+    # The measured walls and the exchange profile are present with the fields
+    # the transport decision needs; no timing gate here, walls vary by run.
+    walls = report["segment_walls"]
+    assert walls["tp1"]["step_us_p50"] > 0
+    assert walls["tp2_unfused"]["step_us_p50"] > 0
+    assert walls["tp2_fused"] is not None and walls["tp2_fused"]["step_us_p50"] > 0
+    profile = report["reduction"]["exchange_profile"]
+    assert profile["gather_p50_us"] > 0
+    assert profile["full_p50_us"] > profile["gather_p50_us"], (
+        "the return path must cost something; a profile showing otherwise is mislabelled"
+    )
+    assert profile["return_path_us_p50"] == (
+        profile["full_p50_us"] - profile["gather_p50_us"]
+    )
     # The residual/next-consumer boundary matches TP1 at f32 noise and stays
     # inside the bf16 activation envelope against the f64 truth.
     assert stages["boundary_next_hidden_tp2_vs_tp1"]["max_abs_err"] < 1e-7

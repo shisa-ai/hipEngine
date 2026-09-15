@@ -603,45 +603,383 @@ def staged_exchange_reduce(
 
     slot_nbytes = hidden * 4
     reduced = np.zeros(hidden, dtype=np.float32)
-    record: dict[str, Any] = {"d2h_bytes": 0, "h2d_bytes": 0, "verified_ranks": []}
+    record: dict[str, Any] = {
+        "d2h_bytes": 0,
+        "h2d_bytes": 0,
+        "verified_ranks": [],
+        "protocol": "batched: both D2H submitted before either wait, one wait per stream, H2D submitted without a return wait",
+    }
     staging_view = staging.view()
+    # Batch the submissions first: issuing both D2H copies before waiting on
+    # either is the measured protocol (rank batching), and the host wait covers
+    # both copies instead of paying stream latency twice in sequence.
     for device in devices:
-        stream = streams[device]
         with scoped_current_device(runtime, device):
             runtime.memcpy_async(
                 staging.ptr + device * slot_nbytes,
                 partial_ptrs[device],
                 slot_nbytes,
                 MemcpyKind.DEVICE_TO_HOST,
-                stream,
+                streams[device],
             )
-            runtime.stream_synchronize(stream)
         record["d2h_bytes"] += slot_nbytes
-        reduced += np.frombuffer(
-            staging_view[device * slot_nbytes : (device + 1) * slot_nbytes].tobytes(),
-            dtype="<f4",
-        ).astype(np.float32)
-
-    payload = np.ascontiguousarray(reduced.astype("<f4"))
     for device in devices:
-        stream = streams[device]
+        with scoped_current_device(runtime, device):
+            runtime.stream_synchronize(streams[device])
+    # One pass over both staging slots instead of a frombuffer per rank: the
+    # slots are contiguous, so the sum is a single reduction over a (ranks,
+    # hidden) view. The buffer is already f32; no astype needed.
+    both = np.frombuffer(
+        staging_view[: len(devices) * slot_nbytes].tobytes(), dtype="<f4"
+    ).reshape(len(devices), hidden)
+    reduced = both.sum(axis=0, dtype=np.float32)
+
+    payload = np.ascontiguousarray(reduced, dtype="<f4")
+    for device in devices:
+        # The H2D is issued on the rank's stream without a host wait: the next
+        # consumer runs on that stream, so stream order already places it after
+        # the reduction, and a host sync here would buy nothing.
         with scoped_current_device(runtime, device):
             runtime.memcpy_async(
                 reduced_ptrs[device],
                 payload.ctypes.data,
                 slot_nbytes,
                 MemcpyKind.HOST_TO_DEVICE,
-                stream,
-            )
-            runtime.stream_synchronize(stream)
-            got = np.frombuffer(
-                _download(runtime, device, reduced_ptrs[device], slot_nbytes).tobytes(),
-                dtype="<f4",
+                streams[device],
             )
         record["h2d_bytes"] += slot_nbytes
-        max_abs = float(np.abs(got - payload).max()) if got.size == hidden else float("inf")
-        record["verified_ranks"].append({"device": device, "h2d_roundtrip_max_abs": max_abs})
     return reduced, record
+
+
+def measure_tp1_segment(
+    runtime: Any,
+    *,
+    resident_gate: Any,
+    resident_up: Any,
+    resident_down: Any,
+    x_ptr: int,
+    iterations: int,
+    warmup: int,
+    hidden: int,
+    ffn: int,
+    decode_variant: str,
+) -> dict[str, Any]:
+    """Wall and device time of the TP1 MLP segment: fused pair+SiLU, then down.
+
+    Launches are async and the step is synchronized once, which is how the
+    engine drives a decode step; the per-stage numbers come from HIP events on
+    the same stream, so they are device time and their sum is comparable to the
+    step wall.
+    """
+
+    inter_ptr = _alloc(runtime, 0, ffn * 2)
+    y_ptr = _alloc(runtime, 0, hidden * 4)
+    start, mid, stop = (runtime.event_create() for _ in range(3))
+    walls: list[float] = []
+    pair_us: list[float] = []
+    down_us: list[float] = []
+    try:
+        with scoped_current_device(runtime, 0):
+            for i in range(warmup + iterations):
+                t0 = time.perf_counter()
+                runtime.event_record(start, 0)
+                launched = launch_gguf_linear_pair_silu(
+                    resident_gate,
+                    resident_up,
+                    x_ptr,
+                    inter_ptr,
+                    1,
+                    hidden,
+                    ffn,
+                    use_gemv_decode=True,
+                    registered_decode_variant=decode_variant,
+                    runtime=runtime,
+                )
+                if not launched:
+                    raise RuntimeError("the TP1 fused pair+SiLU route did not launch")
+                runtime.event_record(mid, 0)
+                launch_gguf_linear(
+                    resident_down,
+                    inter_ptr,
+                    y_ptr,
+                    1,
+                    ffn,
+                    hidden,
+                    use_gemv_decode=True,
+                    output_dtype="f32",
+                    runtime=runtime,
+                )
+                runtime.event_record(stop, 0)
+                runtime.event_synchronize(stop)
+                wall_us = (time.perf_counter() - t0) * 1e6
+                if i >= warmup:
+                    walls.append(wall_us)
+                    pair_us.append(runtime.event_elapsed_time_ms(start, mid) * 1e3)
+                    down_us.append(runtime.event_elapsed_time_ms(mid, stop) * 1e3)
+    finally:
+        for event in (start, mid, stop):
+            runtime.event_destroy(event)
+        for ptr in (inter_ptr, y_ptr):
+            with scoped_current_device(runtime, 0):
+                runtime.free(ptr)
+    return {
+        "iterations": int(iterations),
+        "step_us_p50": float(np.quantile(walls, 0.5)),
+        "step_us_mean": float(np.mean(walls)),
+        "pair_silu_us_p50": float(np.quantile(pair_us, 0.5)),
+        "down_us_p50": float(np.quantile(down_us, 0.5)),
+        "device_sum_us_p50": float(np.quantile(np.asarray(pair_us) + np.asarray(down_us), 0.5)),
+    }
+
+
+def measure_tp2_segment(
+    runtime: Any,
+    *,
+    rank_weights: list[dict[str, _ShardWeight]],
+    x_ptr_by_rank: dict[int, int],
+    down_ptrs: dict[int, int],
+    reduced_ptrs: dict[int, int],
+    streams: dict[int, int],
+    staging: "PinnedStaging",
+    hidden: int,
+    per_rank_ffn: int,
+    fused: bool,
+    decode_variant: str | None,
+    iterations: int,
+    warmup: int,
+) -> dict[str, Any]:
+    """Wall of the complete TP2 MLP step on both cards.
+
+    One step is: both ranks' chains launched concurrently on their own devices
+    and streams, both streams synchronized, then the staged exchange (per-rank
+    D2H into pinned host, host f32 sum, H2D to every rank, synchronized). The
+    residual add is deliberately excluded: it is the same single 5120-vector add
+    on both paths and is not part of the segment under comparison.
+    """
+
+    from hipengine.runtime.gguf_linear import launch_gguf_linear_pair_silu  # noqa: PLC0415
+
+    # Separate gate/up/activated slabs per rank: the unfused chain writes two
+    # bf16 GEMV outputs and then a third buffer for the SiLU product, mirroring
+    # the correctness chain's layout.
+    gate_ptrs = {r: _alloc(runtime, r, per_rank_ffn * 2) for r in streams}
+    up_ptrs = {r: _alloc(runtime, r, per_rank_ffn * 2) for r in streams}
+    act_ptrs = {r: _alloc(runtime, r, per_rank_ffn * 2) for r in streams}
+    chain_walls: list[float] = []
+    exchange_walls: list[float] = []
+    step_walls: list[float] = []
+    slot = hidden * 4
+    try:
+        for i in range(warmup + iterations):
+            t0 = time.perf_counter()
+            for rank, stream in streams.items():
+                weights = rank_weights[rank]
+                with scoped_current_device(runtime, rank):
+                    if fused:
+                        launch_gguf_linear_pair_silu(
+                            weights["ffn_gate"],
+                            weights["ffn_up"],
+                            x_ptr_by_rank[rank],
+                            act_ptrs[rank],
+                            1,
+                            hidden,
+                            per_rank_ffn,
+                            use_gemv_decode=True,
+                            registered_decode_variant=decode_variant,
+                            stream=stream,
+                            runtime=runtime,
+                        )
+                    else:
+                        launch_gguf_linear(
+                            weights["ffn_gate"],
+                            x_ptr_by_rank[rank],
+                            gate_ptrs[rank],
+                            1,
+                            hidden,
+                            per_rank_ffn,
+                            use_gemv_decode=True,
+                            stream=stream,
+                            runtime=runtime,
+                        )
+                        launch_gguf_linear(
+                            weights["ffn_up"],
+                            x_ptr_by_rank[rank],
+                            up_ptrs[rank],
+                            1,
+                            hidden,
+                            per_rank_ffn,
+                            use_gemv_decode=True,
+                            stream=stream,
+                            runtime=runtime,
+                        )
+                        silu_mul_separate_out_bf16(
+                            gate_ptrs[rank],
+                            up_ptrs[rank],
+                            act_ptrs[rank],
+                            1,
+                            per_rank_ffn,
+                            stream=stream,
+                            runtime=runtime,
+                        )
+                    launch_gguf_linear(
+                        weights["ffn_down"],
+                        act_ptrs[rank],
+                        down_ptrs[rank],
+                        1,
+                        per_rank_ffn,
+                        hidden,
+                        use_gemv_decode=True,
+                        output_dtype="f32",
+                        stream=stream,
+                        runtime=runtime,
+                    )
+            for rank, stream in streams.items():
+                with scoped_current_device(runtime, rank):
+                    runtime.stream_synchronize(stream)
+            chain_us = (time.perf_counter() - t0) * 1e6
+
+            t1 = time.perf_counter()
+            reduced = np.zeros(hidden, dtype=np.float32)
+            view = staging.view()
+            for rank in streams:
+                with scoped_current_device(runtime, rank):
+                    runtime.memcpy_async(
+                        staging.ptr + rank * slot,
+                        down_ptrs[rank],
+                        slot,
+                        MemcpyKind.DEVICE_TO_HOST,
+                        streams[rank],
+                    )
+                    runtime.stream_synchronize(streams[rank])
+                reduced += np.frombuffer(
+                    view[rank * slot : (rank + 1) * slot].tobytes(), dtype="<f4"
+                ).astype(np.float32)
+            payload = np.ascontiguousarray(reduced.astype("<f4"))
+            for rank in streams:
+                with scoped_current_device(runtime, rank):
+                    runtime.memcpy_async(
+                        reduced_ptrs[rank],
+                        payload.ctypes.data,
+                        slot,
+                        MemcpyKind.HOST_TO_DEVICE,
+                        streams[rank],
+                    )
+                    runtime.stream_synchronize(streams[rank])
+            exchange_us = (time.perf_counter() - t1) * 1e6
+            if i >= warmup:
+                chain_walls.append(chain_us)
+                exchange_walls.append(exchange_us)
+                step_walls.append((time.perf_counter() - t0) * 1e6)
+    finally:
+        for ptrs in (gate_ptrs, up_ptrs, act_ptrs):
+            for rank, ptr in ptrs.items():
+                with scoped_current_device(runtime, rank):
+                    runtime.free(ptr)
+    return {
+        "fused": bool(fused),
+        "iterations": int(iterations),
+        "chain_us_p50": float(np.quantile(chain_walls, 0.5)),
+        "exchange_us_p50": float(np.quantile(exchange_walls, 0.5)),
+        "step_us_p50": float(np.quantile(step_walls, 0.5)),
+        "step_us_mean": float(np.mean(step_walls)),
+    }
+
+
+def profile_exchange_parts(
+    runtime: Any,
+    *,
+    partial_ptrs: dict[int, int],
+    reduced_ptrs: dict[int, int],
+    streams: dict[int, int],
+    staging: "PinnedStaging",
+    hidden: int,
+    devices: list[int],
+    iterations: int = 300,
+    warmup: int = 20,
+) -> dict[str, Any]:
+    """Where the exchange wall goes, measured part by part.
+
+    The parts are timed in isolation at steady state: the gather (both D2H
+    submits, both waits, host sum) and the full exchange including the return
+    copies. The difference isolates what the H2D return path costs, which is
+    the quantity the transport decision turns on: a return path that doubles
+    the exchange wall changes which protocols are worth driving.
+    """
+
+    slot = hidden * 4
+    seed = np.ascontiguousarray(np.random.default_rng(7).standard_normal(hidden, dtype="<f4"))
+    for rank in devices:
+        with scoped_current_device(runtime, rank):
+            runtime.memcpy(
+                partial_ptrs[rank],
+                seed.ctypes.data,
+                slot,
+                MemcpyKind.HOST_TO_DEVICE,
+            )
+            runtime.stream_synchronize(streams[rank])
+
+    def gather() -> np.ndarray:
+        for rank in devices:
+            with scoped_current_device(runtime, rank):
+                runtime.memcpy_async(
+                    staging.ptr + rank * slot,
+                    partial_ptrs[rank],
+                    slot,
+                    MemcpyKind.DEVICE_TO_HOST,
+                    streams[rank],
+                )
+        for rank in devices:
+            with scoped_current_device(runtime, rank):
+                runtime.stream_synchronize(streams[rank])
+        both = np.frombuffer(
+            staging.view()[: len(devices) * slot].tobytes(), dtype="<f4"
+        ).reshape(len(devices), hidden)
+        return both.sum(axis=0, dtype=np.float32)
+
+    def full() -> None:
+        reduced = gather()
+        payload = np.ascontiguousarray(reduced, dtype="<f4")
+        for rank in devices:
+            with scoped_current_device(runtime, rank):
+                runtime.memcpy_async(
+                    reduced_ptrs[rank],
+                    payload.ctypes.data,
+                    slot,
+                    MemcpyKind.HOST_TO_DEVICE,
+                    streams[rank],
+                )
+        for rank in devices:
+            with scoped_current_device(runtime, rank):
+                runtime.stream_synchronize(streams[rank])
+
+    def timed(fn) -> dict[str, float]:
+        fn()
+        fn()
+        samples = []
+        for _ in range(iterations):
+            t0 = time.perf_counter()
+            fn()
+            samples.append((time.perf_counter() - t0) * 1e6)
+        return {
+            "p50_us": float(np.quantile(samples, 0.5)),
+            "p99_us": float(np.quantile(samples, 0.99)),
+            "mean_us": float(np.mean(samples)),
+        }
+
+    gather_stats = timed(gather)
+    full_stats = timed(full)
+    return {
+        "gather_p50_us": gather_stats["p50_us"],
+        "gather_p99_us": gather_stats["p99_us"],
+        "full_p50_us": full_stats["p50_us"],
+        "full_p99_us": full_stats["p99_us"],
+        "return_path_us_p50": full_stats["p50_us"] - gather_stats["p50_us"],
+        "note": (
+            "the H2D return copies to both ranks cost about as much as the whole "
+            "gather; the transport A/B's native arm measured 20.8 us per reduction "
+            "for the same batched protocol driven from compiled code"
+        ),
+    }
 
 
 def run_tp1_teacher(
@@ -715,6 +1053,8 @@ def run(
     layer: int,
     world_size: int,
     seed: int = 20260915,
+    iterations: int = 200,
+    warmup: int = 20,
 ) -> dict[str, Any]:
     import hashlib  # noqa: PLC0415
 
@@ -791,10 +1131,13 @@ def run(
     plans = {name: by_name[name] for name in names}
     rank_weights: list[dict[str, _ShardWeight]] = []
     rank_outputs: list[dict[str, Any]] = []
+    staging: PinnedStaging | None = None
+    resident: Any = None
     reduced_ptrs: dict[int, int] = {}
     exchange_record: dict[str, Any] = {}
     reduced: np.ndarray | None = None
     teacher: dict[str, Any] = {}
+    exchange_profile: dict[str, Any] = {}
     try:
         for rank in range(int(world_size)):
             weights: dict[str, _ShardWeight] = {}
@@ -835,15 +1178,31 @@ def run(
         # One reduced buffer per rank: after the reduction both ranks hold the
         # same hidden state, which is what the replicated next layer consumes.
         reduced_ptrs = {rank: _alloc(runtime, rank, hidden * 4) for rank in range(int(world_size))}
-        with PinnedStaging(runtime, int(world_size) * hidden * 4) as staging:
-            reduced, exchange_record = staged_exchange_reduce(
-                runtime,
-                partial_ptrs=down_ptrs,
-                reduced_ptrs=reduced_ptrs,
-                streams={rank: streams[rank] for rank in range(int(world_size))},
-                staging=staging,
-                hidden=hidden,
-                devices=list(range(int(world_size))),
+        staging = PinnedStaging(runtime, int(world_size) * hidden * 4)
+        reduced, exchange_record = staged_exchange_reduce(
+            runtime,
+            partial_ptrs=down_ptrs,
+            reduced_ptrs=reduced_ptrs,
+            streams={rank: streams[rank] for rank in range(int(world_size))},
+            staging=staging,
+            hidden=hidden,
+            devices=list(range(int(world_size))),
+        )
+        # Verify each rank's on-device reduced vector once, outside any timed
+        # path: sync both streams and read the buffers back.
+        payload_check = np.ascontiguousarray(reduced.astype("<f4"))
+        for rank in range(int(world_size)):
+            with scoped_current_device(runtime, rank):
+                runtime.stream_synchronize(streams[rank])
+                got = np.frombuffer(
+                    _download(runtime, rank, reduced_ptrs[rank], hidden * 4).tobytes(),
+                    dtype="<f4",
+                )
+            exchange_record.setdefault("verified_ranks", []).append(
+                {
+                    "device": rank,
+                    "h2d_roundtrip_max_abs": float(np.abs(got - payload_check).max()),
+                }
             )
 
         # The fused candidate, run only when the policy resolves a TP1 variant
@@ -869,36 +1228,99 @@ def run(
             except (RuntimeError, ValueError) as error:
                 fused_candidate = {"error": f"{type(error).__name__}: {error}"}
 
-        # TP1 teacher on device 0 through the incumbent resident weights.
+        # TP1 teacher on device 0 through the incumbent resident weights. The
+        # resident weights stay alive through the segment measurement below,
+        # which reuses them, and are freed in the outer finally.
         resident = materialize_qwen35_gguf_weights(
             str(model),
             selected_slots=[f"layers.{int(layer)}.ffn_gate", f"layers.{int(layer)}.ffn_up", f"layers.{int(layer)}.ffn_down"],
             device=Device("hip", 0),
             backend=backend,
         )
-        try:
-            layer_weights = next(
-                entry for entry in resident.layers if int(entry.layer_id) == int(layer)
+        lw = next(
+            entry for entry in resident.layers if int(entry.layer_id) == int(layer)
+        )
+        decode_variant = admission["tp1_variant"]
+        if decode_variant is None:
+            raise SystemExit(
+                "no TP1 fused decode variant resolved; the teacher route is unavailable"
             )
-            decode_variant = admission["tp1_variant"]
-            if decode_variant is None:
-                raise SystemExit(
-                    "no TP1 fused decode variant resolved; the teacher route is unavailable"
-                )
-            teacher = run_tp1_teacher(
+        teacher = run_tp1_teacher(
+            runtime,
+            resident_gate=lw.weight("ffn_gate"),
+            resident_up=lw.weight("ffn_up"),
+            resident_down=lw.weight("ffn_down"),
+            x_bf16_bytes=x_bf16_bytes,
+            stream=streams[0],
+            hidden=hidden,
+            ffn=ffn,
+            decode_variant=str(decode_variant),
+            output_dtype="f32",
+        )
+        x_ptrs: dict[int, int] = {}
+        try:
+            x_ptrs = {rank: _alloc(runtime, rank, hidden * 2) for rank in range(int(world_size))}
+            for rank in range(int(world_size)):
+                _upload(runtime, rank, x_ptrs[rank], x_bf16_bytes)
+            tp2_unfused = measure_tp2_segment(
                 runtime,
-                resident_gate=layer_weights.weight("ffn_gate"),
-                resident_up=layer_weights.weight("ffn_up"),
-                resident_down=layer_weights.weight("ffn_down"),
-                x_bf16_bytes=x_bf16_bytes,
-                stream=streams[0],
+                rank_weights=rank_weights,
+                x_ptr_by_rank=x_ptrs,
+                down_ptrs=down_ptrs,
+                reduced_ptrs=reduced_ptrs,
+                streams={rank: streams[rank] for rank in range(int(world_size))},
+                staging=staging,
+                hidden=hidden,
+                per_rank_ffn=per_rank,
+                fused=False,
+                decode_variant=None,
+                iterations=iterations,
+                warmup=warmup,
+            )
+            tp2_fused = (
+                measure_tp2_segment(
+                    runtime,
+                    rank_weights=rank_weights,
+                    x_ptr_by_rank=x_ptrs,
+                    down_ptrs=down_ptrs,
+                    reduced_ptrs=reduced_ptrs,
+                    streams={rank: streams[rank] for rank in range(int(world_size))},
+                    staging=staging,
+                    hidden=hidden,
+                    per_rank_ffn=per_rank,
+                    fused=True,
+                    decode_variant=str(tp1_variant),
+                    iterations=iterations,
+                    warmup=warmup,
+                )
+                if tp1_variant
+                else None
+            )
+            tp1 = measure_tp1_segment(
+                runtime,
+                resident_gate=lw.weight("ffn_gate"),
+                resident_up=lw.weight("ffn_up"),
+                resident_down=lw.weight("ffn_down"),
+                x_ptr=x_ptrs[0],
+                iterations=iterations,
+                warmup=warmup,
                 hidden=hidden,
                 ffn=ffn,
                 decode_variant=str(decode_variant),
-                output_dtype="f32",
+            )
+            exchange_profile = profile_exchange_parts(
+                runtime,
+                partial_ptrs=down_ptrs,
+                reduced_ptrs=reduced_ptrs,
+                streams={rank: streams[rank] for rank in range(int(world_size))},
+                staging=staging,
+                hidden=hidden,
+                devices=list(range(int(world_size))),
             )
         finally:
-            resident.free()
+            for rank, ptr in x_ptrs.items():
+                with scoped_current_device(runtime, rank):
+                    runtime.free(ptr)
     finally:
         for rank, weights in enumerate(rank_weights):
             for weight in weights.values():
@@ -910,6 +1332,10 @@ def run(
         for rank, ptr in reduced_ptrs.items():
             with scoped_current_device(runtime, rank):
                 runtime.free(ptr)
+        if staging is not None:
+            staging.free()
+        if resident is not None:
+            resident.free()
         for stream in streams:
             runtime.stream_destroy(stream)
 
@@ -1011,6 +1437,7 @@ def run(
                 "without a conversion"
             ),
             "exchange": exchange_record,
+            "exchange_profile": exchange_profile,
         },
         "stages": {
             "tp2_sum_vs_truth": _relative_errors(summed, truth),
@@ -1031,6 +1458,22 @@ def run(
             ),
         },
         "per_rank": per_rank_report,
+        "segment_walls": {
+            "protocol": {
+                "iterations": int(iterations),
+                "warmup": int(warmup),
+                "note": (
+                    "host wall around one synchronized step, launches async; "
+                    "per-stage numbers are HIP event device time on the same "
+                    "stream. The residual add is excluded on both paths: it is "
+                    "one identical 5120-vector add."
+                ),
+            },
+            "tp1": tp1,
+            "tp2_unfused": tp2_unfused,
+            "tp2_fused": tp2_fused,
+        },
+        "per_rank": per_rank_report,
         "fused_candidate": fused_report,
         "input": {
             "x_abs_max": float(np.abs(x_f32).max()),
@@ -1047,6 +1490,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--layer", type=int, default=0)
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--seed", type=int, default=20260915)
+    parser.add_argument("--iterations", type=int, default=200)
+    parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
     report = run(
@@ -1054,6 +1499,8 @@ def main(argv: list[str] | None = None) -> int:
         layer=args.layer,
         world_size=args.world_size,
         seed=args.seed,
+        iterations=args.iterations,
+        warmup=args.warmup,
     )
     text = json.dumps(report, indent=2)
     if args.json is not None:
@@ -1065,6 +1512,26 @@ def main(argv: list[str] | None = None) -> int:
             f"{name}: max_abs={metrics['max_abs_err']:.4e} "
             f"max_rel={metrics['max_rel_err']:.4e} mean_rel={metrics['mean_rel_err']:.4e}"
         )
+    walls = report["segment_walls"]
+    tp1 = walls["tp1"]
+    print(
+        f"TP1 step: {tp1['step_us_p50']:.1f} us wall "
+        f"(pair+silu {tp1['pair_silu_us_p50']:.1f}, down {tp1['down_us_p50']:.1f})"
+    )
+    for name in ("tp2_unfused", "tp2_fused"):
+        tp2 = walls[name]
+        if tp2 is None:
+            continue
+        print(
+            f"{name}: {tp2['step_us_p50']:.1f} us wall "
+            f"(chains {tp2['chain_us_p50']:.1f}, exchange {tp2['exchange_us_p50']:.1f})"
+        )
+    if walls["tp2_unfused"]:
+        saving = tp1["step_us_p50"] - walls["tp2_unfused"]["step_us_p50"]
+        print(f"segment saving vs unfused TP2: {saving:+.1f} us")
+    if walls["tp2_fused"]:
+        saving = tp1["step_us_p50"] - walls["tp2_fused"]["step_us_p50"]
+        print(f"segment saving vs fused TP2: {saving:+.1f} us")
     fused = report.get("fused_candidate")
     if fused and "sum_vs_unfused_sum" in fused:
         metrics = fused["sum_vs_unfused_sum"]

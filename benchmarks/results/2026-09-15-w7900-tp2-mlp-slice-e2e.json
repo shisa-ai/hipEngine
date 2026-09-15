@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-slice-e2e",
-  "generated_at": "2026-09-15T05:22:21Z",
+  "generated_at": "2026-09-15T05:27:20Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "layer": 0,
   "world_size": 2,
@@ -94,7 +94,16 @@
           "device": 1,
           "h2d_roundtrip_max_abs": 0.0
         }
-      ]
+      ],
+      "protocol": "batched: both D2H submitted before either wait, one wait per stream, H2D submitted without a return wait"
+    },
+    "exchange_profile": {
+      "gather_p50_us": 28.565991669893265,
+      "gather_p99_us": 35.19056364893909,
+      "full_p50_us": 57.61021748185158,
+      "full_p99_us": 117.25816875696172,
+      "return_path_us_p50": 29.044225811958313,
+      "note": "the H2D return copies to both ranks cost about as much as the whole gather; the transport A/B's native arm measured 20.8 us per reduction for the same batched protocol driven from compiled code"
     }
   },
   "stages": {
@@ -239,6 +248,37 @@
       "down_partial_max_abs": 7.651397027075291e-08
     }
   ],
+  "segment_walls": {
+    "protocol": {
+      "iterations": 200,
+      "warmup": 20,
+      "note": "host wall around one synchronized step, launches async; per-stage numbers are HIP event device time on the same stream. The residual add is excluded on both paths: it is one identical 5120-vector add."
+    },
+    "tp1": {
+      "iterations": 200,
+      "step_us_p50": 323.7687051296234,
+      "step_us_mean": 323.85796308517456,
+      "pair_silu_us_p50": 175.50499737262726,
+      "down_us_p50": 130.0400048494339,
+      "device_sum_us_p50": 305.5820018053055
+    },
+    "tp2_unfused": {
+      "fused": false,
+      "iterations": 200,
+      "chain_us_p50": 307.24331736564636,
+      "exchange_us_p50": 90.65074846148491,
+      "step_us_p50": 401.5844315290451,
+      "step_us_mean": 414.31999299675226
+    },
+    "tp2_fused": {
+      "fused": true,
+      "iterations": 200,
+      "chain_us_p50": 246.9019964337349,
+      "exchange_us_p50": 85.1810909807682,
+      "step_us_p50": 335.6039524078369,
+      "step_us_mean": 343.06489396840334
+    }
+  },
   "fused_candidate": {
     "decode_variant": "dense_dual_local32_bf16_bf16_out",
     "shape": [
