@@ -311,20 +311,28 @@ Status on the frozen fixtures: the two-speaker prompt is built correctly — 70 
 logits within 0.012 of the oracle with a matching argmax. The 59-token greedy
 chain is **not yet exact**. The first 31 tokens match and the divergence is the
 32nd, the first span's end, where the oracle emits `speech_end` and this session
-emits another `speech_diffusion` (top-2 gap 9 logits, so not a near tie). It is
-localized to the prompt rows rather than the LM or the diffusion head: the
-head reproduces the oracle's own per-call latents to 0.036 and the LM reproduces
-the oracle's prefill hidden to 0.05 given the oracle's own connected rows, while
-the 208-frame voice's connected rows are 0.206 off because the encoder's bf16
-drift on that voice is amplified by the connector. One open question remains:
-the first diffusion call of this request is a chaotic trajectory (see
-"Trajectory sensitivity in the frozen fixtures"), so the feedback embedding that
-feeds the LM may itself be reproducible only to that band, which would make the
-span end inherently unreproducible rather than fixable by accuracy work.
-`test_two_speaker_prompt_rows_match_reference` and
-`test_two_speaker_prefill_logits_match_reference` gate the parts that do hold;
-`test_two_speaker_greedy_chain_matches_torch` is a strict xfail that fails
-loudly once the chain is exact.
+emits another `speech_diffusion` (top-2 gap 9 logits, so not a near tie).
+
+The fault is the diffusion **condition** — the prefill hidden at the step that
+produced each diffusion token — and nothing downstream of it. Injecting the
+oracle's recorded per-call condition while running this session's own 20-step
+solve, decoder, semantic feedback and LM makes the chain exact, at 59 tokens and
+55 diffusion calls. Blending the two conditions as
+`oracle + a * (ours - oracle)` keeps the chain exact up to `a = 0.25` and breaks
+it at `a = 0.5`, so the condition error has to fall by about 4x. It is inherited
+from the connected rows: the 208-frame voice's worst row is 0.206 off against
+0.06 for the 70-frame voice, because the encoder's bf16 drift on the longer
+reference is amplified by the connector. The first diffusion call of this
+request is also a chaotic trajectory (see "Trajectory sensitivity in the frozen
+fixtures"), which is why a systematic condition error is amplified far more than
+white noise of the same size; the chaos is not the binding constraint, though,
+since the chain is exact once the condition is right.
+
+`test_two_speaker_prompt_rows_match_reference`,
+`test_two_speaker_prefill_logits_match_reference` and
+`test_two_speaker_chain_is_exact_with_the_oracle_condition` gate the parts that
+do hold; `test_two_speaker_greedy_chain_matches_torch` is a strict xfail that
+fails loudly once the chain is exact.
 
 ## Initial API and scope
 
