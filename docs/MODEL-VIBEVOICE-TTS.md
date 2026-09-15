@@ -93,15 +93,34 @@ passed a production gate.
 | Fixture and layout helpers | `hipengine/loading/vibevoice_layout.py`, `hipengine/generation/vibevoice_protocol.py` | `f32_to_bf16_bits`, `conv_rows_out` and `transpose_conv_weight_t` are shared. `build_prompt`/`parse_transcript` are ASR-specific and do not apply. |
 | Test and harness patterns | `tests/test_gpu_vibevoice_qwen2_runner.py`, `scripts/vibevoice_q4_e2e_stage_breakdown.py` | The matched-request protocol, the negative-control pattern and synchronize-bracketed stage timing carry over. |
 
-Two surfaces are **not** reusable and must be built new: the acoustic waveform
-decoder (upsampling, chunk flush, sample accounting) and the diffusion head with
-its solver. Moonshine's text output and cross-attention loop cannot substitute
-for this design.
+What is **not** available to reuse: the diffusion head with its solver, and the
+language-model generation loop that drives text/speech transitions. Those exist
+only in the community fork and must be ported.
 
-- Load `speech_scaling_factor` and `speech_bias_factor` from the checkpoint.
-  The loop decodes `latent / scale - bias`; the acoustic feedback connector
-  receives the generated model-space latent. Missing/NaN scale values are a
-  loader error, not a reason to recompute training statistics at inference.
+The acoustic waveform decoder is a **correction to an earlier assumption in this
+document**: it is not new work. `transformers` 5.15.0 ships
+`VibeVoiceAcousticTokenizerModel` (and `...DecoderModel`) natively, with a
+streaming `forward(hidden_states, padding_cache, use_cache)` and
+`decoder_ratios [8, 5, 5, 4, 2, 2]` (x3200) and `vae_dim` 64, matching the
+checkpoint's `acoustic_tokenizer_config`. The port still has to reproduce chunk
+flush and sample accounting, but the reference topology can be used directly as
+the oracle instead of being reverse-engineered.
+
+Moonshine's text output and cross-attention loop cannot substitute for this
+design.
+
+- **`speech_scaling_factor` and `speech_bias_factor` are not in the checkpoint.**
+  Verified against `microsoft/VibeVoice-1.5B` at revision `c00898d25`: the config
+  has no such keys. The reference implementation registers them as buffers
+  initialized to `NaN`, then computes them on the first request from the
+  reference-audio latents: `scale = 1 / std(latents)`, `bias = -mean(latents)`.
+  The loop then encodes as `(latent + bias) * scale` and decodes as
+  `latent / scale - bias`. A `NaN` value is therefore the *designed* initial
+  state, not a loader error. Two consequences: an implementation that tries to
+  load them finds nothing, and because they are model buffers they are **cached
+  after the first request**, so a later request with a different reference voice
+  silently reuses the first request's scale unless they are reset. Per-request
+  ownership covers these two values, not only the RNG.
 - Each speech frame has an inner denoising loop. Do not increment KV position
   per solver step; advance the language model according to its control sequence.
 - Capture initial noise and scheduler state for fixtures. A seed alone does not
@@ -116,6 +135,53 @@ for this design.
   hour-long continuity.
 
 [Inference and scaling source][inference], [audio tokenizer source][tokenizers].
+
+## Oracle environment
+
+Measured on 2026-09-14; this is the environment milestone 1 must freeze.
+
+| Item | Value |
+| --- | --- |
+| Checkpoint | `microsoft/VibeVoice-1.5B` revision `c00898d257e6b46004e3e2866a47534085fb685a` |
+| Checkpoint size | 5.41 GB, 1204 tensors in 3 safetensors shards |
+| Parameters | **2704.0 M** in bf16. The "1.5B" label names the language-model scale; tokenizer, decoder and diffusion modules add the rest. |
+| Fork | `vibevoice-community/VibeVoice` revision `952326ddb264062466a888cf32a5b2f4e803e16e` |
+| `transformers` | **4.51.3, pinned.** See the collision note below. |
+| `tokenizers` | 0.21.4 (what 4.51.3 resolves) |
+| `huggingface-hub` | 0.36.2 (`<1.0`; 1.x is rejected by both 4.51.3 and `tokenizers` 0.21.4) |
+| `torch` | 2.13.0+rocm10.0.0, reused from the host, HIP available |
+| Lane | AMD Radeon 8060S (gfx1151). The W7900/gfx1100 lane is unverified for this model. |
+
+**Why 4.51.3 is pinned.** transformers 5.15.0 already registers model type
+`vibevoice_acoustic_tokenizer` (plus `_encoder`, `_decoder`, and `vibevoice_asr`),
+and `AutoModel.register` keys on the `model_type` string rather than the class.
+The fork declares the same `model_type`, so its registration at
+`modular_vibevoice_tokenizer.py:1188` aborts the import. Measured under 5.15.0:
+
+```
+ValueError: '<class 'vibevoice.modular.configuration_vibevoice.VibeVoiceAcousticTokenizerConfig'>'
+is already used by a Transformers model.
+```
+
+The same finding is what makes the acoustic decoder reusable: 5.15.0's native
+`VibeVoiceAcousticTokenizerModel` and the fork's model share a model type, i.e.
+the same architecture. What 5.15.0 does **not** have is any `vibevoice`
+`AutoModelForCausalLM` entry, so the diffusion head and the generation loop exist
+only in the fork.
+
+Working venv: `/home/lhl/venvs/vibevoice-tts-oracle`. Recreate it with
+`scripts/setup_vibevoice_tts_oracle_env.sh`. It is created with
+`--system-site-packages` so the host's ROCm torch is reused instead of
+reinstalled, then pinned. Resolved versions are recorded in
+`scripts/vibevoice_tts_oracle_requirements.txt`.
+
+The fork does not call `AutoConfig.register`, so `AutoConfig.from_pretrained`
+fails with `model type 'vibevoice'`. Use the fork's own classes:
+`VibeVoiceConfig.from_pretrained`, then
+`VibeVoiceForConditionalGenerationInference.from_pretrained`.
+
+Confirmed working: a single-speaker and a two-speaker script both produce
+non-empty PCM at 24 kHz through `VibeVoiceProcessor` + `model.generate(...)`.
 
 ## Initial API and scope
 
