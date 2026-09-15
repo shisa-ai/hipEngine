@@ -1,13 +1,24 @@
 # MODEL-VIBEVOICE-TTS.md — VibeVoice 1.5B TTS on hipEngine
 
-Status: **milestones 1 (frozen torch oracle), 2 (the acoustic decoder) and 3
-(the diffusion head + DPMSolver) closed 2026-09-15; the session runtime
-(connector + LM driving loop) is the next action.** The architecture
-review is unchanged and the API, benchmark protocol and closure criteria below
-are specified. The pinned
-oracle environment, fixtures and weight inventory are measured reference outputs
-from the community fork; nothing in `hipengine/` implements this model yet, so
-upstream architecture claims remain source review and no performance claim exists.
+Status: **milestones 1 (frozen torch oracle), 2 (the acoustic decoder),
+3 (the diffusion head + DPMSolver) and 4 (the torch-free generation session)
+closed 2026-09-15.** The session runs the generation loop on HIP without torch
+and reproduces the frozen oracle's 27-token constrained greedy chain exactly
+(25 diffusion frames, 25 decoded chunks) on the pinned single-speaker request.
+The API, benchmark protocol and closure criteria below are specified.
+
+The open work is integration correctness on the unassisted request path. The
+session benchmark replays recorded prompt embeddings and negative conditions, so
+it exercises neither reference-audio preparation nor the negative-LM branch, and
+the voice-prompt and negative-conditioning entry points are covered by
+reconstructed paths rather than called directly. Until one unassisted
+single-speaker request passes end to end, the timing numbers are diagnostic
+rather than retained performance claims.
+
+Every measurement in this document comes from an `AMD RYZEN AI MAX+ PRO 395
+w/ Radeon 8060S` (`gfx1151`) host, not the repository-default
+W7900/`gfx1100`. Upstream architecture claims that the fixtures do not cover
+are source review.
 
 This is the largest new runtime surface in this model group: a Qwen2 language
 model controls text/speech transitions, a diffusion head generates continuous
