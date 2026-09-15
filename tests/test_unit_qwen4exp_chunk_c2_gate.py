@@ -90,6 +90,42 @@ def test_c2_sequence_rejects_peer_dependent_state(monkeypatch):
         native.close()
 
 
+def test_deferred_inspection_preserves_interleaving_without_checkpoint_reads(monkeypatch):
+    native = pool(monkeypatch)
+    inspections = []
+
+    def counted(runner):
+        inspections.append(len(native.active_request_ids))
+        return capture(runner)
+
+    try:
+        result = gate.exercise(native, PROMPTS, capture_fn=counted, checkpoint_each=False)
+        assert [row["checkpoints"] for row in result["repeats"]] == [2, 2, 2]
+        assert len(inspections) == 27 + 6
+        assert set(inspections) == {1}
+    finally:
+        native.close()
+
+
+def test_deferred_inspection_rejects_bad_final_state(monkeypatch):
+    native = pool(monkeypatch)
+    calls = 0
+
+    def bad(runner):
+        nonlocal calls
+        calls += 1
+        result = capture(runner)
+        if calls > 27:
+            result["state"] = "corrupted"
+        return result
+
+    try:
+        with pytest.raises(ValueError, match="deferred c2 state"):
+            gate.exercise(native, PROMPTS, capture_fn=bad, checkpoint_each=False)
+    finally:
+        native.close()
+
+
 def test_disjoint_ranges_allows_adjacency_but_not_partial_overlap():
     assert gate.disjoint([(10, 20)], [(20, 30)])
     assert not gate.disjoint([(10, 20)], [(19, 30)])
