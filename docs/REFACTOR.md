@@ -14,7 +14,8 @@
 - Chunk4096 accounting is repaired by the chunk/context-derived mandatory
   footprint; native-c2 allocation matches the estimate with reserve unchanged.
   See `benchmarks/results/2026-09-15-chunk4096-accounting/`.
-  Chunk4096 numerical/task/state/performance gates remain before admission.
+  Chunk4096 canonical780-row numerics also pass exactly; full-payload
+  boundary, task, c2 inference and performance gates remain before admission.
 
 ## Non-GR Q8 Diagnostic Scope
 

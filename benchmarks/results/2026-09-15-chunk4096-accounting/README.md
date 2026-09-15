@@ -52,6 +52,22 @@ not inference throughput.
 generation or chunk4096 numerics, task quality, isolation or performance.
 Those inference experiments can proceed using this allocation evidence.
 
+## Canonical Numerical Gate
+
+Clean `4f3a3547e`, same host/model/BF16 configuration, strict chunk1024
+versus production chunk4096. All12 canonical512/1K/4K cases,64 shared-teacher
+decode transitions and three candidate repeats complete.
+
+All780 rows match strict logits exactly: zero KL, zero maximum logit
+difference and100% top1. Every numerical scope, repeatability, sampled
+recurrent-state/metadata check and zero-allocation teardown passes.
+All48 chunk traces match the declared sizes; at4K the candidate executes
+one4096-token call versus four1024-token reference calls.
+
+This is a bounded numerical pass, not a new default or speed claim.
+Full-payload boundary/reuse, active tasks, c2 inference and timing remain.
+Exact capture argv and manifests are in `artifact.json`.
+
 ## Reproduction
 
 Use the same cached-build ROCm environment recorded in the adjacent
