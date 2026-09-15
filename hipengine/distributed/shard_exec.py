@@ -98,9 +98,7 @@ class ShardWeight:
 
     def allocation(self, name: str | None = None) -> ShardWeightAllocation:
         if name is not None and name != self._allocation.name:
-            raise KeyError(
-                f"shard weight has allocation {self._allocation.name!r}, not {name!r}"
-            )
+            raise KeyError(f"shard weight has allocation {self._allocation.name!r}, not {name!r}")
         return self._allocation
 
 
@@ -139,6 +137,7 @@ class MlpShardRank:
         hidden: int,
         per_rank_ffn: int,
         partial_dtype: str = "f32",
+        mlp_decode_variant: str | None = None,
     ) -> None:
         if partial_dtype not in {"f32", "bf16"}:
             raise ValueError(
@@ -151,6 +150,15 @@ class MlpShardRank:
         self.per_rank_ffn = int(per_rank_ffn)
         self.partial_dtype = str(partial_dtype)
         self.partial_itemsize = 4 if partial_dtype == "f32" else 2
+        # The shape-qualified fused gate/up+SiLU variant the policy table
+        # resolves for this rank's shard shape, or None for the unfused
+        # chain. The policy lookup happens where the model identity lives
+        # (the session over the resident runner); the rank only executes
+        # what it is told and falls back to unfused when no variant
+        # resolves.
+        self.mlp_decode_variant = (
+            str(mlp_decode_variant) if mlp_decode_variant is not None else None
+        )
         self._closed = False
         self._weights: dict[str, ShardWeight] = dict(weights)
         for role in ("ffn_gate", "ffn_up", "ffn_down"):
@@ -174,9 +182,7 @@ class MlpShardRank:
         self._require_live()
         payload = np.ascontiguousarray(x_bf16_bytes, dtype=np.uint8).reshape(-1)
         if payload.size != self.hidden * 2:
-            raise ValueError(
-                f"input row is {payload.size} bytes, expected {self.hidden * 2}"
-            )
+            raise ValueError(f"input row is {payload.size} bytes, expected {self.hidden * 2}")
         from hipengine.core.memory import copy_host_to_device  # noqa: PLC0415
 
         copy_host_to_device(
@@ -212,7 +218,7 @@ class MlpShardRank:
     def forward_partial(
         self,
         *,
-        fused: bool = False,
+        fused: bool | None = None,
         fused_variant: str | None = None,
     ) -> int:
         """Enqueue this rank's MLP chain; return the down partial's device pointer.
@@ -222,11 +228,21 @@ class MlpShardRank:
         returned pointer is the producer for the cross-rank reduction. The
         partial's dtype is this rank's ``partial_dtype``: f32 where the
         layer's registered down consumer admits it, bf16 where it does not.
-        With ``fused`` the gate/up+SiLU candidate kernel runs at the shard
-        shape; it is a candidate route, not a production admission.
+
+        The gate/up+SiLU route: an explicitly passed ``fused`` wins; by
+        default the rank runs the fused pair when its construction-time
+        ``mlp_decode_variant`` resolved from the policy table, else the
+        unfused chain. With ``fused=True`` a variant is required - the
+        explicit-candidate path never guesses.
         """
 
         self._require_live()
+        if fused is None:
+            fused = self.mlp_decode_variant is not None
+        if fused and fused_variant is None:
+            fused_variant = self.mlp_decode_variant
+        if fused and fused_variant is None:
+            raise ValueError("the fused chain needs its registered variant name")
         runtime = self._runtime
         from hipengine.runtime.gguf_linear import (  # noqa: PLC0415
             launch_gguf_linear,
@@ -238,8 +254,6 @@ class MlpShardRank:
                     launch_gguf_linear_pair_silu,
                 )
 
-                if fused_variant is None:
-                    raise ValueError("the fused chain needs its registered variant name")
                 launched = launch_gguf_linear_pair_silu(
                     self._weights["ffn_gate"],
                     self._weights["ffn_up"],

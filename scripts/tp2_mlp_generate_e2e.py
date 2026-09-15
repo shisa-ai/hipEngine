@@ -207,6 +207,11 @@ def run_arm(
         "label": label,
         "mode": mode,
         "driver": driver if mode == "tp2" else None,
+        "mlp_decode_variant": (
+            session._shard_group.mlp_decode_variant
+            if mode == "tp2" and session._shard_group is not None
+            else None
+        ),
         "devices": list(devices),
         "device_names": _device_names(session),
         "memory_after_load": _device_memory(session),

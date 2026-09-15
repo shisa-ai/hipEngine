@@ -370,7 +370,13 @@ def _geometry_with(feed_forward_length: int):
 
 
 def test_the_fused_decode_route_is_shape_keyed(mod) -> None:
-    """The gap is admission, not the kernel: record both facts."""
+    """The TP2 shard shape is admitted by the same row that admits TP1's.
+
+    Promoted 2026-09-15: the fused pair+SiLU candidate at the shard shape
+    measured bit-identical to the unfused chain on both ranks with faster
+    device chains (benchmarks/results/2026-09-15-w7900-tp2-mlp-slice-e2e.json),
+    so the row now carries (1, 5120, 8704) under the gate the TP1 shape used.
+    """
 
     admission = mod.fused_path_admission(
         geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=Q4KM
@@ -384,14 +390,11 @@ def test_the_fused_decode_route_is_shape_keyed(mod) -> None:
     assert admission["tp1_key"] == [1, 5120, 17408]
     assert admission["tp1_admitted"] is True
     assert admission["tp1_variant"] == "dense_dual_local32_bf16_bf16_out"
-    # The shard's half-intermediate shape is not in this row.
+    # Both the full-width and shard shapes resolve to the same registered
+    # variant from this row; the launcher still validates the shape itself.
     assert admission["shard_key"] == [1, 5120, 8704]
-    assert admission["shard_admitted"] is False
-    assert admission["gap"] is not None
-    assert "inside the kernel's shape contract" in admission["gap"]
-    assert "qwen35/MOSTLY_Q4_K_M policy row" in admission["gap"]
-    # Both shapes are inside the kernel's contract, so the gap is purely
-    # admission: no kernel work and no shape work is required.
+    assert admission["shard_admitted"] is True
+    assert admission["gap"] is None
     assert admission["tp1_shape_error"] is None
     assert admission["shard_shape_error"] is None
     assert admission["partition"]["error"] is None
@@ -503,7 +506,9 @@ def test_the_probe_answers_the_admission_question_without_hip(monkeypatch) -> No
     admission = probe.fused_path_admission(
         geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name=Q4KM
     )
-    assert admission["shard_admitted"] is False
+    # Admitted 2026-09-15 under the TP1 row's gate; the purity guard is the
+    # point of this test, not the admission verdict.
+    assert admission["shard_admitted"] is True
     assert admission["shard_shape_error"] is None
 
 

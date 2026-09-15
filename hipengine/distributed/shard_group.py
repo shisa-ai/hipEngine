@@ -71,6 +71,7 @@ class MlpShardGroup:
         weights: Mapping[int, Mapping[int, Mapping[str, Any]]],
         staging_dtype: str = "f32",
         driver: str = "compiled",
+        mlp_decode_variant: str | None = None,
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
@@ -84,15 +85,16 @@ class MlpShardGroup:
         self.per_rank_ffn = int(per_rank_ffn)
         self._streams = {int(d): int(streams[d]) for d in self.devices}
         self._closed = False
+        self._mlp_decode_variant = (
+            str(mlp_decode_variant) if mlp_decode_variant is not None else None
+        )
         self.exchange_walls_s: list[float] = []
 
         self._ranks: dict[tuple[int, int], MlpShardRank] = {}
         for layer_id, per_device in weights.items():
             missing = [d for d in self.devices if int(d) not in per_device]
             if missing:
-                raise ShardGroupError(
-                    f"layer {layer_id} has no shard weights for ranks {missing}"
-                )
+                raise ShardGroupError(f"layer {layer_id} has no shard weights for ranks {missing}")
             for device in self.devices:
                 self._ranks[(int(layer_id), device)] = MlpShardRank(
                     runtime,
@@ -102,6 +104,7 @@ class MlpShardGroup:
                     hidden=hidden,
                     per_rank_ffn=per_rank_ffn,
                     partial_dtype=staging_dtype,
+                    mlp_decode_variant=mlp_decode_variant,
                 )
         if driver == "compiled":
             # The compiled host driver: the same batched protocol enqueued
@@ -144,6 +147,12 @@ class MlpShardGroup:
     def reductions(self) -> int:
         return self._transport.reductions
 
+    @property
+    def mlp_decode_variant(self) -> str | None:
+        """The fused gate/up+SiLU variant every rank resolves, or None."""
+
+        return self._mlp_decode_variant
+
     def output_ptr(self, device: int) -> int:
         """This rank's persistent bf16 MLP-output buffer."""
 
@@ -170,13 +179,9 @@ class MlpShardGroup:
         """
 
         self._require_live()
-        if int(layer_id) not in {
-            layer for layer, _device in self._ranks
-        }:
+        if int(layer_id) not in {layer for layer, _device in self._ranks}:
             raise ShardGroupError(f"the group has no layer {layer_id}")
-        layer_ranks = {
-            device: self._ranks[(int(layer_id), device)] for device in self.devices
-        }
+        layer_ranks = {device: self._ranks[(int(layer_id), device)] for device in self.devices}
         missing = [d for d in self.devices if int(d) not in inputs]
         if missing:
             raise ShardGroupError(f"no input given for ranks {missing}")
@@ -190,8 +195,7 @@ class MlpShardGroup:
             raise
         except Exception as error:  # noqa: BLE001 - fail the group, not the rank
             raise ShardGroupError(
-                f"layer {layer_id} shard chain failed: "
-                f"{type(error).__name__}: {error}"
+                f"layer {layer_id} shard chain failed: {type(error).__name__}: {error}"
             ) from error
 
         started = time.perf_counter()

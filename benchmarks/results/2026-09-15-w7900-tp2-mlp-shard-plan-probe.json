@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-shard-plan-probe",
-  "generated_at": "2026-09-15T03:15:34Z",
+  "generated_at": "2026-09-15T15:49:39Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_hash": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
   "layer": 0,
@@ -313,14 +313,6 @@
           ]
         }
       }
-    },
-    "device_resident_bytes_match_the_host_repack": {
-      "answer": true,
-      "evidence": "the resident tiles allocation read back from the device equals the host repack of the same source payload, through the incumbent materializer"
-    },
-    "rank_shard_is_a_sub_range_of_the_resident_weight": {
-      "answer": true,
-      "evidence": "each rank's repacked shard tiles equal the corresponding slice of the device-resident tiles on the axis its split moves"
     }
   },
   "reduction_point": {
@@ -351,89 +343,59 @@
     "selection_reason": "unresolved: the partial dtype must match the down projection's actual output dtype, and the incumbent down spec resolves to 'gguf_q6_k_t16_qmicro_planar_v1' with output 'bf16'. Choosing the payload before resolving that would compare a bf16 exchange against an f32 arithmetic chain. Resolve in the execution test."
   },
   "device_stage": {
-    "ran": true,
-    "slots": {
-      "blk.0.ffn_gate.weight": {
-        "layout": "gguf_q4_k_t16_v1",
-        "allocation": "tiles",
-        "device_nbytes": 51527680,
-        "host_repack_nbytes": 51527680,
-        "resident_matches_host_repack": true,
-        "ranks": {
-          "0": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "out_tiles[0:544]"
-          },
-          "1": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "out_tiles[544:1088]"
-          }
-        }
-      },
-      "blk.0.ffn_up.weight": {
-        "layout": "gguf_q4_k_t16_v1",
-        "allocation": "tiles",
-        "device_nbytes": 51527680,
-        "host_repack_nbytes": 51527680,
-        "resident_matches_host_repack": true,
-        "ranks": {
-          "0": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "out_tiles[0:544]"
-          },
-          "1": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "out_tiles[544:1088]"
-          }
-        }
-      },
-      "blk.0.ffn_down.weight": {
-        "layout": "gguf_q6_k_t16_qmicro_planar_v1",
-        "allocation": "tiles",
-        "device_nbytes": 73113600,
-        "host_repack_nbytes": 73113600,
-        "resident_matches_host_repack": true,
-        "ranks": {
-          "0": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "blocks[0:34]"
-          },
-          "1": {
-            "device_slice_equals_rank_payload": true,
-            "device_slice_compared": "blocks[34:68]"
-          }
-        }
-      }
-    },
-    "checked": true
+    "ran": false,
+    "note": "run with --device on a ROCm host to materialize through the incumbent path"
   },
   "fused_path_admission": {
     "route": "launch_gguf_linear_pair_silu -> _gguf_dense_pair_silu_decode_variant",
-    "lookup_key": "(rows, in_features, out_features)",
-    "shape_contract": "dense_t16_pair_decode_shape_error",
-    "tp1_key": [
-      1,
-      5120,
-      17408
-    ],
-    "tp1_variant": "dense_dual_local32_bf16_bf16_out",
-    "shard_key": [
-      1,
-      5120,
-      8704
-    ],
-    "admitted_shapes": [
+    "policy_identity": {
+      "architecture": "qwen35",
+      "file_type_name": "MOSTLY_Q4_K_M"
+    },
+    "policy_row_found": true,
+    "admitted_shapes_this_row": [
+      [
+        1,
+        5120,
+        8704
+      ],
       [
         1,
         5120,
         17408
       ]
     ],
+    "admitted_shapes_other_rows": [
+      [
+        1,
+        5120,
+        17408
+      ]
+    ],
+    "lookup_key": "(rows, in_features, out_features)",
+    "shape_contract": "dense_t16_pair_decode_shape_error",
+    "partition": {
+      "world_size": 2,
+      "intermediate": 17408,
+      "per_rank_intermediate": 8704,
+      "error": null
+    },
+    "tp1_key": [
+      1,
+      5120,
+      17408
+    ],
+    "tp1_variant": "dense_dual_local32_bf16_bf16_out",
     "tp1_admitted": true,
-    "shard_admitted": false,
+    "shard_key": [
+      1,
+      5120,
+      8704
+    ],
+    "shard_admitted": true,
     "tp1_shape_error": null,
     "shard_shape_error": null,
-    "gap": "the shard shape is inside the kernel's shape contract but absent from the policy table, so a shard segment would take the unfused chain (two GEMV launches plus a separate SiLU-multiply) unless the policy admits it"
+    "gap": null
   },
   "next": "measure complete TP1 and local-shard MLP segment walls on both cards, connect the shard outputs through the native exchange into the next consumer, and validate against the CPU split oracle and the TP1 teacher under the production numerical contract"
 }

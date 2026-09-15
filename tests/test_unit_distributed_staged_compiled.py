@@ -310,6 +310,109 @@ def test_an_unknown_driver_is_rejected(group_env) -> None:
         _group(rt, driver="rccl")
 
 
+def test_the_group_threads_the_mlp_variant_to_every_rank(group_env) -> None:
+    rt, _ = group_env
+    group = _group(rt, mlp_decode_variant="dense_dual_local32_bf16_bf16_out")
+    assert group.mlp_decode_variant == "dense_dual_local32_bf16_bf16_out"
+    assert all(
+        rank.mlp_decode_variant == "dense_dual_local32_bf16_bf16_out"
+        for rank in group._ranks.values()
+    )
+    group.close()
+
+
+def test_a_group_without_a_variant_leaves_ranks_unfused(group_env) -> None:
+    rt, _ = group_env
+    group = _group(rt)
+    assert group.mlp_decode_variant is None
+    assert all(rank.mlp_decode_variant is None for rank in group._ranks.values())
+    group.close()
+
+
+# -- the fused gate/up route ---------------------------------------------------
+
+
+def test_the_policy_row_admits_the_tp2_shard_shape() -> None:
+    """The qwen35/MOSTLY_Q4_K_M row admits the shard shape the slice probe
+    measured bit-identical and faster; the lookup is the same one the TP1
+    runner makes at full width."""
+
+    from hipengine.kernels.backends import backend_package_capability
+    from hipengine.kernels.hip_gfx1100 import QWEN35_DENSE_H5120_GEOMETRY
+    from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+        dense_t16_pair_decode_shape_error,
+    )
+
+    policies = backend_package_capability("hip_gfx1100", "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES", {})
+    row = policies[(QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M")]
+    assert row[(1, 5_120, 8_704)] == "dense_dual_local32_bf16_bf16_out"
+    assert (
+        dense_t16_pair_decode_shape_error(rows=1, in_features=5_120, out_features=8_704) is None
+    ), "the kernel's own shape contract must admit the admitted shape"
+
+
+# Reuse the staged/shard bundle's launch spy surface so the fused-route
+# assertions observe the same recorded launcher calls that bundle pins.
+from tests.test_unit_distributed_staged_and_shard import (  # noqa: E402
+    FakeHipRuntime,
+    _shard_weights,
+)
+
+from hipengine.distributed.shard_exec import MlpShardRank  # noqa: E402
+
+
+@pytest.fixture()
+def fused_rank_launchers(monkeypatch):
+    """Recording launchers (device, op, feature) standing in for HIP kernels."""
+
+    from tests.test_unit_distributed_staged_and_shard import _LaunchSpy
+
+    rt = FakeHipRuntime()
+    spy = _LaunchSpy(rt)
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    monkeypatch.setattr(gguf_linear, "launch_gguf_linear", spy.linear)
+    monkeypatch.setattr(gguf_linear, "launch_gguf_linear_pair_silu", spy.pair)
+    monkeypatch.setattr(_shard_exec_module(), "silu_mul_separate_out_bf16", spy.silu)
+    return rt, spy
+
+
+def _shard_exec_module():
+    from hipengine.distributed import shard_exec
+
+    return shard_exec
+
+
+def test_a_rank_with_a_resolved_variant_runs_the_fused_pair_by_default(
+    fused_rank_launchers,
+) -> None:
+    rt, spy = fused_rank_launchers
+    rank = MlpShardRank(
+        rt,
+        device=0,
+        stream=9,
+        weights=_shard_weights(rt, 0),
+        hidden=8,
+        per_rank_ffn=4,
+        mlp_decode_variant="dense_dual_local32_bf16_bf16_out",
+    )
+    rank.forward_partial()
+    assert [c[1] for c in spy.calls] == ["pair", "linear"], (
+        "the policy-resolved variant runs the fused pair without explicit args"
+    )
+    rank.close()
+
+
+def test_a_rank_without_a_variant_keeps_the_unfused_chain(fused_rank_launchers) -> None:
+    rt, spy = fused_rank_launchers
+    rank = MlpShardRank(
+        rt, device=0, stream=9, weights=_shard_weights(rt, 0), hidden=8, per_rank_ffn=4
+    )
+    rank.forward_partial()
+    assert [c[1] for c in spy.calls] == ["linear", "linear", "silu", "linear"]
+    rank.close()
+
+
 def staged_compiled_module():
     from hipengine.distributed import staged_compiled
 
