@@ -6,11 +6,11 @@ temporary memory-stat replacement must not be used concurrently with a live engi
 
 import argparse
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import fields, is_dataclass
 import json
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +50,9 @@ class CountingRuntime:
         if not self.contains(dest, nbytes):
             raise ValueError("copy exceeds a live allocation")
 
+    def device_synchronize(self):
+        pass
+
 
 def attribute_allocations(runner, runtime):
     from hipengine.core.memory import DeviceBuffer
@@ -88,11 +91,10 @@ def attribute_allocations(runner, runtime):
     return records, dict(sorted(totals.items()))
 
 
-def census(config, *, context, chunk):
+@contextmanager
+def simulated_runner(config, *, context, chunk):
     from hipengine.core import memory
     from hipengine.runtime import qwen4_exp_runner as module
-    from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
-
     if chunk <= 0 or not 0 < context <= config.context_length:
         raise ValueError("invalid context/chunk")
     runtime = CountingRuntime()
@@ -102,8 +104,9 @@ def census(config, *, context, chunk):
         "qsa_prefill_metadata", "_target_verify_output", "_device_transaction_snapshot",
         "_q8_mmq_weight_sidecars", "_shared_position_context", "moe_graph_cache",
     )
-    runner = SimpleNamespace(
-        **dict.fromkeys(names), config=config, runtime=runtime,
+    runner = module.Qwen4ExpGGUFResidentModelRunner.__new__(module.Qwen4ExpGGUFResidentModelRunner)
+    vars(runner).update(
+        **dict.fromkeys(names), config=config, runtime=runtime, resident=None, backend="cpu_census",
         max_sequence_length=context, prefill_chunk_size=chunk, closed=False,
         _buffers=[], _prefill_buffers=[], attention_states=(), index_states=(),
         _configure_q8_mmq_prefill_resources=lambda: None,
@@ -116,16 +119,24 @@ def census(config, *, context, chunk):
     ):
         try:
             module.Qwen4ExpGGUFResidentModelRunner._allocate(runner)
-            constructor_bytes = sum(runtime.live.values())
-            queues = prepare_lazy_group_risk(runner)
-            records, totals = attribute_allocations(runner, runtime)
-            total = sum(runtime.live.values())
-            if total != memory.memory_stats()["current_allocated_bytes"]:
-                raise ValueError("counting runtime and tracked allocations disagree")
+            yield runner, runtime
         finally:
             module.Qwen4ExpGGUFResidentModelRunner.close(runner)
         if runtime.live or memory.memory_stats()["current_allocated_bytes"]:
             raise ValueError("simulated allocations did not close")
+
+
+def census(config, *, context, chunk):
+    from hipengine.core import memory
+    from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
+
+    with simulated_runner(config, context=context, chunk=chunk) as (runner, runtime):
+        constructor_bytes = sum(runtime.live.values())
+        queues = prepare_lazy_group_risk(runner)
+        records, totals = attribute_allocations(runner, runtime)
+        total = sum(runtime.live.values())
+        if total != memory.memory_stats()["current_allocated_bytes"]:
+            raise ValueError("counting runtime and tracked allocations disagree")
     return dict(context=context, chunk=chunk, constructor_bytes=constructor_bytes,
                 prepared_bytes=total, repair_queues=queues, owner_bytes=totals,
                 allocations=records, teardown_bytes=0)
