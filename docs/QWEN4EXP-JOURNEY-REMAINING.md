@@ -20,8 +20,8 @@ improvements require the applicable unchanged production quality gates.
 | R02 | Multi-column GDN on corrected production | Short numerical/state gate passes; depth, complete code task and perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md)) |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
 | R04 | Dense Q8 iu8 independently | Count actual projection dispatch; short and canonical depth gates |
-| R05 | GR iu8 up independently | Original fails; P4 correction improves sampled MSE1.76-4.60x; full model/cost pending, default-off ([screen](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
-| R06 | GR iu8 down independently | Original and compensated variants fail780-row model gates despite lower compensated FP64 projection error; no promotion ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
+| R05 | GR iu8 up independently | Original/P4 model gates fail; P4 removed despite better operand MSE; structurally different optimization still open ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
+| R06 | GR iu8 down independently | Original/compensated model gates fail; compensated path removed despite better operand MSE; parent-order alternatives open ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
 | R07 | Dense MMQ numerical correction | Existing corrected-down + MMQ depth failure is binding; localize operands before rewriting |
 | R08 | Approximate MoE grouped and Q4 iu8 restoration | Separate families, real routing/repair counts, then composition |
 | R09 | Decode DP4A restoration | Full category/heldout numerical/task gates and true AR cost |
