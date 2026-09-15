@@ -1,5 +1,32 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## TP2 `schedule` knob (graphed default 2026-09-15)
+
+- `MlpTP2GenerationSession` `schedule="graphed"` is the production default for
+  tp2 sessions: each (layer, rank) pair's capturable segment - the prior
+  layer's deferred bf16 cast + residual add, attention, add+norm, the D2D
+  input copy, and the fused shard chain - is captured into one instantiated
+  graph on a per-rank non-blocking stream, with the transport reduction
+  host-driven between graph segments into that layer's fixed mapped payload
+  slot. Measured on W7900 + RX 7900 XTX: decode p50 50.95 -> 27.446 ms/token
+  (-46.1%), production gates mean KL 3.945e-04, max KL 2.365e-03, top-1 100%,
+  bit-exact repeat, greedy tokens identical to the eager run on all prompts.
+  Artifact:
+  `benchmarks/results/2026-09-15-w7900-tp2-graphed-schedule-e2e.json`.
+- `schedule="eager"` is the explicit opt-out and the matched TP1 control's
+  schedule (graph capture is tp2-only). The eager recipe is still cited as the
+  control arm by the slice/e2e evidence chain.
+- The session captures once at the session capacity bound (2047), which bakes
+  the full-attention split-decode config for that context; measured envelope
+  vs the eager per-position decomposition is KL <= 3e-4 per position (top-1
+  100%). If a future gate ever needs bit-identity at short bounds, recapture
+  per generate() call at the run's actual bound - the plumbing exists
+  (`_capture_position`), the cost is ~128 graph instantiates per recapture.
+- Removal condition: the eager schedule and the knob go away together with the
+  Python transport fallback only after the device-side cross-rank reduction
+  (hipEvent-ordered, no host sum in the dependency chain) lands and is
+  validated; until then the eager arm remains the bisection control.
+
 ## TP2 staged-exchange `driver` knob (compiled default 2026-09-15)
 
 - `MlpShardGroup`/`MlpTP2GenerationSession` `driver="compiled"` is the default

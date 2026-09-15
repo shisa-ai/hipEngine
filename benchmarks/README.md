@@ -1099,26 +1099,42 @@ driver (`hipengine/distributed/staged_exchange_host.cpp`): both ranks' D2H
 submits, one wait per stream, a compiled f32 sum, and no H2D return copy - both
 ranks' boundary-cast kernels read the mapped pinned payload zero-copy over the
 bus, and the MLP shard chain resolves the fused gate/up+SiLU pair at the shard
-shape through the shape-qualified decode policy. The in-step exchange wall is
-156-169 us p50 across retained runs (9,216 reductions), against 201 us p50 for
-the original Python-driven route with the H2D return, and decode p50 moved
-56.5 -> 50.6 ms/token at the matched composition (W7900 TP1 31.8 ms, RX 7900
-XTX TP1 26.3 ms) - the remaining wall is the per-layer dependency wait plus the
-replicated-attention enqueue, and TP2 is still not faster, so no speedup is
-claimed for it. The compiled driver's reduced payload
-is bit-identical to the Python route's (same f32 sum in the same rank order;
-the Python route stays the registered fallback and the world != 2 general
-transport). What the checkpoint certifies is arithmetic and control: the
-sharded model stays inside the calibrated production envelope
-against both per-GPU TP1 controls (full-logit teacher-forced mean KL 6.4e-04,
-max KL 5.2e-03, top-1 agreement 100% over a 16-token sequence, identical
-against both controls), the two TP1 controls agree bit-identically with each
-other, and a repeated TP2 run reproduces both tokens and logits bit-exactly.
-The partial-staging dtype is uniform bf16 because the artifact's Q4_K down
-projections register only a bf16 partial consumer; the Q6_K layers' registered
-f32 partial variant is a per-layer numerical candidate, not this run's schedule.
-Device 1 (23.98 GiB XTX) holds the full 16.5 GiB replica plus a 5.6 GiB shard
-set with 0.75 GiB free after load.
+shape through the shape-qualified decode policy.
+
+**The token schedule is the captured per-layer graph schedule.** Each
+(layer, rank) pair's whole enqueue segment - the prior layer's boundary cast
+and residual add, attention/GDN, add+norm, the D2D input copy, and the shard
+chain down to the down partial - is captured into one instantiated HIP graph
+on a per-rank non-blocking stream (capture on the legacy default stream is
+refused with HIP error 900), and the transport reduction runs host-driven
+between graph segments, publishing into that layer's fixed mapped payload
+slot so the captured consumer reads a stable pointer. Per token the loop
+submits 128 graph launches, the token H2D and pinned position/context
+refresh, 64 host-driven exchanges, and the control rank's head. Measured
+decode p50 **50.65 -> 27.44 ms/token (-45.8%)** at the matched composition
+(W7900 TP1 31.8 ms, RX 7900 XTX TP1 26.3 ms) - TP2 is now within one layer
+of the matched single-GPU control while carrying the full replicated
+attention/GDN cost; the remaining wall is device weight reads plus the
+per-layer host-mediated exchange dependency, so no TP2 speedup is claimed
+for it. Capture happens once at the session capacity bound (2047), which
+bakes the full-attention split-decode config for that context; the measured
+envelope against the eager per-position schedule is KL <= 3e-04 per position
+(top-1 100%), and capture at an exact short bound is bit-identical to eager.
+The in-step exchange wall attribution is 367 us p50 across the retained run
+(9,216 reductions) - larger than the eager schedule's 156-169 us because the
+exchange's stream wait now spans the whole layer graph: the loop is
+device-bound, which is the point of the lever. What the checkpoint
+certifies is arithmetic and control: the sharded model stays inside the
+calibrated production envelope against both per-GPU TP1 controls (full-logit
+teacher-forced mean KL 3.945e-04, max KL 2.365e-03, top-1 agreement 100%
+over a 16-token sequence, identical against both controls), the two TP1
+controls agree bit-identically with each other, and a repeated TP2 run
+reproduces both tokens and logits bit-exactly. The partial-staging dtype is
+uniform bf16 because the artifact's Q4_K down projections register only a
+bf16 partial consumer; the Q6_K layers' registered f32 partial variant is a
+per-layer numerical candidate, not this run's schedule. Device 1 (23.98 GiB
+XTX) holds the full 16.5 GiB replica plus a 5.6 GiB shard set with 0.75 GiB
+free after load.
 
 **RCCL work captures into a HIP graph and replays bit-identically.** With
 communicator creation outside capture and each rank's whole chain captured on its

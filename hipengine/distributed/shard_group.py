@@ -72,6 +72,7 @@ class MlpShardGroup:
         staging_dtype: str = "f32",
         driver: str = "compiled",
         mlp_decode_variant: str | None = None,
+        slot_sets: int = 2,
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
@@ -119,6 +120,7 @@ class MlpShardGroup:
                     streams=self._streams,
                     hidden=hidden,
                     staging_dtype=staging_dtype,
+                    slot_sets=slot_sets,
                 )
             )
         else:
@@ -171,17 +173,40 @@ class MlpShardGroup:
     ) -> Mapping[int, int]:
         """Run one layer's sharded MLP; return the bf16 output pointer per rank.
 
+        The eager composition of :meth:`enqueue_chain`, the transport
+        reduction, and :meth:`cast_reduced`.
+        """
+
+        partial_ptrs = self.enqueue_chain(layer_id, inputs)
+        started = time.perf_counter()
+        reduced = self._transport.reduce(partial_ptrs)
+        self.exchange_walls_s.append(time.perf_counter() - started)
+        for device in self.devices:
+            self.cast_reduced(device, reduced[device])
+        return dict(self._out_ptrs)
+
+    def enqueue_chain(
+        self,
+        layer_id: int,
+        inputs: Mapping[int, int],
+    ) -> Mapping[int, int]:
+        """Enqueue both ranks' shard chains; return the down partial per rank.
+
         ``inputs`` maps device -> the device-resident bf16 post-attention-norm
-        row that rank's shard consumes. Both ranks' chains are enqueued before
-        either is awaited; the exchange's per-stream wait is the only host
-        synchronization, and every returned pointer is stream-ordered after
-        its H2D on that rank's stream.
+        row that rank's shard consumes. Stream-ordered and
+        host-synchronization-free: this is the capturable unit a graphed
+        schedule captures (the transport reduction stays host-driven between
+        graph segments).
         """
 
         self._require_live()
-        if int(layer_id) not in {layer for layer, _device in self._ranks}:
+        if int(layer_id) not in {
+            layer for layer, _device in self._ranks
+        }:
             raise ShardGroupError(f"the group has no layer {layer_id}")
-        layer_ranks = {device: self._ranks[(int(layer_id), device)] for device in self.devices}
+        layer_ranks = {
+            device: self._ranks[(int(layer_id), device)] for device in self.devices
+        }
         missing = [d for d in self.devices if int(d) not in inputs]
         if missing:
             raise ShardGroupError(f"no input given for ranks {missing}")
@@ -195,25 +220,91 @@ class MlpShardGroup:
             raise
         except Exception as error:  # noqa: BLE001 - fail the group, not the rank
             raise ShardGroupError(
-                f"layer {layer_id} shard chain failed: {type(error).__name__}: {error}"
+                f"layer {layer_id} shard chain failed: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        return partial_ptrs
+
+    def enqueue_rank_chain(self, layer_id: int, device: int, input_ptr: int) -> int:
+        """Enqueue one rank's shard chain; return its down partial pointer.
+
+        The per-rank building block of :meth:`enqueue_chain`, used by graphed
+        schedules that capture each rank's chain inside its own layer graph.
+        """
+
+        self._require_live()
+        rank = self._ranks.get((int(layer_id), int(device)))
+        if rank is None:
+            raise ShardGroupError(f"the group has no layer {layer_id} on device {device}")
+        try:
+            rank.write_input_from_device(int(input_ptr))
+            return rank.forward_partial()
+        except TransportError:
+            raise
+        except Exception as error:  # noqa: BLE001 - fail the group, not the rank
+            raise ShardGroupError(
+                f"layer {layer_id} rank {device} shard chain failed: "
+                f"{type(error).__name__}: {error}"
             ) from error
 
+    def reduce_partials(
+        self,
+        partial_ptrs: Mapping[int, int],
+        *,
+        slot: int | None = None,
+    ) -> Mapping[int, int]:
+        """Reduce the given down partials; return the reduced pointer per rank.
+
+        With ``slot`` the reduction publishes into that fixed payload slot
+        (the graphed schedule's stable per-layer slot); the eager schedule's
+        two-slot alternation is untouched.
+        """
+
+        self._require_live()
         started = time.perf_counter()
-        reduced = self._transport.reduce(partial_ptrs)
+        reduced = self._transport.reduce(partial_ptrs, slot=slot)
         self.exchange_walls_s.append(time.perf_counter() - started)
+        return reduced
 
-        from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16  # noqa: PLC0415
+    def reduced_payload_ptr(self, slot: int) -> int:
+        """The fixed mapped reduced-row address for one payload slot.
 
-        for device in self.devices:
-            with scoped_current_device(self._runtime, device):
-                f32_to_bf16(
-                    reduced[device],
-                    self._out_ptrs[device],
-                    self.hidden,
-                    stream=self._streams[device],
-                    runtime=self._runtime,
-                )
-        return dict(self._out_ptrs)
+        Compiled-transport only: this is the stable pointer a captured
+        graph's deferred consumer reads.
+        """
+
+        self._require_live()
+        payload_ptr = getattr(self._transport, "payload_ptr", None)
+        if payload_ptr is None:
+            raise ShardGroupError(
+                "fixed payload slots need the compiled staged-exchange driver"
+            )
+        return int(payload_ptr(slot))
+
+    def reset_exchange_walls(self) -> None:
+        """Drop the recorded exchange walls (capture-time bookkeeping)."""
+
+        self.exchange_walls_s.clear()
+
+    def cast_reduced(self, device: int, reduced_ptr: int) -> None:
+        """Cast one rank's reduced f32 row into the group's bf16 boundary buffer."""
+
+        self._require_live()
+        # Imported lazily from the convert package (whose __init__ re-exports
+        # the launcher) so test fakes can patch that binding - a module-top
+        # import here would bypass them.
+        from hipengine.kernels.hip_gfx1100.convert import (  # noqa: PLC0415
+            f32_to_bf16,
+        )
+
+        with scoped_current_device(self._runtime, device):
+            f32_to_bf16(
+                int(reduced_ptr),
+                self._out_ptrs[int(device)],
+                self.hidden,
+                stream=self._streams[int(device)],
+                runtime=self._runtime,
+            )
 
     # -- teardown ----------------------------------------------------------
 
