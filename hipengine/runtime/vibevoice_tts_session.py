@@ -1,0 +1,286 @@
+"""Torch-free VibeVoice-TTS generation session (single-sample, HIP/GPU).
+
+Drives the frozen-fork generation loop end to end on device:
+
+- prompt prefill on the Qwen2 LM with speech rows (voice-prompt connector
+  output) spliced over placeholder token embeddings;
+- a constrained greedy loop: only the five fork-valid tokens can be
+  generated (speech start/end/diffusion, EOS, BOS), enforced host-side on
+  the downloaded logits exactly like the fork's ``VibeVoiceTokenConstraintProcessor``;
+- per diffusion frame: positive condition = post-final-norm last hidden of
+  the positive LM, negative condition = the same from a **reset** negative
+  LM runtime that sees only the prompt's first token plus the current
+  embedding (the fork's ``refresh_negative=True`` reset semantics);
+- the frame's speech latent through the acoustic decoder (streaming causal
+  state, reset at speech boundaries), the chunk through the semantic
+  encoder (caller-owned streaming tails), and
+  ``acoustic_connector(latent) + semantic_connector(mean)`` as the next
+  LM input embedding.
+
+Randomness is owned by one documented numpy ``PCG64`` generator; the RED
+test injects recorded fixture operands (initial noise, negative condition)
+so parity comparisons are RNG-independent, exactly like the ASR lane.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from hipengine.loading.vibevoice_tts_session import (
+    EOS_TOKEN_ID,
+    SPEECH_DIFFUSION_ID,
+    SPEECH_END_ID,
+    SPEECH_START_ID,
+    VibevoiceTtsSessionWeights,
+)
+from hipengine.kernels.cpu_reference.vibevoice_asr import vibevoice_connector
+from hipengine.runtime.vibevoice_encoder import VibevoiceFrontendRuntime
+from hipengine.runtime.vibevoice_qwen2 import VibevoiceQwen2Runtime
+from hipengine.runtime.vibevoice_tts_decoder import VibevoiceTTSDecoderGPU
+from hipengine.runtime.vibevoice_tts_diffusion import VibevoiceTTSDiffusionHeadGPU
+
+# The fork's generate() restricts generation to exactly these tokens.
+VALID_TOKENS = (
+    SPEECH_START_ID,
+    SPEECH_END_ID,
+    SPEECH_DIFFUSION_ID,
+    EOS_TOKEN_ID,
+    151644,  # bos <|im_start|>
+)
+
+
+@dataclass
+class SessionTrace:
+    """Optional per-step boundary snapshots for RED gating and diagnosis."""
+
+    hidden_states: list[np.ndarray] = field(default_factory=list)
+    logits: list[tuple[int, np.ndarray]] = field(default_factory=list)
+    tokens: list[int] = field(default_factory=list)
+    conditions: list[np.ndarray] = field(default_factory=list)
+    neg_conditions: list[np.ndarray] = field(default_factory=list)
+    speech_latents: list[np.ndarray] = field(default_factory=list)
+    chunks: list[np.ndarray] = field(default_factory=list)
+    semantic_means: list[np.ndarray] = field(default_factory=list)
+    feedback_sums: list[np.ndarray] = field(default_factory=list)
+
+
+@dataclass
+class SessionResult:
+    ids: list[int]
+    chunks: list[np.ndarray]
+    trace: SessionTrace | None
+
+
+class VibevoiceTtsSession:
+    """One TTS generation session: two LM runtimes + speech stack on device."""
+
+    def __init__(self, weights: VibevoiceTtsSessionWeights, *, max_context: int = 4096) -> None:
+        self.w = weights
+        self.positive = VibevoiceQwen2Runtime(weights.lm, max_context=max_context)
+        self.negative = VibevoiceQwen2Runtime(weights.lm, max_context=max_context)
+        self.frontend = VibevoiceFrontendRuntime(
+            weights.acoustic_encoder_spec,
+            weights.acoustic_encoder,
+            weights.semantic_encoder_spec,
+            weights.semantic_encoder,
+            weights.acoustic_connector,
+            weights.semantic_connector,
+        )
+        self.decoder = VibevoiceTTSDecoderGPU(weights.decoder_spec, weights.decoder_weights)
+        self.diffusion = VibevoiceTTSDiffusionHeadGPU(weights.diffusion_spec, weights.diffusion_weights)
+        self.semantic_state: dict[str, np.ndarray] = {}
+        self._noise_draws = 0
+
+    def close(self) -> None:
+        self.positive.close()
+        self.negative.close()
+        self.frontend.close()
+        self.decoder.close()
+        self.diffusion.close()
+
+    # -- prompt construction ------------------------------------------------
+
+    def voice_prompt_rows(self, ref_pcm: np.ndarray, *, noise_scale: np.ndarray | None = None,
+                          noise: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """Reference PCM -> (sampled latents, connected rows) for the prompt.
+
+        Acoustic-encodes the 24 kHz mono reference, samples the VAE with the
+        supplied recorded operands (or the session generator), applies the
+        checkpoint ``(latent + bias) * scale`` factors, and connects to LM
+        space. Matches the fork's ``_process_speech_inputs`` audio path.
+        """
+        pcm = np.asarray(ref_pcm, dtype=np.float32).reshape(-1)
+        frames = (pcm.size + 3199) // 3200
+        latent = self.frontend.encode_chunk_streaming("acoustic", np.pad(pcm, (0, 3200 - pcm.size % 3200)), {})[0]
+        mean = latent.reshape(frames, 64)
+        if noise is None:
+            noise = self._rng_standard_normal((1, frames, 64))
+        if noise_scale is None:
+            noise_scale = self._rng_standard_normal((1,)) * np.float32(0.5 / 0.8)
+        sampled = mean + np.asarray(noise_scale, dtype=np.float32).reshape(1, 1) * np.asarray(noise, dtype=np.float32).reshape(frames, 64)
+        scaled = (sampled + np.float32(self.w.speech_bias_factor)) * np.float32(self.w.speech_scaling_factor)
+        connected = vibevoice_connector(self.w.acoustic_connector, scaled, dtype="bfloat16")
+        return sampled.astype(np.float32), connected.astype(np.float32)
+
+    def build_prompt_rows(
+        self,
+        input_ids: np.ndarray,
+        speech_input_mask: np.ndarray,
+        connected: np.ndarray,
+    ) -> list[np.ndarray]:
+        """Token ids + spliced speech rows -> the list of prompt embedding rows."""
+        ids = np.asarray(input_ids).reshape(-1)
+        mask = np.asarray(speech_input_mask, dtype=bool).reshape(-1)
+        connected = np.asarray(connected, dtype=np.float32)
+        rows = np.array([self.positive.embed_row(int(t)) for t in ids])
+        rows[mask] = connected
+        return [r for r in rows]
+
+    def _rng_standard_normal(self, shape: tuple[int, ...]) -> np.ndarray:
+        self._noise_draws += 1
+        return self._rng.standard_normal(shape, dtype=np.float32)
+
+    # -- generation ---------------------------------------------------------
+
+    def _masked_argmax(self, logits: np.ndarray) -> int:
+        masked = logits[list(VALID_TOKENS)]
+        return VALID_TOKENS[int(masked.argmax())]
+
+    def _negative_reset(self) -> None:
+        """Clear the negative LM at speech boundaries (the fork's reset block)."""
+        self.negative.reset()
+        self._neg_position = 0
+
+    def _negative_condition(self, current_embed: np.ndarray) -> np.ndarray:
+        """Accumulate the current input embedding on the negative LM.
+
+        Fixture-verified semantics: the negative runtime holds
+        ``[embed(speech_start), feedback_0, ..., feedback_{n-1}]`` across the
+        diffusion frames of one speech span; each frame's condition is the
+        post-final-norm hidden after appending the positive pass's current
+        input embedding. The first frame of a span pushes the bare
+        ``speech_start`` token id (the fork's inputs_embeds override is None
+        there, so the negative forward consumes the id itself).
+        """
+        if self._neg_position == 0 or current_embed is None:
+            row = self.positive.embed_row(SPEECH_START_ID)
+        else:
+            row = np.asarray(current_embed, dtype=np.float32).reshape(-1)
+        self.negative.push_token(row, self._neg_position)
+        self.negative.forward_layers(self._neg_position)
+        self._neg_position += 1
+        return self.negative.hidden_state()
+
+    def generate(
+        self,
+        prompt_rows: list[np.ndarray],
+        *,
+        cfg_scale: float,
+        max_new_tokens: int | None = None,
+        noise_hook=None,
+        neg_hook=None,
+        trace: SessionTrace | None = None,
+    ) -> SessionResult:
+        """Run the frozen-fork generation loop.
+
+        ``noise_hook(call_index)`` and ``neg_hook(call_index)`` let the RED
+        test inject recorded ``(noise_scale, noise)`` and the recorded
+        negative condition, keeping parity RNG-independent; ``None`` runs the
+        session's own generator and negative pass.
+        """
+        rng = np.random.Generator(np.random.PCG64(20260915))
+        self._rng = rng
+        self._noise_draws = 0
+        self.semantic_state = {}
+        self.decoder.reset()
+        self._negative_reset()
+        pos = self.positive
+        pos.reset()
+        if trace is not None:
+            trace.hidden_states.clear()
+
+        for position, row in enumerate(prompt_rows):
+            pos.push_token(row, position)
+            pos.forward_layers(position)
+            if trace is not None:
+                trace.hidden_states.append(pos.hidden_state())
+        # Hidden of the forward that produced the current ``next_token`` —
+        # the fork's diffusion condition (``outputs.last_hidden_state[..., -1]``).
+        pending_hidden = pos.hidden_state()
+        logits, _ = pos.logits_argmax()
+        if trace is not None:
+            trace.logits.append((len(prompt_rows) - 1, logits.copy()))
+        next_token = self._masked_argmax(logits)
+        ids: list[int] = []
+        chunks: list[np.ndarray] = []
+        call_index = 0
+        budget = max_new_tokens if max_new_tokens is not None else 40 * len(prompt_rows)
+        for _ in range(budget):
+            ids.append(next_token)
+            if trace is not None:
+                trace.tokens.append(next_token)
+            if next_token == EOS_TOKEN_ID:
+                break
+            # Boundary resets fire on the freshly generated token, exactly
+            # like the fork's speech_start / speech_end blocks.
+            if next_token == SPEECH_START_ID or next_token == SPEECH_END_ID:
+                self.semantic_state = {}
+                self.decoder.reset()
+                self._negative_reset()
+                self._noise_draws = 0
+            # Diffusion processing fires on the freshly generated token; its
+            # feedback embedding is fed at the NEXT forward, like the fork's
+            # ``next_inputs_embeds[diffusion_indices] = diffusion_embeds``.
+            next_embed: np.ndarray | None = None
+            if next_token == SPEECH_DIFFUSION_ID:
+                if neg_hook is not None:
+                    neg_condition = np.asarray(neg_hook(call_index), dtype=np.float32).reshape(1, -1)
+                else:
+                    neg_condition = self._negative_condition(None)
+                condition = pending_hidden.reshape(1, -1)
+                if trace is not None:
+                    trace.conditions.append(condition.reshape(-1).copy())
+                    trace.neg_conditions.append(neg_condition.reshape(-1).copy())
+                if noise_hook is not None:
+                    initial_noise = np.asarray(noise_hook(call_index), dtype=np.float32).reshape(2, 64)
+                else:
+                    initial_noise = self._rng_standard_normal((2, 64))
+                speech, _ = self.diffusion.sample_speech_tokens(
+                    condition, neg_condition.reshape(1, -1), cfg_scale, initial_noise
+                )
+                speech_latent = speech[0].reshape(64)
+                if trace is not None:
+                    trace.speech_latents.append(speech_latent.copy())
+                scaled = speech_latent / np.float32(self.w.speech_scaling_factor) - np.float32(self.w.speech_bias_factor)
+                chunk = self.decoder.decode(scaled.reshape(1, 64)[0])
+                chunks.append(chunk.copy())
+                if trace is not None:
+                    trace.chunks.append(chunk.copy())
+                sem = self.frontend.encode_chunk_streaming("semantic", chunk, self.semantic_state)
+                sem_mean = sem.reshape(1, 128)
+                if trace is not None:
+                    trace.semantic_means.append(sem_mean.reshape(-1).copy())
+                acoustic_embed = vibevoice_connector(self.w.acoustic_connector, speech_latent.reshape(1, 64), dtype="bfloat16")
+                semantic_embed = vibevoice_connector(self.w.semantic_connector, sem_mean, dtype="bfloat16")
+                feedback = acoustic_embed + semantic_embed
+                if trace is not None:
+                    trace.feedback_sums.append(feedback.reshape(-1).copy())
+                next_embed = feedback.reshape(-1).astype(np.float32)
+                call_index += 1
+            # Forward the next input: the feedback embedding when this step
+            # diffused, otherwise the plain token embedding.
+            if next_embed is not None:
+                embed = next_embed
+            else:
+                embed = pos.embed_row(next_token)
+            position = len(prompt_rows) + len(ids) - 1
+            pos.push_token(embed, position)
+            pos.forward_layers(position)
+            pending_hidden = pos.hidden_state()
+            logits, _ = pos.logits_argmax()
+            if trace is not None:
+                trace.logits.append((position, logits.copy()))
+            next_token = self._masked_argmax(logits)
+        return SessionResult(ids=ids, chunks=chunks, trace=trace)

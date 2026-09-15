@@ -444,6 +444,36 @@ class VibevoiceFrontendRuntime:
         )
 
     # ------------------------------------------------------------------
+    def encode_chunk_streaming(
+        self, tok: str, pcm: np.ndarray, state: dict[str, np.ndarray]
+    ) -> np.ndarray:
+        """One causal-conv frame batch with caller-owned cross-call tail state.
+
+        The TTS generation session feeds one 3200-sample chunk per diffusion
+        frame and must continue the convolution tails from the previous frame
+        (the fork's ``use_cache=True`` encode). Pass a fresh ``{}`` for the
+        first chunk and reuse the dict thereafter; the dict is updated in
+        place with each boundary's last input rows (host uint16 bf16 bits).
+        """
+        from numbers import Integral
+        pcm = np.asarray(pcm, dtype=np.float32)
+        if pcm.ndim != 1 or not pcm.size or not np.isfinite(pcm).all():
+            raise ValueError('PCM must be a nonempty finite mono waveform')
+        if pcm.size % 3200:
+            raise ValueError('streaming chunks must be a multiple of 3200 samples')
+        if not isinstance(state, dict):
+            raise ValueError('state must be a dict (fresh {} on the first chunk)')
+        spec = self.specs[tok]
+        pcm_u16 = _upload_u16(f32_to_bf16_bits(pcm))
+        try:
+            self._scratch.reset(capacity_bytes=24 * pcm.size * spec.num_filters * 2 + (16 << 20))
+            latent, frames = self._encoder_forward(tok, pcm_u16, pcm.size, chunk_tail=state)
+            host = np.empty((frames, spec.hidden_size), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(host), latent)
+            return (host.astype(np.uint32) << 16).view(np.float32)
+        finally:
+            free(pcm_u16)
+
     def encode(self, pcm: np.ndarray, *, chunk_samples: int = 1_440_000) -> dict[str, np.ndarray]:
         """Encode one recording, carrying every convolution tail across chunks.
 
