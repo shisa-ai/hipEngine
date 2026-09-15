@@ -13,7 +13,7 @@ from scripts.vibevoice_asr_e2e import parse_transcript
 def runner(monkeypatch, capacity=2):
     r = SimpleNamespace(
         max_context=capacity, spec=SimpleNamespace(hidden_size=1), reset=Mock(),
-        prefill_rows=Mock(), runtime=SimpleNamespace(memcpy=Mock()),
+        prefill_host_rows=Mock(), prefill_rows=Mock(), runtime=SimpleNamespace(memcpy=Mock()),
         _hidden=SimpleNamespace(ptr=1), logits_argmax=Mock(return_value=(None, 1)),
         embed_row=Mock(return_value=np.array([1.])), push_token=Mock(), forward_layers=Mock(),
     )
