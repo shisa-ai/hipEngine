@@ -67,6 +67,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import sys
 from pathlib import Path
@@ -341,6 +343,133 @@ def read_dependent_chain_marginal(
     }
 
 
+#: Keys a kernel record may carry its name under, and the duration fields it
+#: may carry its runtime under. A record counts as kernel execution only when
+#: both are present and the duration is positive.
+_KERNEL_NAME_KEYS = ("Kernel_Name", "kernel_name", "name", "kernel")
+_KERNEL_DURATION_KEYS = ("DurationNs", "duration_ns", "duration_ns_us", "duration")
+_KERNEL_TIMESTAMP_KEYS = (
+    ("End_Timestamp", "Start_Timestamp"),
+    ("End_Timestamp", "Begin_Timestamp"),
+)
+
+
+def _default_results_root() -> Path:
+    """The repo's benchmark-artifact directory, resolved from this script."""
+
+    return Path(__file__).resolve().parent.parent / "benchmarks" / "results"
+
+
+def _kernel_records_from_json(node: Any) -> list[tuple[str, int]]:
+    """Collect (kernel name, duration ns) pairs from arbitrary JSON."""
+
+    records: list[tuple[str, int]] = []
+    if isinstance(node, dict):
+        name = next((node[k] for k in _KERNEL_NAME_KEYS if k in node), None)
+        duration = next((node[k] for k in _KERNEL_DURATION_KEYS if k in node), None)
+        if duration is None:
+            for end_key, start_key in _KERNEL_TIMESTAMP_KEYS:
+                if end_key in node and start_key in node:
+                    try:
+                        duration = int(node[end_key]) - int(node[start_key])
+                    except (TypeError, ValueError):
+                        duration = None
+                    break
+        if (
+            isinstance(name, str)
+            and name.strip()
+            and duration is not None
+            and not isinstance(duration, bool)
+        ):
+            try:
+                duration_value = int(duration)
+            except (TypeError, ValueError):
+                duration_value = 0
+            if duration_value > 0:
+                records.append((name.strip(), duration_value))
+        for value in node.values():
+            records.extend(_kernel_records_from_json(value))
+    elif isinstance(node, list):
+        for item in node:
+            records.extend(_kernel_records_from_json(item))
+    return records
+
+
+def _kernel_records_from_csv(text: str) -> list[tuple[str, int]]:
+    """Collect (kernel name, duration ns) pairs from a rocprofv3 CSV trace."""
+
+    rows = list(csv.DictReader(io.StringIO(text)))
+    if not rows:
+        return []
+    header = rows[0].keys()
+    if not ("Kernel_Name" in header and "DurationNs" in header):
+        return []
+    records: list[tuple[str, int]] = []
+    for row in rows:
+        name = (row.get("Kernel_Name") or "").strip()
+        try:
+            duration = int(row.get("DurationNs") or 0)
+        except ValueError:
+            continue
+        if name and duration > 0:
+            records.append((name, duration))
+    return records
+
+
+def _validate_shard_kernel_evidence(
+    paths: list[str] | None,
+    *,
+    results_root: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Validate each shard-kernel evidence artifact's contents, not its existence.
+
+    The pre-Packet-3 gate used to be satisfied by any nonempty path list, so a
+    dangling path or a file with no kernel record in it certified the projection.
+    Evidence here means a readable artifact under ``benchmarks/results/`` that
+    contains at least one kernel record with a name and a positive duration - the
+    same shape ``rocprofv3 --kernel-trace`` writes and the same quantity the
+    kernel gate requires. Anything else is reported as the reason it does not
+    qualify, and the verdict stays uncertified.
+    """
+
+    root = (results_root or _default_results_root()).resolve()
+    records: list[dict[str, Any]] = []
+    for raw in paths or []:
+        path_text = str(raw)
+        entry: dict[str, Any] = {"path": path_text, "kernel_records": 0}
+        path = Path(path_text)
+        try:
+            resolved = path.resolve()
+            under_results = root in resolved.parents or resolved.parent == root
+            if not under_results:
+                entry["error"] = "not under benchmarks/results/"
+            elif not path.is_file():
+                entry["error"] = "not a file"
+            elif path.suffix.lower() == ".json":
+                parsed = json.loads(path.read_text())
+                found = _kernel_records_from_json(parsed)
+                entry["kernel_records"] = len(found)
+                if found:
+                    entry["example"] = {"kernel": found[0][0], "duration_ns": found[0][1]}
+                else:
+                    entry["error"] = "no kernel record with a name and a positive duration"
+            elif path.suffix.lower() == ".csv":
+                found = _kernel_records_from_csv(path.read_text())
+                entry["kernel_records"] = len(found)
+                if found:
+                    entry["example"] = {"kernel": found[0][0], "duration_ns": found[0][1]}
+                else:
+                    entry["error"] = (
+                        "no Kernel_Name/DurationNs columns or no positive-duration row"
+                    )
+            else:
+                entry["error"] = "unsupported artifact type; expected .json or .csv"
+        except (OSError, json.JSONDecodeError, ValueError) as error:
+            entry["error"] = f"{type(error).__name__}: {error}"
+        records.append(entry)
+    return records
+
+
 def build_report(
     devices: list[dict[str, Any]],
     *,
@@ -349,8 +478,13 @@ def build_report(
     reduction_points: int | None = None,
     collective_source: dict[str, Any] | None = None,
     shard_kernel_evidence: list[str] | None = None,
+    results_root: Path | None = None,
 ) -> dict[str, Any]:
     protocols = sorted({str(device["protocol"]) for device in devices})
+    evidence_records = _validate_shard_kernel_evidence(
+        shard_kernel_evidence, results_root=results_root
+    )
+    evidence_ok = bool(evidence_records) and all("error" not in r for r in evidence_records)
     report: dict[str, Any] = {
         "kind": "tp2_break_even",
         "model": (
@@ -379,11 +513,13 @@ def build_report(
             "protocols": protocols,
         },
         "pre_packet3_gate": {
-            "satisfied": bool(shard_kernel_evidence),
-            "evidence": list(shard_kernel_evidence or []),
+            "satisfied": evidence_ok,
+            "evidence": evidence_records,
             "requirement": (
                 "the packet plan requires local shard-shaped kernel measurements before "
-                "Packet 3; pass --shard-kernel-evidence to record them"
+                "Packet 3; pass --shard-kernel-evidence with rocprofv3 kernel-trace "
+                "artifacts (.json or .csv) under benchmarks/results/ - each must contain "
+                "at least one kernel record with a name and a positive duration"
             ),
         },
         "rows": [],
@@ -416,7 +552,15 @@ def build_report(
             f"baseline arms were measured under different protocols: {protocols}"
         )
     if not report["pre_packet3_gate"]["satisfied"]:
-        withheld.append("the pre-Packet-3 shard-kernel gate has no recorded evidence")
+        # Name the actual defect so a fabricated path cannot be confused with a
+        # missing one and a wrong-content artifact cannot pass as evidence.
+        for record in evidence_records:
+            if "error" in record:
+                withheld.append(
+                    f"shard-kernel evidence {record['path']}: {record['error']}"
+                )
+        if not evidence_records:
+            withheld.append("the pre-Packet-3 shard-kernel gate has no recorded evidence")
     # Two thresholds, deliberately not conflated:
     #   beats_faster_tp1_arm   the gate. Every row must beat the faster TP1 arm.
     #   meets_planning_aspiration   the 1.3x target. Missing it is recorded, not

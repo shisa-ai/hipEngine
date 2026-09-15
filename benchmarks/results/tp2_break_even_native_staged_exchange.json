@@ -50,7 +50,7 @@
   "model": "one synchronized group time: T2 = max_rank(fixed) + max_rank(rank weights) + collective, compared against the faster matched TP1 arm",
   "pre_packet3_gate": {
     "evidence": [],
-    "requirement": "the packet plan requires local shard-shaped kernel measurements before Packet 3; pass --shard-kernel-evidence to record them",
+    "requirement": "the packet plan requires local shard-shaped kernel measurements before Packet 3; pass --shard-kernel-evidence with rocprofv3 kernel-trace artifacts (.json or .csv) under benchmarks/results/ - each must contain at least one kernel record with a name and a positive duration",
     "satisfied": false
   },
   "protocol_match": {
