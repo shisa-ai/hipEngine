@@ -22,6 +22,17 @@ def allocation_margins(plan, allocated_bytes):
     }
 
 
+def device_allocation_margins(plan, allocated_bytes):
+    components = sum(plan[k] for k in (
+        "device_weight_bytes", "kv_bytes", "index_bytes", "runtime_state_bytes"))
+    return {
+        "device_components_bytes": components,
+        "host_staging_reservation_bytes": plan["staging_bytes"],
+        "observed_device_scratch_bytes": allocated_bytes - components,
+        "device_scratch_margin_bytes": components + plan["scratch_bytes"] - allocated_bytes,
+    }
+
+
 def resolve_context_length(requested, native):
     value = int(native) if requested is None else int(requested)
     if value <= 0:
@@ -83,7 +94,7 @@ def main():
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     plugin = resolve_model(index.architecture or "")
     context_length = resolve_context_length(args.context_length, plugin.native_context_length)
-    report = dict(schema=2,status="running",performance_claim=False,source=source,
+    report = dict(schema=3,status="running",performance_claim=False,source=source,
                   host=_host_metadata(),model_identity=identity,command=sys.argv,
                   chunk_size=args.chunk_size,resident_capacity=args.capacity,
                   requested_context_length=context_length,
@@ -114,8 +125,10 @@ def main():
         plan = report["admission"]["plan"]
         report["allocation_margins"] = allocation_margins(
             plan,report["prepared_memory"]["current_allocated_bytes"])
-        if report["allocation_margins"]["scratch_margin_bytes"] < 0:
-            raise AssertionError("actual allocation exceeds modeled components plus scratch allowance")
+        report["device_allocation_margins"] = device_allocation_margins(
+            plan, report["prepared_memory"]["current_allocated_bytes"])
+        if report["device_allocation_margins"]["device_scratch_margin_bytes"] < 0:
+            raise AssertionError("device allocation exceeds device components plus scratch allowance")
         report["status"] = "passed"
     except Exception as error:
         report["status"] = "failed"

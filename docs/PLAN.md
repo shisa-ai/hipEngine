@@ -1143,6 +1143,11 @@ September6 owner detour enables admission-aware native context through the publi
 Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
 is not runner capacity. Auto resolves artifact/plugin native262144 within memory
 and configured c1/c2 residency; explicit limits fail rather than silently clamp.
+September15 scratch accounting uses the larger of the existing4GiB per-runner
+floor and the mandatory runner/repair-queue footprint for the requested chunk
+and context. The separate4GiB reserve is unchanged. A CPU allocation census
+checks the sizing equations against the actual allocation routines; optional
+MMQ/graph/verification resources still require their own admission evidence.
 Framework c2 native-capacity startup, completions/chat8K retrieval, HTTP over-limit
 rejection and native-capacity2051/2052/4097 boundary repeats pass.
 Full256K-length inference is not newly qualified by this capacity
