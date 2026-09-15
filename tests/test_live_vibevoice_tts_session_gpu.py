@@ -1,8 +1,11 @@
 """VibeVoice-TTS session on HIP/GPU against the frozen torch-oracle chain.
 
-Gates, in execution order: the voice-prompt encode/connector path, the
-121-position prefill trace, the constrained greedy chain (exact), the
-negative-LM accumulation, per-frame diffusion latents, and the decoded PCM.
+Gates, in execution order: the voice-prompt entry point (called directly, plus
+its checkpoint scale/bias step), the reference tail frame (strict xfail until
+the padding semantics match the fork), the session's own negative-LM branch with
+recorded noise and no injected condition, the 121-position prefill trace, the
+constrained greedy chain (exact), the negative-LM accumulation under injected
+conditions, per-frame diffusion latents, and the decoded PCM.
 Skips without HIP or the local HF artifact / fixtures.
 """
 
@@ -84,44 +87,118 @@ def _run_chain(session, lm, dif, trace: SessionTrace):
     )
 
 
-def test_voice_prompt_path_matches_reference(session, weights) -> None:
-    """ref_pcm -> acoustic encode -> sample -> scale -> connector."""
+def test_voice_prompt_rows_matches_reference(session) -> None:
+    """ref_pcm -> voice_prompt_rows -> sampled latents + connected rows.
+
+    This calls the entry point directly. An earlier version reconstructed the
+    encode/sample/scale/connect chain inline, which hid three defects in
+    ``voice_prompt_rows``: a stray ``[0]`` on an already ``(frames, hidden)``
+    result, a padding expression that appended a whole extra frame when the
+    reference was already 3200-aligned, and an RNG that only existed after
+    ``generate()`` ran.
+    """
     ref = _npz("single_reference.npz")
     pcm = np.asarray(ref["ref_pcm"])[0]
-    frames = (pcm.size + 3199) // 3200
-    latent = session.frontend.encode_chunk_streaming(
-        "acoustic", np.pad(pcm, (0, 3200 - pcm.size % 3200)), {}
+    ref_lat = np.asarray(ref["encode0_latents"]).reshape(-1, 64)
+    frames = ref_lat.shape[0]
+    sampled, connected = session.voice_prompt_rows(
+        pcm,
+        noise=np.asarray(ref["encode_draw1"]).reshape(frames, 64),
+        noise_scale=np.asarray(ref["encode_draw0"]).reshape(1),
     )
-    mean = latent.reshape(frames, 64)
-    ref_mean = np.asarray(ref["encode0_mean"]).reshape(frames, 64)
-    peak = float(np.abs(ref_mean).max())
+    assert sampled.shape == (frames, 64), f"{sampled.shape} != {(frames, 64)}"
+    peak = float(np.abs(ref_lat).max())
     # Frames 0..68 sit on the fork's GPU-bf16 noise floor (measured 0.87 abs
-    # across the 26-block stack). The final frame differs because the fork's
-    # tail-frame padding convention differs from a hop-multiple zero pad;
-    # both ports (CPU fp32 and GPU) agree with each other there, and the
-    # frozen greedy chain is insensitive to that row.
-    assert np.abs(mean[:-1] - ref_mean[:-1]).max() / peak <= 0.045, "acoustic encoder mean drifted"
-    assert np.abs(mean[-1] - ref_mean[-1]).max() / peak <= 0.45, "acoustic encoder tail frame drifted"
+    # across the 26-block stack); the tail frame is gated separately.
+    assert np.abs(sampled[:-1] - ref_lat[:-1]).max() / peak <= 0.045, "sampled latents drifted"
 
-    noise = np.asarray(ref["encode_draw1"]).reshape(frames, 64)
-    noise_scale = np.asarray(ref["encode_draw0"]).reshape(1)
-    sampled = mean + noise_scale * noise
-    ref_lat = np.asarray(ref["encode0_latents"]).reshape(frames, 64)
-    assert np.abs(sampled[:-1] - ref_lat[:-1]).max() / peak <= 0.045, "recorded-draw sampling drifted"
+    ref_conn = np.asarray(ref["connected"])
+    assert connected.shape == ref_conn.shape, f"{connected.shape} != {ref_conn.shape}"
+    assert np.abs(connected[:-1] - ref_conn[:-1]).max() <= 0.06 * float(
+        np.abs(ref_conn[:-1]).max()
+    ), "connected rows drifted"
 
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="reference tail frame: the port zero-pads the waveform to a 3200 "
+    "multiple while the fork appends per-layer stride padding, so the last "
+    "frame is built from a different input extent",
+)
+def test_voice_prompt_tail_frame_matches_reference(session) -> None:
+    """The final reference frame must meet the interior-frame gate.
+
+    This is a strict xfail: it documents a known semantic gap and turns into a
+    failure once the gap closes, so the fix must flip it to a plain assertion.
+    """
+    ref = _npz("single_reference.npz")
+    pcm = np.asarray(ref["ref_pcm"])[0]
+    ref_lat = np.asarray(ref["encode0_latents"]).reshape(-1, 64)
+    frames = ref_lat.shape[0]
+    sampled, _ = session.voice_prompt_rows(
+        pcm,
+        noise=np.asarray(ref["encode_draw1"]).reshape(frames, 64),
+        noise_scale=np.asarray(ref["encode_draw0"]).reshape(1),
+    )
+    peak = float(np.abs(ref_lat).max())
+    assert np.abs(sampled[-1] - ref_lat[-1]).max() / peak <= 0.045, "tail frame drifted"
+
+
+def test_session_negative_path_without_injection(session, lm, dif) -> None:
+    """Recorded noise only: the session's own negative-LM branch is gated.
+
+    ``neg_hook`` is deliberately omitted, so ``_negative_condition`` runs and
+    the negative LM accumulates the positive pass's feedback embeddings. The
+    generated token chain does not catch a broken negative branch, because the
+    chain stays exact even when the branch is wrong; the conditions do.
+    """
+    rows = _prompt_rows(session, lm)
+    trace = SessionTrace()
+    res = session.generate(
+        rows,
+        cfg_scale=1.3,
+        max_new_tokens=27,
+        noise_hook=lambda i: dif[f"call{i}_initial_noise"],
+        trace=trace,
+    )
+    gen = np.asarray(lm["generated_ids"])[0]
+    in_ids = np.asarray(lm["input_ids"])[0]
+    assert res.ids == [int(t) for t in gen[len(in_ids):]], "chain moved off the oracle"
+    assert len(trace.neg_conditions) == 25
+    for call in (0, 1, 2, 12, 24):
+        ref = np.asarray(dif[f"call{call}_neg_condition"]).reshape(-1)
+        got = trace.neg_conditions[call]
+        peak = float(np.abs(ref).max())
+        # Measured: 0.014 / 0.012 / 0.020 at calls 0/1/2 and 0.111 / 0.060 at
+        # calls 12/24. Feeding the speech-start embedding every frame instead
+        # of the accumulated feedback drives these to 1.5-2.2.
+        limit = 0.06 if call <= 2 else 0.15
+        assert np.abs(got - ref).max() / peak <= limit, f"call{call} negative condition drifted"
+
+
+def test_voice_prompt_scaled_features_match_reference(session, weights) -> None:
+    """The checkpoint scale/bias step, checked against ``features_scaled``.
+
+    ``sampled`` comes from ``voice_prompt_rows``; only the documented
+    ``(latent + bias) * scale`` arithmetic is applied here, so this does not
+    reconstruct the encode path that the direct test already covers.
+    """
+    ref = _npz("single_reference.npz")
+    pcm = np.asarray(ref["ref_pcm"])[0]
+    ref_lat = np.asarray(ref["encode0_latents"]).reshape(-1, 64)
+    frames = ref_lat.shape[0]
+    sampled, _ = session.voice_prompt_rows(
+        pcm,
+        noise=np.asarray(ref["encode_draw1"]).reshape(frames, 64),
+        noise_scale=np.asarray(ref["encode_draw0"]).reshape(1),
+    )
     scaled = (sampled + np.float32(weights.speech_bias_factor)) * np.float32(
         weights.speech_scaling_factor
     )
     ref_scaled = np.asarray(ref["features_scaled"]).reshape(frames, 64)
     # Measured envelope: the encoder noise floor propagated through the
-    # recorded-draw sampling (0.87 abs · scale ≈ 0.17 on this input).
-    assert np.abs(scaled[:-1] - ref_scaled[:-1]).max() <= 0.2
-
-    from hipengine.kernels.cpu_reference.vibevoice_asr import vibevoice_connector
-
-    connected = vibevoice_connector(weights.acoustic_connector, scaled, dtype="bfloat16")
-    ref_conn = np.asarray(ref["connected"])
-    assert np.abs(connected[:-1] - ref_conn[:-1]).max() <= 0.06 * float(np.abs(ref_conn[:-1]).max())
+    # recorded-draw sampling (0.87 abs times scale is about 0.17 on this input).
+    assert np.abs(scaled[:-1] - ref_scaled[:-1]).max() <= 0.2, "scaled features drifted"
 
 
 def test_prefill_trace_matches_fixture(session, lm) -> None:

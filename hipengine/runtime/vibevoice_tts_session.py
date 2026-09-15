@@ -8,18 +8,19 @@ Drives the frozen-fork generation loop end to end on device:
   generated (speech start/end/diffusion, EOS, BOS), enforced host-side on
   the downloaded logits exactly like the fork's ``VibeVoiceTokenConstraintProcessor``;
 - per diffusion frame: positive condition = post-final-norm last hidden of
-  the positive LM, negative condition = the same from a **reset** negative
-  LM runtime that sees only the prompt's first token plus the current
-  embedding (the fork's ``refresh_negative=True`` reset semantics);
+  the positive LM, negative condition = the same from a negative LM runtime
+  that is reset at each speech boundary and then accumulates the positive
+  pass's input embeddings (the fork's ``refresh_negative=True`` semantics);
 - the frame's speech latent through the acoustic decoder (streaming causal
   state, reset at speech boundaries), the chunk through the semantic
   encoder (caller-owned streaming tails), and
   ``acoustic_connector(latent) + semantic_connector(mean)`` as the next
   LM input embedding.
 
-Randomness is owned by one documented numpy ``PCG64`` generator; the RED
-test injects recorded fixture operands (initial noise, negative condition)
-so parity comparisons are RNG-independent, exactly like the ASR lane.
+Randomness is owned by one documented numpy ``PCG64`` generator seeded at
+construction; the RED test injects recorded fixture operands (initial noise,
+negative condition) so parity comparisons are RNG-independent, exactly like
+the ASR lane.
 """
 
 from __future__ import annotations
@@ -76,7 +77,10 @@ class SessionResult:
 class VibevoiceTtsSession:
     """One TTS generation session: two LM runtimes + speech stack on device."""
 
-    def __init__(self, weights: VibevoiceTtsSessionWeights, *, max_context: int = 4096) -> None:
+    def __init__(
+        self, weights: VibevoiceTtsSessionWeights, *, max_context: int = 4096,
+        seed: int = 20260915,
+    ) -> None:
         self.w = weights
         self.positive = VibevoiceQwen2Runtime(weights.lm, max_context=max_context)
         self.negative = VibevoiceQwen2Runtime(weights.lm, max_context=max_context)
@@ -91,7 +95,16 @@ class VibevoiceTtsSession:
         self.decoder = VibevoiceTTSDecoderGPU(weights.decoder_spec, weights.decoder_weights)
         self.diffusion = VibevoiceTTSDiffusionHeadGPU(weights.diffusion_spec, weights.diffusion_weights)
         self.semantic_state: dict[str, np.ndarray] = {}
+        # One generator owns every random draw of the session: the voice-prompt
+        # VAE sampling and each diffusion frame's initial noise. Seeding here
+        # rather than inside ``generate()`` keeps that one stream intact when the
+        # voice prompt is prepared first, which is the order the fork uses (it
+        # calls ``torch.manual_seed`` once before generation and draws the voice
+        # noise inside the prefill pass).
+        self._rng = np.random.Generator(np.random.PCG64(seed))
         self._noise_draws = 0
+        self._neg_position = 0
+        self._prev_feedback: np.ndarray | None = None
 
     def close(self) -> None:
         self.positive.close()
@@ -112,9 +125,17 @@ class VibevoiceTtsSession:
         space. Matches the fork's ``_process_speech_inputs`` audio path.
         """
         pcm = np.asarray(ref_pcm, dtype=np.float32).reshape(-1)
-        frames = (pcm.size + 3199) // 3200
-        latent = self.frontend.encode_chunk_streaming("acoustic", np.pad(pcm, (0, 3200 - pcm.size % 3200)), {})[0]
-        mean = latent.reshape(frames, 64)
+        if not pcm.size:
+            raise ValueError('reference PCM must be nonempty')
+        pad = (-pcm.size) % 3200
+        latent = self.frontend.encode_chunk_streaming(
+            'acoustic', np.pad(pcm, (0, pad)) if pad else pcm, {}
+        )
+        # ``encode_chunk_streaming`` returns (frames, hidden); take the frame
+        # count from the encoder rather than recomputing it, so the sampled
+        # shape can never disagree with what was actually encoded.
+        mean = np.asarray(latent, dtype=np.float32).reshape(-1, 64)
+        frames = mean.shape[0]
         if noise is None:
             noise = self._rng_standard_normal((1, frames, 64))
         if noise_scale is None:
@@ -152,17 +173,18 @@ class VibevoiceTtsSession:
         """Clear the negative LM at speech boundaries (the fork's reset block)."""
         self.negative.reset()
         self._neg_position = 0
+        self._prev_feedback = None
 
-    def _negative_condition(self, current_embed: np.ndarray) -> np.ndarray:
+    def _negative_condition(self, current_embed: np.ndarray | None) -> np.ndarray:
         """Accumulate the current input embedding on the negative LM.
 
         Fixture-verified semantics: the negative runtime holds
         ``[embed(speech_start), feedback_0, ..., feedback_{n-1}]`` across the
-        diffusion frames of one speech span; each frame's condition is the
-        post-final-norm hidden after appending the positive pass's current
-        input embedding. The first frame of a span pushes the bare
-        ``speech_start`` token id (the fork's inputs_embeds override is None
-        there, so the negative forward consumes the id itself).
+        diffusion frames of one speech span. The fork feeds it the *positive*
+        pass's current input embedding (``inputs_embeds`` at the step that
+        produced the diffusion token), so the first frame of a span pushes the
+        bare ``speech_start`` embedding and each later frame pushes the previous
+        frame's feedback embedding.
         """
         if self._neg_position == 0 or current_embed is None:
             row = self.positive.embed_row(SPEECH_START_ID)
@@ -188,10 +210,10 @@ class VibevoiceTtsSession:
         ``noise_hook(call_index)`` and ``neg_hook(call_index)`` let the RED
         test inject recorded ``(noise_scale, noise)`` and the recorded
         negative condition, keeping parity RNG-independent; ``None`` runs the
-        session's own generator and negative pass.
+        session's own generator and negative pass. Pass a ``neg_hook`` only to
+        isolate arithmetic: with it set the session's own negative branch is
+        bypassed and its output is never checked.
         """
-        rng = np.random.Generator(np.random.PCG64(20260915))
-        self._rng = rng
         self._noise_draws = 0
         self.semantic_state = {}
         self.decoder.reset()
@@ -238,7 +260,7 @@ class VibevoiceTtsSession:
                 if neg_hook is not None:
                     neg_condition = np.asarray(neg_hook(call_index), dtype=np.float32).reshape(1, -1)
                 else:
-                    neg_condition = self._negative_condition(None)
+                    neg_condition = self._negative_condition(self._prev_feedback)
                 condition = pending_hidden.reshape(1, -1)
                 if trace is not None:
                     trace.conditions.append(condition.reshape(-1).copy())
@@ -268,6 +290,9 @@ class VibevoiceTtsSession:
                 if trace is not None:
                     trace.feedback_sums.append(feedback.reshape(-1).copy())
                 next_embed = feedback.reshape(-1).astype(np.float32)
+                # The next frame's negative pass consumes this as the positive
+                # pass's current input embedding.
+                self._prev_feedback = next_embed
                 call_index += 1
             # Forward the next input: the feedback embedding when this step
             # diffused, otherwise the plain token embedding.
