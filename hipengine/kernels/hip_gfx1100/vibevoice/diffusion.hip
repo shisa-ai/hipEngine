@@ -80,6 +80,46 @@ __global__ void vv_diff_rmsnorm_kernel(
   }
 }
 
+__global__ void vv_diff_rmsnorm_modulate_kernel(
+    const uint16_t* __restrict__ x, const uint16_t* __restrict__ w,
+    const uint16_t* __restrict__ chunk, uint16_t* __restrict__ out,
+    int64_t rows, int64_t hidden, int64_t src_stride, float eps) {
+  // One launch = one rmsnorm + one modulate, with the identical rounding
+  // sequence as the unfused pair: rbf(normed) (optionally rbf(normed*w))
+  // feeds rbf(x*(1+cv)) + sv on the bf16 grid.
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const int64_t warps_per_block = blockDim.x >> 5;
+  for (int64_t row = blockIdx.x * warps_per_block + warp; row < rows;
+       row += (int64_t)gridDim.x * warps_per_block) {
+    const int64_t base = row * hidden;
+    float sumsq = 0.0f;
+    for (int64_t i = lane; i < hidden; i += 32) {
+      const float v = bf16_bits_to_float(x[base + i]);
+      sumsq = fmaf(v, v, sumsq);
+    }
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      sumsq += __shfl_xor(sumsq, offset);
+    }
+    const float inv = rsqrtf(sumsq / static_cast<float>(hidden) + eps);
+    const int64_t chunk_base = row * src_stride;
+    for (int64_t i = lane; i < hidden; i += 32) {
+      const uint16_t normed_bits = rbf(bf16_bits_to_float(x[base + i]) * inv);
+      const float normed = bf16_bits_to_float(normed_bits);
+      const uint16_t normed_out_bits =
+          (w == nullptr) ? normed_bits
+                         : rbf(normed * bf16_bits_to_float(w[i]));
+      const float xv = bf16_bits_to_float(normed_out_bits);
+      const float sv = bf16_bits_to_float(chunk[chunk_base + i]);
+      const float cv = bf16_bits_to_float(chunk[chunk_base + hidden + i]);
+      const uint16_t one_plus = rbf(1.0f + cv);
+      const uint16_t scaled = rbf(xv * bf16_bits_to_float(one_plus));
+      out[base + i] = rbf(bf16_bits_to_float(scaled) + sv);
+    }
+  }
+}
+
 __global__ void vv_diff_silu_kernel(
     const uint16_t* __restrict__ g, uint16_t* __restrict__ out, int64_t n) {
   const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -151,6 +191,19 @@ extern "C" int hipengine_vv_diff_rmsnorm_bf16(
   const unsigned blocks = static_cast<unsigned>((rows + VV_DIFF_WARPS - 1) / VV_DIFF_WARPS);
   hipLaunchKernelGGL(vv_diff_rmsnorm_kernel, dim3(blocks), dim3(VV_DIFF_WARPS * 32),
                      0, stream, x, w, out, rows, hidden, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_vv_diff_rmsnorm_modulate_bf16(
+    const uint16_t* x, const uint16_t* w, const uint16_t* chunk,
+    uint16_t* out, int64_t rows, int64_t hidden, int64_t src_stride,
+    float eps, hipStream_t stream) {
+  if (rows <= 0 || hidden <= 0 || src_stride < 2 * hidden)
+    return static_cast<int>(hipErrorInvalidValue);
+  const unsigned blocks = static_cast<unsigned>((rows + VV_DIFF_WARPS - 1) / VV_DIFF_WARPS);
+  hipLaunchKernelGGL(vv_diff_rmsnorm_modulate_kernel,
+                     dim3(blocks), dim3(VV_DIFF_WARPS * 32), 0, stream,
+                     x, w, chunk, out, rows, hidden, src_stride, eps);
   return static_cast<int>(hipGetLastError());
 }
 

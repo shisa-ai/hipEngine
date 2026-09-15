@@ -13,18 +13,18 @@
   },
   "host": {
     "name": "zbook",
-    "gpu": "AMD Radeon Pro W7900 (gfx1100)"
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
   },
   "command": "uv run python scripts/vibevoice_tts_session_bench.py",
-  "weight_load_seconds": 3.313,
-  "cold_start_seconds": 7.84,
-  "warm_synthesis_seconds": 7.774,
-  "pooled_rtf": 2.332,
+  "weight_load_seconds": 3.285,
+  "cold_start_seconds": 7.942,
+  "warm_synthesis_seconds": 7.743,
+  "pooled_rtf": 2.323,
   "chain_exact": true,
   "stages": {
-    "lm_total_seconds": 3.322,
-    "diffusion_seconds": 2.154,
-    "decode_seconds": 1.295,
-    "semantic_seconds": 1.003
+    "lm_total_seconds": 3.306,
+    "diffusion_seconds": 2.165,
+    "decode_seconds": 1.279,
+    "semantic_seconds": 0.993
   }
 }

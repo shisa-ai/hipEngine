@@ -26,6 +26,7 @@ _F = ctypes.c_float
 _ARGTYPES_POINTWISE = (_P, _P, _I, _S)
 _ARGTYPES_BINARY = (_P, _P, _P, _I, _S)
 _ARGTYPES_RMSNORM = (_P, _P, _P, _I, _I, _F, _S)
+_ARGTYPES_RMSNORM_MODULATE = (_P, _P, _P, _P, _I, _I, _I, _F, _S)
 _ARGTYPES_MODULATE = (_P, _P, _P, _I, _I, _I, _S)
 _ARGTYPES_GATED = (_P, _P, _P, _P, _I, _I, _I, _S)
 _ARGTYPES_CFG = (_P, _P, _F, _P, _I, _S)
@@ -102,6 +103,21 @@ def vv_diff_rmsnorm_bf16(
         _ARGTYPES_RMSNORM,
         (_P(x_ptr), _P(w_ptr if w_ptr is not None else 0), _P(out_ptr),
          _I(rows), _I(hidden), _F(eps), _S(0)),
+        library=library,
+        runtime=runtime,
+    )
+
+
+def vv_diff_rmsnorm_modulate_bf16(
+    x_ptr: int, w_ptr: int | None, chunk_ptr: int, out_ptr: int, rows: int,
+    hidden: int, src_stride: int, eps: float, *, library=None, runtime=None,
+) -> None:
+    """rmsnorm + adaLN modulate in one launch, bit-identical to the pair."""
+    _launch(
+        "hipengine_vv_diff_rmsnorm_modulate_bf16",
+        _ARGTYPES_RMSNORM_MODULATE,
+        (_P(x_ptr), _P(w_ptr if w_ptr is not None else 0), _P(chunk_ptr),
+         _P(out_ptr), _I(rows), _I(hidden), _I(src_stride), _F(eps), _S(0)),
         library=library,
         runtime=runtime,
     )

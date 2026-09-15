@@ -186,17 +186,20 @@ class VibevoiceTTSDiffusionHeadGPU:
             self._gemv(f"L{i}_adaLN", b["silu"].ptr, ada.ptr, rows)
             gate = ada.ptr + 2 * h_dim * 2  # column 2H of each (rows, 3H) row
 
-            # normed = rmsnorm(h, layer weight)
-            self._rmsnorm(h, b[f"normw{i}"], b["normed"], rows)
-            # modulated = r(r(normed * r(1 + scale)) + shift); the adaLN row
-            # layout is (rows, 3H): shift at col 0, scale at col H.
-            self.kernels.vv_diff_modulate_bf16(
-                b["normed"].ptr, ada.ptr, b["modulated"].ptr, rows, h_dim, 3 * h_dim
+            # normed = rmsnorm(h, layer weight); modulated = r(r(normed * r(1 + scale)) + shift)
+            # in one bit-identical launch; the adaLN row layout is (rows, 3H):
+            # shift at col 0, scale at col H.
+            self.kernels.vv_diff_rmsnorm_modulate_bf16(
+                h.ptr, b[f"normw{i}"].ptr, ada.ptr, b["modulated"].ptr,
+                rows, h_dim, 3 * h_dim, self.spec.rms_norm_eps,
             )
 
-            # ffn: gate/up -> silu_mul -> down
-            self._gemv(f"L{i}_gate", b["modulated"].ptr, b[f"gate_h{i}"].ptr, rows)
-            self._gemv(f"L{i}_up", b["modulated"].ptr, b[f"up_h{i}"].ptr, rows)
+            # ffn: gate/up -> silu_mul -> down (dual gemv: one launch)
+            self.kernels.dense_dual_gemv_separate_out_bf16(
+                b["modulated"].ptr, self._linears[f"L{i}_gate"][0].ptr,
+                self._linears[f"L{i}_up"][0].ptr, b[f"gate_h{i}"].ptr,
+                b[f"up_h{i}"].ptr, rows, h_dim, spec.ffn_dim, spec.ffn_dim,
+            )
             self.kernels.silu_mul_separate_out_bf16(
                 b[f"gate_h{i}"].ptr, b[f"up_h{i}"].ptr, b["ffn_gated"].ptr, rows, spec.ffn_dim
             )
@@ -213,9 +216,9 @@ class VibevoiceTTSDiffusionHeadGPU:
         self._silu(c_buf, b["silu"], rows * h_dim)
         fada = b["final_ada"]
         self._gemv("final_adaLN", b["silu"].ptr, fada.ptr, rows)
-        self._rmsnorm(h, None, b["normed"], rows)
-        self.kernels.vv_diff_modulate_bf16(
-            b["normed"].ptr, fada.ptr, b["modulated"].ptr, rows, h_dim, 2 * h_dim
+        self.kernels.vv_diff_rmsnorm_modulate_bf16(
+            h.ptr, None, fada.ptr, b["modulated"].ptr, rows, h_dim,
+            2 * h_dim, self.spec.rms_norm_eps,
         )
         self._gemv("final_linear", b["modulated"].ptr, b["eps"].ptr, rows)
 
