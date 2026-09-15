@@ -60,5 +60,32 @@ frontend, configuration and processor; the GGUF alone is not a standalone
 transcription package. Its tensor layout is specific to hipEngine and has not
 been validated with llama.cpp or other GGUF runtimes.
 
+## Comparison with another public GGUF
+
+[cstr/vibevoice-asr-GGUF](https://huggingface.co/cstr/vibevoice-asr-GGUF)
+offers a smaller quant for CrispASR. Inspection of its
+[`vibevoice-asr-q4_k.gguf` tensor directory](https://huggingface.co/cstr/vibevoice-asr-GGUF/tree/f316299d4b39b2990d751c55b3dd6daab61677c7)
+shows a different compression policy:
+
+| Component | This hipEngine quant | cstr quant |
+| --- | --- | --- |
+| File size | 6.75 GB | 4.81 GB |
+| LM layer matrices | Q4_K + 28 Q6_K tensors | Q4_K throughout |
+| Token embeddings | Q4_K | Q4_K |
+| Output head | BF16 | Q4_K |
+| Audio encoders/connectors | BF16 | Mixed Q4_K/Q4_0/F16/F32 |
+| Embedded tokenizer | No | Yes |
+| Runtime layout | hipEngine | CrispASR |
+
+Both files contain 901 tensors totaling 8.33 billion parameters. Of the
+1.94 GB size difference, approximately 0.91 GB comes from the audio frontend
+and 0.78 GB from the output head; most of the remainder comes from selected
+LM weights kept in Q6_K here. Although cstr's card labels its file Q4_K_M,
+the inspected file contains no Q6_K tensors.
+
+This is a storage comparison, not a matched accuracy or speed benchmark.
+Our higher precision does not establish better quality, and the files are
+not interchangeable between runtimes.
+
 See the [original model card](https://huggingface.co/microsoft/VibeVoice-ASR-HF)
 for model capabilities, training, intended use and limitations.
