@@ -2,7 +2,7 @@
 
 ## Model support matrix (downloaded 2026-08-29)
 
-llama.cpp column checked against a 2026-08-29 llama.cpp tree; hipEngine column from `hipengine.models.registered_models()` (plugins today: evie_4p5b [also serves EVIE-8B], laguna_gguf, maple, moonshine_asr, qwen3_5_gguf, qwen3_5_moe_gguf, qwen3_5_moe_paro, qwen4_exp_gguf, timesfm_2p5_200m, timesfm_3p0, toy_one_layer).
+llama.cpp column checked against a 2026-08-29 llama.cpp tree; hipEngine column from `hipengine.models.registered_models()` (plugins today: evie_4p5b [also serves EVIE-8B], laguna_gguf, maple, moonshine_asr, qwen3_5_gguf, qwen3_5_moe_gguf, qwen3_5_moe_paro, qwen4_exp_gguf, timesfm_2p5_200m, timesfm_3p0, toy_one_layer, vibevoice_asr).
 
 Goal: basic hipEngine support for all of these. Start with models that have **no llama.cpp oracle either** (EVIE, VibeVoice ×2, shisa-asr) ordered by least new code; models with llama.cpp support get an independent GGUF comparison after checking model, processor and sampling semantics.
 
@@ -13,8 +13,8 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | shisa-ai/shisa-realtime-asr-0.92b | MoonshineForConditionalGeneration | ❌ (runtime is sherpa-onnx) | ✅ `moonshine_asr` (native HIP decoder) |
 | datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | ✅ `surya_ocr2` — torch-free CPU-reference OCR pipeline end to end, every stage oracle-gated; OCR output == torch greedy reference ([plan](docs/MODEL-SURYA.md); GPU kernels open) |
 | tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ✅ `evie_4p5b` (both sizes; 4.5B: batched fp16 encode 1.13 s, 1.11x torch bf16; 8B: fp32 parity-gated, fp32 recommended) |
-| microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ❌ ([review/plan](docs/MODEL-VIBEVOICE-ASR.md)) |
-| microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ ([review/plan](docs/MODEL-VIBEVOICE-TTS.md)) |
+| microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ✅ `vibevoice_asr` — `LLM.transcribe` on the HF checkpoint; production qualification incomplete ([plan](docs/MODEL-VIBEVOICE-ASR.md)) |
+| microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ (torch oracle frozen; [plan](docs/MODEL-VIBEVOICE-TTS.md)) |
 | shisa-ai/shisa-asr-v0.95b (+FP8) | Phi4MMForCausalLM | ❌ (no phi4mm audio) | ❌ |
 | opendatalab/MinerU2.5-2509-1.2B | Qwen2VL | ✅ qwen2vl + mtmd; community GGUF | ❌ ([review/plan](docs/MODEL-MINERU.md)) |
 | PaddlePaddle/PaddleOCR-VL | PaddleOCRVL | ✅ dedicated `paddleocr` arch + mtmd vision | ❌ |
@@ -25,7 +25,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | Qwen/Qwen3-Embedding-8B | Qwen3 | ✅ qwen3 `--embeddings` | ❌ |
 | shisa-ai/chotto-e4b-20260515 | Gemma4 (not 3n) | ✅ `gemma4` + gemma4v mtmd | ❌ |
 
-No llama.cpp model oracle (framework/community references exist; historical priority, easiest first): ~~EVIE (prefill-only encoder + MaxSim)~~ ✅ done → shisa-asr (Phi4MM audio front end) → VibeVoice-ASR → VibeVoice-TTS (diffusion head, hardest).
+No llama.cpp model oracle (framework/community references exist; historical priority, easiest first): ~~EVIE (prefill-only encoder + MaxSim)~~ ✅ done → ~~shisa-asr (Phi4MM audio front end)~~ ✅ done → ~~VibeVoice-ASR~~ ✅ done → VibeVoice-TTS (diffusion head, hardest; torch oracle frozen, hipEngine port open).
 llama.cpp-oracle-available, likely cheapest: Qwen3-Embedding-8B / bge-m3 (encoder, no decode loop) → medgemma/translategemma (Gemma3 plugin) → chotto-e4b (Gemma4 plugin) → OCR VLMs (MinerU → PaddleOCR-VL → GLM-OCR → surya vision).
 
 
