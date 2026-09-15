@@ -19,7 +19,7 @@ improvements require the applicable unchanged production quality gates.
 | R01 | Existing tiled GDN/DPP suffix on corrected production | Numerical/state pass; targeted EOS task fails predeclared no-new-material-error rule; not promoted ([evidence](../benchmarks/results/2026-09-15-journey-gdn-restoration/README.md)) |
 | R02 | Multi-column GDN on corrected production | Short numerical/state gate passes; depth, complete code task and perf pending ([evidence](../benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md)) |
 | R03 | Serial-prefix GDN instruction/reuse changes | Current ISA and complete-owner census; no blind layer widening |
-| R04 | Dense Q8 iu8 independently | Count actual projection dispatch; short and canonical depth gates |
+| R04 | Dense Q8 iu8 independently | Generic switch fails780-row gate;28656 calls include6912 GR-down; non-GR-only counted exclusion remains open ([evidence](../benchmarks/results/2026-09-15-journey-dense-q8/README.md)) |
 | R05 | GR iu8 up independently | Original/P4 model gates fail; P4 removed despite better operand MSE; structurally different optimization still open ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
 | R06 | GR iu8 down independently | Original/compensated model gates fail; compensated path removed despite better operand MSE; parent-order alternatives open ([evidence](../benchmarks/results/2026-09-15-journey-gr-corrections/README.md)) |
 | R07 | Dense MMQ numerical correction | Existing corrected-down + MMQ depth failure is binding; localize operands before rewriting |
