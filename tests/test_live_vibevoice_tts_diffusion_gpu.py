@@ -4,12 +4,18 @@ Requires the cached ``microsoft/VibeVoice-1.5B`` snapshot, a working ROCm
 stack, and the frozen schema-2 oracle fixtures. Skipped otherwise.
 
 Gates (mirroring the decoder lane):
-- per-step head outputs and solver trajectory vs the numpy CPU reference
-  within the measured eager-bf16 envelope (fp32 accumulation-order noise
-  compounding through the 20-step solver);
-- final latent and its scaled form vs the frozen fixture chain;
+- per-step head outputs and solver trajectory vs the numpy CPU reference over
+  the pre-amplification steps, on both fixture requests;
+- the whole 20-step trajectory plus the final latent and its scaled form vs
+  the CPU reference and the frozen fixture chain, on the single-speaker
+  request;
 - replay determinism (two runs bit-identical);
 - the head primitives resolve through the four-axis registry.
+
+The two-speaker request carries no late-step threshold: its ``call0``
+trajectory amplifies a one-bf16-ULP input change past this envelope from step 6
+on, so agreement there measures the fixture's conditioning rather than the
+kernel. ``tests/test_unit_vibevoice_tts_diffusion.py`` documents the same split.
 """
 
 from __future__ import annotations
@@ -23,6 +29,22 @@ import pytest
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "vibevoice_tts"
 MANIFEST = FIXTURE_DIR / "manifest.json"
 PINNED_MODEL_ID = "microsoft/VibeVoice-1.5B"
+
+# Frozen acceptance thresholds, measured 2026-09-15 from this head against the
+# numpy CPU reference on the committed fixtures (see worklog entry
+# 20260915T101241.017890Z-lhl-vibevoice-tts-chain-bifurcation-48804e.md).
+# Constants rather than a function of the run under test, so a kernel that gets
+# less stable cannot earn itself a wider gate. Measured pre-onset worst cases:
+# eps 0.0085 and speech 0.0144; whole-trajectory single-speaker eps 0.039,
+# latent 0.006 vs CPU and 0.009 vs the fixture, scaled 0.009.
+_PRE_AMPLIFICATION_STEPS = 6
+_FROZEN_EPS_EARLY = 0.025
+_FROZEN_SPEECH_EARLY = 0.025
+_FROZEN_EPS_SINGLE = 0.08
+_FROZEN_SPEECH_SINGLE = 0.05
+_FROZEN_LATENT_VS_CPU_SINGLE = 0.05
+_FROZEN_LATENT_VS_FIXTURE_SINGLE = 0.06
+_FROZEN_SCALED_VS_FIXTURE_SINGLE = 0.08
 
 if not MANIFEST.is_file():
     pytest.skip("VibeVoice-TTS trace fixtures not present", allow_module_level=True)
@@ -103,15 +125,37 @@ def test_gpu_diffusion_replay_parity(bundle, gpu_head, name):
         np.abs(speech_g - speech_c).max(axis=(1, 2))
         / np.maximum(np.abs(speech_c).max(axis=(1, 2)), 1e-9)
     )
-    assert eps_ratio.max() < 0.10, (
-        f"{name}: GPU eps step {int(eps_ratio.argmax())} off CPU by {eps_ratio.max():.3f} of peak"
+    assert eps_ratio[:_PRE_AMPLIFICATION_STEPS].max() < _FROZEN_EPS_EARLY, (
+        f"{name}: GPU eps step {int(eps_ratio[:_PRE_AMPLIFICATION_STEPS].argmax())} off CPU by "
+        f"{eps_ratio[:_PRE_AMPLIFICATION_STEPS].max():.4f} of peak against {_FROZEN_EPS_EARLY}"
     )
-    assert speech_ratio.max() < 0.05, (
-        f"{name}: GPU speech step {int(speech_ratio.argmax())} off CPU by {speech_ratio.max():.3f}"
+    assert speech_ratio[:_PRE_AMPLIFICATION_STEPS].max() < _FROZEN_SPEECH_EARLY, (
+        f"{name}: GPU speech step {int(speech_ratio[:_PRE_AMPLIFICATION_STEPS].argmax())} off CPU "
+        f"by {speech_ratio[:_PRE_AMPLIFICATION_STEPS].max():.4f} against {_FROZEN_SPEECH_EARLY}"
+    )
+
+    if name != "single":
+        # Past the amplification onset this replay is on a different trajectory
+        # than the CPU reference (0.32 of peak on eps at step 19), so no
+        # threshold on that comparison separates a kernel defect from the
+        # fixture's conditioning. These bounds only catch a collapsed head.
+        assert np.abs(eps_g).max() <= 4 * np.abs(eps_c).max(), f"{name}: eps magnitude blew up"
+        assert np.abs(final_g).max() <= 4 * max(np.abs(final_c).max(), 1e-9), (
+            f"{name}: latent magnitude blew up"
+        )
+        return
+
+    assert eps_ratio.max() < _FROZEN_EPS_SINGLE, (
+        f"{name}: GPU eps step {int(eps_ratio.argmax())} off CPU by {eps_ratio.max():.4f} "
+        f"of peak against {_FROZEN_EPS_SINGLE}"
+    )
+    assert speech_ratio.max() < _FROZEN_SPEECH_SINGLE, (
+        f"{name}: GPU speech step {int(speech_ratio.argmax())} off CPU by "
+        f"{speech_ratio.max():.4f} against {_FROZEN_SPEECH_SINGLE}"
     )
 
     latent_peak = max(np.abs(final_c).max(), 1e-9)
-    assert np.abs(final_g - final_c).max() / latent_peak < 0.05, (
+    assert np.abs(final_g - final_c).max() / latent_peak < _FROZEN_LATENT_VS_CPU_SINGLE, (
         f"{name}: GPU final latent off CPU by "
         f"{np.abs(final_g - final_c).max() / latent_peak:.4f} relative"
     )
@@ -120,11 +164,15 @@ def test_gpu_diffusion_replay_parity(bundle, gpu_head, name):
     fx_rel = np.abs(final_g - data["call0_speech_latent"]).max() / max(
         np.abs(data["call0_speech_latent"]).max(), 1e-9
     )
-    assert fx_rel < 0.06, f"{name}: GPU final latent off fixture by {fx_rel:.4f} relative"
+    assert fx_rel < _FROZEN_LATENT_VS_FIXTURE_SINGLE, (
+        f"{name}: GPU final latent off fixture by {fx_rel:.4f} relative"
+    )
     scaled_g = diff_ref.scale_speech_latent(final_g, scale, bias)
     fx_scaled = data["call0_scaled_latent"].reshape(-1)
     scaled_rel = np.abs(scaled_g - fx_scaled).max() / max(np.abs(fx_scaled).max(), 1e-9)
-    assert scaled_rel < 0.08, f"{name}: GPU scaled latent off fixture by {scaled_rel:.4f} relative"
+    assert scaled_rel < _FROZEN_SCALED_VS_FIXTURE_SINGLE, (
+        f"{name}: GPU scaled latent off fixture by {scaled_rel:.4f} relative"
+    )
 
 
 def test_gpu_diffusion_replay_is_deterministic(bundle, gpu_head):

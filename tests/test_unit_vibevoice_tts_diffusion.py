@@ -4,24 +4,28 @@ Gates the torch-free CPU reference
 (``hipengine.kernels.cpu_reference.vibevoice_tts_diffusion``) on the frozen
 milestone-1 oracle traces for both fixture requests:
 
-- the per-step raw head outputs ``eps`` (20, 2, 64) and solver trajectory
-  ``speech`` (20, 2, 64) must stay inside the measured eager-bf16 envelope
-  (the fixtures record CUDA execution; bf16-rounded inputs compound through
-  the 20-step solver, and the fork's own scheduler drifts identically when
-  replayed from the recorded eps on CPU -- see the worklog entry);
-- each gate is raised to the **sensitivity band** of the frozen trajectory
-  wherever that band is wider than the nominal envelope. The band is measured
-  by replaying the fixture from a +/-1 bf16-ULP change in its recorded initial
-  noise: one ULP is the smallest input difference the frozen data can express,
-  so the deviation it produces is the floor below which no independent
-  implementation can be told apart from the oracle. The two-speaker ``call0``
-  trajectory is chaotic and the single-speaker one is not, and
-  ``test_fixture_chaos_band_is_measured_not_assumed`` asserts both facts, so a
-  regenerated fixture cannot silently inherit the wider bound.
-- the final latent and its ``latent / scale - bias`` scaled form gate within
-  the same envelope;
+- every request is gated where the implementation is what is being measured.
+  ``call0``'s first six steps run before the trajectory's own conditioning
+  dominates, and there the per-step ``eps`` and ``speech`` stay inside a frozen
+  envelope on both requests;
+- the single-speaker request is additionally gated over the whole 20-step
+  trajectory, and on the final latent and its ``latent / scale - bias`` scaled
+  form, all against frozen thresholds;
+- the two-speaker request is **not** gated past step 5. Its ``call0`` trajectory
+  amplifies a one-bf16-ULP input change into a different trajectory -- 1.5 of
+  peak on one eps step, 3.3 on the final latent -- so agreement there measures
+  the fixture's conditioning, not this implementation.
+  ``test_trajectory_conditioning_is_diagnostic`` reports that band and asserts
+  that the reason for the missing gate still holds, but nothing it measures
+  feeds an acceptance threshold. What covers that request is generated-audio
+  quality, not a looser number here;
 - the schedule (linspace timesteps, order-2 first/second-order switching,
   zero final sigma) is asserted exactly.
+
+Acceptance thresholds below are frozen constants with recorded provenance. They
+are deliberately not computed from the implementation under test: a limit
+raised to the current run's own sensitivity grows whenever the implementation
+gets less stable, which is the opposite of what a gate is for.
 """
 
 from __future__ import annotations
@@ -43,6 +47,25 @@ from hipengine.kernels.cpu_reference.vibevoice_tts_diffusion import (
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "vibevoice_tts"
 PINNED_MODEL_ID = "microsoft/VibeVoice-1.5B"
+
+# Frozen acceptance thresholds, measured 2026-09-15 from the CPU reference
+# against the committed fixtures (see worklog entry
+# 20260915T101241.017890Z-lhl-vibevoice-tts-chain-bifurcation-48804e.md).
+#
+# The step-6 boundary is the amplification onset, not a tuning knob: on the
+# single-speaker request the pre-step-6 eps spread is at most 0.013 and on the
+# two-speaker one at most 0.007, while past it the two-speaker trajectory's own
+# one-ULP band passes the nominal envelope. `_FROZEN_EPS_EARLY` is about 2x the
+# worst measured pre-onset value so the gate still fails on a real head defect.
+_PRE_AMPLIFICATION_STEPS = 6
+_FROZEN_EPS_EARLY = 0.025
+_FROZEN_SPEECH_EARLY = 0.025
+# Single-speaker whole-trajectory envelope, carried from milestone 3: measured
+# eps 0.050 and speech 0.020 at the last step, pooled 0.006, latent 0.011.
+_FROZEN_EPS_SINGLE = 0.08
+_FROZEN_SPEECH_SINGLE = 0.05
+_FROZEN_POOLED_SINGLE = 0.02
+_FROZEN_LATENT_SINGLE = 0.03
 
 if not (FIXTURE_DIR / "manifest.json").is_file():
     pytest.skip("VibeVoice-TTS trace fixtures not present", allow_module_level=True)
@@ -161,57 +184,80 @@ def chains(bundle):
     return out
 
 
+def _step_ratios(eps, speech, fx_eps, fx_speech):
+    """Per-step peak deviation from the oracle, relative to the oracle's peak."""
+    eps_ratio = np.abs(eps - fx_eps).max(axis=(1, 2)) / np.maximum(
+        np.abs(fx_eps).max(axis=(1, 2)), 1e-9
+    )
+    speech_ratio = np.abs(speech - fx_speech).max(axis=(1, 2)) / np.maximum(
+        np.abs(fx_speech).max(axis=(1, 2)), 1e-9
+    )
+    return eps_ratio, speech_ratio
+
+
 @pytest.mark.parametrize("name", ["single", "two"])
 def test_diffusion_replay_matches_fixture_chain(chains, name):
     data, eps, speech, final, scale, bias = chains[name][0]
-    band = chains[name][1]
     fx_eps, fx_speech = data["call0_eps"], data["call0_speech"]
 
     assert eps.shape == fx_eps.shape, f"{name}: eps shape {eps.shape} != {fx_eps.shape}"
     assert speech.shape == fx_speech.shape
+    assert np.isfinite(eps).all() and np.isfinite(speech).all(), f"{name}: non-finite output"
 
-    # Measured envelope: CUDA-recorded bf16 eps replayed on CPU compound
-    # through the solver (the fork's scheduler drifts identically); gate
-    # per-step peaks and the pooled trajectory. Where the trajectory itself
-    # amplifies a one-ULP input difference beyond that envelope, the band is
-    # the binding limit instead.
-    eps_ratio = (
-        np.abs(eps - fx_eps).max(axis=(1, 2)) / np.maximum(np.abs(fx_eps).max(axis=(1, 2)), 1e-9)
+    eps_ratio, speech_ratio = _step_ratios(eps, speech, fx_eps, fx_speech)
+
+    # Both requests are gated here. Before the amplification onset the trajectory
+    # has not yet turned this implementation's arithmetic difference from the
+    # oracle into a different trajectory, so the comparison measures the head.
+    early = slice(0, _PRE_AMPLIFICATION_STEPS)
+    assert eps_ratio[early].max() <= _FROZEN_EPS_EARLY, (
+        f"{name}: eps step {int(eps_ratio[early].argmax())} off by "
+        f"{eps_ratio[early].max():.4f} of peak against {_FROZEN_EPS_EARLY}"
     )
-    speech_ratio = (
-        np.abs(speech - fx_speech).max(axis=(1, 2))
-        / np.maximum(np.abs(fx_speech).max(axis=(1, 2)), 1e-9)
+    assert speech_ratio[early].max() <= _FROZEN_SPEECH_EARLY, (
+        f"{name}: speech step {int(speech_ratio[early].argmax())} off by "
+        f"{speech_ratio[early].max():.4f} of peak against {_FROZEN_SPEECH_EARLY}"
     )
-    eps_limit = np.maximum(0.08, band.eps)
-    speech_limit = np.maximum(0.05, band.speech)
-    assert (eps_ratio <= eps_limit).all(), (
-        f"{name}: eps step {int((eps_ratio - eps_limit).argmax())} off by "
-        f"{eps_ratio.max():.3f} of peak against a limit of {eps_limit.max():.3f}"
+
+    if name != "single":
+        # Past the amplification onset the two-speaker replay is on a different
+        # trajectory than the oracle: 0.37 of peak on eps at step 19, 0.27
+        # relative on the final latent. No threshold on that comparison
+        # separates a defect from the fixture's conditioning, so none is
+        # asserted. The magnitude bounds are a smoke check that the head has not
+        # collapsed; the request itself is covered by the generated-audio
+        # quality suite rather than by a looser number here.
+        assert np.abs(eps).max() <= 4 * np.abs(fx_eps).max(), f"{name}: eps magnitude blew up"
+        assert np.abs(speech).max() <= 4 * np.abs(fx_speech).max(), (
+            f"{name}: speech magnitude blew up"
+        )
+        return
+
+    assert eps_ratio.max() <= _FROZEN_EPS_SINGLE, (
+        f"{name}: eps step {int(eps_ratio.argmax())} off by {eps_ratio.max():.4f} "
+        f"of peak against {_FROZEN_EPS_SINGLE}"
     )
-    assert (speech_ratio <= speech_limit).all(), (
-        f"{name}: speech step {int((speech_ratio - speech_limit).argmax())} off by "
-        f"{speech_ratio.max():.3f} of peak against a limit of {speech_limit.max():.3f}"
+    assert speech_ratio.max() <= _FROZEN_SPEECH_SINGLE, (
+        f"{name}: speech step {int(speech_ratio.argmax())} off by "
+        f"{speech_ratio.max():.4f} of peak against {_FROZEN_SPEECH_SINGLE}"
     )
     pooled = np.sqrt(((speech - fx_speech) ** 2).mean()) / np.sqrt((fx_speech**2).mean())
-    pooled_limit = max(0.02, band.pooled)
-    assert pooled < pooled_limit, (
-        f"{name}: speech pooled RMS rel {pooled:.4f} vs {pooled_limit:.4f}"
+    assert pooled < _FROZEN_POOLED_SINGLE, (
+        f"{name}: speech pooled RMS rel {pooled:.4f} vs {_FROZEN_POOLED_SINGLE}"
     )
 
     latent_rel = np.abs(final - data["call0_speech_latent"]).max() / max(
         np.abs(data["call0_speech_latent"]).max(), 1e-9
     )
-    latent_limit = max(0.03, band.latent)
-    assert latent_rel < latent_limit, (
-        f"{name}: final latent rel {latent_rel:.4f} vs {latent_limit:.4f}"
+    assert latent_rel < _FROZEN_LATENT_SINGLE, (
+        f"{name}: final latent rel {latent_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
     )
 
     scaled = scale_speech_latent(final, scale, bias)
     fx_scaled = data["call0_scaled_latent"].reshape(-1)
     scaled_rel = np.abs(scaled - fx_scaled).max() / max(np.abs(fx_scaled).max(), 1e-9)
-    scaled_limit = max(0.03, band.scaled)
-    assert scaled_rel < scaled_limit, (
-        f"{name}: scaled latent rel {scaled_rel:.4f} vs {scaled_limit:.4f}"
+    assert scaled_rel < _FROZEN_LATENT_SINGLE, (
+        f"{name}: scaled latent rel {scaled_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
     )
 
 
@@ -277,33 +323,42 @@ def test_replay_is_deterministic(bundle):
     assert np.array_equal(final_a.view(np.uint32), final_b.view(np.uint32))
 
 
-def test_fixture_chaos_band_is_measured_not_assumed(chains):
-    """The band that widens the gates is a property of the fixture.
+def test_trajectory_conditioning_is_diagnostic(chains):
+    """Reports why the two-speaker request carries no late-step gate.
 
-    One bf16 ULP is the smallest input difference the frozen trajectory can
-    express. The two-speaker ``call0`` replay amplifies it into a different
-    trajectory -- the final latent moves by 3.3 relative and one eps step by
-    1.5 of peak -- so its late steps cannot separate implementations and are
-    gated at that band. The single-speaker ``call0`` does not amplify it (0.044
-    on eps, 0.019 on the final latent), so every nominal gate keeps its force
-    there. If the fixtures are regenerated and this flips, these assertions
-    fail rather than the replay test quietly inheriting a wider bound.
+    Diagnostic only -- nothing measured here feeds an acceptance threshold. One
+    bf16 ULP is the smallest input difference the frozen trajectory can express,
+    so the deviation it produces is the floor below which no independent
+    implementation can be told apart from the oracle. The single-speaker
+    ``call0`` stays inside the nominal envelope under that perturbation; the
+    two-speaker one does not.
+
+    The assertions pin the *reason* the late gates are absent. If the fixtures
+    are regenerated and the two-speaker request becomes well-conditioned, this
+    fails and asks for the late-step gate to be restored, instead of leaving a
+    silent hole in coverage.
     """
     single = chains["single"][1]
     two = chains["two"][1]
-    assert single.eps.max() < 0.08, f"single eps band grew to {single.eps.max():.4f}"
-    assert single.speech.max() < 0.05, f"single speech band grew to {single.speech.max():.4f}"
-    assert single.latent < 0.03, f"single latent band grew to {single.latent:.4f}"
-    assert single.pooled < 0.02, f"single pooled band grew to {single.pooled:.4f}"
-    assert two.eps.max() > 0.5, f"two eps band only {two.eps.max():.4f}; still chaotic?"
-    assert two.latent > 0.5, f"two latent band only {two.latent:.4f}; still chaotic?"
     assert two.eps.max() > 10 * single.eps.max(), "two must be far more sensitive than single"
     assert two.latent > 10 * single.latent, "two must be far more sensitive than single"
+    assert two.eps.max() > 0.5, f"two eps band only {two.eps.max():.4f}; still chaotic?"
+    assert two.latent > 0.5, f"two latent band only {two.latent:.4f}; still chaotic?"
 
-    # The relaxation has to be load-bearing, or it is just a wider number.
+    # The single-speaker trajectory is well-conditioned, so its whole-trajectory
+    # gate is doing work rather than riding a chaotic band.
+    assert single.eps.max() < _FROZEN_EPS_SINGLE, f"single eps band grew to {single.eps.max():.4f}"
+    assert single.latent < _FROZEN_LATENT_SINGLE, (
+        f"single latent band grew to {single.latent:.4f}"
+    )
+
+    # ... and the two-speaker late steps still cannot be gated nominally.
     data, eps, _, _, _, _ = chains["two"][0]
     fx_eps = data["call0_eps"]
-    ratio = np.abs(eps - fx_eps).max(axis=(1, 2)) / np.maximum(
-        np.abs(fx_eps).max(axis=(1, 2)), 1e-9
+    late_ratio = (
+        np.abs(eps - fx_eps).max(axis=(1, 2))
+        / np.maximum(np.abs(fx_eps).max(axis=(1, 2)), 1e-9)
+    )[_PRE_AMPLIFICATION_STEPS:]
+    assert late_ratio.max() > _FROZEN_EPS_SINGLE, (
+        "two late steps now fit the nominal gate; restore it"
     )
-    assert ratio.max() > 0.08, "two no longer needs the band; tighten the gate"

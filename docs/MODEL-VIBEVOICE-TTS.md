@@ -86,12 +86,27 @@ the frozen trajectory and not of either implementation: on that call the CPU
 reference lands 0.27 relative from the oracle and the device head 0.036, and
 moving either one by a single ULP moves both to about 3.4.
 
-The diffusion unit gate therefore measures each trajectory's own sensitivity
-band, by replaying it from +/-1 bf16 ULP on the initial noise, and uses the band
-as the limit wherever the band is wider than the nominal envelope. Every
-nominal gate keeps its full force on the single-speaker call, and
-`test_fixture_chaos_band_is_measured_not_assumed` asserts that the band is both
-present for the two-speaker call and load-bearing there.
+Amplification starts at step 6. Through step 5 the two-speaker replay tracks the
+oracle to 0.007 of peak on eps and 0.008 on speech, and the single-speaker call
+to 0.013 and 0.014; past step 6 the two-speaker eps spread reaches 0.37 of peak
+and its final latent 0.27 relative.
+
+The acceptance gates are therefore frozen constants split at that onset. Both
+requests are gated over steps 0-5 against the oracle; the single-speaker request
+is gated over all 20 steps and on its final and scaled latents; the two-speaker
+request carries no late-step threshold, because no value there separates a
+defect from the fixture's conditioning. A measured one-percent error injected
+into the head weights moves the pre-onset spread to 0.061 and 0.156, so the
+step 0-5 gate still fails on a real defect.
+`test_trajectory_conditioning_is_diagnostic` reports the band and asserts that
+the reason for the missing late gate still holds; nothing it measures feeds a
+threshold. What covers the two-speaker request instead is generated-audio
+quality.
+
+The thresholds are constants rather than a function of the run under test. An
+earlier revision raised each limit to the band measured from the running
+implementation, which let an implementation that became less stable widen its
+own tolerance.
 
 This also constrains anything that feeds diffusion output back into the LM: a
 chaotic trajectory makes the feedback embedding reproducible only to the
