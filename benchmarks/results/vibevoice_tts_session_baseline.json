@@ -1,0 +1,30 @@
+{
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "workload": {
+    "script": "Speaker 1: The quick brown fox jumps over the lazy dog.",
+    "prompt_tokens": 121,
+    "generated_tokens": 27,
+    "diffusion_frames": 25,
+    "cfg_scale": 1.3,
+    "ddpm_steps": 20,
+    "output_audio_seconds": 3.333,
+    "sample_rate": 24000
+  },
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon Pro W7900 (gfx1100)"
+  },
+  "command": "uv run python scripts/vibevoice_tts_session_bench.py",
+  "weight_load_seconds": 3.313,
+  "cold_start_seconds": 7.84,
+  "warm_synthesis_seconds": 7.774,
+  "pooled_rtf": 2.332,
+  "chain_exact": true,
+  "stages": {
+    "lm_total_seconds": 3.322,
+    "diffusion_seconds": 2.154,
+    "decode_seconds": 1.295,
+    "semantic_seconds": 1.003
+  }
+}
