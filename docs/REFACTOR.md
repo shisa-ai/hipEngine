@@ -7689,10 +7689,22 @@ Two measurement traps were hit while establishing this, both worth avoiding:
    to ~37 GB/s for every thread count, which is how an earlier draft concluded the
    thread count was irrelevant. The memset and the kernel were competing.
 
+**A bit-exact attempt was made and failed to capture the win.** The 256-thread
+path at K=1536 falls entirely into the scalar stride-256 tail loop, so a variant
+that stages the weight row through shared memory with 8-wide loads should have
+recovered the load efficiency while keeping each thread's element set and order
+identical. It was **bit-exact on all four shapes tested** (K=1536/N=8960,
+K=1536/N=1536, K=1024/N=4096, K=2047/N=512) and measured **0.99x** -- no
+improvement. The kernel is latency-bound on DRAM rather than limited by load
+width, so the `threads=64` advantage comes from having more workgroups resident
+per CU, which cannot be reproduced without changing the thread count and therefore
+the reduction width. The variant was reverted rather than kept as neutral code.
+
 To remove this entry: the ~1.2x is worth having but must arrive without moving the
-summation order, which is what the 5-of-17920 ulp change does. Any variant that
-keeps the exact per-thread element sets and tree pairing is safe by construction;
-a bare thread-count change is not, however it measures.
+summation order, and the two obvious routes are now closed -- a bare thread-count
+change moves 5 of 17920 outputs by one ulp, and shared-memory staging is neutral.
+What is left is a change to how workgroups are scheduled or how many outputs each
+one owns, and any such change has to keep the 256-wide tree pairing per output.
 
 **Method note:** for a streaming kernel, flush between calls AND synchronize the
 flush before timing, then cross-check the isolated figure against the end-to-end
