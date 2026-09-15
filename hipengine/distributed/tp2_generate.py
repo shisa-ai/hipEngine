@@ -780,7 +780,7 @@ class MlpTP2GenerationSession:
             # Eager per-token metadata: token id and the pinned position/
             # context refresh the captured kernels read through device
             # tensors, then the token embedding.
-            hidden_ptrs = self._enqueue_embedding(token_id, position, stages)
+            self._enqueue_embedding(token_id, position, stages)
             mark = time.perf_counter()
             for layer_id, _layer_type in enumerate(self._config.layer_types):
                 for device in self.devices:
