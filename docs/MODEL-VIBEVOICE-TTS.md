@@ -541,6 +541,13 @@ inside the first turn on one seed, so the encoder-based attribution sees a spuri
 speaker flip; its transcript is unaffected and its other nine seeds reproduce
 `[0,1]` cleanly.
 
+The semantic encoder's one-row GEMV dispatch is a 3.00x win on that stage in
+isolation (55.22 -> 18.42 ms per chunk) and is **not** landed: over ten seeds it
+takes the suite from 58/60 to 54/60 and reproduces a WER-0.6471 runaway with
+repeated speech. A boundary perturbation of about one bf16 ulp is enough to move
+the two-speaker trajectory, so this path is numerically sensitive in a way the
+correctness suite does not see. See [REFACTOR.md](REFACTOR.md).
+
 The earlier, single-request failure this suite recorded was a genuine synthesis
 defect, not an evaluator artifact: the shortest two-speaker script's first turn
 came back as "I can see you in the world this morning" instead of "I think the
