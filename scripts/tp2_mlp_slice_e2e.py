@@ -433,6 +433,75 @@ def run_rank_chain(
                 runtime.free(ptr)
 
 
+def run_rank_chain_fused(
+    runtime: Any,
+    *,
+    device: int,
+    stream: int,
+    weights: dict[str, _ShardWeight],
+    x_bf16_bytes: np.ndarray,
+    hidden: int,
+    per_rank_ffn: int,
+    decode_variant: str,
+) -> dict[str, np.ndarray]:
+    """The fused gate/up+SiLU candidate at the shard shape.
+
+    The policy table does not admit (1, hidden, per_rank_ffn), so this is a
+    *candidate* run, not a production route: it goes through the same registered
+    kernel the TP1 teacher uses, at a shape the kernel's own contract accepts.
+    Comparing it against :func:`run_rank_chain` decides whether the candidate is
+    numerically equivalent to the unfused chain before anyone touches the policy
+    table.
+    """
+
+    from hipengine.runtime.gguf_linear import launch_gguf_linear_pair_silu  # noqa: PLC0415
+
+    x_ptr = _alloc(runtime, device, hidden * 2)
+    act_ptr = _alloc(runtime, device, per_rank_ffn * 2)
+    down_ptr = _alloc(runtime, device, hidden * 2)
+    try:
+        _upload(runtime, device, x_ptr, x_bf16_bytes)
+        with scoped_current_device(runtime, device):
+            launched = launch_gguf_linear_pair_silu(
+                weights["ffn_gate"],
+                weights["ffn_up"],
+                x_ptr,
+                act_ptr,
+                1,
+                hidden,
+                per_rank_ffn,
+                use_gemv_decode=True,
+                registered_decode_variant=decode_variant,
+                stream=stream,
+                runtime=runtime,
+            )
+            if not launched:
+                raise RuntimeError(
+                    f"the fused pair+SiLU candidate did not launch at "
+                    f"(1, {hidden}, {per_rank_ffn})"
+                )
+            launch_gguf_linear(
+                weights["ffn_down"],
+                act_ptr,
+                down_ptr,
+                1,
+                per_rank_ffn,
+                hidden,
+                use_gemv_decode=True,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.stream_synchronize(stream)
+        return {
+            "activated": _download(runtime, device, act_ptr, per_rank_ffn * 2),
+            "down_partial": _download(runtime, device, down_ptr, hidden * 2),
+        }
+    finally:
+        for ptr in (x_ptr, act_ptr, down_ptr):
+            with scoped_current_device(runtime, device):
+                runtime.free(ptr)
+
+
 def run_tp1_teacher(
     runtime: Any,
     *,
@@ -600,6 +669,29 @@ def run(
                 )
             )
 
+        # The fused candidate, run only when the policy resolves a TP1 variant
+        # whose kernel contract admits the shard shape. It is compared against
+        # the unfused baseline above; it does not replace it as the record.
+        fused_candidate = None
+        tp1_variant = admission.get("tp1_variant")
+        if tp1_variant and admission.get("shard_shape_error") is None:
+            try:
+                fused_candidate = [
+                    run_rank_chain_fused(
+                        runtime,
+                        device=rank,
+                        stream=streams[rank],
+                        weights=rank_weights[rank],
+                        x_bf16_bytes=x_bf16_bytes,
+                        hidden=hidden,
+                        per_rank_ffn=per_rank,
+                        decode_variant=str(tp1_variant),
+                    )
+                    for rank in range(int(world_size))
+                ]
+            except (RuntimeError, ValueError) as error:
+                fused_candidate = {"error": f"{type(error).__name__}: {error}"}
+
         # TP1 teacher on device 0 through the incumbent resident weights.
         resident = materialize_qwen35_gguf_weights(
             str(model),
@@ -668,6 +760,39 @@ def run(
         )
 
     teacher_y = as_f32(teacher["down_partial"], hidden)
+
+    fused_report: dict[str, Any] | None = None
+    if isinstance(fused_candidate, list):
+        fused_sum = np.zeros(hidden, dtype=np.float32)
+        fused_rank_rows = []
+        for rank, output in enumerate(fused_candidate):
+            act_dev = as_f32(output["activated"], per_rank)
+            partial_dev = as_f32(output["down_partial"], hidden)
+            fused_sum += partial_dev
+            c = contract[rank]
+            fused_rank_rows.append(
+                {
+                    "rank": rank,
+                    "activated_vs_unfused": _relative_errors(act_dev, as_f32(rank_outputs[rank]["activated"], per_rank)),
+                    "down_partial_vs_unfused": _relative_errors(partial_dev, as_f32(rank_outputs[rank]["down_partial"], hidden)),
+                    "activated_vs_contract": _relative_errors(act_dev, c["activated"]),
+                }
+            )
+        fused_report = {
+            "decode_variant": str(tp1_variant),
+            "shape": [1, hidden, per_rank],
+            "policy_admitted": False,
+            "note": (
+                "a candidate at a shape the policy table does not list; compared "
+                "against the unfused baseline, not added to production admission"
+            ),
+            "per_rank": fused_rank_rows,
+            "sum_vs_unfused_sum": _relative_errors(fused_sum, summed),
+            "sum_vs_truth": _relative_errors(fused_sum, truth),
+        }
+    elif isinstance(fused_candidate, dict):
+        fused_report = fused_candidate
+
     report = {
         "schema_version": 1,
         "kind": "tp2-mlp-slice-e2e",
@@ -691,6 +816,7 @@ def run(
             "tp1_teacher_vs_truth": _relative_errors(teacher_y, truth),
         },
         "per_rank": per_rank_report,
+        "fused_candidate": fused_report,
         "input": {
             "x_abs_max": float(np.abs(x_f32).max()),
             "x_checksum": hashlib.sha256(x_bf16_bytes.tobytes()).hexdigest()[:16],
@@ -725,6 +851,15 @@ def main(argv: list[str] | None = None) -> int:
             f"{name}: max_abs={metrics['max_abs_err']:.4e} "
             f"max_rel={metrics['max_rel_err']:.4e} mean_rel={metrics['mean_rel_err']:.4e}"
         )
+    fused = report.get("fused_candidate")
+    if fused and "sum_vs_unfused_sum" in fused:
+        metrics = fused["sum_vs_unfused_sum"]
+        print(
+            f"fused vs unfused sum: max_abs={metrics['max_abs_err']:.4e} "
+            f"mean_rel={metrics['mean_rel_err']:.4e} max_rel={metrics['max_rel_err']:.4e}"
+        )
+    elif fused:
+        print(f"fused candidate did not run: {fused.get('error')}")
     if args.json is not None:
         print(f"wrote {args.json}")
     return 0
