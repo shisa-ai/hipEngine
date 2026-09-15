@@ -678,6 +678,101 @@ claims.
 Out of scope for milestone 1: batching, concurrency, hour-scale continuity,
 kernel porting, quantization, and any quality or speed claim.
 
+### Milestone 2 closure -- torch-free acoustic decoder
+
+Closed 2026-09-15. `hipengine/runtime/vibevoice_tts_decoder.py` over
+`kernels/hip_gfx1100/vibevoice/decoder.py` implements the causal encoder and the
+waveform decoder as HIP kernels, with the six rate changes and the final flush.
+Evidence:
+
+- `tests/test_unit_vibevoice_tts_decoder.py` -- 5 passed: full fixture replay of
+  both requests (25 + 55 frames, resets at generated speech-end tokens) inside the
+  measured eager-bf16 envelope; stream/helper equivalence; reset sensitivity.
+- `tests/test_live_vibevoice_tts_decoder_gpu.py` -- per-frame GPU-vs-CPU parity in
+  the same envelope (worst frame-peak ratio 4.8% single / 2.0% two, pooled RMS
+  relative 1.20% / 1.02%); bulk == per-frame bit-exact per reset-delimited segment.
+- `rocprofv3 --kernel-trace` over `scripts/vibevoice_tts_decoder_rocprof_smoke.py`
+  (cached-only child, no `hipcc` in the profiled process): 561 dispatches / 3
+  frames, every kernel under its expected registered name with plausible duration.
+
+See `worklog/entries/20260915T061025.956952Z-lhl-vibevoice-tts-milestone-2-torch-free-decoder-hip-03cc4d.md`.
+
+### Milestone 3 closure -- diffusion head and solver
+
+Closed 2026-09-15. `hipengine/runtime/vibevoice_tts_diffusion.py` over
+`kernels/hip_gfx1100/vibevoice/diffusion.py` implements the conditioned
+feed-forward head and the DPM-Solver++ loop. Evidence:
+
+- `tests/test_live_vibevoice_tts_diffusion_gpu.py` -- 5 passed: replay parity for
+  both fixture requests, determinism, step-0 head parity against the CPU reference,
+  and registry resolution.
+- Every solver step is compared against the recorded per-step fixtures, not only
+  the final latent; the CFG branch behaviour is preserved, confirmed by
+  `negative_conditions_match: true` on the session bench.
+- The head uses `_GEMV_THREADS = 64`, chosen by measurement (a full head call is
+  2.08 ms at 64 against 3.33 ms at 256).
+- Device truth from `rocprofv3`: 42 kernels per solver step, of which
+  `dense_gemv_out_kernel` is 21.9 dispatches at 64.34 us mean, totalling 28.18 of
+  31.44 ms of device time (89.6%).
+
+See `worklog/entries/20260915T062501.841791Z-lhl-vibevoice-tts-milestone-3-diffusion-head-hip-c23496.md`
+and `worklog/entries/20260915T205121.492340Z-lhl-vibevoice-tts-diffusion-device-truth-c3cee9.md`.
+
+### Milestone 4 closure -- session runtime
+
+Closed 2026-09-15. The implementation sequence proposed
+`hipengine/runtime/vibevoice_tts.py`; it was delivered as three modules instead,
+which is the naming that actually shipped and the one to use:
+
+| Layer | Module |
+| --- | --- |
+| Session (LM, negative LM, codec, semantic, RNG ownership) | `hipengine/runtime/vibevoice_tts_session.py` |
+| User-facing contract | `hipengine/generation/vibevoice_tts.py` |
+| Model registry | `hipengine/models/vibevoice_tts.py` |
+
+The contract's `synthesize(script, speaker_references)` surface is reachable as
+`LLM.synthesize`, with `LLM.reset`. Evidence:
+`tests/test_live_vibevoice_tts_session_gpu.py`,
+`tests/test_live_vibevoice_tts_synthesize.py`,
+`tests/test_unit_vibevoice_tts_prompt.py`.
+
+See `worklog/entries/20260915T071129.571080Z-lhl-vibevoice-tts-milestone-4-session-runtime-hip-49c127.md`
+and `worklog/entries/20260915T162000.000000Z-lhl-vibevoice-tts-synthesize-surface-and-quality-correction-7b31c4.md`.
+
+### Milestone 5 closure -- qualification, with failures retained
+
+Closed 2026-09-15. Quality and timing are qualified on the unassisted multi-request
+path, and the failures are reported rather than excluded, per "Failure accounting"
+below.
+
+- `scripts/vibevoice_tts_quality_suite.py`, **ten seeds** (`--seeds
+  20260915,...,20260924`): **58 of 60 request-runs pass.** Both failures are at the
+  edge of their gates -- `two-2turn` seed 20260919 (WER 0.1176) and `two-long`
+  seed 20260918 (turn attribution). This is the acceptance figure; the earlier
+  three-seed run gave 17 of 18.
+- `scripts/vibevoice_tts_session_bench.py` on the frozen fixture request:
+  `chain_exact: true`, `negative_conditions_match: true`, pooled RTF **1.201**
+  against the torch lane's **1.336** on the same host, request and operands.
+- Whole-suite regression gate at HEAD: `pytest -k vibevoice` -- **130 passed, 11
+  skipped, 0 failed.**
+
+Two findings from this milestone are normative and are repeated here because they
+constrain any later optimization:
+
+- **`chain_exact` is necessary but not sufficient.** Routing the decode gate+up
+  projection to `threads=64` was 3.8x faster on that kernel, moved 5 of 17920
+  outputs by one ulp, kept `chain_exact` true and the correctness suite green at
+  126 passed, yet dropped the ten-seed suite from 58/60 to 57/60. Arithmetic
+  changes to the LM, diffusion head or VAE are gated on the generated-audio suite.
+- **The speed target is not met.** Pooled RTF is 1.201 against torch's 1.336 --
+  faster, but ~1.11x rather than the 2-10x the objective anticipated. The retained
+  breakdown (lm 1.450 / diffusion 1.298 / semantic 0.781 / decode 0.301 / prompt
+  0.174 s of 4.005 s warm) is bounded by bandwidth: the diffusion head streams
+  123.3 GB per request against a ~0.59 s floor, and its GEMV runs at ~175 GB/s, or
+  ~84% of what this host sustains. Zeroing the entire LM stage yields 2.555 s = 0.77
+  RTF ~= 1.74x, so no single-stage optimization reaches 2x. See
+  `docs/REFACTOR.md` "VibeVoice-TTS: the model is bandwidth bound".
+
 ### Failure accounting
 
 Failed and degraded generations stay visible in **both** the quality and the
