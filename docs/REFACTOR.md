@@ -7658,3 +7658,26 @@ quality gate.**
 To remove this entry: it would need a mechanism that removes the trajectory
 sensitivity, not a re-measurement. The isolated stage win is real and stays on
 record in this file so it is not re-attempted from scratch.
+
+## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality)
+
+`vibevoice_qwen2.py`'s decode gate+up projection calls
+`dense_dual_gemv_out_bf16` at the `threads=256` default. At rows=1 with K=1536,
+N=8960, **`threads=64` measures 74.8 us against 283.0 us -- 3.8x, 585.8 GB/s
+against 207.3 GB/s** -- and takes the LM stage from 1.450 s to 1.266 s and pooled
+RTF from 1.201 to 1.174.
+
+**It must not land as a bare thread-count change.** The reduction width changes,
+which moves the summation order: 5 of 17920 outputs shift by about one ulp, and
+the ten-seed quality suite goes from 58/60 to **57/60**, adding a `single-numbers`
+failure at WER 0.1667 that neither accepted arm has. `chain_exact` stayed true and
+the correctness suite stayed green, so neither catches it.
+
+To remove this entry: a variant that keeps the 256-wide reduction tree while
+getting the 64-thread workgroup's memory behaviour would be safe by construction.
+Re-measuring the bare thread count will not change the answer.
+
+Note the same sweep suggests the decode q/k/v and o_proj projections (which use
+`dense_gemv_bf16_f32_out` and `dense_gemv_f32_bf16w_f32_out`, not the kernel
+swept here) may have similar headroom; they were not measured and any change
+there carries the same quality gate.
