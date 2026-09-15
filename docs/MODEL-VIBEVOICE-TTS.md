@@ -493,6 +493,24 @@ request. Before any timing is retained:
 - RTF here is wall time over **output** audio seconds, the inverse convention of
   ASR's wall time over input audio. Every reported number must say which it uses.
 
+### chain_exact is not a sufficient gate
+
+An identical generated-token chain does **not** imply identical audio. The LM's
+hidden state, not just its sampled tokens, conditions the diffusion head, so a
+one-ulp change in an LM projection can move the waveform while every argmax stays
+put. This has now been observed directly: routing the decode gate+up projection
+to `threads=64` (3.8x faster on that kernel, 5 of 17920 outputs moved by one ulp)
+kept `chain_exact` true and kept the whole correctness suite green at 126 passed,
+yet took the ten-seed quality suite from 58/60 to 57/60 by introducing a
+`single-numbers` failure at WER 0.1667.
+
+Treat `chain_exact` as necessary and the correctness suite as a smoke test. Any
+change that touches the arithmetic of the LM, the diffusion head, or the VAE --
+including reduction order, thread count, and tile shape -- is gated on the
+generated-audio quality suite and on nothing weaker. A change that provably
+preserves the summation order is safe by construction and does not need it; that
+is the distinction that let the BM=64 low-row tile land while this one did not.
+
 ### Generated-audio quality suite
 
 `scripts/vibevoice_tts_quality_suite.py` implements the intelligibility,
