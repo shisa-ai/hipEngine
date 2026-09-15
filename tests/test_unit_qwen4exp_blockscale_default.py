@@ -9,12 +9,16 @@ from hipengine.runtime import qwen4_exp_runner
 
 def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     monkeypatch.setattr(os, "environ", os.environ.copy())
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_IU8_UP_VARIANT", "unqualified")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN_VARIANT", "unqualified")
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     profile = resolve_runtime_profile(
         model="qwen4_exp_gguf", backend="hip_gfx1151",
         quant="gguf_ud_q4_k_xl", profile=ExecutionProfile.PRODUCTION)
     profile.binder(SimpleNamespace(), profile)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_UP_VARIANT"] == ""
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN_VARIANT"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"] == (
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")

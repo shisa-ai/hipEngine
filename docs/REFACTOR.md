@@ -5,8 +5,11 @@
 - gfx1151 `iu8_p4_prefill_f32_f32_out` and
   `iu8_compensated_prefill_f32_f32_out` are default-off diagnostic variants.
   Same-input replay, full model quality and complete-owner cost decide retention.
-- Remove rejected specializations/exports/registrations after comparison.
-  No new runtime selector is needed until a variant passes the operand screen.
+- Both variants pass the operand screen in their intended roles. Profile-owned
+  `GR_IU8_UP_VARIANT` and `GR_IU8_DOWN_VARIANT` are cleared by the binder and
+  used only by post-binder diagnostic candidates while GR arithmetic is off.
+- Remove rejected specializations/exports/registrations and selectors after
+  full model/cost comparison; use the profile plan directly for a retained path.
   Keep the strict coltile/fused-GR fallback and original failure evidence.
 
 ## Isolated GR-Up IU8
