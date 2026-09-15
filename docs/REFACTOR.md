@@ -1,5 +1,18 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qualified Chunk2048 Tradeoff
+
+- The explicit2048 path passes canonical numerics, active4K tasks,
+  full-payload boundary/reuse and detailed/deferred-inspection c2 gates.
+  Evidence: `benchmarks/results/2026-09-14-journey-chunk-admission/`.
+- Keep1024 as the global default:2048 improves4K PP/TG2.32%/1.22% but
+  lowers512/1K PP0.34%/0.18%; short complete requests include small losses.
+- Automatic selection needs a shape-dependent workspace policy preserving
+  the smaller owner's short costs, with allocation and lifetime gates.
+  Do not simply average the short losses away. The existing explicit
+  factory/benchmark setting remains available; no new runtime flag is added.
+- Chunk4096's2.16GB scratch under-accounting is separate and still open.
+
 ## Non-GR Q8 Diagnostic Scope
 
 - `scripts/qwen4exp_dense_q8_nongr_gate.py` temporarily clears the existing

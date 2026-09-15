@@ -1,5 +1,11 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-15 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 qualifies explicit
+  chunk2048 after numerical/task/boundary and detailed/deferred c2 gates.
+  Matched4K PP182.802 ->187.042 (+2.32%), TG10.075 ->10.198 (+1.22%);
+  512/1K PP falls0.34%/0.18%, so the global default stays1024.
+  [Comparison and scope](results/2026-09-14-journey-chunk-admission/README.md).
+
 - **2026-09-14 UTC**: Framework Flash-Next UD-Q4_K_XL/BF16 caches unchanged
   MoE backend registrations by default. Matched 512/1K/4K PP
   177.703/186.190/178.411 -> 183.546/189.153/181.759 tok/s

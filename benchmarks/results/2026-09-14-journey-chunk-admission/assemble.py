@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from scripts.qwen4exp_chunk_memory_probe import allocation_margins
 from scripts.qwen4exp_conservative_cost import summarize_cost
+from scripts.qwen4exp_chunk_c2_gate import validate_traces
 
 
 def assemble(root):
@@ -19,7 +20,8 @@ def assemble(root):
                  "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json",
                  "resume-chunk2048-native-c2-allocation.json",
                  "resume-chunk2048-embedded-active-tasks.json",
-                 "resume-chunk2048-boundaries.json"):
+                 "resume-chunk2048-boundaries.json", "resume-chunk2048-c2.json",
+                 "resume-chunk2048-c2-deferred.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -236,6 +238,55 @@ def assemble(root):
             count, tail = divmod(case["prompt_tokens"], size)
             if payload["chunks"] != [size] * count + ([tail] if tail else []):
                 raise ValueError("boundary chunk trace mismatch")
+    for name, inspections, mode in (
+        ("resume-chunk2048-c2.json", 28, "each_checkpoint"),
+        ("resume-chunk2048-c2-deferred.json", 2, "deferred"),
+    ):
+        c2 = packets[name]
+        protocol = {"capacity": 4352, "chunk": 2048, "resident_runners": 2,
+                    "compact_outputs": True, "repeats": 3, "decode_steps": 8}
+        if (c2["status"] != "passed" or not c2["source"]["tracked_clean"]
+                or c2["host"]["machine_id"] != left["host"]["machine_id"]
+                or c2["model"] != depth["model"]
+                or c2["manifest"] != native["manifest_sha256"]
+                or {key: value for key, value in c2["protocol"].items()
+                    if key != "inspection_mode"} != protocol
+                or c2["protocol"].get("inspection_mode", "each_checkpoint") != mode
+                or not c2["disjoint_owner_ranges"]
+                or len(c2["owner_range_counts"]) != 2
+                or min(c2["owner_range_counts"]) <= 0
+                or c2["repair_queues"] != [row["queues"] for row in native["lazy_group_risk"]]
+                or c2["trace_gate"] != {
+                    "model_prefills": 12, "chunk_calls": 28,
+                    "partial_cancellations_without_model_prefill": 3}
+                or len(c2["chunk_traces"]) != 28 or len(c2["repeats"]) != 3
+                or c2["memory_after_close"]["current_allocated_bytes"]):
+            raise ValueError("invalid c2 pool gate")
+        if validate_traces(c2["chunk_traces"], {
+                "a": range(2052), "b": range(4097), "c": range(2049)}) != c2["trace_gate"]:
+            raise ValueError("c2 trace gate does not reproduce")
+        if {row["owners"]["a"] for row in c2["repeats"]} != {0, 1}:
+            raise ValueError("c2 did not exercise both owners")
+        for index, repeat in enumerate(c2["repeats"]):
+            if (repeat["repeat"] != index or repeat["checkpoints"] != inspections
+                    or set(repeat["owners"].values()) != {0, 1}
+                    or repeat["peer_cancel_tokens"] != 2 or repeat["partial_cancel_tokens"] != 0
+                    or repeat["active_cancel_tokens"] != 8 or repeat["replacement_cancel_tokens"] != 8):
+                raise ValueError("c2 lifetime evidence missing")
+        for role, length in (("a", 2052), ("b", 4097), ("c", 2049)):
+            samples = c2["references"][role]
+            if len(samples) != 9:
+                raise ValueError("incomplete isolated c2 reference")
+            for step, sample in enumerate(samples):
+                state = sample["state"]
+                if (state["recurrent"]["position"] != length + step
+                        or not state["recurrent"]["finite"] or not state["full_kv_finite"]
+                        or not state["live_index_finite"] or state["full_kv_bytes"] <= 0
+                        or state["live_index_bytes"] <= 0):
+                    raise ValueError("invalid c2 reference payload")
+    if packets["resume-chunk2048-c2.json"]["references"] != packets[
+            "resume-chunk2048-c2-deferred.json"]["references"]:
+        raise ValueError("isolated reference drift across c2 inspection modes")
     return dict(
         schema=1, performance_claim=True, promotion_claim=False,
         source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
@@ -250,15 +301,19 @@ def assemble(root):
         },
         inference_scope="Canonical c1 512/1K/4K:64 teacher-forced steps/three repeats; "
                         "performance128 AR transitions/three pairs",
-        status="2048_measured_tradeoff_further_admission_pending_4096_accounting_blocker",
+        status="2048_qualified_explicit_tradeoff_default1024_4096_accounting_blocker",
+        default_decision=dict(
+            default_chunk=1024, qualified_explicit_chunk=2048,
+            reason="2048 improves 4K but has measured short-request costs; do not average away those rows.",
+            next="A shape-dependent workspace policy must preserve the1024 short-owner cost before automatic selection."),
         performance_summary=summary, complete_request_speedups=request_speedups,
         raw_sha256=hashes, captures=packets,
         limits=[
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
             "2048 improves measured 4K performance but has small short-prompt costs; default remains1024.",
-            "Six 4K active tasks and 910 boundary/reuse rows pass; true c2 isolation/default decision remain.",
+            "Active tasks, 910 boundary rows and detailed/deferred c2 isolation pass;2048 is a qualified explicit option.",
             "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
-            "No hidden-seed export, graph capture, driver scratch, native-depth or c2 inference claim.",
+            "No hidden-seed export, graph-capture qualification, driver scratch, native-depth or HTTP/SSE claim.",
         ],
     )
 
