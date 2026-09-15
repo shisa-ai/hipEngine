@@ -7629,27 +7629,32 @@ that already makes the kernel registry order-independent under
 - Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
   failure mode was silent drift, not a single large addition.
 
-## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch
+## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch (rejected on quality)
 
-`kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` currently always
-routes to the tiled WMMA prefill GEMM. Routing `rows < 2` to `dense_gemv_out_bf16`
-instead is a **measured candidate that was reverted for the wrong reason and has
-never had its speedup retained**.
+`kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` routes every row
+count to the tiled WMMA prefill GEMM. Routing `rows < 2` to `dense_gemv_out_bf16`
+is **3.00x faster on the semantic stage** (per-chunk `encode_chunk_streaming`
+55.22 -> 18.42 ms, isolated A/B in one process) and takes pooled RTF from 1.337 to
+a median of 1.146 over five runs. **It must not land: it fails the generated-audio
+quality gate.**
 
-- Why it is a candidate: the semantic encoder downsamples 3200 samples to one
-  frame, so its last ConvNeXt stage runs `(1, 2048) -> (1, 8192) -> (1, 2048)`.
-  The WMMA tile is 128x64, so at one row it wastes 127 of 128 tile rows and each
-  block re-reads its whole weight matrix for a single output row.
-- Why it is not landed: no same-host A/B of the stage cost exists in the tree. The
-  only numbers were in a working-tree comment, and they were never promoted with
-  an artifact.
-- What is **not** a blocker: quality. The claim that it degrades generated audio
-  is disproven. Running the ten-seed quality suite with the dispatch on and off
-  gives bit-identical outcomes -- the same two failing request-runs, the same
-  0.118 WER, the same attribution failure. The 15/18-versus-17/18 difference it
-  was originally blamed for came from `--phase score` re-scoring PCM left over
-  from pre-change code.
-- To remove this entry: measure `encode_chunk_streaming("semantic", ...)` with the
-  dispatch on and off in one process, confirm the one-row output matches the tiled
-  path within the production numerical envelope, then land it with an artifact and
-  a worklog entry. Keep a strict fallback if it is registered as a variant.
+- Measured over ten seeds on freshly synthesized audio: **54/60 request-runs pass
+  with the dispatch on against 58/60 with it off**, and the on arm reproduces a
+  catastrophic failure -- `two-2turn` seed 20260917 at WER 0.6471 with 5 repeated
+  4-grams, 11.73 s of output (duration ratio 1.725) and a broken speaker
+  attribution. Two more seeds regress, one losing its transcript entirely.
+- The numerical difference at the boundary is small (max 0.0625 absolute, 3.7e-3
+  relative, about one bf16 ulp at the signal's 16.875 scale), which is why the
+  correctness suite and the exact-token-chain gate both pass while the audio
+  quality gate fails. Do not treat "small perturbation" as "safe perturbation":
+  the two-speaker trajectory is chaotically sensitive to it.
+- **A false negative was recorded here once.** A ten-seed A/B was believed to show
+  bit-identical outcomes on and off. That comparison was invalid: the harness
+  labels its arms `wmma` for threshold 0 and `gemv` for threshold 2, so `wmma`
+  means the dispatch is off, and both arms under comparison were off. Any future
+  A/B on this path must assert the arm's threshold in the artifact rather than
+  trusting the label.
+
+To remove this entry: it would need a mechanism that removes the trajectory
+sensitivity, not a re-measurement. The isolated stage win is real and stays on
+record in this file so it is not re-attempted from scratch.

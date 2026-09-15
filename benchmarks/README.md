@@ -1270,6 +1270,15 @@ word. `two-long` on one seed misassigns one 1 s window inside the first turn, so
 the encoder-based attribution sees a spurious speaker flip; its other nine seeds
 reproduce `[0,1]` cleanly, and the transcript on that seed is unaffected.
 
+This suite is the gate that rejects the semantic encoder's one-row GEMV dispatch.
+That dispatch is 3.00x faster on the stage in isolation (55.22 -> 18.42 ms per
+chunk) and would take pooled RTF from 1.337 to 1.146, but over the same ten seeds
+it drops the suite to 54 of 60 and reproduces a word-error-rate 0.647 runaway with
+repeated speech and an 11.73 s output where the script expects about 7 s. The
+perturbation at the boundary is roughly one bf16 ulp, so this is trajectory
+sensitivity rather than an arithmetic defect, and neither the correctness suite
+nor the exact-token-chain gate detects it. The dispatch is not landed.
+
 Speaker attribution is measured on the acoustic encoder's own window assignment,
 not on the ASR's speaker labels, which report a single speaker for two-speaker
 scripts that contain both voices. The four-turn script reproduces its whole
