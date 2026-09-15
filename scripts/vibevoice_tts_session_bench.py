@@ -1,20 +1,32 @@
 """VibeVoice-TTS session benchmark — the doc's executable protocol.
 
-Reads the committed request manifest, drives the torch-free session on HIP
-with explicit device synchronization around every stage, and reports the
-four protocol numbers (cold start, warm synthesis, time to first audible
-chunk, pooled RTF) plus the sync-bracketed stage breakdown.
+Measures the real request path, not a replay: reference PCM -> voice-prompt
+acoustic encode and VAE sampling -> prompt rows -> the positive LM and the
+session's own negative LM -> per-frame diffusion -> decode -> semantic feedback
+-> PCM. Nothing the model computes is injected.
 
-Every lane consumes the same frozen request: the pinned manifest's token
-ids, masks, CFG scale, step count and seed, with the fixture-recorded
-random tensors (initial diffusion noise, negative conditions) injected so
-RNG streams cannot differ between runs.
+The frozen request comes from the committed manifest plus the frozen fixtures:
+the manifest pins the script, the speaker-reference WAV hash, the CFG scale, the
+solver step count and the seed; the fixtures pin the reference PCM the oracle's
+processor produced, the resolved prompt token ids, and the recorded random
+operands. Only the random operands are injected — the voice-prompt VAE draws and
+each diffusion frame's initial noise — because a seed does not align torch and
+HIP random streams, so a shared seed is not a shared request.
+
+Tracing is disabled for the timed runs; a separate traced run (not timed) gates
+correctness. Reported separately: cold start, warm synthesis, time to first
+audible chunk, and pooled RTF, which is wall time over OUTPUT audio seconds.
+
+Reference-audio preprocessing (librosa resample from the 16 kHz voice WAV plus
+the fork's dB normalizer) is outside the timed path: the request is defined at
+the PCM boundary the model consumes, which is what the manifest's reference-PCM
+hash pins.
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -46,15 +58,53 @@ def _gpu_name() -> str:
     return "unknown"
 
 
+def _npz(path: Path) -> dict[str, np.ndarray]:
+    with np.load(path) as data:
+        return {k: data[k] for k in data.files}
+
+
+def _sha256_file(path: str) -> str | None:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _verify_voice_hashes(request: dict) -> dict:
+    """The manifest's voice files must hash to what the manifest recorded."""
+    result = {}
+    for path, expected in zip(request.get("voices", []), request.get("voice_sha256", [])):
+        actual = _sha256_file(path)
+        result[Path(path).name] = {
+            "expected": expected,
+            "actual": actual,
+            "verified": actual == expected,
+        }
+    return result
+
+
 def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     manifest = json.loads((fixtures / "manifest.json").read_text())
     request = manifest["requests"][0]
-    with np.load(fixtures / "single_lm.npz") as d:
-        lm = {k: d[k] for k in d.files}
-    with np.load(fixtures / "single_diffusion.npz") as d:
-        dif = {k: d[k] for k in d.files}
-    with np.load(fixtures / "single_audio.npz") as d:
-        audio = {k: d[k] for k in d.files}
+    lm = _npz(fixtures / "single_lm.npz")
+    dif = _npz(fixtures / "single_diffusion.npz")
+    ref = _npz(fixtures / "single_reference.npz")
+
+    voice_hashes = _verify_voice_hashes(request)
+    if voice_hashes and not all(v["verified"] for v in voice_hashes.values()):
+        raise RuntimeError(f"manifest voice hash mismatch: {voice_hashes}")
+
+    # The frozen request's reference PCM — the exact waveform the oracle's
+    # processor handed the model.
+    pcm = np.ascontiguousarray(np.asarray(ref["ref_pcm"])[0], dtype=np.float32)
+    pcm_sha256 = hashlib.sha256(pcm.tobytes()).hexdigest()
+    voice_noise = np.asarray(ref["encode_draw1"]).reshape(-1, 64)
+    voice_noise_scale = np.asarray(ref["encode_draw0"]).reshape(1)
+
+    in_ids = np.asarray(lm["input_ids"])[0]
+    mask = np.asarray(lm["speech_input_mask"], dtype=bool).reshape(-1)
+    expected = [int(t) for t in np.asarray(lm["generated_ids"])[0][len(in_ids):]]
+    sample_rate = int(manifest.get("sampling_rate", 24000))
 
     t0 = time.perf_counter()
     weights = load_vibevoice_tts_session(model_id)
@@ -62,8 +112,9 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
 
     sess = VibevoiceTtsSession(weights, max_context=256)
 
-    # Wrap the per-frame stages with sync-bracketed timers.
-    timers = {"diffusion": 0.0, "decode": 0.0, "semantic": 0.0}
+    timers = {"prompt": 0.0, "diffusion": 0.0, "decode": 0.0, "semantic": 0.0}
+    request_start = [0.0]
+    ttfa = [None]
     real_diffusion = sess.diffusion.sample_speech_tokens
     real_decode = sess.decoder.decode
     real_semantic = sess.frontend.encode_chunk_streaming
@@ -78,6 +129,9 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
         _sync(); t = time.perf_counter()
         out = real_decode(*a, **k)
         _sync(); timers["decode"] += time.perf_counter() - t
+        if ttfa[0] is None:
+            # Wall from the start of the request to the end of the first decode.
+            ttfa[0] = time.perf_counter() - request_start[0]
         return out
 
     def timed_semantic(*a, **k):
@@ -90,72 +144,100 @@ def bench(model_id: str, fixtures: Path, repeats: int) -> dict:
     sess.decoder.decode = timed_decode
     sess.frontend.encode_chunk_streaming = timed_semantic
 
-    in_ids = np.asarray(lm["input_ids"])[0]
-    mask = np.asarray(lm["speech_input_mask"], dtype=bool).reshape(-1)
-    conn = np.asarray(lm["prefill_connected"])
-    rows = sess.build_prompt_rows(in_ids, mask, conn)
+    def prepare_prompt() -> list[np.ndarray]:
+        """Reference PCM -> voice-prompt rows, on the session's real path."""
+        _sync(); t = time.perf_counter()
+        _, connected = sess.voice_prompt_rows(
+            pcm, noise=voice_noise, noise_scale=voice_noise_scale
+        )
+        rows = sess.build_prompt_rows(in_ids, mask, connected)
+        _sync(); timers["prompt"] += time.perf_counter() - t
+        return rows
 
-    def run() -> tuple[list[int], list[np.ndarray], float, float]:
-        _sync()
-        wall = time.perf_counter()
-        trace = SessionTrace()
+    def run(*, trace: SessionTrace | None = None) -> tuple[list[int], list[np.ndarray], float]:
+        for k in timers:
+            timers[k] = 0.0
+        ttfa[0] = None
+        _sync(); request_start[0] = time.perf_counter()
+        rows = prepare_prompt()
         res = sess.generate(
             rows,
             cfg_scale=request["cfg_scale"],
-            max_new_tokens=27,
+            max_new_tokens=len(expected),
+            # No neg_hook: the session's own negative LM runs.
             noise_hook=lambda i: dif[f"call{i}_initial_noise"],
-            neg_hook=lambda i: dif[f"call{i}_neg_condition"],
             trace=trace,
         )
-        _sync()
-        elapsed = time.perf_counter() - wall
-        # Time to first audible chunk: wall up to the end of the first decode.
-        first = None
-        return res.ids, res.chunks, elapsed, first
+        _sync(); elapsed = time.perf_counter() - request_start[0]
+        return res.ids, res.chunks, elapsed
 
+    # Correctness: one traced, untimed run against the frozen oracle chain.
+    trace = SessionTrace()
+    ids_ref, chunks_ref, _ = run(trace=trace)
+    chain_exact = ids_ref == expected
+    neg_ok = True
+    for call in (0, 1, 2, 12, 24):
+        ref_neg = np.asarray(dif[f"call{call}_neg_condition"]).reshape(-1)
+        got = trace.neg_conditions[call]
+        peak = float(np.abs(ref_neg).max())
+        if np.abs(got - ref_neg).max() / peak > 0.15:
+            neg_ok = False
+
+    # Timing: untraced runs only.
     runs = []
-    for rep in range(repeats):
-        for k in timers:
-            timers[k] = 0.0
-        ids, chunks, elapsed, _ = run()
-        runs.append((ids, chunks, elapsed, dict(timers)))
+    for _ in range(repeats):
+        ids, chunks, elapsed = run()
+        runs.append((ids, chunks, elapsed, dict(timers), ttfa[0]))
 
     sess.diffusion.sample_speech_tokens = real_diffusion
     sess.decoder.decode = real_decode
     sess.frontend.encode_chunk_streaming = real_semantic
     sess.close()
 
-    out_seconds = len(audio["pcm"]) / float(audio["sample_rate"])
-    gen = np.asarray(lm["generated_ids"])[0]
-    expected = [int(t) for t in gen[len(in_ids):]]
-    chain_ok = all(r[0] == expected for r in runs)
+    timed_chain_ok = all(r[0] == expected for r in runs)
+    # Output duration comes from the waveform this lane produced, not the oracle.
+    out_seconds = float(sum(int(c.size) for c in runs[0][1])) / sample_rate
 
     cold = runs[0]
-    warm = runs[1:]
-    warm_wall = [r[2] for r in warm] or [cold[2]]
+    warm = runs[1:] or runs
+    warm_wall = [r[2] for r in warm]
     warm_stages = {k: float(np.mean([r[3][k] for r in warm])) for k in timers}
     lm_time = float(np.mean(warm_wall)) - sum(warm_stages.values())
+    warm_ttfa = [r[4] for r in warm if r[4] is not None]
 
     return {
         "model": manifest.get("model_id", "microsoft/VibeVoice-1.5B"),
         "quant": "bf16",
-        "workload": {
+        "measurement_basis": "real-request-path",
+        "request": {
             "script": request["script"],
             "prompt_tokens": int(len(in_ids)),
             "generated_tokens": len(expected),
             "diffusion_frames": len(expected) - 2,
             "cfg_scale": request["cfg_scale"],
             "ddpm_steps": request["ddpm_inference_steps"],
+            "seed": request.get("seed"),
+            "reference_pcm_sha256": pcm_sha256,
+            "reference_pcm_samples": int(pcm.size),
+            "voice_files": voice_hashes,
+            "injected": "recorded random operands only (voice VAE draws, "
+                        "per-frame initial noise)",
+            "not_injected": "prompt embeddings, negative conditions",
+            "tracing_during_timing": False,
+        },
+        "workload": {
             "output_audio_seconds": round(out_seconds, 3),
-            "sample_rate": int(audio["sample_rate"]),
+            "sample_rate": sample_rate,
         },
         "host": {"name": Path("/etc/hostname").read_text().strip(), "gpu": _gpu_name()},
         "command": "uv run python scripts/vibevoice_tts_session_bench.py",
         "weight_load_seconds": round(t_load, 3),
         "cold_start_seconds": round(cold[2], 3),
         "warm_synthesis_seconds": round(float(np.mean(warm_wall)), 3),
+        "time_to_first_audio_seconds": round(float(np.mean(warm_ttfa)), 3) if warm_ttfa else None,
         "pooled_rtf": round(float(np.mean(warm_wall)) / out_seconds, 3),
-        "chain_exact": bool(chain_ok),
+        "chain_exact": bool(chain_exact and timed_chain_ok),
+        "negative_conditions_match": bool(neg_ok),
         "stages": {
             "lm_total_seconds": round(lm_time, 3),
             **{f"{k}_seconds": round(v, 3) for k, v in warm_stages.items()},
@@ -168,7 +250,10 @@ def main() -> None:
     ap.add_argument("--model", default="microsoft/VibeVoice-1.5B")
     ap.add_argument("--fixtures", default="tests/fixtures/vibevoice_tts")
     ap.add_argument("--repeats", type=int, default=3)
-    ap.add_argument("--out", default="benchmarks/results/vibevoice_tts_session_baseline.json")
+    ap.add_argument(
+        "--out",
+        default="benchmarks/results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json",
+    )
     args = ap.parse_args()
     result = bench(args.model, Path(args.fixtures), args.repeats)
     print(json.dumps(result, indent=2))
