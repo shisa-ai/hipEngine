@@ -118,7 +118,18 @@ def main() -> int:
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--case-id", action="append", default=None)
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument(
+        "--warmups",
+        type=int,
+        default=1,
+        help=(
+            "Unmeasured requests per case before the measured ones. The first "
+            "request on a shape pays graph capture and weight-touch costs that "
+            "a steady-state rate must not include."
+        ),
+    )
     parser.add_argument("--port", type=int, default=18211)
+    parser.add_argument("--kv-dtype", default="bf16", choices=("bf16", "f16", "q8_0", "f32"))
     parser.add_argument("--context", type=int, default=4352)
     parser.add_argument("--batch", type=int, default=8192)
     parser.add_argument("--ubatch", type=int, default=2048)
@@ -155,7 +166,7 @@ def main() -> int:
         str(args.server), "-m", str(args.model),
         "--host", "127.0.0.1", "--port", str(args.port),
         "--parallel", "1", "--no-webui", "-ngl", "999", "-fa", "on",
-        "-ctk", "bf16", "-ctv", "bf16", "-c", str(args.context),
+        "-ctk", args.kv_dtype, "-ctv", args.kv_dtype, "-c", str(args.context),
         "-b", str(args.batch), "-ub", str(args.ubatch), "-t", str(args.threads),
     ]
     launched = (
@@ -179,7 +190,7 @@ def main() -> int:
         "source": _source_state(args.source_tree),
         "model": str(args.model),
         "model_sha256_first_shard": _sha256_file(args.model),
-        "kv_dtype": "bf16",
+        "kv_dtype": args.kv_dtype,
         "flash_attention": "on",
         "context": args.context,
         "batch": args.batch,
@@ -204,45 +215,72 @@ def main() -> int:
                 f"{args.label}: server did not become healthy; see {server_log}"
             )
         report["startup_seconds"] = time.monotonic() - started
-        for case in cases:
-            rows = []
-            for rep in range(args.repetitions):
-                payload = json.dumps({
-                    "prompt": [int(t) for t in case["prompt_token_ids"]],
-                    "n_predict": 1, "temperature": 0.0, "top_k": 1,
-                    "top_p": 1.0, "min_p": 0.0, "seed": 12345,
-                    "ignore_eos": True, "cache_prompt": False,
-                    "stream": False, "return_tokens": True,
-                }).encode()
-                request = urllib.request.Request(
-                    base + "/completion", data=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                client_start = time.perf_counter()
-                with urllib.request.urlopen(request, timeout=args.request_timeout) as response:
-                    body = json.loads(response.read())
-                timings = body.get("timings", {})
-                rows.append({
-                    "rep": rep,
-                    "prompt_ms": timings.get("prompt_ms"),
-                    "prompt_tokens": timings.get("prompt_n"),
-                    "prompt_tok_s": timings.get("prompt_per_second"),
-                    "client_wall_ms": (time.perf_counter() - client_start) * 1e3,
-                    "generated_token_id": (body.get("tokens") or [None])[0],
-                })
+
+        def _request(case, measured: bool, rep: int | None = None) -> dict:
+            payload = json.dumps({
+                "prompt": [int(t) for t in case["prompt_token_ids"]],
+                "n_predict": 1, "temperature": 0.0, "top_k": 1,
+                "top_p": 1.0, "min_p": 0.0, "seed": 12345,
+                "ignore_eos": True, "cache_prompt": False,
+                "stream": False, "return_tokens": True,
+            }).encode()
+            request = urllib.request.Request(
+                base + "/completion", data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            client_start = time.perf_counter()
+            with urllib.request.urlopen(request, timeout=args.request_timeout) as response:
+                body = json.loads(response.read())
+            timings = body.get("timings", {})
+            row = {
+                "prompt_ms": timings.get("prompt_ms"),
+                "prompt_tokens": timings.get("prompt_n"),
+                "prompt_tok_s": timings.get("prompt_per_second"),
+                "client_wall_ms": (time.perf_counter() - client_start) * 1e3,
+                "generated_token_id": (body.get("tokens") or [None])[0],
+            }
+            if measured:
                 print(
                     f"{args.label} {case['id']} rep{rep}: "
-                    f"prompt_ms={rows[-1]['prompt_ms']} "
-                    f"tok_s={rows[-1]['prompt_tok_s']}",
+                    f"prompt_ms={row['prompt_ms']} tok_s={row['prompt_tok_s']}",
                     flush=True,
                 )
-            report["cases"].append({
+            return row
+
+        for case in cases:
+            for warmup in range(args.warmups):
+                row = _request(case, measured=False, rep=warmup)
+                print(
+                    f"{args.label} {case['id']} warmup{warmup}: "
+                    f"prompt_ms={row['prompt_ms']}",
+                    flush=True,
+                )
+            rows = []
+            for rep in range(args.repetitions):
+                row = _request(case, measured=True, rep=rep)
+                row["rep"] = rep
+                rows.append(row)
+            measured_tok_s = sorted(
+                r["prompt_tok_s"] for r in rows if r.get("prompt_tok_s")
+            )
+            case_row = {
                 "id": case["id"],
                 "category": case["category"],
                 "prompt_tokens": case["prompt_tokens"],
                 "prompt_token_ids_sha256": case["prompt_token_ids_sha256"],
                 "repetitions": rows,
-            })
+            }
+            if measured_tok_s:
+                median = measured_tok_s[len(measured_tok_s) // 2]
+                case_row["median_prompt_tok_s"] = median
+                # A request that stalls (page-cache eviction, swap) is an
+                # environment event, not an engine property. Flag it rather
+                # than letting it sit silently in a mean.
+                case_row["stalled_reps"] = [
+                    r["rep"] for r in rows
+                    if r.get("prompt_tok_s") and r["prompt_tok_s"] < 0.7 * median
+                ]
+            report["cases"].append(case_row)
             args.output.write_text(json.dumps(report, indent=1) + "\n")
     finally:
         process.terminate()
@@ -261,6 +299,18 @@ def main() -> int:
         report["prompt_tok_s_min"] = min(r["prompt_tok_s"] for r in measured)
         report["prompt_tok_s_max"] = max(r["prompt_tok_s"] for r in measured)
         report["measured_samples"] = len(measured)
+        by_shape: dict[int, list[float]] = defaultdict(list)
+        for case in report["cases"]:
+            for row in case["repetitions"]:
+                if row.get("prompt_tok_s"):
+                    by_shape[int(case["prompt_tokens"])].append(row["prompt_tok_s"])
+        report["median_prompt_tok_s_by_shape"] = {
+            shape: sorted(values)[len(values) // 2]
+            for shape, values in sorted(by_shape.items())
+        }
+        report["total_stalled_reps"] = sum(
+            len(case.get("stalled_reps", [])) for case in report["cases"]
+        )
 
     if args.profile:
         kernel_csvs = sorted((trace_root / "trace").rglob("*kernel_trace*.csv"))
@@ -291,7 +341,9 @@ def main() -> int:
     args.output.write_text(json.dumps(report, indent=1) + "\n")
     print(
         f"{args.label}: {report.get('measured_samples', 0)} samples, "
-        f"mean {report.get('prompt_tok_s_mean')} tok/s -> {args.output}"
+        f"mean {report.get('prompt_tok_s_mean')} tok/s, "
+        f"by-shape {report.get('median_prompt_tok_s_by_shape')}, "
+        f"stalled {report.get('total_stalled_reps')} -> {args.output}"
     )
     return 0
 

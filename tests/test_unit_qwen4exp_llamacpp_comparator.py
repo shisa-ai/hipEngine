@@ -106,3 +106,43 @@ def test_source_state_reports_commit_and_dirtiness(module, tmp_path):
 
 def test_source_state_tolerates_a_missing_tree(module):
     assert module._source_state(None) == {}
+
+
+def test_stall_detection_flags_only_clear_outliers():
+    """A stalled request must be flagged, not averaged into the rate."""
+    rates = [700.0, 710.0, 705.0]
+    median = sorted(rates)[len(rates) // 2]
+    assert [r for r in rates if r < 0.7 * median] == []
+    with_stall = [700.0, 710.0, 30.0]
+    median = sorted(with_stall)[len(with_stall) // 2]
+    assert [r for r in with_stall if r < 0.7 * median] == [30.0]
+
+
+def test_parser_exposes_the_validity_arguments(module, monkeypatch):
+    """The arms of a comparison are only comparable if these are all set."""
+    import argparse
+    import sys as _sys
+
+    captured = {}
+    real_parse = argparse.ArgumentParser.parse_args
+
+    def fake_parse(self, argv=None, namespace=None):
+        captured["opts"] = {
+            action.dest for action in self._actions if action.dest != "help"
+        }
+        raise SystemExit(0)
+
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", fake_parse)
+    monkeypatch.setattr(_sys, "argv", ["prog"])
+    try:
+        module.main()
+    except SystemExit:
+        pass
+    finally:
+        monkeypatch.setattr(argparse.ArgumentParser, "parse_args", real_parse)
+
+    assert {
+        "server", "label", "model", "fixture", "case_id", "repetitions",
+        "warmups", "context", "batch", "ubatch", "threads", "kv_dtype",
+        "profile", "source_tree",
+    } <= captured["opts"]
