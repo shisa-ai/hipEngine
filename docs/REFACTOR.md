@@ -7734,3 +7734,27 @@ Anyone looking for more speed should start from the bandwidth number rather than
 from a kernel profile, and should expect the answer to be a work-partitioning
 change that preserves the reduction tree, or a quality candidate (fewer solver
 steps, lower precision) that the generated-audio suite has to justify.
+
+## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, bit-exact)
+
+The session builds two LM runtimes over the same weights, `positive` and
+`negative`. `_negative_condition` runs a **full LM forward per diffusion frame**,
+streaming all 28 layers for one row, so the negative branch accounts for **65.5 GB
+of the LM's 138.9 GB** of weight traffic -- about 47%. The LM runs at roughly
+110 GB/s against the ~209 GB/s this host sustains.
+
+Merging the two decode branches into one rows=2 pass halves that traffic and is
+**bit-exact**, because a GEMV output element `(row, col)` reduces over `k`
+independently of every other row. Unlike the other items in this file, this one
+reduces traffic rather than changing arithmetic, so it does not need the
+generated-audio gate to be worth attempting -- though it should still be confirmed
+against it.
+
+It is a session-orchestration refactor, not a kernel change: the two runtimes own
+separate KV caches and positions, advance at different rates (positive once per
+generated token, negative once per diffusion frame), and the attention kernels take
+per-row `KVLiveSpans`, so a two-row pass needs two span sets.
+
+Expected: LM 1.450 s toward 0.86 s, pooled RTF 1.201 toward 1.05. This should be
+attempted before any lower-precision-diffusion-weights campaign, which would be a
+quality tradeoff.
