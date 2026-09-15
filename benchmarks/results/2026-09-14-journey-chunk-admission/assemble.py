@@ -17,7 +17,8 @@ def assemble(root):
     for name in ("resume-chunk2048-allocation.json", "resume-chunk2048-lazy-allocation.json",
                  "resume-chunk4096-lazy-allocation.json", "resume-chunk2048-depth.json",
                  "resume-chunk-workspace-check.json", "resume-chunk2048-workspace-ab.json",
-                 "resume-chunk2048-native-c2-allocation.json"):
+                 "resume-chunk2048-native-c2-allocation.json",
+                 "resume-chunk2048-embedded-active-tasks.json"):
         raw = (root / name).read_bytes()
         hashes[name] = hashlib.sha256(raw).hexdigest()
         packets[name] = json.loads(raw)
@@ -163,6 +164,41 @@ def assemble(root):
     if allocation_margins(native["admission"]["plan"],
                           native["prepared_memory"]["current_allocated_bytes"]) != native["allocation_margins"]:
         raise ValueError("native allocation margins do not reproduce")
+    tasks = packets["resume-chunk2048-embedded-active-tasks.json"]
+    if (tasks["status"] != "passed_supplemental" or not tasks["source"]["tracked_clean"]
+            or tasks["candidate"] != "production_baseline" or tasks["overrides"]
+            or tasks["host"]["machine_id"] != left["host"]["machine_id"]
+            or tasks["model"] != depth["model"]
+            or tasks["protocol"] != {
+                "context": 4096, "repeats": 3, "max_tokens": 64,
+                "strict_chunk": 1024, "candidate_chunk": 2048}
+            or len(tasks["comparisons"]) != 6
+            or any(not all(row[key] for key in (
+                "valid", "strict_correct", "candidate_correct", "output_ids_exact"))
+                   for row in tasks["comparisons"])
+            or any(row["current_allocated_bytes"] for row in tasks["lifecycle"].values())):
+        raise ValueError("invalid active-task chunk gate")
+    expected_ids = [row["id"] for row in tasks["comparisons"]]
+    if len(set(expected_ids)) != 6:
+        raise ValueError("duplicate active task")
+    for arm, chunks in (("strict", [1024] * 4), ("candidate", [2048] * 2)):
+        cases = tasks["cases"][arm]
+        if [row["id"] for row in cases] != expected_ids:
+            raise ValueError("active task coverage mismatch")
+        for case in cases:
+            if (not case["correct"] or not case["repeated"] or len(case["runs"]) != 3
+                    or case["prompt"]["context_tokens"] != 4096
+                    or case["prompt"]["prompt_format"] != "qwen4exp_embedded"
+                    or case["prompt"]["enable_thinking"]
+                    or any(run != case["runs"][0] or run["finish"] != "eos"
+                           or not run["finite"] or run["prefill_chunks"] != chunks
+                           for run in case["runs"])):
+                raise ValueError("active task did not execute declared chunks")
+    for before, after in zip(tasks["cases"]["strict"], tasks["cases"]["candidate"], strict=True):
+        if (before["prompt"] != after["prompt"]
+                or before["runs"][0]["state_sha256"] != after["runs"][0]["state_sha256"]
+                or before["runs"][0]["ids"] != after["runs"][0]["ids"]):
+            raise ValueError("active-task recorded parity does not reproduce")
     return dict(
         schema=1, performance_claim=True, promotion_claim=False,
         source=ab["source"], host=ab["host"], model=ab["model"], command=ab["command"],
@@ -183,7 +219,7 @@ def assemble(root):
         limits=[
             "Constructor-only 2048 pass omits lazy queues and is diagnostic.",
             "2048 improves measured 4K performance but has small short-prompt costs; default remains1024.",
-            "Active-shape task/isolation and wider admission remain; no universal speedup or new default claim.",
+            "Six 4K active tasks pass with observed chunks; boundary/isolation and wider admission remain.",
             "4096 allocates physically; its failure is under-accounted scratch, not device OOM.",
             "No hidden-seed export, graph capture, driver scratch, native-depth or c2 inference claim.",
         ],
