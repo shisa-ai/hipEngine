@@ -49,6 +49,24 @@ from hipengine.kernels.cpu_reference.vibevoice_asr import (
 )
 
 
+# Samples per reference frame. The acoustic tokenizer's first stage strides by
+# this much, so a non-streaming pass emits ``ceil(samples / 3200)`` frames.
+REFERENCE_HOP_SAMPLES = 3200
+
+
+def reference_frame_count(samples: int) -> int:
+    """Frames ``encode_reference`` emits for a waveform of ``samples`` inputs.
+
+    The fork pads every stage on the right and ceils, so a length that is not a
+    hop multiple still yields a full final frame; ``test_live_vibevoice_tts_
+    session_gpu`` pins this against the encoder's own returned frame count.
+    """
+    samples = int(samples)
+    if samples <= 0:
+        raise ValueError('reference PCM must be nonempty')
+    return -(-samples // REFERENCE_HOP_SAMPLES)
+
+
 def _upload_u16(host_u16: np.ndarray) -> DeviceBuffer:
     array = np.ascontiguousarray(host_u16)
     buffer = malloc(array.nbytes)

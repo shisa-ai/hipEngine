@@ -21,6 +21,7 @@ if not hip_runtime_available():
     pytest.skip("no usable HIP runtime for VibeVoice TTS session tests", allow_module_level=True)
 
 from hipengine.loading.vibevoice_tts_session import load_vibevoice_tts_session
+from hipengine.runtime.vibevoice_encoder import reference_frame_count
 from hipengine.runtime.vibevoice_tts_session import VibevoiceTtsSession, SessionTrace
 
 FIXTURES = Path(__file__).parent / "fixtures" / "vibevoice_tts"
@@ -249,3 +250,200 @@ def test_session_pcm_matches_oracle(session, lm, dif) -> None:
         rms_r = float(np.sqrt((ref.astype(np.float64) ** 2).mean()))
         ratio = rms_g / max(rms_r, 1e-12)
         assert 0.75 <= ratio <= 1.25, f"call{call} RMS ratio {ratio:.3f}"
+
+
+# -- multi-voice prompts ----------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def two_session(weights):
+    """A session wide enough for the two-speaker request (352 + 59 positions)."""
+    sess = VibevoiceTtsSession(weights, max_context=1024)
+    yield sess
+    sess.close()
+
+
+def _two_voice_pcms(ref):
+    """The two speakers' natural-length PCM.
+
+    ``two_reference.npz`` stores both voices as one ``(2, 665600)`` batch, so
+    row 0 carries the shorter speaker's trailing zero pad and its length there
+    is the batch's, not the speaker's. The same speaker's natural length is
+    recorded by the single-speaker fixture, which is where this reads it.
+    """
+    alice = np.asarray(_npz("single_reference.npz")["ref_pcm"])[0]
+    carter = np.asarray(ref["ref_pcm"])[1]
+    return [alice, carter]
+
+
+def _two_prompt_rows(sess, ref, lm):
+    """Two-speaker prompt rows from the frozen reference PCM, RNG-independent."""
+    _, connected = sess.voice_prompt_rows_multi(
+        _two_voice_pcms(ref),
+        noise=np.asarray(ref["encode_draw1"]),
+        noise_scale=np.asarray(ref["encode_draw0"]),
+    )
+    return sess.build_prompt_rows(
+        np.asarray(lm["input_ids"]),
+        np.asarray(lm["speech_input_mask"], dtype=bool),
+        connected,
+    )
+
+
+def _row_rel(got, ref):
+    """Per-row max error relative to the reference block's peak."""
+    return np.abs(got - ref).max(axis=1) / float(np.abs(ref).max())
+
+
+def test_reference_frame_count_matches_encoder(session) -> None:
+    """The frame-count formula agrees with the encoder on the frozen voices.
+
+    ``voice_prompt_rows_multi`` needs each voice's real frame count to slice the
+    batch-padded encode, and it computes that from the sample count rather than
+    encoding twice. This pins the formula against the encoder's own returned
+    count, including a reference whose length is not a hop multiple.
+    """
+    single = _npz("single_reference.npz")
+    two = _npz("two_reference.npz")
+    cases = [
+        (np.asarray(single["ref_pcm"])[0], 70),
+        (np.asarray(two["ref_pcm"])[0], 208),
+        (np.asarray(two["ref_pcm"])[1], 208),
+    ]
+    for pcm, expected in cases:
+        assert reference_frame_count(pcm.size) == expected, f"{pcm.size} samples"
+        assert session.frontend.encode_reference(pcm).shape[0] == expected
+
+
+def test_voice_prompt_rows_multi_single_voice_is_unchanged(session) -> None:
+    """The one-voice path is bit-identical to the single-reference entry point.
+
+    ``voice_prompt_rows`` now delegates to the multi-voice builder, so the
+    regression this guards is a batch-max pad or an extra RNG draw leaking into
+    the single-voice case, which the frozen single-speaker chain depends on.
+    """
+    ref = _npz("single_reference.npz")
+    pcm = np.asarray(ref["ref_pcm"])[0]
+    noise = np.asarray(ref["encode_draw1"])
+    scale = np.asarray(ref["encode_draw0"])
+    sampled, connected = session.voice_prompt_rows(pcm, noise=noise, noise_scale=scale)
+    multi_sampled, multi_connected = session.voice_prompt_rows_multi(
+        [pcm], noise=noise, noise_scale=scale
+    )
+    assert len(multi_sampled) == 1
+    assert np.array_equal(sampled, multi_sampled[0])
+    assert np.array_equal(connected, multi_connected)
+
+
+def test_two_speaker_prompt_rows_match_reference(two_session) -> None:
+    """Two voices -> per-voice latents and 278 spliced connected rows.
+
+    The oracle batches both voices into one ``forward_speech_features`` call, so
+    both ``speech_tensors`` rows are zero padded to the longer reference and
+    ``speech_masks`` selects 70 and 208 frames afterwards. The encoder is not
+    translation invariant at its tail, so a voice encoded outside that batch
+    disagrees on its final frame; the second assertion is what makes the
+    batch-max padding a contract instead of an implementation detail.
+
+    Envelope: the latents sit on the encoder's bf16 noise floor (0.036 for the
+    70-frame voice, 0.072 for the 208-frame one, against 0.036 for the frozen
+    single-speaker voice). The connector amplifies that per row, so the median
+    row is gated tightly and the tail is gated at the measured 0.206.
+    """
+    ref = _npz("two_reference.npz")
+    single = _npz("single_reference.npz")
+    oracle_conn = np.asarray(ref["connected"])
+    oracle_lat = np.asarray(ref["encode0_latents"])
+
+    sampled, connected = two_session.voice_prompt_rows_multi(
+        _two_voice_pcms(ref),
+        noise=np.asarray(ref["encode_draw1"]),
+        noise_scale=np.asarray(ref["encode_draw0"]),
+    )
+    assert [s.shape[0] for s in sampled] == [70, 208]
+    assert connected.shape == oracle_conn.shape == (278, 1536)
+
+    offsets = (0, 70)
+    for index, (frames, offset) in enumerate(zip((70, 208), offsets)):
+        lat = np.abs(sampled[index] - oracle_lat[index][:frames]).max() / float(
+            np.abs(oracle_lat[index][:frames]).max()
+        )
+        assert lat <= 0.09, f"voice {index} sampled latents drifted: {lat:.4f}"
+        rows = _row_rel(
+            connected[offset : offset + frames], oracle_conn[offset : offset + frames]
+        )
+        assert np.median(rows) <= 0.02, f"voice {index} median row drifted"
+        assert rows.max() <= 0.25, f"voice {index} worst row drifted: {rows.max():.4f}"
+
+    # Batch-max padding is load-bearing: voice 0 encoded alone (batch of one, so
+    # no pad) puts its final frame 0.23 off, while the batched encode is 0.04.
+    _, alone = two_session.voice_prompt_rows_multi(
+        [np.asarray(single["ref_pcm"])[0]],
+        noise=np.asarray(single["encode_draw1"]),
+        noise_scale=np.asarray(single["encode_draw0"]),
+    )
+    alone_rel = float(np.abs(alone - oracle_conn[:70]).max() / np.abs(oracle_conn[:70]).max())
+    batched_rel = float(
+        np.abs(connected[:70] - oracle_conn[:70]).max() / np.abs(oracle_conn[:70]).max()
+    )
+    assert alone_rel > 0.15, f"unpadded voice 0 matched at {alone_rel:.4f}; check the pad"
+    assert batched_rel <= 0.05, f"batched voice 0 drifted: {batched_rel:.4f}"
+
+
+def test_two_speaker_prefill_logits_match_reference(two_session) -> None:
+    """The 352-position two-speaker prompt reaches the oracle's logits.
+
+    This is the end of the prompt path: if the connected rows were spliced into
+    the wrong mask positions, or the voices were swapped, the final position's
+    argmax would move. Measured 0.012 relative on the final position.
+    """
+    ref = _npz("two_reference.npz")
+    lm = _npz("two_lm.npz")
+    rows = _two_prompt_rows(two_session, ref, lm)
+    assert len(rows) == 352
+    pos = two_session.positive
+    pos.reset()
+    for index, row in enumerate(rows):
+        pos.push_token(row, index)
+        pos.forward_layers(index)
+    logits, _ = pos.logits_argmax()
+    oracle = np.asarray(lm["prefill_logits"])[-1]
+    rel = float(np.abs(np.asarray(logits) - oracle).max() / np.abs(oracle).max())
+    assert rel <= 0.03, f"two-speaker final-position logits drifted: {rel:.4f}"
+    assert int(np.asarray(logits).argmax()) == int(oracle.argmax())
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="two-speaker chain diverges at the first span end; see "
+    "worklog/entries/20260915T091156.145004Z-lhl-vibevoice-tts-two-speaker-prompt-f6fe75.md",
+)
+def test_two_speaker_greedy_chain_matches_torch(two_session) -> None:
+    """RED: the 59-token two-speaker chain against the frozen oracle.
+
+    Measured: the first 31 tokens are exact and the divergence is the 32nd, the
+    first span's end, where the oracle emits speech_end and this session emits
+    another speech_diffusion (top-2 gap 9 logits, so not a near tie). Localized
+    to the prompt rows, not the LM or the diffusion head: the head reproduces
+    the oracle's own per-call latents to 0.036, and the LM reproduces the
+    oracle's prefill hidden to 0.05 given the oracle's own connected rows. The
+    208-frame voice's connected rows are the input that is off, at 0.206.
+    """
+    ref = _npz("two_reference.npz")
+    lm = _npz("two_lm.npz")
+    dif = _npz("two_diffusion.npz")
+    rows = _two_prompt_rows(two_session, ref, lm)
+    calls = int(dif["num_calls_recorded"])
+    res = two_session.generate(
+        rows,
+        cfg_scale=1.3,
+        max_new_tokens=59,
+        noise_hook=lambda i: dif[f"call{min(i, calls - 1)}_initial_noise"],
+        neg_hook=lambda i: dif[f"call{min(i, calls - 1)}_neg_condition"],
+    )
+    gen = np.asarray(lm["generated_ids"])[0]
+    expected = [int(t) for t in gen[len(np.asarray(lm["input_ids"])[0]) :]]
+    assert len(res.chunks) == calls, (
+        f"session ran {len(res.chunks)} diffusion calls, oracle recorded {calls}"
+    )
+    assert res.ids == expected, "two-speaker chain moved off the oracle"
