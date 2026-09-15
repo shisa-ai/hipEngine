@@ -10,6 +10,15 @@
   flag retry. Related exact fusions and GR-down are separate decisions.
   Evidence: `benchmarks/results/2026-09-15-journey-gr-up/`.
 
+## Isolated GR-Down IU8
+
+- `GR_IU8_DOWN` independently fails the780-row gate with GR-up/generic
+  dense/MMQ off: meanKL0.0013128,p950.0068352,top1769/780.
+  All6912 direct calls are K10240/N320. Keep it off pending actual-input
+  projection-boundary correction and full requalification.
+- This is an independent arithmetic failure, not a general prohibition on
+  GR optimization. Evidence: `benchmarks/results/2026-09-15-journey-gr-down/`.
+
 ## MoE Backend Refresh Cache
 
 - Stable-generation MoE backend caching is unconditional after its exact
