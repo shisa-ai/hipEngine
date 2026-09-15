@@ -65,8 +65,10 @@ def mlp_roles() -> tuple[str, ...]:
     return tuple(name.split(".")[0] for name in MLP_TENSORS)
 from hipengine.core.device import Device, scoped_current_device  # noqa: E402
 from hipengine.core.hip import get_hip_runtime  # noqa: E402
+from hipengine.core.runtime import MemcpyKind  # noqa: E402
 from hipengine.core.memory import copy_host_to_device, copy_device_to_host  # noqa: E402
 from hipengine.kernels.cpu_reference.maple import f32_to_bf16_bits  # noqa: E402
+from hipengine.kernels.cpu_reference.ops import rmsnorm  # noqa: E402
 from hipengine.loading.gguf import GGUFReader, scan_gguf  # noqa: E402
 from hipengine.loading.qwen35_gguf import (  # noqa: E402
     build_qwen35_gguf_tensor_map,
@@ -118,6 +120,26 @@ def bf16_bytes(values: np.ndarray) -> np.ndarray:
     """The bf16 byte payload of an f32 array, little-endian uint16."""
 
     return f32_to_bf16_bits(values).astype("<u2").tobytes()
+
+
+def residual_boundary(
+    residual_f32: np.ndarray,
+    mlp_out: np.ndarray,
+    norm_weight: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """The next block's input boundary: residual add, then input RMSNorm.
+
+    This is what a replicated next layer consumes on both ranks. The add runs in
+    f32 - the incumbent f32-residual decode path - and the norm is the CPU
+    reference, so a TP2 boundary is compared against a TP1 boundary through the
+    same arithmetic.
+    """
+
+    next_hidden = (np.asarray(residual_f32, dtype=np.float32) + np.asarray(mlp_out, dtype=np.float32)).astype(np.float32)
+    return {
+        "next_hidden": next_hidden,
+        "next_norm": rmsnorm(next_hidden, norm_weight).astype(np.float32),
+    }
 
 
 def _relative_errors(actual: np.ndarray, expected: np.ndarray) -> dict[str, float]:
@@ -176,6 +198,8 @@ def contract_rank_partials(
     x_bf16: np.ndarray,
     rank: int,
     world_size: int,
+    *,
+    down_output_dtype: str = "f32",
 ) -> dict[str, np.ndarray]:
     """One rank's partials with bf16 rounding exactly where the device writes it.
 
@@ -198,7 +222,12 @@ def contract_rank_partials(
     g = bf16_round(gate[columns, :] @ x_bf16)
     u = bf16_round(up[columns, :] @ x_bf16)
     a = bf16_round(silu_f32(g) * u)
-    y = bf16_round(down[:, columns] @ a)
+    if down_output_dtype == "f32":
+        # An f32 partial is the kernel's f32 accumulator written out unrounded;
+        # the only rounding left is the one the reduction performs.
+        y = (down[:, columns] @ a).astype(np.float32)
+    else:
+        y = bf16_round(down[:, columns] @ a)
     return {"gate": g, "up": u, "activated": a, "down_partial": y}
 
 
@@ -361,9 +390,15 @@ def run_rank_chain(
     x_bf16_bytes: np.ndarray,
     hidden: int,
     per_rank_ffn: int,
-    output_dtype: str = "bf16",
-) -> dict[str, np.ndarray]:
-    """Run the unfused shard chain on one device and return every intermediate."""
+    output_dtype: str = "f32",
+    keep_down_partial: bool = False,
+) -> dict[str, Any]:
+    """Run the unfused shard chain on one device.
+
+    Returns every intermediate as raw bytes. With ``keep_down_partial`` the down
+    buffer is left allocated and its pointer is returned as ``down_ptr`` - the
+    exchange D2Hs from it on this rank's stream - and the caller owns the free.
+    """
 
     out_itemsize = 4 if output_dtype == "f32" else 2
     x_ptr = _alloc(runtime, device, hidden * 2)
@@ -421,14 +456,23 @@ def run_rank_chain(
                 runtime=runtime,
             )
             runtime.stream_synchronize(stream)
-        return {
+        output = {
             "gate": _download(runtime, device, gate_ptr, per_rank_ffn * 2),
             "up": _download(runtime, device, up_ptr, per_rank_ffn * 2),
             "activated": _download(runtime, device, act_ptr, per_rank_ffn * 2),
             "down_partial": _download(runtime, device, down_ptr, hidden * out_itemsize),
+            "down_output_dtype": output_dtype,
         }
+        if keep_down_partial:
+            output["down_ptr"] = int(down_ptr)
+            output["_down_nbytes"] = hidden * out_itemsize
+            return output
+        with scoped_current_device(runtime, device):
+            runtime.free(down_ptr)
+        return output
     finally:
-        for ptr in (x_ptr, gate_ptr, up_ptr, act_ptr, down_ptr):
+        # down_ptr is intentionally absent here when kept: the caller owns it.
+        for ptr in (x_ptr, gate_ptr, up_ptr, act_ptr):
             with scoped_current_device(runtime, device):
                 runtime.free(ptr)
 
@@ -456,9 +500,11 @@ def run_rank_chain_fused(
 
     from hipengine.runtime.gguf_linear import launch_gguf_linear_pair_silu  # noqa: PLC0415
 
+    # The candidate's down GEMV writes f32 partials, matching the baseline
+    # chain's reduction contract; the buffer must be sized for that output.
     x_ptr = _alloc(runtime, device, hidden * 2)
     act_ptr = _alloc(runtime, device, per_rank_ffn * 2)
-    down_ptr = _alloc(runtime, device, hidden * 2)
+    down_ptr = _alloc(runtime, device, hidden * 4)
     try:
         _upload(runtime, device, x_ptr, x_bf16_bytes)
         with scoped_current_device(runtime, device):
@@ -488,18 +534,114 @@ def run_rank_chain_fused(
                 per_rank_ffn,
                 hidden,
                 use_gemv_decode=True,
+                output_dtype="f32",
                 stream=stream,
                 runtime=runtime,
             )
             runtime.stream_synchronize(stream)
         return {
             "activated": _download(runtime, device, act_ptr, per_rank_ffn * 2),
-            "down_partial": _download(runtime, device, down_ptr, hidden * 2),
+            "down_partial": _download(runtime, device, down_ptr, hidden * 4),
         }
     finally:
         for ptr in (x_ptr, act_ptr, down_ptr):
             with scoped_current_device(runtime, device):
                 runtime.free(ptr)
+
+
+class PinnedStaging:
+    """A page-locked host buffer one reduction stages its partials through.
+
+    The measured transport stages each rank's partial D2H through pinned host
+    memory, sums on the host in f32, and copies the reduced vector H2D back to
+    every rank. Page-locking matters because a pageable D2H is staged through a
+    driver-owned bounce buffer, which is a second, unmeasured copy on the
+    critical path.
+    """
+
+    def __init__(self, runtime: Any, nbytes: int):
+        self._runtime = runtime
+        self.nbytes = int(nbytes)
+        self._host = (ctypes.c_ubyte * self.nbytes)()
+        self.ptr = ctypes.addressof(self._host)
+        runtime.host_register(self.ptr, self.nbytes)
+
+    def view(self) -> np.ndarray:
+        return np.frombuffer(self._host, dtype=np.uint8)
+
+    def free(self) -> None:
+        self._runtime.host_unregister(self.ptr)
+
+    def __enter__(self) -> "PinnedStaging":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.free()
+
+
+def staged_exchange_reduce(
+    runtime: Any,
+    *,
+    partial_ptrs: dict[int, int],
+    reduced_ptrs: dict[int, int],
+    streams: dict[int, int],
+    staging: PinnedStaging,
+    hidden: int,
+    devices: list[int],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Both ranks' partials -> pinned host -> f32 sum -> H2D to every rank.
+
+    Ordering: each rank's D2H is issued on that rank's own stream, so stream
+    order places it after the GEMV that produced the partial; the host waits on
+    that stream before reading the slot. Each rank's H2D of the reduced vector
+    is likewise issued on its stream, so any later work on that rank - the next
+    consumer - is ordered after the reduction without a host round trip.
+
+    Returns the reduced f32 vector and the bytes each stage moved, including a
+    read-back of every rank's reduced buffer so the H2D is verified, not assumed.
+    """
+
+    slot_nbytes = hidden * 4
+    reduced = np.zeros(hidden, dtype=np.float32)
+    record: dict[str, Any] = {"d2h_bytes": 0, "h2d_bytes": 0, "verified_ranks": []}
+    staging_view = staging.view()
+    for device in devices:
+        stream = streams[device]
+        with scoped_current_device(runtime, device):
+            runtime.memcpy_async(
+                staging.ptr + device * slot_nbytes,
+                partial_ptrs[device],
+                slot_nbytes,
+                MemcpyKind.DEVICE_TO_HOST,
+                stream,
+            )
+            runtime.stream_synchronize(stream)
+        record["d2h_bytes"] += slot_nbytes
+        reduced += np.frombuffer(
+            staging_view[device * slot_nbytes : (device + 1) * slot_nbytes].tobytes(),
+            dtype="<f4",
+        ).astype(np.float32)
+
+    payload = np.ascontiguousarray(reduced.astype("<f4"))
+    for device in devices:
+        stream = streams[device]
+        with scoped_current_device(runtime, device):
+            runtime.memcpy_async(
+                reduced_ptrs[device],
+                payload.ctypes.data,
+                slot_nbytes,
+                MemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
+            runtime.stream_synchronize(stream)
+            got = np.frombuffer(
+                _download(runtime, device, reduced_ptrs[device], slot_nbytes).tobytes(),
+                dtype="<f4",
+            )
+        record["h2d_bytes"] += slot_nbytes
+        max_abs = float(np.abs(got - payload).max()) if got.size == hidden else float("inf")
+        record["verified_ranks"].append({"device": device, "h2d_roundtrip_max_abs": max_abs})
+    return reduced, record
 
 
 def run_tp1_teacher(
@@ -523,34 +665,34 @@ def run_tp1_teacher(
     y_ptr = _alloc(runtime, 0, hidden * out_itemsize)
     try:
         _upload(runtime, 0, x_ptr, x_bf16_bytes)
-        launched = launch_gguf_linear_pair_silu(
-            resident_gate,
-            resident_up,
-            x_ptr,
-            inter_ptr,
-            1,
-            hidden,
-            ffn,
-            use_gemv_decode=True,
-            registered_decode_variant=decode_variant,
-            stream=stream,
-            runtime=runtime,
-        )
-        if not launched:
-            raise RuntimeError("the TP1 fused pair+SiLU route did not launch")
-        launch_gguf_linear(
-            resident_down,
-            inter_ptr,
-            y_ptr,
-            1,
-            ffn,
-            hidden,
-            use_gemv_decode=True,
-            output_dtype=output_dtype,
-            stream=stream,
-            runtime=runtime,
-        )
         with scoped_current_device(runtime, 0):
+            launched = launch_gguf_linear_pair_silu(
+                resident_gate,
+                resident_up,
+                x_ptr,
+                inter_ptr,
+                1,
+                hidden,
+                ffn,
+                use_gemv_decode=True,
+                registered_decode_variant=decode_variant,
+                stream=stream,
+                runtime=runtime,
+            )
+            if not launched:
+                raise RuntimeError("the TP1 fused pair+SiLU route did not launch")
+            launch_gguf_linear(
+                resident_down,
+                inter_ptr,
+                y_ptr,
+                1,
+                ffn,
+                hidden,
+                use_gemv_decode=True,
+                output_dtype=output_dtype,
+                stream=stream,
+                runtime=runtime,
+            )
             runtime.stream_synchronize(stream)
         return {
             "intermediate": _download(runtime, 0, inter_ptr, ffn * 2),
@@ -572,7 +714,6 @@ def run(
     model: Path,
     layer: int,
     world_size: int,
-    output_dtype: str = "bf16",
     seed: int = 20260915,
 ) -> dict[str, Any]:
     import hashlib  # noqa: PLC0415
@@ -613,9 +754,20 @@ def run(
 
     truth = full_truth(full["ffn_gate"], full["ffn_up"], full["ffn_down"], x_bf16)
     per_rank = ffn // int(world_size)
+    # The residual entering this block's MLP tail and the next block's input
+    # norm weight: both are replicated on every rank, so the boundary comparison
+    # below is per-rank independent of the shard.
+    residual_f32 = bf16_round(rng.standard_normal(hidden, dtype=np.float32) * np.float32(0.05))
+    norm_weight = (rng.standard_normal(hidden, dtype=np.float32) * np.float32(0.1) + np.float32(1.0)).astype(np.float32)
     contract = [
         contract_rank_partials(
-            full["ffn_gate"], full["ffn_up"], full["ffn_down"], x_bf16, rank, world_size
+            full["ffn_gate"],
+            full["ffn_up"],
+            full["ffn_down"],
+            x_bf16,
+            rank,
+            world_size,
+            down_output_dtype="f32",
         )
         for rank in range(int(world_size))
     ]
@@ -638,6 +790,11 @@ def run(
     # Rank shard payloads, built from the same planner slices the probe verified.
     plans = {name: by_name[name] for name in names}
     rank_weights: list[dict[str, _ShardWeight]] = []
+    rank_outputs: list[dict[str, Any]] = []
+    reduced_ptrs: dict[int, int] = {}
+    exchange_record: dict[str, Any] = {}
+    reduced: np.ndarray | None = None
+    teacher: dict[str, Any] = {}
     try:
         for rank in range(int(world_size)):
             weights: dict[str, _ShardWeight] = {}
@@ -654,6 +811,11 @@ def run(
                 weights[role] = _ShardWeight(layout, quant_key, allocation)
             rank_weights.append(weights)
 
+        # The down projection writes f32 partials: the kernel's f32 accumulator
+        # leaves the rank unrounded, so the reduction is a plain f32 sum with no
+        # per-rank bf16 step in front of it. Gate/up and the activation stay
+        # bf16, which is the incumbent activation contract.
+        down_dtype = "f32"
         rank_outputs = []
         for rank in range(int(world_size)):
             rank_outputs.append(
@@ -665,8 +827,23 @@ def run(
                     x_bf16_bytes=x_bf16_bytes,
                     hidden=hidden,
                     per_rank_ffn=per_rank,
-                    output_dtype=output_dtype,
+                    output_dtype=down_dtype,
+                    keep_down_partial=True,
                 )
+            )
+        down_ptrs = {rank: int(out["down_ptr"]) for rank, out in enumerate(rank_outputs)}
+        # One reduced buffer per rank: after the reduction both ranks hold the
+        # same hidden state, which is what the replicated next layer consumes.
+        reduced_ptrs = {rank: _alloc(runtime, rank, hidden * 4) for rank in range(int(world_size))}
+        with PinnedStaging(runtime, int(world_size) * hidden * 4) as staging:
+            reduced, exchange_record = staged_exchange_reduce(
+                runtime,
+                partial_ptrs=down_ptrs,
+                reduced_ptrs=reduced_ptrs,
+                streams={rank: streams[rank] for rank in range(int(world_size))},
+                staging=staging,
+                hidden=hidden,
+                devices=list(range(int(world_size))),
             )
 
         # The fused candidate, run only when the policy resolves a TP1 variant
@@ -718,7 +895,7 @@ def run(
                 hidden=hidden,
                 ffn=ffn,
                 decode_variant=str(decode_variant),
-                output_dtype=output_dtype,
+                output_dtype="f32",
             )
         finally:
             resident.free()
@@ -726,25 +903,31 @@ def run(
         for rank, weights in enumerate(rank_weights):
             for weight in weights.values():
                 weight._allocation.free(runtime=runtime)
+        for rank, out in enumerate(rank_outputs):
+            if "down_ptr" in out:
+                with scoped_current_device(runtime, rank):
+                    runtime.free(int(out["down_ptr"]))
+        for rank, ptr in reduced_ptrs.items():
+            with scoped_current_device(runtime, rank):
+                runtime.free(ptr)
         for stream in streams:
             runtime.stream_destroy(stream)
 
     # -- checks ---------------------------------------------------------------
-    itemsize = 4 if output_dtype == "f32" else 2
 
-    def as_f32(raw: np.ndarray, count: int) -> np.ndarray:
+    def as_f32(raw: np.ndarray, count: int, dtype: str) -> np.ndarray:
         flat = np.frombuffer(raw.tobytes(), dtype=np.uint8)
-        if itemsize == 4:
+        if dtype == "f32":
             return flat.view("<f4").astype(np.float32)
         return bf16_to_float32(flat.view("<u2"))
 
     per_rank_report = []
     summed = np.zeros(hidden, dtype=np.float32)
     for rank, output in enumerate(rank_outputs):
-        gate_dev = as_f32(output["gate"], per_rank)
-        up_dev = as_f32(output["up"], per_rank)
-        act_dev = as_f32(output["activated"], per_rank)
-        partial_dev = as_f32(output["down_partial"], hidden)
+        gate_dev = as_f32(output["gate"], per_rank, "bf16")
+        up_dev = as_f32(output["up"], per_rank, "bf16")
+        act_dev = as_f32(output["activated"], per_rank, "bf16")
+        partial_dev = as_f32(output["down_partial"], hidden, output["down_output_dtype"])
         c = contract[rank]
         summed += partial_dev
         per_rank_report.append(
@@ -759,22 +942,31 @@ def run(
             }
         )
 
-    teacher_y = as_f32(teacher["down_partial"], hidden)
+    teacher_y = as_f32(teacher["down_partial"], hidden, "f32")
+
+    # The residual/next-consumer boundary: what the replicated next layer would
+    # consume on each rank after the exchange. The TP2 path reduces in f32 and
+    # adds the residual in f32; the TP1 teacher writes an f32 down output; the
+    # truth chain has no rounding at all.
+    assert reduced is not None
+    boundary_tp2 = residual_boundary(residual_f32, reduced, norm_weight)
+    boundary_tp1 = residual_boundary(residual_f32, teacher_y, norm_weight)
+    boundary_truth = residual_boundary(residual_f32, truth, norm_weight)
 
     fused_report: dict[str, Any] | None = None
     if isinstance(fused_candidate, list):
         fused_sum = np.zeros(hidden, dtype=np.float32)
         fused_rank_rows = []
         for rank, output in enumerate(fused_candidate):
-            act_dev = as_f32(output["activated"], per_rank)
-            partial_dev = as_f32(output["down_partial"], hidden)
+            act_dev = as_f32(output["activated"], per_rank, "bf16")
+            partial_dev = as_f32(output["down_partial"], hidden, "f32")
             fused_sum += partial_dev
             c = contract[rank]
             fused_rank_rows.append(
                 {
                     "rank": rank,
-                    "activated_vs_unfused": _relative_errors(act_dev, as_f32(rank_outputs[rank]["activated"], per_rank)),
-                    "down_partial_vs_unfused": _relative_errors(partial_dev, as_f32(rank_outputs[rank]["down_partial"], hidden)),
+                    "activated_vs_unfused": _relative_errors(act_dev, as_f32(rank_outputs[rank]["activated"], per_rank, "bf16")),
+                    "down_partial_vs_unfused": _relative_errors(partial_dev, as_f32(rank_outputs[rank]["down_partial"], hidden, "f32")),
                     "activated_vs_contract": _relative_errors(act_dev, c["activated"]),
                 }
             )
@@ -803,22 +995,46 @@ def run(
         "hidden_size": hidden,
         "feed_forward_length": ffn,
         "per_rank_ffn": per_rank,
-        "output_dtype": output_dtype,
         "seed": int(seed),
         "manifest_hash": manifest.manifest_hash(),
         "plan_context": plan_context,
         "devices": device_names,
         "fused_path_admission": admission,
+        "reduction": {
+            "down_output_dtype": "f32",
+            "sum_dtype": "f32",
+            "transport": "staged exchange: per-rank D2H into pinned host, host f32 sum, H2D to every rank",
+            "decision": (
+                "f32 partials: the down kernel's f32 accumulator leaves the rank "
+                "unrounded, so no per-rank bf16 rounding precedes the sum, and the "
+                "f32 reduced vector feeds the incumbent f32-residual decode path "
+                "without a conversion"
+            ),
+            "exchange": exchange_record,
+        },
         "stages": {
             "tp2_sum_vs_truth": _relative_errors(summed, truth),
             "tp2_sum_vs_contract_sum": _relative_errors(summed, contract_sum),
             "tp2_sum_vs_tp1_teacher": _relative_errors(summed, teacher_y),
             "tp1_teacher_vs_truth": _relative_errors(teacher_y, truth),
+            "boundary_next_hidden_tp2_vs_tp1": _relative_errors(
+                boundary_tp2["next_hidden"], boundary_tp1["next_hidden"]
+            ),
+            "boundary_next_hidden_tp2_vs_truth": _relative_errors(
+                boundary_tp2["next_hidden"], boundary_truth["next_hidden"]
+            ),
+            "boundary_next_norm_tp2_vs_tp1": _relative_errors(
+                boundary_tp2["next_norm"], boundary_tp1["next_norm"]
+            ),
+            "boundary_next_norm_tp2_vs_truth": _relative_errors(
+                boundary_tp2["next_norm"], boundary_truth["next_norm"]
+            ),
         },
         "per_rank": per_rank_report,
         "fused_candidate": fused_report,
         "input": {
             "x_abs_max": float(np.abs(x_f32).max()),
+            "residual_abs_max": float(np.abs(residual_f32).max()),
             "x_checksum": hashlib.sha256(x_bf16_bytes.tobytes()).hexdigest()[:16],
         },
     }
@@ -830,7 +1046,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", required=True, type=Path)
     parser.add_argument("--layer", type=int, default=0)
     parser.add_argument("--world-size", type=int, default=2)
-    parser.add_argument("--output-dtype", choices=("bf16", "f32"), default="bf16")
     parser.add_argument("--seed", type=int, default=20260915)
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -838,7 +1053,6 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         layer=args.layer,
         world_size=args.world_size,
-        output_dtype=args.output_dtype,
         seed=args.seed,
     )
     text = json.dumps(report, indent=2)
