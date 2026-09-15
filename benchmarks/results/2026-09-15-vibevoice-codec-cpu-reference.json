@@ -1,0 +1,27 @@
+{
+  "frames": 6,
+  "samples_per_frame": 3200,
+  "full_vs_oracle_full": {
+    "max_abs": 3.0735236578038894e-10,
+    "mean_abs": 6.814523135593535e-12,
+    "max_rel_to_peak": 3.543455708761814e-06
+  },
+  "stream_vs_oracle_stream": {
+    "max_abs": 3.6277469916967675e-10,
+    "mean_abs": 6.764329264543252e-12,
+    "max_rel_to_peak": 4.1824152316311995e-06
+  },
+  "stream_vs_full_within_reference": {
+    "max_abs": 3.092281986027956e-10,
+    "bit_exact": false
+  },
+  "oracle_stream_vs_oracle_full": {
+    "max_abs": 2.780780050670728e-10,
+    "mean_abs": 7.667931642650154e-12,
+    "max_rel_to_peak": 3.2059525295474005e-06
+  },
+  "waveform_peak": {
+    "oracle_full": 8.673802949488163e-05,
+    "reference_full": 8.673810225445777e-05
+  }
+}
