@@ -24,8 +24,25 @@ Trace durations are smoke evidence, not performance comparisons.
 
 The variants have separate gfx1151 registry keys and registered strict
 coltile/fused-GR fallbacks. Profile-owned diagnostic selectors are cleared
-by normal binding. Full model quality and operation-complete cost are next;
-the original independently failing GR paths are not re-enabled.
+by normal binding. The original independently failing GR paths are not re-enabled.
+
+## Compensated GR-Down Model Gate
+
+Clean `99e21a0ac`, all12 canonical cases,64 teacher-forced transitions,
+three repeats/780 rows, with6912 actual corrected registry calls:
+
+| Metric | Compensated | Limit |
+| --- | ---: | ---: |
+| Mean KL | 0.00131602 | <=0.001 |
+| p95 KL | 0.00666774 | <=0.005 |
+| Maximum KL | 0.05029259 | <=0.05 |
+| Top-1 | 769/780 (98.590%) | >=99% |
+
+**Not promoted.** Determinism, state/metadata/finiteness and teardown pass,
+but mean/p95/max/top1 fail. Better agreement with sampled FP64 projections
+does not imply acceptable drift against the model's strict execution.
+No task or performance run was spent on this failed correction.
+P4-up remains a separate pending model candidate.
 
 ```bash
 .venv/bin/python benchmarks/results/2026-09-15-journey-gr-corrections/assemble.py \

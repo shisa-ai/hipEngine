@@ -11,6 +11,10 @@
 - Remove rejected specializations/exports/registrations and selectors after
   full model/cost comparison; use the profile plan directly for a retained path.
   Keep the strict coltile/fused-GR fallback and original failure evidence.
+- Compensated GR-down now fails the780-row model gate (mean0.001316,
+  p950.006668,max0.050293,top1769/780). It is not a repair for production.
+  Keep it only through the paired correction comparison, then remove the
+  rejected path; P4-up model qualification is the remaining arm.
 
 ## Isolated GR-Up IU8
 
