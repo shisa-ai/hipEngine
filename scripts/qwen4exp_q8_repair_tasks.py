@@ -6,6 +6,7 @@ Truncated responses require further review, never an automatic pass.
 """
 
 import argparse
+from contextlib import ExitStack
 import fcntl
 import json
 import os
@@ -21,11 +22,24 @@ from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, CANDIDATES
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 
 
 def task_candidate(name):
     spec = CANDIDATES[name]
     return ("q8_fallback" if name == "production_q8_fallback" else name), spec
+
+
+def task_dispatch_context(candidate):
+    from hipengine.kernels.registry import KernelKey
+
+    counted = candidate.requires_dispatch_count
+    return count_candidate_dispatch(
+        key=KernelKey(*candidate.candidate_key) if counted else None,
+        direct_target=candidate.direct_dispatch_target if counted else None,
+        direct_reference=candidate.direct_dispatch_reference if counted else None,
+        shape_positions=candidate.dispatch_shape_positions if counted else None,
+    )
 
 
 def select_task_prompts(prompts, requested):
@@ -103,7 +117,10 @@ def main():
             os.environ.update(overrides)
             report["arms"][name] = dict(manifest=resolved.manifest_sha256,
                                        overrides=dict(overrides), cases=[])
+            dispatch_stack = ExitStack()
             try:
+                counter = (dispatch_stack.enter_context(task_dispatch_context(candidate))
+                           if name != "strict" else None)
                 if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
                     generator.runner.configure_mmq_prefill_resources()
                 for prompt in prompts:
@@ -118,6 +135,15 @@ def main():
                     args.output.write_text(json.dumps(report, indent=2) + "\n")
                     print(name, prompt["id"], len(repeats[0]["ids"]),
                           repeats[0]["finish_reason"], flush=True)
+                if counter is not None:
+                    report["arms"][name]["dispatch"] = {
+                        "calls": counter["calls"], "shapes": shape_records(counter),
+                        "key": candidate.candidate_key,
+                        "direct_target": candidate.direct_dispatch_target,
+                        "required": candidate.requires_dispatch_count,
+                    }
+                    if candidate.requires_dispatch_count and counter["calls"] == 0:
+                        raise ValueError("task candidate never dispatched")
             except Exception as error:
                 report["status"] = "failed"
                 report["error"] = f"{type(error).__name__}: {error}"
@@ -128,7 +154,10 @@ def main():
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
-                generator.close()
+                try:
+                    generator.close()
+                finally:
+                    dispatch_stack.close()
                 report["lifecycle"][name] = memory_stats()
                 args.output.write_text(json.dumps(report, indent=2) + "\n")
         report["status"] = "captured_requires_manual_review"
