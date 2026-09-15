@@ -112,7 +112,16 @@ matmul — runs through a single kernel family,
 `gguf_k_prefill_out_coltile_rowbatch_kernel`. That is the whole dense-projection
 cost, in one place, which makes it the right target.
 
-**They run at 2650 GFLOP/s, 8.9% of the FP32 peak.**
+| Probe | GFLOP/s | Share |
+| --- | ---: | ---: |
+| Datasheet FP32 peak | 29696 | 100% |
+| Register-resident FMA, measured | 28521 | 96.0% |
+| Dense projections, measured in-model | 2650 | 9.3% of measured peak |
+
+Those dense projections run through a single kernel family,
+`gguf_k_prefill_out_coltile_rowbatch_kernel`.
+
+**They run at 2650 GFLOP/s, 9.3% of the measured FP32 peak.**
 
 ## First experiment: the tuning path is exhausted
 
@@ -140,7 +149,7 @@ block pointer and the FP16 scale load wave-uniform. The inner loop drops from 17
 to 145 instructions, and the output is bit-identical (`max_abs_diff = 0.0` across
 every layer and row count in the sweep).
 
-## Why the tuning path is exhausted: the instruction mix
+## Why the tuning path is exhausted: the tile space, not the kernel
 
 `scripts/qwen4exp_dense_projection_loop_mix.py` compiles the kernel and counts
 issue slots in the innermost loop.
@@ -159,40 +168,67 @@ The 105 non-FMA instructions are 32 for dequantization (8 scale loads, 8 int8
 loads, 8 int8→float converts, 8 dequant multiplies), 26 for address arithmetic,
 15 for `s_waitcnt`, 7 for `s_delay_alu`, and the remainder for control flow.
 
-The consequence is a hard ceiling on the design:
+### A wrong ceiling, and the measured one
 
-| | GFLOP/s | % of FP32 peak |
+Reading those counts as issue slots — one instruction per cycle, so 40 of 145
+means 27.6% — gives a ceiling of 22.1% of peak. **That model is wrong for RDNA3,
+which co-issues integer and FP32 work**, and it understated the ceiling by more
+than a factor of two. `scripts/qwen4exp_roofline_probe.py` measures the bound
+directly instead of inferring it:
+
+| Probe | GFLOP/s | Share |
 | --- | ---: | ---: |
-| FP32 peak | 29696 | 100 |
-| Issue-limited ceiling of this design | **6554** | **22.1** |
-| Measured, dense projections | 2650 | 8.9 |
+| Datasheet FP32 peak (40 CU × 128 × 2 × 2.9 GHz) | 29696 | 100% |
+| Register-resident FMA, measured | **28521** | 96.0% of datasheet |
+| 40 FMA + 105 integer per iteration, measured | **16467** | 57.7% of measured FMA peak |
+| Dense projections, measured in-model | 2650 | 16.1% of the mix ceiling |
 
-The kernel reaches **40% of its own issue ceiling**. There are no spills and
-occupancy is already at the register-only maximum, so the missing 60% is
-memory-latency stall, not an occupancy problem.
+Two things follow. The datasheet peak is real on this part — a register-resident
+kernel reaches 96% of it, so percent-of-peak has an honest denominator. And a
+kernel holding this exact instruction mix sustains 16467 GFLOP/s, so the mix is
+not what limits the projection.
 
-This splits the headroom into two parts with different answers:
+**The dense projection runs at 16.1% of what its own instruction mix can
+sustain.** The tile shapes are exhausted, but the kernel is nowhere near its
+mix ceiling: the missing 6x is memory latency and scheduling, not tiling, and it
+does not require changing the arithmetic.
 
-- **Within the design (about 2.5x):** recoverable by hiding the stalls behind
-  the existing instruction stream. Real, but bounded by the 22.1% ceiling.
-- **Beyond the ceiling (about 4.5x):** requires reducing the 72.4% of issue
-  slots that do not multiply. Tiling differently cannot do it; the mix is fixed
-  by dequantizing each weight element in the inner loop.
+Stream bandwidth, for the same reason: 211.1 GB/s measured against 256 GB/s
+datasheet, 82.5%, in line with the 75-85% a well-written streaming kernel
+expects.
+
+### The memory accounting does not close
+
+One number in this artifact is not explained and is flagged rather than
+asserted. `attn_qkv` reads 27.85 MB of weights, 10.49 MB of activations and
+writes 41.94 MB of F32 output per 1024-row launch — 80.3 MB in 17.32 ms, or
+4.6 TB/s, which exceeds both the 211 GB/s measured stream rate and the 32 MB
+MALL. The bytes cannot all be crossing DRAM in the measured window.
+
+Either the working set is substantially cache-resident across repetitions in a
+way the byte model does not capture, or the effective traffic is smaller than
+the buffer sizes suggest. A `rocprofv3` memory-counter capture of the same
+launch would settle it, and until then the 16.1% figure should be read as
+"16.1% of the mix ceiling on a kernel whose memory behaviour is not yet
+characterized" rather than as a pure latency-hiding gap.
 
 ## Status
 
-**Rejected: further tuning of the dense projection.** The tile family is swept,
-occupancy is maximal, there are no spills, and the design ceiling is 22.1% of
-peak against 8.9% measured. Nothing in this artifact is a retained performance
-claim.
+**Rejected: further tile-shape tuning of the dense projection.** The family is
+swept, occupancy is maximal, there are no spills. **Not rejected: making the
+same arithmetic substantially faster.** The kernel sits at 16.1% of its own
+instruction-mix ceiling, and the measured probe says that ceiling is real, so a
+memory-latency and scheduling effort has roughly 6x of headroom without touching
+the arithmetic. Nothing in this artifact is a retained performance claim.
 
 Not yet measured, in the order that would settle the remaining questions:
 
-1. A practical roofline probe on this GPU — achieved FP32 FMA rate and achieved
-   bandwidth for a pure stream — to confirm the 29696 GFLOP/s peak is reachable
-   at all, and to size the latency-hiding headroom empirically rather than by
-   inference from the instruction mix.
-2. Real activation ranges from a boundary capture, replacing the deterministic
-   per-layer activations this sweep used.
-3. The `gr_read` 2539 ms of non-matmul tensor reads, which no projection change
+1. A `rocprofv3` memory-counter capture of the same `attn_qkv` launch, to close
+   the byte accounting above. Until it runs, the size of the latency-hiding gap
+   is bounded but not attributed.
+2. Where the stalls actually are: an occupancy-and-stall breakdown of the real
+   kernel, since the probe kernel that reaches 57.7% has no memory traffic.
+3. Real activation ranges from a boundary capture, replacing the deterministic
+   per-layer activations the sweep used.
+4. The `gr_read` 2539 ms of non-matmul tensor reads, which no projection change
    would touch.

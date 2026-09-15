@@ -1,5 +1,21 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: Corrected the previous entry's dense-projection ceiling.
+  Counting issue slots one per cycle predicted a 22.1%-of-peak ceiling for the
+  dense GGUF projection; a probe holding that exact instruction mix (40 FMA +
+  105 integer per iteration) measures **16467 GFLOP/s, 57.7% of the measured
+  FP32 peak**, because RDNA3 co-issues integer and FP32 work. The projection
+  runs at 2650 GFLOP/s, **16.1% of its own mix ceiling**, so about 6x of
+  headroom exists in memory latency and scheduling without changing the
+  arithmetic. Also measured the practical roofline: register-resident FMA
+  reaches 28521 GFLOP/s (96.0% of the 29696 datasheet peak, so the denominator
+  is honest) and stream copy 211.1 GB/s (82.5% of 256 GB/s). Flagged, not
+  resolved: `attn_qkv` moves ~80.3 MB per 1024-row launch in 17.32 ms (4.6
+  TB/s), which exceeds both the measured stream rate and MALL, so the byte
+  accounting needs a memory-counter capture. No hipEngine rate changed; no perf
+  claim retained.
+  [Artifact](results/2026-09-16-flashnext-per-role-cost/README.md).
+
 - **2026-09-16 UTC**: Rebuilt the Flash-Next prefill cost table at operation
   granularity with real shapes for every role, sourcing MoE geometry from the
   GGUF tensor map and `expert_used_count` instead of leaving it unattributed.
