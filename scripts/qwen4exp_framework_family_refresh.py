@@ -421,7 +421,7 @@ def capture_hipengine(args):
     chunk_arguments = hip_chunk_arguments(args.prefill_chunk_size)
     if not _git_metadata(ROOT)["tracked_clean"]:
         raise ValueError("commit the validated collector before frozen HIP captures")
-    fixture, fixture_hash = load_fixture(DEFAULT_FIXTURE)
+    fixture, fixture_hash = load_fixture(args.fixture)
     cases = [_select_case(fixture, name) for name in args.case_id]
     output = args.output.resolve()
     if output.exists():
@@ -477,6 +477,8 @@ def capture_hipengine(args):
                 else:
                     command += ["--live-count", str(tokens + 1), "--repetitions", "3"]
                     markers = [f"qwen4exp_decode_live{tokens + 1}_rep{i}" for i in range(3)]
+                for override in getattr(args, "override", ()) or ():
+                    command += ["--override", str(override)]
                 profiled = [
                     str(args.rocprof_bin),
                     "--kernel-trace",
@@ -1106,10 +1108,22 @@ def main():
     hip = sub.add_parser("capture-hipengine")
     hip.add_argument("--model-root", type=Path, required=True)
     hip.add_argument("--case-id", action="append", required=True)
+    hip.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE,
+                     help="Exact-token fixture holding the requested case ids")
     hip.add_argument("--compiler-version-file", type=Path, required=True)
     hip.add_argument("--prefill-chunk-size",type=int,default=512,
                      help="Explicit current production uses1024;512 preserves historical capture default")
     hip.add_argument("--rocprof-bin", type=Path, default=Path("rocprofv3"))
+    hip.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="HIPENGINE_KEY=VALUE",
+        help=(
+            "Diagnostic runtime override forwarded to qwen4exp_profile_gap.py, "
+            "applied after the named profile binder. Repeat for multiple keys."
+        ),
+    )
     hip.add_argument("--output", type=Path, required=True)
     join = sub.add_parser("join")
     join.add_argument("--hipengine", type=Path, required=True)
