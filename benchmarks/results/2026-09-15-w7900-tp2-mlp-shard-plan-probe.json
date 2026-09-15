@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "tp2-mlp-shard-plan-probe",
-  "generated_at": "2026-09-15T02:36:32Z",
+  "generated_at": "2026-09-15T02:38:44Z",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_hash": "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
   "layer": 0,
@@ -313,6 +313,14 @@
           ]
         }
       }
+    },
+    "device_resident_bytes_match_the_host_repack": {
+      "answer": true,
+      "evidence": "the resident tiles allocation read back from the device equals the host repack of the same source payload, through the incumbent materializer"
+    },
+    "rank_shard_is_a_sub_range_of_the_resident_weight": {
+      "answer": true,
+      "evidence": "each rank's repacked shard tiles equal the corresponding slice of the device-resident tiles on the axis its split moves"
     }
   },
   "reduction_point": {
@@ -341,6 +349,63 @@
     ],
     "selected": null,
     "selection_reason": "unresolved: the partial dtype must match the down projection's actual output dtype, and the incumbent down spec resolves to 'gguf_q6_k_t16_qmicro_planar_v1' with output 'bf16'. Choosing the payload before resolving that would compare a bf16 exchange against an f32 arithmetic chain. Resolve in the execution test."
+  },
+  "device_stage": {
+    "ran": true,
+    "slots": {
+      "blk.0.ffn_gate.weight": {
+        "layout": "gguf_q4_k_t16_v1",
+        "allocation": "tiles",
+        "device_nbytes": 51527680,
+        "host_repack_nbytes": 51527680,
+        "resident_matches_host_repack": true,
+        "ranks": {
+          "0": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "out_tiles[0:544]"
+          },
+          "1": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "out_tiles[544:1088]"
+          }
+        }
+      },
+      "blk.0.ffn_up.weight": {
+        "layout": "gguf_q4_k_t16_v1",
+        "allocation": "tiles",
+        "device_nbytes": 51527680,
+        "host_repack_nbytes": 51527680,
+        "resident_matches_host_repack": true,
+        "ranks": {
+          "0": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "out_tiles[0:544]"
+          },
+          "1": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "out_tiles[544:1088]"
+          }
+        }
+      },
+      "blk.0.ffn_down.weight": {
+        "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+        "allocation": "tiles",
+        "device_nbytes": 73113600,
+        "host_repack_nbytes": 73113600,
+        "resident_matches_host_repack": true,
+        "ranks": {
+          "0": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "blocks[0:34]"
+          },
+          "1": {
+            "device_slice_equals_rank_payload": true,
+            "device_slice_compared": "blocks[34:68]"
+          }
+        }
+      }
+    },
+    "checked": true
   },
   "next": "measure complete TP1 and local-shard MLP segment walls on both cards, connect the shard outputs through the native exchange into the next consumer, and validate against the CPU split oracle and the TP1 teacher under the production numerical contract"
 }
