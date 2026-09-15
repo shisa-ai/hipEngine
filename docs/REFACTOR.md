@@ -7659,25 +7659,40 @@ To remove this entry: it would need a mechanism that removes the trajectory
 sensitivity, not a re-measurement. The isolated stage win is real and stays on
 record in this file so it is not re-attempted from scratch.
 
-## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality)
+## VibeVoice-TTS LM decode gate+up: the thread count is not the lever
 
-`vibevoice_qwen2.py`'s decode gate+up projection calls
-`dense_dual_gemv_out_bf16` at the `threads=256` default. At rows=1 with K=1536,
-N=8960, **`threads=64` measures 74.8 us against 283.0 us -- 3.8x, 585.8 GB/s
-against 207.3 GB/s** -- and takes the LM stage from 1.450 s to 1.266 s and pooled
-RTF from 1.201 to 1.174.
+`vibevoice_qwen2.py`'s decode gate+up projection calls `dense_dual_gemv_out_bf16`
+at the `threads=256` default. An isolated benchmark suggested `threads=64` was
+**3.8x faster** (283.0 -> 74.8 us, "586 GB/s"), and applying it took the LM stage
+from 1.450 s to 1.266 s. **That 3.8x is an artifact and the entry is corrected
+here.**
 
-**It must not land as a bare thread-count change.** The reduction width changes,
-which moves the summation order: 5 of 17920 outputs shift by about one ulp, and
-the ten-seed quality suite goes from 58/60 to **57/60**, adding a `single-numbers`
-failure at WER 0.1667 that neither accepted arm has. `chain_exact` stayed true and
-the correctness suite stayed green, so neither catches it.
+The benchmark reused one weight buffer across 30 iterations, so 55 MB of weights
+stayed resident in L2 and the measurement was reading cache, not DRAM. Repeating
+it with a 256 MB flush buffer between calls -- which is what the real workload
+does, since 28 layers x 55 MB far exceeds L2 -- gives:
 
-To remove this entry: a variant that keeps the 256-wide reduction tree while
-getting the 64-thread workgroup's memory behaviour would be safe by construction.
-Re-measuring the bare thread count will not change the answer.
+| threads | us | GB/s |
+| --- | ---: | ---: |
+| 64 | 1419.4 | 38.8 |
+| 128 | 1464.2 | 37.6 |
+| 256 | 1478.5 | 37.2 |
 
-Note the same sweep suggests the decode q/k/v and o_proj projections (which use
-`dense_gemv_bf16_f32_out` and `dense_gemv_f32_bf16w_f32_out`, not the kernel
-swept here) may have similar headroom; they were not measured and any change
-there carries the same quality gate.
+**The thread count is irrelevant under DRAM streaming.** `threads=256` shows no
+cold/warm difference at all (264.7 vs 263.9 us), confirming it already streams
+from DRAM, while `threads=64`'s warm figure (82.1 us) was pure cache reuse.
+
+Two consequences. First, the real lever on this kernel is the ~37 GB/s achieved
+against roughly 200 GB/s available, which is a memory-access-pattern problem
+rather than a launch-configuration one. Second, the change is **still correctly
+rejected**: it moved 5 of 17920 outputs by one ulp and took the ten-seed quality
+suite from 58/60 to 57/60, adding a `single-numbers` failure at WER 0.1667, while
+`chain_exact` stayed true and the correctness suite stayed green.
+
+To remove this entry: pursue the bandwidth gap (access pattern, wider loads, or
+fewer redundant reads), not the thread count. Any change that moves the
+summation order still needs the generated-audio quality suite.
+
+**Method note for future work:** an isolated kernel benchmark that reuses one
+input buffer measures L2, not the workload. Flush between calls or vary the
+buffer before drawing conclusions about a streaming kernel.
