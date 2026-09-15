@@ -1,5 +1,22 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: Rebuilt the Flash-Next prefill cost table at operation
+  granularity with real shapes for every role, sourcing MoE geometry from the
+  GGUF tensor map and `expert_used_count` instead of leaving it unattributed.
+  The 22046 ms splits into 14368 ms matmul (65.2%), 6308 ms non-matmul (28.6%)
+  and 1370 ms risk/repair (6.2%); `moe:expert_gate` decomposes into gate+up
+  2710 ms, down 1588 ms, repair 1370 ms and routing 931 ms. Corrected the FP32
+  peak used for percent-of-peak from 14.8 TFLOP/s to this machine's 29696
+  GFLOP/s, which moves every dense projection from 14.5-23.4% to 7.3-11.6%.
+  Swept every registered coltile/rowbatch instantiation of `attn_qkv` on
+  identical operands across five real GDN layers: production is already the
+  fastest and the next best is 12-14% slower, so the tile-shape space is
+  exhausted. Added an inner-loop issue-slot count showing 40 of 145
+  instructions per k-iteration are FMA-class, capping the design at 6554
+  GFLOP/s (22.1% of peak) against 2650 GFLOP/s (8.9%) measured. No hipEngine
+  rate changed; no perf claim retained.
+  [Artifact](results/2026-09-16-flashnext-per-role-cost/README.md).
+
 - **2026-09-16 UTC**: Withdrew the Flash-Next 4K gap decomposition (1.65x
   conservative arithmetic x 3.38x kernel quality) - telescoping two ratios is
   algebra, not a causal decomposition, and equal arithmetic was never

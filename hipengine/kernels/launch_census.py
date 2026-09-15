@@ -27,8 +27,8 @@ from typing import Any
 ENV_VAR = "HIPENGINE_KERNEL_CENSUS"
 
 _state: bool | None = None
-_records: dict[tuple[str, str, str, int, int, int], int] = {}
-_order: list[tuple[str, str, str, int, int, int]] = []
+_records: dict[tuple[str, str, str, int, int, int, int], int] = {}
+_order: list[tuple[str, str, str, int, int, int, int]] = []
 _roles: list[str] = []
 
 
@@ -65,11 +65,20 @@ def record_launch(
     rows: int,
     in_features: int,
     out_features: int,
+    num_experts: int = 1,
 ) -> None:
-    """Record one launch. Cheap enough to call unconditionally."""
+    """Record one launch. Cheap enough to call unconditionally.
+
+    ``num_experts`` is 1 for a dense projection and the expert count for a
+    routed one. It is recorded rather than folded into ``rows`` because the
+    routed kernels tile over experts and the two are not interchangeable.
+    """
     if not enabled():
         return
-    key = (current_role(), str(quant), str(symbol), int(rows), int(in_features), int(out_features))
+    key = (
+        current_role(), str(quant), str(symbol), int(rows), int(in_features),
+        int(out_features), int(num_experts),
+    )
     if key not in _records:
         _order.append(key)
     _records[key] = _records.get(key, 0) + 1
@@ -85,6 +94,7 @@ def snapshot() -> dict[str, Any]:
             "rows": key[3],
             "in_features": key[4],
             "out_features": key[5],
+            "num_experts": key[6],
             "launches": _records[key],
         }
         for key in _order

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-15 JST (2026-09-15 UTC)**
+Last updated: **2026-09-16 JST (2026-09-16 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -787,16 +787,31 @@ demonstrated. The historical arithmetic-restored census is also not a
 measurement of today's code with every selector restored.
 
 What the profiles do establish is the target. A request-delimited, role-marked
-capture of the current default attributes 100% of kernels by tensor role and
-puts `moe:expert_gate` first at 6667.6 ms of a 22368.1 ms prefill (29.8%), with
-the Q8_0 dense projections next. Every Q8_0 projection runs at 2140-3466
-GFLOP/s, 14.5-23.4% of this part's 14.8 TFLOP/s FP32 peak, across shapes from a
-10240x320 skinny projection to a 2560x12288 wide one. That range excludes
-dequantization work, so it is not by itself an efficiency verdict, but the tile
-geometry is concrete: hipEngine decodes 8 weights per `k` and does 32 FMAs
-(COL_TILE=8, ROW_BATCH=4), while pwilkin's MMB dense kernels decode 128 and do
-16384 to 32768.
-[Per-role cost and the tile comparison](results/2026-09-16-flashnext-per-role-cost/README.md).
+capture of the current default attributes 100% of kernels by tensor role. Joined
+with the GGUF tensor geometry and the expert routing config, every operation in
+the prefill now has a real shape, and the 22046 ms breaks down as 14368 ms of
+matmul (65.2%), 6308 ms of non-matmul (28.6%) and 1370 ms of risk/repair passes
+(6.2%). The MoE block is 6599 ms (29.9%) and decomposes into gate+up 2710 ms,
+down 1588 ms, repair 1370 ms and routing/scatter 931 ms. Every dense projection
+- 10070 ms of the prefill - runs through one kernel family.
+
+Those dense projections run at 2650 GFLOP/s. Quoted against this part's FP32
+peak of 29696 GFLOP/s (40 CUs at 2.9 GHz) that is 8.9%, and the denominator
+matters: an earlier revision of this file quoted 14.8 TFLOP/s, which is neither
+this machine's FP32 rate nor its BF16 matrix-core rate.
+
+**Tuning the dense projection is exhausted.** Every registered coltile/rowbatch
+instantiation was swept on identical operands across five real GDN layers and
+row counts 1 to 1024: the production instantiation is already the fastest, and
+the next best is 12-14% slower. The kernel has no spills and sits at the
+register-only occupancy maximum, so the limit is the instruction mix. Counting
+issue slots in its inner loop gives 145 instructions per k-iteration, of which
+40 are FMA-class: the design's own ceiling is 6554 GFLOP/s, 22.1% of peak. The
+kernel reaches 40% of that ceiling, and the 72.4% of issue slots that do not
+multiply are fixed by dequantizing each weight element inside the loop. About
+2.5x is available from latency hiding within the design; the remaining ~4.5x
+needs a different execution mechanism.
+[Per-operation cost and why the tuning path is exhausted](results/2026-09-16-flashnext-per-role-cost/README.md).
 
 Not a numerics result: no engine's output was compared against another's, and
 hipEngine's conservative arithmetic is in place because the fast composition
