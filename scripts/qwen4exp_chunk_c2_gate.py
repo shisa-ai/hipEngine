@@ -1,4 +1,4 @@
-"""Exercise chunk2048 in the real request-owned c2 pool.
+"""Exercise larger chunks in the real request-owned c2 pool.
 
 Direct native pool work items are used, not HTTP/SSE or batched GPU kernels.
 Compact production output paths remain enabled; diagnostics read buffers afterward.
@@ -215,7 +215,9 @@ def exercise(pool, prompts, capture_fn=capture, *, checkpoint_each=True):
     return dict(references=references, repeats=results)
 
 
-def validate_traces(traces, prompts):
+def validate_traces(traces, prompts, *, chunk=2048):
+    if chunk not in (2048, 4096):
+        raise ValueError("unsupported c2 chunk")
     expected = {index + 1: len(prompt) for index, prompt in enumerate(prompts.values())}
     for repeat in range(3):
         base = 100 + repeat * 10
@@ -227,8 +229,8 @@ def validate_traces(traces, prompts):
     if set(observed) != set(expected):
         raise ValueError("unexpected model-prefill request set")
     for rid, length in expected.items():
-        count, tail = divmod(length, 2048)
-        if observed[rid] != [2048] * count + ([tail] if tail else []):
+        count, tail = divmod(length, chunk)
+        if observed[rid] != [chunk] * count + ([tail] if tail else []):
             raise ValueError("actual c2 model chunk coverage differs")
     return dict(model_prefills=len(observed), chunk_calls=len(traces),
                 partial_cancellations_without_model_prefill=3)
@@ -240,6 +242,7 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--allocation-evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--chunk-size", type=int, choices=(2048, 4096), default=2048)
     parser.add_argument("--defer-inspection", action="store_true",
                         help="Inspect only final A/C state after the interleaved sequence")
     args = parser.parse_args()
@@ -257,7 +260,7 @@ def main():
         host, model = _host_metadata(), model_identity(args.model_root)
         allocation = json.loads(args.allocation_evidence.read_bytes())
         resolved = resolve_allocation_profile()
-        validate_chunk_allocation(allocation, chunk=2048, context=4352,
+        validate_chunk_allocation(allocation, chunk=args.chunk_size, context=4352,
                                   manifest=resolved.manifest_sha256, host=host, model=model)
         if allocation["prepared_runners"] != 2 or len(allocation["lazy_group_risk"]) != 2:
             raise ValueError("two prepared runner/queue owners required")
@@ -270,14 +273,14 @@ def main():
         }
         report = dict(status="running", source=source, host=host, model=model,
                       command=sys.argv, fixture_sha256=fixture_hash,
-                      protocol=dict(capacity=4352, chunk=2048, resident_runners=2,
+                      protocol=dict(capacity=4352, chunk=args.chunk_size, resident_runners=2,
                                     compact_outputs=True, repeats=3, decode_steps=8,
                                     inspection_mode="deferred" if args.defer_inspection else "each_checkpoint"),
                       performance_claim=False, promotion_claim=False,
                       limitations=["Native pool work items, not HTTP/SSE or concurrent GPU-prefill scheduling.",
-                                   "Reference is the same production2048 arithmetic in isolation, not strict.",
+                                   "Reference is the same production arithmetic/chunk in isolation, not strict.",
                                    "No native-depth, MTP or performance claim."])
-        arm_args = SimpleNamespace(**vars(args), max_sequence_length=4352, prefill_chunk_size=2048)
+        arm_args = SimpleNamespace(**vars(args), max_sequence_length=4352, prefill_chunk_size=args.chunk_size)
         generator, profile, _ = _make_generator(arm_args, "production")
         report["manifest"] = profile.manifest_sha256
         pool = None
@@ -287,8 +290,8 @@ def main():
             pool = generator.create_resident_model_runner(capacity=2)
             pool.prepare()
             if len(pool._all_runners) != 2 or any(
-                    runner.prefill_chunk_size != 2048 for runner in pool._all_runners):
-                raise ValueError("c2 runner construction did not preserve chunk2048")
+                    runner.prefill_chunk_size != args.chunk_size for runner in pool._all_runners):
+                raise ValueError("c2 runner construction did not preserve declared chunk")
             report["repair_queues"] = [prepare_lazy_group_risk(runner) for runner in pool._all_runners]
             ranges = [owned_ranges(runner) for runner in pool._all_runners]
             if not disjoint(*ranges):
@@ -312,7 +315,7 @@ def main():
                 runner._prefill_chunk = counted
                 stack.callback(delattr, runner, "_prefill_chunk")
             report.update(exercise(pool, prompts, checkpoint_each=not args.defer_inspection))
-            report["trace_gate"] = validate_traces(traces, prompts)
+            report["trace_gate"] = validate_traces(traces, prompts, chunk=args.chunk_size)
             report["status"] = "passed"
         except BaseException as error:
             report["status"] = "failed"

@@ -132,19 +132,20 @@ def test_disjoint_ranges_allows_adjacency_but_not_partial_overlap():
     assert not gate.disjoint([(10, 20)], [(12, 15)])
 
 
-def test_trace_gate_rejects_prefill_for_cancelled_partial_request():
+@pytest.mark.parametrize("chunk,expected_calls", [(2048, 28), (4096, 16)])
+def test_trace_gate_rejects_prefill_for_cancelled_partial_request(chunk, expected_calls):
     expected = {1: 2052, 2: 4097, 3: 2049}
     for repeat in range(3):
         base = 100 + repeat * 10
         expected.update({base: 2052, base + 1: 4097, base + 3: 2049})
     traces = []
     for rid, length in expected.items():
-        count, tail = divmod(length, 2048)
+        count, tail = divmod(length, chunk)
         traces.extend({"request_id": rid, "rows": size}
-                      for size in [2048] * count + ([tail] if tail else []))
-    assert gate.validate_traces(traces, PROMPTS)["chunk_calls"] == 28
+                      for size in [chunk] * count + ([tail] if tail else []))
+    assert gate.validate_traces(traces, PROMPTS, chunk=chunk)["chunk_calls"] == expected_calls
     with pytest.raises(ValueError, match="request set"):
-        gate.validate_traces(traces + [{"request_id": 102, "rows": 1024}], PROMPTS)
+        gate.validate_traces(traces + [{"request_id": 102, "rows": 1024}], PROMPTS, chunk=chunk)
     traces[0]["rows"] = 1024
     with pytest.raises(ValueError, match="coverage"):
-        gate.validate_traces(traces, PROMPTS)
+        gate.validate_traces(traces, PROMPTS, chunk=chunk)
