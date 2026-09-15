@@ -1,0 +1,682 @@
+"""Unassisted multi-request quality suite for the VibeVoice-TTS session.
+
+Numerical agreement with the oracle is not available as acceptance evidence for
+every request: the two-speaker fixture's first diffusion solve is chaotic, so its
+late trajectory is unreproducible by construction (see
+``docs/MODEL-VIBEVOICE-TTS.md``). This suite covers those requests the way the
+review that prompted it asked for -- by qualifying the audio that comes out
+rather than by widening a tolerance.
+
+What it does per request, with nothing injected:
+
+1. builds the prompt in-tree from the script (``build_tts_prompt``), so the
+   request is one the fixtures never recorded;
+2. encodes the speaker references and samples the VAE with the session's own
+   generator, and runs every diffusion frame with the session's own noise and the
+   session's own negative-LM branch -- no recorded operand is fed in;
+3. caps generation from the request's declared ``max_audio_seconds`` rather than
+   from the oracle's token count, and records ``finish_reason`` so a truncated
+   utterance is reported as truncated;
+4. transcribes the result with the in-tree VibeVoice-ASR lane and scores
+   intelligibility (word error rate), turn attribution (the transcript's speaker
+   labels against the script's turns), missing or repeated speech, duration, and
+   level and silence.
+
+The thresholds below are declared constants. They are not derived from a run:
+the pinned single-speaker request transcribes word-perfectly, so the
+intelligibility gate is set where clean synthetic speech should sit, not where
+this suite happens to land.
+
+Usage:
+    uv run --with jiwer --with transformers python \\
+        scripts/vibevoice_tts_quality_suite.py [--phase all|synthesize|score] [--seeds 1,2]
+
+``--phase score`` re-reads the PCM a previous ``--phase synthesize`` wrote, so a
+failure in scoring does not require re-synthesising. ``jiwer`` and
+``transformers`` are needed only for the scoring phase; they are imported there.
+``--seeds`` runs the whole suite at several base seeds and reports which checks
+are stable across them, because a request that comes out with the right number of
+voices half the time is not a passing request.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import re
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_REQUESTS = ROOT / "benchmarks" / "prompts" / "vibevoice-tts-quality.json"
+DEFAULT_FIXTURES = ROOT / "tests" / "fixtures" / "vibevoice_tts"
+DEFAULT_OUT = ROOT / "benchmarks" / "results" / "2026-09-15-gfx1151-vibevoice-tts-quality-suite.json"
+DEFAULT_WORK = ROOT / ".vibevoice-tts-quality"
+
+TTS_MODEL_ID = "microsoft/VibeVoice-1.5B"
+#: The TTS snapshot ships no tokenizer, so prompts are tokenized with the sibling
+#: ASR checkpoint's tokenizer. tests/test_unit_vibevoice_tts_prompt.py pins that
+#: substitution by reproducing both oracle fixtures token-for-token.
+TOKENIZER_MODEL_ID = "microsoft/VibeVoice-ASR-HF"
+ASR_MODEL_ID = "microsoft/VibeVoice-ASR-HF"
+
+SAMPLE_RATE = 24000
+FRAME_SAMPLES = 3200  # one diffusion frame of output audio
+CFG_SCALE = 1.3
+TRANSCRIBE_SEED = 20260914
+
+#: ~150 words per minute, used only to place a plausibility band on the output
+#: duration. Speaking rate varies by a factor of two between speakers, so the
+#: band is deliberately wide and a violation means "the audio is nowhere near the
+#: length of its text", not "the pacing is off".
+WORDS_PER_SECOND = 2.5
+DURATION_MIN_RATIO = 0.5
+DURATION_MAX_RATIO = 2.5
+
+#: Clean synthetic speech that the same model family transcribes should be
+#: near-perfect; the ASR lane's own LibriSpeech gate is 1.4-2%. One word in ten
+#: is the point at which a listener is reading the transcript rather than
+#: hearing the sentence.
+WER_GATE = 0.10
+
+#: A gap this long inside an utterance means speech went missing, not a pause.
+MAX_INTERNAL_SILENCE_SECONDS = 1.5
+SILENCE_AMPLITUDE = 1e-3
+
+#: Below this the output is too quiet to be speech; above 1.0 it clips.
+MIN_RMS = 0.005
+MAX_ABS = 1.0
+
+#: A repeated 4-gram is the classic sampling failure; once is already audible.
+NGRAM_SIZE = 4
+MAX_REPEATED_NGRAMS = 0
+
+#: Voice attribution windows. The acoustic encoder emits one latent per 3200
+#: samples, so a one-second window holds seven frames and the half-second hop
+#: gives a readable assignment sequence over a three-second utterance.
+ATTRIBUTION_WINDOW_SECONDS = 1.0
+ATTRIBUTION_HOP_SECONDS = 0.5
+#: A window counts towards attribution only when one reference leads the other by
+#: this cosine margin. One window at an utterance's onset can be a near tie
+#: (measured 0.305 against 0.345 on the 4-turn script) and a single ambiguous
+#: window must not decide a turn. The verdict is the same at 0.05 and 0.15.
+ATTRIBUTION_MARGIN = 0.10
+#: Below this many decided windows the assignment is too sparse to conclude.
+ATTRIBUTION_MIN_DECIDED_WINDOWS = 3
+
+
+def _reference_embeddings(session, pcms):
+    """Unit-normalized mean encoder latents for the reference voices.
+
+    ``encode_reference`` is the deterministic pass (no VAE sampling), so this is
+    reproducible and not noise-limited.
+    """
+    out = []
+    for pcm in pcms:
+        latent = session.frontend.encode_reference(np.asarray(pcm, dtype=np.float32))
+        mean = latent.mean(axis=0)
+        out.append(mean / max(float(np.linalg.norm(mean)), 1e-9))
+    return out
+
+
+def _voice_assignment(session, audio, references):
+    """Nearest reference voice per window, by encoder-latent cosine similarity.
+
+    This is the attribution instrument the suite gates on, and it is deliberately
+    not the ASR's speaker labels. Measured on these requests, the ASR reports a
+    single speaker for two-speaker scripts that demonstrably contain both voices
+    -- for the 2-turn script on all three seeds, and for the long 2-turn script
+    on two of three -- while the encoder assignment makes a clean single
+    transition between the two references. The encoder is also the mechanism the
+    model itself uses to condition on a voice, so "this window is closer to the
+    reference it was conditioned on" is a statement about the model's own voice
+    conditioning rather than about a second model's diarization.
+    """
+    sr = SAMPLE_RATE
+    window = int(ATTRIBUTION_WINDOW_SECONDS * sr)
+    hop = int(ATTRIBUTION_HOP_SECONDS * sr)
+    pcm = np.asarray(audio, dtype=np.float32).reshape(-1)
+    assignment = []
+    similarities = []
+    start = 0
+    while start + window <= pcm.size:
+        latent = session.frontend.encode_reference(pcm[start : start + window])
+        mean = latent.mean(axis=0)
+        mean = mean / max(float(np.linalg.norm(mean)), 1e-9)
+        cosines = [float(np.dot(mean, reference)) for reference in references]
+        similarities.append([round(value, 4) for value in cosines])
+        assignment.append(int(np.argmax(cosines)))
+        start += hop
+    return assignment, similarities
+
+
+def _frame_token_cap(max_audio_seconds: float) -> int:
+    """Token budget from a declared audio budget, not from the oracle.
+
+    Two tokens of overhead (the speech-start and speech-end markers) plus one
+    diffusion token per 3200 samples of output audio.
+    """
+    frames = math.ceil(float(max_audio_seconds) * SAMPLE_RATE / FRAME_SAMPLES)
+    return 2 + frames
+
+
+def _true_waveform(padded: np.ndarray, expected_frames: int, name: str) -> np.ndarray:
+    """Trim a batch-padded reference back to its own samples.
+
+    ``two_reference.npz`` stores both speakers right zero padded to the longest
+    one, because the fork encodes every voice of a request in a single batched
+    call. Feeding the padded rows back in would re-pad every speaker to the
+    longest *padded* row and double the connected-row count. The frame count
+    implied by the trimmed length is checked against the recorded mask, so a
+    trim that lands in the wrong place fails here instead of silently building a
+    different request.
+    """
+    from hipengine.runtime.vibevoice_encoder import reference_frame_count
+
+    flat = np.asarray(padded, dtype=np.float32).reshape(-1)
+    nonzero = np.nonzero(flat)[0]
+    if not nonzero.size:
+        raise ValueError(f"{name}: reference waveform is all zeros")
+    trimmed = flat[: int(nonzero.max()) + 1]
+    frames = reference_frame_count(trimmed.size)
+    if frames != expected_frames:
+        raise ValueError(
+            f"{name}: trimmed reference implies {frames} frames, the fixture records "
+            f"{expected_frames}; the padding assumption is wrong"
+        )
+    return trimmed
+
+
+def _reference_pcms(fixtures: Path, reference_set: dict, names: list[str]):
+    """Per-speaker true waveforms and their voice-prompt token counts."""
+    path = fixtures / reference_set["fixture"]
+    if not path.is_file():
+        raise SystemExit(f"fixture not present: {path}")
+    with np.load(path) as data:
+        padded = np.asarray(data["ref_pcm"], dtype=np.float32)
+        masks = np.asarray(data["ref_speech_masks"], dtype=bool)
+    counts = [int(mask.sum()) for mask in masks]
+    if len(counts) != len(reference_set["voices"]):
+        raise SystemExit(
+            f"{path.name} holds {len(counts)} references but the request set lists "
+            f"{len(reference_set['voices'])} voices"
+        )
+    pcms = [
+        _true_waveform(padded[index], counts[index], names[index])
+        for index in range(len(counts))
+    ]
+    return pcms, counts
+
+
+def _request_seed(base_seed: int, index: int) -> int:
+    """A distinct seed per request, so a request is independent of its neighbours."""
+    return int(base_seed) + index
+
+
+def synthesize(
+    requests, suite, fixtures: Path, model_id: str, work: Path, seeds: list[int]
+) -> list[dict]:
+    """Run every request unassisted and write its PCM plus synthesis facts.
+
+    The session is reseeded before each request. Its generator is shared by the
+    voice-prompt draw and every diffusion frame, so without that a request's
+    audio depends on how many requests ran before it -- which is how the same
+    two-speaker script produced one voice in a full run and two when run alone.
+    """
+    from hipengine.loading.hf_cache import resolve_model_path
+    from hipengine.loading.vibevoice_tts_prompt import (
+        build_tts_prompt,
+        load_tts_tokenizer,
+    )
+    from hipengine.loading.vibevoice_tts_session import load_vibevoice_tts_session
+    from hipengine.runtime.vibevoice_tts_session import VibevoiceTtsSession
+
+    tokenizer = load_tts_tokenizer(resolve_model_path(TOKENIZER_MODEL_ID))
+    weights = load_vibevoice_tts_session(resolve_model_path(model_id))
+    session = VibevoiceTtsSession(weights, max_context=1024)
+    records: list[dict] = []
+    reference_cache: dict[str, tuple[list[np.ndarray], list[int], list[np.ndarray]]] = {}
+    try:
+        for base_seed in seeds:
+            seed_dir = work / f"seed{base_seed}"
+            seed_dir.mkdir(parents=True, exist_ok=True)
+            for index, request in enumerate(requests):
+                key = request["reference_set"]
+                if key not in reference_cache:
+                    reference_set = suite["reference_sets"][key]
+                    pcms, counts = _reference_pcms(
+                        fixtures, reference_set, reference_set["voices"]
+                    )
+                    # The reference embeddings do not depend on the seed.
+                    reference_cache[key] = (pcms, counts, _reference_embeddings(session, pcms))
+                pcms, counts, reference_embeddings = reference_cache[key]
+                prompt = build_tts_prompt(request["script"], counts, tokenizer)
+                request_seed = _request_seed(base_seed, index)
+                session.reseed(request_seed)
+
+                start = time.perf_counter()
+                # No noise/neg injection: the session's own generator and its own
+                # negative-LM branch are the path under test.
+                _, connected = session.voice_prompt_rows_multi(pcms)
+                if connected.shape[0] != sum(prompt.speech_input_mask):
+                    raise SystemExit(
+                        f"{request['name']}: {connected.shape[0]} connected rows for "
+                        f"{sum(prompt.speech_input_mask)} speech positions"
+                    )
+                rows = session.build_prompt_rows(
+                    prompt.input_ids,
+                    np.asarray(prompt.speech_input_mask, dtype=bool),
+                    connected,
+                )
+                cap = _frame_token_cap(request["max_audio_seconds"])
+                result = session.generate(rows, cfg_scale=CFG_SCALE, max_new_tokens=cap)
+                elapsed = time.perf_counter() - start
+
+                audio = (
+                    np.concatenate(
+                        [np.asarray(chunk, dtype=np.float32).reshape(-1) for chunk in result.chunks]
+                    )
+                    if result.chunks
+                    else np.zeros(0, dtype=np.float32)
+                )
+                pcm_path = seed_dir / f"{request['name']}.npy"
+                np.save(pcm_path, audio)
+                assignment, similarities = _voice_assignment(
+                    session, audio, reference_embeddings
+                )
+                turn_speakers = [
+                    int(line.split(":", 1)[0].split()[-1])
+                    for line in request["script"].strip().splitlines()
+                    if line.strip()
+                ]
+                turn_speakers = [
+                    speaker - 1 if min(turn_speakers) > 0 else speaker
+                    for speaker in turn_speakers
+                ]
+
+                record = {
+                    "name": request["name"],
+                    "base_seed": int(base_seed),
+                    "request_seed": request_seed,
+                    "pcm": str(pcm_path.relative_to(ROOT)),
+                    "reference_set": request["reference_set"],
+                    "script": request["script"],
+                    "turns": int(request["turns"]),
+                    "turn_speakers": turn_speakers,
+                    "voice_prompt_token_counts": counts,
+                    "prompt_tokens": len(prompt),
+                    "max_audio_seconds": float(request["max_audio_seconds"]),
+                    "token_cap": cap,
+                    "generated_tokens": len(result.ids),
+                    "diffusion_frames": len(result.chunks),
+                    "finish_reason": result.finish_reason,
+                    "synthesis_seconds": round(elapsed, 3),
+                    "output_audio_seconds": round(float(audio.size) / SAMPLE_RATE, 4),
+                    "voice_assignment": assignment,
+                    "voice_assignment_cosines": similarities,
+                }
+                records.append(record)
+                print(
+                    f"synthesized seed {base_seed} {request['name']}: "
+                    f"{len(result.ids)} tokens, {len(result.chunks)} frames, "
+                    f"{record['output_audio_seconds']:.3f} s, {result.finish_reason}",
+                    flush=True,
+                )
+    finally:
+        session.close()
+    return records
+
+
+def _level_checks(audio: np.ndarray) -> dict:
+    if not audio.size:
+        return {"rms": 0.0, "absmax": 0.0, "longest_silence_seconds": 0.0}
+    silent = np.abs(audio) < SILENCE_AMPLITUDE
+    longest = 0
+    run = 0
+    for is_silent in silent:
+        run = run + 1 if is_silent else 0
+        longest = max(longest, run)
+    return {
+        "rms": round(float(np.sqrt(np.mean(audio**2))), 6),
+        "absmax": round(float(np.abs(audio).max()), 6),
+        "longest_silence_seconds": round(longest / SAMPLE_RATE, 3),
+    }
+
+
+def _normalized_words(text: str) -> list[str]:
+    """Lowercase alphanumeric words, for repetition detection only."""
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _repeated_ngrams(words: list[str], size: int = NGRAM_SIZE) -> list[str]:
+    seen: dict[tuple[str, ...], int] = {}
+    for index in range(len(words) - size + 1):
+        gram = tuple(words[index : index + size])
+        seen[gram] = seen.get(gram, 0) + 1
+    return [" ".join(gram) for gram, count in seen.items() if count > 1]
+
+
+def _expected_words(script: str) -> list[str]:
+    text = " ".join(
+        line.split(":", 1)[1] if ":" in line else line for line in script.strip().splitlines()
+    )
+    return _normalized_words(text)
+
+
+def score(records, asr_model_id: str) -> list[dict]:
+    """Transcribe each synthesized request and apply the quality checks."""
+    from hipengine import LLM
+    from hipengine.generation.vibevoice_protocol import parse_transcript
+
+    wer = _load_wer_module()
+    engine = LLM(asr_model_id, max_sequence_length=4096)
+    scored: list[dict] = []
+    try:
+        for record in records:
+            path = ROOT / record["pcm"]
+            audio = np.load(path) if path.is_file() else np.zeros(0, dtype=np.float32)
+            start = time.perf_counter()
+            text = (
+                engine.transcribe(audio, max_new_tokens=256, seed=TRANSCRIBE_SEED).text
+                if audio.size
+                else ""
+            )
+            transcribe_seconds = time.perf_counter() - start
+            segments = parse_transcript(text)
+            content = (
+                " ".join(str(segment["Content"]) for segment in segments) if segments else ""
+            )
+            expected = _expected_words(record["script"])
+            hypothesis_words = _normalized_words(content)
+            reference = " ".join(expected)
+
+            entry = dict(record)
+            entry.update(
+                {
+                    "transcribe_seconds": round(transcribe_seconds, 2),
+                    "transcript_status": "ok" if segments is not None else "malformed",
+                    "transcript": content,
+                    "segments": (
+                        [
+                            {
+                                "start": float(segment["Start"]),
+                                "end": float(segment["End"]),
+                                "speaker": str(segment["Speaker"]),
+                                "content": str(segment["Content"]),
+                            }
+                            for segment in segments
+                        ]
+                        if segments is not None
+                        else []
+                    ),
+                    "transcript_speakers": (
+                        sorted({str(segment["Speaker"]) for segment in segments})
+                        if segments is not None
+                        else []
+                    ),
+                    "expected_words": len(expected),
+                    "transcript_words": len(hypothesis_words),
+                    "repeated_ngrams": _repeated_ngrams(hypothesis_words),
+                }
+            )
+            entry.update(_level_checks(audio))
+            entry["wer"] = (
+                round(float(wer._wer_content([reference], [content])), 4)
+                if segments is not None and expected
+                else None
+            )
+            entry["word_count_ratio"] = (
+                round(len(hypothesis_words) / len(expected), 4) if expected else None
+            )
+            entry["expected_seconds"] = round(len(expected) / WORDS_PER_SECOND, 3)
+            entry["duration_ratio"] = (
+                round(entry["output_audio_seconds"] / entry["expected_seconds"], 3)
+                if entry["expected_seconds"]
+                else None
+            )
+            entry["checks"] = _checks(entry)
+            entry["attribution_decided_windows"] = (
+                len(_decided_windows(entry["voice_assignment_cosines"]))
+                if len(set(entry["turn_speakers"])) > 1
+                else None
+            )
+            entry["passed"] = all(entry["checks"].values())
+            scored.append(entry)
+            print(
+                f"scored seed {entry['base_seed']} {entry['name']}: wer={entry['wer']} "
+                f"speakers={entry['transcript_speakers']} "
+                f"duration_ratio={entry['duration_ratio']} passed={entry['passed']}",
+                flush=True,
+            )
+    finally:
+        engine.close()
+    return scored
+
+
+def _decided_windows(cosines) -> list[int]:
+    """Reference index per window that clearly leads, ignoring near ties."""
+    return [
+        int(np.argmax(pair)) for pair in cosines if max(pair) - min(pair) >= ATTRIBUTION_MARGIN
+    ]
+
+
+def _checks(entry: dict) -> dict:
+    """Named pass/fail checks. Every key must hold for the request to pass."""
+    checks = {
+        "transcript_well_formed": entry["transcript_status"] == "ok",
+        "not_truncated": entry["finish_reason"] == "stop",
+        "has_audio": entry["output_audio_seconds"] > 0.0,
+        "audible": entry["rms"] >= MIN_RMS,
+        "not_clipping": entry["absmax"] <= MAX_ABS,
+        "no_long_silence": entry["longest_silence_seconds"] <= MAX_INTERNAL_SILENCE_SECONDS,
+        "duration_plausible": (
+            entry["duration_ratio"] is not None
+            and DURATION_MIN_RATIO <= entry["duration_ratio"] <= DURATION_MAX_RATIO
+        ),
+        "intelligible": entry["wer"] is not None and entry["wer"] <= WER_GATE,
+        "word_count_plausible": (
+            entry["word_count_ratio"] is not None
+            and DURATION_MIN_RATIO <= entry["word_count_ratio"] <= DURATION_MAX_RATIO
+        ),
+        "no_repeated_speech": len(entry["repeated_ngrams"]) <= MAX_REPEATED_NGRAMS,
+        "turn_count": len(entry["segments"]) >= 1,
+    }
+    speakers = entry["turn_speakers"]
+    if len(set(speakers)) > 1:
+        # A multi-speaker script must open on its first voice and close on its
+        # last, measured on the encoder's own assignment rather than on the ASR's
+        # speaker labels -- see _voice_assignment for why those are not usable.
+        decided = _decided_windows(entry["voice_assignment_cosines"])
+        checks["voice_attribution"] = (
+            len(decided) >= ATTRIBUTION_MIN_DECIDED_WINDOWS
+            and decided[0] == speakers[0]
+            and decided[-1] == speakers[-1]
+        )
+    return checks
+
+
+def _load_wer_module():
+    """The ASR lane's own WER, so the number is comparable to its gate."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "vibevoice_asr_wer.py"
+    spec = importlib.util.spec_from_file_location("vibevoice_asr_wer", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["vibevoice_asr_wer"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _gpu_name() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(["rocminfo"], capture_output=True, text=True, timeout=30).stdout
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("Marketing Name:") and "Radeon" in line:
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _stability(runs: list[dict]) -> dict:
+    """Per-request, per-check pass counts across seeds.
+
+    A check that passes on every seed is stable; one that passes on some is
+    reported as such rather than averaged away, because a request that comes out
+    with the right number of voices half the time is not a passing request.
+    """
+    by_name: dict[str, dict] = {}
+    for run in runs:
+        for entry in run["requests"]:
+            record = by_name.setdefault(
+                entry["name"], {"seeds": 0, "passed": 0, "checks": {}}
+            )
+            record["seeds"] += 1
+            record["passed"] += 1 if entry["passed"] else 0
+            for name, ok in entry["checks"].items():
+                record["checks"].setdefault(name, {"passed": 0})
+                record["checks"][name]["passed"] += 1 if ok else 0
+    for name in by_name:
+        by_name[name]["stable"] = by_name[name]["passed"] == by_name[name]["seeds"]
+    return {"seeds": len(runs), "requests": by_name}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--requests", default=str(DEFAULT_REQUESTS))
+    parser.add_argument("--fixtures", default=str(DEFAULT_FIXTURES))
+    parser.add_argument("--work", default=str(DEFAULT_WORK))
+    parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--tts-model", default=TTS_MODEL_ID)
+    parser.add_argument("--asr-model", default=ASR_MODEL_ID)
+    parser.add_argument("--phase", choices=("all", "synthesize", "score"), default="all")
+    parser.add_argument("--only", default=None, help="comma-separated request names")
+    parser.add_argument(
+        "--seeds",
+        default="20260915",
+        help="comma-separated base seeds; each request gets base_seed + its index",
+    )
+    args = parser.parse_args()
+
+    suite = json.loads(Path(args.requests).read_text())
+    requests = suite["requests"]
+    if args.only:
+        wanted = {name.strip() for name in args.only.split(",")}
+        requests = [r for r in requests if r["name"] in wanted]
+        if not requests:
+            raise SystemExit(f"no request matches --only {args.only}")
+    seeds = [int(part) for part in str(args.seeds).split(",") if part.strip()]
+    if not seeds:
+        raise SystemExit("--seeds must name at least one seed")
+
+    fixtures = Path(args.fixtures)
+    work = Path(args.work)
+    records_path = work / "synthesis.json"
+
+    if args.phase in ("all", "synthesize"):
+        records = synthesize(requests, suite, fixtures, args.tts_model, work, seeds)
+        work.mkdir(parents=True, exist_ok=True)
+        records_path.write_text(json.dumps(records, indent=2) + "\n")
+    else:
+        if not records_path.is_file():
+            raise SystemExit(f"no synthesis records at {records_path}; run --phase synthesize")
+        records = json.loads(records_path.read_text())
+        wanted = {r["name"] for r in requests}
+        records = [r for r in records if r["name"] in wanted and r["base_seed"] in set(seeds)]
+        if not records:
+            raise SystemExit("no synthesis records match --only/--seeds")
+
+    if args.phase in ("all", "score"):
+        scored = score(records, args.asr_model)
+    else:
+        scored = []
+
+    if not scored:
+        # A synthesize-only run has no verdict to publish; writing an artifact
+        # here would overwrite the last scored one with an empty result.
+        print("\nsynthesis only; nothing scored, no artifact written")
+        return
+
+    runs = []
+    for seed in seeds:
+        entries = [entry for entry in scored if entry["base_seed"] == seed]
+        if not entries:
+            continue
+        failed = [entry["name"] for entry in entries if not entry["passed"]]
+        runs.append({"seed": seed, "requests": entries, "failed_requests": failed})
+    failed_any = sorted({name for run in runs for name in run["failed_requests"]})
+
+    result = {
+        "suite": suite["suite"],
+        "suite_version": suite["version"],
+        "model": args.tts_model,
+        "quant": "bf16",
+        "measurement_basis": "unassisted-generated-audio-quality",
+        "asr_lane": args.asr_model,
+        "tokenizer": TOKENIZER_MODEL_ID,
+        "host": {"name": Path("/etc/hostname").read_text().strip(), "gpu": _gpu_name()},
+        "command": (
+            "uv run --with jiwer --with transformers python "
+            "scripts/vibevoice_tts_quality_suite.py"
+        ),
+        "injected": "nothing (own VAE draw, own diffusion noise, own negative LM)",
+        "seeding": (
+            "each request is reseeded to base_seed + its index, so a request does not "
+            "depend on how many requests ran before it"
+        ),
+        "gates": {
+            "wer_max": WER_GATE,
+            "duration_ratio_range": [DURATION_MIN_RATIO, DURATION_MAX_RATIO],
+            "max_internal_silence_seconds": MAX_INTERNAL_SILENCE_SECONDS,
+            "min_rms": MIN_RMS,
+            "max_abs": MAX_ABS,
+            "max_repeated_4grams": MAX_REPEATED_NGRAMS,
+            "turn_count_min": 1,
+            "voice_attribution": (
+                "for a script with more than one speaker, the encoder's window assignment "
+                "must open on the script's first speaker and close on its last"
+            ),
+        },
+        "attribution_instrument": {
+            "method": (
+                "hipengine.runtime.vibevoice_encoder.encode_reference (deterministic, no "
+                "VAE sampling); each window assigned to the reference voice with the "
+                "higher cosine similarity to its mean latent"
+            ),
+            "window_seconds": ATTRIBUTION_WINDOW_SECONDS,
+            "hop_seconds": ATTRIBUTION_HOP_SECONDS,
+            "decision_margin": ATTRIBUTION_MARGIN,
+            "min_decided_windows": ATTRIBUTION_MIN_DECIDED_WINDOWS,
+            "asr_speaker_labels": (
+                "reported per request as a diagnostic, not gated: on these requests the "
+                "ASR reports one speaker for two-speaker scripts that contain both voices"
+            ),
+        },
+        "limitations": suite["limitations"],
+        "stability": _stability(runs),
+        "runs": runs,
+        "failed_requests": failed_any,
+        "passed": not failed_any,
+    }
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2) + "\n")
+    total = sum(len(run["requests"]) for run in runs)
+    failed_count = sum(len(run["failed_requests"]) for run in runs)
+    print(f"\n{total - failed_count}/{total} request-runs passed over {len(runs)} seed(s)")
+    if failed_any:
+        print("failed: " + ", ".join(failed_any))
+    print(f"wrote {out}")
+    if failed_any:
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

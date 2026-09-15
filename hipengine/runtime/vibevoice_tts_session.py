@@ -119,6 +119,19 @@ class VibevoiceTtsSession:
         # noise inside the prefill pass).
         self._rng = np.random.Generator(np.random.PCG64(seed))
         self._noise_draws = 0
+
+    def reseed(self, seed: int) -> None:
+        """Restart the session's random stream.
+
+        The generator is shared by the voice-prompt VAE draw and every diffusion
+        frame's noise, so without this a request's audio depends on how many
+        requests ran before it on the same session. Reseeding per request makes
+        each one reproducible on its own and lets a caller sample a request at
+        several seeds without rebuilding the session. ``generate()`` does not
+        reseed: a chain that draws several frames must keep one stream.
+        """
+        self._rng = np.random.Generator(np.random.PCG64(int(seed)))
+        self._noise_draws = 0
         self._neg_position = 0
         self._prev_feedback: np.ndarray | None = None
 

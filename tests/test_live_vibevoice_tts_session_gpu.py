@@ -632,3 +632,37 @@ def test_finish_reason_separates_eos_from_truncation(session, ref, lm, dif) -> N
     empty = run(0)
     assert empty.ids == []
     assert empty.finish_reason == FINISH_LENGTH
+
+
+def test_reseed_makes_a_request_independent_of_session_history(session, ref, lm) -> None:
+    """Reseeding reproduces a request's audio whatever ran before it.
+
+    The session's generator is shared by the voice-prompt draw and every
+    diffusion frame, so without reseeding a request's audio depends on how many
+    requests ran before it. That is not hypothetical: the two-speaker 2-turn
+    quality request came back with one voice in a full suite run and two when run
+    alone, purely from the stream position.
+    """
+    rows = _generation_rows(session, ref, lm)
+
+    def run(budget=8):
+        return session.generate(rows, cfg_scale=1.3, max_new_tokens=budget)
+
+    session.reseed(1234)
+    first = run()
+    session.reseed(9999)
+    other = run()
+    session.reseed(1234)
+    again = run()
+
+    first_audio = np.concatenate([np.asarray(c).reshape(-1) for c in first.chunks])
+    other_audio = np.concatenate([np.asarray(c).reshape(-1) for c in other.chunks])
+    again_audio = np.concatenate([np.asarray(c).reshape(-1) for c in again.chunks])
+
+    assert np.array_equal(first_audio.view(np.uint32), again_audio.view(np.uint32)), (
+        "the same seed must reproduce the same audio"
+    )
+    assert first.ids == again.ids
+    assert not np.array_equal(first_audio.view(np.uint32), other_audio.view(np.uint32)), (
+        "a different seed must draw different noise, or reseed() is doing nothing"
+    )
