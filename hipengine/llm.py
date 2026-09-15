@@ -459,6 +459,41 @@ class LLM:
         return transcribe(audio, sample_rate=sample_rate, context=context,
                           max_new_tokens=max_new_tokens, seed=seed)
 
+    def synthesize(self, script, speaker_references, *, sample_rate=24000,
+                   max_new_tokens=None, seed=None, cfg_scale=None, cancel=None):
+        """Speak ``script`` in the voices of ``speaker_references``.
+
+        ``speaker_references`` is one mono float waveform per speaker in script
+        order. Returns PCM, the sample rate and the completion status (``eos``,
+        ``length``, ``cancelled`` or ``error``); a cancelled or failed request
+        carries the audio produced so far and is not a completed synthesis.
+        """
+        generator = self._get_text_generator()
+        synthesize = getattr(generator, "synthesize", None)
+        if not callable(synthesize):
+            raise NotImplementedError("speech synthesis is not supported")
+        kwargs = {"sample_rate": sample_rate, "max_new_tokens": max_new_tokens,
+                  "seed": seed, "cancel": cancel}
+        if cfg_scale is not None:
+            kwargs["cfg_scale"] = cfg_scale
+        return synthesize(script, speaker_references, **kwargs)
+
+    def reset(self) -> None:
+        """Return a loaded engine to its initial state.
+
+        KV caches, streaming state and the random stream -- everything a request
+        leaves behind. Weights stay resident, so this is what makes one engine able
+        to serve request after request. A no-op on an engine whose generator has no
+        state to reset; unlike the request paths this does not load the model.
+        """
+        generator = self._text_generator
+        if generator is None:
+            return
+        reset = getattr(generator, "reset", None)
+        if not callable(reset):
+            raise NotImplementedError("this engine has no resettable state")
+        return reset()
+
     @property
     def supports_vision(self) -> bool:
         generator = self._text_generator
