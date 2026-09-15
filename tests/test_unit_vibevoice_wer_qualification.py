@@ -81,6 +81,9 @@ def _run_driver(monkeypatch, tmp_path, torch_hypothesis: str) -> tuple[int, dict
 
     wer = driver._load_wer()
     monkeypatch.setattr(wer, "_load_clips", lambda num, cache: clips)
+    # `_load_wer` builds a fresh module object on every call, so patching the
+    # instance it returns does not reach the one `main()` loads. Pin it.
+    monkeypatch.setattr(driver, "_load_wer", lambda: wer)
     monkeypatch.setattr(driver, "prepare_all", lambda *a, **k: None)
     # Imported lazily inside main(), so it has to be patched at its source.
     import hipengine.loading.hf_cache as hf_cache

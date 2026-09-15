@@ -144,8 +144,15 @@ def _load_clips(num_clips: int, cache_dir: Path,
     test-clean tree directly: <root>/<spk>/<chap>/<uttr>.flac plus
     <spk>-<chap>.trans.txt.
     """
-    import soundfile as sf
-    from scipy.signal import resample_poly
+    try:
+        import soundfile as sf
+        from scipy.signal import resample_poly
+    except ModuleNotFoundError as exc:  # pragma: no cover - environment gap
+        raise SystemExit(
+            f"the LibriSpeech clip loader needs {exc.name}, which is not a declared "
+            "dependency of this package; install it (and scipy) in the environment "
+            "running this harness"
+        ) from exc
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = cache_dir / "manifest.jsonl"
