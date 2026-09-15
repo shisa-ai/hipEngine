@@ -37,3 +37,28 @@ def test_completion_removes_only_eos_and_tracks_finiteness(monkeypatch):
     capture = tasks.completion(runner, tokenizer, [1], 1)
     assert capture["finish"] == "length"
     assert capture["ids"] == [2]
+
+
+def test_traced_task_requires_actual_chunk_coverage(monkeypatch):
+    import pytest
+
+    class Runner:
+        chunk = 2
+
+        def _prefill_chunk(self, values):
+            pass
+
+    runner = Runner()
+
+    def fake_completion(runner, tokenizer, prompt, limit):
+        for start in range(0, len(prompt), runner.chunk):
+            runner._prefill_chunk(prompt[start:start + runner.chunk])
+        return {"ids": [9], "finish": "eos"}
+
+    monkeypatch.setattr(tasks, "completion", fake_completion)
+    result = tasks.traced_completion(runner, None, [1, 2, 3, 4, 5], 4, 2)
+    assert result["prefill_chunks"] == [2, 2, 1]
+    assert "_prefill_chunk" not in vars(runner)
+    with pytest.raises(ValueError, match="chunk coverage"):
+        tasks.traced_completion(runner, None, [1, 2, 3, 4, 5], 4, 4)
+    assert "_prefill_chunk" not in vars(runner)
