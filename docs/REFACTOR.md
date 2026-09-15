@@ -7628,3 +7628,28 @@ that already makes the kernel registry order-independent under
   in the scoreboard).
 - Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
   failure mode was silent drift, not a single large addition.
+
+## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch
+
+`kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` currently always
+routes to the tiled WMMA prefill GEMM. Routing `rows < 2` to `dense_gemv_out_bf16`
+instead is a **measured candidate that was reverted for the wrong reason and has
+never had its speedup retained**.
+
+- Why it is a candidate: the semantic encoder downsamples 3200 samples to one
+  frame, so its last ConvNeXt stage runs `(1, 2048) -> (1, 8192) -> (1, 2048)`.
+  The WMMA tile is 128x64, so at one row it wastes 127 of 128 tile rows and each
+  block re-reads its whole weight matrix for a single output row.
+- Why it is not landed: no same-host A/B of the stage cost exists in the tree. The
+  only numbers were in a working-tree comment, and they were never promoted with
+  an artifact.
+- What is **not** a blocker: quality. The claim that it degrades generated audio
+  is disproven. Running the ten-seed quality suite with the dispatch on and off
+  gives bit-identical outcomes -- the same two failing request-runs, the same
+  0.118 WER, the same attribution failure. The 15/18-versus-17/18 difference it
+  was originally blamed for came from `--phase score` re-scoring PCM left over
+  from pre-change code.
+- To remove this entry: measure `encode_chunk_streaming("semantic", ...)` with the
+  dispatch on and off in one process, confirm the one-row output matches the tiled
+  path within the production numerical envelope, then land it with an artifact and
+  a worklog entry. Keep a strict fallback if it is registered as a variant.

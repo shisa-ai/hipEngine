@@ -1,7 +1,6 @@
 # hipEngine Topline Benchmarks
 
 Last updated: **2026-09-15**
-
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -1246,25 +1245,35 @@ Six held-out scripts (one to four turns, 7 to 40 words) over the same two voice
 sets, run with nothing injected: the session draws its own voice-prompt VAE
 noise, its own diffusion noise and its own negative-LM branch, and each request's
 generation budget comes from its declared `max_audio_seconds` rather than from the
-oracle's token count. Three seeds per request, 18 request-runs in total.
+oracle's token count. Ten seeds per request, 60 request-runs in total.
 
-| Request | Turns | WER (3 seeds) | Duration ratio | Speaker runs (3 seeds) |
+| Request | Turns | WER (10 seeds) | Duration ratio | Speaker runs |
 | --- | ---: | --- | ---: | --- |
-| `single-short` | 1 | 0.0 / 0.0 / 0.0 | 0.76-1.14 | n/a |
-| `single-medium` | 1 | 0.0 / 0.0 / 0.0 | 0.67-0.87 | n/a |
-| `single-numbers` | 1 | 0.0 / 0.0 / 0.0 | 0.83-0.97 | n/a |
-| `two-2turn` | 2 | 0.0 / 0.059 / 0.0 | 0.86-0.96 | `[0,1]` x3 |
-| `two-4turn` | 4 | 0.0 / 0.0 / 0.0 | 1.01-1.07 | `[0,1,0,1]` x3 |
-| `two-long` | 2 | 0.025 / 0.05 / 0.025 | 0.73-0.88 | `[0,1]` x3 |
+| `single-short` | 1 | 0.0 | 0.76-1.14 | n/a |
+| `single-medium` | 1 | 0.0 | 0.67-1.04 | n/a |
+| `single-numbers` | 1 | 0.0-0.083 | 0.83-1.03 | n/a |
+| `two-2turn` | 2 | 0.0-0.118, 1 above gate | 0.72-1.12 | `[0,1]` 10/10 |
+| `two-4turn` | 4 | 0.0-0.043 | 0.94-1.20 | `[0,1,0,1]` 10/10 |
+| `two-long` | 2 | 0.025-0.075 | 0.68-0.88 | `[0,1]` 9/10 |
 
-All 18 request-runs pass. Every request reaches EOS, no output clips, the longest
-internal gap is under 1 s, and no repeated 4-gram appears. The non-zero WER values
-are single words, including the `cancelled`/`canceled` spelling difference.
+58 of 60 request-runs pass. Every request reaches EOS, no output clips, the longest
+internal gap is under 1 s, and no repeated 4-gram appears. Every chunk boundary is
+checked for a sample-count discontinuity and for a click: across all 60 runs the
+chunk sizes sum to the output length, every chunk is a whole 3200-sample codec
+frame, and the largest sample-to-sample step at a boundary stays below 0.64x the
+signal's own interior 99.9th-percentile step.
+
+The two failures are both at the edge of their gates and neither is truncation or
+silence. `two-2turn` on one seed measures word error rate 0.118 against a 0.10
+gate, where its other nine seeds measure 0.0 to 0.059; the extra error is a single
+word. `two-long` on one seed misassigns one 1 s window inside the first turn, so
+the encoder-based attribution sees a spurious speaker flip; its other nine seeds
+reproduce `[0,1]` cleanly, and the transcript on that seed is unaffected.
 
 Speaker attribution is measured on the acoustic encoder's own window assignment,
 not on the ASR's speaker labels, which report a single speaker for two-speaker
 scripts that contain both voices. The four-turn script reproduces its whole
-`[0,1,0,1]` sequence on all three seeds, so the check covers the intermediate
+`[0,1,0,1]` sequence on all ten seeds, so the check covers the intermediate
 speaker changes rather than only the endpoints. The instrument does **not**
 resolve absolute voice identity: classifying a single-voice request against both
 references sits at the noise floor (mean cosines 0.424 against 0.413 for one
