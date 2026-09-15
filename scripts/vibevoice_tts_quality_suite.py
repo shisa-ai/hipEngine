@@ -91,6 +91,11 @@ SILENCE_AMPLITUDE = 1e-3
 MIN_RMS = 0.005
 MAX_ABS = 1.0
 
+#: A join artifact is a sample-to-sample step at a chunk boundary the waveform's own
+#: dynamics do not produce, so the gate is a multiple of the signal's interior p99.9
+#: step rather than an absolute level.
+JOIN_CLICK_STEP_RATIO = 4.0
+
 #: A repeated 4-gram is the classic sampling failure; once is already audible.
 NGRAM_SIZE = 4
 MAX_REPEATED_NGRAMS = 0
@@ -339,6 +344,7 @@ def synthesize(
                     "token_cap": cap,
                     "generated_tokens": len(result.ids),
                     "diffusion_frames": len(result.chunks),
+                    "chunk_samples": [int(chunk.size) for chunk in result.chunks],
                     "finish_reason": result.finish_reason,
                     "synthesis_seconds": round(elapsed, 3),
                     "output_audio_seconds": round(float(audio.size) / SAMPLE_RATE, 4),
@@ -512,6 +518,7 @@ def score(records, asr_model_id: str, fixtures: Path, manifest: dict):
                 }
             )
             entry.update(_level_checks(audio))
+            entry["join_checks"] = _join_checks(audio, entry.get("chunk_samples") or [])
             entry["wer"] = (
                 round(float(wer._wer_content([reference], [content])), 4)
                 if segments is not None and expected
@@ -578,6 +585,51 @@ def _decided_windows(cosines) -> list[int]:
     ]
 
 
+def _join_checks(audio: np.ndarray, chunk_samples: list[int]) -> dict:
+    """Sample-count continuity plus a click check at every codec chunk boundary.
+
+    Correct chunks can still click at their joins, and a duplicated or dropped sample
+    at a boundary changes the count without changing the duration much. The click
+    test compares the largest sample-to-sample step at a boundary against the
+    distribution of steps inside the signal: a join artifact is a discontinuity the
+    waveform's own dynamics do not produce, so the threshold is relative to that
+    distribution rather than an absolute level. A duplicated sample shows up as the
+    opposite, a boundary step far *below* the signal's typical step, and is reported
+    as a diagnostic beside it.
+    """
+    total = int(sum(chunk_samples))
+    result = {
+        "chunk_count": len(chunk_samples),
+        "sample_count_continuous": total == int(audio.size),
+        "whole_frames": all(size % FRAME_SAMPLES == 0 for size in chunk_samples),
+    }
+    if len(chunk_samples) < 2 or audio.size < 2:
+        return result
+    boundaries = np.cumsum(np.asarray(chunk_samples, dtype=np.int64))[:-1]
+    boundaries = boundaries[(boundaries > 0) & (boundaries < audio.size)]
+    if boundaries.size == 0:
+        return result
+    step = np.abs(np.diff(np.asarray(audio, dtype=np.float64)))
+    inside = np.delete(step, boundaries - 1)
+    if inside.size == 0:
+        return result
+    at_boundary = step[boundaries - 1]
+    typical = float(np.percentile(inside, 99.9))
+    floor = float(np.median(inside))
+    worst = float(at_boundary.max())
+    smallest = float(at_boundary.min())
+    result.update(
+        {
+            "boundary_max_step": round(worst, 6),
+            "interior_p999_step": round(typical, 6),
+            "boundary_max_step_ratio": round(worst / typical, 4) if typical > 0 else None,
+            "boundary_min_step_ratio": round(smallest / floor, 4) if floor > 0 else None,
+            "no_join_click": bool(typical <= 0.0 or worst <= JOIN_CLICK_STEP_RATIO * typical),
+        }
+    )
+    return result
+
+
 def _checks(entry: dict) -> dict:
     """Named pass/fail checks. Every key must hold for the request to pass."""
     checks = {
@@ -597,6 +649,10 @@ def _checks(entry: dict) -> dict:
             and DURATION_MIN_RATIO <= entry["word_count_ratio"] <= DURATION_MAX_RATIO
         ),
         "no_repeated_speech": len(entry["repeated_ngrams"]) <= MAX_REPEATED_NGRAMS,
+        "no_join_click": entry.get("join_checks", {}).get("no_join_click", True),
+        "sample_count_continuous": entry.get("join_checks", {}).get(
+            "sample_count_continuous", True
+        ),
         "turn_count": len(entry["segments"]) >= 1,
     }
     speakers = entry["turn_speakers"]

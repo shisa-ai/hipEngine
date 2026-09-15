@@ -385,7 +385,7 @@ The first implementation is deliberately narrow: one serialized request at a
 time, up to four speakers, a short script. Concurrency, batching and long-form
 qualification are later milestones, and the first API must not assume them.
 
-Proposed surface, mirroring the ASR adapter's shape:
+The surface, mirroring the ASR adapter's shape:
 
 ```python
 engine = LLM("microsoft/VibeVoice-1.5B")
@@ -395,8 +395,23 @@ result = engine.synthesize(
     sample_rate=24000,
     max_new_tokens=None,
     seed=None,
+    cfg_scale=1.3,
+    cancel=None,               # callable polled between steps
 )
+engine.reset()
 ```
+
+`hipengine/generation/vibevoice_tts.py` implements it over
+`hipengine.runtime.vibevoice_tts_session`; `hipengine/models/vibevoice_tts.py`
+registers the checkpoint's `VibeVoiceForConditionalGeneration` architecture, and
+`LLM.synthesize` / `LLM.reset` forward to the generator. The checkpoint snapshot
+holds no tokenizer, so the adapter loads the Qwen2.5 tokenizer and the speech
+control ids from `microsoft/VibeVoice-ASR-HF`, the checkpoint the model was
+trained against; `TOKENIZER_MODEL_ID` pins it. `cfg_scale` is a request parameter
+rather than a checkpoint value, because `config.json` carries no `cfg_scale` key;
+the frozen oracle request uses 1.3. The diffusion step count is not a request
+parameter: it comes from the checkpoint's `diffusion_head_config`, and the adapter
+refuses to run if the solver's spec disagrees with it.
 
 | Contract | Decision |
 | --- | --- |
@@ -518,14 +533,36 @@ Checks per request, with thresholds declared in the script:
 | Turn count | at least one ASR segment |
 | Voice attribution | for a multi-speaker script, the encoder's window assignment opens on the script's first speaker and closes on its last |
 
-Measured over three seeds, 17 of 18 request-runs pass. The single failure is a
-real one: the shortest two-speaker script's first turn came back as "I can see you
-in the world this morning" instead of "I think the meeting went well this
-morning" on one seed, word error rate 0.353. The other two seeds of that request
-measure 0.059, and the second turn is word-perfect on all three. Every other
-request measures 0.0 to 0.05, where the non-zero values are single words
-including one spelling difference (`cancelled` against `canceled`) rather than
-mispronunciation.
+Measured over ten seeds, 58 of 60 request-runs pass. Two failures are at the edge
+of their gates and neither is truncation or silence. `two-2turn` measures word
+error rate 0.118 against a 0.10 gate on one seed, where its other nine measure 0.0
+to 0.059; the extra error is a single word. `two-long` misassigns one 1 s window
+inside the first turn on one seed, so the encoder-based attribution sees a spurious
+speaker flip; its transcript is unaffected and its other nine seeds reproduce
+`[0,1]` cleanly.
+
+The earlier, single-request failure this suite recorded was a genuine synthesis
+defect, not an evaluator artifact: the shortest two-speaker script's first turn
+came back as "I can see you in the world this morning" instead of "I think the
+meeting went well this morning" on one seed, word error rate 0.353. A cross-check
+with `openai/whisper-large-v3-turbo` on the same waveform dropped that turn
+entirely rather than substituting words, which is what a real synthesis failure
+looks like. It does not reproduce at the current revision, where the same seed
+measures 0.118 and the other nine seeds 0.0 to 0.059.
+
+#### Join artifacts are checked at every chunk boundary
+
+Correct chunks can still click where they join, and a dropped or duplicated sample
+at a boundary changes the output length without changing the duration much. Each
+request therefore records its per-chunk sample counts, and the suite checks that
+they sum to the output length, that every chunk is a whole 3200-sample codec frame,
+and that the largest sample-to-sample step at each boundary stays below 4x the
+signal's own interior 99.9th-percentile step. The threshold is relative to the
+waveform's dynamics rather than absolute, so it does not flag loud audio. Across
+all 60 request-runs the largest boundary step is 0.64x the interior p99.9 step.
+A duplicated sample shows up as the opposite signature, a boundary step far below
+the signal's typical step, and is recorded as a diagnostic rather than gated,
+because a genuine silence at a speech boundary looks the same.
 
 #### Attribution is measured on the encoder, not on the ASR
 
@@ -634,8 +671,13 @@ here as they do to the MTP paths.
 ## Repository contracts and evidence
 
 Milestone 1 produced measured reference outputs — the frozen oracle fixtures
-and weight inventory — but this is still not an implemented plugin and not a
-measured performance result. The implementation path below is future work.
+and weight inventory. The plugin is now implemented: `hipengine/models/vibevoice_tts.py`
+registers the architecture, `hipengine/generation/vibevoice_tts.py` implements the
+contract's `synthesize`/`reset` surface over
+`hipengine.runtime.vibevoice_tts_session`, and both the session timing and the
+generated-audio quality suite are measured on this host. The diffusion head, the
+decoder and the semantic encoder still run their own stage loops rather than the
+four-axis kernel registry, so registering them is future work.
 Keep runtime imports torch-free, resolve kernels through
 `(backend, layer, quant, variant)`, retain
 registered strict fallbacks, and preserve `KVLiveSpans` for cached attention.
