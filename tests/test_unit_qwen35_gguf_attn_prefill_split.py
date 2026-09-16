@@ -114,7 +114,7 @@ def test_linear_wrapper_forwards_everything_and_launches_once():
     runner._run_linear_attention_prefill_attn_rows = attn
     runner._run_post_attention_ffn_rows = ffn
 
-    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0xA77))
+    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x0C0277))
     decode_scratch = SimpleNamespace(name="decode")
     kv_live = object()
     stage_timings = {"a": 1.0}
@@ -187,7 +187,7 @@ def test_full_wrapper_forwards_everything_and_returns_used_aotriton():
     runner._run_full_attention_prefill_attn_rows = attn
     runner._run_post_attention_ffn_rows = ffn
 
-    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0xA77), rows=6)
+    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x0C0277), rows=6)
 
     used = Runner._run_full_attention_prefill_layer_aotriton(
         runner,
@@ -302,3 +302,125 @@ def test_wrapper_signatures_preserved():
         "stage_prefix",
         "gpu_stage_recorder",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Post-attention norm+residual split (sharded-TP2 residual contract).
+# ---------------------------------------------------------------------------
+
+NORM_HELPER = "_run_post_attention_norm_residual_rows"
+
+
+def test_norm_residual_helper_defined_once_and_owned_by_ffn():
+    source = inspect.getsource(inspect.getmodule(Runner))
+    assert source.count(f"def {NORM_HELPER}(") == 1
+    ffn_src = _src(FFN)
+    assert ffn_src.count(f"self.{NORM_HELPER}(") == 1
+    # The stage mark stays in the FFN wrapper so the diagnostic t_stage
+    # baseline flows into the next stage exactly as it did before the split.
+    helper_src = _src(NORM_HELPER)
+    assert "_mark_sync_stage" not in helper_src
+    assert ".mark(" not in helper_src
+    assert "_post_norm_residual" in ffn_src
+
+
+def test_norm_residual_helper_launches_single_add_rmsnorm(monkeypatch):
+    import hipengine.runtime.qwen35_gguf_runner as runner_mod
+
+    runner = _new_runner()
+    runner.runtime = object()  # truthy; the fake kernel ignores it
+    calls = []
+
+    def fake_kernel(owner, *, layer, rows, hidden_size):
+        def launch(
+            hidden_ptr,
+            attn_out_ptr,
+            weight_ptr,
+            post_norm_ptr,
+            residual_ptr,
+            *,
+            rows,
+            hidden_size,
+            eps,
+            stream,
+            runtime,
+        ):
+            calls.append(
+                dict(
+                    hidden_ptr=hidden_ptr,
+                    attn_out_ptr=attn_out_ptr,
+                    weight_ptr=weight_ptr,
+                    post_norm_ptr=post_norm_ptr,
+                    residual_ptr=residual_ptr,
+                    rows=rows,
+                    hidden_size=hidden_size,
+                    eps=eps,
+                    stream=stream,
+                )
+            )
+
+        return launch
+
+    monkeypatch.setattr(runner_mod, "_gguf_norm_residual_decode_kernel", fake_kernel)
+    layer = SimpleNamespace(
+        weight=lambda name: SimpleNamespace(
+            allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x0A11))
+        )
+    )
+    runner.weights = SimpleNamespace(
+        layer=lambda lid: layer,
+        config=SimpleNamespace(rms_norm_eps=1e-6, hidden_size=16),
+    )
+    scratch = SimpleNamespace(
+        post_norm=SimpleNamespace(ptr=0x0B01), residual=SimpleNamespace(ptr=0x0B02)
+    )
+
+    out = Runner._run_post_attention_norm_residual_rows(
+        runner, 2, 0x0C01, 0x0C02, scratch, rows=3, stream=7
+    )
+
+    assert out is None
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["hidden_ptr"] == 0x0C01
+    assert call["attn_out_ptr"] == 0x0C02
+    assert call["weight_ptr"] == 0x0A11
+    assert call["post_norm_ptr"] == 0x0B01
+    assert call["residual_ptr"] == 0x0B02
+    assert call["rows"] == 3 and call["hidden_size"] == 16 and call["stream"] == 7
+
+
+def test_ffn_wrapper_uses_norm_helper_then_moe_once():
+    runner = _new_runner()
+    runner.runtime = object()
+    events = []
+
+    def norm(*args, **kwargs):
+        events.append(("norm", args, kwargs))
+        return 0x0B03
+
+    def moe(*args, **kwargs):
+        events.append(("moe", args, kwargs))
+
+    runner._run_post_attention_norm_residual_rows = norm
+    runner._run_post_attention_moe_rows = moe
+    runner.weights = SimpleNamespace(
+        layer=lambda lid: None,
+        config=SimpleNamespace(is_moe=True, hidden_size=16),
+    )
+    scratch = SimpleNamespace(
+        post_norm=SimpleNamespace(ptr=0x0B01), residual=SimpleNamespace(ptr=0x0B02)
+    )
+
+    Runner._run_post_attention_ffn_rows(
+        runner, 3, 0x0C01, 0x0C02, 0x0C03, scratch, rows=4, stream=5, stage_prefix="p"
+    )
+
+    assert [event[0] for event in events] == ["norm", "moe"]
+    (_, n_args, n_kw) = events[0]
+    assert n_args == (3, 0x0C01, 0x0C02, scratch)
+    assert n_kw["rows"] == 4 and n_kw["stream"] == 5
+    # The FFN branch consumes the norm helper's F32 diagnostic pointer.
+    (_, _, m_kw) = events[1]
+    assert m_kw["post_norm_f32_ptr"] == 0x0B03
+    assert m_kw["rows"] == 4
