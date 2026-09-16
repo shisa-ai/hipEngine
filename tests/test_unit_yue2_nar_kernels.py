@@ -101,16 +101,13 @@ def test_state_update_rounds_twice_like_torch():
     rng = np.random.default_rng(2)
     state = _bf16(rng.standard_normal((rows, width)) * 2)
     velocity = _bf16(rng.standard_normal((rows, width)) * 3)
-    scale = _bf16(np.full(width, -0.015625))
+    scale = -0.015625
     state_buf = _upload(state)
     vel_buf = _upload(velocity)
-    scale_buf = _upload(scale)
     out_buf = _upload(np.zeros((rows, width), dtype=np.uint16))
-    nar.nar_state_update_bf16(
-        state_buf.ptr, vel_buf.ptr, scale_buf.ptr, out_buf.ptr, rows, width
-    )
+    nar.nar_state_update_bf16(state_buf.ptr, vel_buf.ptr, scale, out_buf.ptr, rows, width)
     got = _download(out_buf, (rows, width), np.uint16)
-    product = widen(_bf16(widen(velocity) * widen(scale)[None, :]))
+    product = widen(_bf16(widen(velocity) * np.float32(scale)))
     assert np.array_equal(got, _bf16(widen(state) - product))
 
 
