@@ -15,6 +15,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PROFILE_GLOB = "/tmp/prof-final/gfx1151/*_kernel_trace.csv"
+# The three captures of the same slot and chunk. They differ only in the
+# execution profile that produced the dispatch key; the operands and the output
+# are the same bytes, which is what makes the two dispatches comparable.
+PACKET_GLOB = "/tmp/replay-bridge/packets/q8-attnqkv-L8-c0*.json"
 
 
 def sweep_rows(name: str) -> list[dict]:
@@ -47,6 +51,33 @@ def profile_rows() -> dict[str, dict]:
         entry["total_ns"] += int(row["End_Timestamp"]) - int(row["Start_Timestamp"])
     for entry in out.values():
         entry["avg_us"] = entry["total_ns"] / entry["launches"] / 1e3
+    return out
+
+
+def profile_dispatch() -> dict[str, dict]:
+    """Map each capture's execution profile to the dispatch key it recorded.
+
+    The replay packet this artifact is built on was captured under the strict
+    profile, so its recorded key is the strict dispatch. Production replaces it
+    with the wave-scale sibling for this shape. Reading the capture manifests
+    rather than transcribing the mapping keeps the artifact honest about which
+    number is a baseline for which profile.
+    """
+    out: dict[str, dict] = {}
+    for path in sorted(glob.glob(PACKET_GLOB)):
+        manifest = json.loads(Path(path).read_text())
+        profile = manifest.get("profile")
+        if profile is None:
+            continue
+        arrays = manifest.get("arrays", {})
+        out[Path(path).name] = {
+            "profile": profile,
+            "variant": manifest["hipengine_variant"]["variant"],
+            "slot": manifest.get("slot"),
+            "w_raw_sha256": arrays.get("w_raw", {}).get("sha256"),
+            "x_sha256": arrays.get("x", {}).get("sha256"),
+            "out_sha256": arrays.get("out", {}).get("sha256"),
+        }
     return out
 
 
@@ -111,6 +142,11 @@ def main() -> int:
                 "iu8_wmma_prefill_f32_f32_out",
             )
         },
+        "dispatch_by_profile": {
+            "strict": "coltile8_rowbatch4_f32_f32_out",
+            "production": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+        },
+        "captures": profile_dispatch(),
         "kernel_level": profile_rows(),
         "tiling_invariance": json.loads((HERE / "tiling-invariance.json").read_text()),
         "activation_path_probe": {
