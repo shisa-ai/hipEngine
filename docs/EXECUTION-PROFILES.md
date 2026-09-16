@@ -493,7 +493,7 @@ in one category was enough.
 **Continuous gates survive a reduced run, but the screen-to-full ratio is not a
 constant.** Mean and p95 KL are averages over rows rather than counts of
 threshold crossings, so they are estimable from a screen. They are not a fixed
-multiple of the full-arm value. Measured across three control scopes in that
+multiple of the full-arm value. Measured across four control scopes in that
 campaign:
 
 | Scope | Screen mean KL | Full mean KL | Full / screen |
@@ -501,10 +501,12 @@ campaign:
 | 32-47 | `4.916e-5` | `5.808e-5` | `1.181` |
 | 28-47 | `8.606e-5` | `9.342e-5` | `1.086` |
 | 20-47 | `4.986e-4` | `2.527e-4` | `0.507` |
+| 16-47 | `6.728e-4` | `3.796e-4` | `0.564` |
 
 The ratio spans `0.51` to `1.18` and it moves with scope depth, so a screen
 read through any single correction factor will be wrong in one direction or the
-other. Applying the shallow-scope factor of `1.15` to the 20-47 screen would
+other. Both deep control points sit near a half, so the low end of the interval
+rests on two independent scopes. Applying the shallow-scope factor of `1.15` to the 20-47 screen would
 have predicted `5.7e-4` against an actual `2.5e-4`, overstating the value by
 2.3x and wrongly implying that neighbouring scopes were out of range.
 
