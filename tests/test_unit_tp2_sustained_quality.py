@@ -5,59 +5,88 @@ import pytest
 from scripts.tp2_teacher_coverage_broad import sustained_trajectory
 
 
-def test_report_scores_candidates_not_redundant_teacher_self(monkeypatch,tmp_path):
-    import json
-    from scripts import tp2_teacher_coverage_broad as coverage
-    paths=[]; captures={}; reference=[object()]; calls=[]
-    for arm in ('tp1-d0','tp1-d1','tp2'):
-        path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
-        data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
-              'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
-              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True,
-              'prefill_schedule':'bulk'}
-        captures[path]=(data,reference if arm=='tp1-d0' else [object()])
-    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
-    def score(teacher,student,*args,**kw):
-        assert teacher is not student, 'redundant expensive self-comparison'
-        calls.append(student)
-        metric={'rows':2304,'mean_kl':0.,'p95_kl':0.,'p99_kl':0.,'max_kl':0.,'top1_agreement':1.}
-        return {'global':metric,'scopes':{'canonical':metric,'heldout':metric},
-                'categories':{'code':metric},'category_scopes':{'code':{'canonical':metric,'heldout':metric}}}
-    monkeypatch.setattr(coverage,'score_arm',score)
-    out=tmp_path/'report.json'
-    assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==0
-    assert len(calls)==2
-    report=json.loads(out.read_text())
-    assert report['reference_arm']=='tp1-d0'
-    assert report['prefill_schedule']=='bulk'
-
-
-def test_report_refuses_mixed_prefill_schedules(monkeypatch,tmp_path):
-    from scripts import tp2_teacher_coverage_broad as coverage
-    paths=[]; captures={}
-    for arm,schedule in (('tp1-d0','bulk'),('tp1-d1','bulk'),('tp2','token-serial')):
-        path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
-        data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
-              'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
-              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True,
-              'prefill_schedule':schedule}
-        captures[path]=(data,[object()])
-    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
-    with pytest.raises(ValueError,match='prefill schedule'):
-        coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=None))
-
-
-def test_report_refuses_missing_prefill_schedule(monkeypatch,tmp_path):
-    from scripts import tp2_teacher_coverage_broad as coverage
+def _captures(tmp_path, schedules):
     paths=[]; captures={}
     for arm in ('tp1-d0','tp1-d1','tp2'):
         path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
         data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
               'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
               'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True}
+        if schedules is not None and schedules.get(arm) is not None:
+            data['prefill_schedule']=schedules[arm]
         captures[path]=(data,[object()])
+    return paths,captures
+
+
+def _metric(max_kl=0.):
+    return {'rows':2304,'mean_kl':0.,'p95_kl':0.,'p99_kl':0.,'max_kl':max_kl,'top1_agreement':1.}
+
+
+def _patch_score(monkeypatch, coverage, max_kl_by_arm=None):
+    calls=[]
+    def score(teacher,student,*args,**kw):
+        assert teacher is not student, 'redundant expensive self-comparison'
+        calls.append(student)
+        max_kl=(max_kl_by_arm or {}).get(len(calls),0.)
+        metric=_metric(max_kl)
+        return {'global':metric,'scopes':{'canonical':metric,'heldout':metric},
+                'categories':{'code':metric},'category_scopes':{'code':{'canonical':metric,'heldout':metric}}}
+    monkeypatch.setattr(coverage,'score_arm',score)
+    return calls
+
+
+def test_report_scores_candidates_not_redundant_teacher_self(monkeypatch,tmp_path):
+    import json
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths,captures=_captures(tmp_path,{'tp1-d0':'bulk','tp1-d1':'bulk','tp2':'bulk'})
     monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
-    with pytest.raises(ValueError,match='prefill schedule'):
+    calls=_patch_score(monkeypatch,coverage)
+    out=tmp_path/'report.json'
+    assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==0
+    assert len(calls)==2
+    report=json.loads(out.read_text())
+    assert report['reference_arm']=='tp1-d0'
+    assert report['prefill_schedules']=={'tp1-d0':'bulk','tp1-d1':'bulk','tp2':'bulk'}
+    assert report['mixed_prefill_schedules'] is False
+    assert report['comparison_scope']=='matched-prefill-schedule'
+
+
+def test_report_accepts_mixed_prefill_schedules_when_envelope_passes(monkeypatch,tmp_path):
+    import json
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths,captures=_captures(tmp_path,{'tp1-d0':'bulk','tp1-d1':'bulk','tp2':'token-serial'})
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    calls=_patch_score(monkeypatch,coverage)
+    out=tmp_path/'report.json'
+    assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==0
+    assert len(calls)==2
+    report=json.loads(out.read_text())
+    assert report['prefill_schedules']['tp2']=='token-serial'
+    assert report['mixed_prefill_schedules'] is True
+    assert report['comparison_scope']=='mixed-prefill-schedules'
+    assert set(report['comparison'])=={'tp1-d1','tp2'}
+
+
+def test_report_keeps_mixed_prefill_schedule_numerical_failure_failed(monkeypatch,tmp_path):
+    import json
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths,captures=_captures(tmp_path,{'tp1-d0':'bulk','tp1-d1':'bulk','tp2':'token-serial'})
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    calls=_patch_score(monkeypatch,coverage,{2:0.108406})
+    out=tmp_path/'report.json'
+    assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==1
+    assert len(calls)==2
+    report=json.loads(out.read_text())
+    assert report['mixed_prefill_schedules'] is True
+    assert report['all_gates_passed'] is False
+    assert report['comparison']['tp2']['global']['max_kl']==0.108406
+
+
+def test_report_blocks_missing_prefill_schedule_provenance(monkeypatch,tmp_path):
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths,captures=_captures(tmp_path,{'tp1-d0':'bulk','tp1-d1':'bulk','tp2':None})
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    with pytest.raises(ValueError,match='missing prefill_schedule provenance'):
         coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=None))
 
 

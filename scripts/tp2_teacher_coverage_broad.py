@@ -1339,12 +1339,15 @@ def report_sustained(args):
     captures=[load_sustained(p) for p in args.sustained_report]
     arms={d['arm']:(d,a) for d,a in captures}
     if set(arms)!={'tp1-d0','tp1-d1','tp2'}: raise ValueError('sustained arms missing/duplicated')
-    schedules={d.get('prefill_schedule') for d,_ in captures}
-    if None in schedules or len(schedules)!=1:
-        raise ValueError(
-            'sustained prefill schedule mismatch; a teacher-forced comparison must '
-            'not mix prefill arithmetic: '
-            + ', '.join(f'{d["arm"]}={d.get("prefill_schedule")!r}' for d,_ in captures))
+    schedules={d['arm']:d.get('prefill_schedule') for d,_ in captures}
+    missing=[arm for arm,schedule in schedules.items() if schedule is None]
+    if missing: raise ValueError(f'sustained missing prefill_schedule provenance for arms {missing}')
+    # Different native prefill algorithms are legitimate product paths. They are
+    # not required to be identical; each arm must still satisfy the unchanged
+    # production numerical envelope against the shared teacher. Record which
+    # schedules were compared so a mixed comparison is explicit, never silent.
+    mixed=len(set(schedules.values()))>1
+    comparison_scope='mixed-prefill-schedules' if mixed else 'matched-prefill-schedule'
     teacher,reference=arms['tp1-d0']; comparisons={}
     for arm,(data,arrays) in arms.items():
         if data['identity']!=teacher['identity'] or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
@@ -1356,7 +1359,9 @@ def report_sustained(args):
     passed &= all(_envelope_gate(v,top1_bar=.97)['passed'] for c in comparisons.values() for v in [*c['categories'].values(),*(v for s in c['category_scopes'].values() for v in s.values())])
     result={'kind':'tp2_sustained_d128_gate','all_gates_passed':bool(passed),'production_qualified':False,
         'population':'18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories',
-        'reference_arm':'tp1-d0', 'prefill_schedule':next(iter(schedules)), 'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'reference_arm':'tp1-d0', 'prefill_schedules':schedules,
+        'mixed_prefill_schedules':bool(mixed),'comparison_scope':comparison_scope,
+        'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
         'thresholds':PRODUCTION_GATE,'captures':{str(p):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.sustained_report},
         'controls':{d['arm']:{k:d[k] for k in ('run_id','devices','route','scope_manifest','determinism','state_boundaries','control_log','natural_teardown')} for d,a in captures},
         'not_qualified':['task quality','BF16-relative','public distributed profile','performance promotion']}

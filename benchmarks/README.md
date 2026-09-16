@@ -852,18 +852,18 @@ transitions per prompt (2,304 positions), with reset/isolation checks.
 
 TP2 stops on `mixed_ja_en_translate`, decode index 82 / absolute input position
 146: **KL 0.108406 exceeds the 0.05 ceiling**, despite finite logits and identical
-top-1. A per-layer boundary bisect on the same loaded model, prompt, and
-positions shows the divergence is smooth T2 association drift, not an ownership
-defect: at the end of prefill, bulk and token-serial logits agree to
-**KL 6.08e-05**, per-layer hidden RMS grows monotonically from 5.5e-05 to 0.122,
-Conv state RMS from 1.8e-03 to 5.5e-02, and the GDN recurrent state stays within
-RMS 4.5e-04. The TP2 native path uses token-serial prefill while the TP1 teacher
-uses bulk prefill, so the sustained gate was comparing two prefill schedules; the
-0.299 bulk-vs-serial divergence at position 146 is that small prefill-end
-difference amplified over 83 GDN-recurrent decode steps. The harness now records
-the prefill schedule and fails closed on a teacher/candidate mismatch. The
-numerical envelope is unchanged and token-serial is not substituted as a
-denominator.
+top-1. This remains a genuine end-to-end quality failure. A per-layer boundary
+bisect on the same loaded model, prompt, and positions, changing only the prefill
+schedule, measures at prefill end: bulk vs token-serial logits KL 6.08e-05,
+per-layer hidden RMS growing monotonically from 5.5e-05 to 0.122, Conv state RMS
+from 1.8e-03 to 5.5e-02, and GDN recurrent state RMS within 4.5e-04. The TP2
+native path uses token-serial prefill while the TP1 teacher uses bulk prefill.
+Different native prefill algorithms are legitimate product paths and are not
+required to be identical; each must still satisfy the unchanged envelope. The
+smooth growth is consistent with arithmetic amplification but does not rule out
+subtle state/layout errors and does not prove causality. The sustained report
+records per-arm prefill schedules and the comparison scope, still requires
+provenance and same input/position/profile, and enforces the unchanged envelopes.
 
 **No native-product timing runs or TP2 speed ratios were emitted.** The declared
 no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
