@@ -5,6 +5,30 @@ import pytest
 from scripts.tp2_teacher_coverage_broad import sustained_trajectory
 
 
+def test_report_scores_candidates_not_redundant_teacher_self(monkeypatch,tmp_path):
+    import json
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths=[]; captures={}; reference=[object()]; calls=[]
+    for arm in ('tp1-d0','tp1-d1','tp2'):
+        path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
+        data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
+              'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
+              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True}
+        captures[path]=(data,reference if arm=='tp1-d0' else [object()])
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    def score(teacher,student,*args,**kw):
+        assert teacher is not student, 'redundant expensive self-comparison'
+        calls.append(student)
+        metric={'rows':2304,'mean_kl':0.,'p95_kl':0.,'p99_kl':0.,'max_kl':0.,'top1_agreement':1.}
+        return {'global':metric,'scopes':{'canonical':metric,'heldout':metric},
+                'categories':{'code':metric},'category_scopes':{'code':{'canonical':metric,'heldout':metric}}}
+    monkeypatch.setattr(coverage,'score_arm',score)
+    out=tmp_path/'report.json'
+    assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==0
+    assert len(calls)==2
+    assert json.loads(out.read_text())['reference_arm']=='tp1-d0'
+
+
 class Adapter:
     vocab_size=16
     def __init__(self): self.inputs=[]; self.position=0; self.closed=False
@@ -46,6 +70,18 @@ def test_absolute_numerical_failure_stops_first_bad_position():
                              failure=lambda detail,*arrays:failures.append(detail))
     assert a.inputs==[8] and not a.closed
     assert failures[0]['position']==2
+
+
+def test_same_top1_does_not_waive_absolute_kl_ceiling():
+    a=Adapter()
+    ref=np.zeros((3,16),dtype=np.float32)
+    ref[:,9]=4; ref[:,8]=3.9  # same winner as candidate, different full distribution
+    failures=[]
+    with pytest.raises(ValueError,match='absolute KL'):
+        sustained_trajectory(a,[0,1],forced=[8,3,2],steps=3,reference=ref,
+                             failure=lambda detail,*arrays:failures.append(detail))
+    assert failures[0]['top1'] is True
+    assert a.inputs==[8] and not a.closed
 
 
 def test_wrong_control_position_fails_before_next_transition():
