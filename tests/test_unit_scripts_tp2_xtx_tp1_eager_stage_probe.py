@@ -122,6 +122,72 @@ def test_main_build_failure_emits_artifact_and_exits_nonzero(tmp_path, monkeypat
     assert len(payload['stages']) == 1
 
 
+@pytest.mark.parametrize('graph_logits,passes', [([1., 3., 2.], True), ([3., 1., 2.], False)])
+def test_graph_eager_comparison_is_numerical_not_finite_only(graph_logits, passes):
+    eager = SimpleNamespace(token_id=1, logits=np.array([[1., 3., 2.]]))
+    graph = SimpleNamespace(token_id=int(np.argmax(graph_logits)), logits=np.array([graph_logits]))
+    if passes:
+        assert probe.compare_graph_eager(eager, graph, 3)['top1_agreement'] == 1.0
+    else:
+        with pytest.raises(ValueError):
+            probe.compare_graph_eager(eager, graph, 3)
+
+
+@pytest.mark.parametrize('bad_device_cursor', [False, True])
+def test_graph_reconstructs_same_input_position_and_closes(tmp_path, monkeypatch, bad_device_cursor):
+    class Session:
+        runner = SimpleNamespace(vocab_size=3)
+        runtime = SimpleNamespace(device_synchronize=lambda: None)
+        position = 0
+        def reset(self): self.position = 0
+        def result(self): return SimpleNamespace(token_id=1, logits=np.array([[1., 3., 2.]]))
+        def prefill(self, tokens, **kw): self.position = len(tokens); return self.result()
+        def step(self, token, **kw):
+            assert token == 1
+            steps.append(self.position)
+            self.position += 1
+            return self.result()
+        def capture_decode_graph(self, **kw):
+            assert kw['position'] == self.position
+            session = self
+            class Graph:
+                def replay(self, n):
+                    session.position += n
+                def read_sample(self, **kw): return session.result()
+                def transport_provenance(self): return {'transport': 'hipgraph'}
+                def close(self): closed.append('graph')
+            return Graph()
+        def close(self): closed.append('session')
+    steps, closed = [], []
+    monkeypatch.setattr(probe, 'graph_device_state', lambda session: {
+        'position': session.position + int(bad_device_cursor),
+        'context': session.position + 1, 'sampled_token': 1})
+    record = probe.StageRecorder(tmp_path / 'g.json', {})
+    probe.run_stages(Session(), [0, 1], record, with_graph=True)
+    if bad_device_cursor:
+        assert record.exit_code == 1
+        assert record.artifact['first_bad_stage'] == 'graph-capture'
+        assert steps == [2] and closed == []
+        return
+    assert record.exit_code == 0
+    assert steps == [2, 2, 3, 4]  # initial step, reconstruction, two matched graph inputs
+    assert closed == ['graph', 'session']
+    comparison = next(s for s in record.artifact['stages'] if s['stage'] == 'graph-eager-compare')
+    assert comparison['input_position'] == 3
+    assert comparison['output_position'] == 4
+
+
+def test_graph_state_reads_device_not_host_cursor():
+    import ctypes
+    fields = [np.array([x], dtype=np.int64) for x in (22, 23, 12305)]
+    buffers = [SimpleNamespace(ptr=x.ctypes.data) for x in fields]
+    session = SimpleNamespace(position=999,
+        scratch=SimpleNamespace(position_buf=buffers[0], context_buf=buffers[1]),
+        _lm_out_index=buffers[2], runtime=SimpleNamespace(device_synchronize=lambda: None,
+            memcpy=lambda dst, src, nbytes, kind: ctypes.memmove(dst, src, nbytes)))
+    assert probe.graph_device_state(session) == {'position': 22, 'context': 23, 'sampled_token': 12305}
+
+
 def test_success_includes_teardown(tmp_path):
     calls = []
     result = SimpleNamespace(token_id=1, logits=np.array([1., 3., 2.]))
