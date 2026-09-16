@@ -177,7 +177,39 @@ __global__ void yue2_nar_attention_kernel(
     // kernel correct for any head_dim.
     if (k_row != 0) {
       const bool packed = (head_dim & 7) == 0;
-      if (packed) {
+      // A block that owns a full row set (every block but the last one) runs an
+      // unrolled row loop. The rolled form below keeps `dots` and `q_rows`
+      // dynamically indexed -- `v_movreld`/`v_movrels` pairs -- and costs 46
+      // instructions per (row, eight dimensions) against eight multiply-adds and
+      // two 16-byte loads, because `r_valid` is only known at run time. Specializing
+      // the full case is worth roughly 40% of the kernel's instructions.
+      if (packed && r_valid == YUE2_NAR_ROWS_PER_BLOCK) {
+        for (int64_t d = 0; d < head_dim; d += 8) {
+          const uint4 kpack = *reinterpret_cast<const uint4*>(k_row + d);
+          const uint16_t* kk = reinterpret_cast<const uint16_t*>(&kpack);
+          const float kv0 = yue2_bf16_to_float(kk[0]);
+          const float kv1 = yue2_bf16_to_float(kk[1]);
+          const float kv2 = yue2_bf16_to_float(kk[2]);
+          const float kv3 = yue2_bf16_to_float(kk[3]);
+          const float kv4 = yue2_bf16_to_float(kk[4]);
+          const float kv5 = yue2_bf16_to_float(kk[5]);
+          const float kv6 = yue2_bf16_to_float(kk[6]);
+          const float kv7 = yue2_bf16_to_float(kk[7]);
+#pragma unroll
+          for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+            const float4 qlo = *reinterpret_cast<const float4*>(q_rows[r] + d);
+            const float4 qhi = *reinterpret_cast<const float4*>(q_rows[r] + d + 4);
+            dots[r] = fmaf(qlo.x, kv0, dots[r]);
+            dots[r] = fmaf(qlo.y, kv1, dots[r]);
+            dots[r] = fmaf(qlo.z, kv2, dots[r]);
+            dots[r] = fmaf(qlo.w, kv3, dots[r]);
+            dots[r] = fmaf(qhi.x, kv4, dots[r]);
+            dots[r] = fmaf(qhi.y, kv5, dots[r]);
+            dots[r] = fmaf(qhi.z, kv6, dots[r]);
+            dots[r] = fmaf(qhi.w, kv7, dots[r]);
+          }
+        }
+      } else if (packed) {
         for (int64_t d = 0; d < head_dim; d += 8) {
           const uint4 kpack = *reinterpret_cast<const uint4*>(k_row + d);
           const uint16_t* kk = reinterpret_cast<const uint16_t*>(&kpack);
@@ -280,9 +312,8 @@ __global__ void yue2_nar_attention_kernel(
     // instructions per key, and the block arrives in two shared-memory requests
     // instead of eight. The sums still walk the tile key-ascending, so this is
     // bit-exact.
-    auto accumulate = [&](const uint16_t* v_row, int64_t t) {
+    auto accumulate = [&](const uint16_t* v_row, const float* w) {
       const float v = yue2_bf16_to_float(v_row[lane]);
-      const float* w = weights + t * YUE2_NAR_ROWS_PER_BLOCK;
       float ws[YUE2_NAR_ROWS_PER_BLOCK];
 #if (YUE2_NAR_ROWS_PER_BLOCK % 4) == 0
       const float4* wq = reinterpret_cast<const float4*>(w);
@@ -303,25 +334,39 @@ __global__ void yue2_nar_attention_kernel(
         tile_acc[r] += ws[r] * v;
       }
     };
+    // Both walks carry running pointers and a 32-bit trip count. Indexing the
+    // weights by the key (`weights + t * ROWS`) and the key counter being int64
+    // cost the compiler a shift, an add, a 64-bit carry chain and a scalar-to-
+    // vector move per key -- nine instructions of address arithmetic around
+    // sixteen of arithmetic, and the loop could not be unrolled enough to hide
+    // the shared-memory latency behind it. The sums still visit every key in the
+    // same ascending order, so this is bit-exact.
     const int64_t v_stride = num_kv_heads * head_dim;
     const int64_t tile_hi = base + blockDim.x < keys ? base + blockDim.x : keys;
     const int64_t ar_hi = ar_rows < tile_hi ? ar_rows : tile_hi;
-    int64_t t = 0;
-    if (base < ar_hi) {
+    const int32_t ar_count = base < ar_hi ? static_cast<int32_t>(ar_hi - base) : 0;
+    const float* w = weights;
+    if (ar_count > 0) {
       const uint16_t* v_row = ar_v + (base * num_kv_heads + kv_head) * head_dim;
-      for (int64_t key_index = base; key_index < ar_hi; ++key_index, ++t) {
-        accumulate(v_row, t);
+#pragma unroll 4
+      for (int32_t i = 0; i < ar_count; ++i) {
+        accumulate(v_row, w);
         v_row += v_stride;
+        w += YUE2_NAR_ROWS_PER_BLOCK;
       }
     }
     const int64_t nar_lo = base > ar_rows ? base : ar_rows;
-    t = nar_lo - base;
-    if (nar_lo < tile_hi) {
+    const int32_t nar_count =
+        nar_lo < tile_hi ? static_cast<int32_t>(tile_hi - nar_lo) : 0;
+    if (nar_count > 0) {
       const uint16_t* nar_row =
           nar_v + ((nar_lo - ar_rows) * num_kv_heads + kv_head) * head_dim;
-      for (int64_t key_index = nar_lo; key_index < tile_hi; ++key_index, ++t) {
-        accumulate(nar_row, t);
+      const float* nar_w = weights + (nar_lo - base) * YUE2_NAR_ROWS_PER_BLOCK;
+#pragma unroll 4
+      for (int32_t i = 0; i < nar_count; ++i) {
+        accumulate(nar_row, nar_w);
         nar_row += v_stride;
+        nar_w += YUE2_NAR_ROWS_PER_BLOCK;
       }
     }
     for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
