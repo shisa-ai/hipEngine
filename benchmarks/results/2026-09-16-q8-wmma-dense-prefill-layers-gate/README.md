@@ -1,21 +1,35 @@
 # f16 WMMA dense Q8_0 prefill: layer-scope numerical gate
 
 The f16 WMMA dense Q8_0 prefill route was gated against the exact coltile chain
-at two layer scopes on the Qwen4Exp UD-Q4_K_XL canonical exact-token fixture.
+at four layer scopes on the Qwen4Exp UD-Q4_K_XL canonical exact-token fixture.
 
 | Scope | Cases | Rows | Mean KL | p95 KL | p99 KL | Max KL | Top-1 | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| layers 20-47 | 12 (4 categories) | 1548 | 2.53e-4 | 1.19e-3 | — | 1.99e-2 | 0.99419 | **pass** |
+| layers 16-47 | 12 (4 categories) | 1548 | 3.80e-4 | 1.76e-3 | 5.42e-3 | 1.53e-2 | 0.99354 | **pass** |
+| layers 20-47 | 12 (4 categories) | 1548 | 2.53e-4 | 1.19e-3 | 3.70e-3 | 1.99e-2 | 0.99419 | **pass** |
 | layers 28-47 | 12 (4 categories) | 1548 | 9.34e-5 | 4.06e-4 | 1.51e-3 | 9.67e-3 | 0.99742 | **pass** |
 | layers 32-47 | 12 (4 categories) | 1548 | 5.81e-5 | 1.75e-4 | 6.90e-4 | 1.36e-2 | 0.99677 | **pass** |
 | layers 0-47 | 3 (`code` only) | 387 | 1.099e-3 | 5.017e-3 | 1.510e-2 | 3.913e-2 | 0.9922 | fail |
 | limit | | | 1e-3 | 5e-3 | 2e-2 | 5e-2 | 0.99 | |
 
-**Layers 20-47 is the deepest certified scope.** It passes every calibrated gate
-with 4.0x headroom on the mean and 4.2x on p95, top-1 1539/1548, three identical
-trajectory hashes, no scope failures, and `measurement_valid: true` with no
-blockers. It is worth about **+4.15 s** on the measured prefill. Its nine top-1
-misses are all inside the 135-row flip-eligible set and none outside it.
+**Layers 16-47 is the deepest certified scope.** It passes every calibrated
+gate with 2.6x headroom on the mean and 2.8x on p95, top-1 1538/1548, three
+identical trajectory hashes, no scope failures, and `measurement_valid: true`
+with no blockers. All ten top-1 misses are inside the 154-row flip-eligible set
+and none outside it. Its saving is **not measured**: this gate records no
+timing, so the byte-share interpolation of ~+4.42 s remains a prediction.
+
+The 16-47 screen overestimated the full arm by 1.8x (`6.728e-4` against
+`3.796e-4`), the second deep-scope control point to do so, which is why screens
+are read as an interval rather than through a single factor.
+
+**Layers 20-47 was the deepest certified scope until 16-47.** It passes every
+calibrated gate with 4.0x headroom on the mean and 4.2x on p95, top-1
+1539/1548, three identical trajectory hashes, no scope failures, and
+`measurement_valid: true` with no blockers. Its nine top-1 misses are all inside
+the 135-row flip-eligible set and none outside it. The **+4.15 s** quoted for it
+is a byte-share interpolation, not a measurement; see
+[`../2026-09-16-q8-wmma-layers-recoverable-time/README.md`](../2026-09-16-q8-wmma-layers-recoverable-time/README.md).
 
 The first 20-47 run was invalidated on provenance grounds — `scripts/check_lineage.py`
 was edited while it was in flight, which `execution_affecting_paths` named
@@ -28,8 +42,8 @@ gate with 10.7x headroom on the mean and 12.3x on p95, `hard_gates_passed` and
 `eligible_for_automatic_admission` both true, zero scope failures, and — unlike
 the two arms above it — `measurement_valid: true` with no qualification
 blockers, because the provenance rule now distinguishes a documentation-only
-dirty worktree from one that can change execution. It is worth about **+3.6 s**
-on the measured prefill against 32-47's measured +2.436 s.
+dirty worktree from one that can change execution. Its **+3.6 s** is a byte-share
+interpolation against 32-47's **measured +2.436 s**.
 
 The certified scope passes every calibrated gate with 17x headroom on the mean
 and every category, shape and transition scope passing individually. The maximal
@@ -67,22 +81,40 @@ writes `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` as `""` during its own pass, so a
 value set before generator construction is silently inert. The gate constructs
 the generator first and flips the selector per arm.
 
+The gate loads `libamdhip64.so` by bare soname, so it needs the TheRock library
+paths on `LD_LIBRARY_PATH`; without them it fails at generator construction with
+`OSError: libamdhip64.so: cannot open shared object file`. The recorded
+provenance carries `HIPENGINE_HIP_ARCH` but not `LD_LIBRARY_PATH`, so this is not
+recoverable from an artifact. Use the host setup in
+[`docs/THEROCK.md`](../../../docs/THEROCK.md) rather than a literal ROCm prefix:
+
 ```bash
-export ROCM=<rocm sdk>; export LD_LIBRARY_PATH=$ROCM/lib:$LD_LIBRARY_PATH
+ENV_PREFIX=/home/lhl/miniforge3/envs/therock10-staging-20260828
+PY=$ENV_PREFIX/bin/python
+SITE=$ENV_PREFIX/lib/python3.12/site-packages
+export PATH="$ENV_PREFIX/bin:$PATH"
+export LD_LIBRARY_PATH="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export HIPENGINE_HIP_ARCH=gfx1151
 
 # layers 32-47, all 12 cases -> artifact-layers32-47-4cat.json
-.venv/bin/python scripts/execution_profile_q8_wmma_prefill_layers_gate.py \
+$PY scripts/execution_profile_q8_wmma_prefill_layers_gate.py \
   --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
   --decode-steps 128 --repeat-runs 3 --layers 32-47 --prefill-chunk-size 1024 \
   --output benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact-layers32-47-4cat.json
 
 # layers 0-47, code cases only -> artifact.json
-.venv/bin/python scripts/execution_profile_q8_wmma_prefill_layers_gate.py \
+$PY scripts/execution_profile_q8_wmma_prefill_layers_gate.py \
   --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
   --case-id code-p512 --case-id code-p1024 --case-id code-p4096 \
   --decode-steps 128 --repeat-runs 3 --layers 0-47 --prefill-chunk-size 1024 \
   --output benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact.json
 ```
+
+One full arm is roughly twenty minutes of wall time on a quiet host, of which a
+few minutes are the 111 GB model load. Do not add `--require-cached-build`: it is
+not part of this gate's protocol, and it fails closed on any kernel that has not
+been built under the current environment's cache key. Compiling on demand with
+the same `hipcc` produces the same kernels.
 
 ## Layers 32-47: pass
 
@@ -458,15 +490,18 @@ is not a constant:
 | 32-47 | 4.916e-5 | 5.808e-5 | 1.181 |
 | 28-47 | 8.606e-5 | 9.342e-5 | 1.086 |
 | 20-47 | 4.986e-4 | **2.527e-4** | **0.507** |
+| 16-47 | 6.728e-4 | **3.796e-4** | **0.564** |
 
 At depth the screen *overestimates* by about 2x rather than underestimating by
-15%. Reading the 20-47 screen through the shallow factor predicted `5.7e-4`
-against an actual `2.5e-4`. Screens are therefore treated as an interval over
-the observed ratio range `0.50`-`1.20`, and decide only when that whole interval
-falls on one side of the limit. Under that treatment 16-47 and 24-47 screen as
-passes, while **8-47 and 12-47 are inconclusive rather than failing** — their
-intervals straddle the `1e-3` mean limit. Layers 0-7 are not ruled out by any
-evidence now in hand; they are unmeasured. The normative rule is
+15%. Both deep control points land near a half (`0.507` and `0.564`), so the low
+end of the interval now rests on two independent scopes rather than one. Reading
+the 20-47 screen through the shallow factor predicted `5.7e-4` against an actual
+`2.5e-4`. Screens are therefore treated as an interval over the observed ratio
+range `0.50`-`1.20`, and decide only when that whole interval falls on one side
+of the limit. Under that treatment 16-47 and 24-47 screen as passes, while
+**8-47 and 12-47 are inconclusive rather than failing** — their intervals
+straddle the `1e-3` mean limit. Layers 0-7 are not ruled out by any evidence now
+in hand; they are unmeasured. The normative rule is
 `docs/EXECUTION-PROFILES.md` 6.4.
 
 Top-1 is the other question the screens cannot answer. The miss counts trend the
@@ -475,27 +510,34 @@ right way — 0 and 1 at the certified scopes, 2 at 24-47, 3 at 20-47 and 16-47,
 passing scope from a failing one. Only a 1548-row arm can.
 
 
-## Open: layers 16-47 and below are unmeasured, not excluded
+## Open: layers 12-47 and 8-47 are unmeasured, not excluded
 
-Layers 20-47 is the deepest **certified** scope. Three scopes below it remain
-open and none of them has been ruled out:
+Layers **16-47** is the deepest **certified** scope, measured 2026-09-17 at
+`artifact-layers16-47-4cat.json`. Two scopes below it remain open and neither
+has been ruled out:
 
 | Scope | Screen mean KL | Full-arm range (0.50-1.20x) | Screen verdict | Predicted saving |
 | --- | ---: | --- | --- | ---: |
-| 16-47 | 6.728e-4 | 3.36e-4 - 8.07e-4 | pass | ~4.42 s |
 | 12-47 | 9.591e-4 | 4.80e-4 - 1.15e-3 | inconclusive | ~4.69 s |
 | 8-47 | 1.356e-3 | 6.78e-4 - 1.63e-3 | inconclusive | ~4.96 s |
+
+Both are screen-**inconclusive**, not failing: their intervals straddle the
+`1e-3` mean limit, so neither can be decided by a screen and neither is excluded.
+A 1548-row arm is the only way to place either one.
 
 The 16-47 full arm was attempted twice on 2026-09-17 and both attempts were
 killed before writing an artifact. The cause is host memory, not the route: the
 `UD-Q4_K_XL` weights are 111 GB against 125 GB of system memory, so a full-model
-gate maps nearly the whole machine into page cache and trips the harness's
-background-task memory guard. No process was holding memory at the time — used
-was 16 GB with 108 GB available, while `buff/cache` climbed from 21 GB to 41 GB
-as the model paged in. The earlier arms in this campaign ran on the same margin
-and succeeded; that was luck rather than headroom.
+gate maps nearly the whole machine into page cache. No process was holding
+memory at the time — used was 16 GB with 108 GB available, while `buff/cache`
+climbed from 21 GB to 41 GB as the model paged in. The earlier arms in this
+campaign ran on the same margin and succeeded; that was luck rather than
+headroom. The third attempt succeeded after the host was quieted and the run was
+launched directly rather than under a separate polling shell.
 
-Remaining contiguous upside is about **+0.8 s across three arms**, against the
-**+4.15 s** already certified at 20-47 out of the +7.04 s the maximal scope
-offers. Re-attempt these on a quieter host, or when the gate can run against a
-smaller resident footprint.
+Remaining contiguous upside is about **+0.5 s across two arms**, against the
+**+4.15 s** predicted at 20-47 and the **+4.42 s** predicted at 16-47, out of
+the +7.04 s the maximal scope offers. Both remaining arms are screen-inconclusive
+and each costs about twenty minutes on a host that has no headroom for a
+concurrent job, so the honest comparison is +0.5 s of predicted gain against two
+full-model runs.
