@@ -1551,6 +1551,7 @@ fast heuristic. Both now select by measured index.
 | Measurement | Before | After | Ratio |
 | --- | ---: | ---: | ---: |
 | `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **28.34 ms** | **6.25x** |
+| The same kernel, tile maximum vectorized (paired, same session) | 32.82 ms | **31.34 ms** | **1.05x** |
 | NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
 | NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **7.95 s** | **3.49x** |
 | NAR solve of the same case, product 32 ODE steps | 443.4 s | **81.13 s** | **5.47x** |
@@ -1563,6 +1564,19 @@ own JSON as the source, and the 32-step pair uses the protocol the reference's o
 upstream before this work and **2.97×** after it. Eight rows per block is a
 measured optimum: four rows lands at 33.90 ms, sixteen at 44.90 ms and thirty-two
 at 88.50 ms, where shared-memory and register pressure take over.
+
+Per-call times on this host drift about 10% between batches — the same kernel
+source measures 27.4-28.5 ms in one batch and 32.0-33.4 ms in another — so the
+vectorized-maximum row is quoted as a paired same-session ratio, alternating the
+two sources within one batch. What it changes: the per-tile maximum walked the
+tile's shared-memory scores one float at a time, 128 requests per row in a single
+dependent `fmax` chain; it now reads four entries per instruction into four
+independent accumulators. A maximum over a set is exact and order-independent for
+finite scores, so this stays bit-identical to the parent kernel. It is a
+small change because the kernel is already near its issue limit: `rocprofv3 --pmc`
+measures a 94% L2 hit rate and negligible DRAM traffic on the packed kernel, so
+neither more reuse nor more rows per block helps — sixteen rows with the shorter
+chain still lands at 41.6-42.9 ms against 27.4-28.5 ms at eight.
 
 Wrapping the attention call with a device synchronize on either side splits the
 7.95 s two-step solve into **3.31 s of attention** (29.6 ms per call), 0.94 s of

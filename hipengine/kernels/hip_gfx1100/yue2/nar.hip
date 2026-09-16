@@ -223,9 +223,33 @@ __global__ void yue2_nar_attention_kernel(
     float rescale[YUE2_NAR_ROWS_PER_BLOCK];
     for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
       const float* tile = scores + r * blockDim.x;
+      // Four shared-memory entries per instruction, into four independent
+      // accumulators. The tile maximum is a max over a set, and fmax is exact and
+      // order-independent for finite scores (which the projections and the BF16
+      // K/V guarantee), so the interleaved walk returns the same bits as the
+      // serial one did -- it just asks for 32 requests per row instead of 128 and
+      // shortens the dependent chain from 128 to 32. The scalar form stays for a
+      // head_dim that is not a multiple of four, where the rows are not 16-byte
+      // aligned.
       float tile_max = -3.4028234663852886e38f;
-      for (int64_t t = 0; t < blockDim.x; ++t) {
-        tile_max = fmaxf(tile_max, tile[t]);
+      if ((blockDim.x & 3) == 0) {
+        const float4* quads = reinterpret_cast<const float4*>(tile);
+        float m0 = -3.4028234663852886e38f;
+        float m1 = -3.4028234663852886e38f;
+        float m2 = -3.4028234663852886e38f;
+        float m3 = -3.4028234663852886e38f;
+        for (int64_t q = 0; q < (blockDim.x >> 2); ++q) {
+          const float4 v = quads[q];
+          m0 = fmaxf(m0, v.x);
+          m1 = fmaxf(m1, v.y);
+          m2 = fmaxf(m2, v.z);
+          m3 = fmaxf(m3, v.w);
+        }
+        tile_max = fmaxf(fmaxf(m0, m1), fmaxf(m2, m3));
+      } else {
+        for (int64_t t = 0; t < blockDim.x; ++t) {
+          tile_max = fmaxf(tile_max, tile[t]);
+        }
       }
       new_max[r] = fmaxf(running_max[r], tile_max);
       rescale[r] = expf(running_max[r] - new_max[r]);
