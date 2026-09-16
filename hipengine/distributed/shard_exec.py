@@ -144,6 +144,7 @@ class MlpShardRank:
         partial_dtype: str = "f32",
         mlp_decode_variant: str | None = None,
         rows: int = 1,
+        owns_weights: bool = True,
     ) -> None:
         if partial_dtype not in {"f32", "bf16"}:
             raise ValueError(
@@ -177,6 +178,10 @@ class MlpShardRank:
             str(mlp_decode_variant) if mlp_decode_variant is not None else None
         )
         self._closed = False
+        # A second rank object may share the same uploaded shard weights (a
+        # bulk-prefill group reusing the decode group's weights). Only the
+        # owning rank frees them, so the two groups cannot double-free.
+        self.owns_weights = bool(owns_weights)
         self._weights: dict[str, ShardWeight] = dict(weights)
         for role in ("ffn_gate", "ffn_up", "ffn_down"):
             if role not in self._weights:
@@ -485,8 +490,9 @@ class MlpShardRank:
         for ptr in (self.x_ptr, self.gate_ptr, self.up_ptr, self.act_ptr, self.down_partial_ptr):
             with scoped_current_device(self._runtime, self.device):
                 self._runtime.free(ptr)
-        for weight in self._weights.values():
-            weight.allocation().free()
+        if self.owns_weights:
+            for weight in self._weights.values():
+                weight.allocation().free()
 
     def __enter__(self) -> "MlpShardRank":
         return self

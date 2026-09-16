@@ -7695,3 +7695,18 @@ without a passing dependency check, because the structure itself is wrong.
 
 The eager single-group structure keeps a separate reason to stay opt-in: it is
 the contrast case for `per_step`, and its marginal is not a per-layer cost.
+
+## 2026-09-17 Opt-in rank-local bulk TP2 prefill — open
+
+`MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=N)` runs a whole
+prompt through one rank-local bulk pass per layer (attention/GDN helper,
+post-attention norm+residual helper, batched sharded MLP exchange, one residual
+add per rank) instead of token-serial TP2 prefill. It is off by default and the
+token-serial route stays the committed prefill schedule until this candidate
+passes the production numerical envelope end to end.
+
+Remove the flag (make bulk prefill the only route) once the whole-prompt bulk
+route clears the calibrated mean/p95/p99/max KL and top-1 gates on the full
+mtp-bench category suite. Until then it is a candidate, not a default: the
+capacity-64 MLP relative-error finding is still open, chunked bulk prefill is
+not implemented, and no end-to-end quality run exists for the bulk route.
