@@ -384,6 +384,22 @@ Milestone status:
   (`tests/fixtures/yue2/greedy/`, temperature zero, AR stages only, generated on
   the same host) through the session: prefix identity on all three cases, ABC greedy agreement 100.0% / 99.1% / no ABC stage, semantic greedy agreement under teacher forcing 96.9% / 97.9% / 96.1% with every mismatch on a near-tie, and matching truncation classes (natural ABC exit, budget-truncated semantic). See
   `worklog/entries/20260916T161024.244009Z-lhl-yue2-m3-native-generation-7786f9.md`.
+- **M4 device parity complete** (2026-09-16): the torch-free NAR runtime
+  (`hipengine/runtime/yue2_nar.py`) with cached-AR conditioning, bidirectional
+  NAR attention, timestep/position features and the device midpoint loop matches
+  the pinned upstream solver on the re-recorded 34-row / 545-token-AR chunk:
+  teacher-forced velocities agree at rel_l2 0.01327 / 0.01495 / 0.01892 /
+  0.01221 (cosine 0.9998+) and the native 4-step solve lands on the reference's
+  latents at rel_l2 0.01225, cosine 0.999926, `max_abs` 0.0781 against a
+  reference norm of 72.743. A fresh upstream `CachedNAR` reproduces the fixture
+  at every step with `maxdiff 0.000000`. Two defects were fixed to get there: the
+  solver passed negative step sizes to a kernel that already subtracts, and the
+  recorder had produced a fixture that was not reproducible from its own
+  recorded states (it now replays every velocity before writing). All five NAR
+  kernels are confirmed in a `rocprofv3 --kernel-trace` run. See
+  `worklog/entries/20260916T165718.660589Z-lhl-yue2-m4-nar-solver-parity-dc0471.md`.
+  The `nar_cond_end` visibility case, a request crossing a real chunk boundary,
+  and the M4 closure entry are still open.
 - **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
   fixtures frozen behind a fail-closed validator, oracle environment recorded, all
   twelve production cases regenerated and committed

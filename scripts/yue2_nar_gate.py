@@ -116,6 +116,74 @@ def _compare(reference: np.ndarray, produced: np.ndarray, *, scale: float) -> di
     }
 
 
+def _run_chunk(runtime, chunk, arrays, steps: int, scale: float) -> dict:
+    """Teacher-forced attribution plus the native solver's own trajectory."""
+
+    report: dict = {"frames": chunk.frames, "ar_tokens": len(chunk.ar_tokens), "nar_rows": chunk.nar_length}
+    started = time.perf_counter()
+    runtime.condition(chunk)
+    report["condition_seconds"] = time.perf_counter() - started
+
+    recorded_velocities = arrays["velocities"]
+    recorded_states = arrays["states"]
+    steps_report = []
+    # Teacher-forced attribution: evaluate the native velocity at each *recorded*
+    # state, so a velocity defect is separated from the solver's own trajectory.
+    started = time.perf_counter()
+    for index, (raw, raw_mid) in enumerate(solver_schedule(steps)):
+        runtime.load_state(recorded_states[index])
+        steps_report.append(
+            {
+                "step": index,
+                "raw_t": raw,
+                "raw_mid": raw_mid,
+                "state": _compare(recorded_states[index], runtime.state_bits(), scale=scale),
+                "velocity": _compare(
+                    recorded_velocities[index], runtime.velocity_bits(raw), scale=scale
+                ),
+            }
+        )
+    report["steps_report"] = steps_report
+    report["teacher_forced_seconds"] = time.perf_counter() - started
+    # End-to-end: the native solver's own trajectory from the recorded noise.
+    started = time.perf_counter()
+    runtime.load_state(np.asarray(recorded_states[0], dtype=np.float32))
+    latents = runtime.solve(steps)
+    report["solve_seconds"] = time.perf_counter() - started
+    report["latents"] = _compare(arrays["latents"], to_bf16_bits(latents), scale=scale)
+    report["worst_velocity_relative_l2"] = max(
+        (entry["velocity"]["relative_l2"] for entry in steps_report), default=0.0
+    )
+    return report
+
+
+def _print_chunk(index: int, report: dict, steps: int) -> None:
+    print(
+        f"[nar-gate] chunk {index}: frames={report['frames']} ar={report['ar_tokens']} "
+        f"rows={report['nar_rows']}"
+    )
+    for entry in report["steps_report"]:
+        state = entry["state"]
+        velocity = entry["velocity"]
+        print(
+            f"[nar-gate]   step {entry['step']} raw={entry['raw_t']:+.6f} "
+            f"state rel_l2={state['relative_l2']:.5f} max={state['max_abs']:.4f} "
+            f"exact={state['bf16_exact']:.3f} | velocity rel_l2={velocity['relative_l2']:.5f} "
+            f"max={velocity['max_abs']:.4f} exact={velocity['bf16_exact']:.3f} "
+            f"cos={velocity['cosine']:.6f}"
+        )
+    latents = report["latents"]
+    print(
+        f"[nar-gate]   latents rel_l2={latents['relative_l2']:.5f} max={latents['max_abs']:.4f} "
+        f"cosine={latents['cosine']:.6f} exact={latents['bf16_exact']:.3f} | "
+        f"reference norm={latents['reference_norm']:.3f} produced={latents['produced_norm']:.3f}"
+    )
+    print(
+        f"[nar-gate]   condition={report['condition_seconds']:.2f}s "
+        f"solve={report['solve_seconds']:.2f}s"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", default=str(FIXTURE))
@@ -127,25 +195,23 @@ def main() -> int:
     args = parser.parse_args()
 
     fixture = Path(args.fixture)
-    arrays = np.load(fixture)
-    manifest_path = fixture.with_name("manifest.json")
+    # ``--fixture`` may be the fixture directory or one recorded chunk; the
+    # directory form is how a multi-chunk (crossing a real chunk boundary) case
+    # is checked, and every recorded chunk must pass.
+    directory = fixture if fixture.is_dir() else fixture.parent
+    chunks_paths = sorted(directory.glob("chunk*.npz"))
+    if not chunks_paths:
+        raise SystemExit(f"no chunk*.npz fixtures under {directory}")
+    manifest_path = directory / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
-    prefix = [int(v) for v in arrays["prefix"]]
-    codec = [int(v) for v in arrays["codec"]]
-    noise = np.asarray(arrays["noise"], dtype=np.float32)
     steps = int(args.steps)
-    if steps != int(arrays["velocities"].shape[0]):
-        raise SystemExit(
-            f"--steps {steps} does not match the recorded {arrays['velocities'].shape[0]} steps"
-        )
+    seed = int(manifest.get("seed", 1234))
+    context = int(manifest.get("context", 0) or 24576)
 
     model_dir = args.model_dir or _cached_model_dir()
     weights = load_yue2_weights(model_dir)
     ar = Yue2ArRuntime(weights, branches=1)
     runtime = Yue2NarRuntime(weights, ar)
-    chunks = song_chunks(prefix, codec, int(manifest.get("seed", 1234)), noise=noise)
-    if len(chunks) != 1:
-        raise SystemExit(f"fixture is a single-chunk case, got {len(chunks)} chunks")
 
     report: dict = {
         "provenance": {
@@ -153,82 +219,61 @@ def main() -> int:
             "host": _host_identity(),
             "revision": _revision(),
             "model_dir": model_dir,
-            "fixture": str(fixture),
+            "fixture_dir": str(directory),
             "protocol": PROTOCOL,
         },
         "steps": steps,
-        "frames": int(manifest.get("frames", noise.shape[0])),
-        "ar_tokens": len(chunks[0].ar_tokens),
-        "nar_rows": chunks[0].nar_length,
-        "latent_scale": float(manifest.get("latent_norm", 0.0)),
+        "seed": seed,
+        "context": context,
+        "recorded_chunks": len(chunks_paths),
         "thresholds": {"max_relative_l2": args.max_relative_l2, "min_cosine": args.min_cosine},
-        "steps_report": [],
+        "chunks": [],
     }
 
-    started = time.perf_counter()
-    runtime.condition(chunks[0])
-    report["condition_seconds"] = time.perf_counter() - started
-    scale = float(manifest.get("latent_norm", 0.0)) or float(np.linalg.norm(arrays["latents"]))
-
-    recorded_velocities = arrays["velocities"]
-    recorded_states = arrays["states"]
-    # Teacher-forced attribution: evaluate the native velocity at each *recorded*
-    # state, so a velocity defect is separated from the solver's own trajectory.
-    started = time.perf_counter()
-    for index, (raw, raw_mid) in enumerate(solver_schedule(steps)):
-        runtime.load_state(recorded_states[index])
-        report["steps_report"].append(
-            {
-                "step": index,
-                "raw_t": raw,
-                "raw_mid": raw_mid,
-                "state": _compare(recorded_states[index], runtime.state_bits(), scale=scale),
-                "velocity": _compare(
-                    recorded_velocities[index], runtime.velocity_bits(raw), scale=scale
-                ),
-            }
+    all_passed = True
+    for path in chunks_paths:
+        arrays = np.load(path)
+        if steps != int(arrays["velocities"].shape[0]):
+            raise SystemExit(
+                f"{path.name}: --steps {steps} does not match the recorded "
+                f"{arrays['velocities'].shape[0]} steps"
+            )
+        prefix = [int(v) for v in arrays["prefix"]]
+        codec = [int(v) for v in arrays["codec"]]
+        noise = np.asarray(arrays["noise"], dtype=np.float32)
+        cond_end = int(arrays["nar_cond_end"]) if "nar_cond_end" in arrays.files else 0
+        chunks = song_chunks(prefix, codec, seed, context=context, noise=noise, nar_cond_end=cond_end)
+        index = int(path.stem.removeprefix("chunk"))
+        if index >= len(chunks):
+            raise SystemExit(f"{path.name}: the recorded chunking yields only {len(chunks)} chunks")
+        chunk = chunks[index]
+        scale = float(np.linalg.norm(arrays["latents"]))
+        chunk_report = _run_chunk(runtime, chunk, arrays, steps, scale)
+        chunk_report["index"] = index
+        chunk_report["nar_cond_end"] = cond_end
+        chunk_report["passed"] = bool(
+            chunk_report["latents"]["relative_l2"] <= args.max_relative_l2
+            and chunk_report["latents"]["cosine"] >= args.min_cosine
+            and chunk_report["worst_velocity_relative_l2"] <= args.max_relative_l2
         )
-    report["teacher_forced_seconds"] = time.perf_counter() - started
-    # End-to-end: the native solver's own trajectory from the recorded noise.
-    started = time.perf_counter()
-    runtime.load_state(np.asarray(arrays["states"][0], dtype=np.float32))
-    latents = runtime.solve(steps)
-    report["solve_seconds"] = time.perf_counter() - started
-    report["latents"] = _compare(arrays["latents"], to_bf16_bits(latents), scale=scale)
+        all_passed = all_passed and chunk_report["passed"]
+        report["chunks"].append(chunk_report)
+        _print_chunk(index, chunk_report, steps)
 
-    latents = report["latents"]
-    worst_step = max(
-        (entry["velocity"]["relative_l2"] for entry in report["steps_report"]), default=0.0
+    report["passed"] = all_passed
+    report["worst_velocity_relative_l2"] = max(
+        (entry["worst_velocity_relative_l2"] for entry in report["chunks"]), default=0.0
     )
-    report["worst_velocity_relative_l2"] = worst_step
-    report["passed"] = bool(
-        latents["relative_l2"] <= args.max_relative_l2
-        and latents["cosine"] >= args.min_cosine
-        and worst_step <= args.max_relative_l2
+    report["worst_latent_relative_l2"] = max(
+        (entry["latents"]["relative_l2"] for entry in report["chunks"]), default=0.0
     )
-
-    print(
-        f"[nar-gate] steps={steps} frames={report['frames']} ar={report['ar_tokens']} "
-        f"rows={report['nar_rows']}"
-    )
-    for entry in report["steps_report"]:
-        state = entry["state"]
-        velocity = entry["velocity"]
-        print(
-            f"[nar-gate] step {entry['step']} raw={entry['raw_t']:+.6f} "
-            f"state rel_l2={state['relative_l2']:.5f} max={state['max_abs']:.4f} "
-            f"exact={state['bf16_exact']:.3f} | velocity rel_l2={velocity['relative_l2']:.5f} "
-            f"max={velocity['max_abs']:.4f} exact={velocity['bf16_exact']:.3f} "
-            f"cos={velocity['cosine']:.6f}"
-        )
-    print(
-        f"[nar-gate] latents rel_l2={latents['relative_l2']:.5f} "
-        f"max={latents['max_abs']:.4f} cosine={latents['cosine']:.6f} "
-        f"exact={latents['bf16_exact']:.3f} | "
-        f"reference norm={latents['reference_norm']:.3f} produced={latents['produced_norm']:.3f}"
+    report["worst_latent_cosine"] = min(
+        (entry["latents"]["cosine"] for entry in report["chunks"]), default=1.0
     )
     print(
-        f"[nar-gate] condition={report['condition_seconds']:.2f}s solve={report['solve_seconds']:.2f}s "
+        f"[nar-gate] {len(report['chunks'])} chunk(s): worst velocity rel_l2="
+        f"{report['worst_velocity_relative_l2']:.5f} worst latents rel_l2="
+        f"{report['worst_latent_relative_l2']:.5f} cosine={report['worst_latent_cosine']:.6f} "
         f"-> {'PASS' if report['passed'] else 'FAIL'}"
     )
 

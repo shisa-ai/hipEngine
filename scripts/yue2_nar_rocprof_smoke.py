@@ -51,6 +51,7 @@ def main() -> int:
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--model-dir", default="")
     parser.add_argument("--raw-t", type=float, default=20.0)
+    parser.add_argument("--steps", type=int, default=2)
     args = parser.parse_args()
 
     version_path = args.compiler_version_file.expanduser().resolve()
@@ -84,6 +85,10 @@ def main() -> int:
     )[0]
     runtime.condition(chunk)
     velocity = bf16_bits_to_f32(runtime.velocity_bits(float(args.raw_t)))
+    # Also drive the midpoint solver so ``yue2_nar_state_update_bf16`` appears in
+    # the trace: the velocity path alone never launches it.
+    latents = runtime.solve(int(args.steps))
+    print(f"nar solve steps={int(args.steps)} norm={float(np.linalg.norm(latents)):.4f}")
     print(
         f"nar velocity rows={chunk.nar_length} ar={chunk.ar_length} "
         f"norm={float(np.linalg.norm(velocity)):.4f} absmax={float(np.abs(velocity).max()):.4f}"
