@@ -92,8 +92,18 @@ class FakeScratch:
         self.post_norm = FakeBuffer(0x4100, HIDDEN * 2)
         self.residual = FakeBuffer(0x4200, HIDDEN * 2)
         self.norm = FakeBuffer(0x4300, HIDDEN * 2)
+        self.cos_table_buf = FakeBuffer(0x4400, 64)
+        self.sin_table_buf = FakeBuffer(0x4500, 64)
+        self.full_cache_calls: list[int] = []
         self.positions: list[int] = []
         self.zeroed = 0
+
+    def full_cache(self, layer_id: int):
+        self.full_cache_calls.append(int(layer_id))
+        return (
+            FakeBuffer(0x4600 + int(layer_id), 1024),
+            FakeBuffer(0x4700 + int(layer_id), 1024),
+        )
 
     def set_full_attention_position(self, position: int, runtime) -> None:
         self.positions.append(int(position))
@@ -120,6 +130,40 @@ class RunnerSpy:
     def _run_full_attention_attn_only(self, layer_id, hidden_ptr, attn_out, scratch, **kwargs):
         self._attn(layer_id)
 
+    def _run_linear_attention_prefill_attn_rows(
+        self, layer_id, hidden_ptr, scratch, *, rows, decode_scratch, stream=0, **kwargs
+    ):
+        self._prefill_attn(layer_id, "linear_prefill_attn")
+        return None
+
+    def _run_full_attention_prefill_attn_rows(
+        self,
+        layer_id,
+        hidden_ptr,
+        scratch,
+        *,
+        cos_table_ptr,
+        sin_table_ptr,
+        max_positions,
+        stream=0,
+        **kwargs,
+    ):
+        self._prefill_attn(layer_id, "full_prefill_attn")
+        return True
+
+    def _run_post_attention_norm_residual_rows(
+        self, layer_id, hidden_ptr, attn_out_ptr, scratch, *, rows, stream=0, **kwargs
+    ):
+        if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
+            raise RuntimeError("simulated prefill norm failure")
+        self.calls.append((self.rt.get_device(), "prefill_norm", int(layer_id)))
+        return None
+
+    def _prefill_attn(self, layer_id: int, name: str) -> None:
+        if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
+            raise RuntimeError("simulated attention failure")
+        self.calls.append((self.rt.get_device(), name, int(layer_id)))
+
     def _attn(self, layer_id: int) -> None:
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
             raise RuntimeError("simulated attention failure")
@@ -127,20 +171,25 @@ class RunnerSpy:
 
 
 class FakeShardGroup:
-    def __init__(self) -> None:
+    def __init__(self, *, devices=(0, 1), rows: int = 1) -> None:
+        self.devices = tuple(int(device) for device in devices)
+        self.rows = int(rows)
+        self.owns_weights = True
         self.forwards: list[int] = []
+        self.forward_inputs: list[dict] = []
         self.closed = 0
         self.exchange_walls_s: list[float] = []
         self.fail_on_layer: int | None = None
         self.chains: list[tuple[int, int]] = []
         self.reduces: list[tuple[tuple[int, ...], int | None]] = []
 
-    def forward(self, layer_id: int, inputs):
+    def forward(self, layer_id: int, inputs, *, rows=None):
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
             raise RuntimeError("simulated shard failure")
         self.forwards.append(int(layer_id))
+        self.forward_inputs.append(dict(inputs))
         self.exchange_walls_s.append(0.0)
-        return {0: 0x5000, 1: 0x5100}
+        return {device: 0x5000 + device for device in self.devices}
 
     def enqueue_rank_chain(self, layer_id: int, device: int, input_ptr: int) -> int:
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
@@ -297,7 +346,10 @@ def env(monkeypatch):
 
     class FakeGroupFactory(FakeShardGroup):
         def __init__(self, runtime, **kwargs):
-            super().__init__()
+            super().__init__(
+                devices=kwargs.get("devices", (0, 1)), rows=kwargs.get("rows", 1)
+            )
+            self.owns_weights = bool(kwargs.get("owns_weights", True))
             groups.append(self)
 
     def fake_resolve(model_path, *, world_size, backend="hip_gfx1100"):
@@ -366,6 +418,49 @@ def env(monkeypatch):
     monkeypatch.setattr(tg, "malloc", fake_malloc)
     monkeypatch.setattr(tg, "free", fake_free)
     monkeypatch.setattr(tg, "MlpShardGroup", FakeGroupFactory)
+
+    from dataclasses import dataclass as _dc, replace as _dc_replace
+
+    @_dc(frozen=True)
+    class FakeBulkScratch:
+        rows: int
+        norm: FakeBuffer
+        attn_out: FakeBuffer
+        post_norm: FakeBuffer
+        residual: FakeBuffer
+        key_cache: object | None = None
+        value_cache: object | None = None
+        retained_key_cache: object | None = None
+        retained_value_cache: object | None = None
+        retained_append_spans: object | None = None
+        int8_kv_value_bf16: bool = False
+        max_positions: int = 4096
+        start: int = 0
+        chunk: tuple | None = None
+        buffers: tuple = ()
+        full_attn_split_growth_buffers: tuple = ()
+
+        def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
+            return _dc_replace(self, start=int(start), rows=int(rows),
+                               chunk=(int(start), int(rows), int(total_tokens)))
+
+    bulk_scratches: list[FakeBulkScratch] = []
+
+    class FakeBulkScratchFactory:
+        @staticmethod
+        def allocate(runner, *, rows, capacity=None, allocate_kv_cache=True,
+                     runtime=None, **kwargs):
+            scratch = FakeBulkScratch(
+                rows=int(rows),
+                norm=FakeBuffer(0x4800, int(rows) * HIDDEN * 2),
+                attn_out=FakeBuffer(0x4900, int(rows) * HIDDEN * 2),
+                post_norm=FakeBuffer(0x4A00, int(rows) * HIDDEN * 2),
+                residual=FakeBuffer(0x4B00, int(rows) * HIDDEN * 2),
+            )
+            bulk_scratches.append(scratch)
+            return scratch
+
+    monkeypatch.setattr(tg, "_GGUFFullAttentionPrefillScratch", FakeBulkScratchFactory)
     monkeypatch.setattr(tg, "resolve_mlp_shard_context", fake_resolve)
     monkeypatch.setattr(tg, "materialize_mlp_shards", fake_materialize)
     monkeypatch.setattr(tg, "upload_mlp_shard_weights", fake_upload)
@@ -396,6 +491,7 @@ def env(monkeypatch):
         "head_uploads": head_uploads,
         "head_freed": head_freed,
         "injected_rows": injected_rows,
+        "bulk_scratches": bulk_scratches,
     }
 
 
@@ -920,3 +1016,236 @@ def test_head_shard_finish_concatenates_shards_with_exact_tie_break(env) -> None
     assert full_row is None or float(full_row[3]) == 5.0
     session.close()
     assert sorted(env["head_freed"]) == [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# Opt-in rank-local bulk prefill
+# ---------------------------------------------------------------------------
+
+
+def _bulk_session(
+    env,
+    *,
+    rows=8,
+    head_shard=False,
+    schedule="eager",
+    mode="tp2",
+):
+    return MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode=mode,
+        max_sequence_length=64,
+        schedule=schedule,
+        head_shard=head_shard,
+        bulk_prefill=True,
+        bulk_prefill_rows=rows,
+    )
+
+
+def _bulk_group(env):
+    # The decode group is built first, then the bulk (weight-sharing) group.
+    assert len(env["groups"]) == 2
+    return env["groups"][0], env["groups"][1]
+
+
+def test_bulk_prefill_is_off_by_default(env) -> None:
+    session = _session(env)
+    assert session.bulk_prefill_enabled is False
+    assert session.prefill_schedule == "token-serial"
+    assert len(env["groups"]) == 1
+    with pytest.raises(TP2GroupError, match="not enabled"):
+        session.bulk_prefill([1, 2])
+    session.close()
+
+
+def test_bulk_prefill_requires_tp2(env) -> None:
+    with pytest.raises(ValueError, match="tp2-only"):
+        MlpTP2GenerationSession(
+            "fake.gguf",
+            devices=(0,),
+            mode="tp1",
+            max_sequence_length=64,
+            schedule="eager",
+            bulk_prefill=True,
+        )
+
+
+def test_bulk_prefill_validates_its_capacity(env) -> None:
+    with pytest.raises(ValueError, match="must be positive"):
+        _bulk_session(env, rows=0)
+    with pytest.raises(ValueError, match="exceeds the session capacity"):
+        _bulk_session(env, rows=128)
+
+
+def test_bulk_prefill_schedule_is_reported_as_bulk(env) -> None:
+    session = _bulk_session(env, rows=4)
+    assert session.prefill_schedule == "bulk-tp2"
+    session.close()
+
+
+def test_bulk_prefill_rejects_over_capacity_before_any_launch(env) -> None:
+    session = _bulk_session(env, rows=4)
+    _decode, bulk = _bulk_group(env)
+    env["launch_log"].clear()
+    with pytest.raises(ValueError, match="exceeds the bulk prefill capacity"):
+        session.bulk_prefill([1, 2, 3, 4, 5])
+    assert env["launch_log"] == []
+    assert bulk.forwards == []
+    session.close()
+
+
+def test_bulk_prefill_rejects_tokens_outside_the_vocabulary(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["launch_log"].clear()
+    with pytest.raises(ValueError, match="outside"):
+        session.bulk_prefill([1, VOCAB])
+    assert env["launch_log"] == []
+    session.close()
+
+
+def test_bulk_prefill_runs_attention_norm_one_mlp_and_one_residual(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    expected = [
+        "linear_prefill_attn",
+        "prefill_norm",
+        "full_prefill_attn",
+        "prefill_norm",
+        "linear_prefill_attn",
+        "prefill_norm",
+    ]
+    for runner in env["runners"]:
+        assert [call[1] for call in runner.calls] == expected
+    _decode, bulk = _bulk_group(env)
+    # Exactly one sharded MLP exchange per layer, and one residual add per
+    # rank per layer (the group never adds the residual itself).
+    assert bulk.forwards == [0, 1, 2]
+    adds = [entry for entry in env["launch_log"] if entry[1] == "bf16_add"]
+    assert len(adds) == 6
+    session.close()
+
+
+def test_bulk_prefill_full_attention_reuses_the_decode_kv_cache(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    for runner in env["runners"]:
+        # Only the single full-attention layer reads the shared decode cache.
+        assert runner.scratch.full_cache_calls == [1]
+    session.close()
+
+
+def test_bulk_prefill_builds_the_decode_schedule_before_writing_state(
+    env, monkeypatch
+) -> None:
+    session = _bulk_session(env, rows=4)
+    order: list[str] = []
+    original_ensure = session._ensure_graph_schedule
+
+    def spy_ensure():
+        order.append("schedule")
+        original_ensure()
+
+    monkeypatch.setattr(session, "_ensure_graph_schedule", spy_ensure)
+    original_copy = tg.copy_host_to_device
+
+    def spy_copy(*args, **kwargs):
+        order.append("upload")
+        return original_copy(*args, **kwargs)
+
+    monkeypatch.setattr(tg, "copy_host_to_device", spy_copy)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    assert order[0] == "schedule"
+    assert "upload" in order
+    session.close()
+
+
+def test_bulk_prefill_graphed_capture_cannot_overwrite_prefill_state(env) -> None:
+    session = _bulk_session(env, rows=4, schedule="graphed")
+    # The graph warmup runs one eager decode step (one replicated-head row)
+    # before the bulk prefill's own whole-batch readback.
+    env["injected_rows"].append(_logits_row(0))
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    before = [runner.scratch.zeroed for runner in env["runners"]]
+    session.bulk_prefill([1, 2, 3, 4])
+    assert session._graph_schedule_ready is True
+    # The capture zeroes state during warmup; the bulk path then zeroes it
+    # again and writes the prefill KV/GDN state after every capture.
+    for runner, baseline in zip(env["runners"], before):
+        assert runner.scratch.zeroed > baseline
+    session.close()
+
+
+def test_bulk_prefill_reuses_weights_without_double_free(env) -> None:
+    session = _bulk_session(env, rows=4)
+    decode, bulk = _bulk_group(env)
+    assert decode.owns_weights is True
+    assert bulk.owns_weights is False
+    session.close()
+    assert decode.closed == 1
+    assert bulk.closed == 1
+
+
+def test_bulk_prefill_is_repeatable_and_resets_state(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].extend(
+        [
+            np.zeros(4 * VOCAB, dtype="<f4"),
+            np.zeros(4 * VOCAB, dtype="<f4"),
+        ]
+    )
+    before = [runner.scratch.zeroed for runner in env["runners"]]
+    session.bulk_prefill([1, 2, 3, 4])
+    session.bulk_prefill([5, 6, 7, 8])
+    for runner, baseline in zip(env["runners"], before):
+        assert runner.scratch.zeroed == baseline + 2
+    session.close()
+
+
+def test_bulk_prefill_returns_per_position_logits(env) -> None:
+    session = _bulk_session(env, rows=3)
+    full = np.arange(3 * VOCAB, dtype="<f4").reshape(3, VOCAB)
+    env["injected_rows"].append(np.ascontiguousarray(full).reshape(-1))
+    logits = session.bulk_prefill([1, 2, 3])
+    assert logits.shape == (3, VOCAB)
+    np.testing.assert_array_equal(logits, full)
+    session.close()
+
+
+def test_bulk_prefill_sharded_head_concatenates_per_rank_shards(env) -> None:
+    session = _bulk_session(env, rows=2, head_shard=True)
+    half = VOCAB // 2
+    # The tail reads rank 0's then rank 1's whole-batch shard, in device order.
+    env["injected_rows"].append(np.full(2 * half, 1.0, dtype="<f4"))
+    env["injected_rows"].append(np.full(2 * half, 2.0, dtype="<f4"))
+    logits = session.bulk_prefill([1, 2])
+    assert logits.shape == (2, VOCAB)
+    np.testing.assert_array_equal(logits[:, :half], np.full((2, half), 1.0))
+    np.testing.assert_array_equal(logits[:, half:], np.full((2, half), 2.0))
+    session.close()
+
+
+def test_bulk_prefill_transitions_to_decode_at_the_prompt_length(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    env["injected_rows"].append(_logits_row(7))
+    logits, _trace = session._forward_token(9, 4, kind="decode")
+    assert int(np.argmax(logits)) == 7
+    for runner in env["runners"]:
+        assert 4 in runner.scratch.positions
+    session.close()
+
+
+def test_bulk_prefill_failure_poisons_the_session(env) -> None:
+    session = _bulk_session(env, rows=4)
+    env["runners"][0].fail_on_layer = 1
+    with pytest.raises(TP2GroupError, match="bulk prefill failed"):
+        session.bulk_prefill([1, 2, 3, 4])
+    assert session.poisoned is True
+    with pytest.raises(TP2GroupError, match="poisoned"):
+        session.bulk_prefill([1, 2, 3, 4])
+    session.close()

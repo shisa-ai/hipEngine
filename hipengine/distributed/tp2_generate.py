@@ -46,7 +46,7 @@ partially advanced session is never reused.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -59,6 +59,7 @@ from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchang
 from hipengine.distributed.head_shard import materialize_head_shards
 from hipengine.distributed.shard_exec import upload_shard_weight
 from hipengine.distributed.shard_group import MlpShardGroup
+from hipengine.distributed.tp2_prefill import run_sharded_mlp_with_residual
 from hipengine.distributed.shard_weights import (
     materialize_mlp_shards,
     resolve_mlp_shard_context,
@@ -76,6 +77,7 @@ from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     _FullStackScratch,
+    _GGUFFullAttentionPrefillScratch,
     _gguf_dense_pair_silu_decode_variant,
     _gguf_norm_residual_decode_kernel,
 )
@@ -131,6 +133,8 @@ class MlpTP2GenerationSession:
         schedule: str | None = None,
         reduce_mode: str | None = None,
         head_shard: bool | None = None,
+        bulk_prefill: bool = False,
+        bulk_prefill_rows: int | None = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -198,6 +202,25 @@ class MlpTP2GenerationSession:
         self.control_device = self.devices[0]
         self.max_sequence_length = int(max_sequence_length)
         self.stage_trace = bool(stage_trace)
+        # Opt-in experimental rank-local bulk prefill. Off by default: the
+        # token-serial prefill stays the committed route until this candidate
+        # passes the production numerical envelope end to end.
+        self.bulk_prefill_enabled = bool(bulk_prefill)
+        self.bulk_prefill_rows = (
+            int(bulk_prefill_rows) if bulk_prefill_rows is not None else None
+        )
+        if self.bulk_prefill_enabled:
+            if self.mode != "tp2":
+                raise ValueError("bulk_prefill is tp2-only (it needs the sharded MLP)")
+            if self.bulk_prefill_rows is None:
+                self.bulk_prefill_rows = int(self.max_sequence_length)
+            if self.bulk_prefill_rows < 1:
+                raise ValueError("bulk_prefill_rows must be positive")
+            if self.bulk_prefill_rows > int(self.max_sequence_length):
+                raise ValueError(
+                    f"bulk_prefill_rows {self.bulk_prefill_rows} exceeds the "
+                    f"session capacity {self.max_sequence_length}"
+                )
 
         self.runtime = get_hip_runtime()
         if self.runtime.device_count() < len(self.devices):
@@ -212,6 +235,16 @@ class MlpTP2GenerationSession:
         self._scratches: dict[int, Any] = {}
         self._extra_buffers: dict[int, list[Any]] = {d: [] for d in self.devices}
         self._shard_group: MlpShardGroup | None = None
+        self._bulk_shard_group: MlpShardGroup | None = None
+        self._bulk_scratch: dict[int, Any] = {}
+        self._bulk_hidden: dict[int, tuple[int, int]] = {}
+        self._bulk_token_buf: dict[int, Any] = {}
+        self._bulk_logits_buf: dict[int, Any] = {}
+        self._bulk_host_tokens: np.ndarray | None = None
+        self._bulk_final_hidden: dict[int, int] = {}
+        self._uploaded_shard_weights: Any | None = None
+        self._per_rank_ffn: int | None = None
+        self._fused_shard_variant: str | None = None
         self._tp1_mlp_ptrs: dict[int, tuple[int, int, int]] = {}
         self._step_buffers: dict[int, Any] = {}
         self._add_norm_cache: dict[int, Any] = {}
@@ -244,6 +277,8 @@ class MlpTP2GenerationSession:
                 self._build_head_shards()
             for device in self.devices:
                 self._alloc_step_buffers(device)
+            if self.bulk_prefill_enabled:
+                self._build_bulk_prefill_workspace()
         except Exception:
             self.close()
             raise
@@ -309,6 +344,9 @@ class MlpTP2GenerationSession:
         uploaded = upload_mlp_shard_weights(
             self.runtime, shards, devices=self.devices
         )
+        self._uploaded_shard_weights = uploaded
+        self._per_rank_ffn = per_rank_ffn
+        self._fused_shard_variant = fused_variant
         self._shard_group = MlpShardGroup(
             self.runtime,
             devices=self.devices,
@@ -353,6 +391,345 @@ class MlpTP2GenerationSession:
         self._step_buffers[device] = buffers
         self._extra_buffers[device].extend(buffers.values())
 
+    # -- opt-in rank-local bulk prefill ------------------------------------
+
+    def _build_bulk_prefill_workspace(self) -> None:
+        """Allocate the per-rank bulk-prefill scratch and a weight-sharing group.
+
+        The bulk MLP group reuses the decode group's uploaded shard weights
+        (``owns_weights=False``) so closing the two groups cannot double-free
+        them. Every bulk buffer is device-scoped to its own rank and appended
+        to that rank's ``_extra_buffers`` so ``close`` frees each exactly once.
+        """
+
+        rows = int(self.bulk_prefill_rows)
+        assert rows > 0
+        for device in self.devices:
+            runner = self._runners[device]
+            with scoped_current_device(self.runtime, device):
+                scratch = _GGUFFullAttentionPrefillScratch.allocate(
+                    runner,
+                    rows=rows,
+                    capacity=rows,
+                    allocate_kv_cache=False,
+                    runtime=self.runtime,
+                )
+                hidden_a = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                hidden_b = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                token_buf = malloc(rows * np.int64().nbytes, runtime=self.runtime)
+                if self.head_shard:
+                    logits_buf = malloc(
+                        rows * int(self._head_plan.rows_per_rank) * 4,
+                        runtime=self.runtime,
+                    )
+                elif device == self.control_device:
+                    logits_buf = malloc(
+                        rows * runner.vocab_size * 4, runtime=self.runtime
+                    )
+                else:
+                    logits_buf = None
+            self._bulk_scratch[device] = scratch
+            self._bulk_hidden[device] = (hidden_a.ptr, hidden_b.ptr)
+            self._bulk_token_buf[device] = token_buf
+            if logits_buf is not None:
+                self._bulk_logits_buf[device] = logits_buf
+            self._extra_buffers[device].extend([hidden_a, hidden_b, token_buf])
+            if logits_buf is not None:
+                self._extra_buffers[device].append(logits_buf)
+            self._extra_buffers[device].extend(scratch.buffers)
+        self._bulk_host_tokens = np.empty(rows, dtype=np.int64)
+        self._bulk_shard_group = MlpShardGroup(
+            self.runtime,
+            devices=self.devices,
+            streams={device: self._rank_stream(device) for device in self.devices},
+            hidden=self.hidden_size,
+            per_rank_ffn=int(self._per_rank_ffn),
+            weights=self._uploaded_shard_weights,
+            staging_dtype="bf16",
+            driver=self.driver,
+            mlp_decode_variant=self._fused_shard_variant,
+            slot_sets=2,
+            rows=rows,
+            owns_weights=False,
+        )
+
+    def bulk_prefill(self, token_ids: Sequence[int]) -> np.ndarray:
+        """Whole-prompt rank-local bulk prefill; returns ``(rows, vocab)`` logits.
+
+        Experimental opt-in candidate. Each layer runs the attention/GDN
+        helper, the post-attention norm+residual helper, the batched sharded
+        MLP exchange and one residual add on every rank, then the final norm
+        and head. The prompt must fit ``bulk_prefill_rows``; chunked bulk
+        prefill is not implemented, so an over-capacity prompt is rejected
+        before any allocation or launch. Every call zeroes the KV/GDN state
+        first, so it is repeatable and never inherits a previous sequence.
+        """
+
+        self._require_live()
+        if not self.bulk_prefill_enabled:
+            raise TP2GroupError("bulk prefill is not enabled on this session")
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must not be empty")
+        rows = len(tokens)
+        capacity = int(self.bulk_prefill_rows)
+        if rows > capacity:
+            raise ValueError(
+                f"prompt of {rows} tokens exceeds the bulk prefill capacity "
+                f"{capacity}; chunked bulk prefill is not implemented"
+            )
+        for token in tokens:
+            if token < 0 or token >= self.vocab_size:
+                raise ValueError(
+                    f"token_id {token} outside [0, {self.vocab_size})"
+                )
+        # Capture/warmup zeroes the state and rewinds positions, so build the
+        # decode schedule BEFORE writing the prefill state - otherwise the
+        # capture would overwrite the newly computed KV/GDN state.
+        self._ensure_graph_schedule()
+        try:
+            for device in self.devices:
+                with scoped_current_device(self.runtime, device):
+                    self._scratches[device].zero_states(
+                        self.runtime, stream=self._rank_stream(device)
+                    )
+            assert self._bulk_host_tokens is not None
+            self._bulk_host_tokens[:rows] = tokens
+            for device in self.devices:
+                runner = self._runners[device]
+                with scoped_current_device(self.runtime, device):
+                    copy_host_to_device(
+                        self._bulk_token_buf[device],
+                        self._bulk_host_tokens.ctypes.data,
+                        rows * np.int64().nbytes,
+                        runtime=self.runtime,
+                    )
+                    launch_gguf_embedding(
+                        runner.weights.root("token_embedding"),
+                        self._bulk_token_buf[device].ptr,
+                        self._bulk_hidden[device][0],
+                        rows=rows,
+                        hidden_size=runner.hidden_size,
+                        vocab_size=runner.vocab_size,
+                        stream=self._rank_stream(device),
+                        runtime=self.runtime,
+                    )
+            self._run_bulk_prefill_layers(rows)
+            logits = self._finish_bulk_prefill(rows)
+        except Exception as error:
+            self._poisoned = True
+            raise TP2GroupError(
+                f"bulk prefill failed at {rows} rows: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        return logits
+
+    def _run_bulk_prefill_layers(self, rows: int) -> None:
+        src = {device: self._bulk_hidden[device][0] for device in self.devices}
+        dst = {device: self._bulk_hidden[device][1] for device in self.devices}
+        for layer_id, layer_type in enumerate(self._config.layer_types):
+            self._bulk_attention_layer(layer_id, layer_type, src, rows)
+            self._bulk_norm_residual_layer(layer_id, src, rows)
+            self._bulk_sharded_mlp_layer(layer_id, src, dst, rows)
+            src, dst = dst, src
+        self._bulk_final_hidden = dict(src)
+
+    def _bulk_attention_layer(
+        self,
+        layer_id: int,
+        layer_type: str,
+        src: Mapping[int, int],
+        rows: int,
+    ) -> None:
+        for device in self.devices:
+            runner = self._runners[device]
+            scratch = self._bulk_scratch[device]
+            decode_scratch = self._scratches[device]
+            stream = self._rank_stream(device)
+            with scoped_current_device(self.runtime, device):
+                if layer_type == LINEAR_ATTENTION:
+                    runner._run_linear_attention_prefill_attn_rows(
+                        layer_id,
+                        int(src[device]),
+                        scratch,
+                        rows=rows,
+                        decode_scratch=decode_scratch,
+                        stream=stream,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = decode_scratch.full_cache(layer_id)
+                    layer_scratch = replace(
+                        scratch,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        retained_key_cache=None,
+                        retained_value_cache=None,
+                        retained_append_spans=None,
+                        int8_kv_value_bf16=False,
+                    )
+                    runner._run_full_attention_prefill_attn_rows(
+                        layer_id,
+                        int(src[device]),
+                        layer_scratch,
+                        cos_table_ptr=decode_scratch.cos_table_buf.ptr,
+                        sin_table_ptr=decode_scratch.sin_table_buf.ptr,
+                        max_positions=int(decode_scratch.max_positions),
+                        stream=stream,
+                    )
+                else:
+                    raise TP2GroupError(
+                        f"unsupported GGUF layer type {layer_type!r}"
+                    )
+
+    def _bulk_norm_residual_layer(
+        self,
+        layer_id: int,
+        src: Mapping[int, int],
+        rows: int,
+    ) -> None:
+        for device in self.devices:
+            runner = self._runners[device]
+            scratch = self._bulk_scratch[device]
+            with scoped_current_device(self.runtime, device):
+                runner._run_post_attention_norm_residual_rows(
+                    layer_id,
+                    int(src[device]),
+                    scratch.attn_out.ptr,
+                    scratch,
+                    rows=rows,
+                    stream=self._rank_stream(device),
+                )
+
+    def _bulk_sharded_mlp_layer(
+        self,
+        layer_id: int,
+        src: Mapping[int, int],
+        dst: Mapping[int, int],
+        rows: int,
+    ) -> None:
+        group = self._bulk_shard_group
+        assert group is not None
+        hidden = self.hidden_size
+
+        def add_residual(
+            device: int,
+            residual_ptr: int,
+            mlp_out_ptr: int,
+            out_ptr: int,
+            layer_rows: int,
+        ) -> None:
+            with scoped_current_device(self.runtime, device):
+                gguf_bf16_add(
+                    residual_ptr,
+                    mlp_out_ptr,
+                    out_ptr,
+                    layer_rows * hidden,
+                    stream=self._rank_stream(device),
+                    runtime=self.runtime,
+                )
+
+        run_sharded_mlp_with_residual(
+            group,
+            layer_id=layer_id,
+            rows=rows,
+            post_norm_ptrs={
+                device: self._bulk_scratch[device].post_norm.ptr
+                for device in self.devices
+            },
+            residual_ptrs={
+                device: self._bulk_scratch[device].residual.ptr
+                for device in self.devices
+            },
+            out_ptrs={device: int(dst[device]) for device in self.devices},
+            add_residual=add_residual,
+        )
+
+    def _finish_bulk_prefill(self, rows: int) -> np.ndarray:
+        src = self._bulk_final_hidden
+        if self.head_shard:
+            plan = self._head_plan
+            shard_rows = int(plan.rows_per_rank)
+            for device in self.devices:
+                runner = self._runners[device]
+                scratch = self._bulk_scratch[device]
+                stream = self._rank_stream(device)
+                with scoped_current_device(self.runtime, device):
+                    gguf_rmsnorm_bf16_f32_weight(
+                        int(src[device]),
+                        runner.weights.root("output_norm").allocation().tensor.ptr,
+                        scratch.norm.ptr,
+                        rows,
+                        runner.hidden_size,
+                        runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=self.runtime,
+                    )
+                    launch_gguf_linear(
+                        self._head_weights[device],
+                        scratch.norm.ptr,
+                        self._bulk_logits_buf[device].ptr,
+                        rows,
+                        runner.hidden_size,
+                        shard_rows,
+                        output_dtype=GGUF_OUTPUT_F32,
+                        stream=stream,
+                        runtime=self.runtime,
+                    )
+            logits = np.empty((rows, int(plan.vocab_rows)), dtype="<f4")
+            for device in self.devices:
+                stream = self._rank_stream(device)
+                with scoped_current_device(self.runtime, device):
+                    if stream:
+                        self.runtime.stream_synchronize(stream)
+                    # A column slice of the 2-D logits array is not contiguous,
+                    # so read each rank's shard into a contiguous buffer first.
+                    chunk = np.empty((rows, shard_rows), dtype="<f4")
+                    copy_device_to_host(
+                        chunk.ctypes.data,
+                        self._bulk_logits_buf[device],
+                        rows * shard_rows * 4,
+                        runtime=self.runtime,
+                    )
+                    start = int(plan.rank_row_start(device))
+                    logits[:, start:start + shard_rows] = chunk
+            return logits
+        device = self.control_device
+        runner = self._runners[device]
+        scratch = self._bulk_scratch[device]
+        stream = self._rank_stream(device)
+        with scoped_current_device(self.runtime, device):
+            gguf_rmsnorm_bf16_f32_weight(
+                int(src[device]),
+                runner.weights.root("output_norm").allocation().tensor.ptr,
+                scratch.norm.ptr,
+                rows,
+                runner.hidden_size,
+                runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=self.runtime,
+            )
+            launch_gguf_linear(
+                runner.weights.root("lm_head"),
+                scratch.norm.ptr,
+                self._bulk_logits_buf[device].ptr,
+                rows,
+                runner.hidden_size,
+                runner.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=stream,
+                runtime=self.runtime,
+            )
+            if stream:
+                self.runtime.stream_synchronize(stream)
+        logits = np.empty((rows, runner.vocab_size), dtype="<f4")
+        copy_device_to_host(
+            logits.ctypes.data,
+            self._bulk_logits_buf[device],
+            rows * runner.vocab_size * 4,
+            runtime=self.runtime,
+        )
+        return logits
+
     # -- state -------------------------------------------------------------
 
     @property
@@ -377,7 +754,7 @@ class MlpTP2GenerationSession:
         a distributed numerical failure.
         """
 
-        return 'token-serial'
+        return 'bulk-tp2' if self.bulk_prefill_enabled else 'token-serial'
 
     def reset(self) -> None:
         """Zero every rank's KV/GDN state and rewind positions to zero."""
@@ -463,6 +840,8 @@ class MlpTP2GenerationSession:
         """
 
         self._require_live()
+        if self.bulk_prefill_enabled:
+            return self.bulk_prefill(token_ids)
         for device, scratch in self._scratches.items():
             with scoped_current_device(self.runtime, device):
                 scratch.zero_states(self.runtime, stream=self._rank_stream(device))
@@ -1192,6 +1571,19 @@ class MlpTP2GenerationSession:
             except Exception:  # noqa: BLE001 - teardown continues
                 pass
             self._device_exchange = None
+        if self._bulk_shard_group is not None:
+            try:
+                self._bulk_shard_group.close()
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+            self._bulk_shard_group = None
+        for scratch in self._bulk_scratch.values():
+            for buffer in getattr(scratch, "full_attn_split_growth_buffers", ()) or ():
+                try:
+                    free(buffer, runtime=self.runtime)
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
+        self._bulk_scratch.clear()
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None

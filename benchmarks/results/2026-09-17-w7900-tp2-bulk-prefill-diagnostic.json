@@ -1,0 +1,156 @@
+{
+  "date": "2026-09-17",
+  "finding": "The bulk route runs end to end and preserves KV/GDN state into the graph decode, but its prefill arithmetic fails the unchanged production envelope: on the saved failing prompt max_kl 0.487 (token-serial 0.108), and on a heldout prompt max_kl 0.0557 (token-serial 0.0469, which passes the 0.05 ceiling). The divergence is the known bulk-vs-serial T2 association difference amplified over the GDN recurrent decode, not a control/ownership defect: the bulk and token-serial argmax agree on 127/128 and 126/128 rows and the bulk route is deterministic and repeatable. Per the production contract the path stays opt-in and default-off; no envelope threshold is relaxed.",
+  "host": {
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpus": [
+      {
+        "model": "AMD Radeon Pro W7900",
+        "pci": "0000:0d:00.0",
+        "role": "rank0"
+      },
+      {
+        "model": "AMD Radeon RX 7900 XTX",
+        "pci": "0000:10:00.0",
+        "role": "rank1"
+      }
+    ]
+  },
+  "kind": "correctness-diagnostic",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "performance_claim": false,
+  "production_gate": {
+    "max_kl": 0.05,
+    "mean_kl": 0.001,
+    "p95_kl": 0.005,
+    "p99_kl": 0.02,
+    "top1_agreement": 0.99
+  },
+  "prompts": {
+    "heldout_mixed_summary": {
+      "bulk_argmax_matches_serial": 126,
+      "bulk_argmax_matches_teacher": 124,
+      "bulk_vs_serial": {
+        "max_kl": 0.033201602378270884,
+        "mean_kl": 0.0008252822482162792,
+        "p95_kl": 0.0013799055774642705,
+        "p99_kl": 0.02156582378613884,
+        "top1_agreement": 0.984375
+      },
+      "bulk_vs_teacher": {
+        "max_kl": 0.05572865934177028,
+        "mean_kl": 0.0010013891001168225,
+        "p95_kl": 0.0011782098548821366,
+        "p99_kl": 0.03740664572493447,
+        "top1_agreement": 0.96875
+      },
+      "bulk_vs_teacher_gate": {
+        "failures": [
+          "mean_kl 0.00100139 > 0.001",
+          "p99_kl 0.0374066 > 0.02",
+          "max_kl 0.0557287 > 0.05",
+          "top1_agreement 0.968750 < 0.97"
+        ],
+        "passed": false,
+        "top1_bar": 0.97
+      },
+      "bulk_worst_row": {
+        "decode_index": 68,
+        "kl": 0.05572865934177028
+      },
+      "category": "mixed_ja_en",
+      "decode_steps": 128,
+      "heldout": true,
+      "prompt_tokens": 52,
+      "serial_argmax_matches_teacher": 126,
+      "serial_vs_teacher": {
+        "max_kl": 0.04689266909404144,
+        "mean_kl": 0.001004108491908253,
+        "p95_kl": 0.0010188445920952212,
+        "p99_kl": 0.02877766064989385,
+        "top1_agreement": 0.984375
+      },
+      "serial_vs_teacher_gate": {
+        "failures": [
+          "mean_kl 0.00100411 > 0.001",
+          "p99_kl 0.0287777 > 0.02"
+        ],
+        "passed": false,
+        "top1_bar": 0.97
+      },
+      "serial_worst_row": {
+        "decode_index": 68,
+        "kl": 0.04689266909404144
+      }
+    },
+    "mixed_ja_en_translate": {
+      "bulk_argmax_matches_serial": 127,
+      "bulk_argmax_matches_teacher": 127,
+      "bulk_vs_serial": {
+        "max_kl": 0.5511789409327529,
+        "mean_kl": 0.005168148618772429,
+        "p95_kl": 0.0004199849456640913,
+        "p99_kl": 0.05667906876815292,
+        "top1_agreement": 0.9921875
+      },
+      "bulk_vs_teacher": {
+        "max_kl": 0.48714017933332243,
+        "mean_kl": 0.0068260727113982015,
+        "p95_kl": 0.00047978011389421553,
+        "p99_kl": 0.20779012206152672,
+        "top1_agreement": 0.9921875
+      },
+      "bulk_vs_teacher_gate": {
+        "failures": [
+          "mean_kl 0.00682607 > 0.001",
+          "p99_kl 0.20779 > 0.02",
+          "max_kl 0.48714 > 0.05"
+        ],
+        "passed": false,
+        "top1_bar": 0.97
+      },
+      "bulk_worst_row": {
+        "decode_index": 93,
+        "kl": 0.48714017933332243
+      },
+      "category": "mixed_ja_en",
+      "decode_steps": 128,
+      "heldout": false,
+      "prompt_tokens": 64,
+      "serial_argmax_matches_teacher": 128,
+      "serial_vs_teacher": {
+        "max_kl": 0.10840648252763026,
+        "mean_kl": 0.0014285995479406206,
+        "p95_kl": 0.0005657767430383239,
+        "p99_kl": 0.03978930656895689,
+        "top1_agreement": 1.0
+      },
+      "serial_vs_teacher_gate": {
+        "failures": [
+          "mean_kl 0.0014286 > 0.001",
+          "p99_kl 0.0397893 > 0.02",
+          "max_kl 0.108406 > 0.05"
+        ],
+        "passed": false,
+        "top1_bar": 0.97
+      },
+      "serial_worst_row": {
+        "decode_index": 82,
+        "kl": 0.10840648252763026
+      }
+    }
+  },
+  "protocol": {
+    "gate": "unchanged production envelope (docs/EXECUTION-PROFILES.md): mean_kl<=0.001, p95<=0.005, p99<=0.02, max_kl<=0.05, top1>=0.97",
+    "note": "the token-serial arm is run on the same session and reproduces the saved TP2 failure (max_kl 0.108406 at decode index 82) exactly, validating the harness",
+    "reference": "resident TP1 teacher (quality-tp1-d0.json), prefill + forced decode",
+    "route": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True)",
+    "workload": "Qwen3.8-27B Q4_K_M, two-rank TP2; prefill(prompt) then 128 forced-decode steps, exactly the saved teacher capture protocol"
+  },
+  "schema": "hipengine-benchmark-result/1",
+  "status": "production-envelope-failed",
+  "title": "Opt-in rank-local bulk TP2 prefill vs the TP1 teacher (full decode trajectory)"
+}

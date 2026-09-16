@@ -74,6 +74,7 @@ class MlpShardGroup:
         mlp_decode_variant: str | None = None,
         slot_sets: int = 2,
         rows: int = 1,
+        owns_weights: bool = True,
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
@@ -93,6 +94,10 @@ class MlpShardGroup:
         self._mlp_decode_variant = (
             str(mlp_decode_variant) if mlp_decode_variant is not None else None
         )
+        # A bulk-prefill group can share the decode group's uploaded shard
+        # weights; ``owns_weights=False`` keeps its ``close`` from freeing
+        # them twice.
+        self._owns_weights = bool(owns_weights)
         self.exchange_walls_s: list[float] = []
 
         self._ranks: dict[tuple[int, int], MlpShardRank] = {}
@@ -111,6 +116,7 @@ class MlpShardGroup:
                     partial_dtype=staging_dtype,
                     mlp_decode_variant=mlp_decode_variant,
                     rows=self.rows,
+                    owns_weights=self._owns_weights,
                 )
         if driver == "compiled":
             # The compiled host driver: the same batched protocol enqueued

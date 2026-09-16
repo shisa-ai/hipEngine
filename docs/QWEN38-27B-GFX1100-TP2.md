@@ -644,6 +644,49 @@ run).
   2–4 ≤ 1.9e-04 relative) and zeroes the inactive tail, for both the Python and
   compiled drivers (`benchmarks/results/2026-09-17-w7900-tp2-batched-prefill-probe.json`).
 
+### P2 status (2026-09-17)
+
+The rank-local bulk prefill path is implemented end to end and opt-in
+(`MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=N)`), but its GPU
+diagnostic **fails the unchanged production numerical envelope**, so it stays
+default-off and the token-serial route remains the committed prefill schedule.
+
+- **Composition:** each layer runs the attention/GDN prefill helper, the
+  post-attention norm+residual helper, one batched sharded MLP exchange, and one
+  residual add per rank, on per-rank bulk scratch. Full-attention layers read
+  the shared decode KV cache; linear-attention layers read and commit the shared
+  decode conv/recurrent state, so the prefill state is visible to the captured
+  graph decode. The bulk MLP group shares the decode group's uploaded shard
+  weights (`owns_weights=False`) so `close` cannot double-free them, and every
+  bulk buffer is appended to its rank's `_extra_buffers`.
+- **Order:** `bulk_prefill` builds the decode graph schedule FIRST, then zeroes
+  state, then writes the prompt KV/GDN state, so capture/warmup cannot overwrite
+  the prefill state. Every call zeroes state, so the route is repeatable and
+  never inherits a previous sequence. An over-capacity prompt is rejected before
+  any allocation or launch (chunked bulk prefill is not implemented).
+- **CPU tests:** `tests/test_unit_distributed_tp2_generate.py` covers call
+  order, exactly one MLP+residual per layer, over-capacity rejection before
+  launch, weight-sharing/no-double-free, state reset/repeatability, the
+  prefill→decode transition position, the schedule-before-state order, and
+  poison-on-failure.
+- **GPU evidence:** `scripts/tp2_bulk_prefill_diagnostic.py` runs the saved
+  teacher protocol (prefill the prompt, then feed the saved forced-decode
+  tokens) on both a bulk and a token-serial arm of the same session. The
+  token-serial arm reproduces the recorded TP2 failure exactly (max KL
+  **0.108406** at decode index 82 of `mixed_ja_en_translate`, position 146),
+  validating the harness. The bulk arm is worse: max KL **0.48714** on
+  `mixed_ja_en_translate` and **0.05573** on the heldout `heldout_mixed_summary`
+  (token-serial 0.04689 there, which passes the 0.05 ceiling). Bulk and serial
+  argmax agree on 127/128 and 126/128 rows, so the divergence is the known
+  bulk-vs-serial T2 association difference amplified over the GDN recurrent
+  decode, not a control/ownership defect
+  (`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-diagnostic.json`).
+- **Blocker:** the bulk route cannot be promoted while it exceeds the max-KL
+  ceiling on a heldout prompt where token-serial passes. The next step is to
+  localize the bulk prefill's arithmetic difference (attention/GDN chunking or
+  the batched MLP row-tiling) against the production envelope, not to relax the
+  envelope.
+
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing
 primitive is identified; no backend/quant dispatch branches; no Torch on the
