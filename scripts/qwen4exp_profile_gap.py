@@ -445,6 +445,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--expected-prompt-tokens", type=int, help="Optional token-count assertion for the prompt")
     parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("default", "strict", "production"),
+        default="production",
+        help=(
+            "Profile to resolve. 'default' mirrors the shipped LLM path: no caller "
+            "request, resolved by resolve_default_execution_profile. "
+            "Defaults to production."
+        ),
+    )
     parser.add_argument("--role-markers", action="store_true", help="Emit profiler-only qwen4exp_role:* ranges")
     parser.add_argument(
         "--launch-census", type=Path, default=None,
@@ -508,6 +518,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _requested_profile(choice: str) -> Any:
+    """Resolve the profile the way the shipped LLM path does when none is named.
+
+    ``default`` is not a fourth profile: it is the absence of a caller request,
+    which ``hipengine.llm`` turns into ``resolve_default_execution_profile`` --
+    production where a certified production plan exists, the migration path
+    otherwise. The census has to be able to run that path, because "the wide
+    route is the default" is a claim about it and nothing else exercised it.
+    """
+
+    from hipengine.execution_profiles import (
+        ExecutionProfile,
+        resolve_default_execution_profile,
+    )
+    from hipengine.generation.qwen4_exp_profiles import (
+        QWEN4_EXP_BACKEND,
+        QWEN4_EXP_MODEL,
+        QWEN4_EXP_QUANTS,
+    )
+
+    if choice != "default":
+        return ExecutionProfile(choice)
+    resolved = resolve_default_execution_profile(
+        model=QWEN4_EXP_MODEL,
+        backend=QWEN4_EXP_BACKEND,
+        quant=QWEN4_EXP_QUANTS[1],
+    )
+    if resolved is None:
+        raise SystemExit(
+            "no certified default execution profile for the Qwen4Exp lane"
+        )
+    return resolved
+
+
 def main() -> None:
     args = build_parser().parse_args()
     try:
@@ -543,7 +587,7 @@ def main() -> None:
     if args.require_cached_build:
         os.environ.setdefault("HIPENGINE_REQUIRE_CACHED_BUILD", "1")
     from hipengine.core.memory import memory_stats, reset_memory_stats
-    from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
+    from hipengine.execution_profiles import resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.generation.qwen4_exp_profiles import (
         QWEN4_EXP_BACKEND,
@@ -566,11 +610,12 @@ def main() -> None:
     register_qwen4_exp_gfx1151_profiles()
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     plugin = resolve_model(index.architecture or "")
+    requested = _requested_profile(args.execution_profile)
     resolved = resolve_runtime_profile(
         model=QWEN4_EXP_MODEL,
         backend=QWEN4_EXP_BACKEND,
         quant=QWEN4_EXP_QUANTS[1],
-        profile=ExecutionProfile.PRODUCTION,
+        profile=requested,
     )
 
     def factory() -> Qwen4ExpGGUFTextGenerator:
@@ -612,6 +657,8 @@ def main() -> None:
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
         "fell_back_to_strict": resolved.fell_back_to_strict,
+        "execution_profile_requested": args.execution_profile,
+        "execution_profile": resolved.profile.value,
         "configuration_class": (
             "diagnostic_post_binder_override" if overrides else "named_profile"
         ),

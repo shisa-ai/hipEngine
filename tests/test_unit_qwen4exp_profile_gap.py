@@ -239,3 +239,61 @@ def test_parser_collects_repeated_overrides(tmp_path: Path) -> None:
     )
 
     assert args.override == ["HIPENGINE_ONE=1", "HIPENGINE_TWO=2"]
+
+
+def test_requested_profile_names_a_profile_without_consulting_the_default() -> None:
+    module = _load_script()
+
+    assert module._requested_profile("production").value == "production"
+    assert module._requested_profile("strict").value == "strict"
+
+
+def test_requested_profile_default_mirrors_the_shipped_llm_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``default`` is the absence of a caller request, not a fourth profile.
+
+    The census has to be able to run the path a caller that names no profile
+    gets, otherwise "the wide route is the shipped default" stays a claim about
+    a path no harness exercises. Where the lane has a certified plan that is
+    production; where it does not, this must fail loudly rather than quietly
+    running the migration path under a name that claims the shipped default.
+    """
+
+    module = _load_script()
+    from hipengine.execution_profiles import ExecutionProfile
+    from hipengine.generation.qwen4_exp_profiles import (
+        register_qwen4_exp_gfx1151_profiles,
+    )
+
+    register_qwen4_exp_gfx1151_profiles()
+    assert module._requested_profile("default") is ExecutionProfile.PRODUCTION
+
+    import hipengine.execution_profiles as profiles
+
+    monkeypatch.setattr(
+        profiles, "resolve_default_execution_profile", lambda **kwargs: None
+    )
+    with pytest.raises(SystemExit, match="no certified default execution profile"):
+        module._requested_profile("default")
+
+
+def test_parser_takes_the_shipped_default_profile_choice(tmp_path: Path) -> None:
+    module = _load_script()
+    common = [
+        "--model-root",
+        str(tmp_path / "model"),
+        "--mode",
+        "prefill",
+        "--output",
+        str(tmp_path / "result.json"),
+    ]
+
+    # Unchanged default: existing invocations keep resolving production directly.
+    assert module.build_parser().parse_args(common).execution_profile == "production"
+    assert (
+        module.build_parser()
+        .parse_args([*common, "--execution-profile", "default"])
+        .execution_profile
+        == "default"
+    )
