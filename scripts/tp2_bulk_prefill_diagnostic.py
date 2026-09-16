@@ -120,6 +120,12 @@ def main(argv: list[str] | None = None) -> int:
         help="if >0, only score the first N decode rows as a fast smoke",
     )
     parser.add_argument("--max-sequence-length", type=int, default=200)
+    parser.add_argument(
+        "--bulk-capacity",
+        type=int,
+        default=0,
+        help="bulk_prefill_rows capacity; 0 = max_sequence_length (default)",
+    )
     parser.add_argument("--schedule", default="graphed", choices=("eager", "graphed"))
     parser.add_argument(
         "--compare-serial",
@@ -161,7 +167,9 @@ def main(argv: list[str] | None = None) -> int:
             "schedule": args.schedule,
             "head_shard": True,
             "bulk_prefill": not args.serial_only,
-            "bulk_prefill_rows": args.max_sequence_length,
+            "bulk_prefill_rows": (
+                args.bulk_capacity if args.bulk_capacity > 0 else args.max_sequence_length
+            ),
         },
         "protocol": "prefill(prompt) then forced decode (matches the teacher capture)",
         "smoke_rows": int(args.smoke_rows),
@@ -171,8 +179,16 @@ def main(argv: list[str] | None = None) -> int:
     session = None
     started = time.perf_counter()
     try:
+        bulk_capacity = (
+            args.bulk_capacity
+            if args.bulk_capacity > 0
+            else args.max_sequence_length
+        )
         session = _build_session(
-            args.max_sequence_length, schedule=args.schedule, bulk=not args.serial_only
+            args.max_sequence_length,
+            rows=bulk_capacity,
+            schedule=args.schedule,
+            bulk=not args.serial_only,
         )
         # Match the saved capture: build the decode schedule before running any
         # trajectory, so the decode replays the captured graphs and the bulk

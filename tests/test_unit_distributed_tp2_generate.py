@@ -123,6 +123,12 @@ class RunnerSpy:
         self.ffn_size = FFN
         self.fail_on_layer: int | None = None
         self.scratch: FakeScratch | None = None
+        # The full-attention prefill helper derives its row count from
+        # ``scratch.rows`` (it has no explicit ``rows`` parameter), so the
+        # scratch handed to it must carry the ACTIVE prompt rows, not the
+        # bulk capacity.
+        self.prefill_attn_scratch_rows: list[int] = []
+        self.prefill_attn_rows_arg: list[int] = []
 
     def _run_linear_attention_attn_only(self, layer_id, hidden_ptr, attn_out, scratch, **kwargs):
         self._attn(layer_id)
@@ -133,6 +139,8 @@ class RunnerSpy:
     def _run_linear_attention_prefill_attn_rows(
         self, layer_id, hidden_ptr, scratch, *, rows, decode_scratch, stream=0, **kwargs
     ):
+        self.prefill_attn_scratch_rows.append(int(scratch.rows))
+        self.prefill_attn_rows_arg.append(int(rows))
         self._prefill_attn(layer_id, "linear_prefill_attn")
         return None
 
@@ -148,6 +156,7 @@ class RunnerSpy:
         stream=0,
         **kwargs,
     ):
+        self.prefill_attn_scratch_rows.append(int(scratch.rows))
         self._prefill_attn(layer_id, "full_prefill_attn")
         return True
 
@@ -421,6 +430,9 @@ def env(monkeypatch):
 
     from dataclasses import dataclass as _dc, replace as _dc_replace
 
+    bulk_scratches: list[FakeBulkScratch] = []
+    bulk_for_chunk_calls: list[tuple[int, int, int, int]] = []
+
     @_dc(frozen=True)
     class FakeBulkScratch:
         rows: int
@@ -441,6 +453,9 @@ def env(monkeypatch):
         full_attn_split_growth_buffers: tuple = ()
 
         def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
+            bulk_for_chunk_calls.append(
+                (int(self.rows), int(start), int(rows), int(total_tokens))
+            )
             return _dc_replace(self, start=int(start), rows=int(rows),
                                chunk=(int(start), int(rows), int(total_tokens)))
 
@@ -492,6 +507,7 @@ def env(monkeypatch):
         "head_freed": head_freed,
         "injected_rows": injected_rows,
         "bulk_scratches": bulk_scratches,
+        "bulk_for_chunk_calls": bulk_for_chunk_calls,
     }
 
 
@@ -1248,4 +1264,28 @@ def test_bulk_prefill_failure_poisons_the_session(env) -> None:
     assert session.poisoned is True
     with pytest.raises(TP2GroupError, match="poisoned"):
         session.bulk_prefill([1, 2, 3, 4])
+    session.close()
+
+
+def test_bulk_prefill_sets_the_active_chunk_metadata(env) -> None:
+    session = _bulk_session(env, rows=8)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    # The bulk scratch is allocated at capacity and must be narrowed to the
+    # active prompt rows exactly like the resident bulk caller's for_chunk.
+    assert env["bulk_for_chunk_calls"] == [(8, 0, 4, 4), (8, 0, 4, 4)]
+    session.close()
+
+
+def test_bulk_full_attention_uses_the_active_prompt_rows(env) -> None:
+    session = _bulk_session(env, rows=8)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    for runner in env["runners"]:
+        # linear-attention layers pass rows explicitly
+        assert runner.prefill_attn_rows_arg == [4, 4]
+        # the full-attention helper has no explicit rows argument; it reads
+        # scratch.rows, so the scratch it receives must carry the active
+        # prompt rows (4), never the bulk capacity (8)
+        assert runner.prefill_attn_scratch_rows == [4, 4, 4]
     session.close()
