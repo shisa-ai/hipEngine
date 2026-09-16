@@ -182,7 +182,47 @@ __global__ void vv_diff_cfg_combine_kernel(
   }
 }
 
+__global__ void vv_diff_dpm_step_kernel(
+    const uint16_t* __restrict__ sample, const uint16_t* __restrict__ eps,
+    const uint16_t* __restrict__ x0_prev, uint16_t* __restrict__ sample_out,
+    uint16_t* __restrict__ x0_out, float alpha_b, float sigma_b, float scale,
+    float coef_b, float half_coef_b, float inv_r0_b, int64_t n, int order) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= n) return;
+  const float s = bf16_bits_to_float(sample[idx]);
+  const float e = bf16_bits_to_float(eps[idx]);
+  // x0 = r(r(alpha_b * sample) - r(sigma_b * eps))
+  const float t1 = bf16_bits_to_float(rbf(alpha_b * s));
+  const float t2 = bf16_bits_to_float(rbf(sigma_b * e));
+  const uint16_t x0 = rbf(t1 - t2);
+  const float m0 = bf16_bits_to_float(x0);
+  // term0 is a true FP32 product (scale is not bf16-rounded); term1/term2 round.
+  float prev = scale * s - bf16_bits_to_float(rbf(coef_b * m0));
+  // order == 1 (first order) uses only coef_b; order == 2 adds the midpoint term.
+  if (order > 1) {
+    const float m1 = bf16_bits_to_float(x0_prev[idx]);
+    const float d1 = bf16_bits_to_float(rbf(inv_r0_b * bf16_bits_to_float(rbf(m0 - m1))));
+    prev -= bf16_bits_to_float(rbf(half_coef_b * d1));
+  }
+  sample_out[idx] = rbf(prev);
+  x0_out[idx] = x0;
+}
+
 }  // namespace
+
+extern "C" int hipengine_vv_diff_dpm_step_bf16(
+    const uint16_t* sample, const uint16_t* eps, const uint16_t* x0_prev,
+    uint16_t* sample_out, uint16_t* x0_out, float alpha_b, float sigma_b,
+    float scale, float coef_b, float half_coef_b, float inv_r0_b, int64_t n,
+    int order, hipStream_t stream) {
+  if (n <= 0) return static_cast<int>(hipErrorInvalidValue);
+  const unsigned blocks = static_cast<unsigned>((n + 255) / 256);
+  hipLaunchKernelGGL(vv_diff_dpm_step_kernel, dim3(blocks), dim3(256), 0, stream,
+                     sample, eps, x0_prev, sample_out, x0_out, alpha_b, sigma_b,
+                     scale, coef_b, half_coef_b, inv_r0_b, n, order);
+  return static_cast<int>(hipGetLastError());
+}
+
 
 extern "C" int hipengine_vv_diff_rmsnorm_bf16(
     const uint16_t* x, const uint16_t* w, uint16_t* out, int64_t rows,

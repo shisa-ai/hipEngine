@@ -207,6 +207,94 @@ def test_gpu_head_step0_matches_cpu_reference(bundle, gpu_head):
     )
 
 
+def test_gpu_dpm_step_kernel_matches_cpu_solver(bundle):
+    """The fused solver-step kernel must be bit-identical to the numpy solver.
+
+    Runs the whole 20-step schedule through the kernel, feeding each step's
+    device ``x0`` back as the next step's ``x0_prev``, and compares both the
+    returned sample and ``x0`` against ``DPMSolverMultistepScheduler.step``.
+    Order 1 and order 2 are both exercised by the schedule itself.
+    """
+    import hipengine.kernels.cpu_reference.vibevoice_tts_diffusion as diff_ref
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_array_to_device,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.vibevoice import diffusion as hip_diff
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+    from hipengine.runtime.vibevoice_tts_diffusion import _bf16_bits_to_f32
+
+    spec, _, _, _ = bundle
+    runtime = get_hip_runtime()
+    shape = (2, spec.latent_size)
+    count = int(np.prod(shape))
+
+    rng = np.random.default_rng(0)
+    sample = diff_ref.bf16_round(rng.standard_normal(shape).astype(np.float32))
+    eps = diff_ref.bf16_round(rng.standard_normal(shape).astype(np.float32))
+
+    s_dev, e_dev, p_dev, out_dev, x0_dev = (malloc(count * 2) for _ in range(5))
+
+    def upload(buffer, array):
+        copy_host_array_to_device(
+            buffer, f32_to_bf16_bits(np.ascontiguousarray(array).reshape(-1))
+        )
+
+    def download(buffer):
+        raw = np.empty(count, dtype=np.uint16)
+        copy_device_to_host(raw.ctypes.data, buffer, count * 2, runtime=runtime)
+        return _bf16_bits_to_f32(raw, shape)
+
+    upload(s_dev, sample)
+    upload(e_dev, eps)
+    upload(p_dev, np.zeros_like(sample))
+
+    ref_sched = diff_ref.DPMSolverMultistepScheduler(spec)
+    ref_sched.set_timesteps(spec.num_inference_steps)
+    scale_sched = diff_ref.DPMSolverMultistepScheduler(spec)
+    scale_sched.set_timesteps(spec.num_inference_steps)
+
+    orders = []
+    for timestep in ref_sched.timesteps:
+        expected_x0 = ref_sched._convert_model_output(eps, sample.astype(np.float32))
+        order, a_b, s_b, scale, coef_b, half_b, inv_r0 = scale_sched.step_scalars()
+        expected = ref_sched.step(eps, int(timestep), sample)
+
+        hip_diff.vv_diff_dpm_step_bf16(
+            s_dev.ptr, e_dev.ptr, p_dev.ptr, out_dev.ptr, x0_dev.ptr,
+            a_b, s_b, scale, coef_b, half_b, inv_r0, count, order,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        got = download(out_dev)
+        got_x0 = download(x0_dev)
+
+        orders.append(order)
+        assert np.array_equal(got_x0, expected_x0), (
+            f"x0 diverged at timestep {int(timestep)} (order {order})"
+        )
+        assert np.array_equal(got, expected), (
+            f"sample diverged at timestep {int(timestep)} (order {order}): "
+            f"max |diff| {np.abs(got - expected).max()}"
+        )
+
+        # Feed this step's device x0 back as the next step's x0_prev.
+        upload(p_dev, got_x0)
+        upload(s_dev, got)
+
+        scale_sched.model_outputs = scale_sched.model_outputs[1:] + [got_x0]
+        if scale_sched.lower_order_nums < spec.solver_order:
+            scale_sched.lower_order_nums += 1
+        scale_sched._step_index += 1
+        sample = expected
+
+    # The schedule must exercise both solver orders, or the test proves nothing
+    # about the second-order path.
+    assert set(orders) == {1, 2}, f"schedule only exercised orders {sorted(set(orders))}"
+
+
 def test_gpu_diffusion_resolves_through_registry():
     from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 
@@ -218,5 +306,6 @@ def test_gpu_diffusion_resolves_through_registry():
         "vv_diff_modulate_bf16",
         "vv_diff_gated_residual_bf16",
         "vv_diff_cfg_combine_bf16",
+        "vv_diff_dpm_step_bf16",
     ):
         assert callable(getattr(ops, name)), f"{name} not registered in the vibevoice family"

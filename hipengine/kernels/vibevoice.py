@@ -15,6 +15,7 @@ PRIMITIVES = (
     'qwen35_partial_rotary_f32',
     'vv_diff_silu_bf16','vv_diff_add_bf16','vv_diff_mul_bf16','vv_diff_modulate_bf16',
     'vv_diff_gated_residual_bf16','vv_diff_cfg_combine_bf16','vv_diff_rmsnorm_bf16',
+    'vv_diff_dpm_step_bf16',
     'vv_diff_rmsnorm_modulate_bf16',
 )
 
