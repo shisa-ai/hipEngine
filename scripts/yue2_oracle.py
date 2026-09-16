@@ -652,7 +652,10 @@ def cmd_nar(args) -> int:
     codec = [int(v) for v in rng.integers(0, 32768, size=frames)]
 
     chunks = song_chunks(prefix, codec, seed)
-    report = {"prefix_length": len(prefix), "frames": frames, "chunks": len(chunks), "seed": seed}
+    for entry in chunks:
+        entry.nar_cond_end = int(getattr(args, "nar_cond_end", 0) or 0)
+    report = {"prefix_length": len(prefix), "frames": frames, "chunks": len(chunks), "seed": seed,
+              "steps": int(args.steps), "nar_cond_end": int(getattr(args, "nar_cond_end", 0))}
     engine = CachedNAR(model, chunks[0])
     chunk = chunks[0]
     state = chunk.noise.to(device=engine.device, dtype=engine.dtype)
@@ -671,6 +674,25 @@ def cmd_nar(args) -> int:
             raw_mid = float(torch.logit(torch.tensor(t - dt / 2, dtype=torch.float64)).clamp(-20, 20))
             state = state - engine.velocity(mid, raw_mid) * dt
     latents = state.float().cpu().numpy()
+    # A recorded trace is only useful if it is self-consistent: re-evaluate every
+    # recorded velocity at its own recorded state and timestep before writing it,
+    # so a schedule or bookkeeping error cannot silently produce a fixture that no
+    # correct implementation can match.
+    with torch.inference_mode():
+        for step in range(steps):
+            t = 1.0 - step * dt
+            raw = float(torch.logit(torch.tensor(t, dtype=torch.float64)).clamp(-20, 20))
+            replay = engine.velocity(
+                torch.from_numpy(np.asarray(states[step])).to(device=engine.device, dtype=engine.dtype),
+                raw,
+            ).float().cpu().numpy()
+            drift = float(np.abs(replay - np.asarray(velocities[step])).max())
+            report[f"replay_step{step}_max_abs"] = drift
+            if drift > 1e-3:
+                raise RuntimeError(
+                    f"NAR trace replay mismatch at step {step}: max abs {drift}; "
+                    "the recorded velocity does not correspond to the recorded state"
+                )
     save_npz(
         out / "chunk0.npz",
         prefix=np.asarray(prefix, dtype=np.int32),
@@ -2246,6 +2268,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prefix-length", type=int, default=512)
     p.add_argument("--frames", type=int, default=32)
     p.add_argument("--steps", type=int, default=8)
+    p.add_argument("--nar-cond-end", type=int, default=0,
+                   help="restrict NAR visibility to the first N AR positions")
     p.add_argument("--seed", type=int, default=1234)
     p.set_defaults(func=cmd_nar)
     p = sub.add_parser("vae")

@@ -25,8 +25,9 @@ _S = ctypes.c_void_p
 
 _ARGTYPES_GATHER_ADD = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_ADD_BROADCAST = (_P, _P, _P, _I, _I, _S)
-_ARGTYPES_STATE_UPDATE = (_P, _P, _P, _P, _I, _I, _S)
+_ARGTYPES_STATE_UPDATE = (_P, _P, _F, _P, _I, _I, _S)
 _ARGTYPES_ATTENTION = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
+_ARGTYPES_ROPE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
 
 
 def plan_yue2_nar_build(**kwargs):
@@ -115,7 +116,7 @@ def nar_add_broadcast_bf16(
 def nar_state_update_bf16(
     state_ptr: int,
     velocity_ptr: int,
-    scale_ptr: int,
+    scale: float,
     out_ptr: int,
     rows: int,
     width: int,
@@ -124,13 +125,17 @@ def nar_state_update_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """``out = bf16(state - bf16(velocity * scale))``: two roundings, as torch."""
+    """``out = bf16(state - bf16(velocity * scale))``: two roundings, as torch.
+
+    ``scale`` is FP32 because the reference multiplies by a Python float, which
+    torch evaluates in the tensor's FP32 compute type before rounding to BF16.
+    """
     library = library or _library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library, "hipengine_yue2_nar_state_update_bf16", _ARGTYPES_STATE_UPDATE, ctypes.c_int
     )
-    err = fn(state_ptr, velocity_ptr, scale_ptr, out_ptr, rows, width, stream)
+    err = fn(state_ptr, velocity_ptr, scale, out_ptr, rows, width, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -162,6 +167,35 @@ def nar_attention_f32(
     err = fn(
         q_ptr, nar_k_ptr, nar_v_ptr, ar_k_ptr, ar_v_ptr, out_ptr,
         rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def nar_rope_f32(
+    q_ptr: int,
+    k_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    positions_ptr: int,
+    q_out_ptr: int,
+    k_out_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Rotate-half RoPE with per-row positions; either head count may be zero."""
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_yue2_nar_rope_f32", _ARGTYPES_ROPE, ctypes.c_int)
+    err = fn(
+        q_ptr, k_ptr, cos_table_ptr, sin_table_ptr, positions_ptr, q_out_ptr, k_out_ptr,
+        rows, num_q_heads, num_kv_heads, head_dim, stream,
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
