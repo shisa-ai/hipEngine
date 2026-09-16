@@ -56,6 +56,30 @@ FAMILIES: tuple[dict, ...] = (
     # benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/ at both
     # scopes; these arms supply the matching performance half.
     {
+        # Control: an override that changes no route. Any --override re-runs
+        # configure_mmq_prefill_resources() in _apply_post_binder_overrides
+        # while the fallback arm, which passes no override, does not. This arm
+        # measures that difference on its own so it can be subtracted from
+        # every family's saving rather than silently inflating all of them.
+        "family": "NOOP_OVERRIDE_CONTROL",
+        "env": {"HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0"},
+    },
+    {
+        "family": "Q8_DENSE_WIDE_16_47",
+        "env": {
+            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
+            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
+                map(str, range(16, 48))
+            ),
+        },
+    },
+    {
+        "family": "Q8_WMMA_LAYERS_16_47",
+        "env": {
+            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": ",".join(map(str, range(16, 48)))
+        },
+    },
+    {
         "family": "Q8_WMMA_LAYERS_32_47",
         "env": {
             "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": ",".join(map(str, range(32, 48)))
