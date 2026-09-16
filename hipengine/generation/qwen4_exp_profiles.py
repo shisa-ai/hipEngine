@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import replace
 from typing import Any
 
@@ -20,6 +21,14 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+PREBINDER_CONFLICT_ENV = "HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT"
+_last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
+# Values this module has written, so a later bind can tell its own previous
+# write apart from a value the caller set. Strict-then-production binding in one
+# process is normal and is not a conflict.
+_binder_written: dict[str, str] = {}
+
+
 PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
@@ -547,6 +556,55 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
     return tuple(result)
 
 
+def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
+    """Return env keys whose caller-set value the last bind discarded.
+
+    Maps the variable to ``(value_before_bind, value_written_by_bind)``.  The
+    binder owns every variable it writes, so a value set before generator
+    construction is silently discarded: the caller's route never runs and the
+    run reports a clean null.  Gates that flip a profile-owned variable must set
+    it *after* the binder, and this getter is how they assert they did.
+    """
+
+    return dict(_last_prebinder_conflicts)
+
+
+def _apply_profile_env(values: dict[str, str]) -> None:
+    """Write binder-owned env values, recording any caller value it discards."""
+
+    for key, value in values.items():
+        previous = os.environ.get(key)
+        if (
+            previous is not None
+            and previous != value
+            and _binder_written.get(key, object()) != previous
+        ):
+            _last_prebinder_conflicts[key] = (previous, value)
+        os.environ[key] = value
+        _binder_written[key] = value
+
+
+def _report_prebinder_conflicts() -> None:
+    """Warn, or raise, when a bind discarded a caller-set route variable."""
+
+    if not _last_prebinder_conflicts:
+        return
+    detail = ", ".join(
+        f"{key}={before!r} -> {after!r}"
+        for key, (before, after) in sorted(_last_prebinder_conflicts.items())
+    )
+    message = (
+        "Qwen4Exp profile bind discarded pre-binder values for "
+        f"{len(_last_prebinder_conflicts)} profile-owned variable(s): {detail}. "
+        "The binder owns these, so a value set before generator construction "
+        "is inert and the intended route did not run. Set them after the "
+        "binder instead."
+    )
+    if os.environ.get(PREBINDER_CONFLICT_ENV, "warn").strip().lower() == "error":
+        raise RuntimeError(message)
+    warnings.warn(message, RuntimeWarning, stacklevel=3)
+
+
 def _bind_default_chunk(generator: Any, *, production: bool) -> None:
     if getattr(generator,"_implicit_profile_chunk_size",False):
         # The qualified factory allocated1024 before profile binding.
@@ -554,6 +612,7 @@ def _bind_default_chunk(generator: Any, *, production: bool) -> None:
 
 
 def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
+    _last_prebinder_conflicts.clear()
     _bind_default_chunk(generator,production=production)
     table = getattr(getattr(generator, "_resident", None), "ple_table", None)
     if table is not None:
@@ -566,7 +625,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             "random" if qualified else "normal",
         )
         table.configure_mapping_access(mode)
-    os.environ[PRODUCTION_MOE_PREFILL_ENV] = "1" if production else "0"
+    _apply_profile_env({PRODUCTION_MOE_PREFILL_ENV: "1" if production else "0"})
     # Preserve the existing Q4_K_M plan and freeze neighboring experiments.
     # UD-Q4_K_XL overrides its unqualified arithmetic below, before allocating
     # profile resources; the exact optimized owners remain enabled.
@@ -574,6 +633,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
     # constant; the ds4-MMQ envs stay off so they cannot preempt it, and the
     # exact-grouped guards (`not production_grouped_moe`) keep layers 0-26 on
     # their separately manifested exact grouped owners.
+    profile_env: dict[str, str] = {}
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
@@ -700,12 +760,22 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
     }.items():
-        os.environ[key] = value
+        profile_env[key] = value
+    _apply_profile_env(profile_env)
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
-        for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
-            os.environ["HIPENGINE_QWEN4_EXP_" + flag] = "0"
-        for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items():
-            os.environ["HIPENGINE_QWEN4_EXP_" + flag] = value
+        _apply_profile_env(
+            {
+                "HIPENGINE_QWEN4_EXP_" + flag: "0"
+                for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
+            }
+        )
+        _apply_profile_env(
+            {
+                "HIPENGINE_QWEN4_EXP_" + flag: value
+                for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
+            }
+        )
+    _report_prebinder_conflicts()
     if production:
         configure = getattr(
             getattr(generator, "runner", None),

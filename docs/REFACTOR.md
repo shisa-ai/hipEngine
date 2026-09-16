@@ -6994,3 +6994,29 @@ the same helper once the publication protocols have been re-read, then delete
 the `provenance.get("dirty")` fallback argument from the two migrated gates.
 Retained-row publication scripts may deliberately want the stricter rule; decide
 per script rather than sweeping.
+
+## 2026-09-16 Qwen4Exp binder: pre-binder env conflicts are reported
+
+The Qwen4Exp profile binder owns 66 env variables and overwrites all of them
+during its pass, so a value set before generator construction is silently
+discarded: the caller's route never runs and the experiment reports a clean null
+that reads like a real negative result. That hazard is now surfaced rather than
+documented. `_apply_profile_env` records every caller-set value the bind
+discards, `last_prebinder_conflicts()` exposes them, and
+`_report_prebinder_conflicts` warns — or raises when
+`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT=error`. The module tracks its own writes
+separately so strict-then-production binding in one process is not a conflict.
+`scripts/execution_profile_q8_wmma_prefill_layers_gate.py` raises on a non-empty
+conflict map rather than measuring the wrong route.
+
+An audit of all 31 scripts that mention a binder-owned variable found **no**
+script that sets one before constructing a generator, so no prior null result is
+attributable to this hazard. The established convention is
+`qwen4exp_profile_gap.py`'s `_apply_post_binder_overrides`, which is correct.
+The layer-scope gate's bespoke setup was the only site at risk and it already
+flips post-binder.
+
+Removal condition: when Qwen4Exp profile state becomes request-local (tracked in
+the 2026-08-29 entry above), the env transport disappears and this conflict
+reporting goes with it. Until then the warning is the guard; do not downgrade it
+to a comment.
