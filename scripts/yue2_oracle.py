@@ -655,14 +655,20 @@ def cmd_nar(args) -> int:
     rng = np.random.default_rng(seed)
     codec = [int(v) for v in rng.integers(0, 32768, size=frames)]
 
-    chunks = song_chunks(prefix, codec, seed, context=int(getattr(args, "context", 0) or 24576))
+    context = int(getattr(args, "context", 0) or 24576)
+    chunks = song_chunks(prefix, codec, seed, context=context)
+    # Reproduce the reference's own whole-song draw: ``song_chunks`` takes views
+    # of it, so recording only the view would leave the gate unable to rebuild the
+    # chunking for a multi-chunk song.
+    song_generator = torch.Generator(device="cpu").manual_seed(seed)
+    song_noise = torch.randn((len(codec), 64), dtype=torch.float32, device="cpu", generator=song_generator)
     for entry in chunks:
         entry.nar_cond_end = int(getattr(args, "nar_cond_end", 0) or 0)
     steps = int(args.steps)
     dt = 1.0 / steps
     report = {"prefix_length": len(prefix), "frames": frames, "chunks": len(chunks), "seed": seed,
               "steps": steps, "nar_cond_end": int(getattr(args, "nar_cond_end", 0)),
-              "context": int(getattr(args, "context", 0) or 24576), "chunk_reports": []}
+              "context": context, "chunk_reports": []}
     for index, chunk in enumerate(chunks):
         engine = CachedNAR(model, chunk)
         state = chunk.noise.to(device=engine.device, dtype=engine.dtype)
@@ -703,6 +709,7 @@ def cmd_nar(args) -> int:
             "prefix": np.asarray(prefix, dtype=np.int32),
             "codec": np.asarray(codec, dtype=np.int32),
             "noise": chunk.noise.numpy(),
+            "song_noise": song_noise.numpy(),
             "velocities": np.asarray(velocities),
             "states": np.asarray(states),
             "latents": latents,
@@ -714,6 +721,7 @@ def cmd_nar(args) -> int:
             prefix=common["prefix"],
             codec=common["codec"],
             noise=common["noise"],
+            song_noise=common["song_noise"],
             velocities=common["velocities"][:4],
             states=common["states"][:4],
             latents=latents,
@@ -721,7 +729,7 @@ def cmd_nar(args) -> int:
         )
         report["chunk_reports"].append({
             "index": index,
-            "frames": int(chunk.frames),
+            "frames": int(len(chunk.noise)),
             "ar_tokens": int(len(chunk.ar_tokens)),
             "latent_norm": float(np.linalg.norm(latents)),
             "velocity_norm_step0": float(np.linalg.norm(velocities[0])),
@@ -1059,7 +1067,18 @@ def cmd_tokenizer(args) -> int:
 VOCAB = 184704
 EOD = 151643
 CODEC_SIZE = 32768
-FIXTURE_FAMILIES = ("ar_replay", "cases", "greedy", "nar", "operators", "sampling", "tokenizer", "vae")
+FIXTURE_FAMILIES = (
+    "ar_replay",
+    "cases",
+    "greedy",
+    "nar",
+    "nar-condend",
+    "nar-multichunk",
+    "operators",
+    "sampling",
+    "tokenizer",
+    "vae",
+)
 INTEGRITY_NAME = "integrity.json"
 
 

@@ -2,7 +2,7 @@
   "chunks": [
     {
       "ar_tokens": 545,
-      "condition_seconds": 1.0623759590089321,
+      "condition_seconds": 0.9848374290158972,
       "frames": 32,
       "index": 0,
       "latents": {
@@ -18,7 +18,7 @@
       "nar_cond_end": 0,
       "nar_rows": 34,
       "passed": true,
-      "solve_seconds": 0.8606634300667793,
+      "solve_seconds": 0.7972064110217616,
       "steps_report": [
         {
           "raw_mid": 1.9459101490553132,
@@ -121,7 +121,7 @@
           }
         }
       ],
-      "teacher_forced_seconds": 0.42964533797930926,
+      "teacher_forced_seconds": 0.4044983870116994,
       "worst_velocity_relative_l2": 0.018922585210672915
     }
   ],
@@ -138,7 +138,7 @@
     },
     "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
     "protocol": "yue2-nar-fixture-gate-v1",
-    "revision": "edd8c6cd9e0e9e5034aca0de7b17ef94d642d900"
+    "revision": "d6ce67eae7d78b2635fab9e9c5f5236ec4aa2728"
   },
   "recorded_chunks": 1,
   "seed": 1234,

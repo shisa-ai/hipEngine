@@ -240,7 +240,10 @@ def main() -> int:
             )
         prefix = [int(v) for v in arrays["prefix"]]
         codec = [int(v) for v in arrays["codec"]]
-        noise = np.asarray(arrays["noise"], dtype=np.float32)
+        # ``song_noise`` is the whole-song draw the chunk views come from; older
+        # single-chunk fixtures stored the chunk slice itself.
+        key = "song_noise" if "song_noise" in arrays.files else "noise"
+        noise = np.asarray(arrays[key], dtype=np.float32)
         cond_end = int(arrays["nar_cond_end"]) if "nar_cond_end" in arrays.files else 0
         chunks = song_chunks(prefix, codec, seed, context=context, noise=noise, nar_cond_end=cond_end)
         index = int(path.stem.removeprefix("chunk"))
