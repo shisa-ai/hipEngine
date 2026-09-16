@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-15**
+Last updated: **2026-09-16**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -1133,13 +1133,16 @@ the step within the spin budget instead of hanging the group. What the
 checkpoint
 certifies is arithmetic and control: the sharded model stays inside the
 calibrated production envelope against both per-GPU TP1 controls (full-logit
-teacher-forced mean KL 3.945e-04, max KL 2.365e-03, top-1 agreement 100%
-over a 16-token sequence, identical against both controls), the two TP1
-controls agree bit-identically with each other, and a repeated TP2 run
-reproduces both tokens and logits bit-exactly. The partial-staging dtype is
-uniform bf16 because the artifact's Q4_K down projections register only a
-bf16 partial consumer; the Q6_K layers' registered f32 partial variant is a
-per-layer numerical candidate, not this run's schedule. Device 1 (23.98 GiB
+teacher-forced mean KL 1.79e-04, p99 KL 2.70e-03, max KL 1.21e-02, top-1
+agreement 100% over the 18-prompt canonical+heldout suite, 831 positions,
+identical against both controls), the two TP1 controls agree bit-identically
+with each other, and a repeated TP2 run reproduces both tokens and logits
+bit-exactly. The same envelope holds on the narrower 16-token checkpoint
+sequence (mean KL 3.945e-04, max KL 2.365e-03, top-1 100%). The
+partial-staging dtype is uniform bf16 because the artifact's Q4_K down
+projections register only a bf16 partial consumer; the Q6_K layers'
+registered f32 partial variant is a per-layer numerical candidate, not this
+run's schedule. Device 1 (23.98 GiB
 XTX) holds the full 16.5 GiB replica plus a 5.6 GiB shard set with 0.75 GiB
 free after load.
 
@@ -1212,6 +1215,7 @@ loader path.
 [break-even projection, serial host exchange](results/tp2_break_even_staged_exchange_host_sync.json),
 [break-even projection, batched host exchange](results/tp2_break_even_staged_exchange_batched.json),
 [full-model generation checkpoint](results/2026-09-15-w7900-tp2-mlp-generate-e2e.json),
+[per-GPU TP1 teacher controls, full suite](results/2026-09-16-w7900-tp2-teacher-coverage-broad.json),
 [matched W7900 TP1 arm](results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json),
 [matched XTX TP1 arm](results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json),
 [shard plan and byte preservation](results/tp2_shard_plan_report.json),
