@@ -394,7 +394,13 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         and not quality.get("requires_outlier_review", False)
     )
     deterministic = bool(evaluated["repeat_determinism"]["passed"])
-    measurement_valid = bool(quality_passed and deterministic and not provenance.get("dirty"))
+    # Validity turns on whether the dirty worktree can change what executed,
+    # not on whether any file anywhere is dirty.
+    measurement_valid = bool(
+        quality_passed
+        and deterministic
+        and not provenance.get("execution_affecting_dirty", provenance.get("dirty"))
+    )
     artifact: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -408,7 +414,12 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             for blocker, ok in (
                 ("calibrated quality thresholds", quality_passed),
                 ("same-schedule repeat determinism", deterministic),
-                ("clean worktree provenance", not provenance.get("dirty")),
+                (
+                    "execution-affecting worktree provenance",
+                    not provenance.get(
+                        "execution_affecting_dirty", provenance.get("dirty")
+                    ),
+                ),
             )
             if not ok
         ],

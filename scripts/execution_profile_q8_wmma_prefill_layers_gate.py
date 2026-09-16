@@ -312,7 +312,10 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         and not quality.get("requires_outlier_review", False)
     )
     deterministic = bool(evaluated["repeat_determinism"]["passed"])
-    clean = not provenance.get("dirty")
+    # Validity turns on whether the dirty worktree can change what executed,
+    # not on whether any file anywhere is dirty: another agent's untracked
+    # notes cannot alter dispatch or arithmetic.
+    clean = not provenance.get("execution_affecting_dirty", provenance.get("dirty"))
     measurement_valid = bool(quality_passed and deterministic and clean)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -327,7 +330,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             for blocker, ok in (
                 ("calibrated quality thresholds", quality_passed),
                 ("same-schedule repeat determinism", deterministic),
-                ("clean worktree provenance", clean),
+                ("execution-affecting worktree provenance", clean),
             )
             if not ok
         ],

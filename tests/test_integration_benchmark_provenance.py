@@ -12,6 +12,7 @@ from hipengine.benchmark.provenance import (
     collect_artifact_provenance,
     collect_model_identity,
     collect_repo_state,
+    is_execution_affecting,
     validate_artifact_provenance,
 )
 
@@ -64,6 +65,70 @@ def test_repo_state_separates_staged_unstaged_and_untracked_axes(tmp_path: Path)
     assert mixed["untracked_dirty"] is True
     assert mixed["untracked_count"] == 1
     assert mixed["dirty"] is True
+
+
+def test_repo_state_names_the_dirty_paths_it_counts(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+
+    clean = collect_repo_state(repo)
+    assert clean["dirty_paths"] == []
+    assert clean["dirty_path_count"] == 0
+    assert clean["untracked_paths"] == []
+    assert clean["execution_affecting_dirty"] is False
+    assert clean["execution_affecting_paths"] == []
+
+    (repo / "tracked.txt").write_text("unstaged\n", encoding="utf-8")
+    (repo / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+    dirty = collect_repo_state(repo)
+    # A bare boolean leaves a measurement unreproducible; the artifact has to
+    # say which file was modified.
+    assert dirty["dirty_paths"] == ["tracked.txt"]
+    assert dirty["dirty_path_count"] == 1
+    assert dirty["untracked_paths"] == ["untracked.txt"]
+    assert dirty["execution_affecting_paths"] == ["tracked.txt", "untracked.txt"]
+
+
+def test_repo_state_excuses_a_worktree_dirty_only_in_prose_trees(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "note.md").write_text("scratch\n", encoding="utf-8")
+    (repo / "worklog" / "entries").mkdir(parents=True)
+    (repo / "worklog" / "entries" / "e.md").write_text("entry\n", encoding="utf-8")
+
+    state = collect_repo_state(repo)
+    assert state["dirty"] is True
+    assert state["untracked_count"] == 2
+    # Documentation cannot change dispatch or arithmetic, so another agent's
+    # scratch notes must not invalidate a measurement.
+    assert state["execution_affecting_dirty"] is False
+    assert state["execution_affecting_paths"] == []
+
+    (repo / "kernel.hip").write_text("__global__ void k() {}\n", encoding="utf-8")
+    affected = collect_repo_state(repo)
+    assert affected["execution_affecting_dirty"] is True
+    assert affected["execution_affecting_paths"] == ["kernel.hip"]
+
+
+def test_execution_affecting_classification_defaults_to_conservative() -> None:
+    for inert in (
+        "docs/PLAN.md",
+        "docs/superpowers/plans/x.md",
+        "worklog/entries/e.md",
+        "benchmarks/results/run.json",
+        "CLAUDE.md",
+        "README.md",
+    ):
+        assert is_execution_affecting(inert) is False, inert
+    for affecting in (
+        "hipengine/runtime/gguf_linear.py",
+        "kernels/hip_gfx1151/q8.hip",
+        "scripts/gate.py",
+        "benchmarks/fixtures/canonical.json",
+        "pyproject.toml",
+        # An unrecognised path is assumed to matter rather than assumed inert.
+        "unknown_tree/thing.bin",
+    ):
+        assert is_execution_affecting(affecting) is True, affecting
 
 
 def test_model_identity_is_content_derived_and_infers_snapshot_revision(tmp_path: Path) -> None:
@@ -123,7 +188,7 @@ def test_artifact_provenance_resolves_auto_backend_and_validates_schema(
 
     assert validate_artifact_provenance(provenance, require_model=True) == provenance
     assert provenance["kind"] == "hipengine_artifact_provenance"
-    assert provenance["schema_version"] == 2
+    assert provenance["schema_version"] == 3
     assert provenance["host_name"] == "zbook-test"
     assert provenance["configured_backend"] == "auto"
     assert provenance["resolved_backend"] == "hip_gfx1151"
@@ -205,13 +270,25 @@ def test_json_schema_tracks_the_canonical_provenance_contract() -> None:
     )
 
     assert schema["properties"]["kind"] == {"const": "hipengine_artifact_provenance"}
-    assert schema["properties"]["schema_version"] == {"enum": [1, 2]}
+    assert schema["properties"]["schema_version"] == {"enum": [1, 2, 3]}
     assert "host_name" in schema["properties"]
     assert "host_name" not in schema["required"]
     assert schema["allOf"] == [
         {
-            "if": {"properties": {"schema_version": {"const": 2}}},
+            "if": {"properties": {"schema_version": {"minimum": 2}}},
             "then": {"required": ["host_name"]},
-        }
+        },
+        {
+            "if": {"properties": {"schema_version": {"const": 3}}},
+            "then": {
+                "required": [
+                    "dirty_paths",
+                    "dirty_path_count",
+                    "untracked_paths",
+                    "execution_affecting_dirty",
+                    "execution_affecting_paths",
+                ]
+            },
+        },
     ]
     assert schema["additionalProperties"] is False
