@@ -237,6 +237,7 @@ class MlpTP2GenerationSession:
         self._shard_group: MlpShardGroup | None = None
         self._bulk_shard_group: MlpShardGroup | None = None
         self._bulk_scratch: dict[int, Any] = {}
+        self._bulk_chunk_scratch: dict[int, Any] = {}
         self._bulk_hidden: dict[int, tuple[int, int]] = {}
         self._bulk_token_buf: dict[int, Any] = {}
         self._bulk_logits_buf: dict[int, Any] = {}
@@ -514,6 +515,23 @@ class MlpTP2GenerationSession:
                         stream=self._rank_stream(device),
                         runtime=self.runtime,
                     )
+            # The resident bulk caller narrows the capacity-sized scratch to
+            # the active chunk with ``for_chunk`` before every layer. The
+            # full-attention helper reads its row count from ``scratch.rows``
+            # (it has no explicit ``rows`` argument), so without this the
+            # full-attention layers would run at the whole bulk capacity
+            # instead of the prompt length.
+            for device in self.devices:
+                with scoped_current_device(self.runtime, device):
+                    self._bulk_chunk_scratch[device] = self._bulk_scratch[
+                        device
+                    ].for_chunk(
+                        0,
+                        rows,
+                        rows,
+                        runtime=self.runtime,
+                        stream=self._rank_stream(device),
+                    )
             self._run_bulk_prefill_layers(rows)
             logits = self._finish_bulk_prefill(rows)
         except Exception as error:
@@ -543,7 +561,9 @@ class MlpTP2GenerationSession:
     ) -> None:
         for device in self.devices:
             runner = self._runners[device]
-            scratch = self._bulk_scratch[device]
+            scratch = self._bulk_chunk_scratch.get(
+                device, self._bulk_scratch[device]
+            )
             decode_scratch = self._scratches[device]
             stream = self._rank_stream(device)
             with scoped_current_device(self.runtime, device):
@@ -589,7 +609,9 @@ class MlpTP2GenerationSession:
     ) -> None:
         for device in self.devices:
             runner = self._runners[device]
-            scratch = self._bulk_scratch[device]
+            scratch = self._bulk_chunk_scratch.get(
+                device, self._bulk_scratch[device]
+            )
             with scoped_current_device(self.runtime, device):
                 runner._run_post_attention_norm_residual_rows(
                     layer_id,
@@ -633,11 +655,15 @@ class MlpTP2GenerationSession:
             layer_id=layer_id,
             rows=rows,
             post_norm_ptrs={
-                device: self._bulk_scratch[device].post_norm.ptr
+                device: self._bulk_chunk_scratch.get(
+                    device, self._bulk_scratch[device]
+                ).post_norm.ptr
                 for device in self.devices
             },
             residual_ptrs={
-                device: self._bulk_scratch[device].residual.ptr
+                device: self._bulk_chunk_scratch.get(
+                    device, self._bulk_scratch[device]
+                ).residual.ptr
                 for device in self.devices
             },
             out_ptrs={device: int(dst[device]) for device in self.devices},
@@ -1584,6 +1610,7 @@ class MlpTP2GenerationSession:
                 except Exception:  # noqa: BLE001 - teardown continues
                     pass
         self._bulk_scratch.clear()
+        self._bulk_chunk_scratch.clear()
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None

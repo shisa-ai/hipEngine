@@ -1,6 +1,13 @@
 {
+  "correction": {
+    "date": "2026-09-17",
+    "reason": "The original finding asserted the divergence was 'not a control/ownership defect' because bulk and token-serial argmax agree on 127/128 rows, and cited the heldout serial max_kl below 0.05. Neither is sufficient: near-matching argmax does not establish the absence of an ownership/control defect, and max_kl is one of five envelope metrics (the heldout bulk arm fails mean_kl, p99_kl, max_kl and top1; the heldout serial arm's full envelope was never evaluated).",
+    "replacement": "A bounded investigation fixed a real control/metadata defect (the capacity-sized bulk scratch was passed to the full-attention prefill helper, which reads scratch.rows) and localized the first numerical divergence to the layer-0 linear-attention output: bulk vs token-serial attn_out rel 5.21e-03 (max_abs 0.25, same argmax 3994) while the layer-0 GDN conv state is bit-identical and the recurrent state matches to 3.2e-07. The post-attention norm (1.47e-03) and the sharded MLP (6.29e-03) only amplify it, and forcing the bulk MLP through the same group one row at a time does not change the layer-1 divergence. The path stays opt-in/default-off; no threshold was relaxed.",
+    "supersedes": "finding_superseded",
+    "worklog": "worklog/entries/20260916T230256.187972Z-deepseek-v4-flash-coder-tp2-bulk-prefill-first-divergence-684b61.md"
+  },
   "date": "2026-09-17",
-  "finding": "The bulk route runs end to end and preserves KV/GDN state into the graph decode, but its prefill arithmetic fails the unchanged production envelope: on the saved failing prompt max_kl 0.487 (token-serial 0.108), and on a heldout prompt max_kl 0.0557 (token-serial 0.0469, which passes the 0.05 ceiling). The divergence is the known bulk-vs-serial T2 association difference amplified over the GDN recurrent decode, not a control/ownership defect: the bulk and token-serial argmax agree on 127/128 and 126/128 rows and the bulk route is deterministic and repeatable. Per the production contract the path stays opt-in and default-off; no envelope threshold is relaxed.",
+  "finding_superseded": "The bulk route runs end to end and preserves KV/GDN state into the graph decode, but its prefill arithmetic fails the unchanged production envelope: on the saved failing prompt max_kl 0.487 (token-serial 0.108), and on a heldout prompt max_kl 0.0557 (token-serial 0.0469, which passes the 0.05 ceiling). The divergence is the known bulk-vs-serial T2 association difference amplified over the GDN recurrent decode, not a control/ownership defect: the bulk and token-serial argmax agree on 127/128 and 126/128 rows and the bulk route is deterministic and repeatable. Per the production contract the path stays opt-in and default-off; no envelope threshold is relaxed.",
   "host": {
     "cpu": "AMD Ryzen 9 5950X",
     "gpus": [

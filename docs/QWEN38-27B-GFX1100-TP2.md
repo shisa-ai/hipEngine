@@ -676,16 +676,32 @@ default-off and the token-serial route remains the committed prefill schedule.
   **0.108406** at decode index 82 of `mixed_ja_en_translate`, position 146),
   validating the harness. The bulk arm is worse: max KL **0.48714** on
   `mixed_ja_en_translate` and **0.05573** on the heldout `heldout_mixed_summary`
-  (token-serial 0.04689 there, which passes the 0.05 ceiling). Bulk and serial
-  argmax agree on 127/128 and 126/128 rows, so the divergence is the known
-  bulk-vs-serial T2 association difference amplified over the GDN recurrent
-  decode, not a control/ownership defect
+  (token-serial 0.04689 there, which passes the 0.05 ceiling; that is one of
+  five envelope metrics, not proof the heldout gate passes - the bulk arm fails
+  mean_kl 0.00100139, p99_kl 0.0374066, max_kl 0.0557287 and top1 0.968750).
+  A bounded first-divergence investigation localized the bulk prefill's first
+  numerical difference to the **layer-0 linear-attention output**: bulk vs
+  token-serial `attn_out` rel **5.21e-03** (max_abs 0.25, same argmax 3994)
+  while the layer-0 GDN conv state is bit-identical and the recurrent state
+  matches to **3.2e-07**; the post-attention norm (1.47e-03) and the sharded MLP
+  (6.29e-03) only amplify it, and forcing the bulk MLP through the same group
+  one row at a time does not change the layer-1 divergence. The same
+  investigation fixed a separate control/metadata defect: the capacity-sized
+  bulk scratch was passed to the full-attention prefill helper, which derives
+  its row count from `scratch.rows`, so a 64-token prompt on a 200-row capacity
+  ran the full-attention layers at 200 rows and wrote KV for 200 positions;
+  `bulk_prefill` now narrows the scratch with `for_chunk(0, rows, rows)` exactly
+  like the resident bulk caller. That fix does not change the failing-prompt
+  logits (byte-identical sha256), so the GDN output difference is the open
+  first cause
   (`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-diagnostic.json`).
 - **Blocker:** the bulk route cannot be promoted while it exceeds the max-KL
-  ceiling on a heldout prompt where token-serial passes. The next step is to
-  localize the bulk prefill's arithmetic difference (attention/GDN chunking or
-  the batched MLP row-tiling) against the production envelope, not to relax the
-  envelope.
+  ceiling on a heldout prompt where token-serial passes. The next experiment is
+  to compare the resident TP1 bulk's layer-0 `attn_out` against the resident TP1
+  serial `attn_out` on the same prompt: if the resident shows the same ~0.5%
+  GDN output difference the divergence is inherent to the prefill-vs-decode GDN
+  output kernels, otherwise the ~0.5% is a TP2 bulk kernel-argument defect.
+  Do not relax the envelope.
 
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing
