@@ -216,7 +216,12 @@ queries up to 16 heuristic algorithms and its convenience selector defaults to
 `preferred_index=4`, described as the measured fast gfx1151 heuristic. That can
 be correct for the measured shapes and library version while still being
 fragile across shapes, architectures, or hipBLASLt releases. The official
-offline tuner is designed for exactly this problem.
+offline tuner is designed for exactly this problem. The YuE2 AR and NAR runtimes
+now select through `HipblasLtProblem.fast_algorithm()`, which applies that same
+measured index to the zero-workspace candidates, and
+`scripts/hipblaslt_algo_scan.py` is what re-establishes the index on a different
+ROCm version or device. Taking hipBLASLt's first candidate instead cost those two
+runtimes 2.9-4.2x on their projection shapes.
 
 ### Target hardware in ROCm 7.14
 

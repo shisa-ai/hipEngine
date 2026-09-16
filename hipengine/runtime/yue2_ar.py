@@ -487,11 +487,8 @@ class Yue2ArRuntime:
             if shape in self._lt_problems:
                 continue
             problem = self._lt.problem(rows, inputs, outputs, 0)
-            algorithms = [a for a in problem.algorithms(16) if a.workspace_size == 0]
-            if not algorithms:
-                raise RuntimeError(f"no zero-workspace hipBLASLt algorithm for {shape}")
             self._lt_problems[shape] = problem
-            self._lt_algos[shape] = algorithms[0]
+            self._lt_algos[shape] = problem.fast_algorithm()
 
     def _lt_gemm(self, x16_ptr: int, weight_ptr: int, out_ptr: int, rows: int, inputs: int, outputs: int) -> None:
         shape = (rows, inputs, outputs)

@@ -160,15 +160,22 @@ Both routes read the same `KVLiveSpans` ABI (identity slot map, uniform position
 (`YUE2_NAR_ROWS_PER_BLOCK`), so one loaded K or V element serves eight rows, and it
 reads K eight elements and Q four elements per instruction. Those three changes take
 the kernel's own per-call time at the production shape (1 299 rows / 2 695 keys) from
-177.22 ms to 28.34 ms, and the replay of `mandarin-off-s1234` at 2 ODE steps from
-27.76 s of solve to 11.03 s, bit-identical to the parent kernel
+177.22 ms to 28.34 ms, bit-identical to the parent kernel
 (`tests/fixtures/yue2/operators/nar_attention_parent.npz`). It is not bandwidth-bound
 at that point: `rocprofv3 --pmc` on the pre-packing kernel measures 3.5e8 cycles
 carrying 3.7e9 VALU instructions at 19% occupancy, and the same run afterwards
 reaches 93%, so it is instruction- and latency-limited rather than traffic-limited.
-Attention is now 2.93 s of the 11.11 s solve; the remainder is the hipBLASLt
-projection path. M7 numbers are in
-`benchmarks/results/yue2_m7_attention_packed_20260917.json`. Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+The projection path had its own defect: both YuE2 runtimes took the first hipBLASLt
+algorithm hipBLASLt returned, which is 2.9-4.2x slower on these shapes than the
+measured best, so `_prepare_lt` and `_prepare_gemm` select through
+`HipblasLtProblem.fast_algorithm()` (`scripts/hipblaslt_algo_scan.py` establishes the
+index; see [ROCM-AI.md](ROCM-AI.md)). Together those two changes take the replay of
+`mandarin-off-s1234` from 27.76 s of solve to **7.95 s** at 2 ODE steps and from
+443.4 s to **81.13 s** at the product's 32 steps. At 32 steps the solve is
+attention-dominated again, because the AR conditioning prefill is paid once per
+solve. M7 numbers are in
+`benchmarks/results/yue2_m7_attention_packed_20260917.json` and
+`benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`. Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
 
 ### Shared Qwen / PARO path
 

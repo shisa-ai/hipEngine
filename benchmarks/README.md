@@ -1380,19 +1380,20 @@ wall time to prefill all 18 prefixes, so it includes every case's 4-10 rows.
 
 | Prefill route | Mean KL | Max KL | Top-1 | Top-8 recall | Prefill total | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `strict` (row-by-row) | **1.43e-3** | **3.27e-2** | 95.83% | 95.88% | 522.5 s | [`strict replay`](results/yue2_ar_replay_strict_20260916.json) |
-| `hipblaslt` (batched, default) | 2.11e-3 | 9.10e-2 | **96.70%** | **96.05%** | **91.3 s** | [`batched replay`](results/yue2_ar_replay_hipblaslt_20260916.json) |
+| `strict` (row-by-row) | 1.43e-3 | 3.27e-2 | **95.83%** | 95.88% | 522.5 s | [`strict replay`](results/yue2_ar_replay_strict_20260916.json) |
+| `hipblaslt` (batched, default) | **1.16e-3** | **7.10e-3** | 95.49% | **95.88%** | **77.6 s** | [`batched replay`](results/yue2_m7_gemm_algorithm_20260917.json) |
 
 Both routes replay the first case bit-for-bit after all 18 cases have run on the
 same runtime, and both stay inside the broad floor (mean KL ≤ 0.05, top-1 ≥ 90%).
-The batched route is 5.7× faster over the matrix (2.8-6.5× per case, ~5.0 ms/token
-at 2048-token prefixes) and wins on top-1/top-8 because the reference prefill is
-itself a single batched forward; its KL tail is wider on the flat ABC-planning
-distribution, where `abc-nocfg-L128-s5678` (5 rows) reaches 9.10e-2 against the
-strict route's 3.27e-2 and every other case stays at or below 2.3e-2. Both rows
-come from one same-session pair of runs; the strict route's absolute wall time
-moved about 2× between sessions of the identical protocol while the batched
-route stayed within ~6%, so only the paired ratio is quoted.
+The batched route selects its hipBLASLt algorithm by measured index rather than by
+hipBLASLt's own first entry (`scripts/hipblaslt_algo_scan.py`); that choice took
+its pooled mean KL from 2.11e-3 to 1.16e-3, its worst case's max KL from 9.10e-2
+(`abc-nocfg-L128-s5678`, 5 rows) to 7.10e-3, and its prefill total from 91.3 s to
+77.6 s, at a top-1 of 95.49% against the strict route's 95.83%. The strict arm was
+not re-run in the session that measured the 77.6 s, so only the batched route's
+own 91.3 s → 77.6 s is a same-protocol pair; the earlier 522.5 s → 91.3 s pair came
+from one session and is why the strict route's absolute wall time should be read as
+a band rather than a fixed figure.
 
 ### Radeon 8060S: YuE2 3B greedy session gate
 
@@ -1530,7 +1531,7 @@ reproducing command. Evidence:
 [`e2e replay`](results/yue2_e2e_gate_20260916.json),
 [`e2e live`](results/yue2_e2e_live_gate_20260916.json).
 
-### Radeon 8060S: YuE2 3B NAR attention packing
+### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 
 The NAR attention kernel walked the key/value cache once per (query row, query
 head) pair, so a 1 299-frame song re-read 27.9 GB of K/V per call. Blocks now own
@@ -1541,45 +1542,53 @@ been asking the L1 for 32 sectors at a time; and the V walk steps by pointer
 instead of multiplying and branching per key. `rocprofv3 --pmc` on the previous
 kernel measures why the packing mattered more than the traffic: 3.5e8 cycles
 carried 3.7e9 VALU instructions at **19% occupancy**, so it was stalled rather
-than bandwidth-bound, and the same run after the change reaches **93%**.
+than bandwidth-bound, and the same run after the change reaches **93%**. The
+projection path had a second, larger defect: both YuE2 runtimes took the first
+hipBLASLt algorithm hipBLASLt returned, and that entry is 2.9-4.2× slower on these
+shapes than the measured best, which the same wrapper already documented as its
+fast heuristic. Both now select by measured index.
 
 | Measurement | Before | After | Ratio |
 | --- | ---: | ---: | ---: |
 | `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **28.34 ms** | **6.25x** |
-| NAR solve of `mandarin-off-s1234`, 2 ODE steps, 112 attention calls | 27.76 s | **11.03 s** | **2.52x** |
-| Full replay of the same case (solve + decode) | 47.89 s | **31.10 s** | **1.54x** |
+| NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
+| NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **7.95 s** | **3.49x** |
+| NAR solve of the same case, product 32 ODE steps | 443.4 s | **81.13 s** | **5.47x** |
+| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **101.23 s** | **4.60x** |
 
-All three rows are gfx1151 (zbook) measurements. The kernel row is a median of
-six batches of five calls; the two replay rows were run one after the other in a
-single session on the same host and come from the gate's own JSON. Eight rows per
-block is a measured optimum: four rows lands at 33.90 ms, sixteen at 44.90 ms and
-thirty-two at 88.50 ms, where shared-memory and register pressure take over.
+All rows are gfx1151 (zbook) measurements. The kernel row is a median of six
+batches of five calls; every replay row was run on the same host with the gate's
+own JSON as the source, and the 32-step pair uses the protocol the reference's own
+27.32 s figure was measured under, which puts the solver 16.2× behind the pinned
+upstream before this work and **2.97×** after it. Eight rows per block is a
+measured optimum: four rows lands at 33.90 ms, sixteen at 44.90 ms and thirty-two
+at 88.50 ms, where shared-memory and register pressure take over.
 
 Wrapping the attention call with a device synchronize on either side splits the
-11.11 s solve into **2.93 s of attention** (26.2 ms per call) and 8.18 s of
-projections, RoPE and norms. The solver's attention is no longer its bottleneck:
-the NAR's remaining cost is its hipBLASLt projection path, and the replay's is
-the VAE decode at 20.07 s.
+7.95 s two-step solve into **3.31 s of attention** (29.6 ms per call), 0.94 s of
+projections and 3.73 s of AR conditioning prefill, RoPE and norms. At the product's
+32 steps the per-evaluation work dominates instead — attention is about 53 s of the
+81 s solve — because the conditioning prefill is paid once per solve.
 
-The rewrite is bit-exact rather than merely close: the parity fixture
+The attention rewrite is bit-exact rather than merely close: the parity fixture
 `tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's
-own output bits and the kernel test compares against them exactly, and all three
-M4 production gates reproduce their pre-change numbers to the last recorded digit
-(chunk0 latents rel L2 0.01225 / cosine 0.999926, multi-chunk 0.01071 / 0.999944,
-restricted visibility 0.00885 / 0.999962). The kernel keeps a scalar K walk for
-head dimensions that are not a multiple of eight, where the rows are not 16-byte
-aligned; that fallback has its own test, and perturbing it fails the new
+own output bits and the kernel test compares against them exactly. The projection
+change cannot be bit-exact (a different GEMM accumulation order is the point), so it
+is held to the production gates instead: all three M4 solver gates pass (chunk0
+latents rel L2 0.01248 / cosine 0.999923 against 0.01225 / 0.999926, multi-chunk
+0.01071 / 0.999944 unchanged, restricted visibility 0.00905 / 0.999960 against
+0.00885 / 0.999962), the 18-case AR replay stays inside its floor while improving,
+and the three-case greedy session gate passes with every case slightly better
+(semantic teacher-forced 98.2% / 97.1% / 96.7%). The kernel keeps a scalar K walk
+for head dimensions that are not a multiple of eight, where the rows are not
+16-byte aligned; that fallback has its own test, and perturbing it fails the new
 `head_dim=100` case while `head_dim=128` still passes. Evidence:
 [`M7 attention packing`](results/yue2_m7_attention_packed_20260917.json),
+[`M7 projection selection`](results/yue2_m7_gemm_algorithm_20260917.json),
 [`M7 row blocking`](results/yue2_m7_attention_20260917.json).
 
-The same host's pinned upstream reference reports 27.32 s for the same solve at
-the product's 32 steps, against 443.4 s here before this change and **116.53 s**
-after it — 3.80x on the solve, and 465.9 s to 136.59 s on the whole replay. The
-solver is still the largest gap in the model, and the projections rather than the
-attention account for most of what is left. Its decode is
-faster than the reference's (22.47 s against 69.09 s), and the AR stage runs at
-19.35 tokens/s against 31.97.
+The decoder is faster than the reference's (22.47 s against 69.09 s) and the AR
+stage runs at 19.35 tokens/s against 31.97.
 
 ## Current concurrency scoreboards
 
