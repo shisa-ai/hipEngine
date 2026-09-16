@@ -1,0 +1,300 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_disabled_family_recoverable_time",
+ "performance_claim": false,
+ "numerics_evaluated": false,
+ "why": "Each disabled family is worth whatever time its fast path saves on a real production prefill, but only if a corrected arithmetic can be made admissible. This measures the first half; admissibility is a separate axis recorded from the project's own rejection evidence.",
+ "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+ "case_id": "code-p4096",
+ "repetitions": 2,
+ "fallback": {
+  "ok": true,
+  "command": [
+   "reused",
+   "/tmp/family-sweep/fallback.json"
+  ],
+  "wall_summary": {
+   "count": 2,
+   "sum": 47.29675302701071,
+   "mean": 23.648376513505355,
+   "median": 23.648376513505355,
+   "min": 23.641717560123652,
+   "max": 23.655035466887057,
+   "tok_s": 173.2042788502126
+  },
+  "wall_seconds": [
+   23.641717560123652,
+   23.655035466887057
+  ],
+  "route_env": {
+   "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": null,
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+   "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+   "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null
+  },
+  "configuration_class": "named_profile",
+  "fell_back_to_strict": false,
+  "named_profile_intact": true,
+  "risk_calls": 1128,
+  "risk_outputs": 7392460800,
+  "risk_risky": 52645287,
+  "aggregate_repair_rate": 0.007121483417267495,
+  "max_repair_rate": 0.008089752197265624,
+  "over_capacity_calls": 0,
+  "risk_by_role": {
+   "q4_iu8_exact:expert_gate_up": 0.007121483417267495
+  },
+  "logits_sha256": "e717076fe080c887618e65e3810d039bc4fe7356e9b88d9ec6f64d265189a0b7",
+  "token_id": 248068
+ },
+ "fallback_median_s": 23.648376513505355,
+ "families": [
+  {
+   "family": "PRODUCTION_MOE_PREFILL",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"
+   },
+   "measured": true,
+   "candidate_median_s": 24.243,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": -0.5946,
+   "speedup": 0.9755,
+   "aggregate_repair_rate": 0.0071615952711838946,
+   "max_repair_rate": 0.007953033447265626,
+   "over_capacity_calls": 0,
+   "logits_sha256": "563776e080373a8c174256d3aab9ada1fb00f1e6d359aed5ed883aa5d594bd75",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "Q4_IU8_PREFILL",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 23.7251,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": -0.0767,
+   "speedup": 0.9968,
+   "aggregate_repair_rate": 0.007121483417267495,
+   "max_repair_rate": 0.008089752197265624,
+   "over_capacity_calls": 0,
+   "logits_sha256": "e717076fe080c887618e65e3810d039bc4fe7356e9b88d9ec6f64d265189a0b7",
+   "same_logits_as_fallback": true,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "Q8_MMQ_PREFILL",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"
+   },
+   "measured": true,
+   "candidate_median_s": 19.6618,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 3.9865,
+   "speedup": 1.2028,
+   "aggregate_repair_rate": 0.007116506860611287,
+   "max_repair_rate": 0.00801116943359375,
+   "over_capacity_calls": 0,
+   "logits_sha256": "43889ad7bedd55799cb77de4ca686d0a67469b49fe594c7ab378f9fd952c5cc1",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "Q8_IU8_WMM",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1"
+   },
+   "measured": true,
+   "candidate_median_s": 17.0339,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 6.6145,
+   "speedup": 1.3883,
+   "aggregate_repair_rate": 0.007114622237834525,
+   "max_repair_rate": 0.008098297119140625,
+   "over_capacity_calls": 0,
+   "logits_sha256": "cc770a2e2667163961b556a649a831ec39cdfea4a4fa2f5b1acd482b981579a1",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "GR_IU8",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_GR_IU8": "1"
+   },
+   "measured": true,
+   "candidate_median_s": 21.7998,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 1.8485,
+   "speedup": 1.0848,
+   "aggregate_repair_rate": 0.007119287531426612,
+   "max_repair_rate": 0.008045501708984375,
+   "over_capacity_calls": 0,
+   "logits_sha256": "11bf10dbf9b92615f34e1456a10d11f033946cc6b21a8370822e0da96bb06664",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "GR_IU8_DOWN",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"
+   },
+   "measured": true,
+   "candidate_median_s": 23.0038,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 0.6446,
+   "speedup": 1.028,
+   "aggregate_repair_rate": 0.007114261059050864,
+   "max_repair_rate": 0.008033294677734375,
+   "over_capacity_calls": 0,
+   "logits_sha256": "6624f8a77769384e390df302c06a0c2a3327b07f6fd1506b006fee839b8857f5",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "GDN_PEER_PREFILL",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 23.5224,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 0.126,
+   "speedup": 1.0054,
+   "aggregate_repair_rate": 0.007121573509053981,
+   "max_repair_rate": 0.008089752197265624,
+   "over_capacity_calls": 0,
+   "logits_sha256": "0603a794530669bce1dd4ae8daa719e36e7c665f2c7d7c34bc3f2b089c3a1635",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "GDN_COLWARPS_PREFILL",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 23.42,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 0.2284,
+   "speedup": 1.0098,
+   "aggregate_repair_rate": 0.007120286251636261,
+   "max_repair_rate": 0.008083038330078125,
+   "over_capacity_calls": 0,
+   "logits_sha256": "565abec86e6464e56c68c7c16e424c41c69678da16cada898dc28e103b3af789",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "Q4_DP4A64",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 23.582,
+   "fallback_median_s": 23.6484,
+   "seconds_recoverable": 0.0663,
+   "speedup": 1.0028,
+   "aggregate_repair_rate": 0.007121483417267495,
+   "max_repair_rate": 0.008089752197265624,
+   "over_capacity_calls": 0,
+   "logits_sha256": "e717076fe080c887618e65e3810d039bc4fe7356e9b88d9ec6f64d265189a0b7",
+   "same_logits_as_fallback": true,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  }
+ ],
+ "ranked_by_seconds_recoverable": [
+  {
+   "family": "Q8_IU8_WMM",
+   "seconds_recoverable": 6.6145,
+   "speedup": 1.3883
+  },
+  {
+   "family": "Q8_MMQ_PREFILL",
+   "seconds_recoverable": 3.9865,
+   "speedup": 1.2028
+  },
+  {
+   "family": "GR_IU8",
+   "seconds_recoverable": 1.8485,
+   "speedup": 1.0848
+  },
+  {
+   "family": "GR_IU8_DOWN",
+   "seconds_recoverable": 0.6446,
+   "speedup": 1.028
+  },
+  {
+   "family": "GDN_COLWARPS_PREFILL",
+   "seconds_recoverable": 0.2284,
+   "speedup": 1.0098
+  },
+  {
+   "family": "GDN_PEER_PREFILL",
+   "seconds_recoverable": 0.126,
+   "speedup": 1.0054
+  },
+  {
+   "family": "Q4_DP4A64",
+   "seconds_recoverable": 0.0663,
+   "speedup": 1.0028
+  },
+  {
+   "family": "Q4_IU8_PREFILL",
+   "seconds_recoverable": -0.0767,
+   "speedup": 0.9968
+  },
+  {
+   "family": "PRODUCTION_MOE_PREFILL",
+   "seconds_recoverable": -0.5946,
+   "speedup": 0.9755
+  }
+ ],
+ "total_seconds_recoverable": 12.8435,
+ "all_candidates_bit_identical": false,
+ "combined_top4": {
+  "families": [
+   "Q8_IU8_WMM",
+   "Q8_MMQ_PREFILL",
+   "GR_IU8",
+   "GR_IU8_DOWN"
+  ],
+  "why": "The individual rows overlap, so summing them overstates the opportunity. This is the measured combination instead of the sum.",
+  "median_prefill_s": 15.8399,
+  "fallback_median_s": 23.6484,
+  "seconds_saved": 7.8084,
+  "speedup": 1.493,
+  "sum_of_individual_seconds": 13.0941,
+  "aggregate_repair_rate": 0.007118,
+  "over_capacity_calls": 0,
+  "logits_sha256": "41af250034995cbda5397ba861fb3b17aa443a7ee48913a02ae253309f0e87ea",
+  "named_profile_intact": false
+ },
+ "non_additivity_note": "total_seconds_recoverable sums overlapping rows and is an upper bound only. The measured combination of the top four is in combined_top4 and is smaller than that sum."
+}
