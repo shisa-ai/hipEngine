@@ -9551,32 +9551,38 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder=gpu_stage_recorder,
         )
 
-    def _run_post_attention_ffn_rows(
+    def _run_post_attention_norm_residual_rows(
         self,
         layer_id: int,
         hidden_ptr: int,
         attn_out_ptr: int,
-        out_ptr: int,
         scratch,
         *,
         rows: int,
-        next_norm_weight_ptr: int | None = None,
-        next_norm_out_ptr: int | None = None,
         stream: int = 0,
-        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
         attn_out_f32_ptr: int | None = None,
-        stage_timings: dict[str, float] | None = None,
-        sync_stage_timings: bool = False,
-        stage_prefix: str = "target_block_ffn",
-        gpu_stage_recorder: _HipEventStageRecorder | None = None,
-    ) -> None:
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
+    ) -> int | None:
+        """Post-attention RMSNorm + residual for one layer's FFN input.
+
+        Writes ``scratch.post_norm`` (the FFN input) and, on the BF16-residual
+        path, ``scratch.residual`` (the value the FFN down projection adds
+        once). Returns the optional F32 post-norm diagnostic pointer. Factored
+        out of :meth:`_run_post_attention_ffn_rows` so a sharded TP2 caller can
+        run the same norm+residual and then a sharded MLP + single residual
+        instead of the full-width FFN, with the launch order unchanged.
+
+        The caller owns the ``..._post_norm_residual`` stage mark so the
+        diagnostic ``t_stage`` baseline flows into the following stage exactly
+        as it did before the split.
+        """
+
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
-        sync_stages = bool(sync_stage_timings and stage_timings is not None)
-        t_stage = time.perf_counter() if sync_stages else 0.0
         f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
         if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
             raise ValueError("next norm weight and output pointers must be provided together")
@@ -9644,6 +9650,48 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        return post_norm_f32_ptr
+
+    def _run_post_attention_ffn_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
+        stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
+        attn_out_f32_ptr: int | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_ffn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
+    ) -> None:
+        assert self.weights is not None
+        layer = self.weights.layer(layer_id)
+        runtime = self.runtime or get_hip_runtime()
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
+        t_stage = time.perf_counter() if sync_stages else 0.0
+        f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
+        post_norm_f32_ptr = self._run_post_attention_norm_residual_rows(
+            layer_id,
+            hidden_ptr,
+            attn_out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            attn_out_f32_ptr=attn_out_f32_ptr,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+        )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
