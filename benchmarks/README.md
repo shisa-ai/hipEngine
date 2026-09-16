@@ -1647,11 +1647,38 @@ At 32 steps the solver is now ~9.6 s of attention, ~15 s of projections and ~7.6
 conditioning prefill and other work, so the projections are the largest single item
 and run at hipBLASLt's rate.
 
-Wrapping the attention call with a device synchronize on either side splits the
-7.95 s two-step solve into **3.31 s of attention** (29.6 ms per call), 0.94 s of
-projections and 3.73 s of AR conditioning prefill, RoPE and norms. At the product's
-32 steps the per-evaluation work dominates instead — attention is about 53 s of the
-81 s solve — because the conditioning prefill is paid once per solve.
+`scripts/yue2_solver_stage_profile.py` measures that split directly rather than by
+differencing two solve lengths. It times one velocity evaluation with HIP events and
+splits it by suppressing one launch at a time, so the differences stay pipeline-clean;
+inserting a synchronize around each kernel does not work, because with 200 projection
+launches per evaluation the sync cost alone exceeds the kernel time being measured. The
+result for the production case at 28 layers, 1 299 rows and 2 695 keys:
+
+| Stage | Per evaluation | At 32 steps | Share |
+| --- | ---: | ---: | ---: |
+| Projections (200 launches, 3 662 GFLOP) | 229 ms | **14.7 s** | 46% |
+| NAR attention (28 launches) | 136 ms | **8.7 s** | 27% |
+| Conditioning prefill (paid once) | — | **3.44 s** | 11% |
+| Everything else (norms, RoPE, casts, state) | 53 ms | **3.4 s** | 11% |
+
+Both remaining gaps are real but neither is free. The projections run at 16.0 TFLOP/s
+where the same shapes launched back to back by hipBLASLt measure 19.4 TFLOP/s, so
+three quarters of the library's own in-place rate is already reached; the runtime
+already selects the fastest zero-workspace algorithm, and a 4 096³ square GEMM also
+measures 21 TFLOP/s, so ~20 TFLOP/s is the library's practical ceiling on this device
+against a ~51 TFLOP/s fp16 peak for 40 CUs. The attention kernel is the better
+understood of the two: it is at 15% of that peak because 248 VGPRs cap occupancy at two
+blocks of 128 threads per CU (12.5% of the thread limit) and its K/V staging branches
+between the AR and NAR buffers for every 16-byte pack. Matching the reference's own
+2.31 ms per call would take its 8.7 s to 5.2 s. The solver is device-bound rather than
+host-bound — host enqueue for one evaluation is 28 ms against 419 ms of device time.
+Evidence:
+[`solver stage profile`](results/yue2_solver_stage_profile_20260917.json).
+
+An earlier version of this section quoted a synchronize-wrapped split of the 7.95 s
+two-step solve (3.31 s of attention, 0.94 s of projections, 3.73 s of conditioning
+prefill, RoPE and norms). Those numbers are superseded: the syncs drained the pipeline,
+which understated the GEMMs and overstated the elementwise remainder.
 
 The attention rewrite is bit-exact rather than merely close: the parity fixture
 `tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's
