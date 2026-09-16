@@ -130,13 +130,14 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 
 Unless a row says otherwise, source is under `hipengine/kernels/hip_gfx1100/`, registration is for `hip_gfx1100`, and the independently allowed subset is aliased under `hip_gfx1151`.
 
-### VibeVoice ASR
+### VibeVoice ASR and TTS
 
 | Family | Source / registry | Contract |
 | --- | --- | --- |
 | Causal encoders and connectors | `vibevoice/encoder.{hip,py}`, `vibevoice/registered.py` | BF16 storage, FP32 accumulation; explicit convolution prefixes. Frontend GEMM has `wmma` and `strict` variants. Depthwise `fused` has a registered `strict` FP32-accumulate/residual chain with no intermediate BF16 rounding; its two primitives are separately registered. |
 | Qwen2 attention and KV write | `vibevoice/encoder.{hip,py}` (`vv_attention_spans`, `vv_kv_write_spans`) | Uniform `KVLiveSpans`, block size one; logical-to-physical slot mapping, int64 per-row live counts/positions, physical token positions and eviction masks. Maximum capacity 16,000 slots. |
 | Decoder prefill | `vibevoice/registered.py` (`vibevoice_prefill`) | `hipblaslt` capability negotiation precedes device mutation; registered `strict` incremental chain is the fallback. Launch failures are propagated. |
+| TTS diffusion linears | `linear/dense_gemv.{hip,py}` (`dense_gemv_out_bf16`) | Production uses the 64-thread reduction; the oracle-injected branch diagnostic explicitly uses its original 256-thread reference arithmetic. Global 128/256 alternatives are rejected for generated-speech regressions despite passing that diagnostic. |
 
 Both gfx1100 and gfx1151 backend packages install these registrations. Runtime
 construction resolves primitives once through `kernels/vibevoice.py`; host

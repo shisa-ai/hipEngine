@@ -1,0 +1,246 @@
+{
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "host": "zbook",
+  "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "workload": "two CFG rows; 20 solver steps; recorded single/two-speaker conditions and noise",
+  "command": "uv run python scripts/vibevoice_tts_diffusion_linear_bench.py --all-calls --session --json /tmp/vv-drift-final-bench.json",
+  "correctness": "cfg_rowtile eps and speech bit-identical to reference256 at every compared step",
+  "results": {
+    "single": {
+      "solver_steps_compared": 500,
+      "eps_and_latent_elements_differing_from_reference256": {
+        "old64": 73126,
+        "reference256": 0,
+        "cfg_rowtile": 0
+      },
+      "solve_seconds": {
+        "old64": [
+          0.03239916998427361,
+          0.03254570602439344,
+          0.032162657007575035,
+          0.03233291604556143,
+          0.03275304497219622,
+          0.032458251924254,
+          0.03244728106074035
+        ],
+        "reference256": [
+          0.05559935898054391,
+          0.05520703305955976,
+          0.05509806901682168,
+          0.055137653020210564,
+          0.056091543985530734,
+          0.05511925905011594,
+          0.0557047869078815
+        ],
+        "cfg_rowtile": [
+          0.0375769620295614,
+          0.03734601894393563,
+          0.03785144700668752,
+          0.03760393301490694,
+          0.03691218397580087,
+          0.0364791409811005,
+          0.037584585952572525
+        ]
+      },
+      "median_solve_seconds": {
+        "old64": 0.03244728106074035,
+        "reference256": 0.05520703305955976,
+        "cfg_rowtile": 0.0375769620295614
+      }
+    },
+    "two": {
+      "solver_steps_compared": 1100,
+      "eps_and_latent_elements_differing_from_reference256": {
+        "old64": 164560,
+        "reference256": 0,
+        "cfg_rowtile": 0
+      },
+      "solve_seconds": {
+        "old64": [
+          0.03212350304238498,
+          0.032672723988071084,
+          0.0324678800534457,
+          0.032320612110197544,
+          0.03227408602833748,
+          0.032276549958623946,
+          0.03240884898696095
+        ],
+        "reference256": [
+          0.055833449005149305,
+          0.054940683068707585,
+          0.055773335974663496,
+          0.05507747002411634,
+          0.05552006105426699,
+          0.05528427800163627,
+          0.055300539010204375
+        ],
+        "cfg_rowtile": [
+          0.037798548000864685,
+          0.03745848999824375,
+          0.03767084807623178,
+          0.03723904793150723,
+          0.03799710108432919,
+          0.037924904958344996,
+          0.03759653901215643
+        ]
+      },
+      "median_solve_seconds": {
+        "old64": 0.032320612110197544,
+        "reference256": 0.055300539010204375,
+        "cfg_rowtile": 0.03767084807623178
+      }
+    }
+  },
+  "sessions": [
+    {
+      "arm": "cfg_rowtile",
+      "warm_seconds": 3.379,
+      "pooled_rtf": 1.014,
+      "stages": {
+        "lm_total_seconds": 1.247,
+        "prompt_seconds": 0.15,
+        "diffusion_seconds": 0.952,
+        "decode_seconds": 0.272,
+        "semantic_seconds": 0.758
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    },
+    {
+      "arm": "old64",
+      "warm_seconds": 3.265,
+      "pooled_rtf": 0.979,
+      "stages": {
+        "lm_total_seconds": 1.246,
+        "prompt_seconds": 0.148,
+        "diffusion_seconds": 0.826,
+        "decode_seconds": 0.283,
+        "semantic_seconds": 0.761
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    },
+    {
+      "arm": "cfg_rowtile",
+      "warm_seconds": 3.379,
+      "pooled_rtf": 1.014,
+      "stages": {
+        "lm_total_seconds": 1.247,
+        "prompt_seconds": 0.148,
+        "diffusion_seconds": 0.953,
+        "decode_seconds": 0.273,
+        "semantic_seconds": 0.758
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    },
+    {
+      "arm": "old64",
+      "warm_seconds": 3.276,
+      "pooled_rtf": 0.983,
+      "stages": {
+        "lm_total_seconds": 1.253,
+        "prompt_seconds": 0.154,
+        "diffusion_seconds": 0.823,
+        "decode_seconds": 0.283,
+        "semantic_seconds": 0.763
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    }
+  ],
+  "date": "2026-09-16",
+  "status": "rejected-task-quality-regression",
+  "architecture": "gfx1151",
+  "scope": "accuracy repair: prior old64 numerical gate fails at 0.1552419355 > 0.15; unchanged gate passes on cfg_rowtile",
+  "profile_trace": {
+    "kernel": "vv_diff_cfg_linear_kernel",
+    "shape": [
+      2,
+      1536,
+      257
+    ],
+    "duration_ns": [
+      16351,
+      15029
+    ],
+    "require_cached": true,
+    "historical_invocation": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/vv-drift-compiler.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/vv-cfg-linear-trace -- .venv/bin/python -m pytest 'tests/test_gpu_vibevoice_diffusion_cfg_linear.py::test_cfg_linear_matches_strict_and_cpu[1536-257]' -q"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/vibevoice/diffusion.hip": "0f8b3298eedb9d95302d7830c41ae63d5727ff6c66a9ff7c6672dc79a0fa3ffb",
+    "hipengine/runtime/vibevoice_tts_diffusion.py": "d686e8b8932c6f6f681f0e02f040bf8aad2fa9a43c607ed0d2bb16485dd52ee4"
+  },
+  "quality": {
+    "artifact": "benchmarks/results/2026-09-16-gfx1151-vibevoice-tts-reduction-repair-quality.json",
+    "passed_requests": 58,
+    "total_requests": 60,
+    "same_failure_pairs_as_baseline": true,
+    "full_production_qualification": false,
+    "caveat": "Same failing requests, but two-long seed20260918 newly fails intelligibility (WER fraction 0.025 -> 0.175). Independent Whisper confirms a synthesis regression: old 0.0, repair 0.125."
+  },
+  "performance_tradeoff": {
+    "warm_mean_old64_seconds": 3.2705,
+    "warm_mean_repair_seconds": 3.379,
+    "warm_increase_pct": 3.3175355450236976,
+    "fresh_torch_comparison": false
+  },
+  "independent_asr": {
+    "model": "openai/whisper-large-v3-turbo",
+    "dtype": "float32",
+    "device": "cpu",
+    "num_beams": 5,
+    "resampling": "torch interpolate linear 24k to 16k align_corners=False",
+    "normalization": "Whisper EnglishTextNormalizer",
+    "results": [
+      {
+        "arm": "old_archive",
+        "seed": 20260918,
+        "request": "two-long",
+        "pcm_npy_sha256": "a2d1e49910bd942292f156c1b4bbb44db156ce7dddf0a72f0ac4eea02c161b6b",
+        "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be cancelled. Then we should move the delivery to Friday morning and let the warehouse know before they load the trucks.",
+        "wer_fraction": 0.0
+      },
+      {
+        "arm": "old_archive",
+        "seed": 20260920,
+        "request": "two-2turn",
+        "pcm_npy_sha256": "4981252d3d0a3fcd0b7336db2402f9391124ed3948cb1c091719336542534052",
+        "transcript": "I think the meeting went well this morning. I agree, and the budget question is finally settled.",
+        "wer_fraction": 0.0
+      },
+      {
+        "arm": "repair",
+        "seed": 20260918,
+        "request": "two-long",
+        "pcm_npy_sha256": "9e759ae1b53be4f69224453c0406d2773c85325598ea4ef1b77dfe0a99deeda4",
+        "transcript": "The weather forecast says the storm will reach the coast by Thursday evening, so the ferries are likely to be canceled. Don Bush have moved the delivery to Friday morning and let the warehouse know before they load the trucks.",
+        "wer_fraction": 0.125
+      },
+      {
+        "arm": "repair",
+        "seed": 20260920,
+        "request": "two-2turn",
+        "pcm_npy_sha256": "77c9971c32575e684f0fbc6b413bf7325fbc245b88f5d8e073fca1bb494c8727",
+        "transcript": "I think the meeting went well this morning. I agree. And the budget question is finally settled.",
+        "wer_fraction": 0.0
+      }
+    ],
+    "historical_invocation": "OPENBLAS_NUM_THREADS=1 /home/lhl/venvs/vibevoice-tts-oracle/bin/python /tmp/vv-drift-whisper.py",
+    "probe_source": "import json,hashlib\nfrom pathlib import Path\nimport numpy as np\nimport torch\nfrom transformers import WhisperForConditionalGeneration,WhisperProcessor\nfrom transformers.models.whisper.english_normalizer import EnglishTextNormalizer\nfrom jiwer import wer\n\ntorch.set_num_threads(8)\nmodelid='openai/whisper-large-v3-turbo'\np=WhisperProcessor.from_pretrained(modelid,local_files_only=True)\nm=WhisperForConditionalGeneration.from_pretrained(modelid,torch_dtype=torch.float32,local_files_only=True).eval()\nnorm=EnglishTextNormalizer({})\nnew=json.load(open('/tmp/vv-drift-quality-cfg-rowtile.json'))\nold=json.load(open('benchmarks/results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json'))\nres=[]\nfor label,data in [('old_archive',old),('repair',new)]:\n for run in data['runs']:\n  for r in run['requests']:\n   if (r['base_seed'],r['name']) not in [(20260918,'two-long'),(20260920,'two-2turn')]:continue\n   path=Path(r['pcm']);a=np.load(path).astype(np.float32)\n   x=torch.from_numpy(a).reshape(1,1,-1)\n   x=torch.nn.functional.interpolate(x,size=int(a.size*16000/24000),mode='linear',align_corners=False)[0,0]\n   feats=p(x.numpy(),sampling_rate=16000,return_tensors='pt').input_features\n   with torch.inference_mode(): ids=m.generate(feats,language='en',task='transcribe',num_beams=5)\n   text=p.batch_decode(ids,skip_special_tokens=True)[0].strip()\n   ref=' '.join(line.split(':',1)[-1] for line in r['script'].splitlines())\n   row={'arm':label,'seed':r['base_seed'],'request':r['name'],'pcm_npy_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'transcript':text,'wer_fraction':wer(norm(ref),norm(text))}\n   res.append(row);print(json.dumps(row),flush=True)\nPath('/tmp/vv-drift-whisper.json').write_text(json.dumps({'model':modelid,'dtype':'float32','device':'cpu','num_beams':5,'resampling':'torch interpolate linear 24k to 16k align_corners=False','normalization':'Whisper EnglishTextNormalizer','results':res},indent=2)+'\\n')\n"
+  },
+  "rejected_candidate_reproduction": {
+    "base_commit": "6dd61c0f0c95feb061c1f8e332b71774ab016eee",
+    "patch": "diff --git a/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.hip b/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.hip\nindex 39c1385a3..81ec308e4 100644\n--- a/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.hip\n+++ b/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.hip\n@@ -50,6 +50,59 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {\n \n __device__ inline uint16_t rbf(float value) { return float_to_bf16_bits(value); }\n \n+// Two CFG rows share weight loads. Four virtual lanes per physical thread\n+// preserve dense_gemv_out_kernel's 256-thread FMA partitions and reduction tree.\n+__global__ __launch_bounds__(64) void vv_diff_cfg_linear_kernel(\n+    const uint16_t* __restrict__ x, const uint16_t* __restrict__ w,\n+    uint16_t* __restrict__ out, int64_t k, int64_t n) {\n+  const int tid = threadIdx.x;\n+  const int64_t col = blockIdx.x;\n+  const int64_t main_end = (k / 2048) * 2048;\n+  float a[4][2] = {};\n+  // Interleave the four independent accumulators to hide FMA latency without\n+  // changing the order of operations within any virtual lane.\n+  for (int64_t base = tid * 8; base < main_end; base += 2048) {\n+#pragma unroll\n+    for (int j = 0; j < 8; ++j) {\n+#pragma unroll\n+      for (int part = 0; part < 4; ++part) {\n+        const int64_t index = base + part * 512 + j;\n+        const float weight = bf16_bits_to_float(w[col * k + index]);\n+        a[part][0] = fmaf(bf16_bits_to_float(x[index]), weight, a[part][0]);\n+        a[part][1] = fmaf(bf16_bits_to_float(x[k + index]), weight, a[part][1]);\n+      }\n+    }\n+  }\n+  for (int64_t base = main_end + tid; base < k; base += 256) {\n+#pragma unroll\n+    for (int part = 0; part < 4; ++part) {\n+      const int64_t index = base + part * 64;\n+      if (index < k) {\n+        const float weight = bf16_bits_to_float(w[col * k + index]);\n+        a[part][0] = fmaf(bf16_bits_to_float(x[index]), weight, a[part][0]);\n+        a[part][1] = fmaf(bf16_bits_to_float(x[k + index]), weight, a[part][1]);\n+      }\n+    }\n+  }\n+  __shared__ float partial[2][64];\n+#pragma unroll\n+  for (int row = 0; row < 2; ++row) {\n+    // Original s=128, then s=64 additions, before the cross-wave s=32.\n+    partial[row][tid] = (a[0][row] + a[2][row]) + (a[1][row] + a[3][row]);\n+  }\n+  __syncthreads();\n+  if (tid < 32) {\n+#pragma unroll\n+    for (int row = 0; row < 2; ++row) {\n+      float sum = partial[row][tid] + partial[row][tid + 32];\n+      for (int offset = 16; offset > 0; offset >>= 1) {\n+        sum += __shfl_down(sum, offset);\n+      }\n+      if (tid == 0) out[row * n + col] = rbf(sum);\n+    }\n+  }\n+}\n+\n constexpr int VV_DIFF_WARPS = 8;  // 256 threads, warp-per-row\n \n __global__ void vv_diff_rmsnorm_kernel(\n@@ -303,3 +356,12 @@ extern \"C\" int hipengine_vv_diff_cfg_combine_bf16(\n                      0, stream, c, u, cfg, out, n);\n   return static_cast<int>(hipGetLastError());\n }\n+\n+extern \"C\" int hipengine_vv_diff_cfg_linear_bf16(\n+    const uint16_t* x, const uint16_t* w, uint16_t* out,\n+    int64_t rows, int64_t k, int64_t n, hipStream_t stream) {\n+  if (rows != 2 || k <= 0 || n <= 0) return static_cast<int>(hipErrorInvalidValue);\n+  hipLaunchKernelGGL(vv_diff_cfg_linear_kernel, dim3(static_cast<unsigned>(n)),\n+                    dim3(64), 0, stream, x, w, out, k, n);\n+  return static_cast<int>(hipGetLastError());\n+}\ndiff --git a/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py b/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py\nindex 9e53252fb..4c985d122 100644\n--- a/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py\n+++ b/hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py\n@@ -224,3 +224,13 @@ def vv_diff_cfg_combine_bf16(\n         library=library,\n         runtime=runtime,\n     )\n+\n+\n+def vv_diff_cfg_linear_bf16(x_ptr, w_ptr, out_ptr, rows, inputs, outputs,\n+                            *, library=None, runtime=None):\n+    \"\"\"Two-row GEMV with the strict 256-partition arithmetic on 64 threads.\"\"\"\n+    if rows != 2 or inputs <= 0 or outputs <= 0:\n+        raise ValueError(\"CFG linear requires two rows and positive dimensions\")\n+    _launch(\"hipengine_vv_diff_cfg_linear_bf16\", (_P, _P, _P, _I, _I, _I, _S),\n+            (x_ptr, w_ptr, out_ptr, rows, inputs, outputs, 0),\n+            library=library, runtime=runtime)\ndiff --git a/hipengine/kernels/hip_gfx1100/vibevoice/registered.py b/hipengine/kernels/hip_gfx1100/vibevoice/registered.py\nindex 4a9c58d60..ff0803ff0 100644\n--- a/hipengine/kernels/hip_gfx1100/vibevoice/registered.py\n+++ b/hipengine/kernels/hip_gfx1100/vibevoice/registered.py\n@@ -41,6 +41,13 @@ def batched_prefill(runner,hidden_rows,rows,start):\n     runner._prefill_batched(hidden_rows,rows,start)\n \n \n+def diffusion_cfg_linear_reference(x,w,out,rows,inputs,outputs,*,runtime=None):\n+    \"\"\"Original two-branch GEMV arithmetic for diagnostic fallback.\"\"\"\n+    if rows != 2:\n+        raise ValueError('CFG linear requires two rows')\n+    dense_gemv.dense_gemv_out_bf16(x,w,out,rows,inputs,outputs,threads=256,runtime=runtime)\n+\n+\n def register_vibevoice_kernels(backend):\n     from hipengine.kernels.vibevoice import PRIMITIVES\n     modules=(encoder,tts_decoder,tts_diffusion,cast,paro_silu,dense_gemv,qwen35_rotary)\n@@ -51,6 +58,7 @@ def register_vibevoice_kernels(backend):\n         key=KernelKey(backend,name,'bf16','strict')\n         if not is_registered(key):register(key,fn)\n     for layer,variant,fn in (\n+        ('vv_diff_cfg_linear_bf16','reference',diffusion_cfg_linear_reference),\n         ('vv_depthwise_conv_bf16','fused',encoder.vv_depthwise_conv_bf16),\n         ('vibevoice_frontend_gemm','wmma',frontend_gemm),\n         ('vibevoice_frontend_gemm','strict',frontend_gemm_strict),\ndiff --git a/hipengine/kernels/vibevoice.py b/hipengine/kernels/vibevoice.py\nindex dbdcb7a11..3f3516405 100644\n--- a/hipengine/kernels/vibevoice.py\n+++ b/hipengine/kernels/vibevoice.py\n@@ -16,6 +16,7 @@ PRIMITIVES = (\n     'vv_diff_silu_bf16','vv_diff_add_bf16','vv_diff_mul_bf16','vv_diff_modulate_bf16',\n     'vv_diff_gated_residual_bf16','vv_diff_cfg_combine_bf16','vv_diff_rmsnorm_bf16',\n     'vv_diff_dpm_step_bf16',\n+    'vv_diff_cfg_linear_bf16',\n     'vv_diff_rmsnorm_modulate_bf16',\n )\n \ndiff --git a/hipengine/runtime/vibevoice_tts_diffusion.py b/hipengine/runtime/vibevoice_tts_diffusion.py\nindex 164f9c8d3..deb8ad616 100644\n--- a/hipengine/runtime/vibevoice_tts_diffusion.py\n+++ b/hipengine/runtime/vibevoice_tts_diffusion.py\n@@ -38,13 +38,6 @@ from hipengine.core.runtime import MemcpyKind\n from hipengine.kernels.vibevoice import resolve_vibevoice_kernels\n from hipengine.loading.vibevoice_layout import f32_to_bf16_bits\n \n-# Block size for the head's GEMVs. The shared default of 256 spends most of the\n-# call in the block-wide reduction tree: this head is 123M params over 17 GEMVs\n-# with only 2 rows, so each block reduces 1536-4608 values for one output. At 64\n-# threads a full head call measures 2.08 ms against 3.33 ms at 256.\n-_GEMV_THREADS = 64\n-\n-\n def _bf16_u16(array: np.ndarray) -> np.ndarray:\n     \"\"\"bf16-rounded FP32 values as uint16 bit patterns.\"\"\"\n     return f32_to_bf16_bits(np.ascontiguousarray(array, dtype=np.float32))\n@@ -57,7 +50,7 @@ def _bf16_bits_to_f32(bits: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:\n \n \n class VibevoiceTTSDiffusionHeadGPU:\n-    \"\"\"MLP-DiT diffusion head on HIP with the host-side DPMSolver.\"\"\"\n+    \"\"\"MLP-DiT diffusion head and DPMSolver on HIP.\"\"\"\n \n     def __init__(self, spec, weights, *, runtime=None) -> None:\n         from hipengine.core.hip import get_hip_runtime\n@@ -152,14 +145,16 @@ class VibevoiceTTSDiffusionHeadGPU:\n     # -- primitives --------------------------------------------------------\n     def _gemv(self, key: str, x_ptr: int, out_ptr: int, rows: int) -> None:\n         weight, out_features, in_features = self._linears[key]\n-        self.kernels.dense_gemv_out_bf16(\n+        # Share weights across CFG rows while retaining the reference's 256\n+        # virtual reduction partitions. Merely shrinking the generic block to\n+        # 64 changes BF16 rounding and exceeds the two-speaker trajectory gate.\n+        self.kernels.vv_diff_cfg_linear_bf16(\n             x_ptr,\n             weight.ptr,\n             out_ptr,\n             rows,\n             in_features,\n             out_features,\n-            threads=_GEMV_THREADS,\n         )\n \n     def _silu(self, x: DeviceBuffer, out: DeviceBuffer, n: int) -> None:\n@@ -322,7 +317,7 @@ class VibevoiceTTSDiffusionHeadGPU:\n         readback -- and the per-step snapshots when ``collect`` is requested.\n         The head, the CFG combine and the solver step are all bit-faithful to\n         the host path: ``vv_diff_cfg_combine_bf16`` implements exactly\n-        ``r(u + r(cfg * r(c - u)))`` with an unrounded fp32 ``cfg``, and\n+        ``r(u + r(cfg * (c - u)))`` with an unrounded fp32 difference and ``cfg``, and\n         ``vv_diff_dpm_step_bf16`` is verified bit-identical to\n         ``DPMSolverMultistepScheduler.step``.\n         \"\"\"\n@@ -373,7 +368,7 @@ class VibevoiceTTSDiffusionHeadGPU:\n             )\n             self.forward_into(float(t), cond_u16)\n \n-            # half = r(uncond + r(cfg * r(cond - uncond))) from eps rows 1/0,\n+            # half = r(uncond + r(cfg * (cond - uncond))) from eps rows 1/0,\n             # duplicated into both rows for the (2, latent) solver step. The\n             # head's own eps buffer is left untouched so the final raw eps is\n             # still available for the return value.\n",
+    "new_files": {
+      "scripts/vibevoice_tts_diffusion_linear_bench.py": "\"\"\"Compare diffusion reduction schedules on identical recorded conditions/noise.\n\nTimings cover a complete 20-step solve with final readback, not TTS end-to-end.\nThe CFG rowtile must reproduce the 256-thread reference at every recorded step.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nimport json\nimport os\nfrom pathlib import Path\nimport socket\nimport shlex\nimport statistics\nimport sys\nimport time\nfrom types import MethodType\n\nROOT = Path(__file__).resolve().parents[1]\nsys.path.insert(0, str(ROOT))\n\n\ndef main():\n    parser = argparse.ArgumentParser(description=__doc__)\n    parser.add_argument('--repeats', type=int, default=7)\n    parser.add_argument('--json', type=Path)\n    parser.add_argument('--all-calls', action='store_true')\n    parser.add_argument('--session', action='store_true', help='also time four interleaved full-session arms')\n    args = parser.parse_args()\n    if args.repeats < 1:\n        parser.error('--repeats must be positive')\n    import numpy as np\n    from hipengine.loading.hf_cache import resolve_model_path\n    from hipengine.loading.vibevoice_tts import load_vibevoice_tts_diffusion_head\n    from hipengine.runtime.vibevoice_tts_diffusion import VibevoiceTTSDiffusionHeadGPU\n    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16\n\n    spec, weights, _, _ = load_vibevoice_tts_diffusion_head(resolve_model_path('microsoft/VibeVoice-1.5B'))\n    heads = {}\n    results = {}\n    def make_linear(threads):\n        def linear(self, key, x, out, rows):\n            weight, n, k = self._linears[key]\n            dense_gemv_out_bf16(x, weight.ptr, out, rows, k, n, threads=threads)\n        return linear\n    try:\n        for name, threads in [('old64', 64), ('reference256', 256), ('cfg_rowtile', None)]:\n            h = VibevoiceTTSDiffusionHeadGPU(spec, weights)\n            heads[name] = h\n            if threads is not None:\n                h._gemv = MethodType(make_linear(threads), h)\n        for fixture in ('single', 'two'):\n            with np.load(ROOT / f'tests/fixtures/vibevoice_tts/{fixture}_diffusion.npz') as archive:\n                data = dict(archive)\n            def solve(h, call, collect=None):\n                return h.sample_speech_tokens(data[f'call{call}_condition'], data[f'call{call}_neg_condition'],\n                    float(data[f'call{call}_cfg_scale']), data[f'call{call}_initial_noise'], collect=collect)\n            differences = {name: 0 for name in heads}\n            steps = 0\n            for call in range(int(data['num_calls_recorded']) if args.all_calls else 1):\n                collected = {}\n                for name, head in heads.items():\n                    snapshots = []\n                    solve(head, call, snapshots)\n                    collected[name] = np.stack([np.stack([s['eps'], s['speech']]) for s in snapshots])\n                ref = collected['reference256']\n                steps += len(ref)\n                for name in heads:\n                    differences[name] += int(np.count_nonzero(collected[name] != ref))\n            timings = {name: [] for name in heads}\n            names = list(heads)\n            for rep in range(args.repeats):\n                for name in names if rep % 2 == 0 else names[::-1]:\n                    h = heads[name]\n                    h.runtime.device_synchronize()\n                    start = time.perf_counter()\n                    solve(h, 0)\n                    h.runtime.device_synchronize()\n                    timings[name].append(time.perf_counter() - start)\n            results[fixture] = {'solver_steps_compared': steps,\n                'eps_and_latent_elements_differing_from_reference256': differences,\n                'solve_seconds': timings,\n                'median_solve_seconds': {name: statistics.median(ts) for name, ts in timings.items()}}\n            assert differences['cfg_rowtile'] == 0, results[fixture]\n            print(fixture, results[fixture], flush=True)\n    finally:\n        for h in heads.values():\n            h.close()\n    sessions = []\n    if args.session:\n        from scripts.vibevoice_tts_session_bench import bench\n        original = VibevoiceTTSDiffusionHeadGPU._gemv\n        try:\n            for arm in ('cfg_rowtile', 'old64', 'cfg_rowtile', 'old64'):\n                VibevoiceTTSDiffusionHeadGPU._gemv = original if arm == 'cfg_rowtile' else make_linear(64)\n                r = bench('microsoft/VibeVoice-1.5B', ROOT / 'tests/fixtures/vibevoice_tts', 3)\n                sessions.append({'arm': arm, 'warm_seconds': r['warm_synthesis_seconds'],\n                    'pooled_rtf': r['pooled_rtf'], 'stages': r['stages'],\n                    'chain_exact': r['chain_exact'], 'negative_conditions_match': r['negative_conditions_match']})\n                assert r['chain_exact'] and r['negative_conditions_match'], sessions[-1]\n                print('session', sessions[-1], flush=True)\n        finally:\n            VibevoiceTTSDiffusionHeadGPU._gemv = original\n    from scripts.vibevoice_tts_quality_suite import _gpu_name\n    result = {'model': 'microsoft/VibeVoice-1.5B', 'quant': 'bf16', 'host': socket.gethostname(),\n        'gpu': _gpu_name(), 'backend': h.kernels.backend,\n        'environment': {'OPENBLAS_NUM_THREADS': os.environ.get('OPENBLAS_NUM_THREADS')},\n        'workload': 'two CFG rows; 20 solver steps; recorded single/two-speaker conditions and noise',\n        'command': 'uv run python scripts/vibevoice_tts_diffusion_linear_bench.py ' + shlex.join(sys.argv[1:]),\n        'correctness': 'cfg_rowtile eps and speech bit-identical to reference256 at every compared step',\n        'results': results, 'sessions': sessions}\n    if args.json:\n        args.json.write_text(json.dumps(result, indent=2) + '\\n')\n\n\nif __name__ == '__main__':\n    main()\n",
+      "tests/test_gpu_vibevoice_diffusion_cfg_linear.py": "\"\"\"Two-row diffusion GEMV: preserve the strict 256-partition reduction.\"\"\"\nimport numpy as np\nimport pytest\n\nfrom tests._rocm_guard import hip_runtime_available\n\nif not hip_runtime_available():\n    pytest.skip(\"HIP runtime unavailable\", allow_module_level=True)\n\nfrom hipengine.core.memory import malloc, free, copy_host_array_to_device, copy_device_to_host\nfrom hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16\nfrom hipengine.kernels.hip_gfx1100.vibevoice import diffusion\nfrom hipengine.loading.vibevoice_layout import f32_to_bf16_bits\nfrom hipengine.kernels.cpu_reference.vibevoice_asr import vibevoice_linear\n\n\n@pytest.mark.parametrize(\"k,n\", [(31, 19), (256, 67), (1536, 257), (2048, 33),\n                                    (2051, 31), (4608, 129)])\ndef test_cfg_linear_matches_strict_and_cpu(k, n):\n    rng = np.random.default_rng(7301 + k)\n    x = f32_to_bf16_bits(rng.normal(size=(2, k)).astype(np.float32))\n    w = f32_to_bf16_bits((rng.normal(size=(n, k)) / np.sqrt(k)).astype(np.float32))\n    buffers = [malloc(x.nbytes), malloc(w.nbytes), malloc(2*n*2), malloc(2*n*2)]\n    try:\n        xd, wd, gotd, refd = buffers\n        copy_host_array_to_device(xd, x)\n        copy_host_array_to_device(wd, w)\n        dense_gemv_out_bf16(xd.ptr, wd.ptr, refd.ptr, 2, k, n, threads=256)\n        diffusion.vv_diff_cfg_linear_bf16(xd.ptr, wd.ptr, gotd.ptr, 2, k, n)\n        got = np.empty((2, n), np.uint16)\n        ref = np.empty_like(got)\n        copy_device_to_host(got.ctypes.data, gotd, got.nbytes)\n        copy_device_to_host(ref.ctypes.data, refd, ref.nbytes)\n        assert np.array_equal(got, ref)\n        f32 = lambda a: (a.astype(np.uint32) << 16).view(np.float32)\n        cpu = vibevoice_linear(f32(x), f32(w), None, dtype='bfloat16').astype(np.float64)\n        actual = f32(got).astype(np.float64)\n        def probs(a):\n            ex = np.exp(a - a.max(axis=1, keepdims=True))\n            return ex / ex.sum(axis=1, keepdims=True)\n        p, q = probs(cpu), probs(actual)\n        assert np.max(np.sum(p * np.log(p / q), axis=1)) <= 0.05\n        assert np.mean(cpu.argmax(axis=1) == actual.argmax(axis=1)) >= 0.9\n        diffusion.vv_diff_cfg_linear_bf16(xd.ptr, wd.ptr, gotd.ptr, 2, k, n)\n        again = np.empty_like(got)\n        copy_device_to_host(again.ctypes.data, gotd, again.nbytes)\n        assert np.array_equal(got, again)\n    finally:\n        for buffer in buffers:\n            free(buffer)\n\n\n@pytest.mark.parametrize(\"rows,k,n\", [(1,64,32), (3,64,32), (2,0,32), (2,64,0)])\ndef test_cfg_linear_rejects_invalid_shapes_before_launch(rows, k, n):\n    with pytest.raises(ValueError):\n        diffusion.vv_diff_cfg_linear_bf16(0, 0, 0, rows, k, n)\n"
+    },
+    "note": "Archived for diagnosis; not a production recommendation."
+  }
+}

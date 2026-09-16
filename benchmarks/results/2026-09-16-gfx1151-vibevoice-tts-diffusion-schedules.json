@@ -1,0 +1,137 @@
+{
+  "status": "diagnostic-arithmetic-comparison-not-task-acceptance",
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "host": "zbook",
+  "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "workload": "two CFG rows; 20 solver steps; recorded single/two-speaker conditions and noise",
+  "command": "uv run python scripts/vibevoice_tts_diffusion_linear_bench.py --all-calls --json /tmp/vv-drift-schedules.json",
+  "correctness": "arithmetic differences reported; numerical/task gates recorded separately; no session timing/checks in this invocation",
+  "results": {
+    "single": {
+      "solver_steps_compared": 500,
+      "eps_and_latent_elements_differing_from_reference256": {
+        "old64": 73126,
+        "candidate128": 73555,
+        "reference256": 0
+      },
+      "torch_fixture_max_call_normalized_drift": {
+        "old64": {
+          "eps": 0.03102189781021898,
+          "speech": 0.01904761904761905
+        },
+        "candidate128": {
+          "eps": 0.026223776223776224,
+          "speech": 0.01593625498007968
+        },
+        "reference256": {
+          "eps": 0.023722627737226276,
+          "speech": 0.02127659574468085
+        }
+      },
+      "solve_seconds": {
+        "old64": [
+          0.03277579299174249,
+          0.03304347500670701,
+          0.03310016205068678,
+          0.033153070020489395,
+          0.03324165695812553,
+          0.03320304397493601,
+          0.032853238051757216
+        ],
+        "candidate128": [
+          0.04121379100251943,
+          0.0411542400252074,
+          0.04170100495684892,
+          0.041244187974371016,
+          0.041482875938527286,
+          0.041539301979355514,
+          0.04170321999117732
+        ],
+        "reference256": [
+          0.0595959440106526,
+          0.05911695503164083,
+          0.059106034925207496,
+          0.058489949093200266,
+          0.0587548550684005,
+          0.06047612498514354,
+          0.059173210989683867
+        ]
+      },
+      "median_solve_seconds": {
+        "old64": 0.03310016205068678,
+        "candidate128": 0.041482875938527286,
+        "reference256": 0.05911695503164083
+      }
+    },
+    "two": {
+      "solver_steps_compared": 1100,
+      "eps_and_latent_elements_differing_from_reference256": {
+        "old64": 164560,
+        "candidate128": 164202,
+        "reference256": 0
+      },
+      "torch_fixture_max_call_normalized_drift": {
+        "old64": {
+          "eps": 0.33581730769230766,
+          "speech": 0.12926136363636365
+        },
+        "candidate128": {
+          "eps": 0.0782608695652174,
+          "speech": 0.022727272727272728
+        },
+        "reference256": {
+          "eps": 0.5403846153846154,
+          "speech": 0.20454545454545456
+        }
+      },
+      "solve_seconds": {
+        "old64": [
+          0.032990807085298,
+          0.032934470917098224,
+          0.032977422000840306,
+          0.03316522401291877,
+          0.03305238299071789,
+          0.033168219961225986,
+          0.033124378067441285
+        ],
+        "candidate128": [
+          0.04183441598434001,
+          0.041267913999035954,
+          0.040929818991571665,
+          0.04195507196709514,
+          0.041594275971874595,
+          0.041514305979944766,
+          0.04169666790403426
+        ],
+        "reference256": [
+          0.05948625900782645,
+          0.05919797800015658,
+          0.05912685499060899,
+          0.0596045310376212,
+          0.058810150949284434,
+          0.05877221992705017,
+          0.05913576192688197
+        ]
+      },
+      "median_solve_seconds": {
+        "old64": 0.03305238299071789,
+        "candidate128": 0.041594275971874595,
+        "reference256": 0.05913576192688197
+      }
+    }
+  },
+  "sessions": [],
+  "date": "2026-09-16",
+  "scope": "diagnostic schedules on common recorded inputs; no production change or speedup claim",
+  "source_sha256": {
+    "scripts/vibevoice_tts_diffusion_linear_bench.py": "7e8c6ff2a4d85fb6b711b220e5dccbc4055ba84d3bef8951aad1cdc277136bb0",
+    "hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip": "3ce9f106a6b9ce2646a0cdfa09173b6d808cbb9a385dfb8a989acbf5bfb458fb"
+  },
+  "reporting_correction": "Clarify that --session was not requested; the original harness wording incorrectly implied it always checked the frozen chain. Numeric results unchanged.",
+  "current_harness_sha256": "e5dd99cfe9c6e76e0fee0bdaeff533004bd372b1a24736d0086b9c797fc0b9db"
+}

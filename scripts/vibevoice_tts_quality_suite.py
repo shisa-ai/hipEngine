@@ -333,7 +333,8 @@ def synthesize(
                     "name": request["name"],
                     "base_seed": int(base_seed),
                     "request_seed": request_seed,
-                    "pcm": str(pcm_path.relative_to(ROOT)),
+                    "pcm": str(pcm_path.relative_to(ROOT) if pcm_path.is_relative_to(ROOT)
+                               else pcm_path.resolve()),
                     "reference_set": request["reference_set"],
                     "script": request["script"],
                     "turns": int(request["turns"]),

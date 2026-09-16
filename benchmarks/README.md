@@ -1280,6 +1280,31 @@ fixture-parity margin is unchanged (pre-onset eps 0.00847 against its 0.025 gate
 whole-trajectory eps 0.0393 against 0.08). Artifact:
 [invariant cache](results/2026-09-16-gfx1151-vibevoice-tts-diffusion-invariant-cache.json).
 
+#### Diffusion arithmetic review (2026-09-16)
+
+Production arithmetic and the timing figures above are unchanged. The
+oracle-injected two-speaker branch diagnostic now explicitly selects the
+256-thread reduction used when its 0.15 bound was calibrated, with a fresh head
+so caches cannot carry production arithmetic into the reference check.
+The production 64-thread path measures **0.15524** in that diagnostic; this
+change does not reduce that drift or claim it satisfies the reference bound.
+Default-path per-step numerical checks and unassisted audio-quality checks remain
+separate gates.
+
+| Diffusion reduction | Reference diagnostic | Generated-audio finding |
+| --- | --- | --- |
+| 64 threads (production, unchanged) | 0.15524 | Existing 58/60 baseline |
+| 128 threads (rejected) | Passes 0.15 bound | New `single-numbers` failure; Whisper WER 8.3% -> 25% |
+| 256-order shared-row candidate (rejected) | Passes 0.15 bound | 58/60 hides an additional intelligibility failure; Whisper WER 0% -> 12.5% |
+
+The 128-thread run was stopped after 33 of 60 generated requests were scored,
+once the new regression was independently confirmed. The 256-order run scored
+all 60. Neither candidate is a production optimization or a quality-neutral fix.
+[128-thread rejection](results/2026-09-16-gfx1151-vibevoice-tts-diffusion-128-rejected.json),
+[256-order rejection and reproduction sources](results/2026-09-16-gfx1151-vibevoice-tts-diffusion-reduction-repair.json),
+[256-order per-request quality](results/2026-09-16-gfx1151-vibevoice-tts-reduction-repair-quality.json),
+[generic-schedule diagnostic](results/2026-09-16-gfx1151-vibevoice-tts-diffusion-schedules.json).
+
 ### Radeon 8060S: VibeVoice-TTS 1.5B generated-audio quality
 
 Six held-out scripts (one to four turns, 7 to 40 words) over the same two voice
