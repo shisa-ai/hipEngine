@@ -1,0 +1,134 @@
+{
+  "suite": "vibevoice-tts-device-solver-loop",
+  "date": "2026-09-16",
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
+  },
+  "change": "sample_speech_tokens keeps the latent, CFG-combined eps and previous x0 device-resident; per-step eps D2H removed",
+  "correctness": {
+    "method": "device loop vs host loop, per-step intermediate states over the whole 20-step schedule, pinned single-speaker request",
+    "eps_mismatched_steps": "0/20",
+    "eps_cfg_mismatched_steps": "0/20",
+    "speech_mismatched_steps": "0/20",
+    "max_abs_diff": 0.0,
+    "chain_exact_all_ab_runs": true
+  },
+  "ab_same_session": {
+    "protocol": "one process, one machine state, arm order device/host/device/host, full frozen single-speaker request, 3 repeats per arm",
+    "device": {
+      "pooled_rtf": [
+        2.494,
+        2.436
+      ],
+      "warm_seconds": [
+        8.312,
+        8.119
+      ],
+      "diffusion_seconds": [
+        1.298,
+        1.292
+      ]
+    },
+    "host": {
+      "pooled_rtf": [
+        2.55,
+        2.559
+      ],
+      "warm_seconds": [
+        8.5,
+        8.53
+      ],
+      "diffusion_seconds": [
+        1.496,
+        1.546
+      ]
+    },
+    "device_mean": {
+      "pooled_rtf": 2.465,
+      "warm_seconds": 8.2155,
+      "diffusion_seconds": 1.295
+    },
+    "host_mean": {
+      "pooled_rtf": 2.5545,
+      "warm_seconds": 8.515,
+      "diffusion_seconds": 1.521
+    },
+    "diffusion_stage_delta_pct": -14.9,
+    "warm_delta_pct": -3.52,
+    "pooled_rtf_delta_pct": -3.5,
+    "host_load_average": 13.3,
+    "caveat": "absolute RTF ~2.5 is load-contaminated and is NOT comparable to the recorded 1.201; only the same-session device/host deltas are evidence"
+  },
+  "isolated_diffusion_call_ab": {
+    "protocol": "8 reps each, same process, median",
+    "host_ms": 57.06,
+    "device_ms": 49.26,
+    "speedup": 1.1584,
+    "outputs_identical": true
+  },
+  "task_quality": {
+    "suite": "vibevoice-tts-quality",
+    "seeds": 10,
+    "request_runs_passed": "58/60",
+    "failed_requests": [
+      "two-2turn",
+      "two-long"
+    ],
+    "per_seed_failures": [
+      {
+        "seed": 20260915,
+        "failed": []
+      },
+      {
+        "seed": 20260916,
+        "failed": []
+      },
+      {
+        "seed": 20260917,
+        "failed": []
+      },
+      {
+        "seed": 20260918,
+        "failed": [
+          "two-long"
+        ]
+      },
+      {
+        "seed": 20260919,
+        "failed": [
+          "two-2turn"
+        ]
+      },
+      {
+        "seed": 20260920,
+        "failed": []
+      },
+      {
+        "seed": 20260921,
+        "failed": []
+      },
+      {
+        "seed": 20260922,
+        "failed": []
+      },
+      {
+        "seed": 20260923,
+        "failed": []
+      },
+      {
+        "seed": 20260924,
+        "failed": []
+      }
+    ],
+    "matches_recorded_suite": true,
+    "note": "per-request pass counts, per-seed failures and stability flags are identical to the recorded 2026-09-15 suite"
+  },
+  "estimate_correction": {
+    "carried_estimate_pct": 5.56,
+    "measured_session_pct": "~3.5 (diffusion stage -14.9% at a 17.9% share of warm)",
+    "interpretation": "the 5.56% figure was a ceiling estimate, not a promised gain; it is refuted"
+  }
+}

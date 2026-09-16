@@ -362,6 +362,18 @@ class DPMSolverMultistepScheduler:
             _scalar(bf16_round(np.float32(1.0 / r0))),
         )
 
+    def advance_step(self) -> None:
+        """Advance the schedule position without computing an update.
+
+        The device-path counterpart of the state advance inside :meth:`step`,
+        which calls this so the two cannot drift. ``model_outputs`` is not
+        maintained here: :meth:`step_scalars`, the device path's only consumer,
+        reads only ``sigmas``, ``_step_index`` and ``lower_order_nums``.
+        """
+        if self.lower_order_nums < self.spec.solver_order:
+            self.lower_order_nums += 1
+        self._step_index += 1
+
     def _convert_model_output(self, model_output: np.ndarray, sample: np.ndarray) -> np.ndarray:
         """``x0_pred = alpha_t * sample - sigma_t * eps`` on the bf16 grid."""
         sigma = np.float32(self.sigmas[self._step_index])
@@ -443,9 +455,7 @@ class DPMSolverMultistepScheduler:
         else:
             raise ValueError("order-3 solver is not modelled")
 
-        if self.lower_order_nums < self.spec.solver_order:
-            self.lower_order_nums += 1
-        self._step_index += 1
+        self.advance_step()
         return bf16_round(prev)
 
 

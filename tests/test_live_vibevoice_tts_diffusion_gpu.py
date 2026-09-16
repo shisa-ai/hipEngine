@@ -295,6 +295,65 @@ def test_gpu_dpm_step_kernel_matches_cpu_solver(bundle):
     assert set(orders) == {1, 2}, f"schedule only exercised orders {sorted(set(orders))}"
 
 
+def test_gpu_cfg_combine_matches_sampling_oracle(bundle):
+    """The device CFG combine must use the sampling path's rounding points.
+
+    The oracle is ``bf16_round(u + bf16_round(cfg * (c - u)))``: the ``(c - u)``
+    difference stays in fp32, so there are exactly two roundings. An earlier
+    version of this kernel rounded the difference too (three roundings); it had
+    no caller, so nothing caught it until the device solver loop started using
+    it. This test pins the contract against the oracle formula directly rather
+    than against another kernel.
+    """
+    import hipengine.kernels.cpu_reference.vibevoice_tts_diffusion as diff_ref
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_array_to_device,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.vibevoice import diffusion as hip_diff
+    from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
+    from hipengine.runtime.vibevoice_tts_diffusion import _bf16_bits_to_f32
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(7)
+    n = 64
+    # Include a case where the unrounded difference and the rounded one disagree
+    # after scaling, so a three-rounding kernel cannot pass by luck.
+    cond = diff_ref.bf16_round(rng.standard_normal(n).astype(np.float32) * 3.0)
+    uncond = diff_ref.bf16_round(rng.standard_normal(n).astype(np.float32) * 3.0)
+    cfg = 1.3
+
+    c_dev, u_dev, out_dev = (malloc(n * 2) for _ in range(3))
+    copy_host_array_to_device(c_dev, f32_to_bf16_bits(cond))
+    copy_host_array_to_device(u_dev, f32_to_bf16_bits(uncond))
+    hip_diff.vv_diff_cfg_combine_bf16(
+        c_dev.ptr, u_dev.ptr, cfg, out_dev.ptr, n, runtime=runtime
+    )
+    runtime.device_synchronize()
+    raw = np.empty(n, dtype=np.uint16)
+    copy_device_to_host(raw.ctypes.data, out_dev, raw.nbytes, runtime=runtime)
+    got = _bf16_bits_to_f32(raw, (n,))
+
+    expected = diff_ref.bf16_round(
+        uncond + diff_ref.bf16_round(np.float32(cfg) * (cond - uncond))
+    )
+    three_rounding = diff_ref.bf16_round(
+        uncond
+        + diff_ref.bf16_round(np.float32(cfg) * diff_ref.bf16_round(cond - uncond))
+    )
+
+    assert not np.array_equal(expected, three_rounding), (
+        "test inputs do not distinguish the two- and three-rounding forms"
+    )
+    assert np.array_equal(got, expected), (
+        "device CFG combine is not the sampling oracle's rounding chain: "
+        f"{int((got != expected).sum())}/{n} elements differ, "
+        f"max |diff| {np.abs(got - expected).max()}"
+    )
+
+
 def test_gpu_diffusion_resolves_through_registry():
     from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 

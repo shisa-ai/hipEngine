@@ -4,15 +4,22 @@ Drives the registered ``vibevoice`` primitives for the MLP-DiT head: linears
 via ``dense_gemv_out_bf16`` (fp32 accumulation), RMSNorm via
 ``vv_rmsnorm_bf16`` (the final layer's no-affine norm passes an all-ones
 weight -- an exact fp32 no-op), and the eager-rounded elementwise chain via
-``vv_diff_*``. The DPMSolver itself runs on the host through the CPU
-reference's scheduler (per-step solver tensors are 2x64, so the solver's
-device transfers are a few hundred bytes per step); only the head runs on
-device.
+``vv_diff_*``.
+
+Both the head and the DPMSolver run on device. ``sample_speech_tokens`` keeps
+the latent, the CFG-combined eps and the previous x0 device-resident for the
+whole 20-step schedule, so the only device-to-host traffic is the final
+readback. The CFG combine is ``vv_diff_cfg_combine_bf16`` and the solver step
+is ``vv_diff_dpm_step_bf16``, whose per-step scalars come from the CPU
+reference's read-only ``DPMSolverMultistepScheduler.step_scalars()`` -- so the
+device path and the numpy oracle share one source of truth for the schedule
+math rather than duplicating it.
 
 Bit-faithfulness contract: the GPU head must match the numpy CPU reference
 within the eager-bf16 envelope (occasional 1-2 ulp flips from fp32
-accumulation-order differences, exactly like the decoder lane), and the
-host-side solver math is shared verbatim with the CPU reference.
+accumulation-order differences, exactly like the decoder lane). The device
+CFG combine and solver step are stricter than that -- they are bit-identical
+to the host path, verified step-by-step over the whole schedule.
 """
 
 from __future__ import annotations
@@ -27,6 +34,7 @@ from hipengine.core.memory import (
     free,
     malloc,
 )
+from hipengine.core.runtime import MemcpyKind
 from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
 
@@ -115,6 +123,12 @@ class VibevoiceTTSDiffusionHeadGPU:
         self._buffers["final_ada"] = malloc(2 * 2 * h * 2)
         self._buffers["t_freq_rows"] = malloc(2 * spec.frequency_embedding_size * 2)
         self._buffers["x_rows"] = malloc(2 * spec.latent_size * 2)
+        # Device-resident solver state for the fused sampling loop. The latent
+        # and the previous x0 each ping-pong between two buffers because the
+        # step kernel declares sample/sample_out and x0_prev/x0_out
+        # __restrict__, so input and output must not alias.
+        for key in ("speech_a", "speech_b", "x0_a", "x0_b", "eps_dup"):
+            self._buffers[key] = malloc(2 * spec.latent_size * 2)
         # Caches for work that is invariant either across the 20 solver steps of a
         # frame (the condition projection) or across the 25 frames of a request
         # (the timestep MLP, whose 20-step schedule repeats). Both skip weight
@@ -168,7 +182,7 @@ class VibevoiceTTSDiffusionHeadGPU:
         t_value: float,
         condition_bf16_u16: np.ndarray,
     ) -> np.ndarray:
-        """One head call on device.
+        """One head call from host-resident inputs.
 
         ``x_bf16_u16``: (2, latent) uint16 bf16 rows; ``t_value``: raw
         timestep (rounded to the bf16 grid here, exactly as eager casts the
@@ -176,14 +190,39 @@ class VibevoiceTTSDiffusionHeadGPU:
         (2, hidden) uint16. Returns the raw eps (2, latent) as FP32 values on
         the bf16 grid.
         """
+        copy_host_array_to_device(
+            self._buffers["x_rows"], np.ascontiguousarray(x_bf16_u16)
+        )
+        self.forward_into(t_value, condition_bf16_u16)
+        return self.read_eps()
+
+    def read_eps(self) -> np.ndarray:
+        """Read the device eps buffer back as FP32 values on the bf16 grid."""
+        return self._read_device(self._buffers["eps"], (2, self.spec.latent_size))
+
+    def _read_device(self, buffer: DeviceBuffer, shape: tuple[int, ...]) -> np.ndarray:
+        """Read a bf16 device buffer back as FP32 values on the bf16 grid."""
+        count = int(np.prod(shape))
+        raw = np.empty(count, dtype=np.uint16)
+        copy_device_to_host(raw.ctypes.data, buffer, raw.nbytes, runtime=self.runtime)
+        return _bf16_bits_to_f32(raw, shape)
+
+    def forward_into(self, t_value: float, condition_bf16_u16: np.ndarray) -> None:
+        """Run the head with ``x_rows`` already resident on device.
+
+        Leaves the raw eps in ``self._buffers['eps']`` and performs no
+        device-to-host readback, so a device-side solver loop can consume it
+        in place. Every other input is unchanged from :meth:`forward`, and the
+        arithmetic is identical: the only difference is that the caller owns
+        the ``x_rows`` upload and the eps readback.
+        """
         spec = self.spec
         h_dim = spec.hidden_size
         rows = 2
         t_bf = float(np.asarray(diff_ref.bf16_round(np.float32(t_value))).reshape(-1)[0])
 
         b = self._buffers
-        # x = noisy_images_proj(x)
-        copy_host_array_to_device(b["x_rows"], np.ascontiguousarray(x_bf16_u16))
+        # x = noisy_images_proj(x) -- x_rows is already resident.
         self._gemv("noisy_proj", b["x_rows"].ptr, b["h"].ptr, rows)
         h = b["h"]
 
@@ -260,10 +299,6 @@ class VibevoiceTTSDiffusionHeadGPU:
         )
         self._gemv("final_linear", b["modulated"].ptr, b["eps"].ptr, rows)
 
-        raw = np.empty(rows * spec.latent_size, dtype=np.uint16)
-        copy_device_to_host(raw.ctypes.data, b["eps"], raw.nbytes, runtime=self.runtime)
-        return _bf16_bits_to_f32(raw, (rows, spec.latent_size))
-
     # -- sampling ----------------------------------------------------------
     def sample_speech_tokens(
         self,
@@ -274,13 +309,22 @@ class VibevoiceTTSDiffusionHeadGPU:
         *,
         collect: list[dict[str, np.ndarray]] | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """The fork's two-branch CFG loop: head on device, solver on host.
+        """The fork's two-branch CFG loop, with the solver on device.
 
         ``condition``/``neg_condition``: ``(1, hidden)`` each (stacked
         internally); ``initial_noise``: ``(2, latent)``. Returns
-        ``(speech_first_row, raw_eps_first_row)``; per-step snapshots
-        land in ``collect`` when given (raw head eps, CFG-combined eps, and
-        the post-step speech, both branches).
+        ``(speech_first_row, raw_eps_first_row)``; per-step snapshots land in
+        ``collect`` when given (raw head eps, CFG-combined eps, and the
+        post-step speech, both branches).
+
+        The latent, the CFG-combined eps and the previous x0 stay on device for
+        the whole schedule, so the only device-to-host traffic is the final
+        readback -- and the per-step snapshots when ``collect`` is requested.
+        The head, the CFG combine and the solver step are all bit-faithful to
+        the host path: ``vv_diff_cfg_combine_bf16`` implements exactly
+        ``r(u + r(cfg * r(c - u)))`` with an unrounded fp32 ``cfg``, and
+        ``vv_diff_dpm_step_bf16`` is verified bit-identical to
+        ``DPMSolverMultistepScheduler.step``.
         """
         spec = self.spec
         cf = np.asarray(condition, dtype=np.float32)
@@ -295,23 +339,81 @@ class VibevoiceTTSDiffusionHeadGPU:
             )
         cond = diff_ref.bf16_round(np.concatenate([cf, ncf], axis=0))
         cond_u16 = _bf16_u16(cond)
-        speech = diff_ref.bf16_round(np.asarray(initial_noise, dtype=np.float32))
+
+        rows = 2
+        latent_bytes = spec.latent_size * 2
+        b = self._buffers
         sched = diff_ref.DPMSolverMultistepScheduler(spec)
         sched.set_timesteps(spec.num_inference_steps)
 
-        raw_eps = None
+        # Seed the device solver state. x0_prev is zeroed rather than left
+        # uninitialised: order 1 never reads it, but a first step that somehow
+        # selected order 2 should be deterministically wrong, not
+        # nondeterministic.
+        speech, speech_next = b["speech_a"], b["speech_b"]
+        x0_prev, x0_next = b["x0_a"], b["x0_b"]
+        copy_host_array_to_device(
+            speech,
+            _bf16_u16(diff_ref.bf16_round(np.asarray(initial_noise, dtype=np.float32))).reshape(-1),
+        )
+        self.runtime.memset(x0_prev.ptr, 0, 2 * latent_bytes)
+
         for t in sched.timesteps:
-            half = speech[: len(speech) // 2]
-            combined = np.concatenate([half, half], axis=0)
-            raw_eps = self.forward(_bf16_u16(combined), int(t), cond_u16)
-            cond_eps, uncond_eps = np.split(raw_eps, 2, axis=0)
-            half_eps = diff_ref.bf16_round(
-                uncond_eps + diff_ref.bf16_round(cfg_scale * (cond_eps - uncond_eps))
+            order, a_b, s_b, scale, coef_b, half_b, inv_r0 = sched.step_scalars()
+            # combined = [speech[0], speech[0]]: the fork drives both CFG
+            # branches from the first latent row.
+            self.runtime.memcpy(
+                b["x_rows"].ptr, speech.ptr, latent_bytes, MemcpyKind.DEVICE_TO_DEVICE
             )
-            eps = np.concatenate([half_eps, half_eps], axis=0)
-            speech = sched.step(eps, int(t), speech)
+            self.runtime.memcpy(
+                b["x_rows"].ptr + latent_bytes,
+                speech.ptr,
+                latent_bytes,
+                MemcpyKind.DEVICE_TO_DEVICE,
+            )
+            self.forward_into(float(t), cond_u16)
+
+            # half = r(uncond + r(cfg * r(cond - uncond))) from eps rows 1/0,
+            # duplicated into both rows for the (2, latent) solver step. The
+            # head's own eps buffer is left untouched so the final raw eps is
+            # still available for the return value.
+            eps = b["eps"]
+            eps_dup = b["eps_dup"]
+            for row in range(rows):
+                self.kernels.vv_diff_cfg_combine_bf16(
+                    eps.ptr,
+                    eps.ptr + latent_bytes,
+                    float(cfg_scale),
+                    eps_dup.ptr + row * latent_bytes,
+                    spec.latent_size,
+                )
+            self.kernels.vv_diff_dpm_step_bf16(
+                speech.ptr,
+                eps_dup.ptr,
+                x0_prev.ptr,
+                speech_next.ptr,
+                x0_next.ptr,
+                a_b,
+                s_b,
+                scale,
+                coef_b,
+                half_b,
+                inv_r0,
+                rows * spec.latent_size,
+                order,
+                runtime=self.runtime,
+            )
             if collect is not None:
                 collect.append(
-                    {"eps": raw_eps.copy(), "eps_cfg": eps.copy(), "speech": speech.copy()}
+                    {
+                        "eps": self.read_eps(),
+                        "eps_cfg": self._read_device(eps_dup, (rows, spec.latent_size)),
+                        "speech": self._read_device(speech_next, (rows, spec.latent_size)),
+                    }
                 )
-        return speech[: len(speech) // 2], raw_eps[: len(raw_eps) // 2]
+            sched.advance_step()
+            speech, speech_next = speech_next, speech
+            x0_prev, x0_next = x0_next, x0_prev
+
+        # b["eps"] still holds the last step's raw head output.
+        return self._read_device(speech, (rows, spec.latent_size))[:1], self.read_eps()[:1]
