@@ -24,7 +24,7 @@
   "hipengine_mapper": "map_hipengine"
  },
  "caveats": [
-  "Both sides are the same case on the same host, but not the same arithmetic.",
+  "Both sides are the same case on the same host (gfx1151 / AMD Radeon 8060S, confirmed from each engine's own rocprofv3 agent_info), but not the same arithmetic: the comparator's dense path is BF16 against our F16, about 33x coarser (docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md).",
   "hipEngine's iu8 exact-repair passes are folded into the matmul family they correct; the folded total is reported as risk_or_repair_ms.",
   "Milliseconds are kernel time, not wall. Neither side is a throughput claim."
  ],
@@ -34,7 +34,6 @@
   "attributed_ms": 22083.567883,
   "attributed_time_pct": 100.0,
   "total_ms": 22083.567882999956,
-  "kernel_count": 2024,
   "by_family_ms": {
    "dense_projection": 10562.2,
    "hyper_connection": 2523.8,
@@ -48,7 +47,16 @@
    "indexer": 17.5,
    "other": 0.2
   },
-  "by_family_kernel_count": {
+  "risk_or_repair_ms": 1434.4,
+  "unmapped_over_floor": [],
+  "host": {
+   "target_arch": "gfx1151",
+   "device_name": "AMD Radeon 8060S Graphics",
+   "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+   "source": "rocprofv3 agent_info of each engine's own kernel trace"
+  },
+  "attributed_row_count": 2024,
+  "by_family_row_count": {
    "dense_projection": 641,
    "hyper_connection": 97,
    "qsa_attention": 84,
@@ -61,8 +69,10 @@
    "indexer": 24,
    "other": 1
   },
-  "risk_or_repair_ms": 1434.4,
-  "unmapped_over_floor": []
+  "kernel_count": 9652,
+  "row_count_note": "attributed_row_count and by_family_row_count are (role, kernel) rows, not kernel launches; the prefill launched 9652 kernels.",
+  "unattributed_window_ms": 615.1,
+  "attributed_time_pct_note": "attributed_time_pct is the share of attributed kernel time, which is 100% by construction; unattributed_window_ms is the part of the profiled window that is not kernel time."
  },
  "comparators": [
   {
@@ -82,7 +92,14 @@
     "ple": 0.0,
     "qsa_attention": 156.6,
     "quantize_pack": 284.8
-   }
+   },
+   "host": {
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "source": "rocprofv3 agent_info of each engine's own kernel trace"
+   },
+   "trace_agent_info": "~/tmp/delim-base-halobox.raw/trace/gfx1151/*_agent_info.csv"
   },
   {
    "label": "halobox-pr63",
@@ -101,7 +118,14 @@
     "ple": 0.0,
     "qsa_attention": 155.7,
     "quantize_pack": 0.0
-   }
+   },
+   "host": {
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "source": "rocprofv3 agent_info of each engine's own kernel trace"
+   },
+   "trace_agent_info": "~/tmp/delim-pr63-halobox.raw/trace/gfx1151/*_agent_info.csv"
   }
  ],
  "table": [

@@ -7037,6 +7037,13 @@ coltile family). The exact coltile parents remain the default path, the
 registered strict fallback, and the sole owner of the sub-256-row path, so the
 selector declining is always a fall back to an exact route.
 
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` narrows it to a layer scope, added
+2026-09-17 after review found the first cut was a plain boolean: with no scope
+the route covers all 48 layers, which is the 0-47 scope the sibling f16 route
+already fails, so the flag could only express a configuration known to fail. A
+weight with no layer index (`token_embd`, `output`, both Q8_0 in this model but
+outside the blocks) is outside any scope and the route declines it.
+
 Removal condition: run the calibrated production envelope in
 `docs/EXECUTION-PROFILES.md` against this route at the deepest admissible layer
 scope. If it passes, promote it to the named production profile and delete the
