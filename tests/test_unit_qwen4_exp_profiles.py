@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from hipengine.execution_profiles import (
     resolve_runtime_profile,
 )
 from hipengine.generation.qwen4_exp_profiles import (
+    PREBINDER_CONFLICT_ENV,
     PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS,
     PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
@@ -23,6 +25,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
     QWEN4_EXP_QUANTS,
+    last_prebinder_conflicts,
     qwen4_exp_gfx1151_profiles_registered,
     register_qwen4_exp_gfx1151_profiles,
 )
@@ -419,3 +422,61 @@ def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:
         for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION):
             resolved = _resolve(profile, quant=quant)
             assert resolved.manifest["quant"] == quant
+
+
+def test_binder_reports_a_pre_binder_value_it_discards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A route variable set before construction is inert, so say so loudly.
+
+    The binder owns every variable it writes. Setting one before the generator
+    exists means the intended route never runs and the experiment reports a
+    clean null that looks like a real negative result.
+    """
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION)
+    assert production.binder is not None
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "32,33,34")
+
+    with pytest.warns(RuntimeWarning, match="HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"):
+        production.binder(SimpleNamespace(runner=None), production)
+
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert last_prebinder_conflicts()["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == (
+        "32,33,34",
+        "",
+    )
+
+
+def test_binder_can_be_made_to_raise_on_a_discarded_pre_binder_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION)
+    assert production.binder is not None
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "0-47")
+    monkeypatch.setenv(PREBINDER_CONFLICT_ENV, "error")
+
+    with pytest.raises(RuntimeError, match="inert"):
+        production.binder(SimpleNamespace(runner=None), production)
+
+
+def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Strict-then-production binding in one process is normal."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    strict = _resolve(ExecutionProfile.STRICT)
+    production = _resolve(ExecutionProfile.PRODUCTION)
+    assert strict.binder is not None and production.binder is not None
+
+    strict.binder(SimpleNamespace(runner=None), strict)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        production.binder(SimpleNamespace(runner=None), production)
+    assert last_prebinder_conflicts() == {}

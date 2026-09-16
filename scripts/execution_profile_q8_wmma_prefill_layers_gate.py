@@ -152,6 +152,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         QWEN4_EXP_BACKEND,
         QWEN4_EXP_MODEL,
         QWEN4_EXP_QUANTS,
+        last_prebinder_conflicts,
         register_qwen4_exp_gfx1151_profiles,
     )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
@@ -212,6 +213,14 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     if runner is None:
         raise CalibrationError("runner is not resident")
     bound_selector = os.environ.get(SELECTOR_ENV)
+    # A caller-set value the binder discarded means the intended route never
+    # ran and the gate would report a clean null. Fail rather than measure it.
+    discarded = last_prebinder_conflicts()
+    if discarded:
+        raise CalibrationError(
+            "the profile binder discarded pre-binder route values, so the "
+            f"measured route is not the requested one: {sorted(discarded)}"
+        )
 
     captures: list[PromptCalibrationCapture] = []
     prompt_manifest: list[dict[str, Any]] = []
