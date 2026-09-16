@@ -76,6 +76,23 @@ def _good_row(matched, arm: str, *, prompt_id: str = "p0", category: str = "code
     return row, cell
 
 
+@pytest.mark.parametrize('field,value', [
+    ('capture_ms', -1), ('destroy_ms', -1), ('output_tokens', 128.5),
+    ('prompt_tokens', float('inf')), ('finite_all_decode_logits', 'false'),
+    ('graph_effective', 'false'),
+])
+def test_invalid_numeric_or_boolean_cannot_authorize_ratio(matched, field, value):
+    row, cell = _good_row(matched, 'tp2', **{field: value})
+    assert matched.validate_accounting('tp2', row, cell=cell)
+
+
+def test_infinite_rate_cannot_form_ratio(matched):
+    rep = {'rep': 0, 'complete': True, 'arms': {
+        a: {'adjusted_tok_s': float('inf') if a == 'tp2' else 10.0} for a in matched.ARMS},
+        'run_ids': {a: a for a in matched.ARMS}}
+    assert matched.compute_ratios([rep]) is None
+
+
 @pytest.mark.parametrize("arm", ["tp1-d0", "tp1-d1", "tp2"])
 def test_validate_accounting_accepts_a_matching_row(matched, arm):
     row, cell = _good_row(matched, arm)

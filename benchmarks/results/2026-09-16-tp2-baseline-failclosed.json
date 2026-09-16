@@ -1,0 +1,173 @@
+{
+  "kind": "tp2_xtx_tp1_eager_stage_probe",
+  "timestamp": "2026-09-16T16:51:51.743668+00:00",
+  "host": "epyc",
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 /home/lhl/hipEngine-main/scripts/tp2_xtx_tp1_eager_stage_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --json /tmp/tp2-baseline-failclosed/xtx-resident.json",
+  "inherited_decode_repack": null,
+  "env": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1"
+  },
+  "config": {
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "use_bulk": null,
+    "bulk_attention_mode": "bulk",
+    "attn_aotriton_min_tokens": 512,
+    "kv_policy": "session default (BF16)",
+    "kv_scale_dtype": "fp16",
+    "profile": "session/environment default",
+    "decode_transitions": 1,
+    "require_cached_build": false,
+    "max_sequence_length": 23
+  },
+  "unwritten_check": "not performed: no initialized sentinel",
+  "status": "failed",
+  "stages": [
+    {
+      "stage": "build",
+      "ok": true,
+      "current_device": 0,
+      "device": {
+        "name": "AMD Radeon RX 7900 XTX",
+        "uuid": "cc4d02090dc9c3ff",
+        "pci_bus_id": "0000:10:00.0"
+      },
+      "vocab_size": 248320,
+      "effective_kv_storage_dtype": "DType.BF16",
+      "fastpath_safety": {
+        "is_qwen35moe": false,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": true,
+        "effective_gemv_decode": true,
+        "disabled_wmma_prefill": false,
+        "disabled_gemv_decode": false,
+        "reason": null
+      },
+      "ms": 93493.37162170559
+    },
+    {
+      "stage": "reset",
+      "ok": true,
+      "ms": 3.382015973329544
+    },
+    {
+      "stage": "prefill-auto",
+      "ok": false,
+      "error": "FloatingPointError: GGUF resident lm-head logits contain NaN or Inf",
+      "ms": 240.06945081055164
+    }
+  ],
+  "first_bad_stage": "prefill-auto",
+  "active_stage": null,
+  "cache_root": "/home/lhl/.cache/hipengine/build",
+  "cache_manifest_sha256": "b90ab5f9ba9b110770032ef2e7c00fff922bd40746ddad39d2f095ae69d98838",
+  "cache_manifest_count": 2464,
+  "source_revision": "476a3ab70ab61ce4e567159dabb86154c68c46d5",
+  "source_status": " M scripts/tp2_d1_boundary_bisect.py\n M scripts/tp2_matched_ar_baseline.py\n M scripts/tp2_xtx_tp1_eager_stage_probe.py\n M tests/test_unit_scripts_tp2_matched_ar_baseline.py\n M tests/test_unit_scripts_tp2_xtx_tp1_eager_stage_probe.py\n?? epyc/\n",
+  "script_sha256": "b5b9a826f4801ade1b5ce8466600e651d0eabc8b12152493d8898956bcdae906",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "compiler_version": null,
+  "prompt_token_ids": [
+    248045,
+    846,
+    198,
+    7734,
+    799,
+    1500,
+    314,
+    12654,
+    421,
+    22741,
+    23066,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "loaded_cache_libraries": [
+    "/home/lhl/.cache/hipengine/build/lm_head-a85a87942b9af033/lm_head.so",
+    "/home/lhl/.cache/hipengine/build/runtime_state-f8ea2a6b9771cf57/runtime_state.so"
+  ],
+  "performance_claim": false,
+  "scope": "Correctness diagnostic only: prefill output observation boundary, not a kernel root cause or a matched timing baseline.",
+  "outer_command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=1 python3 scripts/tp2_xtx_tp1_eager_stage_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --json /tmp/tp2-baseline-failclosed/xtx-resident.json > /tmp/tp2-baseline-failclosed/xtx-resident.log 2>&1",
+  "exit_code": 1,
+  "teardown_qualified": false,
+  "no_reset_or_environment_restore": true,
+  "raw_health_helper_source": "import ctypes, hashlib, json\nfrom pathlib import Path\nimport numpy as np\nfrom hipengine.core.hip import get_hip_runtime\nfrom hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr\nfrom hipengine.kernels.hip_gfx1100.smoke import smoke_add_f32\np = Path('/home/lhl/.cache/hipengine/build/smoke-f5a99232c7a4809d/smoke_add.so')\nr = get_hip_runtime()\nd = r.device_info(r.get_device())\nprint(json.dumps({'device': d.name, 'uuid': d.uuid, 'pci': d.pci_bus_id, 'library': str(p), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}), flush=True)\na = np.arange(1024, dtype=np.float32); b = 2*a+1\nout = np.full_like(a, np.nan)\nbufs = [malloc(a.nbytes, runtime=r) for _ in range(3)]\nfor buf, host in zip(bufs, [a,b,out]): copy_host_to_device(buf, host_array_ptr(host), runtime=r)\nsmoke_add_f32(*(buf.ptr for buf in bufs), len(a), runtime=r, library=ctypes.CDLL(str(p)))\nr.device_synchronize()\ncopy_device_to_host(host_array_ptr(out), bufs[2], runtime=r)\nassert np.array_equal(out, a+b), out\nprint('PASS exact add/copy, finite=1024/1024, max_abs=0; NaN poison overwritten', flush=True)\nfor buf in bufs: free(buf, runtime=r)\n",
+  "controls": [
+    {
+      "device": 0,
+      "uuid": "e282895b62c2b295",
+      "pci": "0000:0d:00.0",
+      "library": "/home/lhl/.cache/hipengine/build/smoke-f5a99232c7a4809d/smoke_add.so",
+      "sha256": "529aae919f6a728ecd5c888cac426e49b012fb1f94b40ae5621fd206ceba4c36",
+      "raw_command": "timeout -k 5s 30s env PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 python3 /tmp/tp2-baseline-failclosed/raw_health.py",
+      "raw_exit_code": 0,
+      "raw_max_abs": 0,
+      "raw_exact": true,
+      "raw_finite": 1024,
+      "sentinel_command": "timeout -k 5s 180s python3 scripts/tp2_fullwidth_gemv_sentinel_probe.py --device 0",
+      "sentinel_exit_code": 0,
+      "sentinel_gate_remaining": 0,
+      "sentinel_up_remaining": 0,
+      "sentinel_elements": 17408,
+      "diagnostic_tp1_finite_logits": 248320,
+      "diagnostic_tp1_total_logits": 248320,
+      "sentinel_source_sha256": "12f2b0c7a8805bc8bdd5351b38d6a46d9828403723b5f40dbf25e519362821be",
+      "sentinel_is_numerical_certificate": false
+    },
+    {
+      "device": 1,
+      "uuid": "cc4d02090dc9c3ff",
+      "pci": "0000:10:00.0",
+      "library": "/home/lhl/.cache/hipengine/build/smoke-f5a99232c7a4809d/smoke_add.so",
+      "sha256": "529aae919f6a728ecd5c888cac426e49b012fb1f94b40ae5621fd206ceba4c36",
+      "raw_command": "timeout -k 5s 30s env PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=1 python3 /tmp/tp2-baseline-failclosed/raw_health.py",
+      "raw_exit_code": 0,
+      "raw_max_abs": 0,
+      "raw_exact": true,
+      "raw_finite": 1024,
+      "sentinel_command": "timeout -k 5s 180s python3 scripts/tp2_fullwidth_gemv_sentinel_probe.py --device 1",
+      "sentinel_exit_code": 0,
+      "sentinel_gate_remaining": 0,
+      "sentinel_up_remaining": 0,
+      "sentinel_elements": 17408,
+      "diagnostic_tp1_finite_logits": 248320,
+      "diagnostic_tp1_total_logits": 248320,
+      "sentinel_source_sha256": "12f2b0c7a8805bc8bdd5351b38d6a46d9828403723b5f40dbf25e519362821be",
+      "sentinel_is_numerical_certificate": false
+    }
+  ],
+  "logs": {
+    "/tmp/tp2-baseline-failclosed/raw-health-d0.log": "38e3f57bb013aa3d187499fde6d30b3fb2a6fdfc42960489566c12897d22aeab",
+    "/tmp/tp2-baseline-failclosed/raw-health-d1.log": "060afd5d111375d45dbe219602c7599588c9fda378e999cb0b629487d843e7d0",
+    "/tmp/tp2-baseline-failclosed/sentinel-d0.log": "3fed02d63ba9dbd56737f6c200bfee175a347485c1072559ec112d2145a8e0ec",
+    "/tmp/tp2-baseline-failclosed/sentinel-d1.log": "31cd08ae3a731545ed5a3632961709544b83f679c87c104b504feb7718e02264",
+    "/tmp/tp2-baseline-failclosed/smoke-d0-green.log": "e9648f86abc0986ddd9702fc49c15d20c14da47a3ee652231fc0eb816a5f39b9",
+    "/tmp/tp2-baseline-failclosed/smoke-d0.log": "e9648f86abc0986ddd9702fc49c15d20c14da47a3ee652231fc0eb816a5f39b9",
+    "/tmp/tp2-baseline-failclosed/smoke-d1-green.log": "e9648f86abc0986ddd9702fc49c15d20c14da47a3ee652231fc0eb816a5f39b9",
+    "/tmp/tp2-baseline-failclosed/smoke-d1.log": "e9648f86abc0986ddd9702fc49c15d20c14da47a3ee652231fc0eb816a5f39b9",
+    "/tmp/tp2-baseline-failclosed/smoke-prebuild.log": "33e761124a4e2f39ab7744442f9aa0b2b87abcf185aed72cfba604b267ae6a1d",
+    "/tmp/tp2-baseline-failclosed/xtx-resident.log": "c9901f7fa28ca2e23c890d10f9662b2b7cca2aa14613cd802d20a9ee93d21dcd"
+  },
+  "health_preparation_failures": [
+    "Initial cache-only smoke on each GPU exited 1 before compute: missing smoke-a87e9b80acebde04/smoke_add.so.",
+    "One bounded smoke prebuild exited 1: hip/hip_runtime.h not found by compiler; no environment restore attempted. Subsequent cache-only attempts also exited 1 before compute.",
+    "Then used the existing gfx1100 smoke-f5a99232c7a4809d library by exact path/hash in fresh processes; both exact CPU-oracle comparisons passed."
+  ],
+  "post_measurement_change": "An additional CPU-tested greedy-token/argmax check and optional-graph capacity accounting were added after this failing run; neither changes the default run, which failed inside resident readback before result validation. No additional resident GPU probe."
+}

@@ -179,8 +179,9 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, bool) or value is None:
         return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        result = int(value)
+        return result if result == value else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -236,16 +237,15 @@ def validate_accounting(arm: str, row: dict[str, Any], *, cell: dict[str, Any]) 
         "context_position_at_timing_start != prompt_tokens + warmup",
     )
     # -- route --------------------------------------------------------------
-    need(bool(row.get("graph_effective", False)), "graph replay not effective")
+    need(row.get("graph_effective") is True, "graph replay not effective")
     need(
-        bool(row.get("logits_per_decode_step", False))
-        == bool(cell["logits_per_decode_step"]),
+        row.get("logits_per_decode_step") is cell["logits_per_decode_step"],
         "logits_per_decode_step does not match the cell",
     )
     # -- logits -------------------------------------------------------------
-    need(bool(row.get("finite_final_logits", False)), "final logits not finite")
+    need(row.get("finite_final_logits") is True, "final logits not finite")
     need(
-        bool(row.get("finite_all_decode_logits", False)),
+        row.get("finite_all_decode_logits") is True,
         "all decode-step logits not verified finite",
     )
     need(str(row.get("eos_policy", "")) == "none", "eos_policy != 'none'")
@@ -266,7 +266,8 @@ def validate_accounting(arm: str, row: dict[str, Any], *, cell: dict[str, Any]) 
     )
     # -- timing windows -----------------------------------------------------
     for key in ("total_generation_ms", "capture_ms", "destroy_ms"):
-        if _as_float(row.get(key)) is None:
+        value = _as_float(row.get(key))
+        if value is None or value < 0:
             failures.append(f"{prompt_id}: {key} must be finite and non-negative")
     total = _as_float(row.get("total_generation_ms"))
     capture = _as_float(row.get("capture_ms"))
@@ -437,7 +438,7 @@ def compute_ratios(reps: list[dict[str, Any]]) -> dict[str, Any] | None:
         tp1 = {arm: float(arms[arm]["adjusted_tok_s"]) for arm in TP1_ARMS}
         faster_arm = max(tp1, key=lambda a: tp1[a])
         faster = tp1[faster_arm]
-        if not (faster > 0 and tp2 > 0):
+        if not all(math.isfinite(rate) and rate > 0 for rate in [tp2, *tp1.values()]):
             return None
         per_rep.append(
             {

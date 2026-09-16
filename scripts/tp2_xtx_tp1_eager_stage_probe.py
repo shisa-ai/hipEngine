@@ -1,34 +1,22 @@
 #!/usr/bin/env python3
-"""Minimal single-prompt XTX eager prefill/step/sampler stage probe.
+"""Bounded single-prompt resident TP1 diagnostic, not a numerical certificate.
 
-Localizes the first bad stage of the optimized resident TP1 route
-(``Qwen35GGUFResidentSession``) on the RX 7900 XTX by running one short prompt
-eagerly with a synchronized guard and a flushed stage log after every step.
-
-The CLI default ``--use-gemv-decode`` is True, so the failing resident route runs
-with the ``pack8_gemv_decode_*`` family active; this probe can toggle it to
-separate "device-1 fault" from "GEMV-decode-family fault".
-
-Each stage prints ``STAGE <name> START`` before any device work and
-``STAGE <name> OK`` after a ``device_synchronize``, so the last printed line in
-the log identifies a hang. Outputs are checked for sentinel/unwritten values
-(``INT64_MAX`` token id, non-finite logits, all-zero logits) and every failure
-is recorded with its exact stage rather than raised past the log.
-
-This is a bounded diagnostic: one prompt, one session, no reset. Do not treat
-an idle-healthy card as a certified healthy context.
-
-Usage:
-  HIP_VISIBLE_DEVICES=1 python3 scripts/tp2_xtx_tp1_eager_stage_probe.py \
-      --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --json /tmp/xtx-eager.json
+Every stage is persisted BEFORE work and after synchronization/validation. A
+failure stops all subsequent GPU calls, including explicit cleanup. CLI failure
+uses os._exit(1) after flushing evidence to avoid GPU-owning destructors; process
+exit is not teardown qualification. Run under an external timeout (e.g. 240s).
+Nonfinite output logits identify an observation boundary, not a faulty kernel or
+layer. No sentinel is initialized here, so no unwritten-buffer claim is made.
 """
-
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import math
 import os
+import platform
+import shlex
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,194 +27,220 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
-PROMPT = "Write one line of Python that prints hello."
-
-
-def _log(message: str) -> None:
-    print(message, flush=True)
+DEFAULT_MODEL = Path('/models/gguf/Qwen3.8-27B-Q4_K_M.gguf')
+PROMPT = 'Write one line of Python that prints hello.'
 
 
-def _summarize_logits(logits: np.ndarray, vocab_size: int) -> dict[str, object]:
-    if logits is None:
-        return {"present": False}
-    flat = np.asarray(logits).reshape(-1)
-    finite = bool(np.isfinite(flat).all())
-    return {
-        "present": True,
-        "shape": list(np.asarray(logits).shape),
-        "finite": finite,
-        "all_zero": bool(np.all(flat == 0.0)),
-        "nonzero": int(np.count_nonzero(flat)),
-        "argmax": int(np.argmax(flat)) if flat.size else None,
-        "min": float(flat.min()) if flat.size else None,
-        "max": float(flat.max()) if flat.size else None,
-        "sentinel_fraction": float(np.mean(flat == 0x7BFF)) if flat.size else None,
-    }
+class StageRecorder:
+    """Fail-closed stage journal; an unfinished START is never a success."""
 
+    def __init__(self, path: Path, metadata: dict):
+        self.path = path
+        self.artifact = {**metadata, 'status': 'running', 'stages': [],
+                         'first_bad_stage': None, 'active_stage': None}
+        self.persist()
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
-    parser.add_argument("--prompt", default=PROMPT)
-    parser.add_argument("--json", type=Path, default=None)
-    parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--with-graph", action="store_true", help="also probe graph capture/replay")
-    parser.add_argument("--with-serial", action="store_true", help="also probe the use_bulk=False path")
-    parser.add_argument("--os-exit", action="store_true", help="skip destructors (diagnostic only)")
-    args = parser.parse_args(argv)
+    @property
+    def exit_code(self) -> int:
+        return int(self.artifact['first_bad_stage'] is not None)
 
-    # Match the working true-AR harness default: decode repack is on unless the
-    # caller explicitly disables it. Without this the resident session's decode
-    # path diverges and the lm-head logits come back NaN on a healthy device.
-    os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    def persist(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + '.tmp')
+        with temporary.open('w') as handle:
+            json.dump(self.artifact, handle, indent=2, allow_nan=False)
+            handle.write('\n')
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, self.path)
 
-    artifact: dict[str, object] = {
-        "kind": "tp2_xtx_tp1_eager_stage_probe",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "env": {
-            "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
-            "ROCR_VISIBLE_DEVICES": os.environ.get("ROCR_VISIBLE_DEVICES"),
-        },
-        "use_gemv_decode": bool(args.use_gemv_decode),
-        "stages": [],
-        "first_bad_stage": None,
-    }
-    stages: list[dict[str, object]] = artifact["stages"]  # type: ignore[assignment]
-
-    def record(name: str, payload: dict[str, object]) -> None:
-        entry = {"stage": name, "ms": payload.pop("ms", None), **payload}
-        stages.append(entry)
-        if entry.get("ok") is False and artifact["first_bad_stage"] is None:
-            artifact["first_bad_stage"] = name
-        _log(f"STAGE {name} {'OK' if entry.get('ok') else 'FAIL'} {entry}")
-
-    from hipengine.loading.gguf import scan_gguf
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-    from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
-    from scripts.gguf_mtp_bench import build_chat_prompt
-
-    _log("STAGE build START")
-    info = scan_gguf(args.model)
-    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(info)
-    tokens = build_chat_prompt(tokenizer, args.prompt)
-    build_start = time.perf_counter()
-    session = Qwen35GGUFResidentSession(
-        args.model,
-        max_sequence_length=max(512, len(tokens) + 8),
-        use_wmma_prefill=True,
-        use_gemv_decode=bool(args.use_gemv_decode),
-    )
-    runtime = session.runtime
-    vocab_size = int(session.runner.vocab_size)
-    device_info = runtime.device_info(0)
-    record(
-        "build",
-        {
-            "ok": True,
-            "ms": 1000.0 * (time.perf_counter() - build_start),
-            "device": {
-                "name": device_info.name,
-                "uuid": device_info.uuid,
-                "pci_bus_id": device_info.pci_bus_id,
-            },
-            "prompt_tokens": len(tokens),
-            "vocab_size": vocab_size,
-        },
-    )
-
-    def guard(stage: str, fn) -> None:  # type: ignore[no-untyped-def]
-        _log(f"STAGE {stage} START")
+    def guard(self, stage, fn, *, sync=None) -> bool:
+        if self.exit_code:
+            return False
+        entry = {'stage': stage, 'ok': None}
+        self.artifact['stages'].append(entry)
+        self.artifact['active_stage'] = stage
+        self.persist()
+        print(f'STAGE {stage} START', flush=True)
         start = time.perf_counter()
         try:
             payload = fn()
+            if sync is not None:
+                sync()
+            entry.update(payload or {})
+            entry['ok'] = True
+        except Exception as error:
+            entry.update(ok=False, error=f'{type(error).__name__}: {error}')
+            self.artifact['first_bad_stage'] = stage
+            self.artifact['status'] = 'failed'
+        entry['ms'] = 1000 * (time.perf_counter() - start)
+        self.artifact['active_stage'] = None
+        self.persist()
+        print(f"STAGE {stage} {'OK' if entry['ok'] else 'FAIL'} {entry}", flush=True)
+        return bool(entry['ok'])
+
+    def finish(self):
+        self.artifact['status'] = 'failed' if self.exit_code else 'complete'
+        self.persist()
+
+
+def validate_result(result, vocab_size: int) -> dict:
+    token = result.token_id
+    if isinstance(token, (bool, np.bool_)) or not isinstance(token, (int, np.integer)):
+        raise ValueError(f'non-integer token id: {token!r}')
+    if not 0 <= token < vocab_size:
+        raise ValueError(f'token id {token} outside [0, {vocab_size})')
+    if result.logits is None:
+        raise ValueError('missing logits')
+    logits = np.asarray(result.logits)
+    if vocab_size <= 0 or logits.shape != (vocab_size,):
+        raise ValueError(f'logits shape {logits.shape} != ({vocab_size},)')
+    if not np.isfinite(logits).all():
+        raise ValueError('nonfinite logits (upstream source unresolved)')
+    if not np.any(logits != 0):
+        raise ValueError('all-zero logits (not evidence of unwritten memory)')
+    if int(token) != int(np.argmax(logits)):
+        raise ValueError('greedy token does not match logit argmax')
+    return {'token_id': int(token), 'token_in_range': True, 'logits': {
+        'shape': list(logits.shape), 'finite': True, 'all_zero': False,
+        'argmax': int(np.argmax(logits)), 'min': float(logits.min()),
+        'max': float(logits.max()), 'sha256': hashlib.sha256(logits.tobytes()).hexdigest()}}
+
+
+def run_stages(session, tokens, recorder, *, use_bulk=None, with_serial=False, with_graph=False):
+    runtime = session.runtime
+    vocab_size = int(session.runner.vocab_size)
+    results = {}
+
+    def sample(name, fn):
+        def checked():
+            result = fn()
             runtime.device_synchronize()
-            record(stage, {"ok": True, "ms": 1000.0 * (time.perf_counter() - start), **payload})
-        except Exception as error:  # noqa: BLE001 - record the exact stage and continue
-            record(
-                stage,
-                {
-                    "ok": False,
-                    "ms": 1000.0 * (time.perf_counter() - start),
-                    "error": f"{type(error).__name__}: {error}",
-                },
-            )
+            payload = validate_result(result, vocab_size)
+            results[name] = int(result.token_id)
+            return payload
+        return recorder.guard(name, checked)
 
-    def prefill_auto():
-        session.reset()
-        result = session.prefill(tokens, use_bulk=None, return_logits=True)
-        token = int(result.token_id)
-        return {
-            "token_id": token,
-            "token_in_range": 0 <= token < vocab_size,
-            "logits": _summarize_logits(result.logits, vocab_size),
-        }
-
-    def eager_step():
-        session.reset()
-        first = session.prefill(tokens, use_bulk=None, return_logits=False)
-        result = session.step(int(first.token_id), return_logits=True)
-        token = int(result.token_id)
-        return {
-            "prefill_token_id": int(first.token_id),
-            "step_token_id": token,
-            "token_in_range": 0 <= token < vocab_size,
-            "logits": _summarize_logits(result.logits, vocab_size),
-        }
-
-    guard("prefill-auto", prefill_auto)
-    guard("eager-step", eager_step)
-
-    if args.with_serial:
-        def prefill_serial():
-            session.reset()
-            result = session.prefill(tokens, use_bulk=False, return_logits=True)
-            token = int(result.token_id)
-            return {
-                "token_id": token,
-                "token_in_range": 0 <= token < vocab_size,
-                "logits": _summarize_logits(result.logits, vocab_size),
-            }
-
-        guard("prefill-serial", prefill_serial)
-
-    if args.with_graph:
-        def graph_roundtrip():
-            session.reset()
-            session.prefill(tokens, use_bulk=None, return_logits=False)
-            graph = session.capture_decode_graph(
-                position=int(session.position),
-                steps_per_replay=1,
-                max_replay_steps=2,
-                attention_max_context_len=int(session.position) + 2,
-            )
-            try:
-                graph.replay(1)
-                result = graph.read_sample(return_logits=True)
-                token = int(result.token_id)
-                return {
-                    "token_id": token,
-                    "token_in_range": 0 <= token < vocab_size,
-                    "logits": _summarize_logits(result.logits, vocab_size),
-                }
-            finally:
-                graph.close()
-
-        guard("graph-roundtrip", graph_roundtrip)
-
-    _log("STAGE teardown START")
-    session.close()
-    record("teardown", {"ok": True})
-    if args.json:
-        args.json.write_text(json.dumps(artifact, indent=1) + "\n")
-    _log(f"first_bad_stage={artifact['first_bad_stage']}")
-    if args.os_exit:
-        # Diagnostic only: skipping destructors must never count as teardown
-        # qualification.
-        os._exit(0)
-    return 0
+    if not recorder.guard('reset', lambda: session.reset(), sync=runtime.device_synchronize):
+        return
+    if not sample('prefill-auto', lambda: session.prefill(
+            tokens, use_bulk=use_bulk, bulk_attention_mode='bulk', return_logits=True)):
+        return
+    if not sample('eager-step', lambda: session.step(results['prefill-auto'], return_logits=True)):
+        return
+    if with_serial:
+        if not recorder.guard('serial-reset', lambda: session.reset(), sync=runtime.device_synchronize):
+            return
+        if not sample('prefill-serial', lambda: session.prefill(tokens, use_bulk=False, return_logits=True)):
+            return
+    if with_graph:
+        graphs = []
+        def capture():
+            graphs.append(session.capture_decode_graph(position=int(session.position),
+                steps_per_replay=1, max_replay_steps=2,
+                attention_max_context_len=int(session.position) + 2))
+        if not recorder.guard('graph-capture', capture, sync=runtime.device_synchronize):
+            return
+        graph = graphs[0]
+        if not recorder.guard('graph-replay', lambda: graph.replay(1), sync=runtime.device_synchronize):
+            return
+        if not sample('graph-read', lambda: graph.read_sample(return_logits=True)):
+            return
+        if not recorder.guard('graph-close', lambda: graph.close(), sync=runtime.device_synchronize):
+            return
+    recorder.guard('teardown', lambda: session.close(), sync=runtime.device_synchronize)
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--model', type=Path, default=DEFAULT_MODEL)
+    parser.add_argument('--prompt', default=PROMPT)
+    parser.add_argument('--json', type=Path, required=True)
+    parser.add_argument('--use-gemv-decode', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--decode-repack', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--with-graph', action='store_true')
+    parser.add_argument('--with-serial', action='store_true')
+    parser.add_argument('--os-exit', action='store_true', help='skip successful-process destructors too')
+    parser.add_argument('--compiler-version-file', type=Path)
+    parser.add_argument('--require-cached-build', action='store_true')
+    args = parser.parse_args(argv)
+    # Exactly the true-AR CLI assignment, not setdefault: inherited 0 must not
+    # silently override the declared True. No causal claim about repack/NaNs.
+    inherited_repack = os.environ.get('HIPENGINE_GGUF_DECODE_REPACK')
+    os.environ['HIPENGINE_GGUF_DECODE_REPACK'] = '1' if args.decode_repack else '0'
+    recorder = StageRecorder(args.json, {
+        'kind': 'tp2_xtx_tp1_eager_stage_probe',
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'host': platform.node(), 'command': shlex.join([sys.executable, __file__, *(argv if argv is not None else sys.argv[1:])]),
+        'inherited_decode_repack': inherited_repack,
+        'env': {k: v for k, v in os.environ.items() if k.startswith(('HIP', 'ROCR', 'HSA', 'ROCM'))},
+        'config': {'use_wmma_prefill': True, 'use_gemv_decode': args.use_gemv_decode,
+                   'use_bulk': None, 'bulk_attention_mode': 'bulk', 'attn_aotriton_min_tokens': 512,
+                   'kv_policy': 'session default (BF16)', 'kv_scale_dtype': 'fp16',
+                   'profile': 'session/environment default',
+                   'decode_transitions': 2 if args.with_graph else 1,
+                   'require_cached_build': args.require_cached_build},
+        'unwritten_check': 'not performed: no initialized sentinel',
+    })
+    state = {}
+    def build():
+        from hipengine.loading.gguf import scan_gguf
+        from hipengine.runtime.prefill import PrefillConfig
+        from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+        from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+        from scripts.gguf_mtp_bench import build_chat_prompt
+        from scripts.tp2_teacher_coverage_broad import _model_sha256
+        from hipengine.core.build import _resolve_cache_root
+        cache_root = _resolve_cache_root(None).resolve()
+        recorder.artifact['cache_root'] = str(cache_root)
+        manifests = sorted(cache_root.glob('*/manifest.txt'))
+        recorder.artifact['cache_manifest_sha256'] = hashlib.sha256(
+            b''.join(str(p.relative_to(cache_root)).encode() + b'\0' + p.read_bytes()
+                     for p in manifests)).hexdigest()
+        recorder.artifact['cache_manifest_count'] = len(manifests)
+        recorder.artifact['source_revision'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        recorder.artifact['source_status'] = subprocess.check_output(['git', 'status', '--short'], text=True)
+        recorder.artifact['script_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        recorder.artifact['model'] = {'path': str(args.model.resolve()), 'size': args.model.stat().st_size,
+                                      'sha256': _model_sha256(args.model)}
+        version = args.compiler_version_file.read_text() if args.compiler_version_file else None
+        recorder.artifact['compiler_version'] = version
+        tokens = build_chat_prompt(Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model)), args.prompt)
+        recorder.artifact['prompt_token_ids'] = tokens
+        # True-AR formula at warmup=0/decode=1. Optional graph diagnostics
+        # additionally reserve their two-position attention capture horizon.
+        capacity = len(tokens) + (4 if args.with_graph else 2)
+        recorder.artifact['config']['max_sequence_length'] = capacity
+        recorder.persist()
+        session = Qwen35GGUFResidentSession(args.model, max_sequence_length=capacity,
+            use_wmma_prefill=True, use_gemv_decode=args.use_gemv_decode,
+            compiler_version=version, require_cached_build=args.require_cached_build,
+            prefill_config=PrefillConfig(attn_aotriton_min_tokens=512),
+            kv_policy=None, kv_scale_dtype='fp16', kv_scale_granularity=None)
+        state.update(session=session, tokens=tokens)
+        runtime = session.runtime
+        runtime.device_synchronize()
+        current = runtime.get_device()
+        device = runtime.device_info(current)
+        recorder.artifact['loaded_cache_libraries'] = sorted({
+            line.split()[-1] for line in Path('/proc/self/maps').read_text().splitlines()
+            if str(cache_root) in line and '.so' in line})
+        return {'current_device': current, 'device': {'name': device.name, 'uuid': device.uuid,
+                'pci_bus_id': device.pci_bus_id}, 'vocab_size': int(session.runner.vocab_size),
+                'effective_kv_storage_dtype': str(session.kv_storage_dtype),
+                'fastpath_safety': None if session.fastpath_safety is None else session.fastpath_safety.as_dict()}
+    if recorder.guard('build', build):
+        run_stages(state['session'], state['tokens'], recorder,
+                   with_serial=args.with_serial, with_graph=args.with_graph)
+    recorder.finish()
+    code = recorder.exit_code
+    print(f"first_bad_stage={recorder.artifact['first_bad_stage']} exit_code={code}", flush=True)
+    if code or args.os_exit:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
+    return code
+
+
+if __name__ == '__main__':
     raise SystemExit(main())
