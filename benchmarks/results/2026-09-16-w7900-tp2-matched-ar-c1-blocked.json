@@ -197,5 +197,12 @@
  "gate_failures": [
   "missing arm tp1-d1 (blocked)"
  ],
- "performance_claim": false
+ "performance_claim": false,
+ "annotations": [
+  "2026-09-16 correction: this artifact's cell field names 'C1' with context_tokens 128, but the harness never constructed a 128-token context; prompt token rows were their natural build_chat_prompt lengths. These are NOT context-128 measurements and the cell must be read as a natural-length diagnostic.",
+  "2026-09-16 correction: the ratio was computed from a single TP1-d0 payload reused across all three reps and a TP2 sum(trace.total_s) window that excluded TP2's internal Python argmax/list/logit overhead while the TP1 window included graph capture and graph.close(). The window was not matched and the reps were not independent; the diagnostic ratio here is invalid as a comparison and is superseded by the repaired protocol in scripts/tp2_matched_ar_baseline.py.",
+  "2026-09-16 correction: the teacher cross-check byte-identity requirement recorded by the earlier correction unit was withdrawn. Bit-identity across a physical hardware boundary is a diagnostic, not a promotion requirement; the production numerical envelope plus same-schedule determinism controls. See worklog 20260916T143137 correction entry and the follow-up protocol-repair entry.",
+  "2026-09-16 note: the TP1 arm here forces full-vocabulary logits on every decode step, which is a matched-transfer diagnostic and not the optimized TP1 product baseline. Its TP1 rate must not be published as optimized TP1 throughput.",
+  "The TP1-d1 XTX memory-fault blocker recorded in this artifact is unchanged and remains the single gating hardware item for the optimized TP1 route on device 1."
+ ]
 }
