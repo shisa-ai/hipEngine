@@ -5,7 +5,9 @@
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
 - **Host:** Framework `gfx1151`, Radeon 8060S / Strix Halo, machine
   `55ea6c509d0b49eea8de7094a1023668`
-- **Current default:** named production profile, chunk1024, BF16 KV, warm PLE
+- **Current default:** named production profile, chunk1024, BF16 KV, warm PLE,
+  and since `04f1dde42` the certified Q8 WMMA dense prefill scope at layers
+  16-47 (`PRODUCTION_Q8_WMMA_PREFILL_LAYERS`)
 
 **This document is rewritten in place. It is the current-state tracker for this
 model; the `QWEN4EXP-*` and `QWEN3.8-FLASH-NEXT-*` campaign documents are dated
@@ -36,13 +38,18 @@ thermal policy. Source:
 
 This is the campaign's starting baseline and it is also, as of this date, the
 newest measurement of our own PP **and** TG on one declared protocol. The
-September 16-17 work certified routes and fixed dispatch and provenance; it did
-not change the default path, so there is no later same-protocol row to report.
-That claim is now checked rather than assumed: the September 17 attribution run
-reproduced the production profile's `logits_sha256` and `token_id` exactly
-(§1.3), so the arithmetic on the default path is byte-identical across those
-days. Re-running this screen at HEAD is still the first measurement owed by this
-document, because a reproduction is not a rate.
+September 16-17 work certified routes and fixed dispatch and provenance, and on
+September 17 it **did** change the default path: `04f1dde42` promoted the
+certified Q8 WMMA dense prefill scope to the production default at layers 16-47,
+measured on `code-p4096` at 19.054 s against the old default's 23.596 s
+([worklog](../worklog/entries/20260916T192306.422564Z-lhl-q8-wmma-1647-promotion-b024aa.md)).
+The 2026-09-13 row above is therefore **not** HEAD's default path, and the
+byte-identity argument below only covers the days before that promotion: the
+September 17 attribution run at `725794c3f` reproduced the production profile's
+`logits_sha256` and `token_id` exactly (§1.3), and it predates the promotion.
+Re-running this screen at HEAD is still the first measurement owed by this
+document, because a reproduction is not a rate, and it now has two default
+changes to absorb rather than none.
 
 ### 1.2 Cross-engine prefill — canonical fixture, equal-weight mean
 
@@ -362,19 +369,28 @@ overestimated the full arm by 1.8x, the second deep-scope control point to do so
 12-47 and 8-47 remain screen-inconclusive, and the contiguous upside left below
 16-47 is about +0.5 s of *predicted* gain across two full-model arms.
 
-`dense_wide256` is the larger prize and is not in this table because it cannot
-be gated yet: the route committed on 2026-09-17 is a plain boolean with no layer
-scope, so enabling it covers all 48 layers — the 0-47 scope its sibling f16
-route already fails. It needs a layer filter before an arm is worth running, and
-the scope to target is now **16-47**, the deepest certified one.
+`dense_wide256` is the larger prize and is not in this table because it has no
+quality verdict yet. The route now reaches the kernel (see §5 item 2) and, on
+the one case where both were traced, it is arithmetic-identical to the route
+that is already certified here: on `code-p512` the named default runs
+`hipengine_gguf_q8_0_wmma_prefill_f32_f32_out` on 264 roles at layers 16-47 and
+the wide arm runs `hipengine_gguf_q8_0_dense_wide256_f32_f32_out` on the same 264
+roles, both producing `logits_sha256` `e15dce79…` and `token_id` 248068. The
+wide kernel is a retiling of the certified f16 arithmetic rather than a new
+arithmetic class, so the certified 16-47 envelope figures above are the number
+its own arm has to reproduce — which is a prediction from one case, not a
+verdict. The arm has not been run on the 12-case protocol.
 
 ## 5. What is left
 
 1. **Re-measure our own PP/TG at HEAD** on the §1.1 protocol. The current column
    is empty because nothing has re-measured it since 2026-09-13.
-2. **Give the `dense_wide256` selector a layer scope**, then gate it at **16-47**.
-   Without this the route cannot express the scope its own removal condition
-   requires.
+2. **Gate the `dense_wide` arm at 16-47.** The route has a layer scope
+   (`be2d3fa73`) and it now reaches the kernel: the promoted WMMA default owned
+   the same window and the wide selector only accepted pre-rewrite parents, so
+   it declined before its own gates ran. Fixed on 2026-09-17 (§5 item 2 below);
+   `scripts/execution_profile_q8_wmma_prefill_layers_gate.py --route dense_wide
+   --layers 16-47` is the run that is owed.
 3. **Cache the activation conversion** (convert once per graph, not per launch).
    Measured at 2.573 → 1.303 ms on the packet, against the comparator's 1.339 ms
    kernel. This is the whole remaining dense gap.

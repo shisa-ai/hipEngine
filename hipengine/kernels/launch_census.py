@@ -1,10 +1,21 @@
-"""Opt-in launch census for GGUF quantized matmuls.
+"""Opt-in launch census for dense GGUF quantized matmuls.
 
 Answers "which tensor, at which shape, through which kernel variant" for a real
 prefill. The kernel symbol alone is not enough: one variant serves several
 tensors, so a profile that only sees ``..._coltile8_rowbatch4_f32_f32_out``
 cannot say whether the time went to an attention projection, a hyper-connection
 projection or an expert matmul.
+
+Coverage is the dense GGUF linear families that call
+:func:`record_launch`: ``gguf_k_gemv`` (gemv, coltile/rowbatch prefill) and
+``gguf_q8_0_prefill`` (WMMA prefill) plus ``gguf_q8_0_dense_wide``. Routed/MoE
+kernels, attention and the graph-replayed paths do not record, so a census
+without a family in it means "this instrument cannot see that family", not
+"that family did not run". A route-execution claim needs the kernel trace or the
+route's own diagnostic as well; the 2026-09-17 promotion entry read "zero
+``wmma_prefill`` launches" off this census while the WMMA prefill family was not
+recording, and the linear launches it did see were only the layers that family
+had not claimed.
 
 Off unless ``HIPENGINE_KERNEL_CENSUS`` is set, and it does nothing but a cached
 string check when off, so it can sit on the launch path. It records shape and

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels import launch_census
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_q8_0_dense_wide.hip")
@@ -91,6 +92,10 @@ def _launch(
 
     library = library or build_gguf_q8_0_dense_wide(load=True)
     runtime = runtime or get_hip_runtime()
+    # The launch census is the instrument a route-execution claim is checked
+    # with, so this family has to record: a census that cannot see the kernel
+    # cannot distinguish "did not run" from "not counted".
+    launch_census.record_launch("gguf_q8_0", symbol, rows, in_features, out_features)
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,

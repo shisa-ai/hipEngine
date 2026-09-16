@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""Whole-model gate for the f16 WMMA Q8_0 dense prefill route.
+"""Whole-model gate for a layer-scoped f16 Q8_0 dense prefill route.
 
-Evaluates the layer-scoped f16 WMMA dense Q8_0 prefill selector
-(``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS``) against the exact coltile chain on the
-Qwen4Exp UD-Q4_K_XL canonical exact-token fixture: full-vocabulary logits
-trajectories with the candidate consuming the strict generated prefix at every
-compared transition, evaluated with the calibrated mean/tail/max KL and top-1
-thresholds, plus same-schedule repeat determinism.
+Evaluates one of the layer-scoped f16 WMMA-class dense Q8_0 prefill selectors
+against the exact coltile chain on the Qwen4Exp UD-Q4_K_XL canonical
+exact-token fixture: full-vocabulary logits trajectories with the candidate
+consuming the strict generated prefix at every compared transition, evaluated
+with the calibrated mean/tail/max KL and top-1 thresholds, plus same-schedule
+repeat determinism. ``--route`` picks which route is measured; see
+:data:`SELECTORS`.
 
-The teacher is the named production profile with the selector cleared, so the
-measured drift is the Q8 dense prefill route's own contribution and not the rest
-of the production stack. That is the same candidate-local isolation the Q8 MMQ
-plane gate uses.
+The teacher is the named production profile with the route's selectors cleared,
+so the measured drift is that route's own contribution and not the rest of the
+production stack. That is the same candidate-local isolation the Q8 MMQ plane
+gate uses.
 
-The selector must be applied **after** the named production binder, which writes
-it as ``""`` during its own pass; setting it before construction is silently
-inert. This gate constructs the generator first and flips the selector per arm.
+Every route here is a post-binder selector: the named production binder writes
+its env keys during its own pass, so setting them before construction is
+silently inert. This gate constructs the generator first and flips the
+selectors per arm.
 
 Phases per canonical case:
-- teacher: selector empty -> exact ``coltile8_rowbatch4`` chain
-- candidate x N: selector set to ``--layers`` -> ``wmma_prefill_f32_f32_out``
+- teacher: selectors cleared -> exact ``coltile8_rowbatch4`` chain
+- candidate x N: selectors set to ``--layers`` -> the route's candidate chain
 """
 
 from __future__ import annotations
@@ -29,9 +31,10 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -55,7 +58,9 @@ from scripts.execution_profile_gdn_calibration import (
 
 KIND = "hipengine_execution_profile_q8_wmma_prefill_layers_gate"
 SCHEMA_VERSION = 1
-SELECTOR_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
+WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
+DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
+DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 DEFAULT_MODEL_ROOT = Path(
     "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
 )
@@ -103,12 +108,6 @@ def _forced_trajectory(
     return tuple(trajectory)
 
 
-def _set_selector(layers: str) -> None:
-    """Flip the Q8 dense WMMA prefill selector. Empty means the exact chain."""
-
-    os.environ[SELECTOR_ENV] = layers
-
-
 def _warm(runner: Any, warmup_tokens: Sequence[int]) -> None:
     """Absorb a first-request dispatch before the measured trajectory.
 
@@ -140,6 +139,96 @@ def _parse_layers(raw: str) -> str:
     if any(layer < 0 or layer > 63 for layer in unique):
         raise CalibrationError("--layers must be within 0..63")
     return ",".join(str(layer) for layer in unique)
+
+
+@dataclass(frozen=True)
+class Route:
+    """One layer-scoped Q8_0 dense prefill route this gate can measure.
+
+    Both routes are post-binder selectors: the named production binder writes
+    their env keys during its own pass, so a value set before construction is
+    inert and only a post-binder flip is effective.
+
+    ``dense_wide`` clears the WMMA selector in **both** arms. The production
+    default binds WMMA to the same layer window this route is gated at, so
+    leaving it bound would make the comparison carry the WMMA route's
+    arithmetic as well as the candidate's, and the two routes would contend for
+    the window under test.
+    """
+
+    kind: str
+    scenario_prefix: str
+    candidate_chain: str
+    candidate_env: Mapping[str, str]
+    teacher_env: Mapping[str, str]
+    surface: str
+
+    def env_for(self, *, candidate: bool, layers: str) -> dict[str, str]:
+        bindings = self.candidate_env if candidate else self.teacher_env
+        return {
+            key: value.format(layers=layers) for key, value in bindings.items()
+        }
+
+    @property
+    def env_keys(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((*self.candidate_env, *self.teacher_env)))
+
+
+# ``--route`` -> the route to gate. The teacher arm is the exact coltile chain
+# in every case, so the measured drift is the route's own contribution and the
+# figures are comparable across routes.
+SELECTORS: dict[str, Route] = {
+    "wmma": Route(
+        kind=KIND,
+        scenario_prefix="qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers",
+        candidate_chain="wmma_prefill_f32_f32_out",
+        candidate_env={WMMA_LAYERS_ENV: "{layers}"},
+        teacher_env={WMMA_LAYERS_ENV: ""},
+        surface=f"post-binder {WMMA_LAYERS_ENV}",
+    ),
+    "dense_wide": Route(
+        kind="hipengine_execution_profile_q8_dense_wide_prefill_layers_gate",
+        scenario_prefix=(
+            "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers"
+        ),
+        candidate_chain="dense_wide256_f32_f32_out",
+        candidate_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "1",
+            DENSE_WIDE_LAYERS_ENV: "{layers}",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+        },
+        surface=(
+            f"post-binder {DENSE_WIDE_ENV} + {DENSE_WIDE_LAYERS_ENV}; "
+            f"{WMMA_LAYERS_ENV} cleared in both arms"
+        ),
+    ),
+}
+
+
+def _select_route(name: str) -> Route:
+    try:
+        return SELECTORS[str(name)]
+    except KeyError as exc:
+        raise CalibrationError(f"unknown Q8 prefill route {name!r}") from exc
+
+
+def _apply_route_env(route: Route, *, candidate: bool, layers: str) -> None:
+    """Bind every selector the route owns. Empty layers means the exact chain."""
+
+    os.environ.update(route.env_for(candidate=candidate, layers=layers))
+
+
+def _restore_env(bound: Mapping[str, str | None]) -> None:
+    for key, value in bound.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 def run_gate(args: argparse.Namespace) -> dict[str, Any]:
@@ -183,6 +272,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         max(int(row["prompt_tokens"]) for row in cases) + transitions + 8
     )
     candidate_layers = _parse_layers(args.layers)
+    route = _select_route(str(args.route))
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
@@ -212,7 +302,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     runner = generator.runner
     if runner is None:
         raise CalibrationError("runner is not resident")
-    bound_selector = os.environ.get(SELECTOR_ENV)
+    bound_route_env = {key: os.environ.get(key) for key in route.env_keys}
     # A caller-set value the binder discarded means the intended route never
     # ran and the gate would report a clean null. Fail rather than measure it.
     discarded = last_prebinder_conflicts()
@@ -229,11 +319,11 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         for position, row in enumerate(cases):
             prompt_id = str(row["id"])
             tokens = [int(t) for t in row["prompt_token_ids"]]
-            _set_selector("")
+            _apply_route_env(route, candidate=False, layers="")
             _warm(runner, tokens)
             teacher = _strict_trajectory(runner, tokens, decode_steps)
             forced = [step["token_id"] for step in teacher[:-1]]
-            _set_selector(candidate_layers)
+            _apply_route_env(route, candidate=True, layers=candidate_layers)
             _warm(runner, tokens)
             runs = tuple(
                 _forced_trajectory(runner, tokens, forced)
@@ -264,13 +354,13 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
                 flush=True,
             )
     finally:
-        _set_selector(bound_selector or "")
+        _restore_env(bound_route_env)
 
     evaluated = build_candidate_quality(
         captures,
         candidate_mode="candidate",
         scenario_id=(
-            "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-"
+            f"{route.scenario_prefix}-"
             f"{candidate_layers.replace(',', '_')}-c1-teacher-forced"
         ),
         thresholds=EvaluationThresholds(),
@@ -287,7 +377,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             VariantSelection(
                 layer="linear",
                 scope="prefill_dense_q8_wmma_layers",
-                selected_variant="wmma_prefill_f32_f32_out",
+                selected_variant=route.candidate_chain,
                 strict_fallback_variant="coltile8_rowbatch4_f32_f32_out",
                 registry_quant="gguf_q8_0",
             ),
@@ -304,9 +394,9 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         command=command,
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            SELECTOR_ENV: candidate_layers,
+            **route.env_for(candidate=True, layers=candidate_layers),
         },
-        build_profile=KIND,
+        build_profile=route.kind,
         timing_protocol="none_full_logits_only_v1",
         warmups=1,
         repetitions=int(args.repeat_runs),
@@ -328,7 +418,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     measurement_valid = bool(quality_passed and deterministic and clean)
     return {
         "schema_version": SCHEMA_VERSION,
-        "kind": KIND,
+        "kind": route.kind,
         "status": "complete" if measurement_valid else "invalid_or_screen_only",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "measurement_valid": measurement_valid,
@@ -344,11 +434,12 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             if not ok
         ],
         "route": {
-            "surface": f"post-binder {SELECTOR_ENV}",
+            "name": str(args.route),
+            "surface": route.surface,
             "candidate_layers": candidate_layers,
-            "teacher_selector": "",
+            "teacher_selector": "cleared",
             "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
-            "candidate_chain": "wmma_prefill_f32_f32_out",
+            "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,
             "selector_restored_after_capture": True,
         },
@@ -366,7 +457,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
                 "compared transition"
             ),
             "teacher_scope": (
-                "production profile with the Q8 dense prefill selector cleared; "
+                "production profile with the route's selectors cleared; "
                 "candidate-local isolation of the changed route"
             ),
             "thresholds_evaluated": EvaluationThresholds().to_dict(),
@@ -389,6 +480,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--case-id", action="append", default=None)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--route",
+        choices=tuple(SELECTORS),
+        default="wmma",
+        help=(
+            "which layer-scoped Q8_0 dense prefill route to gate "
+            "(default: wmma)"
+        ),
+    )
     parser.add_argument(
         "--layers",
         default="0-47",
