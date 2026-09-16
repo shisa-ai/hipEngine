@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-16**
+Last updated: **2026-09-17**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -1530,35 +1530,56 @@ reproducing command. Evidence:
 [`e2e replay`](results/yue2_e2e_gate_20260916.json),
 [`e2e live`](results/yue2_e2e_live_gate_20260916.json).
 
-### Radeon 8060S: YuE2 3B NAR attention row blocking
+### Radeon 8060S: YuE2 3B NAR attention packing
 
 The NAR attention kernel walked the key/value cache once per (query row, query
 head) pair, so a 1 299-frame song re-read 27.9 GB of K/V per call. Blocks now own
-four query rows (`YUE2_NAR_ROWS_PER_BLOCK`) and reuse every K and V element they
-load across those rows; each lane also evaluates its own key's exponential once
-instead of recomputing the whole tile for every lane.
+eight query rows (`YUE2_NAR_ROWS_PER_BLOCK`) and reuse every K and V element they
+load across those rows; the K row and the query row are read eight and four
+elements per instruction instead of one, which is what a lane owning one key had
+been asking the L1 for 32 sectors at a time; and the V walk steps by pointer
+instead of multiplying and branching per key. `rocprofv3 --pmc` on the previous
+kernel measures why the packing mattered more than the traffic: 3.5e8 cycles
+carried 3.7e9 VALU instructions at **19% occupancy**, so it was stalled rather
+than bandwidth-bound, and the same run after the change reaches **93%**.
 
 | Measurement | Before | After | Ratio |
 | --- | ---: | ---: | ---: |
-| `yue2_nar_attention_kernel`, 34 rows / 579 keys, 140 dispatches | 1 208.26 us | 724.99 us | 1.67x |
-| Replay of `mandarin-off-s1234`, 1 297 frames, 2 ODE steps | 78.0 s | 51.6 s | 1.51x |
+| `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **28.34 ms** | **6.25x** |
+| NAR solve of `mandarin-off-s1234`, 2 ODE steps, 112 attention calls | 27.76 s | **11.03 s** | **2.52x** |
+| Full replay of the same case (solve + decode) | 47.89 s | **31.10 s** | **1.54x** |
 
-Both figures are gfx1151 (zbook) measurements taken in one session; the
-`rocprofv3` numbers are inflated by dispatch serialization but are paired within
-the session. The replay split is 32.0 s of solve and 22.5 s of decode.
+All three rows are gfx1151 (zbook) measurements. The kernel row is a median of
+six batches of five calls; the two replay rows were run one after the other in a
+single session on the same host and come from the gate's own JSON. Eight rows per
+block is a measured optimum: four rows lands at 33.90 ms, sixteen at 44.90 ms and
+thirty-two at 88.50 ms, where shared-memory and register pressure take over.
+
+Wrapping the attention call with a device synchronize on either side splits the
+11.11 s solve into **2.93 s of attention** (26.2 ms per call) and 8.18 s of
+projections, RoPE and norms. The solver's attention is no longer its bottleneck:
+the NAR's remaining cost is its hipBLASLt projection path, and the replay's is
+the VAE decode at 20.07 s.
 
 The rewrite is bit-exact rather than merely close: the parity fixture
 `tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's
 own output bits and the kernel test compares against them exactly, and all three
 M4 production gates reproduce their pre-change numbers to the last recorded digit
 (chunk0 latents rel L2 0.01225 / cosine 0.999926, multi-chunk 0.01071 / 0.999944,
-restricted visibility 0.00885 / 0.999962).
+restricted visibility 0.00885 / 0.999962). The kernel keeps a scalar K walk for
+head dimensions that are not a multiple of eight, where the rows are not 16-byte
+aligned; that fallback has its own test, and perturbing it fails the new
+`head_dim=100` case while `head_dim=128` still passes. Evidence:
+[`M7 attention packing`](results/yue2_m7_attention_packed_20260917.json),
+[`M7 row blocking`](results/yue2_m7_attention_20260917.json).
 
 The same host's pinned upstream reference reports 27.32 s for the same solve at
-the product's 32 steps, against 443.4 s here, so the NAR solver remains the
-largest gap in the model. Its decode is faster than the reference's (22.47 s
-against 69.09 s), and the AR stage runs at 19.35 tokens/s against 31.97. Evidence:
-[`M7 attention`](results/yue2_m7_attention_20260917.json).
+the product's 32 steps, against 443.4 s here before this change and **116.53 s**
+after it — 3.80x on the solve, and 465.9 s to 136.59 s on the whole replay. The
+solver is still the largest gap in the model, and the projections rather than the
+attention account for most of what is left. Its decode is
+faster than the reference's (22.47 s against 69.09 s), and the AR stage runs at
+19.35 tokens/s against 31.97.
 
 ## Current concurrency scoreboards
 

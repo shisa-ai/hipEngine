@@ -1,0 +1,107 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "This is not the gfx1100 W7900 that docs/PLAN.md names as the default target; every figure here is a gfx1151 measurement."
+  },
+  "kernel": "yue2_nar_attention_kernel (kernels/hip_gfx1100/yue2/nar.hip)",
+  "change": [
+    "K and Q are loaded eight (K) and four (Q) elements per instruction instead of one. A lane owns one key, so the scalar K walk asked the L1 for 32 sectors per request -- lanes land head_dim*2 bytes apart -- 128 times per tile.",
+    "The V walk is split at the AR/NAR boundary and steps by pointer instead of multiplying and branching per key.",
+    "YUE2_NAR_ROWS_PER_BLOCK 4 -> 8.",
+    "Per-row arithmetic is unchanged: the same d-ascending dot product, the same tile walk, the same key-ascending accumulation order."
+  ],
+  "production_shape_call": {
+    "shape": {
+      "rows": 1299,
+      "ar_rows": 1396,
+      "keys": 2695,
+      "num_q_heads": 16,
+      "num_kv_heads": 8,
+      "head_dim": 128
+    },
+    "command": "python3 scripts/yue2_attention_bench.py --repeat 6 --fixture-check",
+    "before_us": 177220.0,
+    "after_us": 28340.0,
+    "ratio": 6.25,
+    "note": "Median of 6 batches of 5 calls. The R=4 packed version measured 33900 us, R=16 44900 us and R=32 88500 us, so 8 is the measured optimum on this host."
+  },
+  "rocprofv3_pmc": {
+    "command": "rocprofv3 --pmc GRBM_COUNT SQ_WAVES_sum SQ_INSTS_VALU SQ_INSTS_LDS SQ_INSTS_FLAT OccupancyPercent --output-format csv -d <dir> -- python3 scripts/yue2_attention_bench.py --repeat 1 --warmup 1",
+    "before_rows_per_block_4": {
+      "duration_ms": 179.4,
+      "clock_ghz": 1.96,
+      "occupancy_percent": 19.1,
+      "insts_valu": 3682205920,
+      "insts_lds": 434657600,
+      "insts_flat": 338845056,
+      "per_lane_tile": {"valu": 8047, "lds": 950, "flat": 740}
+    },
+    "after_rows_per_block_8": {
+      "duration_ms": 29.6,
+      "clock_ghz": 1.59,
+      "occupancy_percent": 93.1,
+      "vgpr": 64,
+      "insts_valu": 2323000000,
+      "insts_lds": 450700000,
+      "insts_flat": 88280000,
+      "per_lane_tile": {"valu": 10122, "lds": 1964, "flat": 385}
+    },
+    "reading": "The parent kernel was not bandwidth-bound as its comment claimed: 3.5e8 cycles carried 3.7e9 VALU instructions at 19% occupancy, i.e. it was stalled. Packing the loads cut global requests per lane-tile 740 -> 385 and the row blocking raised achieved occupancy to 93%; the kernel is now VALU-issue-bound at roughly 60% of peak issue."
+  },
+  "bit_parity": {
+    "fixture": "tests/fixtures/yue2/operators/nar_attention_parent.npz",
+    "result": "bit-identical to the parent kernel (max abs diff 0.0)",
+    "note": "The fixture's 6-row / 192-AR-row shape exercises the partial last row block. A second, deliberate perturbation of the scalar fallback fails the head_dim=100 case and passes head_dim=128, so the new fallback test is load-bearing."
+  },
+  "unit_tests": {
+    "command": "python3 -m pytest tests/test_unit_yue2_nar_kernels.py",
+    "result": "15 passed",
+    "note": "New parametrization over head_dim in {128, 100} covers the packed path and the scalar fallback."
+  },
+  "replay_same_protocol": {
+    "case": "mandarin-off-s1234",
+    "steps": 2,
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 2 --skip-live --json <out>",
+    "before": {"nar_seconds": 27.76, "vae_seconds": 20.13, "total_seconds": 47.89},
+    "after": {"nar_seconds": 11.03, "vae_seconds": 20.07, "total_seconds": 31.10},
+    "nar_ratio": 2.52,
+    "total_ratio": 1.54,
+    "note": "Both arms were run on the same host in the same session, one after the other, with the gate's own JSON as the source of every number."
+  },
+  "replay_product_steps": {
+    "case": "mandarin-off-s1234",
+    "steps": 32,
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 32 --skip-live --json <out>",
+    "before": {"nar_seconds": 443.4, "vae_seconds": 22.47, "total_seconds": 465.9},
+    "after": {"nar_seconds": 116.53, "vae_seconds": 20.06, "total_seconds": 136.59},
+    "nar_ratio": 3.8,
+    "total_ratio": 3.41,
+    "reference_same_host_seconds": 27.32,
+    "gap_before": 16.2,
+    "gap_after": 4.27,
+    "note": "The 'before' arm is the same case at the same step count recorded in benchmarks/results/yue2_m7_attention_20260917.json, whose nar_seconds is its 465.9 s replay total minus its 22.47 s decode. The 2-step run's attention-only extrapolation to 32 steps (about 178 s) over-predicted, because part of the 2-step non-attention time is per-replay rather than per-evaluation; this is the measured figure."
+  },
+  "nar_stage_split": {
+    "method": "hipengine.kernels.hip_gfx1100.yue2.nar.nar_attention_f32 wrapped with a device synchronize on either side, run over Yue2NarRuntime.synthesize for the same case",
+    "nar_total_seconds": 11.11,
+    "attention_seconds": 2.93,
+    "attention_calls": 112,
+    "attention_ms_per_call": 26.2,
+    "attention_share_percent": 26.4,
+    "everything_else_seconds": 8.18,
+    "shape": {"rows": 1299, "ar_rows": 1396},
+    "reading": "Attention was ~18.5 s of the 27.76 s solve and is now 2.93 s, so the NAR's remaining cost is its projections (hipBLASLt GEMMs, RoPE, norms), not the solver's attention."
+  },
+  "parity_gates_after_change": {
+    "identical_to_pre_change_baseline": true,
+    "e2e_case_shape": "frames 1297/1297, samples 2490176/2490176, peak 0.9457, determinism bit-identical, torch imported: False",
+    "m4_solver_gate": "unchanged; the kernel's per-row arithmetic and the parent-bits fixture are the same"
+  },
+  "next_candidates": [
+    "NAR projections: 8.18 s of the 11.11 s 2-step solve, 1 494 hipBLASLt dispatches per replay of a 32x32 macro-tile kernel for shapes this large. At 32 steps the solve is 116.53 s against the reference's 27.32 s, and this is where most of that gap now sits.",
+    "VAE decode: 20.07 s of the 31.10 s replay, dominated by yue2_vae_conv1d_f32_kernel and yue2_vae_conv_transpose1d_f32_kernel.",
+    "Attention tile maximum via a warp shuffle (fmax is order-independent, so it stays bit-exact): each lane still walks 128 shared-memory entries serially per tile per row."
+  ]
+}

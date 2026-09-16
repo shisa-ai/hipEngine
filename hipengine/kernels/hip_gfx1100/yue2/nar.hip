@@ -99,17 +99,22 @@ __global__ void yue2_nar_state_update_kernel(
 //
 // Each block owns YUE2_NAR_ROWS_PER_BLOCK query rows for one query head and walks
 // the key tiles once, reusing every K and V element it loads across those rows.
-// The kernel is bandwidth-bound: a per-(row, head) block re-reads the whole K/V
-// cache for every query row, which is ~27 GB of traffic for a 1299-row song
-// against ~200 GB/s of HBM. A 1299-row solve measured 220 ms per call against a
-// 170 ms pure-bandwidth estimate. Sharing one loaded element across four rows is
-// what moves it off that wall.
+// Blocking is what took the kernel off its old per-(row, head) traffic wall, but
+// it is not bandwidth-bound at four rows: `rocprofv3 --pmc` on a 1299-row solve
+// measures 3.5e8 cycles for 3.7e9 VALU / 4.3e8 LDS / 3.4e8 global instructions at
+// 19% occupancy, i.e. an instruction and latency problem, not a traffic one. Two
+// shapes of that dominate. A lane owns one key, so walking the K row one scalar
+// at a time asks the L1 for 32 sectors per request (lanes land 256 bytes apart)
+// 128 times per tile; and every lane re-reads the whole query row from L1, which
+// is 128 broadcast loads per row per tile. Both are packed below into 16-byte
+// requests, and the V walk is split into its AR and NAR ranges so it steps by
+// pointer instead of multiplying and branching per key.
 //
-// Per-row arithmetic is untouched by the blocking: the same serial dot product in
-// the same order, the same tile walk, and the same accumulation order, so the
-// output is bit-identical to the unblocked kernel
+// Per-row arithmetic is untouched by any of that: the same serial dot product in
+// the same d-ascending order, the same tile walk, and the same key-ascending
+// accumulation order, so the output is bit-identical to the unblocked kernel
 // (tests/fixtures/yue2/operators/nar_attention_parent.npz).
-#define YUE2_NAR_ROWS_PER_BLOCK 4
+#define YUE2_NAR_ROWS_PER_BLOCK 8
 
 __global__ void yue2_nar_attention_kernel(
     const float* __restrict__ q,
@@ -166,12 +171,43 @@ __global__ void yue2_nar_attention_kernel(
     // Dimension outside, row inside: one K element is loaded and converted once
     // and then reused by every row this block owns. That reuse is the entire
     // point of the blocking -- reading it once per row would leave the K traffic
-    // unchanged.
+    // unchanged. Eight dimensions per request: `head_dim` a multiple of eight
+    // (every NAR call) keeps every row 16-byte aligned, which is what lets the
+    // 16-byte loads below replace the 128 scalar ones. The fallback keeps the
+    // kernel correct for any head_dim.
     if (k_row != 0) {
-      for (int64_t d = 0; d < head_dim; ++d) {
-        const float kv = yue2_bf16_to_float(k_row[d]);
-        for (int r = 0; r < r_valid; ++r) {
-          dots[r] = fmaf(q_rows[r][d], kv, dots[r]);
+      const bool packed = (head_dim & 7) == 0;
+      if (packed) {
+        for (int64_t d = 0; d < head_dim; d += 8) {
+          const uint4 kpack = *reinterpret_cast<const uint4*>(k_row + d);
+          const uint16_t* kk = reinterpret_cast<const uint16_t*>(&kpack);
+          const float kv0 = yue2_bf16_to_float(kk[0]);
+          const float kv1 = yue2_bf16_to_float(kk[1]);
+          const float kv2 = yue2_bf16_to_float(kk[2]);
+          const float kv3 = yue2_bf16_to_float(kk[3]);
+          const float kv4 = yue2_bf16_to_float(kk[4]);
+          const float kv5 = yue2_bf16_to_float(kk[5]);
+          const float kv6 = yue2_bf16_to_float(kk[6]);
+          const float kv7 = yue2_bf16_to_float(kk[7]);
+          for (int r = 0; r < r_valid; ++r) {
+            const float4 qlo = *reinterpret_cast<const float4*>(q_rows[r] + d);
+            const float4 qhi = *reinterpret_cast<const float4*>(q_rows[r] + d + 4);
+            dots[r] = fmaf(qlo.x, kv0, dots[r]);
+            dots[r] = fmaf(qlo.y, kv1, dots[r]);
+            dots[r] = fmaf(qlo.z, kv2, dots[r]);
+            dots[r] = fmaf(qlo.w, kv3, dots[r]);
+            dots[r] = fmaf(qhi.x, kv4, dots[r]);
+            dots[r] = fmaf(qhi.y, kv5, dots[r]);
+            dots[r] = fmaf(qhi.z, kv6, dots[r]);
+            dots[r] = fmaf(qhi.w, kv7, dots[r]);
+          }
+        }
+      } else {
+        for (int64_t d = 0; d < head_dim; ++d) {
+          const float kv = yue2_bf16_to_float(k_row[d]);
+          for (int r = 0; r < r_valid; ++r) {
+            dots[r] = fmaf(q_rows[r][d], kv, dots[r]);
+          }
         }
       }
     }
@@ -207,18 +243,37 @@ __global__ void yue2_nar_attention_kernel(
       tile_sum[r] = 0.0f;
       tile_acc[r] = 0.0f;
     }
-    for (int64_t t = 0; t < blockDim.x; ++t) {
-      const int64_t key_index = base + t;
-      if (key_index >= keys) break;
-      const uint16_t* v_row = key_index < ar_rows
-          ? ar_v + (key_index * num_kv_heads + kv_head) * head_dim
-          : nar_v + ((key_index - ar_rows) * num_kv_heads + kv_head) * head_dim;
-      // One V element per lane, shared by every row this block owns.
+    // One V element per lane, shared by every row this block owns. The walk is
+    // split at the AR/NAR boundary so each key costs a pointer step instead of a
+    // 64-bit multiply plus an ar/nar compare, and both ranges run key-ascending
+    // exactly as the single loop did.
+    auto accumulate = [&](const uint16_t* v_row, int64_t t) {
       const float v = yue2_bf16_to_float(v_row[lane]);
       for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
         const float weight = weights[r * blockDim.x + t];
         tile_sum[r] += weight;
         tile_acc[r] += weight * v;
+      }
+    };
+    const int64_t v_stride = num_kv_heads * head_dim;
+    const int64_t tile_hi = base + blockDim.x < keys ? base + blockDim.x : keys;
+    const int64_t ar_hi = ar_rows < tile_hi ? ar_rows : tile_hi;
+    int64_t t = 0;
+    if (base < ar_hi) {
+      const uint16_t* v_row = ar_v + (base * num_kv_heads + kv_head) * head_dim;
+      for (int64_t key_index = base; key_index < ar_hi; ++key_index, ++t) {
+        accumulate(v_row, t);
+        v_row += v_stride;
+      }
+    }
+    const int64_t nar_lo = base > ar_rows ? base : ar_rows;
+    t = nar_lo - base;
+    if (nar_lo < tile_hi) {
+      const uint16_t* nar_row =
+          nar_v + ((nar_lo - ar_rows) * num_kv_heads + kv_head) * head_dim;
+      for (int64_t key_index = nar_lo; key_index < tile_hi; ++key_index, ++t) {
+        accumulate(nar_row, t);
+        nar_row += v_stride;
       }
     }
     for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
