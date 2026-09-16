@@ -173,9 +173,39 @@ index; see [ROCM-AI.md](ROCM-AI.md)). Together those two changes take the replay
 `mandarin-off-s1234` from 27.76 s of solve to **7.95 s** at 2 ODE steps and from
 443.4 s to **81.13 s** at the product's 32 steps. At 32 steps the solve is
 attention-dominated again, because the AR conditioning prefill is paid once per
-solve. M7 numbers are in
-`benchmarks/results/yue2_m7_attention_packed_20260917.json` and
-`benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`. Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+solve. Three further units took the kernel to **19.33 ms** — the tile maximum reads
+four scores per instruction, the softmax weights are stored key-major so a key's
+eight rows cost two shared-memory requests instead of eight runtime-strided ones, and
+the dot product's row loop is specialized for a full row set so `dots` and `q_rows`
+stay in registers (that last one alone removes 38% of the kernel's instructions:
+12 581 -> 7 816 per lane-tile). All three are bit-identical to the parent fixture,
+and the 32-step solve reaches **54.76 s**. M7 numbers are in
+`benchmarks/results/yue2_m7_attention_packed_20260917.json`,
+`benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
+`benchmarks/results/yue2_m7_attention_tile_max_20260917.json`,
+`benchmarks/results/yue2_m7_attention_weight_layout_20260917.json` and
+`benchmarks/results/yue2_m7_attention_dot_unroll_20260917.json`.
+
+That is where the scalar design ends: profiling the pinned upstream on the same case
+puts **its** attention kernel at 4.14 s for the whole 32-step solve (1 792 calls at
+2.31 ms, 12.4 TFLOP/s) against the scalar kernel's ~39 s, because it uses tensor
+cores. Scalar FP32 peak on 40 CUs is 25.6 TFLOP/s and the scalar kernel keeps about a
+quarter of its instructions as useful arithmetic after the softmax reductions, the
+weight exchange and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s.
+`nar_wmma.hip` is therefore a second, tensor-core attention for the production head
+geometry (16 query heads over 8 key/value heads, head_dim 128), following the
+fragment contracts of `laguna_flash_attention_prefill.hip` / llama.cpp's
+fattn-mma-f16: f16 WMMA operands with f32 score accumulation, a 16-key tile per
+lane-half reduction, K and V sharing one 64-key staged buffer, and an f16 output
+accumulator rescaled by the online softmax. It is **3.85 ms** per call against the
+scalar kernel's 20.1 ms and lands inside 1.7x of the reference's own kernel. It
+changes arithmetic by design, so it is a production-profile variant held to the M4
+solver gates rather than to the parent fixture — all three pass and two improve
+(chunk0 latents rel L2 0.01225 -> 0.01042, multi-chunk 0.01071 -> 0.01054,
+restricted visibility 0.00885 -> 0.00938) — and `nar_attention_f32` remains the
+registered strict fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. The 32-step
+solve of `mandarin-off-s1234` is **32.22 s** against the pinned upstream's 27.32 s.
+Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
 
 ### Shared Qwen / PARO path
 

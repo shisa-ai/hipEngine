@@ -67,6 +67,27 @@
   dispatch branch together, and keep the chunk-outer tests only as the decline
   coverage the layer-outer path needs.
 
+## `HIPENGINE_YUE2_NAR_ATTENTION` (scalar fallback for the tensor-core attention)
+
+- `nar_wmma.hip` became the default attention for the production head geometry
+  (16 query heads over 8 key/value heads at head_dim 128) on 2026-09-17, after
+  all three M4 solver gates passed and the 32-step product solve of
+  `mandarin-off-s1234` fell 54.76 s -> 32.22 s. The kernel is 5.1x the scalar
+  kernel's rate (20.1 ms -> 3.85 ms per call at 1 299 rows / 2 695 keys) and
+  lands inside 1.7x of the pinned upstream's own attention kernel.
+- `HIPENGINE_YUE2_NAR_ATTENTION=scalar` selects `nar_attention_f32`, which stays
+  registered as the strict fallback: it is bit-exact against
+  `tests/fixtures/yue2/operators/nar_attention_parent.npz` and against the
+  recorded parent kernel, so it is the debugging oracle and the bisection point
+  for any solver regression. The tensor-core kernel changes arithmetic by design
+  (f16 WMMA operands, f16 output accumulator) and is held to the production
+  profile gates instead.
+- Removal condition: once the tensor-core path has held through a release cycle
+  with no solver regression traced to it, drop the environment flag and the
+  `_wmma_attention` branch, keep the scalar kernel registered but unreachable by
+  default, and keep `test_attention_matches_the_parent_kernel_bit_for_bit` as
+  the oracle's coverage.
+
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
