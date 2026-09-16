@@ -119,6 +119,7 @@ def build_true_ar_artifact(
             "graph_replay_decode": graph_effective,
             "graph_steps_per_replay": effective_graph_steps if graph_effective else 0,
             "graph_capture_in_decode_ms": graph_effective,
+            "logits_per_decode_step": bool(getattr(args, "logits_every_decode_step", False)),
             "decode_repack": bool(getattr(args, "decode_repack", False)),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),
@@ -175,6 +176,7 @@ def run_prompt_true_ar(
     bulk_attention_mode: str,
     graph_replay_decode: bool,
     graph_steps_per_replay: int,
+    logits_every_decode_step: bool = False,
 ) -> dict[str, Any]:
     prompt_tokens = build_chat_prompt(tokenizer, str(prompt_row["prompt"]))
     session.reset()
@@ -221,7 +223,7 @@ def run_prompt_true_ar(
             for step_index in range(int(decode_tokens)):
                 graph.replay(1)
                 final = graph.read_sample(
-                    return_logits=(step_index == int(decode_tokens) - 1)
+                    return_logits=(logits_every_decode_step or step_index == int(decode_tokens) - 1)
                 )
                 next_token = int(final.token_id)
                 generated.append(next_token)
@@ -231,7 +233,7 @@ def run_prompt_true_ar(
         for step_index in range(int(decode_tokens)):
             final = session.step(
                 next_token,
-                return_logits=(step_index == int(decode_tokens) - 1),
+                return_logits=(logits_every_decode_step or step_index == int(decode_tokens) - 1),
             )
             next_token = int(final.token_id)
             generated.append(next_token)
@@ -248,6 +250,11 @@ def run_prompt_true_ar(
         "prompt_sha256": prompt_sha256(str(prompt_row["prompt"])),
         "prompt_tokens": len(prompt_tokens),
         "output_tokens": int(decode_tokens),
+        "timed_decode_transitions": int(decode_tokens),
+        "context_position_at_timing_start": int(len(prompt_tokens)) + int(warmup_decode_tokens),
+        "generated_count": len(generated),
+        "logits_per_decode_step": bool(logits_every_decode_step),
+        "eos_policy": "none",
         "decode_ms": decode_ms,
         "decode_tok_s": 1000.0 * int(decode_tokens) / decode_ms if decode_ms > 0 else 0.0,
         "prefill_ms": prefill_ms,
@@ -285,6 +292,16 @@ def main() -> int:
         help="Use a state-bound graph only when the backend admits this decode horizon.",
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
+    parser.add_argument(
+        "--logits-every-decode-step",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Transfer the full-vocabulary logits on every timed decode step "
+            "instead of only the last. Used to match a protocol whose step "
+            "always reads the full logits back (the TP2 session)."
+        ),
+    )
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--kv-policy",
@@ -401,7 +418,10 @@ def main() -> int:
         use_gemv_decode=bool(args.use_gemv_decode),
         prefill_config=prefill_config,
         kv_policy=kv_policy,
-        kv_scale_dtype=kv_scale_dtype,
+        # The BF16 KV policy carries no scales, but the resident session still
+        # parses kv_scale_dtype; passing the resolved None overrides the
+        # session's FP16 default and fails. Fall back to the session default.
+        kv_scale_dtype=kv_scale_dtype or "fp16",
         kv_scale_granularity=kv_scale_granularity,
     )
     session_timing_protocol = {
@@ -432,6 +452,7 @@ def main() -> int:
                 bulk_attention_mode=str(args.bulk_prefill_attention_mode),
                 graph_replay_decode=bool(args.graph_replay_decode),
                 graph_steps_per_replay=int(args.graph_steps_per_replay),
+                logits_every_decode_step=bool(args.logits_every_decode_step),
             )
             prompt_metrics.append(metric)
             per_prompt_path = args.raw_root / f"{safe_name(row['id'])}.json"
