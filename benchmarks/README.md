@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-15**
+Last updated: **2026-09-16**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -1247,6 +1247,21 @@ as the top of the observed band, not as a reproducible figure. Artifact:
 [session verification](results/2026-09-15-gfx1151-vibevoice-tts-session-verify.json).
 Generation budget comes from the request's declared `max_audio_seconds` (4.333 s,
 a 35-token cap) in both lanes, and both reach EOS at 27 tokens.
+
+The diffusion solver now runs on device. `sample_speech_tokens` keeps the latent,
+the CFG-combined eps and the previous x0 device-resident for the whole 20-step
+schedule, so the per-step eps readback is gone. In a same-session interleaved A/B
+on this request (one process, one machine state, arm order device/host/device/host)
+the diffusion stage falls from 1.521 s to 1.295 s, **-14.9%**, and warm synthesis
+from 8.515 s to 8.216 s, **-3.5%**. The generated chain is unchanged: the device
+loop reproduces the host loop's per-step `eps`, CFG-combined eps and post-step
+latent bit-for-bit over all 20 steps, and the 10-seed generated-audio quality suite
+returns the identical 58/60 with the same two failing request-runs.
+
+Those A/B runs were taken at host load average 13.3, so their absolute RTF (~2.5)
+is roughly twice the recorded 1.201 and is not comparable to it. Only the
+same-session device/host delta is quoted; the absolute headline above is unchanged.
+Artifact: [device solver loop](results/2026-09-16-gfx1151-vibevoice-tts-device-solver-loop.json).
 
 ### Radeon 8060S: VibeVoice-TTS 1.5B generated-audio quality
 

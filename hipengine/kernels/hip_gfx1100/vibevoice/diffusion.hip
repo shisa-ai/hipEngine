@@ -12,8 +12,11 @@
 //   add             r(a + b)
 //   modulate        r(r(x * r(1 + s)) + sh)   (adaLN; three roundings)
 //   gated_residual  r(h + r(gate * y))        (HeadLayer out)
-//   cfg_combine     r(u + r(cfg * r(c - u)))  (two-branch CFG; cfg fp32 host
-//                                              scalar, never pre-rounded)
+//   cfg_combine     r(u + r(cfg * (c - u)))  (two-branch CFG; cfg fp32 host
+//                                              scalar, never pre-rounded, and
+//                                              the (c - u) difference stays in
+//                                              fp32 -- only the product and the
+//                                              final sum round)
 //
 // The adaLN linear emits (rows, 3*H) / (rows, 2*H) chunks; shift/scale/gate
 // live at column offsets inside each source row, so those kernels take an
@@ -176,9 +179,12 @@ __global__ void vv_diff_cfg_combine_kernel(
     uint16_t* __restrict__ out, int64_t n) {
   const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx < n) {
-    const uint16_t diff = rbf(bf16_bits_to_float(c[idx]) - bf16_bits_to_float(u[idx]));
-    const uint16_t scaled = rbf(cfg * bf16_bits_to_float(diff));
-    out[idx] = rbf(bf16_bits_to_float(u[idx]) + bf16_bits_to_float(scaled));
+    const float c32 = bf16_bits_to_float(c[idx]);
+    const float u32 = bf16_bits_to_float(u[idx]);
+    // The difference is deliberately left in fp32: the sampling oracle is
+    // bf16_round(u + bf16_round(cfg * (c - u))), two roundings, not three.
+    const uint16_t scaled = rbf(cfg * (c32 - u32));
+    out[idx] = rbf(u32 + bf16_bits_to_float(scaled));
   }
 }
 
