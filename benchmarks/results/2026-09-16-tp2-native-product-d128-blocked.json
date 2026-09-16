@@ -1,0 +1,1038 @@
+{
+  "kind": "tp2_native_product_d128_blocked",
+  "status": "blocked_before_product_timing",
+  "performance_claim": false,
+  "production_qualified": false,
+  "rates": null,
+  "ratios": null,
+  "identity": {
+    "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "source_revision": "2abb5a799607f79133d93ede85d357f573fbd86b",
+    "staged_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_sha256": {
+      "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+      "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+      "hipengine/runtime/gguf_decode_graph.py": "5e31f3ed703f62e014f98da3e852f64310f43be2466f8e6accd8eca9316d687f",
+      "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+      "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+      "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036",
+      "scripts/tp2_resident_control.py": "b1a7b979b076ad03e57462cfc71b405787dc1cdf73ad8de4e14e5392949b1fa5"
+    },
+    "profile_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "capacity": 200,
+    "kv": "bf16",
+    "recurrent": "fp32",
+    "sampling": "greedy",
+    "host": {
+      "node": "epyc",
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.43",
+      "machine": "x86_64",
+      "cpu_model": "AMD Ryzen 9 5950X 16-Core Processor",
+      "cpu_count": 32,
+      "nice": -4
+    }
+  },
+  "profile": {
+    "requested": "production",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1100",
+      "model": "qwen3_5_gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_policy": "paged_bf16",
+      "graph_policy": "specdec2_eager_c1_exact_qwen38_c8_q6_dp4a",
+      "selections": [
+        {
+          "layer": "linear_attn_chain_conv_decode",
+          "scope": "specdec2_mtp2_c1",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+          "selected_variant": "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        }
+      ]
+    },
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+    "fell_back_to_strict": false,
+    "env_after_binding": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "0",
+      "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "0",
+      "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28": "1",
+      "HIPENGINE_C8_Q6_DP4A_GROUPED": "1"
+    },
+    "scope_note": "Named TP1 arithmetic binder; not a distributed/AR-graph promotion certificate."
+  },
+  "protocol": {
+    "prompts": 18,
+    "prompt_range": [
+      39,
+      71
+    ],
+    "decode_transitions": 128,
+    "total_samples": 129,
+    "api_128_completion_equivalent": false,
+    "capacity": 200,
+    "EOS_stop": false,
+    "timing_readback": "TP1 token-only except final; TP2 native full-logit readback",
+    "correctness": "untimed shared TP1-d0 chosen trajectory, full logits, 3 repeats per arm required"
+  },
+  "capacity": {
+    "tp1-d0": {
+      "status": "complete",
+      "natural_teardown": true,
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 200
+      },
+      "devices": {
+        "0": {
+          "name": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci_bus_id": "0000:0d:00.0"
+        }
+      },
+      "effective": {
+        "kv": [
+          "DType.BF16"
+        ],
+        "recurrent_fp16": [
+          false
+        ],
+        "timed_decode_route": "state_bound_hipgraph",
+        "sampling": "greedy",
+        "eos": null,
+        "request_warmup_transitions": 0,
+        "global_warmup": {
+          "prompt_tokens": 16,
+          "transitions": 2
+        },
+        "readback": "token_only_except_final"
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 200,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "28e3ee9d37d5e4be0edd39136d0c963183486d82b3c23e0ec9b5a573c3a0d00b"
+      }
+    },
+    "tp1-d1": {
+      "status": "complete",
+      "natural_teardown": true,
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 200
+      },
+      "devices": {
+        "0": {
+          "name": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci_bus_id": "0000:10:00.0"
+        }
+      },
+      "effective": {
+        "kv": [
+          "DType.BF16"
+        ],
+        "recurrent_fp16": [
+          false
+        ],
+        "timed_decode_route": "state_bound_hipgraph",
+        "sampling": "greedy",
+        "eos": null,
+        "request_warmup_transitions": 0,
+        "global_warmup": {
+          "prompt_tokens": 16,
+          "transitions": 2
+        },
+        "readback": "token_only_except_final"
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 200,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "28e3ee9d37d5e4be0edd39136d0c963183486d82b3c23e0ec9b5a573c3a0d00b"
+      }
+    },
+    "tp2": {
+      "status": "complete",
+      "natural_teardown": true,
+      "route": {
+        "mode": "tp2",
+        "schedule": "graphed",
+        "driver": "compiled",
+        "reduce_mode": "device",
+        "head_shard": true,
+        "max_sequence_length": 200
+      },
+      "devices": {
+        "0": {
+          "name": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci_bus_id": "0000:0d:00.0"
+        },
+        "1": {
+          "name": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci_bus_id": "0000:10:00.0"
+        }
+      },
+      "effective": {
+        "kv": [
+          "DType.BF16",
+          "DType.BF16"
+        ],
+        "recurrent_fp16": [
+          false,
+          false
+        ],
+        "timed_decode_route": "per_layer_hipgraph_native_exchange",
+        "sampling": "greedy",
+        "eos": null,
+        "request_warmup_transitions": 0,
+        "global_warmup": {
+          "prompt_tokens": 16,
+          "transitions": 2
+        },
+        "readback": "native_full_logits_every_transition"
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": null
+            },
+            "1": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": null
+            }
+          },
+          "capacity": 200,
+          "schedule": "graphed",
+          "mode": "tp2",
+          "reduce_mode": "device",
+          "head_shard": true,
+          "mlp_shard_variant": "dense_dual_local32_bf16_bf16_out",
+          "per_rank_ffn": 8704,
+          "partial_dtypes": [
+            "bf16"
+          ],
+          "head_plan": {
+            "world_size": 2,
+            "vocab_rows": 248320,
+            "hidden": 5120,
+            "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+            "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+            "rows_per_rank": 124160,
+            "blocks_per_rank": 485,
+            "source_row_bytes": 4200
+          },
+          "layer_graph_count": 128,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "3f765985bb15427672c9f1d85a18791b53d8c63f053e169c11b0fdd0c3fc92b5"
+      }
+    }
+  },
+  "resident_quality": {
+    "tp1-d0": {
+      "run_id": "b1dee670a1444b03b61650c59bcaaecf",
+      "status": "complete",
+      "natural_teardown": true,
+      "devices": {
+        "0": {
+          "name": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci_bus_id": "0000:0d:00.0"
+        }
+      },
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 200
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 200,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "28e3ee9d37d5e4be0edd39136d0c963183486d82b3c23e0ec9b5a573c3a0d00b"
+      },
+      "determinism": {
+        "sweeps": 3,
+        "per_row_match": true
+      },
+      "state_boundaries": {
+        "reset": true,
+        "isolation": true,
+        "reset_after_generation": true
+      },
+      "control_log": {
+        "path": "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0-arrays/controls.jsonl",
+        "sha256": "6481c1b3b7d3c3a6a4a74c22b26009a7c0f71d4f459b6ec07224df767882934f"
+      },
+      "positions": 2304
+    },
+    "tp1-d1": {
+      "run_id": "dee4476d73584c419074b2128691c8d6",
+      "status": "complete",
+      "natural_teardown": true,
+      "devices": {
+        "0": {
+          "name": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci_bus_id": "0000:10:00.0"
+        }
+      },
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 200
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 200,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "28e3ee9d37d5e4be0edd39136d0c963183486d82b3c23e0ec9b5a573c3a0d00b"
+      },
+      "determinism": {
+        "sweeps": 3,
+        "per_row_match": true
+      },
+      "state_boundaries": {
+        "reset": true,
+        "isolation": true,
+        "reset_after_generation": true
+      },
+      "control_log": {
+        "path": "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1-arrays/controls.jsonl",
+        "sha256": "6481c1b3b7d3c3a6a4a74c22b26009a7c0f71d4f459b6ec07224df767882934f"
+      },
+      "positions": 2304,
+      "comparison": {
+        "global": {
+          "rows": 2304,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "categories": {
+          "code": {
+            "rows": 768,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "general_en": {
+            "rows": 512,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "general_ja": {
+            "rows": 512,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "mixed_ja_en": {
+            "rows": 512,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "scopes": {
+          "canonical": {
+            "rows": 1280,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 1024,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "category_scopes": {
+          "code": {
+            "canonical": {
+              "rows": 512,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            },
+            "heldout": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            }
+          },
+          "general_en": {
+            "canonical": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            },
+            "heldout": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            }
+          },
+          "general_ja": {
+            "canonical": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            },
+            "heldout": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            }
+          },
+          "mixed_ja_en": {
+            "canonical": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            },
+            "heldout": {
+              "rows": 256,
+              "mean_kl": 0.0,
+              "p95_kl": 0.0,
+              "p99_kl": 0.0,
+              "max_kl": 0.0,
+              "top1_agreement": 1.0,
+              "flipped_rows": 0
+            }
+          }
+        },
+        "shape_mismatches": [],
+        "nonfinite_rows": [],
+        "scored_rows": 18
+      }
+    }
+  },
+  "tp2_failure": {
+    "sweep": 0,
+    "prompt_id": "mixed_ja_en_translate",
+    "position": 146,
+    "decode_index": 82,
+    "input_token": 248045,
+    "kl": 0.10840648254320791,
+    "top1": true,
+    "reference_top1": 248046,
+    "candidate_top1": 248046,
+    "fixture": "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2-arrays/first-numerical-failure.npz"
+  },
+  "tp2_completed_full_prompts_before_failure": 8,
+  "failure_logits": {
+    "teacher": {
+      "shape": [
+        248320
+      ],
+      "finite": 248320,
+      "top1": 248046,
+      "margin": 0.6232757568359375,
+      "top10": [
+        {
+          "token": 248046,
+          "logit": 19.24789047241211,
+          "probability": 0.48657947188212236
+        },
+        {
+          "token": 248045,
+          "logit": 18.624614715576172,
+          "probability": 0.2608966849311529
+        },
+        {
+          "token": 846,
+          "logit": 18.471773147583008,
+          "probability": 0.22391867273606536
+        },
+        {
+          "token": 74455,
+          "logit": 15.220579147338867,
+          "probability": 0.008671908708999712
+        },
+        {
+          "token": 13,
+          "logit": 13.976059913635254,
+          "probability": 0.0024981980296450886
+        },
+        {
+          "token": 40,
+          "logit": 13.916704177856445,
+          "probability": 0.0023542305602203347
+        },
+        {
+          "token": 248068,
+          "logit": 13.639856338500977,
+          "probability": 0.0017849066352922701
+        },
+        {
+          "token": 1,
+          "logit": 13.326807022094727,
+          "probability": 0.0013051484541825498
+        },
+        {
+          "token": 12,
+          "logit": 13.188643455505371,
+          "probability": 0.0011367271651801889
+        },
+        {
+          "token": 32850,
+          "logit": 13.055830001831055,
+          "probability": 0.0009953506140490435
+        }
+      ]
+    },
+    "candidate": {
+      "shape": [
+        248320
+      ],
+      "finite": 248320,
+      "top1": 248046,
+      "margin": 0.15643882751464844,
+      "top10": [
+        {
+          "token": 248046,
+          "logit": 19.378297805786133,
+          "probability": 0.47967874413140227
+        },
+        {
+          "token": 248045,
+          "logit": 19.221858978271484,
+          "probability": 0.41021350549105867
+        },
+        {
+          "token": 846,
+          "logit": 17.681957244873047,
+          "probability": 0.08795066531575438
+        },
+        {
+          "token": 74455,
+          "logit": 14.422060012817383,
+          "probability": 0.003376632137763149
+        },
+        {
+          "token": 13,
+          "logit": 14.368429183959961,
+          "probability": 0.0032003109435561616
+        },
+        {
+          "token": 248068,
+          "logit": 13.99180793762207,
+          "probability": 0.002195976294222575
+        },
+        {
+          "token": 40,
+          "logit": 13.75827407836914,
+          "probability": 0.0017386220415761574
+        },
+        {
+          "token": 1,
+          "logit": 13.636874198913574,
+          "probability": 0.0015398622893081186
+        },
+        {
+          "token": 12,
+          "logit": 13.555353164672852,
+          "probability": 0.0014193115862702348
+        },
+        {
+          "token": 32850,
+          "logit": 12.951223373413086,
+          "probability": 0.0007757245093149817
+        }
+      ]
+    }
+  },
+  "failure_context": {
+    "prompt_token_ids": [
+      248045,
+      846,
+      198,
+      8917,
+      5437,
+      537,
+      279,
+      2614,
+      10452,
+      5020,
+      303,
+      6163,
+      11,
+      1179,
+      3300,
+      264,
+      2716,
+      10452,
+      9559,
+      25,
+      271,
+      95860,
+      247983,
+      187748,
+      73478,
+      5205,
+      74028,
+      129278,
+      15303,
+      98132,
+      247210,
+      5205,
+      239228,
+      15303,
+      97578,
+      158506,
+      95909,
+      203584,
+      5205,
+      172325,
+      6862,
+      151659,
+      85021,
+      150375,
+      231965,
+      95896,
+      96853,
+      99361,
+      179768,
+      97556,
+      155127,
+      113780,
+      155242,
+      36298,
+      1710,
+      248046,
+      198,
+      248045,
+      74455,
+      198,
+      248068,
+      271,
+      248069,
+      271
+    ],
+    "forced_input_ids": [
+      332,
+      21874,
+      20858,
+      64700,
+      198,
+      2381,
+      1727,
+      1936,
+      579,
+      4722,
+      11,
+      279,
+      5077,
+      668,
+      381,
+      383,
+      66532,
+      279,
+      4203,
+      310,
+      1433,
+      2468,
+      35358,
+      11,
+      279,
+      6297,
+      8060,
+      362,
+      2904,
+      11,
+      321,
+      279,
+      26661,
+      23967,
+      314,
+      5165,
+      14090,
+      13,
+      271,
+      332,
+      49732,
+      17308,
+      64700,
+      198,
+      96484,
+      96070,
+      194795,
+      1710,
+      95860,
+      247983,
+      187748,
+      73478,
+      5205,
+      74028,
+      129278,
+      98132,
+      243076,
+      5205,
+      239228,
+      97578,
+      158506,
+      95909,
+      203584,
+      5205,
+      175948,
+      6862,
+      151659,
+      85021,
+      150375,
+      231965,
+      95896,
+      96853,
+      99361,
+      179768,
+      97556,
+      155127,
+      113780,
+      159621,
+      1710,
+      248046,
+      198,
+      248044,
+      248045,
+      248046,
+      198,
+      248045,
+      846,
+      198,
+      248046,
+      198,
+      248045,
+      248046,
+      198,
+      248045,
+      74455,
+      198,
+      248068,
+      271,
+      248069,
+      271,
+      96484,
+      96070,
+      194795,
+      1710,
+      95860,
+      247983,
+      187748,
+      73478,
+      5205,
+      74028,
+      129278,
+      98132,
+      243076,
+      5205,
+      239228,
+      97578,
+      158506,
+      95909,
+      203584,
+      5205,
+      175948,
+      6862,
+      151659,
+      85021,
+      150375,
+      231965,
+      95896,
+      96853
+    ],
+    "note": "Input index 79 is im_end (248046); failure consumes input 82 im_start (248045). The declared no-EOS-stop D128 contract is unchanged; post-EOS rows are not excluded."
+  },
+  "localization": {
+    "command": "timeout -k 10s 240s env PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 HIPENGINE_GGUF_DECODE_REPACK=1 python3 /home/lhl/.cache/hipengine/tp2-d128-baseline/localize-prefill.py",
+    "exit_code": 0,
+    "bulk_reproduces_saved_teacher_exactly": true,
+    "graph_window": 128,
+    "executed_transitions": 83,
+    "input_position": 146,
+    "comparisons": {
+      "bulk_vs_serial": {
+        "kl": 0.2992785432102255,
+        "top1": true
+      },
+      "serial_vs_tp2": {
+        "kl": 0.02837899409137805,
+        "top1": true
+      },
+      "bulk_vs_tp2": {
+        "kl": 0.10840648254320791,
+        "top1": true
+      }
+    },
+    "admitted_alternate_baseline": false,
+    "interpretation": "Observed sensitivity to prefill schedule at the same forced decode point, not proof of a single faulty kernel. Serial prefill is diagnostic only."
+  },
+  "localization_source": "import json, os, sys, hashlib\nfrom pathlib import Path\nimport numpy as np\nfrom scripts.tp2_resident_control import create_native_adapter, bind_resident_profile\nfrom scripts.tp2_teacher_coverage_broad import sustained_trajectory, _kl_rows, _row_hash\nfrom scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder, validate_result\nROOT=Path('/home/lhl/.cache/hipengine/tp2-d128-baseline')\nref=json.loads((ROOT/'quality-tp1-d0.json').read_text())\nfailed=json.loads((ROOT/'quality-tp2.json').read_text())\ni=ref['suite']['ids'].index('mixed_ja_en_translate')\ntokens=ref['suite']['tokens'][i]; forced=ref['forced_inputs'][i][:83]\npair=np.load(failed['numerical_failure']['fixture'])\nrecord=StageRecorder(ROOT/'prefill-localization.json',{\n 'kind':'selected_failure_prefill_localization','scope':'diagnostic only, not an alternate accepted baseline',\n 'model_sha256':ref['identity']['model_sha256'],'profile':bind_resident_profile('production'),\n 'prompt_id':ref['suite']['ids'][i],'tokens':tokens,'forced_inputs':forced,\n 'input_position':146,'graph_declared_transitions':128,'steps_executed':83,\n 'original_failure':failed['numerical_failure'],'source_script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})\nstate={}\ndef build():\n state['a']=create_native_adapter('/models/gguf/Qwen3.8-27B-Q4_K_M.gguf','tp1-d0',capacity=200)\n a=state['a']; original=a.begin_decode\n a.begin_decode=lambda count:original(128)  # preserve original capture/attention horizon\n d=a.runtime.device_info(0)\n return {'device':d.name,'uuid':d.uuid,'capacity':200}\ndef progress(value):\n print('POSITION',json.dumps(value),flush=True)\ndef bulk():\n a=state['a']\n logits,_,_=sustained_trajectory(a,tokens,forced=forced,steps=83,progress=progress)\n if not np.array_equal(logits[-1],pair['teacher']): raise ValueError('fresh normal product row differs from saved teacher')\n state['bulk']=logits[-1].copy()\n return {'exact_saved_reference':True,'sha256':_row_hash(logits[-1])}\ndef serial():\n a=state['a']; s=a.session\n def prefill(ids):\n  s.reset(); result=s.prefill(ids,use_bulk=False,return_logits=True)\n  validate_result(result,a.vocab_size)\n  a.position=int(s.position); a.next_token=int(result.token_id)\n  return a.next_token\n a.prefill=prefill\n logits,_,_=sustained_trajectory(a,tokens,forced=forced,steps=83,progress=progress)\n row=logits[-1]\n path=ROOT/'prefill-localization-rows.npz'; np.savez(path,bulk=state['bulk'],serial=row,tp2=pair['candidate'])\n metrics={}\n for name,left,right in [('bulk_vs_serial',state['bulk'],row),('serial_vs_tp2',row,pair['candidate']),('bulk_vs_tp2',state['bulk'],pair['candidate'])]:\n  kl,top1=_kl_rows(left[None,:],right[None,:]); metrics[name]={'kl':float(kl[0]),'top1':bool(top1[0])}\n record.artifact['comparisons']=metrics; record.artifact['fixture']=str(path)\n return {'finite':bool(np.isfinite(row).all()),'comparisons':metrics,'diagnostic_only':True}\nif record.guard('build',build):\n if record.guard('bulk-reproduce-saved-teacher',bulk): record.guard('serial-prefill-localization',serial)\n if not record.exit_code: record.guard('teardown',state['a'].close)\nrecord.artifact['production_qualified']=False\nrecord.finish()\nif record.exit_code: sys.stdout.flush(); sys.stderr.flush(); os._exit(1)\n",
+  "checks": {
+    "initial_harness_cpu_passed": 166,
+    "focused_report_and_gate_passed": 25,
+    "default_cpu_rerun": false,
+    "product_workers_started": 0,
+    "controller_exit_code": 1
+  },
+  "raw_sources": {
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/blocked-focused-green.log": "03ab60de5cf46b62546792688542664f33a09007dabf7579e975adebe96b1c4d",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d0-idle.json": "32a0b6cf8356621d5c57b91ed012a090d3dc40df5bf1021d57434c0abcde2abf",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d0-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d0.json": "1f59f43f54c2b792a4673af3587880c48dce97c8c432eb9aa61abc75a61e5035",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d0.log": "fbdb8e5901951e270c04925393b3a4b89d2c2b72ec2728302354a69a32112bfb",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d1-idle.json": "ef96f50e2c8343e578087595db1181e0bc5ec84abc1e24b589dc16422fc3572c",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d1-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d1.json": "c7f2a0072cf40075c19e5414df9303a79d3df251b752d2d2bf7a3a8395f7e943",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp1-d1.log": "99df0ac4ba7b92dd3fe8e8737b78f8525ac4f6b111940be0e8550f65329857f4",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp2-idle.json": "bef6b8ab9e0b035d7c66691bf555313998f788070aeeb210fbc8ea60aa4ece22",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp2-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp2.json": "9cbce3367f4276dc584c66a5c77793dc1079f7d67e2930559835d1284da4d59f",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/capacity-tp2.log": "2e2d9c2e82479c25d4270e677ce566cf9d9fd8c77ca9945489ec894f1edec947",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/controller.log": "8bcb0873440a1b3ffcb648a681846043620a1e75c8ab0a5d7d0d87511ef6c260",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/harness-green.log": "a70a2d6ca3e8cecb9df4d0c36df916c577eba446c3a55f7b7bd0a2509f6e82b6",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/localization-idle.log": "5f007aba6930e2033ea51a2b2397b929181569a3a921b817c5a912f4ef34240f",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/localization-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/localize-prefill.py": "ae78672d403a6d7100035b1831c96441597a540728ae0535581cf7b9a8c0816a",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/prefill-localization-rows.npz": "e8e3784b87e4383656ec68e5fa50b29d4ef3165243db9e856cd8896faf63d441",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/prefill-localization.json": "b9de430a9990860e6bab6507556afbef54795075d179c7bcfe96a998f3147d25",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/prefill-localization.log": "057e1ca919452f950088d08910fd7cfb433831f0cfb25d37f033ab2abf5d1a13",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/product-green.log": "96353594d866d0f2d944a9de13f6cbb69e8fa2942d0dbc0fe9519c80e25f1740",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/product-red.log": "8f5d90a749a2910022a228cd6fb30f05f923daee3810f93e50efdf2749f08dc4",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/prompts.jsonl": "0eacb3e6e74033dee99effe2771e7419d1191ab429a54c53a3f52b7c94e78364",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/provenance-red.log": "808d96b013163ec5838d037206172e7995adfeb65524e79fd2ed5c1ea61f6297",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0-arrays/controls.jsonl": "6481c1b3b7d3c3a6a4a74c22b26009a7c0f71d4f459b6ec07224df767882934f",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0-idle.json": "974701d60514576de26983ed099f7c732749b7fb100d57ca1c295c1b306241e3",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0.json": "ca64b27aa91d00ed73ed9c71597d95f9cb9ec0adf917be58435045fc5894497d",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0.log": "e731d32d32bbad61329170f6196e22b45c5f8d5dd742d8921ae22ef9f093a11f",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1-arrays/controls.jsonl": "6481c1b3b7d3c3a6a4a74c22b26009a7c0f71d4f459b6ec07224df767882934f",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1-idle.json": "503b602066caa30b3c28219778ac24afc79814bf8e61dda1c373db1ac5cf511e",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1.json": "cc89503560b89591063454749f4bf1c0a7d2444203df40fb2c5dace6b973ce7a",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d1.log": "93f9db3bddc4892a2d6f155e43c3223fa8d9d2731c24ea5b5b165c94d49b8bae",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2-arrays/controls.jsonl": "714bd5c8ac0f5c12d07ac84af100c07ebceefc8b6fa0c8f80e11cf666c797b0b",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2-arrays/first-numerical-failure.npz": "8c2dd3ae1cca0203fe6645164f4cb25b8c25a34cff2a988e339d86f1c3e342b5",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2-idle.json": "5ae04ac0982d5a8390cfb5007d8cc536d4274372f03663e1f07aebe235045673",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2-idle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2.json": "154f5db75dce87c2fe0c68ea99e9147e4c7f003b6988819cfd2c8ed96dc1f2a1",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp2.log": "c606e37f69b9f7de03e1b1ff420a7bea461cd34d0c978a0af147c473c68d4d54",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/report-green.log": "1a21c7c99883dc30d074d2b3c4128c6ff58d007239da62cdeee7998d9bf25bb6",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/report-red.log": "089bc405c698e05097d7f5235ee0cc1b615c7cb1efeec5aaee7fb9587a4485e4",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/run-unit.sh": "eb4f14667bee3cea8c71f5f49e7088ec645e5b166905fe722bee5d2190d509e0",
+    "/home/lhl/.cache/hipengine/tp2-d128-baseline/sustained-red.log": "0b39f6e40d3047be5e022a3705688e189afa83e765aa201dcdc95abb4561a7a7"
+  },
+  "next_experiment": "At this fixed prompt/teacher prefix, compare per-layer hidden and Conv/GDN state after bulk versus token prefill and at the failing decode point. Localize which boundary amplifies drift before considering any arithmetic change; do not substitute serial TP1 or relax the maximum KL ceiling."
+}

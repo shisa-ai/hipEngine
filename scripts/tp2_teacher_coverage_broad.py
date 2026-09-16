@@ -1341,13 +1341,14 @@ def report_sustained(args):
     for arm,(data,arrays) in arms.items():
         if data['identity']!=teacher['identity'] or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
             raise ValueError('sustained shared teacher provenance mismatch')
-        comparisons[arm]=score_arm(reference,arrays,teacher['suite']['categories'],teacher['suite']['heldout'],
-            expected_positions=[128]*18,vocab_size=teacher['vocab_size'])
+        if arm != 'tp1-d0':  # The teacher is the reference, not a candidate to score against itself.
+            comparisons[arm]=score_arm(reference,arrays,teacher['suite']['categories'],teacher['suite']['heldout'],
+                expected_positions=[128]*18,vocab_size=teacher['vocab_size'])
     passed=all(_envelope_gate(v,top1_bar=.99)['passed'] for c in comparisons.values() for v in [c['global'],*c['scopes'].values()])
     passed &= all(_envelope_gate(v,top1_bar=.97)['passed'] for c in comparisons.values() for v in [*c['categories'].values(),*(v for s in c['category_scopes'].values() for v in s.values())])
     result={'kind':'tp2_sustained_d128_gate','all_gates_passed':bool(passed),'production_qualified':False,
         'population':'18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories',
-        'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'reference_arm':'tp1-d0', 'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
         'thresholds':PRODUCTION_GATE,'captures':{str(p):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.sustained_report},
         'controls':{d['arm']:{k:d[k] for k in ('run_id','devices','route','scope_manifest','determinism','state_boundaries','control_log','natural_teardown')} for d,a in captures},
         'not_qualified':['task quality','BF16-relative','public distributed profile','performance promotion']}

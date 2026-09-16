@@ -841,13 +841,37 @@ are 0.6975x/0.5843x AR; gfx1100 exact speculative cells remain behind direct.
 [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) ·
 [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
+## Qwen3.8-27B native-product TP1/TP2 baseline gate
+
+On host **epyc (Ryzen 9 5950X, W7900 + RX 7900 XTX, gfx1100)**, the
+`Q4_K_M` native-product comparison is blocked by sustained numerical drift,
+not by allocation or the earlier resident H2D upload defect. Capacity 200 passes
+on both single-GPU paths and TP2. Both optimized resident TP1 controls pass
+three repeatable 18-prompt canonical+heldout sweeps of 128 teacher-forced decode
+transitions per prompt (2,304 positions), with reset/isolation checks.
+
+TP2 stops on `mixed_ja_en_translate`, decode index 82 / absolute input position
+146: **KL 0.108406 exceeds the 0.05 ceiling**, despite finite logits and identical
+top-1. A selected-point diagnostic reproduces the resident teacher exactly;
+changing only resident prefill from bulk to token-serial gives KL 0.299279
+from the bulk reference. Using serial prefill as the reference for TP2 gives
+KL 0.028379. This identifies prefill-schedule
+sensitivity, not a single faulty kernel or an accepted slower baseline.
+
+**No native-product timing runs or TP2 speed ratios were emitted.** The declared
+no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
+(129 samples total), not API 128-token completion latency. The failing post-EOS
+position is not removed from the gate. Task/BF16-relative and public distributed
+qualification are not claimed.
+[Capacity, sustained failure, and localization evidence](results/2026-09-16-tp2-native-product-d128-blocked.json).
+
 ## Tensor-parallel screening (W7900 + RX 7900 XTX)
 
 One host, one process, two `gfx1100` GPUs on separate CPU root ports at
 PCIe 4.0 x16: Radeon Pro W7900 (48 GB, HIP 0) and RX 7900 XTX (24 GB, HIP 1).
-Screening measures the collective latency a TP=N decode step would pay and the
-shard plan it would load. **No tensor-parallel engine exists yet, so these are
-screening numbers and a projection, not a speedup claim.**
+The transport-only screening below predates the full-model diagnostic session.
+It measures collective latency and shard geometry; its projections are not
+product speedup claims.
 
 | All-reduce case, one group | chain 1 p50 | chain 4 p50 | marginal per op |
 | --- | ---: | ---: | ---: |
@@ -1117,16 +1141,12 @@ concurrently in the tail, with the host taking the concatenated argmax -
 the exact greedy first-maximum tie-break, because the head GEMV is
 row-independent. The head is the single largest per-token weight read
 (1.04 GB), and sharding it roughly halved its cost. Per token the loop
-also submits the token H2D and pinned position/context refresh. Measured
-decode p50 **50.65 -> 24.15 ms/token (-52.3%)** at the matched composition
-(W7900 TP1 31.8 ms, RX 7900 XTX TP1 26.3 ms) - the TP2 group now outpaces
-the faster single-GPU control by ~2.2 ms/token while carrying the full
-replicated attention/GDN cost, so a matched-composition TP2 advantage is
-real at this workload; the remaining wall is device weight reads and the
-end-of-step sampling sync. **These TP1 timing denominators are unqualified
-until re-measured:** they were taken before the 2026-09-16 TP1
-device-ownership fix, and the teacher-forced correctness rerun does not
-re-measure timings. Capture
+also submits the token H2D and pinned position/context refresh. The historical
+TP2 optimization checkpoint measured decode p50 **50.65 -> 24.15 ms/token
+(-52.3%)**. Its TP1 timing denominators predate the device-ownership and resident
+upload repairs and do not establish an optimized-product TP2 speedup. The
+sustained numerical gate above blocks the new product comparison before timing.
+Capture
 happens once at the session capacity bound (2047), which bakes the
 full-attention split-decode config for that context; the measured envelope
 against the eager per-position schedule is KL <= 3e-04 per position (top-1
