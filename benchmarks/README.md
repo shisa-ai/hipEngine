@@ -845,12 +845,19 @@ one per cycle; that model is wrong for RDNA3, which co-issues integer and FP32
 work, and it understated the ceiling by more than 2x.
 
 So there is roughly 6x of headroom that does not require changing the
-arithmetic, in memory latency and scheduling rather than tiling. One caveat is
-flagged rather than asserted: `attn_qkv` reads and writes about 80.3 MB per
-1024-row launch in 17.32 ms, or 4.6 TB/s, which exceeds both the measured
-211 GB/s stream rate and the 32 MB MALL. The byte accounting does not close and
-a memory-counter capture is the next measurement.
-[Per-operation cost, the measured roofline, and the open byte accounting](results/2026-09-16-flashnext-per-role-cost/README.md).
+arithmetic, in memory latency and scheduling rather than tiling. The byte
+accounting that did not close is closed by the launch geometry. `attn_qkv` reads
+and writes about 80.3 MB per 1024-row launch only if each operand is read once.
+Measured from the kernel's own `gridDim` (1280, 256, 1) and its `COL_TILE=8`,
+`ROW_BATCH=4` block coverage, the weight is read once per block and therefore
+256 times per launch, 7.13 GB, and the activation is read once per column tile,
+1280 times, 13.42 GB. That is 20.6 GB in 17.361 ms, or 1186 GB/s aggregate,
+which needs L2 rather than DRAM to serve it; both operands fit inside the 32 MB
+MALL (weight 27.85 MB, activation 10.49 MB). Those traffic figures are derived
+from the measured launch geometry, so a memory-counter capture is still the
+confirming measurement.
+[Per-operation cost and the measured roofline](results/2026-09-16-flashnext-per-role-cost/README.md),
+[identical-operand cross-engine replay](results/2026-09-16-cross-engine-replay/README.md).
 
 Not a numerics result: no engine's output was compared against another's, and
 hipEngine's conservative arithmetic is in place because the fast composition
@@ -864,6 +871,41 @@ pwilkin `master` and halogen cannot be included: the former has no `qwen4exp`
 architecture, and the latter refuses this quant family by name and publishes its
 figures on `UD-IQ4_XS` instead.
 [Full comparison, kernel attribution and excluded engines](results/2026-09-15-flashnext-engine-comparison/README.md).
+
+### Identical-operand cross-engine replay
+
+Per-component attribution compares two engines' own traces. This protocol
+compares the two engines on the same bytes. One projection is captured from a
+real prefill - the resolved dispatch key, the raw weight with a sha256 identity,
+the activation matrix in the dtype the kernel was handed, and the output - and
+then both hipEngine's recorded kernel and the pinned comparator's MMB entry point
+run on that packet. Neither adapter can report a fallback: the hipEngine side
+requires an exact-key registration, and the comparator side requires
+`ggml_cuda_mmb_supported_mm` to select MMB and errors rather than timing when it
+does not. Numerical differences are reported against four float64 references so
+the rounding sources separate.
+
+First result, `layers.8.attn_qkv`, rows=1024, K=2560, M=10240, 53.69 GFLOP, on
+`gfx1151`:
+
+| Engine | Kernel | Complete ms | TFLOP/s | Conversion ms |
+| --- | --- | ---: | ---: | ---: |
+| hipEngine production | `coltile8_rowbatch4_wave_scale_f32_f32_out` | 17.361 | 3.09 | fused |
+| hipEngine strict | `coltile8_rowbatch4_f32_f32_out` | 19.716 | 2.72 | fused |
+| comparator | `mmb_dense_kernel<128, 256, 64, 64, 1>` | **1.492** | **35.99** | 0.149 |
+
+hipEngine takes 11.70x the comparator's time on this operation. Its replay
+reproduces the captured output bit-exactly, and hipEngine tracks the exact
+float64 reference (mean absolute difference 4.33e-08) while the comparator tracks
+the both-bf16 reference (2.17e-06), so the remaining difference is bf16 rounding
+rather than a defect. The mechanism is the row reuse stated above: 4 rows per
+block against 256, with 512 bytes of LDS against 55,296.
+
+The operation runs 144 times in a 4096-token prefill, so this one geometry is
+2500 ms of the prefill, 11.2% of the most recent published 4K rate. That share
+is a bound, not a measured end-to-end delta: the per-call time and call count
+come from one capture, the prefill total from a different commit.
+[Cross-engine replay](results/2026-09-16-cross-engine-replay/README.md).
 
 ## Current Qwen3.6-35B quantization quality
 
