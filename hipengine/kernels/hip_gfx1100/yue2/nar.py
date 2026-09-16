@@ -1,9 +1,13 @@
-"""YuE2 NAR kernel build + launch wrappers (nar.hip).
+"""YuE2 NAR kernel build + launch wrappers (nar.hip, nar_wmma.hip).
 
 Raw device pointers only; the host runtime converts. The attention kernel is
 bidirectional over the concatenated ``[AR cache | NAR]`` key space and uses a
 tiled online softmax, so a chunk's key count is bounded by the model context
 rather than by shared memory.
+
+``nar_wmma.hip`` adds a tensor-core attention for the production head geometry
+(16 query heads over 8 key/value heads, head_dim 128). It changes arithmetic, so
+``nar_attention_f32`` remains the strict fallback and the caller chooses.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 
 _SOURCE = Path(__file__).with_name("nar.hip")
+_SOURCE_WMMA = Path(__file__).with_name("nar_wmma.hip")
 _OUTPUT_NAME = "yue2_nar"
 
 _P = ctypes.c_void_p
@@ -27,12 +32,13 @@ _ARGTYPES_GATHER_ADD = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_ADD_BROADCAST = (_P, _P, _P, _I, _I, _S)
 _ARGTYPES_STATE_UPDATE = (_P, _P, _F, _P, _I, _I, _S)
 _ARGTYPES_ATTENTION = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
+_ARGTYPES_ATTENTION_WMMA = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
 _ARGTYPES_ROPE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
 
 
 def plan_yue2_nar_build(**kwargs):
     return plan_hip_build(
-        sources=[_SOURCE],
+        sources=[_SOURCE, _SOURCE_WMMA],
         family="yue2_nar",
         output_name=_OUTPUT_NAME,
         **kwargs,
@@ -49,7 +55,7 @@ def build_yue2_nar(
     require_cached: bool = False,
 ) -> ctypes.CDLL | None:
     return build_hip(
-        sources=[_SOURCE],
+        sources=[_SOURCE, _SOURCE_WMMA],
         family="yue2_nar",
         profile=profile,
         cache_root=cache_root,
@@ -163,6 +169,44 @@ def nar_attention_f32(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library, "hipengine_yue2_nar_attention_f32", _ARGTYPES_ATTENTION, ctypes.c_int
+    )
+    err = fn(
+        q_ptr, nar_k_ptr, nar_v_ptr, ar_k_ptr, ar_v_ptr, out_ptr,
+        rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def nar_attention_wmma(
+    q_ptr: int,
+    nar_k_ptr: int,
+    nar_v_ptr: int,
+    ar_k_ptr: int,
+    ar_v_ptr: int,
+    out_ptr: int,
+    rows: int,
+    ar_rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Tensor-core path for the production head geometry.
+
+    Same ABI as :func:`nar_attention_f32`. The device entry point rejects any
+    geometry it does not implement, so the caller can fall back on its error
+    code rather than duplicating the guards.
+    """
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_yue2_nar_attention_wmma",
+        _ARGTYPES_ATTENTION_WMMA, ctypes.c_int,
     )
     err = fn(
         q_ptr, nar_k_ptr, nar_v_ptr, ar_k_ptr, ar_v_ptr, out_ptr,

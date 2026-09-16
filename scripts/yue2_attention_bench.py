@@ -50,6 +50,8 @@ def main() -> int:
     parser.add_argument("--repeat", type=int, default=15)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260917)
+    parser.add_argument("--kernel", choices=("scalar", "wmma"), default="scalar",
+                        help="which attention kernel to time")
     parser.add_argument("--fixture-check", action="store_true",
                         help="also assert bit parity against the recorded parent output")
     args = parser.parse_args()
@@ -96,8 +98,10 @@ def main() -> int:
     buffers = [upload(a) for a in (q, nar_k, nar_v, ar_k, ar_v, out)]
     q_buf, nk_buf, nv_buf, ak_buf, av_buf, out_buf = buffers
 
+    attention = nar.nar_attention_wmma if args.kernel == "wmma" else nar.nar_attention_f32
+
     def call():
-        nar.nar_attention_f32(
+        attention(
             q_buf.ptr, nk_buf.ptr, nv_buf.ptr, ak_buf.ptr, av_buf.ptr, out_buf.ptr,
             rows, ar_rows, heads, kv_heads, dim, scale, runtime=runtime,
         )
@@ -122,7 +126,8 @@ def main() -> int:
     # own copy of the K and V rows for its kv head.
     traffic = rows * heads * keys * dim * 2 * 2
     print(
-        f"rows={rows} ar_rows={ar_rows} keys={keys} heads={heads}/{kv_heads} dim={dim}\n"
+        f"kernel={args.kernel} rows={rows} ar_rows={ar_rows} keys={keys} "
+        f"heads={heads}/{kv_heads} dim={dim}\n"
         f"  median {median * 1e3:.2f} ms/call (min {min(times) * 1e3:.2f}, "
         f"max {max(times) * 1e3:.2f}) over {args.repeat} calls\n"
         f"  global K/V traffic {traffic / 1e9:.2f} GB/call -> "

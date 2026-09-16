@@ -1530,17 +1530,21 @@ across all twelve cases at 2 ODE steps:
 | Stage | hipEngine | Reference | Ratio |
 | --- | ---: | ---: | ---: |
 | FP32 Oobleck decode | 332.78 s | 2 049.23 s | **6.16x faster** |
-| Acoustic solver, raw | 194.53 s | 537.52 s | 2.76x faster (fewer steps) |
-| Acoustic solver, per ODE step | 97.27 s | 16.80 s | **5.79x slower** |
+| Acoustic solver, raw | 131.91 s | 537.52 s | 2.76x faster (fewer steps) |
+| Acoustic solver, per ODE step | 65.96 s | 16.80 s | **3.93x slower** |
 
 The decode row is fully matched: both sides decode the same latent frame counts and
 the stage does not depend on the step count, so 6.16x is like for like. The solver
 row is not, because the reference always solves at its own 32 steps, so its raw time
 is larger than a 2-step run's by construction; only the per-step row is matched. That
 row was **26.29x** before the attention and projection work described in the next
-section and is **5.79x** now, a 4.54x improvement in the per-step ratio.
-`scripts/yue2_reference_comparison.py` produces both tables. Evidence:
-[`comparison`](results/yue2_reference_comparison_20260917.json),
+section, **5.79x** after the scalar attention work, and is **3.93x** with the
+tensor-core attention. At the product's 32 steps, where attention dominates the
+solve, the same case is **1.18x** behind the reference (32.22 s against 27.32 s)
+rather than 16.2x. `scripts/yue2_reference_comparison.py` produces both tables.
+Evidence:
+[`comparison`](results/yue2_reference_comparison_wmma_20260917.json),
+[`scalar attention`](results/yue2_reference_comparison_20260917.json),
 [`pre-fix comparison`](results/yue2_reference_comparison_pre_attention_fix_20260917.json).
 
 A separate live run exercises the whole session rather than recorded
@@ -1572,14 +1576,15 @@ fast heuristic. Both now select by measured index.
 
 | Measurement | Before | After | Ratio |
 | --- | ---: | ---: | ---: |
-| `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **28.34 ms** | **6.25x** |
+| `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **19.33 ms** | **9.17x** |
 | The same kernel, tile maximum vectorized (paired, same session) | 32.82 ms | **31.34 ms** | **1.05x** |
 | The same kernel, softmax weights stored key-major (paired, same session) | 27.40 ms | **26.38 ms** | **1.04x** |
 | The same kernel, dot-product row loop specialized and walks unrolled (paired) | 26.27 ms | **19.33 ms** | **1.36x** |
+| `yue2_nar_attention_wmma_kernel`, same shape, per call | 20.1 ms | **3.85 ms** | **5.1x** |
 | NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
-| NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **6.69 s** | **4.15x** |
-| NAR solve of the same case, product 32 ODE steps | 443.4 s | **54.76 s** | **8.10x** |
-| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **74.84 s** | **6.23x** |
+| NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **5.14 s** | **5.40x** |
+| NAR solve of the same case, product 32 ODE steps | 443.4 s | **32.22 s** | **13.76x** |
+| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **60.28 s** | **7.73x** |
 
 All rows are gfx1151 (zbook) measurements. The kernel row is a median of six
 batches of five calls; every replay row was run on the same host with the gate's
@@ -1618,6 +1623,29 @@ ceiling on 40 CUs is 25.6 TFLOP/s and this kernel keeps roughly a quarter of its
 instructions as useful arithmetic after the softmax reductions, the weight exchange
 and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s — about 8.5 s
 here. Closing the rest needs matrix cores, which is what the reference uses.
+
+`yue2_nar_attention_wmma_kernel` is that tensor-core path: a second attention for the
+production head geometry (16 query heads over 8 key/value heads at head_dim 128) with
+f16 WMMA operands, f32 score accumulation, a 16-key tile per lane-half reduction, K
+and V sharing one 64-key staged buffer, and an f16 output accumulator rescaled by the
+online softmax — the same arithmetic class as the reference. Its fragment contracts
+follow the in-tree Laguna flash attention, which preserves llama.cpp's
+`fattn-mma-f16` design. It runs the production shape in **3.85 ms per call against
+the scalar kernel's 20.1 ms (5.1×)**, landing inside 1.7× of the reference's own
+kernel, and takes the product's 32-step solve to **32.22 s against the reference's
+27.32 s (1.18×)**. It changes arithmetic by design, so the scalar kernel stays
+registered as the strict fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar` and
+this variant is held to the production gates instead of the parent-bits fixture: all
+three M4 solver gates pass and two improve (chunk0 latents rel L2 0.01225 ->
+**0.01042**, multi-chunk 0.01071 -> **0.01054**, restricted visibility 0.00885 ->
+0.00938 against a 0.05 ceiling), the full twelve-case replay passes with every case
+reproducing its exact frame and sample counts in 464.6 s against 527.4 s, and its own
+unit test checks seven shapes against an independent FP64 reference. Evidence:
+[`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json).
+
+At 32 steps the solver is now ~9.6 s of attention, ~15 s of projections and ~7.6 s of
+conditioning prefill and other work, so the projections are the largest single item
+and run at hipBLASLt's rate.
 
 Wrapping the attention call with a device synchronize on either side splits the
 7.95 s two-step solve into **3.31 s of attention** (29.6 ms per call), 0.94 s of

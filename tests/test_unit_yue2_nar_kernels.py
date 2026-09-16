@@ -169,6 +169,77 @@ def test_attention_matches_the_numpy_reference(ar_rows, nar_rows, head_dim):
 
 
 @requires_hip
+@pytest.mark.parametrize(
+    "ar_rows,nar_rows",
+    [(512, 34), (0, 40), (300, 7), (1, 1), (0, 1), (256, 96), (128, 256)],
+)
+def test_wmma_attention_matches_the_numpy_reference(ar_rows, nar_rows):
+    """The tensor-core attention is a production-profile variant, not an exact one.
+
+    It runs the query/key and probability/value products on f16 WMMA with an f16
+    output accumulator, which is the arithmetic class the pinned upstream's own
+    attention kernel uses, so it cannot be bit-identical to the scalar kernel.
+    What it must do is stay inside the M4 solver gate's envelope against the
+    independent FP64 reference: the gate allows rel L2 0.05 and cosine 0.999, and
+    this asserts a tighter 0.02 / 0.9995 so a regression shows up before the gate.
+    """
+    from hipengine.kernels.hip_gfx1100.yue2 import nar
+
+    num_q_heads, num_kv_heads, head_dim = 16, 8, 128
+    rng = np.random.default_rng(ar_rows * 977 + nar_rows)
+    q = (rng.standard_normal((nar_rows, num_q_heads, head_dim)) * 0.5).astype(np.float32)
+    nar_k = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))
+    nar_v = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))
+    ar_k = _bf16(rng.standard_normal((ar_rows, num_kv_heads, head_dim))) if ar_rows else np.zeros((0, num_kv_heads, head_dim), dtype=np.uint16)
+    ar_v = _bf16(rng.standard_normal((ar_rows, num_kv_heads, head_dim))) if ar_rows else np.zeros((0, num_kv_heads, head_dim), dtype=np.uint16)
+    scale = 1.0 / float(np.sqrt(head_dim))
+    q_buf = _upload(q)
+    nk_buf = _upload(nar_k)
+    nv_buf = _upload(nar_v)
+    ak_buf = _upload(ar_k)
+    av_buf = _upload(ar_v)
+    out_buf = _upload(np.zeros((nar_rows, num_q_heads, head_dim), dtype=np.float32))
+    nar.nar_attention_wmma(
+        q_buf.ptr, nk_buf.ptr, nv_buf.ptr, ak_buf.ptr, av_buf.ptr, out_buf.ptr,
+        nar_rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale,
+    )
+    got = _download(out_buf, (nar_rows, num_q_heads, head_dim), np.float32)
+    expected = _attention_reference(q, nar_k, nar_v, ar_k, ar_v, num_q_heads, num_kv_heads, scale)
+    relative = float(np.linalg.norm(got - expected) / np.linalg.norm(expected))
+    cosine = float(
+        np.dot(got.ravel(), expected.ravel())
+        / (np.linalg.norm(got) * np.linalg.norm(expected))
+    )
+    assert relative < 0.02, f"relative L2 {relative} exceeds the variant's envelope"
+    assert cosine > 0.9995, f"cosine {cosine} falls outside the variant's envelope"
+
+
+@requires_hip
+def test_wmma_attention_rejects_a_geometry_it_does_not_implement():
+    """The tensor-core path guards its own geometry so callers can fall back.
+
+    It implements the production head geometry only (16 query heads over 8
+    key/value heads at head_dim 128). Anything else must return a HIP error
+    rather than compute something wrong, because the runtime dispatches on this
+    kernel's availability.
+    """
+    from hipengine.core.hip import HipError
+    from hipengine.kernels.hip_gfx1100.yue2 import nar
+
+    nar_rows, ar_rows = 4, 4
+    q = np.zeros((nar_rows, 16, 128), dtype=np.float32)
+    k = np.zeros((nar_rows, 8, 128), dtype=np.uint16)
+    v = np.zeros((nar_rows, 8, 128), dtype=np.uint16)
+    out = np.zeros((nar_rows, 16, 128), dtype=np.float32)
+    q_buf, nk_buf, nv_buf, out_buf = _upload(q), _upload(k), _upload(v), _upload(out)
+    with pytest.raises(HipError):
+        nar.nar_attention_wmma(
+            q_buf.ptr, nk_buf.ptr, nv_buf.ptr, nk_buf.ptr, nv_buf.ptr, out_buf.ptr,
+            nar_rows, ar_rows, 16, 4, 128, 0.1,
+        )
+
+
+@requires_hip
 def test_attention_matches_the_parent_kernel_bit_for_bit():
     """Exact parent parity for the attention kernel's tiled reduction.
 

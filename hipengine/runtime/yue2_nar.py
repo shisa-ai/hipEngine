@@ -33,6 +33,7 @@ Rounding contract, from the pinned upstream ``yue2/nar.py`` and
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Iterable, Sequence
@@ -334,6 +335,16 @@ class Yue2NarRuntime:
         self._hidden_size = hidden
         self._ffn = ffn
         self._scale = 1.0 / float(np.sqrt(head_dim))
+        #: The tensor-core attention implements the production head geometry
+        #: (16 query heads over 8 key/value heads at head_dim 128). It changes
+        #: arithmetic, so the scalar kernel stays as the strict fallback and
+        #: ``HIPENGINE_YUE2_NAR_ATTENTION=scalar`` selects it.
+        self._wmma_attention = (
+            os.environ.get("HIPENGINE_YUE2_NAR_ATTENTION", "wmma").lower() != "scalar"
+            and head_dim == 128
+            and heads == 16
+            and kv_heads == 8
+        )
 
         def keep(buffer: DeviceBuffer) -> DeviceBuffer:
             self._buffers.append(buffer)
@@ -734,7 +745,12 @@ class Yue2NarRuntime:
                     self._rope_positions.ptr + start * 8, self._q_out.ptr, 0,
                     count, self._heads, 0, self._head_dim, runtime=self.runtime,
                 )
-                nar_kernels.nar_attention_f32(
+                attention = (
+                    nar_kernels.nar_attention_wmma
+                    if self._wmma_attention
+                    else nar_kernels.nar_attention_f32
+                )
+                attention(
                     self._q_out.ptr, self._nar_k.ptr, self._nar_v.ptr, ar_k.ptr, ar_v.ptr,
                     self._attn_f32.ptr, count, self._visible, self._heads, self._kv_heads,
                     self._head_dim, self._scale, runtime=self.runtime,
