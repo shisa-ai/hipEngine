@@ -307,6 +307,9 @@ def cmd_ar_replay(args) -> int:
             step_top_vals=arrays["step_top_vals"],
             full_logits_0_0=arrays.get("full_logits_0_0", np.zeros(0, dtype=np.uint16)),
             full_logits_steps=arrays["full_logits_steps"],
+            # The compact fixture deliberately keeps only the first full row; say
+            # so, instead of leaving the artifact-wide step list to imply more.
+            full_logits_available=np.asarray([(0, 0)], dtype=np.int32).reshape(-1),
         )
         manifest[name] = {
             "phase": phase,
@@ -1014,6 +1017,10 @@ AR_REPLAY_SCHEMA = {
 AR_REPLAY_OPTIONAL = {
     "prefix_negative": ("int32", 1),
     "prefill_logits_negative": ("uint16", 2),
+    # Pairs with a full-vocabulary row inside *this* file. ``full_logits_steps``
+    # lists what the full-precision artifact recorded; the committed compact
+    # fixture keeps a subset, and older fixtures predate this key.
+    "full_logits_available": ("int32", 1),
 }
 
 
@@ -1025,7 +1032,8 @@ def _check_schema(problems, path, arrays, schema, optional=None, allow_extra=Fal
             continue
         array = arrays[key]
         problems.require(_dtype_ok(array, dtype), path, f"{key} dtype {array.dtype} != {dtype}")
-        problems.require(array.ndim == ndim, path, f"{key} ndim {array.ndim} != {ndim}")
+        if ndim is not None:
+            problems.require(array.ndim == ndim, path, f"{key} ndim {array.ndim} != {ndim}")
         problems.require(array.size > 0, path, f"{key} is empty")
         if array.dtype.kind == "f" and key in allow_inf:
             problems.require(
@@ -1134,6 +1142,38 @@ def _check_ar_replay(root, problems):
         problems.require(
             tuple(recorded[0]) == (0, 0), path, f"first recorded step is {tuple(recorded[0])}"
         )
+        # Every pair claimed to be in this file must actually be present, and no
+        # unlisted full-vocabulary row may hide in it.
+        present = sorted(
+            (int(key.split("_")[2]), int(key.split("_")[3]))
+            for key in arrays
+            if key.startswith("full_logits_") and key != "full_logits_steps"
+        )
+        if "full_logits_available" in arrays:
+            available = arrays["full_logits_available"].reshape(-1, 2)
+            available_pairs = [(int(i), int(b)) for i, b in available]
+            problems.require(
+                len(set(available_pairs)) == len(available_pairs),
+                path,
+                "full_logits_available repeats a pair",
+            )
+            for pair in available_pairs:
+                problems.require(
+                    pair in set((int(i), int(b)) for i, b in recorded),
+                    path,
+                    f"full_logits_available entry {pair} is not in full_logits_steps",
+                )
+            problems.require(
+                sorted(available_pairs) == present,
+                path,
+                f"full_logits_available {available_pairs} != rows present {present}",
+            )
+        for pair in present:
+            problems.require(
+                pair in set((int(i), int(b)) for i, b in recorded),
+                path,
+                f"full-vocabulary row {pair} is not listed in full_logits_steps",
+            )
         # Top-8 rows are sorted, and their head agrees with the argmax row.
         top_vals = arrays["step_top_vals"]
         if top_vals.ndim == 3 and top_vals.shape[-1] == 8:
@@ -1513,16 +1553,26 @@ def _check_cases(root, problems):
             path,
             arrays,
             {
-                "abc_ids": ("int32", 1),
                 "prefix": ("int32", 1),
                 "semantic": ("int32", 1),
                 "latent_shape": ("int32", 1),
                 "latent_excerpt": ("float32", 2),
-                "audio_excerpt": ("float32", 1),
+                # The reference pipeline emits mono PCM for most cases and a
+                # channel-first excerpt for the stereo ones; both are recorded
+                # as produced, so only the dtype is fixed here.
+                "audio_excerpt": ("float32", None),
                 "latent_norm": ("float32", 0),
                 "audio_rms": ("float32", 0),
                 "audio_peak": ("float32", 0),
             },
+            # Mode-off requests have no ABC phase, so the array is present but empty.
+            optional={"abc_ids": ("int32", 1)},
+        )
+        problems.require(
+            arrays.get("abc_ids", np.empty(0, dtype=np.int32)).size
+            == int(entry["abc_tokens"]),
+            path,
+            "ABC token count does not match the manifest",
         )
         problems.require(
             arrays["semantic"].size == int(entry["semantic_tokens"]),
@@ -1648,7 +1698,7 @@ def _mutate_tree(source: Path, destination: Path, mutate, *, refreeze: bool) -> 
     if refreeze:
         # Re-freezing proves the *schema* and relation checks stand on their own
         # rather than only re-deriving a hash.
-        cmd_freeze(argparse.Namespace(compact=str(destination)))
+        cmd_freeze(argparse.Namespace(compact=str(destination), exclude=""))
     return validate_fixtures(destination)
 
 

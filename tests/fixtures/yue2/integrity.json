@@ -75,6 +75,90 @@
     "bytes": 318695,
     "sha256": "6f1cad6d366bdf877bd818590e07196147bab75b8b79c064479f300f326de560"
   },
+  "cases/english-full-s1234.abc": {
+    "bytes": 917,
+    "sha256": "c3bd7fecc3f707e8761e68c198cf8ec3711799b900d8e7393efd2e162146a739"
+  },
+  "cases/english-full-s1234.npz": {
+    "bytes": 721226,
+    "sha256": "a26b16bec6b91b62e9aeb7e57cb0ede4f7f4d2f0088b0e6719a1880e5aecd3f0"
+  },
+  "cases/english-full-s5678.abc": {
+    "bytes": 781,
+    "sha256": "f31645cf82af6ff8edf7ac5dd111e037d3b044d6e1de83904ecda8d93a8320f4"
+  },
+  "cases/english-full-s5678.npz": {
+    "bytes": 718888,
+    "sha256": "b9f9b6fb88163ea08f9f6294a33866a597c36d4cec7ef611ac4b5394cb501943"
+  },
+  "cases/english-melody-s1234.abc": {
+    "bytes": 877,
+    "sha256": "1a83a059187e0126fc4d288c129ceb520d4d03615b4d0b11fc3c1160b9b4a96e"
+  },
+  "cases/english-melody-s1234.npz": {
+    "bytes": 717906,
+    "sha256": "998150352f8e6207ed445347e5fa9fa8213be82de8ad5c0d4553772fa4f1ba0d"
+  },
+  "cases/english-melody-s5678.abc": {
+    "bytes": 540,
+    "sha256": "ab34e86a63b3eb1594191c22b25f64620a1709d72752baa3447f8eed59f9da2f"
+  },
+  "cases/english-melody-s5678.npz": {
+    "bytes": 717601,
+    "sha256": "3ec1478f04265f573185b67974d2eed95dca974e1164d74bebf452e1801b08d0"
+  },
+  "cases/english-off-s1234.npz": {
+    "bytes": 726319,
+    "sha256": "10fba66ffe7be63b1f4244ca70ba1ff5b7007ceea3c5b375db7a4d75587345fa"
+  },
+  "cases/english-off-s5678.npz": {
+    "bytes": 696734,
+    "sha256": "21db914fbfcdd2c31aa53fa546dcdc7836b08db29853be64d6af225bd90e2bae"
+  },
+  "cases/mandarin-full-s1234.abc": {
+    "bytes": 817,
+    "sha256": "7c1f479b8dc1863ba1350e4c03d70c32645734a7b8b9de70e8549b910e2d4e08"
+  },
+  "cases/mandarin-full-s1234.npz": {
+    "bytes": 706763,
+    "sha256": "3dffa6b725eedb0c91cfef72fb64a548838fed9ad4b95d4ca9ec3b195718bf75"
+  },
+  "cases/mandarin-full-s5678.abc": {
+    "bytes": 869,
+    "sha256": "69dfbcaa25e6aa4d979fff15966edfc5d0e95f9df22f3ae614af8adf8167c650"
+  },
+  "cases/mandarin-full-s5678.npz": {
+    "bytes": 689174,
+    "sha256": "14443d9120486c381e68dbfd5e81080b7f17989adf61f1016d97906c6808ca80"
+  },
+  "cases/mandarin-melody-s1234.abc": {
+    "bytes": 587,
+    "sha256": "5de4a81caa06ff3e775a41d2b11985a2c06c5f52df9fbf49880fdfa044288ce7"
+  },
+  "cases/mandarin-melody-s1234.npz": {
+    "bytes": 684122,
+    "sha256": "db01925646fca555a6db9ca0e979151cd7a2e984b22b6e0bc60067dd3ca67a38"
+  },
+  "cases/mandarin-melody-s5678.abc": {
+    "bytes": 691,
+    "sha256": "81b092e69e13228723bda1d42093f91ee36c2e970c898e4f2c028584c6dead42"
+  },
+  "cases/mandarin-melody-s5678.npz": {
+    "bytes": 687937,
+    "sha256": "57b2e91fff88c1da93fda24a9be7854882a4b200512feb5ede1182abec48163f"
+  },
+  "cases/mandarin-off-s1234.npz": {
+    "bytes": 715418,
+    "sha256": "99a26640093ee842ed4aca587e829870afe31b29674dd88cb7c1bcc3982654a7"
+  },
+  "cases/mandarin-off-s5678.npz": {
+    "bytes": 714763,
+    "sha256": "da78a45c604764fe40550dd6a03a149614294cc804759649b664a01bc2cf2ab3"
+  },
+  "cases/manifest.json": {
+    "bytes": 4366,
+    "sha256": "ef4fe92dbd3f701640a885b0b01d527a1992cda1fdd81d79b858cba66cf7c67d"
+  },
   "nar/chunk0.npz": {
     "bytes": 45704,
     "sha256": "5761ed26e7f4480f5ee29ee9aad5c15e3add986a5ef360001bb2f803efe0485f"
