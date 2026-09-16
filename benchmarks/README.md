@@ -554,6 +554,7 @@ hermetic target-architecture wrapper; see `docs/BENCHMARK.md`.
 | `qwen4exp_context_decode_profile.py` | Restored exact live-context transition roles, complete mutable-state hashes, per-bucket lifecycle, and allocation census | ✓ | | | ✓ | ✓ | | `--live-count 513 1025 4097 --repetitions 3 --profile --role-markers` |
 | `qwen4exp_llamacpp_exact_profile.py` | Exact-token pinned llama.cpp prefill and cached single-transition decode under direct rocprof, selected by monotonic bounds | ✓ | | ✓ | ✓ | | | `--case-id code-p512 --case-id code-p1024 --case-id code-p4096` |
 | `qwen4exp_mtp_head_profile.py` | Isolated Qwen4Exp MTP full-Q8 draft/head/D2H timing and selected-head Amdahl ceiling | | ✓ | | ✓ | ✓ | | `--output <json>` |
+| `qwen4exp_dense_route_ab.py` | **Layer-scoped dense prefill route A/B**: exact coltile chain vs the certified f16 WMMA route vs the opt-in wide-row kernel at layers 16-47, selectors flipped post-binder in one process with one model load, interleaved arms with rotated order, and a per-arm launch census plus logits digest so the route swap is shown rather than assumed | | | ✓ | | | | `--repetitions 3 --output <json>` |
 | `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
 | `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
 | `gguf_mtp_category_bench.py` | MTP category matrix over budgets 1..8 with guarded objective extraction; attach a true-AR baseline for ratios | | ✓ | | ✓ | | | `--budgets 1,3,5 --objective-budget b5` |
@@ -693,6 +694,28 @@ strict-teacher numerical certificate.
 Those paired rates use the earlier arithmetic composition, not the recovered
 profile's current end-to-end throughput.
 [Cold/warm evidence and commands](results/2026-09-14-journey-ple/README.md).
+
+A layer-scoped Q8_0 prefill route A/B on one host and session measures what the
+wide-row kernel is worth where the certified f16 WMMA route already runs (layers
+16-47). Same category, three prompt lengths, three interleaved repetitions,
+selectors flipped after the production binder in one process:
+
+| Prefill route at layers 16-47 | 512 | 1K | 4K |
+| --- | ---: | ---: | ---: |
+| Exact coltile chain | 2.822 s | 5.487 s | 22.648 s |
+| WMMA (production default) | 2.225 s | 4.389 s | 18.208 s |
+| Wide-row, opt-in | **2.201 s** | **4.151 s** | **17.217 s** |
+
+Median prefill wall; the wide-row route is **5.4%** below the default at 1K and
+4K and indistinguishable from it at 512. Against the exact chain it is
+22.0%/24.3%/24.0% faster, of which the WMMA route already holds
+21.1%/20.0%/19.6%. All three arms launch the same 7191 kernels over the same
+roles, and the wide arm's logits digest and sampled token are identical to the
+certified WMMA arm on all three cases in both runs, while both differ from the
+exact chain. The wide route is opt-in (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`) and
+not promoted; its 12-case production numerical gate has not been run, and this
+single-category prefill protocol is not a topline rate row.
+[Route A/B evidence](results/2026-09-17-q8-dense-route-ab/README.md).
 
 September 14 numerical refresh of the previous production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher

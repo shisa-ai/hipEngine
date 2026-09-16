@@ -1,5 +1,21 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: The wide-row Q8_0 prefill kernel measured end-to-end for
+  the first time, on a real prefill rather than one operation. Against the
+  production default (the certified f16 WMMA route at layers 16-47) it takes the
+  `code` category from **4.389 -> 4.151 s** at 1K and **18.208 -> 17.217 s** at
+  4K (**-5.4%** each); at 512 prompt tokens the two routes are indistinguishable
+  inside the protocol's repeat spread. Against the exact coltile chain it is
+  22.0%/24.3%/24.0% faster, of which the WMMA route already holds
+  21.1%/20.0%/19.6%. Three interleaved arms in one process with one model load,
+  selectors flipped post-binder, three repetitions with rotated arm order; a
+  second process reproduced every ratio within 0.1 percentage points. All three
+  arms launch the same 7191 kernels over the same roles, and the wide arm is
+  bit-identical to the certified WMMA arm (logits digest and sampled token) on
+  all three cases in both runs. The route stays opt-in and unpromoted: the wide
+  arm's 12-case production numerical gate has not been run.
+  [Route A/B evidence](results/2026-09-17-q8-dense-route-ab/README.md).
+
 - **2026-09-16 UTC**: Follow-on to the identical-operand replay protocol: a
   wide-row Q8_0 prefill kernel ported from the comparator's own MMB tile closes
   most of the 11.70x gap on the same packet. `dense_wide256_f32_f32_out` runs
