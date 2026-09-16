@@ -37,6 +37,11 @@ from typing import Any
 import numpy as np
 
 from hipengine.kernels.cpu_reference.maple import bf16_round
+
+
+def _scalar(value: object) -> float:
+    """Extract a Python float from a bf16-round result (which is 0-d or 1-element)."""
+    return float(np.asarray(value).reshape(-1)[0])
 from hipengine.kernels.cpu_reference.vibevoice_asr import _finite, vibevoice_linear
 
 ArrayLike = Any
@@ -304,6 +309,58 @@ class DPMSolverMultistepScheduler:
     def _alpha_sigma(sigma: np.ndarray | float):
         alpha = 1.0 / np.sqrt(sigma**2 + 1.0)
         return np.float32(alpha), np.float32(sigma * alpha)
+    def step_scalars(self) -> tuple[int, float, float, float, float, float, float]:
+        """Order and per-step scalars for the current position, read-only.
+
+        Shared by the numpy ``_first_order``/``_second_order`` path and the
+        device solver so the two cannot drift. Returns
+        ``(order, alpha_b, sigma_b, scale, coef_b, half_coef_b, inv_r0_b)``;
+        the bf16-rounded scalars are exactly what eager would produce, and
+        ``half_coef_b``/``inv_r0_b`` are 0.0 at order 1. Does not advance
+        ``_step_index`` or ``lower_order_nums``.
+        """
+        last = self._step_index == len(self.timesteps) - 1
+        lower_order_final = last and (
+            self.spec.euler_at_final
+            or (self.spec.lower_order_final and len(self.timesteps) < 15)
+            or self.spec.final_sigmas_type == "zero"
+        )
+        order = 1 if (
+            self.spec.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final
+        ) else 2
+
+        alpha_s, sigma_s = self._alpha_sigma(np.float32(self.sigmas[self._step_index]))
+        alpha_t, sigma_t = self._alpha_sigma(np.float32(self.sigmas[self._step_index + 1]))
+        alpha_b = bf16_round(np.float32(alpha_s))
+        sigma_b = bf16_round(np.float32(sigma_s))
+        with np.errstate(divide="ignore"):
+            lambda_t = np.float32(np.log(alpha_t) - np.log(sigma_t))
+            lambda_s = np.float32(np.log(alpha_s) - np.log(sigma_s))
+        h = np.float32(lambda_t - lambda_s)
+        scale = np.float32(sigma_t / sigma_s)
+
+        if order == 1:
+            coef_b = bf16_round(np.float32(alpha_t * (np.exp(-h) - 1.0)))
+            return (
+                1, _scalar(alpha_b), _scalar(sigma_b), _scalar(scale),
+                _scalar(coef_b), 0.0, 0.0,
+            )
+
+        alpha_s1, sigma_s1 = self._alpha_sigma(np.float32(self.sigmas[self._step_index - 1]))
+        with np.errstate(divide="ignore"):
+            lambda_s1 = np.float32(np.log(alpha_s1) - np.log(sigma_s1))
+        h_0 = np.float32(lambda_s - lambda_s1)
+        r0 = np.float32(h_0 / h)
+        coef = np.float32(alpha_t * (np.exp(-h) - 1.0))
+        return (
+            2,
+            _scalar(alpha_b),
+            _scalar(sigma_b),
+            _scalar(scale),
+            _scalar(bf16_round(np.float32(coef))),
+            _scalar(bf16_round(np.float32(0.5 * coef))),
+            _scalar(bf16_round(np.float32(1.0 / r0))),
+        )
 
     def _convert_model_output(self, model_output: np.ndarray, sample: np.ndarray) -> np.ndarray:
         """``x0_pred = alpha_t * sample - sigma_t * eps`` on the bf16 grid."""

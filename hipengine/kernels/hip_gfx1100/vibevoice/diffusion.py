@@ -20,6 +20,7 @@ _OUTPUT_NAME = "vibevoice_tts_diffusion"
 
 _P = ctypes.c_void_p
 _I = ctypes.c_int64
+_I32 = ctypes.c_int32
 _S = ctypes.c_void_p
 _F = ctypes.c_float
 
@@ -30,6 +31,7 @@ _ARGTYPES_RMSNORM_MODULATE = (_P, _P, _P, _P, _I, _I, _I, _F, _S)
 _ARGTYPES_MODULATE = (_P, _P, _P, _I, _I, _I, _S)
 _ARGTYPES_GATED = (_P, _P, _P, _P, _I, _I, _I, _S)
 _ARGTYPES_CFG = (_P, _P, _F, _P, _I, _S)
+_ARGTYPES_DPM_STEP = (_P, _P, _P, _P, _P, _F, _F, _F, _F, _F, _F, _I, _I32, _S)
 
 
 def plan_vibevoice_diffusion_build(
@@ -182,6 +184,30 @@ def vv_diff_gated_residual_bf16(
         _ARGTYPES_GATED,
         (_P(h_ptr), _P(gate_chunk_ptr), _P(y_ptr), _P(out_ptr),
          _I(rows), _I(width), _I(gate_stride), _S(0)),
+        library=library,
+        runtime=runtime,
+    )
+
+
+def vv_diff_dpm_step_bf16(
+    sample_ptr: int, eps_ptr: int, x0_prev_ptr: int, sample_out_ptr: int,
+    x0_out_ptr: int, alpha_b: float, sigma_b: float, scale: float,
+    coef_b: float, half_coef_b: float, inv_r0_b: float, n: int, order: int,
+    *, library=None, runtime=None,
+) -> None:
+    """DPM-Solver++ order-2 midpoint step fused with the CFG-combined eps.
+
+    ``order`` 1 uses only ``coef_b``; 2 additionally uses ``half_coef_b`` and
+    ``inv_r0_b`` with ``x0_prev``. Bit-identical to
+    ``DPMSolverMultistepScheduler.step`` when the scalars come from
+    ``step_scalars()``.
+    """
+    _launch(
+        "hipengine_vv_diff_dpm_step_bf16",
+        _ARGTYPES_DPM_STEP,
+        (_P(sample_ptr), _P(eps_ptr), _P(x0_prev_ptr), _P(sample_out_ptr),
+         _P(x0_out_ptr), _F(alpha_b), _F(sigma_b), _F(scale), _F(coef_b),
+         _F(half_coef_b), _F(inv_r0_b), _I(n), _I32(order), _S(0)),
         library=library,
         runtime=runtime,
     )
