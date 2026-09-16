@@ -10,6 +10,7 @@ relative tolerance.
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -22,6 +23,8 @@ from hipengine.core.memory import (
 )
 from hipengine.runtime.yue2_ar import bf16_bits_to_f32
 from hipengine.runtime.yue2_nar import to_bf16_bits
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures/yue2"
 
 
 def _has_hip() -> bool:
@@ -155,6 +158,51 @@ def test_attention_matches_the_numpy_reference(ar_rows, nar_rows):
     expected = _attention_reference(q, nar_k, nar_v, ar_k, ar_v, num_q_heads, num_kv_heads, scale)
     assert np.allclose(got, expected, rtol=2e-3, atol=2e-3), (
         f"max abs diff {np.abs(got - expected).max()}"
+    )
+
+
+@requires_hip
+def test_attention_matches_the_parent_kernel_bit_for_bit():
+    """Exact parent parity for the attention kernel's tiled reduction.
+
+    ``tests/fixtures/yue2/operators/nar_attention_parent.npz`` holds the parent
+    implementation's exact output on a multi-tile GQA shape (198 keys over tiles
+    of 128, so the second tile is partial). The reduction was rewritten to compute
+    each key's exponential once instead of once per lane; that rewrite must not
+    move a single bit, and this is the contract that says so.
+    """
+
+    from hipengine.kernels.hip_gfx1100.yue2 import nar
+
+    golden = np.load(FIXTURES / "operators/nar_attention_parent.npz")
+    q = golden["q"]
+    nar_k = golden["nar_k"]
+    nar_v = golden["nar_v"]
+    ar_k = golden["ar_k"]
+    ar_v = golden["ar_v"]
+    nar_rows = int(golden["nar_rows"])
+    ar_rows = int(golden["ar_rows"])
+    num_q_heads = int(golden["num_q_heads"])
+    num_kv_heads = int(golden["num_kv_heads"])
+    head_dim = int(golden["head_dim"])
+    scale = float(golden["scale"])
+    assert ar_rows + nar_rows > head_dim, "fixture must span more than one tile"
+
+    q_buf = _upload(q)
+    nk_buf = _upload(nar_k)
+    nv_buf = _upload(nar_v)
+    ak_buf = _upload(ar_k)
+    av_buf = _upload(ar_v)
+    out_buf = _upload(np.zeros((nar_rows, num_q_heads, head_dim), dtype=np.float32))
+    nar.nar_attention_f32(
+        q_buf.ptr, nk_buf.ptr, nv_buf.ptr, ak_buf.ptr, av_buf.ptr, out_buf.ptr,
+        nar_rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale,
+    )
+    got = _download(out_buf, (nar_rows, num_q_heads, head_dim), np.float32)
+    expected = golden["out"]
+    assert np.array_equal(got.view(np.uint32), expected.view(np.uint32)), (
+        "attention output is not bit-identical to the parent kernel: max abs diff "
+        f"{np.abs(got - expected).max()}"
     )
 
 

@@ -1141,6 +1141,20 @@ OPERATOR_SCHEMAS: dict[str, dict[str, tuple[str, int]]] = {
     },
     "head_qk_norm.npz": {"q": ("uint16", 3), "weight": ("uint16", 1), "out": ("uint16", 3)},
     "midpoint_schedule.npz": {"schedule": ("float64", 2)},
+    "nar_attention_parent.npz": {
+        "q": ("float32", 3),
+        "nar_k": ("uint16", 3),
+        "nar_v": ("uint16", 3),
+        "ar_k": ("uint16", 3),
+        "ar_v": ("uint16", 3),
+        "out": ("float32", 3),
+        "scale": ("float32", 0),
+        "ar_rows": ("int32", 0),
+        "nar_rows": ("int32", 0),
+        "num_q_heads": ("int32", 0),
+        "num_kv_heads": ("int32", 0),
+        "head_dim": ("int32", 0),
+    },
     "rmsnorm_1x2048.npz": {"x": ("uint16", 2), "weight": ("uint16", 1), "out": ("uint16", 2), "eps": ("float32", 0)},
     "rmsnorm_3x6144.npz": {"x": ("uint16", 2), "weight": ("uint16", 1), "out": ("uint16", 2), "eps": ("float32", 0)},
     "rmsnorm_5x2048.npz": {"x": ("uint16", 2), "weight": ("uint16", 1), "out": ("uint16", 2), "eps": ("float32", 0)},
@@ -1474,6 +1488,40 @@ def _check_operators(root, problems):
             )
             problems.require(
                 arrays["x"].shape[-1] == 128, path, "rope last dimension is not 128"
+            )
+        if path.name == "nar_attention_parent.npz":
+            rows = int(arrays["nar_rows"])
+            ar_rows = int(arrays["ar_rows"])
+            heads = int(arrays["num_q_heads"])
+            kv_heads = int(arrays["num_kv_heads"])
+            dim = int(arrays["head_dim"])
+            problems.require(
+                arrays["q"].shape == (rows, heads, dim), path, "q is not [rows, heads, head_dim]"
+            )
+            problems.require(
+                arrays["out"].shape == arrays["q"].shape, path, "q/out shapes differ"
+            )
+            problems.require(
+                arrays["nar_k"].shape == arrays["nar_v"].shape == (rows, kv_heads, dim),
+                path,
+                "nar k/v are not [rows, kv_heads, head_dim]",
+            )
+            problems.require(
+                arrays["ar_k"].shape == arrays["ar_v"].shape == (ar_rows, kv_heads, dim),
+                path,
+                "ar k/v are not [ar_rows, kv_heads, head_dim]",
+            )
+            problems.require(
+                heads % kv_heads == 0, path, "num_q_heads is not a multiple of num_kv_heads"
+            )
+            # The point of this fixture is a multi-tile reduction with a partial
+            # tail tile, so a shape that fits in one full tile would silently stop
+            # covering it.
+            keys = ar_rows + rows
+            problems.require(
+                keys > dim and keys % dim != 0,
+                path,
+                "fixture no longer spans a partial tail tile",
             )
         if path.name.startswith("rmsnorm_"):
             width = arrays["x"].shape[-1]

@@ -96,6 +96,21 @@ __global__ void yue2_nar_state_update_kernel(
 //
 // Q is FP32 (the reference's SDPA consumes the FP32 projections after RoPE), K/V
 // are BF16, and the output is FP32.
+//
+// Each block owns YUE2_NAR_ROWS_PER_BLOCK query rows for one query head and walks
+// the key tiles once, reusing every K and V element it loads across those rows.
+// The kernel is bandwidth-bound: a per-(row, head) block re-reads the whole K/V
+// cache for every query row, which is ~27 GB of traffic for a 1299-row song
+// against ~200 GB/s of HBM. A 1299-row solve measured 220 ms per call against a
+// 170 ms pure-bandwidth estimate. Sharing one loaded element across four rows is
+// what moves it off that wall.
+//
+// Per-row arithmetic is untouched by the blocking: the same serial dot product in
+// the same order, the same tile walk, and the same accumulation order, so the
+// output is bit-identical to the unblocked kernel
+// (tests/fixtures/yue2/operators/nar_attention_parent.npz).
+#define YUE2_NAR_ROWS_PER_BLOCK 4
+
 __global__ void yue2_nar_attention_kernel(
     const float* __restrict__ q,
     const uint16_t* __restrict__ nar_k,
@@ -109,67 +124,120 @@ __global__ void yue2_nar_attention_kernel(
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale) {
-  const int64_t row = blockIdx.y;
+  const int64_t row0 = blockIdx.y * YUE2_NAR_ROWS_PER_BLOCK;
   const int64_t q_head = blockIdx.x;
-  if (row >= rows || q_head >= num_q_heads || threadIdx.x >= head_dim) return;
+  const int64_t lane = threadIdx.x;
+  if (row0 >= rows || q_head >= num_q_heads || lane >= head_dim) return;
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
-  const int64_t lane = threadIdx.x;
   const int64_t keys = ar_rows + rows;
-  const float* q_row = q + (row * num_q_heads + q_head) * head_dim;
 
   extern __shared__ float shared[];
-  float* scores = shared;                       // tile of key scores
+  float* scores = shared;                                       // [rows][blockDim]
+  float* weights = shared + YUE2_NAR_ROWS_PER_BLOCK * blockDim.x;
 
-  float running_max = -3.4028234663852886e38f;
-  float running_sum = 0.0f;
-  float accumulator = 0.0f;
+  float running_max[YUE2_NAR_ROWS_PER_BLOCK];
+  float running_sum[YUE2_NAR_ROWS_PER_BLOCK];
+  float accumulator[YUE2_NAR_ROWS_PER_BLOCK];
+  for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+    running_max[r] = -3.4028234663852886e38f;
+    running_sum[r] = 0.0f;
+    accumulator[r] = 0.0f;
+  }
 
   for (int64_t base = 0; base < keys; base += blockDim.x) {
     const int64_t key = base + lane;
-    float score = -3.4028234663852886e38f;
+    // One K row per lane, shared by every row this block owns.
+    const uint16_t* k_row = 0;
     if (key < keys) {
-      const uint16_t* k_row = key < ar_rows
+      k_row = key < ar_rows
           ? ar_k + (key * num_kv_heads + kv_head) * head_dim
           : nar_k + ((key - ar_rows) * num_kv_heads + kv_head) * head_dim;
-      float dot = 0.0f;
-      for (int64_t d = 0; d < head_dim; ++d) {
-        dot = fmaf(q_row[d], yue2_bf16_to_float(k_row[d]), dot);
-      }
-      score = dot * scale;
     }
-    scores[lane] = score;
+    const int64_t owned = rows - row0;
+    const int r_valid = static_cast<int>(
+        owned < YUE2_NAR_ROWS_PER_BLOCK ? owned : YUE2_NAR_ROWS_PER_BLOCK);
+    const float* q_rows[YUE2_NAR_ROWS_PER_BLOCK];
+    float dots[YUE2_NAR_ROWS_PER_BLOCK];
+    for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+      q_rows[r] = r < r_valid ? q + ((row0 + r) * num_q_heads + q_head) * head_dim : 0;
+      dots[r] = 0.0f;
+    }
+    // Dimension outside, row inside: one K element is loaded and converted once
+    // and then reused by every row this block owns. That reuse is the entire
+    // point of the blocking -- reading it once per row would leave the K traffic
+    // unchanged.
+    if (k_row != 0) {
+      for (int64_t d = 0; d < head_dim; ++d) {
+        const float kv = yue2_bf16_to_float(k_row[d]);
+        for (int r = 0; r < r_valid; ++r) {
+          dots[r] = fmaf(q_rows[r][d], kv, dots[r]);
+        }
+      }
+    }
+    for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+      scores[r * blockDim.x + lane] =
+          (r < r_valid && k_row != 0) ? dots[r] * scale : -3.4028234663852886e38f;
+    }
     __syncthreads();
 
-    float tile_max = -3.4028234663852886e38f;
-    for (int64_t t = 0; t < blockDim.x; ++t) {
-      tile_max = fmaxf(tile_max, scores[t]);
+    float tile_sum[YUE2_NAR_ROWS_PER_BLOCK];
+    float tile_acc[YUE2_NAR_ROWS_PER_BLOCK];
+    float new_max[YUE2_NAR_ROWS_PER_BLOCK];
+    float rescale[YUE2_NAR_ROWS_PER_BLOCK];
+    for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+      const float* tile = scores + r * blockDim.x;
+      float tile_max = -3.4028234663852886e38f;
+      for (int64_t t = 0; t < blockDim.x; ++t) {
+        tile_max = fmaxf(tile_max, tile[t]);
+      }
+      new_max[r] = fmaxf(running_max[r], tile_max);
+      rescale[r] = expf(running_max[r] - new_max[r]);
+      // Each lane evaluates its own key's weight exactly once. Every lane used to
+      // recompute the whole tile's exponentials for itself -- blockDim.x times the
+      // transcendental work per tile for identical values. The weight is still
+      // expf(score - new_max) for the same score and the same tile maximum, and
+      // the sums below still walk the tile in the same order, so this is
+      // bit-exact against the parent kernel.
+      weights[r * blockDim.x + lane] = k_row != 0 ? expf(tile[lane] - new_max[r]) : 0.0f;
     }
-    const float new_max = fmaxf(running_max, tile_max);
-    const float rescale = expf(running_max - new_max);
-    float tile_sum = 0.0f;
-    float tile_acc = 0.0f;
+    __syncthreads();
+
+    for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+      tile_sum[r] = 0.0f;
+      tile_acc[r] = 0.0f;
+    }
     for (int64_t t = 0; t < blockDim.x; ++t) {
       const int64_t key_index = base + t;
       if (key_index >= keys) break;
-      const float weight = expf(scores[t] - new_max);
-      tile_sum += weight;
       const uint16_t* v_row = key_index < ar_rows
           ? ar_v + (key_index * num_kv_heads + kv_head) * head_dim
           : nar_v + ((key_index - ar_rows) * num_kv_heads + kv_head) * head_dim;
-      tile_acc += weight * yue2_bf16_to_float(v_row[lane]);
+      // One V element per lane, shared by every row this block owns.
+      const float v = yue2_bf16_to_float(v_row[lane]);
+      for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+        const float weight = weights[r * blockDim.x + t];
+        tile_sum[r] += weight;
+        tile_acc[r] += weight * v;
+      }
     }
-    running_sum = running_sum * rescale + tile_sum;
-    accumulator = accumulator * rescale + tile_acc;
-    running_max = new_max;
+    for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+      running_sum[r] = running_sum[r] * rescale[r] + tile_sum[r];
+      accumulator[r] = accumulator[r] * rescale[r] + tile_acc[r];
+      running_max[r] = new_max[r];
+    }
     __syncthreads();
   }
 
   // Every lane walks the same key loop, so `running_sum` is already the whole
   // row's denominator -- reducing it across the block would multiply it by
   // blockDim.x.
-  const float total = running_sum > 0.0f ? running_sum : 1.0f;
-  out[(row * num_q_heads + q_head) * head_dim + lane] = accumulator / total;
+  for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+    const int64_t row = row0 + r;
+    if (row >= rows) continue;
+    const float total = running_sum[r] > 0.0f ? running_sum[r] : 1.0f;
+    out[(row * num_q_heads + q_head) * head_dim + lane] = accumulator[r] / total;
+  }
 }
 
 // Rotate-half RoPE with per-row positions for the NAR projections.
@@ -281,8 +349,11 @@ extern "C" int hipengine_yue2_nar_attention_f32(
   }
   if (ar_rows == 0 && rows == 0) return static_cast<int>(hipSuccess);
   const int threads = static_cast<int>(head_dim);
-  const size_t shared = static_cast<size_t>(threads) * sizeof(float);
-  hipLaunchKernelGGL(yue2_nar_attention_kernel, dim3(num_q_heads, rows), dim3(threads),
+  const int64_t row_blocks =
+      (rows + YUE2_NAR_ROWS_PER_BLOCK - 1) / YUE2_NAR_ROWS_PER_BLOCK;
+  const size_t shared = static_cast<size_t>(threads) * 2 * YUE2_NAR_ROWS_PER_BLOCK
+      * sizeof(float);
+  hipLaunchKernelGGL(yue2_nar_attention_kernel, dim3(num_q_heads, row_blocks), dim3(threads),
                      shared, stream, q, nar_k, nar_v, ar_k, ar_v, out, rows, ar_rows,
                      num_q_heads, num_kv_heads, head_dim, scale);
   return static_cast<int>(hipGetLastError());
