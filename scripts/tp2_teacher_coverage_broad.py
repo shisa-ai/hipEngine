@@ -682,6 +682,7 @@ def _resolved_route(session: object) -> dict[str, object]:
     return {
         "mode": session.mode,  # type: ignore[attr-defined]
         "schedule": session.schedule,  # type: ignore[attr-defined]
+        "prefill_schedule": getattr(session, "prefill_schedule", None),
         "driver": session.driver,  # type: ignore[attr-defined]
         "reduce_mode": session.reduce_mode,  # type: ignore[attr-defined]
         "head_shard": session.head_shard,  # type: ignore[attr-defined]
@@ -1279,7 +1280,8 @@ def capture_sustained_arm(args):
     def build():
         a=create_native_adapter(MODEL,arm,capacity=200); state['adapter']=a; a.prepare()
         record.artifact.update(vocab_size=a.vocab_size,devices=_device_identities(a.owner),
-            route=_resolved_route(a.owner),scope_manifest=resolved_scope_manifest(a.owner))
+            route=_resolved_route(a.owner),scope_manifest=resolved_scope_manifest(a.owner),
+            prefill_schedule=a.prefill_schedule)
         return {'vocab_size':a.vocab_size}
     def capture(i,save=False):
         forced=(None if reference_data is None and save else record.artifact['forced_inputs'][i])
@@ -1337,6 +1339,12 @@ def report_sustained(args):
     captures=[load_sustained(p) for p in args.sustained_report]
     arms={d['arm']:(d,a) for d,a in captures}
     if set(arms)!={'tp1-d0','tp1-d1','tp2'}: raise ValueError('sustained arms missing/duplicated')
+    schedules={d.get('prefill_schedule') for d,_ in captures}
+    if None in schedules or len(schedules)!=1:
+        raise ValueError(
+            'sustained prefill schedule mismatch; a teacher-forced comparison must '
+            'not mix prefill arithmetic: '
+            + ', '.join(f'{d["arm"]}={d.get("prefill_schedule")!r}' for d,_ in captures))
     teacher,reference=arms['tp1-d0']; comparisons={}
     for arm,(data,arrays) in arms.items():
         if data['identity']!=teacher['identity'] or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
@@ -1348,7 +1356,7 @@ def report_sustained(args):
     passed &= all(_envelope_gate(v,top1_bar=.97)['passed'] for c in comparisons.values() for v in [*c['categories'].values(),*(v for s in c['category_scopes'].values() for v in s.values())])
     result={'kind':'tp2_sustained_d128_gate','all_gates_passed':bool(passed),'production_qualified':False,
         'population':'18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories',
-        'reference_arm':'tp1-d0', 'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'reference_arm':'tp1-d0', 'prefill_schedule':next(iter(schedules)), 'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
         'thresholds':PRODUCTION_GATE,'captures':{str(p):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.sustained_report},
         'controls':{d['arm']:{k:d[k] for k in ('run_id','devices','route','scope_manifest','determinism','state_boundaries','control_log','natural_teardown')} for d,a in captures},
         'not_qualified':['task quality','BF16-relative','public distributed profile','performance promotion']}

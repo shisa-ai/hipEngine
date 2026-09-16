@@ -852,18 +852,26 @@ transitions per prompt (2,304 positions), with reset/isolation checks.
 
 TP2 stops on `mixed_ja_en_translate`, decode index 82 / absolute input position
 146: **KL 0.108406 exceeds the 0.05 ceiling**, despite finite logits and identical
-top-1. A selected-point diagnostic reproduces the resident teacher exactly;
-changing only resident prefill from bulk to token-serial gives KL 0.299279
-from the bulk reference. Using serial prefill as the reference for TP2 gives
-KL 0.028379. This identifies prefill-schedule
-sensitivity, not a single faulty kernel or an accepted slower baseline.
+top-1. A per-layer boundary bisect on the same loaded model, prompt, and
+positions shows the divergence is smooth T2 association drift, not an ownership
+defect: at the end of prefill, bulk and token-serial logits agree to
+**KL 6.08e-05**, per-layer hidden RMS grows monotonically from 5.5e-05 to 0.122,
+Conv state RMS from 1.8e-03 to 5.5e-02, and the GDN recurrent state stays within
+RMS 4.5e-04. The TP2 native path uses token-serial prefill while the TP1 teacher
+uses bulk prefill, so the sustained gate was comparing two prefill schedules; the
+0.299 bulk-vs-serial divergence at position 146 is that small prefill-end
+difference amplified over 83 GDN-recurrent decode steps. The harness now records
+the prefill schedule and fails closed on a teacher/candidate mismatch. The
+numerical envelope is unchanged and token-serial is not substituted as a
+denominator.
 
 **No native-product timing runs or TP2 speed ratios were emitted.** The declared
 no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
 (129 samples total), not API 128-token completion latency. The failing post-EOS
 position is not removed from the gate. Task/BF16-relative and public distributed
 qualification are not claimed.
-[Capacity, sustained failure, and localization evidence](results/2026-09-16-tp2-native-product-d128-blocked.json).
+[Capacity, sustained failure, and localization evidence](results/2026-09-16-tp2-native-product-d128-blocked.json) ·
+[per-layer prefill-schedule bisect](results/2026-09-17-tp2-bulk-serial-prefill-bisect.json).
 
 ## Tensor-parallel screening (W7900 + RX 7900 XTX)
 
