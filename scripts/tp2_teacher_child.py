@@ -269,7 +269,8 @@ if __name__ == "__main__":
     # A poisoned/errored device can leave HIP runtime teardown hanging after the
     # session has closed (observed on device 1). The session's cleanup already
     # ran, so bypass interpreter shutdown and exit with the logical code; the
-    # parent must see a definite return code rather than a timeout.
+    # parent must see a definite return code rather than a timeout. This is
+    # diagnostic-only: it is not a teardown qualification.
     _code = main()
     sys.stdout.flush()
     sys.stderr.flush()

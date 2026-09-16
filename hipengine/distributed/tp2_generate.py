@@ -944,54 +944,64 @@ class MlpTP2GenerationSession:
         self._created_streams.clear()
 
     def _local_mlp(self, device: int, layer_id: int) -> int:
-        """The matched TP1 control's full-width unfused MLP chain (bf16 out)."""
+        """The matched TP1 control's full-width unfused MLP chain (bf16 out).
+
+        Owner boundary: the caller (``_enqueue_layer``) invokes this outside any
+        device scope, and the preceding scoped attention/add-norm blocks restore
+        the ambient device, so this must select ``device`` for every launch and
+        use that rank's own stream. Without it a rank-1 session launched the
+        full-width gate/up/down GEMV against device 1 pointers from device 0's
+        context, which silently wrote nothing on device 1.
+        """
 
         runner = self._runners[device]
         scratch = self._scratches[device]
         buffers = self._step_buffers[device]
         layer = runner.weights.layer(layer_id)
-        launch_gguf_linear(
-            layer.weight("ffn_gate"),
-            scratch.post_norm.ptr,
-            buffers["mlp_gate"].ptr,
-            1,
-            runner.hidden_size,
-            runner.ffn_size,
-            use_gemv_decode=True,
-            stream=0,
-            runtime=self.runtime,
-        )
-        launch_gguf_linear(
-            layer.weight("ffn_up"),
-            scratch.post_norm.ptr,
-            buffers["mlp_up"].ptr,
-            1,
-            runner.hidden_size,
-            runner.ffn_size,
-            use_gemv_decode=True,
-            stream=0,
-            runtime=self.runtime,
-        )
-        silu_mul_separate_out_bf16(
-            buffers["mlp_gate"].ptr,
-            buffers["mlp_up"].ptr,
-            buffers["mlp_act"].ptr,
-            1,
-            runner.ffn_size,
-            stream=0,
-            runtime=self.runtime,
-        )
-        launch_gguf_linear(
-            layer.weight("ffn_down"),
-            buffers["mlp_act"].ptr,
-            buffers["mlp_out"].ptr,
-            1,
-            runner.ffn_size,
-            runner.hidden_size,
-            use_gemv_decode=True,
-            stream=0,
-            runtime=self.runtime,
-        )
+        stream = self._rank_stream(device)
+        with scoped_current_device(self.runtime, device):
+            launch_gguf_linear(
+                layer.weight("ffn_gate"),
+                scratch.post_norm.ptr,
+                buffers["mlp_gate"].ptr,
+                1,
+                runner.hidden_size,
+                runner.ffn_size,
+                use_gemv_decode=True,
+                stream=stream,
+                runtime=self.runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_up"),
+                scratch.post_norm.ptr,
+                buffers["mlp_up"].ptr,
+                1,
+                runner.hidden_size,
+                runner.ffn_size,
+                use_gemv_decode=True,
+                stream=stream,
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_bf16(
+                buffers["mlp_gate"].ptr,
+                buffers["mlp_up"].ptr,
+                buffers["mlp_act"].ptr,
+                1,
+                runner.ffn_size,
+                stream=stream,
+                runtime=self.runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_down"),
+                buffers["mlp_act"].ptr,
+                buffers["mlp_out"].ptr,
+                1,
+                runner.ffn_size,
+                runner.hidden_size,
+                use_gemv_decode=True,
+                stream=stream,
+                runtime=self.runtime,
+            )
         return buffers["mlp_out"].ptr
 
     # -- sharded output head -------------------------------------------------

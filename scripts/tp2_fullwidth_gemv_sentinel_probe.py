@@ -12,6 +12,10 @@ This is a diagnostic, not a correctness gate. Run it on each device:
 
     python scripts/tp2_fullwidth_gemv_sentinel_probe.py --device 0
     python scripts/tp2_fullwidth_gemv_sentinel_probe.py --device 1
+
+The ``os._exit`` in ``__main__`` is diagnostic-only: it avoids a device-1 HIP
+runtime teardown hang and must never be read as evidence that teardown is
+qualified.
 """
 
 from __future__ import annotations
@@ -27,7 +31,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
-SENTINEL_BF16 = 0x7BFF  # bf16 65504.0, finite and unlikely as a real output
+#: A distinctive finite bf16 bit pattern (0x7BFF is exponent 0xF7, mantissa 0x7F:
+#: a large finite value, not the FP16 65504 that the same 16-bit word encodes).
+#: The probe compares raw uint16 words, so the numeric value is irrelevant; it
+#: only has to be unlikely to appear as a real GEMV output.
+SENTINEL_BF16 = 0x7BFF
 
 
 def classify(device: int, gate_unwritten: int, up_unwritten: int, total: int) -> str:

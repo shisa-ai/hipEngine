@@ -469,6 +469,68 @@ def test_tp1_mode_runs_the_local_mlp_chain_and_no_group(env) -> None:
     session.close()
 
 
+def test_tp1_local_mlp_launches_under_its_rank_device(env) -> None:
+    # Regression: _local_mlp had no scoped_current_device, so for a rank-1
+    # session the ambient device - restored to 0 by the preceding scoped
+    # attention/add-norm blocks - leaked into the full-width MLP launches.
+    session = _session(env, devices=(1,), mode="tp1")
+    env["rt"].set_device(0)
+    env["launch_log"].clear()
+    session._local_mlp(1, 0)
+    devices = [dev for dev, _, _ in env["launch_log"]]
+    assert devices, "expected full-width MLP launches"
+    assert all(dev == 1 for dev in devices), devices
+    assert env["rt"].get_device() == 0, "ambient device must be restored"
+    session.close()
+
+
+def test_tp1_local_mlp_uses_the_rank_stream(env, monkeypatch) -> None:
+    session = _session(env, devices=(1,), mode="tp1")
+    monkeypatch.setattr(session, "_rank_stream", lambda device: 0xB0 if device == 1 else 0)
+    streams: list[int] = []
+
+    def record_stream(*args, **kwargs):
+        streams.append(int(kwargs.get("stream", -1)))
+
+    monkeypatch.setattr(tg, "launch_gguf_linear", record_stream)
+    session._local_mlp(1, 0)
+    assert streams and all(stream == 0xB0 for stream in streams), streams
+    session.close()
+
+
+def test_tp1_local_mlp_restores_ambient_device_on_failure(env, monkeypatch) -> None:
+    session = _session(env, devices=(1,), mode="tp1")
+    env["rt"].set_device(0)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated mlp failure")
+
+    monkeypatch.setattr(tg, "silu_mul_separate_out_bf16", boom)
+    with pytest.raises(RuntimeError):
+        session._local_mlp(1, 0)
+    assert env["rt"].get_device() == 0, "ambient device must be restored on failure"
+    session.close()
+
+
+def test_tp1_generate_keeps_every_mlp_launch_on_the_rank_device(env) -> None:
+    # The full _enqueue_layer path, not just _local_mlp: a rank-1 session with
+    # ambient device 0 must still launch the MLP on device 1.
+    env["queue_logits"]([2, 2])
+    session = _session(env, devices=(1,), mode="tp1")
+    env["rt"].set_device(0)
+    env["launch_log"].clear()
+    session.generate([4], max_new_tokens=1, eos_token_id=None)
+    mlp = [
+        dev
+        for dev, name, kind in env["launch_log"]
+        if kind == "launch" and name in {"linear", "silu"}
+    ]
+    assert mlp, "expected full-width MLP launches"
+    assert all(dev == 1 for dev in mlp), mlp
+    session.close()
+
+
+
 # ---------------------------------------------------------------------------
 # Ownership, lifecycle, failure
 # ---------------------------------------------------------------------------
