@@ -239,6 +239,10 @@
     "bytes": 830,
     "sha256": "ac55a2a88e741834a5b558fb4207e02b1325d659ab109a26f0b210dda87612cd"
   },
+  "operators/nar_attention_parent.npz": {
+    "bytes": 185907,
+    "sha256": "2210c2895d951be649160ec3d865c95fd17b84dfd9fdf8efa7712f3454cd62e2"
+  },
   "operators/rmsnorm_1x2048.npz": {
     "bytes": 9652,
     "sha256": "bf70c9056a9435b5c7a91035a636363eafd82418180511ccdb52340999db511d"

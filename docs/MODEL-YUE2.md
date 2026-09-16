@@ -430,6 +430,28 @@ Milestone status:
   the full decode (1.51 s vs 0.68 s at 64 frames) because each tile re-decodes
   its halo; it bounds device residency rather than wall clock. See
   `worklog/entries/20260916T171559.133569Z-lhl-yue2-m5-vae-decoder-dfcdfd.md`.
+- **M7 in progress** (2026-09-17): profiling the e2e path found the NAR attention
+  kernel walking the whole K/V cache once per (query row, query head) pair -- 27.9 GB
+  of traffic per call on a 1 299-frame song, and the largest single consumer of GPU
+  time. Blocks now own four query rows and reuse each loaded K or V element across
+  them, and each lane evaluates its own key's exponential once instead of once per
+  lane. The replay of `mandarin-off-s1234` at 2 ODE steps falls from 78.0 s to
+  51.6 s (1.51x) and the kernel's own average from 1 208.26 us to 724.99 us (1.67x)
+  over 140 dispatches. The rewrite is bit-exact: a recorded parent-bits fixture
+  (`tests/fixtures/yue2/operators/nar_attention_parent.npz`) pins the output, and all
+  three M4 parity gates reproduce their pre-change numbers exactly. The same host's
+  pinned upstream reference solves the same case at 32 steps in 27.32 s against
+  443.4 s here, so the NAR solver is the largest remaining gap; the decoder is
+  faster than the reference's (22.47 s against 69.09 s) and the AR stage runs at
+  19.35 tokens/s against 31.97. Next candidates, in profile order: the VAE conv1d
+  (76 dispatches / 16.25 s of the profiled replay), eight rows per block, and a tree
+  reduction for the tile maximum. Artifact:
+  `benchmarks/results/yue2_m7_attention_20260917.json`.
+- **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
+  was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100
+  correctness, capacity, task and performance gates are **unverified** rather than
+  passed. The kernels are registered under `kernels/hip_gfx1100/` and resolve through
+  the same backend registry, but that is a code path, not evidence.
 - **M6 product path complete** (2026-09-16): the staged session
   (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
   as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case

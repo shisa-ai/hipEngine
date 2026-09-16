@@ -177,7 +177,10 @@ def main() -> int:
         seed = _seed_of(name)
         started = time.perf_counter()
         latents = nar.synthesize(prefix, codec, seed, steps=steps)
+        nar_seconds = time.perf_counter() - started
+        vae_started = time.perf_counter()
         audio = vae.decode_tiled(latents.T[None, ...], core_frames=1024, halo_frames=16)[0]
+        vae_seconds = time.perf_counter() - vae_started
         case = {
             "prefix_tokens": len(prefix),
             "semantic_tokens": len(codec),
@@ -189,6 +192,8 @@ def main() -> int:
             "audio_finite": bool(np.isfinite(audio).all()),
             "audio_peak": float(np.abs(audio).max()),
             "seconds": time.perf_counter() - started,
+            "nar_seconds": nar_seconds,
+            "vae_seconds": vae_seconds,
         }
         case["frames_match"] = case["frames"] == case["expected_frames"]
         case["samples_match"] = case["samples"] == case["expected_samples"]

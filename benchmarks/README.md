@@ -1530,6 +1530,36 @@ reproducing command. Evidence:
 [`e2e replay`](results/yue2_e2e_gate_20260916.json),
 [`e2e live`](results/yue2_e2e_live_gate_20260916.json).
 
+### Radeon 8060S: YuE2 3B NAR attention row blocking
+
+The NAR attention kernel walked the key/value cache once per (query row, query
+head) pair, so a 1 299-frame song re-read 27.9 GB of K/V per call. Blocks now own
+four query rows (`YUE2_NAR_ROWS_PER_BLOCK`) and reuse every K and V element they
+load across those rows; each lane also evaluates its own key's exponential once
+instead of recomputing the whole tile for every lane.
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| `yue2_nar_attention_kernel`, 34 rows / 579 keys, 140 dispatches | 1 208.26 us | 724.99 us | 1.67x |
+| Replay of `mandarin-off-s1234`, 1 297 frames, 2 ODE steps | 78.0 s | 51.6 s | 1.51x |
+
+Both figures are gfx1151 (zbook) measurements taken in one session; the
+`rocprofv3` numbers are inflated by dispatch serialization but are paired within
+the session. The replay split is 32.0 s of solve and 22.5 s of decode.
+
+The rewrite is bit-exact rather than merely close: the parity fixture
+`tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's
+own output bits and the kernel test compares against them exactly, and all three
+M4 production gates reproduce their pre-change numbers to the last recorded digit
+(chunk0 latents rel L2 0.01225 / cosine 0.999926, multi-chunk 0.01071 / 0.999944,
+restricted visibility 0.00885 / 0.999962).
+
+The same host's pinned upstream reference reports 27.32 s for the same solve at
+the product's 32 steps, against 443.4 s here, so the NAR solver remains the
+largest gap in the model. Its decode is faster than the reference's (22.47 s
+against 69.09 s), and the AR stage runs at 19.35 tokens/s against 31.97. Evidence:
+[`M7 attention`](results/yue2_m7_attention_20260917.json).
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
