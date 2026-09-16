@@ -442,19 +442,34 @@ Milestone status:
   2 695 keys) falls from 177.22 ms to **28.34 ms (6.25x)**, achieved occupancy
   reaches **93%**, and the NAR solve of `mandarin-off-s1234` falls from 27.76 s to
   11.03 s at 2 ODE steps and from **443.4 s to 116.53 s at the product's 32
-  steps** (3.80x; the whole replay goes 465.9 s -> 136.59 s). The rewrite is
+  steps** (3.80x; the whole replay goes 465.9 s -> 136.59 s). The solver's
+  projection path had a second, larger defect: both YuE2 runtimes took the first
+  hipBLASLt algorithm hipBLASLt returned, which is 2.9-4.2x slower on these shapes
+  than the measured best, so they now select by measured index
+  (`HipblasLtProblem.fast_algorithm`, established by
+  `scripts/hipblaslt_algo_scan.py`). That takes the projections for one two-step
+  solve from 3.89 s to 0.94 s, the two-step solve to **7.95 s**, and the product's
+  32-step solve to **81.13 s** against the reference's 27.32 s, i.e. 2.97x behind
+  instead of 16.2x. The projection change cannot be bit-exact (a different
+  accumulation order is the point), so it is held to the profile gates: all three
+  M4 solver gates pass (chunk0 rel L2 0.01248 / cosine 0.999923, multi-chunk
+  0.01071 / 0.999944 unchanged, restricted visibility 0.00905 / 0.999960), the
+  18-case AR replay improves (pooled mean KL 2.11e-3 -> 1.16e-3, worst max KL
+  9.10e-2 -> 7.10e-3, 91.3 s -> 77.6 s) and the three-case greedy session gate
+  passes with every case slightly better. The attention rewrite itself is
   bit-exact: a recorded parent-bits fixture
   (`tests/fixtures/yue2/operators/nar_attention_parent.npz`) pins the output, the
   kernel keeps a scalar fallback for head dimensions that are not a multiple of
-  eight (with its own test), and 219 YuE2 unit tests pass. Attention is now
-  2.93 s of the 11.11 s 2-step solve, so the solver's remaining cost is its
-  hipBLASLt projection path (8.18 s) rather than its attention, and the reference
-  is now 4.27x ahead instead of 16.2x. The replay's largest consumer is the VAE
-  decode at 20.07 s of 31.10 s. Next candidates, in profile order: the NAR
-  projections (1 494 hipBLASLt dispatches of a 32x32 macro-tile kernel), the VAE
-  conv1d (76 dispatches / 15.07 s of the profiled replay), and a warp-shuffle tile
-  maximum for the attention (`fmax` is order-independent, so it stays bit-exact).
-  Artifacts: `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
+  eight (with its own test), and 221 YuE2 and hipBLASLt unit tests pass. At the
+  product's 32 steps the solver is attention-dominated again (about 53 s of the
+  81 s solve), because the AR conditioning prefill is paid once per solve. The
+  replay's largest consumer is the VAE decode at 20.1 s of 28.0 s (2 steps) and
+  20.1 s of 101.2 s (32 steps). Next candidates, in profile order: a warp-shuffle
+  tile maximum for the attention (`fmax` is order-independent, so it stays
+  bit-exact), the VAE conv1d (76 dispatches / 15.07 s of the profiled replay), and
+  the AR decode path's GEMVs. Artifacts:
+  `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
+  `benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
   `benchmarks/results/yue2_m7_attention_20260917.json`.
 - **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
   was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100

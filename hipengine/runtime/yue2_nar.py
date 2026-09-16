@@ -530,11 +530,8 @@ class Yue2NarRuntime:
             if key[0] == 0 or key in self.ar._lt_problems:
                 continue
             problem = self._lt.problem(key[0], key[1], key[2], 0)
-            algorithms = [a for a in problem.algorithms(16) if a.workspace_size == 0]
-            if not algorithms:
-                raise RuntimeError(f"no zero-workspace hipBLASLt algorithm for {key}")
             self.ar._lt_problems[key] = problem
-            self.ar._lt_algos[key] = algorithms[0]
+            self.ar._lt_algos[key] = problem.fast_algorithm()
         self._prepared.update(counts)
 
     def _gemm(self, x16: DeviceBuffer, weight16: DeviceBuffer, out: DeviceBuffer, rows, inputs, outputs) -> None:
