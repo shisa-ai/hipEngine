@@ -73,7 +73,38 @@
       "passed": "58/60",
       "failures": ["two-long@20260918", "two-2turn@20260919"],
       "matches_recorded_suite": true,
-      "note": "per-request pass counts, per-seed failures and stability flags identical to the recorded 2026-09-15 suite"
+      "note": "per-request pass counts, per-seed failures and stability flags identical to the recorded 2026-09-15 suite",
+      "independent_runs": [
+        {
+          "arm": "invariant cache",
+          "artifact": "/tmp/cache_quality.json (not committed, per the never-commit-raw-benchmark-logs rule)",
+          "result": "58/60",
+          "failed_requests": ["two-2turn", "two-long"],
+          "failing_seeds": ["two-long@20260918", "two-2turn@20260919"]
+        },
+        {
+          "arm": "device solver loop",
+          "artifact": "/tmp/vv_device_solver_quality_10seed.json (not committed)",
+          "result": "58/60",
+          "failed_requests": ["two-2turn", "two-long"],
+          "failing_seeds": ["two-long@20260918", "two-2turn@20260919"],
+          "two_2turn_wer": 0.1176,
+          "per_request": {
+            "single-short": "10/10",
+            "single-medium": "10/10",
+            "single-numbers": "10/10",
+            "two-2turn": "9/10",
+            "two-4turn": "10/10",
+            "two-long": "9/10"
+          }
+        }
+      ],
+      "run_basis": {
+        "measurement_basis": "unassisted-generated-audio-quality",
+        "injected": "nothing (own VAE draw, own diffusion noise, own negative LM)",
+        "note": "both runs are the unassisted path, not the fixture-assisted session bench; this is the evidence that the quality gate covers the unassisted request path"
+      },
+      "exit_code_note": "the suite exits 1 whenever any request-run fails, so its 58/60 runs report exit 1. That is the failure signal, not a crash: both runs completed synthesis and scoring for all 60 request-runs and wrote their artifact."
     }
   },
   "prior_claim_correction": {
