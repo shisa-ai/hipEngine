@@ -1,0 +1,201 @@
+{
+ "schema": 1,
+ "kind": "tp2_matched_ar_baseline",
+ "status": "blocked",
+ "cell": {
+  "name": "C1",
+  "context_tokens": 128,
+  "output_tokens": 128,
+  "warmup_decode_tokens": 0,
+  "sampling": "greedy",
+  "eos": null,
+  "logits_per_decode_step": true,
+  "graph_replay_decode": true
+ },
+ "protocol": "optimized TP1 resident graph replay vs TP2 graphed session, matched per-step full-logit transfer, capture excluded and reported separately",
+ "scope": "single cell C1 (context 128/output 128, 18-prompt canonical+heldout suite); blocked, not a baseline",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "suite": {
+  "canonical": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "heldout": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+  "prompts": 18
+ },
+ "arms": {
+  "tp1-d0": {
+   "prompts": 18,
+   "total_output_tokens": 2304,
+   "decode_ms_excluding_capture": 71269.5046318695,
+   "graph_capture_ms": 1345.3432358801365,
+   "decode_tok_s_excluding_capture": 32.32799234260039,
+   "categories": {
+    "code": {
+     "prompts": 6,
+     "total_output_tokens": 768,
+     "decode_ms_excluding_capture": 23620.786737650633,
+     "graph_capture_ms": 500.4477081820369,
+     "decode_tok_s_excluding_capture": 32.51373497970062
+    },
+    "general_en": {
+     "prompts": 4,
+     "total_output_tokens": 512,
+     "decode_ms_excluding_capture": 15873.401082120836,
+     "graph_capture_ms": 270.7385057583451,
+     "decode_tok_s_excluding_capture": 32.255217224788474
+    },
+    "general_ja": {
+     "prompts": 4,
+     "total_output_tokens": 512,
+     "decode_ms_excluding_capture": 15859.738796949387,
+     "graph_capture_ms": 277.7408193796873,
+     "decode_tok_s_excluding_capture": 32.2830033051038
+    },
+    "mixed_ja_en": {
+     "prompts": 4,
+     "total_output_tokens": 512,
+     "decode_ms_excluding_capture": 15915.57801514864,
+     "graph_capture_ms": 296.4162025600672,
+     "decode_tok_s_excluding_capture": 32.16973957921429
+    }
+   }
+  },
+  "tp2": {
+   "sweeps": [
+    {
+     "prompts": 18,
+     "total_output_tokens": 2304,
+     "decode_ms_excluding_capture": 56989.8798270151,
+     "graph_capture_ms": 0.0,
+     "decode_tok_s_excluding_capture": 40.428230538360026,
+     "categories": {
+      "code": {
+       "prompts": 6,
+       "total_output_tokens": 768,
+       "decode_ms_excluding_capture": 18910.503073595464,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.61235161281089
+      },
+      "general_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12656.540563330054,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.45339225502296
+      },
+      "general_ja": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12681.059102527797,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.37517654167701
+      },
+      "mixed_ja_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12741.777087561786,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.182777997254554
+      }
+     }
+    },
+    {
+     "prompts": 18,
+     "total_output_tokens": 2304,
+     "decode_ms_excluding_capture": 57917.6882263273,
+     "graph_capture_ms": 0.0,
+     "decode_tok_s_excluding_capture": 39.78059329641345,
+     "categories": {
+      "code": {
+       "prompts": 6,
+       "total_output_tokens": 768,
+       "decode_ms_excluding_capture": 19171.005954034626,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.06049561725637
+      },
+      "general_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12794.66671962291,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 40.016673448379585
+      },
+      "general_ja": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 13103.96456066519,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.072144741362884
+      },
+      "mixed_ja_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12848.050992004573,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.850402237555016
+      }
+     }
+    },
+    {
+     "prompts": 18,
+     "total_output_tokens": 2304,
+     "decode_ms_excluding_capture": 57814.773756079376,
+     "graph_capture_ms": 0.0,
+     "decode_tok_s_excluding_capture": 39.85140562376979,
+     "categories": {
+      "code": {
+       "prompts": 6,
+       "total_output_tokens": 768,
+       "decode_ms_excluding_capture": 19266.672743484378,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.86157912292993
+      },
+      "general_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12832.823228091002,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.89768976784734
+      },
+      "general_ja": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12840.083880349994,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.87512891434818
+      },
+      "mixed_ja_en": {
+       "prompts": 4,
+       "total_output_tokens": 512,
+       "decode_ms_excluding_capture": 12875.193904154003,
+       "graph_capture_ms": 0.0,
+       "decode_tok_s_excluding_capture": 39.76639138885592
+      }
+     }
+    }
+   ],
+   "median_decode_tok_s_excluding_capture": 39.85140562376979
+  },
+  "tp1-d1": null
+ },
+ "tp1_d0_reps": 1,
+ "tp2_sweeps": 3,
+ "diagnostic_tp2_vs_tp1_d0": {
+  "per_sweep": [
+   1.2505642203176812,
+   1.2305308933147807,
+   1.2327213271222965
+  ],
+  "median": 1.2327213271222965
+ },
+ "arm_failures": {
+  "tp1-d1": "MatchedBaselineError: tp1-d1 failed rc=-6: Memory access fault by GPU node-2 (Agent handle) on address (nil). Reason: Page not present or supervisor privilege. Optimized graph-replay route faults; eager route fails with token_id 9223372036854775807 (uninitialized)."
+ },
+ "missing_arms": [
+  "tp1-d1"
+ ],
+ "blocker": "The optimized TP1 resident route (Qwen35GGUFResidentSession via gguf_true_ar_category_bench.py) does not run on the RX 7900 XTX (device 1) in this tree: graph replay faults with a memory access error and eager mode reads an uninitialized token id. Cell C1 requires the optimized TP1 route on both physical GPUs, so the matched TP2-vs-faster-TP1 ratio cannot be produced. The TP2-vs-TP1-d0 number above is a diagnostic only, not the baseline.",
+ "all_gates_passed": false,
+ "gate_failures": [
+  "missing arm tp1-d1 (blocked)"
+ ],
+ "performance_claim": false
+}
