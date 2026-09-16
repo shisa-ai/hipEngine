@@ -111,7 +111,7 @@ class ResidentTP1Control:
         self.session.close()
 
 
-def create_resident_control(model, *, capacity, row_hook=None):
+def create_resident_control(model, *, capacity, row_hook=None, capture_rows=True):
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.core.memory import malloc
@@ -120,8 +120,8 @@ def create_resident_control(model, *, capacity, row_hook=None):
         use_wmma_prefill=True, use_gemv_decode=True,
         prefill_config=PrefillConfig(attn_aotriton_min_tokens=512),
         kv_policy=None, kv_scale_dtype='fp16', kv_scale_granularity=None)
-    capture = malloc(capacity * session.runner.hidden_size * 2, runtime=session.runtime)
-    return ResidentTP1Control(session, capture, capacity=capacity, row_hook=row_hook, owns_buffer=True)
+    capture = malloc(capacity * session.runner.hidden_size * 2, runtime=session.runtime) if capture_rows else None
+    return ResidentTP1Control(session, capture, capacity=capacity, row_hook=row_hook, owns_buffer=capture_rows)
 
 
 def read_position(runtime, scratch):
@@ -214,3 +214,126 @@ def resolved_scope_manifest(session):
                 'profile_certificate': False}
     encoded = json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()
     return {'manifest': manifest, 'sha256': hashlib.sha256(encoded).hexdigest()}
+
+
+class NativeARAdapter:
+    """Common host loop over existing product primitives, with native readbacks.
+
+    TP1 keeps graph feedback on-device. TP2 retains its full-logit readback,
+    host argmax and native StepTrace construction. Extra forcing/control reads
+    are explicitly untimed correctness-only operations.
+    """
+    def __init__(self, owner, *, resident):
+        self.owner = owner
+        self.resident = resident
+        self.session = owner.session if resident else owner
+        self.runtime = self.session.runtime
+        self.vocab_size = owner.vocab_size
+        self.position = 0
+        self.graph = None
+        self.traces = []
+
+    def prepare(self):
+        if not self.resident:
+            self.session._ensure_graph_schedule()
+
+    def prefill(self, tokens):
+        self.session.reset()
+        self.traces = []
+        if self.resident:
+            result = self.session.prefill(tokens, use_bulk=None, bulk_attention_mode='bulk', return_logits=False)
+            token = int(result.token_id)
+        else:
+            for position, input_token in enumerate(tokens):
+                logits, trace = self.session._forward_token(int(input_token), position, kind='prefill')
+                self.traces.append(trace)
+                token = int(np.argmax(logits))
+        self.position = len(tokens)
+        self.next_token = token
+        self.check_token(token)
+        return token
+
+    def check_token(self, token):
+        if isinstance(token, bool) or not isinstance(token, (int, np.integer)) or not 0 <= token < self.vocab_size:
+            raise ValueError(f'invalid sampled/forced token: {token}')
+
+    def begin_decode(self, count):
+        if self.resident:
+            self.graph = self.session.capture_decode_graph(position=self.position,
+                steps_per_replay=1, max_replay_steps=count,
+                attention_max_context_len=self.position + count)
+
+    def transition(self, token, *, return_logits=False, force=False):
+        self.check_token(token)
+        if self.resident:
+            if force:
+                from hipengine.core.memory import copy_host_array_to_device
+                copy_host_array_to_device(self.session._lm_out_index, np.array([token], dtype=np.int64), runtime=self.runtime)
+            elif token != self.next_token:
+                raise ValueError('product graph feedback token mismatch')
+            self.graph.replay(1)
+            sample = self.graph.read_sample(return_logits=return_logits)
+            if int(self.session.position) != self.position + 1:
+                raise ValueError('graph transition position mismatch')
+        else:
+            logits, trace = self.session._forward_token(int(token), self.position, kind='decode')
+            self.traces.append(trace)
+            sample = SimpleNamespace(token_id=int(np.argmax(logits)), logits=logits)
+        self.position += 1
+        self.next_token = int(sample.token_id)
+        self.check_token(sample.token_id)
+        return sample
+
+    def force_input(self, token):
+        """Set/check graph input before replay; correctness only, outside timings."""
+        self.check_token(token)
+        if self.resident:
+            from hipengine.core.memory import copy_host_array_to_device
+            from scripts.tp2_xtx_tp1_eager_stage_probe import graph_device_state
+            copy_host_array_to_device(self.session._lm_out_index, np.array([token], dtype=np.int64), runtime=self.runtime)
+            state = graph_device_state(self.session)
+            if state != {'position': self.position, 'context': self.position+1, 'sampled_token': int(token)}:
+                raise ValueError(f'forced graph input control mismatch: {state}')
+        self.next_token = int(token)
+
+    def check_transition(self, token, position):
+        """Read actual device ownership/positions, never used in product timing."""
+        if self.resident:
+            from scripts.tp2_xtx_tp1_eager_stage_probe import graph_device_state
+            state = graph_device_state(self.session)
+            if state['position'] != position+1 or state['context'] != position+2:
+                raise ValueError('graph device cursor did not advance')
+            return {'position': position, 'input_token': int(token), 'device': state}
+        from hipengine.core.device import scoped_current_device
+        states = {}
+        for device in self.session.devices:
+            with scoped_current_device(self.runtime, device):
+                self.runtime.stream_synchronize(self.session._rank_stream(device))
+                pair = read_position(self.runtime, self.session._scratches[device])
+                host = np.empty(1, dtype=np.int64)
+                self.runtime.memcpy(host.ctypes.data, self.session._step_buffers[device]['token_buf'].ptr, host.nbytes, 2)
+                if pair != [position, position+1] or int(host[0]) != token:
+                    raise ValueError(f'TP2 rank {device} input/cursor mismatch')
+                states[str(device)] = {'position_context': pair, 'input_token': int(host[0])}
+        return {'position': position, 'input_token': int(token), 'ranks': states}
+
+    def end_decode(self):
+        if self.graph is not None:
+            self.graph.close()
+            self.graph = None
+
+    def destroy_graphs(self):
+        self.end_decode()
+        if not self.resident:
+            self.session._destroy_graphs()
+
+    def close(self):
+        self.owner.close()
+
+
+def create_native_adapter(model, arm, *, capacity=200):
+    if arm != 'tp2':
+        return NativeARAdapter(create_resident_control(model, capacity=capacity, capture_rows=False), resident=True)
+    from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
+    return NativeARAdapter(MlpTP2GenerationSession(model, devices=(0, 1), mode='tp2',
+        max_sequence_length=capacity), resident=False)

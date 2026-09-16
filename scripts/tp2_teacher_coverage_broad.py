@@ -723,7 +723,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--resident-results', type=Path, nargs=3)
     parser.add_argument('--max-sequence-length', type=int, default=71)
     parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
+    parser.add_argument('--sustained-arm', choices=('tp1-d0','tp1-d1','tp2'))
+    parser.add_argument('--teacher-source', type=Path)
+    parser.add_argument('--sustained-report', type=Path, nargs=3)
     args = parser.parse_args(argv)
+    if args.sustained_arm or args.sustained_report:
+        if not args.json or args.repeat_tp2 < 3:
+            parser.error('sustained gate requires --json and >=3 repeats')
+        return capture_sustained_arm(args) if args.sustained_arm else report_sustained(args)
     if args.capture_resident_arm or args.resident_results:
         if not args.json:
             parser.error('resident capture/report requires --json')
@@ -1181,6 +1188,171 @@ def report_resident_coverage(args) -> int:
         'thresholds': {**PRODUCTION_GATE, 'category_top1': CATEGORY_TOP1}}
     _write_artifact(output, args.json)
     return 0 if output['all_gates_passed'] else 1
+
+
+def sustained_trajectory(adapter, tokens, *, forced=None, steps=128, progress=None, reference=None, failure=None):
+    """Untimed AR graph/native trajectory; input positions are P..P+D-1."""
+    from scripts.tp2_xtx_tp1_eager_stage_probe import validate_result
+    if forced is not None and len(forced) != steps: raise ValueError('forced trajectory length mismatch')
+    next_token = adapter.prefill(tokens)
+    adapter.begin_decode(steps)
+    inputs, output, controls = [], [], []
+    for i in range(steps):
+        token = int(next_token if forced is None else forced[i])
+        position = len(tokens)+i
+        if progress: progress({'phase':'start','position':position,'input_token':token})
+        adapter.force_input(token)
+        result = adapter.transition(token,return_logits=True)
+        validate_result(result,adapter.vocab_size)
+        row = np.asarray(result.logits,dtype=np.float32).reshape(-1).copy()
+        control = adapter.check_transition(token,position)
+        if control.get('position') != position or control.get('input_token') != token:
+            raise ValueError('sustained control position/input mismatch')
+        if reference is not None:
+            kl,top1 = _kl_rows(reference[i:i+1],row[None,:])
+            if float(kl[0]) > PRODUCTION_GATE['max_kl']:
+                detail = {'position':position,'decode_index':i,'input_token':token,
+                          'kl':float(kl[0]),'top1':bool(top1[0]),
+                          'reference_top1':int(np.argmax(reference[i])), 'candidate_top1':int(np.argmax(row))}
+                if failure: failure(detail,reference[i],row)
+                raise ValueError(f'sustained absolute KL ceiling failed: {detail}')
+        inputs.append(token); output.append(row); controls.append(control)
+        next_token = int(result.token_id)
+        if progress: progress({'phase':'complete',**control})
+    adapter.end_decode()
+    return np.stack(output),inputs,controls
+
+
+def load_sustained(path):
+    data = json.loads(Path(path).read_text())
+    if data.get('status')!='complete' or data.get('natural_teardown') is not True or data.get('first_bad_stage') is not None:
+        raise ValueError('incomplete sustained capture')
+    if data.get('determinism',{}).get('sweeps',0)<3 or data['determinism'].get('per_row_match') is not True:
+        raise ValueError('missing sustained determinism')
+    if not all(data['state_boundaries'].values()): raise ValueError('sustained lifecycle failure')
+    arrays=[]
+    for entry,inputs in zip(data['arrays'],data['forced_inputs'],strict=True):
+        a=np.load(entry['path'],mmap_mode='r')
+        if a.dtype!=np.float32 or a.shape!=(128,data['vocab_size']) or len(inputs)!=128 or not np.isfinite(a).all() or _row_hash(a)!=entry['sha256']:
+            raise ValueError('sustained logit evidence invalid')
+        arrays.append(a)
+    if len(arrays)!=18: raise ValueError('sustained suite incomplete')
+    control=Path(data['control_log']['path'])
+    if hashlib.sha256(control.read_bytes()).hexdigest()!=data['control_log']['sha256']:
+        raise ValueError('sustained controls hash mismatch')
+    records=[json.loads(line) for line in control.read_text().splitlines()]
+    for sweep in range(data['determinism']['sweeps']):
+        for i,prompt_id in enumerate(data['suite']['ids']):
+            out=[r for r in records if r['sweep']==sweep and r['prompt_id']==prompt_id and r['phase']=='complete']
+            if [r['position'] for r in out]!=list(range(len(data['suite']['tokens'][i]),len(data['suite']['tokens'][i])+128)) or [r['input_token'] for r in out]!=data['forced_inputs'][i]:
+                raise ValueError('sustained position/input controls mismatch')
+    return data,arrays
+
+
+def capture_sustained_arm(args):
+    from scripts.tp2_resident_control import create_native_adapter, bind_resident_profile, resolved_scope_manifest
+    from scripts.tp2_matched_ar_baseline import product_identity
+    from scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder
+    import uuid
+    arm=args.sustained_arm
+    if args.max_sequence_length!=200: raise ValueError('D128 gate requires declared capacity 200')
+    expected={'tp1-d0':'0','tp1-d1':'1'}.get(arm)
+    if os.environ.get('HIP_VISIBLE_DEVICES')!=expected: raise ValueError('sustained physical visibility mismatch')
+    suite,tokens=_product_suite()
+    identity=product_identity(MODEL)
+    reference_data,reference=(load_sustained(args.teacher_source) if args.teacher_source else (None,None))
+    if reference_data is None and arm!='tp1-d0': raise ValueError('only tp1-d0 may choose teacher trajectories')
+    if reference_data is not None and reference_data['identity']!=identity: raise ValueError('teacher identity mismatch')
+    path=Path(args.json); root=path.parent/(path.stem+'-arrays'); root.mkdir(parents=True,exist_ok=True)
+    record=StageRecorder(path,{'kind':'tp2_sustained_d128','arm':arm,'run_id':uuid.uuid4().hex,
+        'identity':identity,'profile':bind_resident_profile('production'),'command':shlex.join([sys.executable,*sys.argv]),
+        'suite':{'ids':[r['id'] for r in suite], 'categories':[r['category'] for r in suite],
+                 'heldout':[r['heldout'] for r in suite], 'tokens':tokens},
+        'forced_inputs':[] if reference_data is None else reference_data['forced_inputs'], 'arrays':[]})
+    control_path=root/'controls.jsonl'; handle=control_path.open('w'); current={}
+    def progress(value):
+        handle.write(json.dumps({**current,**value})+'\n'); handle.flush()
+    def failure(detail,teacher,candidate):
+        fixture=root/'first-numerical-failure.npz'; np.savez(fixture,teacher=teacher,candidate=candidate)
+        record.artifact['numerical_failure']={**current,**detail,'fixture':str(fixture)}
+    state={}; hashes=[]; first_arrays=[]
+    def build():
+        a=create_native_adapter(MODEL,arm,capacity=200); state['adapter']=a; a.prepare()
+        record.artifact.update(vocab_size=a.vocab_size,devices=_device_identities(a.owner),
+            route=_resolved_route(a.owner),scope_manifest=resolved_scope_manifest(a.owner))
+        return {'vocab_size':a.vocab_size}
+    def capture(i,save=False):
+        forced=(None if reference_data is None and save else record.artifact['forced_inputs'][i])
+        logits,inputs,controls=sustained_trajectory(state['adapter'],tokens[i],forced=forced,
+            progress=progress,reference=None if reference is None else reference[i],failure=failure)
+        digest=_row_hash(logits)
+        if save:
+            out=root/f'prompt-{i}.npy'; np.save(out,logits)
+            record.artifact['arrays'].append({'path':str(out),'sha256':digest,'shape':list(logits.shape)})
+            hashes.append(digest); first_arrays.append(np.load(out,mmap_mode='r'))
+            if reference_data is None: record.artifact['forced_inputs'].append(inputs)
+        elif digest!=hashes[i]: raise ValueError('sustained same-schedule/reset mismatch')
+        return {'shape':list(logits.shape),'sha256':digest,'start_position':len(tokens[i]),'end_position':len(tokens[i])+127}
+    if record.guard('build',build):
+        for sweep in range(args.repeat_tp2):
+            for i,row in enumerate(suite):
+                current.update(sweep=sweep,prompt_id=row['id'])
+                if not record.guard(f'sweep-{sweep}/{row["id"]}',lambda i=i,s=sweep:capture(i,save=s==0)): break
+            if record.exit_code: break
+            if sweep==0 and reference is not None:
+                def gate():
+                    summary=score_arm(reference,first_arrays,[r['category'] for r in suite], [r['heldout'] for r in suite],
+                                      expected_positions=[128]*len(suite),vocab_size=state['adapter'].vocab_size)
+                    record.artifact['comparison']=summary
+                    checks=[_envelope_gate(summary['global'],top1_bar=.99)]
+                    checks.extend(_envelope_gate(v,top1_bar=.99) for v in summary['scopes'].values())
+                    checks.extend(_envelope_gate(v,top1_bar=.97) for v in summary['categories'].values())
+                    checks.extend(_envelope_gate(v,top1_bar=.97) for scopes in summary['category_scopes'].values() for v in scopes.values())
+                    if not all(c['passed'] for c in checks): raise ValueError(f'sustained envelope failure: {checks}')
+                    return {'envelope_passed':True}
+                if not record.guard('sustained-numerical-gate',gate): break
+        if not record.exit_code:
+            current.update(sweep=-1,prompt_id=suite[0]['id']); record.guard('reset-reuse',lambda:capture(0))
+            current['prompt_id']=suite[1]['id']; record.guard('neighbor',lambda:capture(1))
+            current['prompt_id']=suite[0]['id']; record.guard('isolation',lambda:capture(0))
+            def generation():
+                a=state['adapter']; t=a.prefill(tokens[0]); a.begin_decode(2)
+                for _ in range(2): t=int(a.transition(t,return_logits=True).token_id)
+                a.end_decode()
+            record.guard('generation',generation)
+            record.guard('reset-after-generation',lambda:capture(0))
+        if not record.exit_code:
+            record.artifact['determinism']={'sweeps':args.repeat_tp2,'per_row_match':True}
+            record.artifact['state_boundaries']={'reset':True,'isolation':True,'reset_after_generation':True}
+            record.guard('graph-destroy',state['adapter'].destroy_graphs)
+            record.guard('teardown',state['adapter'].close)
+    handle.close()
+    record.artifact['control_log']={'path':str(control_path),'sha256':hashlib.sha256(control_path.read_bytes()).hexdigest()}
+    record.artifact['natural_teardown']=not bool(record.exit_code); record.finish()
+    if record.exit_code: sys.stdout.flush(); sys.stderr.flush(); os._exit(1)
+    return 0
+
+
+def report_sustained(args):
+    captures=[load_sustained(p) for p in args.sustained_report]
+    arms={d['arm']:(d,a) for d,a in captures}
+    if set(arms)!={'tp1-d0','tp1-d1','tp2'}: raise ValueError('sustained arms missing/duplicated')
+    teacher,reference=arms['tp1-d0']; comparisons={}
+    for arm,(data,arrays) in arms.items():
+        if data['identity']!=teacher['identity'] or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
+            raise ValueError('sustained shared teacher provenance mismatch')
+        comparisons[arm]=score_arm(reference,arrays,teacher['suite']['categories'],teacher['suite']['heldout'],
+            expected_positions=[128]*18,vocab_size=teacher['vocab_size'])
+    passed=all(_envelope_gate(v,top1_bar=.99)['passed'] for c in comparisons.values() for v in [c['global'],*c['scopes'].values()])
+    passed &= all(_envelope_gate(v,top1_bar=.97)['passed'] for c in comparisons.values() for v in [*c['categories'].values(),*(v for s in c['category_scopes'].values() for v in s.values())])
+    result={'kind':'tp2_sustained_d128_gate','all_gates_passed':bool(passed),'production_qualified':False,
+        'population':'18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories',
+        'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'thresholds':PRODUCTION_GATE,'captures':{str(p):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.sustained_report},
+        'controls':{d['arm']:{k:d[k] for k in ('run_id','devices','route','scope_manifest','determinism','state_boundaries','control_log','natural_teardown')} for d,a in captures},
+        'not_qualified':['task quality','BF16-relative','public distributed profile','performance promotion']}
+    _write_artifact(result,args.json)
+    return 0 if passed else 1
 
 
 def _write_artifact(result: dict[str, object], path: str | None) -> None:
