@@ -1263,6 +1263,23 @@ is roughly twice the recorded 1.201 and is not comparable to it. Only the
 same-session device/host delta is quoted; the absolute headline above is unchanged.
 Artifact: [device solver loop](results/2026-09-16-gfx1151-vibevoice-tts-device-solver-loop.json).
 
+The diffusion head caches its invariant work. The timestep MLP is keyed by the
+bf16-rounded timestep (the 20-step schedule repeats across the 25 frames), the
+condition projection is skipped when the condition bytes are unchanged, and
+`silu(c)` is hoisted above the layer loop. Forcing the two weight-read caches to
+miss in a same-session interleaved A/B (one process, one machine state, arm order
+cached/uncached/cached/uncached) takes the diffusion stage from 1.237 s to 1.086 s,
+**-12.2%** (1.139x), and pooled RTF from 1.256 to 1.213, **-3.4%**. The uncached arm
+disables the two weight-read caches only; the `silu(c)` hoist is active in both arms,
+so the delta is a lower bound on the full change. That run was on an **idle** host --
+the cached arm's RTF of 1.204/1.222 sits in the retained 1.201 band -- so unlike the
+device-solver A/B above, these absolute figures are comparable to the headline. The
+two arms produce bit-identical per-step `eps` and `speech` over all 25 recorded calls
+(0 of 500 steps differ, max absolute difference 0.0), and every frozen
+fixture-parity margin is unchanged (pre-onset eps 0.00847 against its 0.025 gate,
+whole-trajectory eps 0.0393 against 0.08). Artifact:
+[invariant cache](results/2026-09-16-gfx1151-vibevoice-tts-diffusion-invariant-cache.json).
+
 ### Radeon 8060S: VibeVoice-TTS 1.5B generated-audio quality
 
 Six held-out scripts (one to four turns, 7 to 40 words) over the same two voice

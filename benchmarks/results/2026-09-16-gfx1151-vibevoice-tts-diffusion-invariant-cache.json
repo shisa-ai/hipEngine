@@ -1,0 +1,84 @@
+{
+  "suite": "vibevoice-tts-diffusion-invariant-cache",
+  "date": "2026-09-16",
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "load": "idle (cached-arm pooled RTF 1.204/1.222 against the retained 1.201)"
+  },
+  "change": "the diffusion head caches its invariant work: timestep MLP keyed by the bf16-rounded timestep, condition projection skipped on unchanged condition bytes, silu(c) hoisted above the layer loop",
+  "protocol": {
+    "workload": "pinned single-speaker session request, 121-token prompt, 27 generated tokens, 25 diffusion frames at 20 solver steps, CFG 1.3, 3.333 s of audio at 24 kHz",
+    "command": "uv run python /tmp/ab_cache.py",
+    "ab": "one process, one machine state, arm order cached/uncached/cached/uncached, 3 repeats per arm",
+    "arms": {
+      "cached": "HEAD behaviour",
+      "uncached": "VibevoiceTTSDiffusionHeadGPU.forward_into wrapped to clear _t_mlp_cache and _cond_proj_key before every call, forcing both weight-read caches to miss"
+    },
+    "arm_scope_note": "the uncached arm disables the two weight-read caches only; the silu(c) hoist is active in both arms, so the measured delta is a lower bound on the full change"
+  },
+  "ab_same_session": {
+    "cached": {
+      "pooled_rtf": [1.204, 1.222],
+      "warm_seconds": [4.015, 4.074],
+      "diffusion_seconds": [1.087, 1.085],
+      "chain_exact": [true, true]
+    },
+    "uncached": {
+      "pooled_rtf": [1.259, 1.253],
+      "warm_seconds": [4.196, 4.177],
+      "diffusion_seconds": [1.236, 1.237],
+      "chain_exact": [true, true]
+    },
+    "means": {
+      "cached": {"pooled_rtf": 1.213, "warm_seconds": 4.0445, "diffusion_seconds": 1.086},
+      "uncached": {"pooled_rtf": 1.256, "warm_seconds": 4.1865, "diffusion_seconds": 1.2365}
+    },
+    "delta": {
+      "diffusion_seconds": "-12.2% (1.2365 -> 1.086, 1.1386x)",
+      "warm_seconds": "-3.4%",
+      "pooled_rtf": "-3.4%"
+    }
+  },
+  "correctness": {
+    "cache_neutrality": {
+      "method": "cached vs uncached arms over all 25 recorded calls, every one of the 20 solver steps, comparing per-step eps and speech",
+      "steps_compared": 500,
+      "eps_mismatched_steps": "0/500",
+      "speech_mismatched_steps": "0/500",
+      "max_abs_diff": 0.0
+    },
+    "frozen_fixture_parity": {
+      "method": "call0 GPU vs the CPU reference, the metric the frozen test asserts",
+      "eps_pre_amplification_max_ratio": 0.00847,
+      "eps_pre_amplification_gate": 0.025,
+      "speech_pre_amplification_max_ratio": 0.01439,
+      "speech_pre_amplification_gate": 0.025,
+      "eps_whole_trajectory_max_ratio": 0.0393,
+      "eps_whole_trajectory_gate": 0.08,
+      "speech_whole_trajectory_max_ratio": 0.02013,
+      "speech_whole_trajectory_gate": 0.05,
+      "final_latent_vs_cpu_relative": 0.00603,
+      "final_latent_vs_cpu_gate": 0.05,
+      "final_latent_vs_fixture_relative": 0.00877,
+      "final_latent_vs_fixture_gate": 0.06,
+      "scaled_latent_vs_fixture_relative": 0.0085,
+      "scaled_latent_vs_fixture_gate": 0.08,
+      "note": "every margin reproduces the value recorded in the frozen test's baseline comment"
+    },
+    "task_quality": {
+      "method": "10-seed generated-audio suite at HEAD (caching plus device solver), microsoft/VibeVoice-ASR-HF transcript WER against the script text",
+      "passed": "58/60",
+      "failures": ["two-long@20260918", "two-2turn@20260919"],
+      "matches_recorded_suite": true,
+      "note": "per-request pass counts, per-seed failures and stability flags identical to the recorded 2026-09-15 suite"
+    }
+  },
+  "prior_claim_correction": {
+    "carried_estimate": "1.0939x on the diffusion frame, ~99 ms per request",
+    "measured": "1.1386x on the diffusion frame, ~150 ms per request",
+    "interpretation": "the carried figure was measured before the device solver landed; the current same-session A/B supersedes it and is larger"
+  }
+}
