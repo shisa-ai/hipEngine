@@ -1,0 +1,74 @@
+{
+  "cases": {},
+  "cases_passed": 0,
+  "cases_total": 0,
+  "live": {
+    "abc_tokens": 0,
+    "audio_finite": true,
+    "audio_peak": 0.0024589006789028645,
+    "duration_seconds": 3.8386666666666667,
+    "first_seconds": 16.41939339390956,
+    "frames": 96,
+    "ode_steps": 32,
+    "passed": true,
+    "repeat_audio_identical": true,
+    "repeat_latent_identical": true,
+    "repeat_request_id_equal": true,
+    "request": {
+      "abc": null,
+      "cfg_scale": null,
+      "cot": "off",
+      "id": "e2e-gate",
+      "lyrics": "[verse]\nMorning light across the floor\nA quiet room, an open door",
+      "seed": 20260916,
+      "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar"
+    },
+    "request_id": "447db15518095dfacd50b2f3a40ab9fa39658711e21ad5d943d72f1dc8029f7e",
+    "samples": 184256,
+    "second_seconds": 16.155697430018336,
+    "semantic_tokens": 96,
+    "timing": {
+      "abc": {
+        "output_tokens": 0,
+        "seconds": 0.0
+      },
+      "e2e_seconds": 16.417028269032016,
+      "nar_seconds": 10.366161307087168,
+      "semantic": {
+        "attention": "spans",
+        "cfg_branches": 2,
+        "content_tokens": 96,
+        "execution": "eager",
+        "negative_prefix_tokens": 12,
+        "output_tokens": 96,
+        "output_tps": 19.353975393953053,
+        "prefill_seconds": 0.3063162069302052,
+        "prefix_tokens": 50,
+        "random": {
+          "algorithm": "numpy-pcg64-v1",
+          "seed": 20260916
+        },
+        "seconds": 4.960221248911694,
+        "ttft_seconds": 0.3227814579149708
+      },
+      "vae_seconds": 1.0840449950192124
+    }
+  },
+  "ode_steps": 4,
+  "passed": true,
+  "provenance": {
+    "cases_dir": "/home/lhl/hipEngine/tests/fixtures/yue2/cases",
+    "command_line": "scripts/yue2_e2e_gate.py --skip-replay --live-steps 32 --json benchmarks/results/yue2_e2e_live_gate_20260916.json",
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "gfx1151",
+      "hostname": "zbook",
+      "platform": "linux"
+    },
+    "protocol": "yue2-e2e-product-gate-v1",
+    "revision": "1296544588561a1598b43749c03822bdbbed0eaf"
+  },
+  "replay_seconds": 1.051928848028183e-06,
+  "replay_skipped": true,
+  "torch_imported": false
+}

@@ -1486,6 +1486,50 @@ value. Tiled decoding is slower than the full decode here (1.51 s vs 0.68 s at
 64 frames) because every tile re-decodes its halo context; its purpose is
 bounding device residency, not wall clock.
 
+### Radeon 8060S: YuE2 3B end-to-end product path
+
+The complete staged pipeline - AR plan and semantic decode, the acoustic
+flow-matching solve, and the FP32 Oobleck decode - driven through the registered
+`yue2` model plugin with no torch in the process. Each committed case fixture
+stores the reference pipeline's own assembled prefix and semantic codes, so the
+gate replays the reference's exact conditioning and checks the product path
+against the audio the reference produced for it: every case reproduces the
+recorded latent frame count and the recorded sample count exactly.
+
+| Case | Latent frames | Samples | Peak | Replay |
+| --- | ---: | ---: | ---: | ---: |
+| `english-full-s1234` | 1,871 | 3,592,256 | 0.9246 | 301.8 s |
+| `english-full-s5678` | 1,704 | 3,271,616 | 1.0354 | 252.8 s |
+| `english-melody-s1234` | 2,061 | 3,957,056 | 1.0009 | 356.8 s |
+| `english-melody-s5678` | 1,499 | 2,878,016 | 0.8217 | 202.9 s |
+| `english-off-s1234` | 1,517 | 2,912,576 | 0.9596 | 188.9 s |
+| `english-off-s5678` | 2,192 | 4,208,576 | 1.0196 | 370.4 s |
+| `mandarin-full-s1234` | 1,920 | 3,686,336 | 0.9781 | 356.0 s |
+| `mandarin-full-s5678` | 1,692 | 3,248,576 | 0.8506 | 287.7 s |
+| `mandarin-melody-s1234` | 1,807 | 3,469,376 | 0.8589 | 307.3 s |
+| `mandarin-melody-s5678` | 1,943 | 3,730,496 | 0.8815 | 354.0 s |
+| `mandarin-off-s1234` | 1,297 | 2,490,176 | 0.9463 | 148.4 s |
+| `mandarin-off-s5678` | 1,497 | 2,874,176 | 0.7696 | 193.2 s |
+
+Across all twelve cases that is **21,000 latent frames** and **40,319,232
+samples** of audio, all finite and all non-silent, at 4 ODE steps rather than the
+product's 32 (the replay takes 55 min, from
+148 s for the shortest case to 370 s for
+the longest; the reference's own recorded runs take 150-370 s per case). Solver
+arithmetic parity is the M4 gate's claim, so step count does not affect what this
+one measures. Replaying `english-full-s1234` twice gives **bit-identical**
+latents.
+
+A separate live run exercises the whole session rather than recorded
+conditioning: a greedy request plans and decodes 96 semantic
+tokens, solves them to 96 latent frames and decodes
+3.84 s of audio in 16.4 s. Running it
+twice returns identical latent and audio identities. `torch` is not imported by
+either run; the gate fails if it ever is. `scripts/yue2_e2e_gate.py` is the
+reproducing command. Evidence:
+[`e2e replay`](results/yue2_e2e_gate_20260916.json),
+[`e2e live`](results/yue2_e2e_live_gate_20260916.json).
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
