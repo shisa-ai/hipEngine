@@ -189,3 +189,74 @@ remove.
 - No performance claim. These are full-logit captures; leaf timings live in
   `../2026-09-16-dense-wide-q8-prefill-candidate/`.
 - No task-quality, isolation, BF16-relative or c>N gate.
+
+## Correction, 2026-09-16: how the two arms compare
+
+Three statements above are corrected here rather than edited in place, so the
+original reading and its correction are both visible.
+
+**The arms were compared on different prompt mixes.** The 32-47 arm ran 12 cases
+across four categories; the 0-47 arm ran three `code` cases. Any metric quoted
+across the two therefore mixes a scope difference with a prompt-mix difference.
+Restricted to the one category both arms ran, produced by
+`scripts/q8_wmma_layers_gate_compare.py`:
+
+| Metric | layers 32-47 | layers 0-47 | ratio |
+| --- | ---: | ---: | ---: |
+| mean KL | 2.076e-5 | 1.099e-3 | 52.9x |
+| p95 KL | 1.102e-4 | 5.017e-3 | 45.5x |
+| max KL | 5.627e-4 | 3.913e-2 | 69.5x |
+| top-1 agreement | 387/387 | 384/387 | — |
+| max abs logit delta | 1.0028 | 3.1656 | 3.2x |
+
+**Adding layers 0-31 enlarges the perturbation itself; it does not merely expose
+more near-ties.** The `1.86 / 1.34` pair quoted in the open-anomaly section is
+the *prefill row* of two different case sets, not a scope comparison. The
+category-level figures above are the controlled ones, and they show the largest
+per-row logit perturbation growing 3.2x while the minimum teacher margin in the
+0-47 arm's decode rows is *wider* than in the 32-47 arm (0.0308 against
+0.0021). More rows crossing small margins therefore does not explain the
+failure. The early layers change the arithmetic's output more, which is
+consistent with an accumulation-range effect and is the hypothesis the layer
+bisect should test.
+
+**The "prefill is not taking the candidate arithmetic" reading is refuted by
+these artifacts and needs no kernel census.** In the 32-47 arm the prefill row
+carries the *largest* `max_abs_logit_delta` of any row in the run — 1.861 against
+1.409 for the c1 rows. A bypassed route returns a zero delta, so the candidate
+arithmetic is demonstrably live in prefill. The near-zero prefill KL is a
+confidence artifact: `prefill_last` has `strict_margin_min` 14.67 (32-47) and
+23.10 (0-47) against `c1`'s 0.0021 and 0.0308, and a perturbation of ~1.9 logits
+cannot move a distribution whose top-1 leads by 14.7. What remains open is
+*coverage* — which weights take the route — not liveness. That is bounded
+statically by the selector's own filter, which requires `quant_key ==
+"gguf_q8_0"` and a `layers.` slot path
+(`hipengine/runtime/qwen4_exp_runner.py`), so the embedding, the output head,
+and every Q4_K expert GEMM are excluded by construction.
+
+Gates run after this correction record `flip_eligible_rows` and
+`top1_mismatches_flip_eligible` per scope, which makes a mismatch count readable
+without this reconstruction. These two arms predate that field.
+
+### Provenance, restated
+
+The `Provenance` section above understates the problem for the arm that passed.
+`artifact-layers32-47-4cat.json` records `unstaged_dirty: true` with
+`untracked_count: 5`; `artifact.json` records `unstaged_dirty: false` with
+`untracked_count: 2`. So the passing arm ran against modified **tracked** files,
+and the artifact does not say which — that is unrecoverable after the fact.
+Artifact provenance is now schema 3 and records `dirty_paths`,
+`untracked_paths`, and an `execution_affecting_dirty` flag that excuses
+documentation-only dirt, so a re-run clears the untracked `docs/superpowers/`
+objection on its own. Neither arm here can be retro-classified; re-running is
+the only way to clear their provenance blocker.
+
+### On the missing `dense_wide256` link
+
+Per-shape bit-identity against `wmma_prefill_f32_f32_out` is not the promotion
+bar — `docs/EXECUTION-PROFILES.md` makes production correctness the contract and
+treats strict parity as a debugging oracle. Bit-identity is being used here to
+*transfer* this verdict to another route without re-measuring, which requires
+proving equivalence over an open-ended shape set from a single established
+packet. Running this gate directly against `dense_wide256` is cheaper and does
+not create a claim that has to be re-defended whenever a new shape appears.
