@@ -70,6 +70,7 @@ graphics-memory usage; Conc = a concurrency sweep.
 | `mtp-bench.py` | llama.cpp-compatible MTP prompt-suite benchmark (server economics); can wrap hipEngine verifier economics | ✓ | ✓ | | ✓ | | | `--mode hipengine-current` |
 | `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
 | `benchmark_matrix.py` | Join exact-token direct/server rows into a validated matrix report | ✓ | ✓ | | | | | `build --manifest ...` |
+| `tools/replay_bridge/` (`capture_packet.py`, `replay_ab.py`) | **Identical-operand cross-engine replay for one operation**: captures the resolved dispatch key, raw weight (sha256 identity), activation and output of a real prefill projection, then runs hipEngine's recorded kernel and the pinned comparator's MMB entry point on the same bytes. Reports complete-operation ms, the comparator's measured activation-conversion cost, four-reference float64 numerical attribution, and kernel names from one shared `rocprofv3` trace. Both adapters refuse to report a fallback. Not a model-level rate and not a whole-prefill comparison | ✓ | | ✓ | | | | `capture_packet.py --model-root <model> --output <stem> --profile production --layer 8 --chunk 0` then `replay_ab.py --packet <stem> --shim <libmmb_replay.so> --output <json>` (build the shim with `build_shim.sh <comparator-build-dir>`) |
 
 The concurrency scoreboards primarily come from
 `qwen35_batch_retained_bench.py` (direct engine) and

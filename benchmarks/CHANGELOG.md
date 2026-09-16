@@ -1,5 +1,25 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: New protocol, first result: **identical-operand
+  cross-engine replay**. Both engines now run on the same captured bytes for one
+  operation, with dispatch proof from a shared `rocprofv3` trace, a measured
+  activation-conversion cost, and numerical attribution against four float64
+  references instead of one. On Qwen3.8-Flash-Next `UD-Q4_K_XL`
+  `layers.8.attn_qkv` (rows=1024, K=2560, M=10240, 53.69 GFLOP, `gfx1151`)
+  hipEngine's production kernel takes **17.361 ms** against the pinned
+  comparator's **1.492 ms** — **11.70x** (strict arithmetic: 19.716 ms, 13.29x).
+  hipEngine's replay reproduces the captured output bit-exactly, and three
+  independent captures produced identical weight, activation and output hashes.
+  hipEngine tracks the exact float64 reference (mean absolute difference
+  4.33e-08); the comparator tracks the both-bf16 reference (2.17e-06), so the
+  remaining difference is bf16 rounding, not a defect. The mechanism is measured:
+  hipEngine's kernel covers 4 rows per block with 512 bytes of LDS, the
+  comparator's covers 256 rows with 55,296 bytes, giving 7.13 GB against 0.111 GB
+  of derived weight traffic. 144 calls per 4096-token prefill make this one
+  geometry **2500 ms** of the prefill (11.2% of the most recent published 4K
+  rate).
+  [Cross-engine replay](results/2026-09-16-cross-engine-replay/README.md).
+
 - **2026-09-16 UTC**: halo-box PR #63 head (`c4aa30229`) is **39.9% faster** than
   the current halo-box baseline (`69946438a`) on the **full twelve-case canonical
   prefill suite**: 654.4 -> 915.4 tok/s weighted (total prompt tokens over total
