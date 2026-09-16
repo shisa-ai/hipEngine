@@ -1,5 +1,7 @@
 # Wilkin Strix Halo Runtime Review
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated source review.
+
 Source review: September 6, 2026. No custom runtime installed, no external
 benchmark reproduced, and no new hipEngine performance claim.
 

@@ -1,5 +1,7 @@
 # Journey Remaining Experiments
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is the dated execution inventory of the September 15 journey.
+
 Resumed September 15, 2026 JST, from `394da3289`. This is the execution
 inventory for [the journey](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) and
 [the runtime review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md). Completed historical

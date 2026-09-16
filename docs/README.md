@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-09-06
+Last updated: 2026-09-17
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -27,8 +27,15 @@ working on.
 | [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | gfx1151 physical-C3 decode-economics campaign for Qwen3.8-27B `Q4_K_M` MTP; gate state and next steps are in the document header. Appendix analyzes a DFlash2 revival. |
 | [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | INT8 KV continuous-batching campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
 | [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md) | 24 GB capacity campaign for Qwen3.8-27B `Q4_K_M` on gfx1100: measured RX 7900 XTX context ceiling, the inert INT8 KV defect, per-token footprint attribution, and the evidence rules for capacity claims. |
-| [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md) | Active gfx1151 gap-closure campaign: measured llama.cpp gap, role-resolved profiling recipe, external fork audit, phased plan, and punchlist. |
+| [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md) | gfx1151 gap-closure campaign, September 8 review: measured llama.cpp gap, role-resolved profiling recipe, phased plan, and punchlist. Superseded for current state by the QWEN4EXP journey records below. |
 | [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md) | Matched Strix Halo engine survey: speed, same-GGUF logits, AR/MTP exactness, test and promotion coverage, source audit, and bounded absolute-quality evidence. |
+| [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md) | **Current state for Qwen3.8-Flash-Next / Qwen4Exp.** Rewritten in place: our start-versus-current rates, the competition on both the end-to-end and kernel-time axes with the accuracy basis per row, the mechanism ledger of what makes the comparators fast, certified-but-not-promoted routes, and what is left. |
+| [`QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md`](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) | Flash-Next Strix journey campaign, September 13-15: objective and authority, frozen inputs, source-to-code map, measurement contract, punchlist, and completion gates. Dated record. |
+| [`QWEN4EXP-JOURNEY-REMAINING.md`](QWEN4EXP-JOURNEY-REMAINING.md) | Execution inventory of the remaining journey candidates, with the gate-engagement rules for promoting them. |
+| [`QWEN4EXP-WILKIN-RUNTIME-REVIEW.md`](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) | Source review of the comparator's Strix Halo runtime: what is worth porting and what the survey already ruled out. |
+| [`QWEN4EXP-EXTERNAL-FORKS-REVIEW.md`](QWEN4EXP-EXTERNAL-FORKS-REVIEW.md) | Comparator fork arithmetic review: operand-precision error per route against our production envelope, plus the ranked external experiments. |
+| [`QWEN4EXP-CONTEXT-CAPACITY.md`](QWEN4EXP-CONTEXT-CAPACITY.md) | Context and chunk capacity accounting: the 2051 boundary, admission footprint, and per-runner scratch. |
+| [`QWEN4EXP-TOOLS-GRAMMAR.md`](QWEN4EXP-TOOLS-GRAMMAR.md) | Chat and tool protocol ownership: Jinja template sandbox, native XML tool calls, and assistant history handling. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 | [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
 
