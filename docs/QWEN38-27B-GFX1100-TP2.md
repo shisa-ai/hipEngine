@@ -1,9 +1,12 @@
 # Tensor parallelism: TP=N architecture, Qwen3.8-27B TP2 bring-up
 
-Status: implementation plan; no tensor-parallel engine exists yet and no TP
+Status: implementation plan; no public tensor-parallel support and no TP
 speedup is claimed. Packet 0 topology/collective screening, Packet 1 rank-bound
-transport, and Packet 2 shard planning are measured or implemented; see
-"Measured status" below.
+transport, and Packet 2 shard planning are measured or implemented, and an
+MLP-only TP2 diagnostic session (`MlpTP2GenerationSession`: replicated
+attention/GDN, sharded MLP, staged partial exchange) runs the full model; its
+per-GPU TP1 correctness controls were re-qualified on 2026-09-16 over an
+18-prompt/831-position teacher-forced suite. See "Measured status" below.
 Reviewed: 2026-09-14 against source `a9aa29c364601620cf86b3824479d808adae46ad`.
 The filename is retained for existing links. Infrastructure targets single-host
 TP=N; the first topology to qualify is W7900 + RX 7900 XTX.

@@ -218,6 +218,129 @@ def _row_hash(logits: np.ndarray) -> str:
     return hashlib.sha256(np.ascontiguousarray(logits, dtype=np.float32).tobytes()).hexdigest()
 
 
+def _trajectory_digest(rows: list[np.ndarray]) -> str:
+    """Order-sensitive digest over the exact float32 bytes of a trajectory.
+
+    Each row's byte length is prefixed so two different row partitions cannot
+    collide on the same concatenation.
+    """
+
+    digest = hashlib.sha256()
+    for row in rows:
+        raw = np.ascontiguousarray(row, dtype=np.float32).tobytes()
+        digest.update(len(raw).to_bytes(8, "little"))
+        digest.update(raw)
+    return digest.hexdigest()
+
+
+def cross_teacher_check(
+    teacher_a: list[np.ndarray],
+    teacher_b: list[np.ndarray],
+    *,
+    expected_positions: list[int] | None = None,
+    vocab_size: int | None = None,
+) -> dict[str, object]:
+    """Direct control-vs-control comparison, including byte equality.
+
+    Two controls can produce *identical aggregate metrics* against a shared
+    student while their logits differ (for example a softmax-invariant shift),
+    so aggregate equality is not evidence of bit-identity. Only the digest and
+    byte comparison below are; callers must not assert bit-identity without
+    ``byte_identical``.
+    """
+
+    shape_mismatches: list[dict[str, object]] = []
+    nonfinite_rows: list[int] = []
+    if expected_positions is None:
+        expected_positions = [int(row.shape[0]) for row in teacher_a]
+    if len(teacher_a) != len(teacher_b) or len(teacher_a) != len(expected_positions):
+        shape_mismatches.append(
+            {
+                "kind": "count",
+                "a_rows": len(teacher_a),
+                "b_rows": len(teacher_b),
+                "expected_rows": len(expected_positions),
+            }
+        )
+    row_kl: list[np.ndarray] = []
+    row_top1: list[np.ndarray] = []
+    differing_rows = 0
+    max_abs_diff = 0.0
+    for index, (a_row, b_row) in enumerate(zip(teacher_a, teacher_b)):
+        expected = expected_positions[index] if index < len(expected_positions) else None
+        row_invalid = False
+        for label, row in (("a", a_row), ("b", b_row)):
+            if row.ndim != 2:
+                shape_mismatches.append({"kind": "ndim", "index": index, "which": label})
+                row_invalid = True
+                continue
+            if expected is not None and row.shape[0] != expected:
+                shape_mismatches.append(
+                    {
+                        "kind": "positions",
+                        "index": index,
+                        "which": label,
+                        "shape": list(row.shape),
+                        "expected_positions": expected,
+                    }
+                )
+                row_invalid = True
+            if vocab_size is not None and row.shape[1] != vocab_size:
+                shape_mismatches.append(
+                    {
+                        "kind": "vocab",
+                        "index": index,
+                        "which": label,
+                        "cols": int(row.shape[1]),
+                        "expected_vocab": vocab_size,
+                    }
+                )
+                row_invalid = True
+        if a_row.shape != b_row.shape:
+            shape_mismatches.append(
+                {
+                    "kind": "row",
+                    "index": index,
+                    "a_shape": list(a_row.shape),
+                    "b_shape": list(b_row.shape),
+                }
+            )
+            row_invalid = True
+        if row_invalid:
+            continue
+        if not (np.isfinite(a_row).all() and np.isfinite(b_row).all()):
+            nonfinite_rows.append(index)
+            continue
+        a32 = np.ascontiguousarray(a_row, dtype=np.float32)
+        b32 = np.ascontiguousarray(b_row, dtype=np.float32)
+        if a32.tobytes() != b32.tobytes():
+            differing_rows += 1
+            max_abs_diff = max(
+                max_abs_diff,
+                float(np.abs(a32.astype(np.float64) - b32.astype(np.float64)).max()),
+            )
+        kl, top1 = _kl_rows(a32, b32)
+        row_kl.append(kl)
+        row_top1.append(top1)
+    metrics = _aggregate(
+        np.concatenate(row_kl) if row_kl else np.empty(0),
+        np.concatenate(row_top1) if row_top1 else np.empty(0, dtype=bool),
+    )
+    return {
+        "rows": len(teacher_a),
+        "scored_rows": len(row_kl),
+        "byte_identical": (
+            differing_rows == 0 and not shape_mismatches and not nonfinite_rows
+        ),
+        "differing_rows": differing_rows,
+        "max_abs_diff": max_abs_diff,
+        "digest": {"tp1-d0": _trajectory_digest(teacher_a), "tp1-d1": _trajectory_digest(teacher_b)},
+        "metrics": metrics,
+        "shape_mismatches": shape_mismatches,
+        "nonfinite_rows": nonfinite_rows,
+    }
+
+
 # -- arms -------------------------------------------------------------------
 
 
@@ -370,6 +493,7 @@ def evaluate_gates(
     nonfinite_rows: list[str],
     determinism: dict[str, object] | None,
     state_boundaries: dict[str, object] | None,
+    teacher_cross_check: dict[str, object] | None = None,
 ) -> tuple[bool, list[str]]:
     """Fail-closed verdict over every required gate."""
 
@@ -428,6 +552,31 @@ def evaluate_gates(
         failures.append(f"suite missing categories: {sorted(missing_categories)}")
     if not suite_has_heldout:
         failures.append("suite has no heldout rows")
+
+    if teacher_cross_check is None:
+        failures.append("teacher cross-check not measured")
+    else:
+        cross_mismatches = teacher_cross_check.get("shape_mismatches") or []
+        if cross_mismatches:
+            failures.append(f"teacher cross-check incomplete: {len(cross_mismatches)}")
+        cross_nonfinite = teacher_cross_check.get("nonfinite_rows") or []
+        if cross_nonfinite:
+            failures.append(f"teacher cross-check non-finite: {len(cross_nonfinite)}")
+        cross_gate = _envelope_gate(
+            teacher_cross_check["metrics"],  # type: ignore[arg-type]
+            top1_bar=PRODUCTION_GATE["top1_agreement"],
+        )
+        if not cross_gate["passed"]:
+            failures.append(
+                f"teacher cross-check envelope: {'; '.join(cross_gate['failures'])}"
+            )
+        if not teacher_cross_check.get("byte_identical", False):
+            failures.append(
+                "TP1 controls are not byte-identical "
+                f"({teacher_cross_check.get('differing_rows')} differing rows, "
+                f"max_abs_diff={teacher_cross_check.get('max_abs_diff')}); "
+                "identical aggregate metrics do not prove bit-identity"
+            )
 
     if nonfinite_rows:
         failures.append(f"non-finite logit rows: {len(nonfinite_rows)}")
@@ -673,6 +822,26 @@ def main(argv: list[str] | None = None) -> int:
         for c in CATEGORIES:
             print(f"  {c}: {summary['categories'][c]}", flush=True)
 
+    # Direct control-vs-control comparison. Identical aggregate metrics against
+    # the shared student do NOT prove the two teacher arrays are bit-identical;
+    # this is the only measurement that does.
+    teacher_cross_check: dict[str, object] | None = None
+    if all(control in teacher_logits for control in ("tp1-d0", "tp1-d1")):
+        teacher_cross_check = cross_teacher_check(
+            teacher_logits["tp1-d0"],
+            teacher_logits["tp1-d1"],
+            expected_positions=expected_positions,
+            vocab_size=vocab_size,
+        )
+        print(
+            "controls: byte_identical="
+            f"{teacher_cross_check['byte_identical']} "
+            f"differing_rows={teacher_cross_check['differing_rows']} "
+            f"max_abs_diff={teacher_cross_check['max_abs_diff']:.6g} "
+            f"digests={teacher_cross_check['digest']}",
+            flush=True,
+        )
+
     determinism: dict[str, object] | None = None
     if student is not None:
         hashes = [_row_hash(row) for row in student]
@@ -718,12 +887,14 @@ def main(argv: list[str] | None = None) -> int:
         nonfinite_rows=nonfinite,
         determinism=determinism,
         state_boundaries=state_boundaries,
+        teacher_cross_check=teacher_cross_check,
     )
 
     result: dict[str, object] = {
         "protocol": (
             "full teacher-forced trajectories, canonical suite + heldout-only rows, "
-            "matched per-GPU TP1 controls, sequential arms, fail-closed gates"
+            "matched per-GPU TP1 controls, direct control-vs-control byte comparison, "
+            "sequential arms, fail-closed gates"
         ),
         "command": shlex.join([sys.executable, *sys.argv]),
         "source_revision": _git_revision(),
@@ -759,6 +930,7 @@ def main(argv: list[str] | None = None) -> int:
         "certification": "none (probe only; gates are the verdict)",
         "nonfinite_rows": nonfinite,
         "comparison": comparisons,
+        "teacher_cross_check": teacher_cross_check,
         "determinism": determinism,
         "state_boundaries": state_boundaries,
         "all_gates_passed": all_pass,

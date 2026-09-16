@@ -1123,7 +1123,10 @@ decode p50 **50.65 -> 24.15 ms/token (-52.3%)** at the matched composition
 the faster single-GPU control by ~2.2 ms/token while carrying the full
 replicated attention/GDN cost, so a matched-composition TP2 advantage is
 real at this workload; the remaining wall is device weight reads and the
-end-of-step sampling sync. Capture
+end-of-step sampling sync. **These TP1 timing denominators are unqualified
+until re-measured:** they were taken before the 2026-09-16 TP1
+device-ownership fix, and the teacher-forced correctness rerun does not
+re-measure timings. Capture
 happens once at the session capacity bound (2047), which bakes the
 full-attention split-decode config for that context; the measured envelope
 against the eager per-position schedule is KL <= 3e-04 per position (top-1
@@ -1135,8 +1138,10 @@ certifies is arithmetic and control: the sharded model stays inside the
 calibrated production envelope against both per-GPU TP1 controls (full-logit
 teacher-forced mean KL 1.79e-04, p99 KL 2.70e-03, max KL 1.21e-02, top-1
 agreement 100% over the 18-prompt canonical+heldout suite, 831 positions,
-identical against both controls), the two TP1 controls agree bit-identically
-with each other, and a repeated TP2 run reproduces both tokens and logits
+the same aggregate envelope against both controls), the two TP1 controls'
+aggregate metrics agree exactly (this artifact records no direct
+control-vs-control byte comparison, so bit-identity is not asserted), and a
+repeated TP2 run reproduces both tokens and logits
 bit-exactly. The same envelope holds on the narrower 16-token checkpoint
 sequence (mean KL 3.945e-04, max KL 2.365e-03, top-1 100%). The
 partial-staging dtype is uniform bf16 because the artifact's Q4_K down
