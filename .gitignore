@@ -58,3 +58,10 @@ venv/
 Thumbs.db
 
 third_party/
+
+# Raw rocprofv3 dumps live beside the artifact that cites them but are never
+# committed (see AGENTS.md "Never Committed"). Their digests go in the
+# artifact; the CSVs stay local so the worktree does not read dirty forever.
+benchmarks/results/**/role-trace/
+benchmarks/results/**/*_kernel_trace.csv
+benchmarks/results/**/*_agent_info.csv

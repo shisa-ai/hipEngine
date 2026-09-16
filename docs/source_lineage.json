@@ -17,9 +17,9 @@
   ],
   "repositories": {
     "pwilkin-journey": {
-      "path": "/tmp/hipengine-pwilkin-20260913",
+      "path": "/home/lhl/tmp/hipengine-pwilkin-20260913",
       "baseline_ref": "f5daaa3cfa6358e5dd398911ec741813745a5440",
-      "baseline_note": "Pinned read-only integration checkout used for the independently qualified GDN DPP reduction experiment."
+      "baseline_note": "Pinned read-only integration checkout used for the independently qualified GDN DPP reduction experiment. Moved 2026-09-17 off the RAM-backed /tmp tmpfs, where a reboot or a cleanup would have taken it the way hb-pr11 and dflash went."
     },
     "nano-vllm-amd": {
       "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
