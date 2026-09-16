@@ -159,6 +159,22 @@
     "bytes": 4366,
     "sha256": "ef4fe92dbd3f701640a885b0b01d527a1992cda1fdd81d79b858cba66cf7c67d"
   },
+  "greedy/english-full-s1234.npz": {
+    "bytes": 2965,
+    "sha256": "469088a1f3472785ac072ddc8ec9fa07e73a4eaa74ef1055988308c7251d68cb"
+  },
+  "greedy/english-melody-s1234.npz": {
+    "bytes": 2975,
+    "sha256": "dea095e5bbfdfd22c8a72feb17e07004825aabbb9a238a36464d315585fd1be8"
+  },
+  "greedy/mandarin-off-s1234.npz": {
+    "bytes": 2314,
+    "sha256": "7782078db7934dceb0d1f1724fd2999470eb5c0cf2c4c6bbc8323fa79e587ba5"
+  },
+  "greedy/manifest.json": {
+    "bytes": 3838,
+    "sha256": "35424e3cd7bfe82bf6982960e79c543cee39821f634878f1ebb61091be21f965"
+  },
   "nar/chunk0.npz": {
     "bytes": 45704,
     "sha256": "5761ed26e7f4480f5ee29ee9aad5c15e3add986a5ef360001bb2f803efe0485f"

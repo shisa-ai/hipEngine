@@ -1,7 +1,8 @@
 # MODEL-YUE2.md — YuE2 music generation on hipEngine
 
-Status: **M0-M2 complete (oracle fixtures and closure, protocol/loader contracts,
-HIP AR runtime); no end-to-end generation, NAR, VAE, or product-path claim yet.**
+Status: **M0-M3 complete (oracle fixtures and closure, protocol/loader contracts,
+HIP AR runtime, native generation session); no NAR, VAE, or product-path claim
+yet.**
 Reviewed 2026-09-16 on branch `yue2`.
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
@@ -372,6 +373,17 @@ Milestone status:
   is not implemented, so the validated path uses the full lm_head. See
   `worklog/entries/20260916T144759.713427Z-lhl-yue2-m2-ar-runtime-bb886e.md` and
   `benchmarks/README.md` "Radeon 8060S: YuE2 3B AR replay".
+- **M3 complete** (2026-09-16): torch-free staged session
+  (`hipengine/runtime/yue2_session.py`) over the M2 runtime - ABC and semantic
+  loops, per-phase request-local streams, CFG branch assembly, phase masks,
+  EOS/budget truncation, cancellation, session reset, and JSON round-trips of the
+  plan/result types with domain and prefix-embedding checks on reload. 22 CPU
+  unit tests drive the loop against a deterministic fake runtime; the existing
+  reference-score sampling fixtures cover the distribution gate.
+  `scripts/yue2_session_gate.py` replays free greedy reference trajectories
+  (`tests/fixtures/yue2/greedy/`, temperature zero, AR stages only, generated on
+  the same host) through the session: prefix identity on all three cases, ABC greedy agreement 100.0% / 99.1% / no ABC stage, semantic greedy agreement under teacher forcing 96.9% / 97.9% / 96.1% with every mismatch on a near-tie, and matching truncation classes (natural ABC exit, budget-truncated semantic). See
+  `worklog/entries/20260916T161024.244009Z-lhl-yue2-m3-native-generation-7786f9.md`.
 - **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
   fixtures frozen behind a fail-closed validator, oracle environment recorded, all
   twelve production cases regenerated and committed

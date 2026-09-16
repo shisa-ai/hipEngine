@@ -1,0 +1,125 @@
+{
+  "english-full-s1234": {
+    "abc_tokens": 655,
+    "cfg_scale": 1.0,
+    "cot": "full",
+    "negative_prefix_tokens": 0,
+    "prefix_tokens": 766,
+    "request": {
+      "abc": null,
+      "cfg_scale": null,
+      "cot": "full",
+      "id": "english-full-s1234",
+      "lyrics": "[Verse]\nMorning light across the floor\nFootsteps finding something more\nOpen windows catch the rain\nEvery road comes home again\n[Chorus]\nCarry on into the blue\nThere is room for something new\nHold the rhythm, let it stay\nWe will sing another day",
+      "seed": 1234,
+      "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
+    },
+    "sampling": {
+      "abc": {
+        "max_tokens": 4096,
+        "min_tokens": 32,
+        "penalty_window": 100,
+        "repetition_penalty": 1.005,
+        "temperature": 0.0,
+        "top_k": 30,
+        "top_p": 0.9
+      },
+      "semantic": {
+        "max_tokens": 512,
+        "min_tokens": 200,
+        "penalty_window": 50,
+        "repetition_penalty": 1.2,
+        "temperature": 0.0,
+        "top_k": 100,
+        "top_p": 0.95
+      }
+    },
+    "seconds": 35.23338735802099,
+    "seed": 1234,
+    "semantic_tokens": 512,
+    "truncated_abc": false,
+    "truncated_semantic": true
+  },
+  "english-melody-s1234": {
+    "abc_tokens": 581,
+    "cfg_scale": 1.0,
+    "cot": "melody",
+    "negative_prefix_tokens": 0,
+    "prefix_tokens": 693,
+    "request": {
+      "abc": null,
+      "cfg_scale": null,
+      "cot": "melody",
+      "id": "english-melody-s1234",
+      "lyrics": "[Verse]\nMorning light across the floor\nFootsteps finding something more\nOpen windows catch the rain\nEvery road comes home again\n[Chorus]\nCarry on into the blue\nThere is room for something new\nHold the rhythm, let it stay\nWe will sing another day",
+      "seed": 1234,
+      "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
+    },
+    "sampling": {
+      "abc": {
+        "max_tokens": 4096,
+        "min_tokens": 32,
+        "penalty_window": 100,
+        "repetition_penalty": 1.005,
+        "temperature": 0.0,
+        "top_k": 30,
+        "top_p": 0.9
+      },
+      "semantic": {
+        "max_tokens": 512,
+        "min_tokens": 200,
+        "penalty_window": 50,
+        "repetition_penalty": 1.2,
+        "temperature": 0.0,
+        "top_k": 100,
+        "top_p": 0.95
+      }
+    },
+    "seconds": 33.97269360604696,
+    "seed": 1234,
+    "semantic_tokens": 512,
+    "truncated_abc": false,
+    "truncated_semantic": true
+  },
+  "mandarin-off-s1234": {
+    "abc_tokens": 0,
+    "cfg_scale": 1.01,
+    "cot": "off",
+    "negative_prefix_tokens": 12,
+    "prefix_tokens": 98,
+    "request": {
+      "abc": null,
+      "cfg_scale": null,
+      "cot": "off",
+      "id": "mandarin-off-s1234",
+      "lyrics": "[Verse]\n清晨的光落在窗前\n远方的风吹过昨天\n沿着小路慢慢向前\n新的故事就在身边\n[Chorus]\n让我们唱过这一天\n把微笑留在你心间\n不管路途还有多远\n明天依然和你相见",
+      "seed": 1234,
+      "style": "Mandarin pop, warm expressive lead vocal, gentle piano, bass and light drums, moderate tempo"
+    },
+    "sampling": {
+      "abc": {
+        "max_tokens": 4096,
+        "min_tokens": 32,
+        "penalty_window": 100,
+        "repetition_penalty": 1.005,
+        "temperature": 0.0,
+        "top_k": 30,
+        "top_p": 0.9
+      },
+      "semantic": {
+        "max_tokens": 512,
+        "min_tokens": 200,
+        "penalty_window": 50,
+        "repetition_penalty": 1.2,
+        "temperature": 0.0,
+        "top_k": 100,
+        "top_p": 0.95
+      }
+    },
+    "seconds": 15.543910401058383,
+    "seed": 1234,
+    "semantic_tokens": 512,
+    "truncated_abc": false,
+    "truncated_semantic": true
+  }
+}

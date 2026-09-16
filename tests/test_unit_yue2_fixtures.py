@@ -19,7 +19,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests/fixtures/yue2"
-STABLE_FAMILIES = ("ar_replay", "nar", "operators", "sampling", "tokenizer", "vae")
+STABLE_FAMILIES = ("ar_replay", "greedy", "nar", "operators", "sampling", "tokenizer", "vae")
 
 
 def _load_oracle():

@@ -1394,6 +1394,26 @@ come from one same-session pair of runs; the strict route's absolute wall time
 moved about 2× between sessions of the identical protocol while the batched
 route stayed within ~6%, so only the paired ratio is quoted.
 
+### Radeon 8060S: YuE2 3B greedy session gate
+
+The torch-free staged session (`Yue2ArSession`) generating freely at temperature
+zero from the pinned `m-a-p/YuE2-3B` checkpoint, against the pinned upstream
+oracle's own greedy trajectories on the same host. `Prefix` is the assembled
+positive-branch prefix checked against the reference's own ABC IDs, so a
+trajectory divergence cannot be read as a prompt-assembly bug. `Forced` is the
+per-step greedy agreement when the runtime is driven along the reference's
+tokens, so both sides score the same context at every step; `Free` is the
+unassisted trajectory's first divergence from the reference, and the semantic
+phase is budget-truncated in every case.
+
+| Case | Prefix | ABC forced | Semantic forced | Free first divergence | Truncation (ABC / semantic) | Evidence |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| `english-melody-s1234` | identical | 100.0% | 96.9% | 38 | natural / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
+| `english-full-s1234` | identical | 99.1% | 97.9% | 18 | natural / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
+| `mandarin-off-s1234` | identical | no ABC stage | 96.1% | 17 | no ABC stage / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
+
+Teacher-forced agreement is at least 96.1% on every phase of every case; the symbolic ABC phases agree on 100.0% and 99.1% of steps. Every recorded mismatch sits on a near-tie: the first semantic mismatch is 1.2e-01 / 1.2e-01 / 6.2e-02 below my own top-1 score for melody / full / off, inside the BF16 logit noise the replay matrix above already quantifies (mean KL 2.1e-3, top-1 96.7%). The unassisted trajectories track the reference until their first flip and are chaotic afterwards, so the forced columns, not the free agreement rates, carry the fidelity claim. Free comparison is context-aligned only where the ABC stage itself matched (`english-melody-s1234`) or is absent (`mandarin-off-s1234`); `english-full-s1234` diverged during ABC planning, so its free semantic row compares continuations of different prefixes and is diagnostic only. Unassisted wall clock: `melody` 34.8 s, `full` 36.7 s, `off` 29.0 s.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
