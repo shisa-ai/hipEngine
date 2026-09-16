@@ -1574,6 +1574,7 @@ fast heuristic. Both now select by measured index.
 | --- | ---: | ---: | ---: |
 | `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **28.34 ms** | **6.25x** |
 | The same kernel, tile maximum vectorized (paired, same session) | 32.82 ms | **31.34 ms** | **1.05x** |
+| The same kernel, softmax weights stored key-major (paired, same session) | 27.40 ms | **26.38 ms** | **1.04x** |
 | NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
 | NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **7.95 s** | **3.49x** |
 | NAR solve of the same case, product 32 ODE steps | 443.4 s | **81.13 s** | **5.47x** |
@@ -1588,17 +1589,25 @@ measured optimum: four rows lands at 33.90 ms, sixteen at 44.90 ms and thirty-tw
 at 88.50 ms, where shared-memory and register pressure take over.
 
 Per-call times on this host drift about 10% between batches — the same kernel
-source measures 27.4-28.5 ms in one batch and 32.0-33.4 ms in another — so the
-vectorized-maximum row is quoted as a paired same-session ratio, alternating the
-two sources within one batch. What it changes: the per-tile maximum walked the
-tile's shared-memory scores one float at a time, 128 requests per row in a single
-dependent `fmax` chain; it now reads four entries per instruction into four
-independent accumulators. A maximum over a set is exact and order-independent for
-finite scores, so this stays bit-identical to the parent kernel. It is a
-small change because the kernel is already near its issue limit: `rocprofv3 --pmc`
-measures a 94% L2 hit rate and negligible DRAM traffic on the packed kernel, so
-neither more reuse nor more rows per block helps — sixteen rows with the shorter
-chain still lands at 41.6-42.9 ms against 27.4-28.5 ms at eight.
+source measures 27.4-28.5 ms in one batch and 32.0-33.4 ms in another — so the last
+two rows are quoted as paired same-session ratios, alternating the two sources
+within one batch. What they change: the per-tile maximum walked the tile's
+shared-memory scores one float at a time, 128 requests per row in a single
+dependent `fmax` chain, and it now reads four entries per instruction into four
+independent accumulators; and the softmax weights were stored row-major, so one
+key's weights for eight rows cost eight index computations against the runtime block
+size and eight shared-memory requests. They are now stored key-major, eight
+consecutive floats per key, so the row index is a compile-time offset and the block
+arrives in two requests. Both changes are bit-exact — a maximum over a set is
+exact and order-independent for finite scores, and the sums still walk each row
+key-ascending — and both are confirmed against the recorded parent-bits fixture.
+The second change is the larger one: it removes **17% of the kernel's instructions**
+(9 060 to 8 066 vector ALU, 3 829 to 3 091 scalar ALU, 1 265 to 527 shared-memory
+requests per lane-tile), measured with `rocprofv3 --pmc`, which is deterministic
+where the wall clock is not. Seventeen percent of instructions buys 3.9% of wall
+clock, which is what a kernel at ~75% of its issue limit can show; neither change
+makes sixteen rows per block viable (41.6-42.9 ms against 27.4-28.5 ms at eight
+before, 37.8-38.1 ms against 26.5-26.6 ms after).
 
 Wrapping the attention call with a device synchronize on either side splits the
 7.95 s two-step solve into **3.31 s of attention** (29.6 ms per call), 0.94 s of
