@@ -7046,11 +7046,13 @@ outside the blocks) is outside any scope and the route declines it.
 
 Removal condition: run the calibrated production envelope in
 `docs/EXECUTION-PROFILES.md` against this route at the deepest admissible layer
-scope. If it passes, promote it to the named production profile and delete the
-flag, keeping the coltile fallback registered. If it fails, delete the selector
-and the flag rather than leaving a dead default-off route — the kernel's
-measured 6.74x over the production dispatch is only worth keeping if it is
-reachable under a gate.
+scope. **Met 2026-09-17 at 16-47**: the route passes the 12-case envelope and its
+strict/candidate logits digests are byte-identical to the certified WMMA route's,
+so the next unit promotes it to the named production profile and deletes the
+flag, keeping the coltile fallback registered. If that promotion is reverted, the
+selector and the flag go rather than being left as a dead default-off route -
+the kernel's measured 6.74x over the production dispatch is only worth keeping if
+it is reachable under a gate.
 
 `_variant_scoped_library` was extracted at the same time. Two launch paths had
 independently resolved caller-supplied libraries, one keyed by quant alone. That
@@ -7090,7 +7092,10 @@ Removal trigger: once the calibrated envelope passes at the promoted scope,
 make the wide route the default there and retire the f16 WMMA dense route for
 this quant (keeping the registered exact coltile fallback). Do not keep both
 families selectable for the same layers once one is the default: that is the
-contention this fix had to resolve.
+contention this fix had to resolve. **The envelope passed on 2026-09-17 with a
+bit-identical candidate digest to this route's**
+(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/`), so the trigger is
+now active rather than pending.
 
 ### The launch census has a per-module coverage boundary
 

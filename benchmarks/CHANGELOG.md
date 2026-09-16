@@ -1,5 +1,18 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: The wide-row Q8_0 prefill route passed the production
+  numerical envelope at layers 16-47, and its envelope is the **same envelope**
+  the certified f16 WMMA route already holds: 12 cases, 1548 rows, mean KL
+  3.80e-4 (limit 1e-3), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 =
+  0.99354, no scope failures, three identical trajectory hashes,
+  `measurement_valid: true` with no blockers. `strict_logits_sha256` and
+  `candidate_logits_sha256` match the WMMA gate's artifact byte for byte and
+  every numerical field of the quality summary is identical, so the route
+  inherits that verdict rather than re-deriving it. With the 5.4% prefill win at
+  1K/4K measured separately, the route now has both halves and the promotion
+  condition in `docs/REFACTOR.md` is met.
+  [Gate evidence](results/2026-09-17-q8-dense-wide-16-47-gate/README.md).
+
 - **2026-09-16 UTC**: The wide-row Q8_0 prefill kernel measured end-to-end for
   the first time, on a real prefill rather than one operation. Against the
   production default (the certified f16 WMMA route at layers 16-47) it takes the

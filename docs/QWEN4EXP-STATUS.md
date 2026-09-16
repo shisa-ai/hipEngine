@@ -376,23 +376,24 @@ overestimated the full arm by 1.8x, the second deep-scope control point to do so
 12-47 and 8-47 remain screen-inconclusive, and the contiguous upside left below
 16-47 is about +0.5 s of *predicted* gain across two full-model arms.
 
-`dense_wide256` is the larger prize and is not in this table because it has no
-quality verdict yet. The route now reaches the kernel (see §5 item 2) and, on
-the one case where both were traced, it is arithmetic-identical to the route
-that is already certified here: on `code-p512` the named default runs
-`hipengine_gguf_q8_0_wmma_prefill_f32_f32_out` on 264 roles at layers 16-47 and
-the wide arm runs `hipengine_gguf_q8_0_dense_wide256_f32_f32_out` on the same 264
-roles, both producing `logits_sha256` `e15dce79…` and `token_id` 248068. The
-wide kernel is a retiling of the certified f16 arithmetic rather than a new
-arithmetic class, so the certified 16-47 envelope figures above are the number
-its own arm has to reproduce — a prediction that now rests on bit-identical
-logits digests across three canonical cases and two processes, which is still not
-the 12-case envelope verdict. The arm has not been run on that protocol.
+`dense_wide256` is the larger prize and **passed its own gate at 16-47 on
+2026-09-17**
+([`2026-09-17-q8-dense-wide-16-47-gate`](../benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/README.md)):
+12 cases, 1548 rows, mean KL 3.80e-4, p95 1.76e-3, p99 5.42e-3, max 1.53e-2,
+top-1 1538/1548 = 0.99354, `measurement_valid: true`, no blockers, no scope
+failures, three identical trajectory hashes, all ten top-1 misses inside the
+flip-eligible set. The envelope is **bit-identical to the certified WMMA row
+above**: `strict_logits_sha256` `550bb9b832bc7ba2…` and `candidate_logits_sha256`
+`65370710c0b9c40f…` match that gate's artifact byte for byte, and every numerical
+field of the quality summary is identical - the only difference in either
+artifact is the route name embedded in `scenario_id`. The wide kernel is a
+retiling of the certified f16 arithmetic, so the 16-47 envelope is inherited
+rather than re-derived.
 
-Its performance half is now measured. On the `code` category, three interleaved
-arms in one process, one model load, selectors flipped after the production
-binder, three repetitions each with the arm order rotated, and a second process
-reproducing every ratio within 0.1 percentage points
+The route's performance half is measured too. On the `code` category, three
+interleaved arms in one process, one model load, selectors flipped after the
+production binder, three repetitions each with the arm order rotated, and a
+second process reproducing every ratio within 0.1 percentage points
 ([`2026-09-17-q8-dense-route-ab`](../benchmarks/results/2026-09-17-q8-dense-route-ab/README.md)):
 
 | Route at layers 16-47 | 512 | 1K | 4K |
@@ -405,21 +406,21 @@ The wide route is 5.4% below the WMMA default at 1K and 4K and indistinguishable
 from it at 512, and 5.43 s below the exact chain at 4K against the default's
 4.44 s. All three arms launch the same 7191 kernels over the same roles, and the
 wide arm's logits digest and sampled token match the certified WMMA arm on all
-three cases in both runs. That is a timing and route-identity result; the
-envelope verdict is still owed.
+three cases in both runs. Both halves are therefore in hand; the route is
+certified at 16-47 and is 0.99 s faster than the route it takes precedence over.
 
 ## 5. What is left
 
 1. **Re-measure our own PP/TG at HEAD** on the §1.1 protocol. The current column
    is empty because nothing has re-measured it since 2026-09-13.
-2. **Gate the `dense_wide` arm at 16-47.** The route has a layer scope
-   (`be2d3fa73`) and it now reaches the kernel: the promoted WMMA default owned
-   the same window and the wide selector only accepted pre-rewrite parents, so
-   it declined before its own gates ran. Fixed on 2026-09-17 (§5 item 2 below);
-   `scripts/execution_profile_q8_wmma_prefill_layers_gate.py --route dense_wide
-   --layers 16-47` is the run that is owed. Its timing half is done and it is
-   worth +5.43 s against the exact chain at 4K, 0.99 s of that ahead of the
-   default (see §4).
+2. **Promote the `dense_wide` route at 16-47.** The route has a layer scope
+   (`be2d3fa73`), it reaches the kernel (fixed 2026-09-17; the promoted WMMA
+   default owned the same window and the wide selector only accepted pre-rewrite
+   parents, so it declined before its own gates ran), and as of 2026-09-17 it has
+   both halves: a passing 12-case production envelope that is bit-identical to
+   the certified WMMA route's, and a measured 5.4% prefill win at 1K/4K against
+   it (see §4). What is owed is the promotion itself and the retirement of the
+   f16 WMMA dense route for this quant at that scope.
 3. **Cache the activation conversion** (convert once per graph, not per launch).
    Measured at 2.573 → 1.303 ms on the packet, against the comparator's 1.339 ms
    kernel. This is the whole remaining dense gap.
