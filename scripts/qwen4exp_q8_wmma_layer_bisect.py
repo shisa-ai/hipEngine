@@ -66,10 +66,17 @@ LAYER_COUNT = 48
 # The measured saving at full scope on code-p4096, gfx1151. Used only to weight
 # probe order and to report what a bracket is worth; it is not a claim.
 FULL_SCOPE_SAVED_S = 7.0409
-# Screens read low against the full arm because they run p512 prompts only:
-# 8.606e-5 vs 9.342e-5 at layers 28-47 and 4.916e-5 vs 5.808e-5 at 32-47.
-# A screen must clear the limit with that correction applied.
-SCREEN_OPTIMISM_CORRECTION = 1.15
+# The screen-to-full mean-KL ratio is NOT a constant. Measured against three
+# control scopes it spans 0.51 to 1.18 and moves with scope depth:
+#   32-47  screen 4.916e-5  full 5.808e-5  -> 1.181
+#   28-47  screen 8.606e-5  full 9.342e-5  -> 1.086
+#   20-47  screen 4.986e-4  full 2.527e-4  -> 0.507
+# So a screen is read as an interval, and decides only when the whole interval
+# falls on one side of the limit. Reading the 20-47 screen through the shallow
+# 1.15 factor predicted 5.7e-4 against an actual 2.5e-4 and would have wrongly
+# implied that neighbouring scopes were out of range.
+SCREEN_RATIO_MIN = 0.50
+SCREEN_RATIO_MAX = 1.20
 
 
 def _scope_label(start: int) -> str:
@@ -230,10 +237,14 @@ def _screened_side(row: dict[str, Any]) -> str | None:
     mean_kl, p95_kl = row.get("kl_mean"), row.get("kl_p95")
     if mean_kl is None or p95_kl is None:
         return None
-    # Screens run the shortest prompts only and read about 8-15% low against
-    # the full arm, so require the corrected value to clear the limit.
-    inflated = float(mean_kl) * SCREEN_OPTIMISM_CORRECTION
-    return "pass" if (inflated <= mean_limit and float(p95_kl) <= p95_limit) else "fail"
+    # Decide only when the whole ratio interval lands on one side of the limit.
+    # In between the screen has ordered the scope for a full arm but has not
+    # ruled it out, which is a different answer from "fail".
+    if float(mean_kl) * SCREEN_RATIO_MAX <= mean_limit and float(p95_kl) <= p95_limit:
+        return "pass"
+    if float(mean_kl) * SCREEN_RATIO_MIN > mean_limit:
+        return "fail"
+    return "inconclusive"
 
 
 def next_probe(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> int | None:
@@ -246,7 +257,8 @@ def next_probe(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> in
 
     passing = [row["start"] for row in ledger if _screened_side(row) == "pass"]
     failing = [row["start"] for row in ledger if _screened_side(row) == "fail"]
-    # Known from the full gate: 32-47 passes, 0-47 fails.
+    # An inconclusive screen bounds nothing, so it is deliberately absent from
+    # both lists and the scope stays a live candidate.
     low = max(failing) if failing else -1      # deepest known failure
     high = min(passing) if passing else LAYER_COUNT  # shallowest known pass
     candidates = [
@@ -278,13 +290,13 @@ def render(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> str:
         "",
         "Screens decide on mean and p95 KL only. Top-1 is a rate gate and is",
         "reported as a miss count with a 95% interval, never as a verdict: see",
-        "docs/EXECUTION-PROFILES.md 6.4. Screen mean KL is inflated by",
-        f"{SCREEN_OPTIMISM_CORRECTION:.2f}x before comparison, because screens run the",
-        "shortest prompts and read low against the full arm.",
+        "docs/EXECUTION-PROFILES.md 6.4. The screen-to-full mean-KL ratio is not",
+        f"a constant ({SCREEN_RATIO_MIN:.2f}-{SCREEN_RATIO_MAX:.2f} across control scopes), so a screen",
+        "decides only when that whole range falls on one side of the limit.",
         "",
     ]
     header = [
-        "scope", "rows", "mean KL", "mean x corr", "p95 KL",
+        "scope", "rows", "mean KL", "full-arm range", "p95 KL",
         "top-1 misses", "top-1 95% CI", "verdict", "pred saved s",
     ]
     rows = []
@@ -301,19 +313,21 @@ def render(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> str:
         side = _screened_side(row)
         mean_kl = row.get("kl_mean")
         corrected = (
-            float(mean_kl) * SCREEN_OPTIMISM_CORRECTION
+            f"{float(mean_kl) * SCREEN_RATIO_MIN:.2e}-"
+            f"{float(mean_kl) * SCREEN_RATIO_MAX:.2e}"
             if (mean_kl is not None and is_screen) else None
         )
         rows.append([
             row["scope"],
             str(n),
             f"{mean_kl:.3e}" if mean_kl is not None else "-",
-            f"{corrected:.3e}" if corrected is not None else "-",
+            corrected if corrected is not None else "-",
             f"{row['kl_p95']:.3e}" if row.get("kl_p95") is not None else "-",
             f"{misses}/{n}" if misses is not None else "-",
             f"{lo:.4f}-{hi:.4f}" if lo is not None else "-",
-            ("pass" if side == "pass" else "FAIL")
-            + ("" if is_screen else " (full gate)"),
+            {"pass": "pass", "fail": "FAIL", "inconclusive": "inconclusive"}.get(
+                side, "?"
+            ) + ("" if is_screen else " (full gate)"),
             f"{predicted:.3f}" if predicted is not None else "-",
         ])
     widths = [

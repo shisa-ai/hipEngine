@@ -490,26 +490,43 @@ certified at top-1 `0.99677`
 (`benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/`). One miss
 in one category was enough.
 
-**Continuous gates survive a reduced run, with a correction.** Mean and p95 KL
-are averages over rows rather than counts of threshold crossings, and they
-tracked the full arm within 8-15% on both control scopes in that campaign
-(screen `8.606e-5` against full `9.342e-5` at layers 28-47; screen `4.916e-5`
-against full `5.808e-5` at 32-47). Screens read *low*, because a reduced
-protocol usually runs the shortest prompts, so a screen must clear the limit
-with its measured optimism applied before it counts as a pass.
+**Continuous gates survive a reduced run, but the screen-to-full ratio is not a
+constant.** Mean and p95 KL are averages over rows rather than counts of
+threshold crossings, so they are estimable from a screen. They are not a fixed
+multiple of the full-arm value. Measured across three control scopes in that
+campaign:
+
+| Scope | Screen mean KL | Full mean KL | Full / screen |
+| --- | ---: | ---: | ---: |
+| 32-47 | `4.916e-5` | `5.808e-5` | `1.181` |
+| 28-47 | `8.606e-5` | `9.342e-5` | `1.086` |
+| 20-47 | `4.986e-4` | `2.527e-4` | `0.507` |
+
+The ratio spans `0.51` to `1.18` and it moves with scope depth, so a screen
+read through any single correction factor will be wrong in one direction or the
+other. Applying the shallow-scope factor of `1.15` to the 20-47 screen would
+have predicted `5.7e-4` against an actual `2.5e-4`, overstating the value by
+2.3x and wrongly implying that neighbouring scopes were out of range.
 
 Rules for any reduced run:
 
 1. Decide on mean and p95 KL only. Report top-1 as a raw miss count with an
    interval, never as a pass/fail.
-2. Inflate the screen's mean KL by the measured screen-to-full ratio before
-   comparing it with the limit. Do not assume the ratio; measure it.
+2. Treat the screen-to-full ratio as an **interval** derived from every control
+   point available, not as a single factor. A screen decides only when the
+   whole interval falls on one side of the limit: it passes when
+   `screen x ratio_max <= limit`, it fails when `screen x ratio_min > limit`,
+   and it is **inconclusive** in between. An inconclusive screen orders a scope
+   for a full arm; it does not rule it out.
 3. Include at least one **control scope** whose full-gate verdict is already
-   known, in the same batch. A screen batch without a control cannot be
-   interpreted, because the screen-to-full ratio is protocol- and
-   model-specific.
+   known, in the same batch, and prefer controls near the depth being screened.
+   A screen batch without a control cannot be interpreted at all.
 4. Never admit a profile on a screen. Admission requires the full protocol,
    because admission depends on the rate gates a screen cannot judge.
+
+Screens are reliable for **ordering** scopes - mean KL was monotone across all
+seven scopes measured in that campaign - and unreliable for predicting a full
+arm's value. Use them to choose which full arms to run and in what order.
 
 The reduced protocol is for *bracketing* a boundary so the full protocol is
 spent once, on the winner - the same two-tier rule `benchmarks/HARNESSES.md`

@@ -5,12 +5,25 @@ at two layer scopes on the Qwen4Exp UD-Q4_K_XL canonical exact-token fixture.
 
 | Scope | Cases | Rows | Mean KL | p95 KL | p99 KL | Max KL | Top-1 | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| layers 20-47 | 12 (4 categories) | 1548 | 2.53e-4 | 1.19e-3 | — | 1.99e-2 | 0.99419 | **pass** |
 | layers 28-47 | 12 (4 categories) | 1548 | 9.34e-5 | 4.06e-4 | 1.51e-3 | 9.67e-3 | 0.99742 | **pass** |
 | layers 32-47 | 12 (4 categories) | 1548 | 5.81e-5 | 1.75e-4 | 6.90e-4 | 1.36e-2 | 0.99677 | **pass** |
 | layers 0-47 | 3 (`code` only) | 387 | 1.099e-3 | 5.017e-3 | 1.510e-2 | 3.913e-2 | 0.9922 | fail |
 | limit | | | 1e-3 | 5e-3 | 2e-2 | 5e-2 | 0.99 | |
 
-**Layers 28-47 is the deepest certified scope.** It passes every calibrated
+**Layers 20-47 is the deepest certified scope.** It passes every calibrated gate
+with 4.0x headroom on the mean and 4.2x on p95, top-1 1539/1548, three identical
+trajectory hashes, no scope failures, and `measurement_valid: true` with no
+blockers. It is worth about **+4.15 s** on the measured prefill. Its nine top-1
+misses are all inside the 135-row flip-eligible set and none outside it.
+
+The first 20-47 run was invalidated on provenance grounds — `scripts/check_lineage.py`
+was edited while it was in flight, which `execution_affecting_paths` named
+directly. The clean-tree re-run reproduced it exactly: identical strict and
+candidate logit digests and a byte-identical quality summary, which also
+demonstrates cross-process determinism of the gate.
+
+**Layers 28-47** It passes every calibrated
 gate with 10.7x headroom on the mean and 12.3x on p95, `hard_gates_passed` and
 `eligible_for_automatic_admission` both true, zero scope failures, and — unlike
 the two arms above it — `measurement_valid: true` with no qualification
@@ -432,12 +445,31 @@ because they run the shortest prompts, by a factor of `1.085` at 28-47
 | 32-47 *(control)* | 4.916e-5 | — | certified | 2.557e-4 | 1/132 | — | 2.591 s |
 
 Mean KL is monotone across all seven scopes, from `5.81e-5` at 32-47 to
-`1.356e-3` at 8-47, so the mean-KL boundary sits between layers 12 and 16.
-Contiguous scopes reaching layers 0-7 are therefore out of range, which means
-the roughly +2.09 s those layers carry is unreachable without a non-contiguous
-scope.
+`1.356e-3` at 8-47, so the screens order the layer axis reliably.
 
-Top-1 is the open question the screens cannot answer. The miss counts trend the
+**Correction, after the 20-47 full arm.** An earlier revision of this section
+read the screens through a single `1.15x` correction and concluded that the
+mean-KL boundary sits between layers 12 and 16, and therefore that layers 0-7
+were out of contiguous range. That was wrong, because the screen-to-full ratio
+is not a constant:
+
+| Scope | Screen mean KL | Full mean KL | Full / screen |
+| --- | ---: | ---: | ---: |
+| 32-47 | 4.916e-5 | 5.808e-5 | 1.181 |
+| 28-47 | 8.606e-5 | 9.342e-5 | 1.086 |
+| 20-47 | 4.986e-4 | **2.527e-4** | **0.507** |
+
+At depth the screen *overestimates* by about 2x rather than underestimating by
+15%. Reading the 20-47 screen through the shallow factor predicted `5.7e-4`
+against an actual `2.5e-4`. Screens are therefore treated as an interval over
+the observed ratio range `0.50`-`1.20`, and decide only when that whole interval
+falls on one side of the limit. Under that treatment 16-47 and 24-47 screen as
+passes, while **8-47 and 12-47 are inconclusive rather than failing** — their
+intervals straddle the `1e-3` mean limit. Layers 0-7 are not ruled out by any
+evidence now in hand; they are unmeasured. The normative rule is
+`docs/EXECUTION-PROFILES.md` 6.4.
+
+Top-1 is the other question the screens cannot answer. The miss counts trend the
 right way — 0 and 1 at the certified scopes, 2 at 24-47, 3 at 20-47 and 16-47,
 4 below — but every screen interval spans 0.99, so none of them separates a
 passing scope from a failing one. Only a 1548-row arm can.
