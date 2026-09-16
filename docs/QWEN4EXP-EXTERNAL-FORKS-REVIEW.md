@@ -286,6 +286,85 @@ findings:
   warm (our PLE is resident with constant 3.1 MB H2D), their MTP adaptive
 depth (already noted for the W7900 lane), and all Metal/NAX specifics.
 
+## Comparator Arithmetic: the forks trade accuracy further than we do
+
+The dense Q8_0 prefill comparator does not hold exact arithmetic while beating
+us on speed. It makes the same class of trade hipEngine gates under
+`docs/EXECUTION-PROFILES.md`, and it makes a **coarser** one, on the same
+operation, ungated.
+
+### What the source says
+
+`ggml/src/ggml-cuda/mmb.cu` in `halobox-pr63` at `c4aa30229`:
+
+| Stage | Symbol | Representation |
+| --- | --- | --- |
+| Activation conversion | `mmb_cvt_f32_bf16` | F32 -> **BF16** |
+| Q8_0 weight dequantization | `mmb_dq_row68` | **BF16** ("into 64 bf16 in LDS") |
+| Matmul | `__builtin_amdgcn_wmma_f32_16x16x16_bf16_w32` | **BF16** operands, F32 accumulate |
+
+hipEngine's ported sibling, `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip`:
+
+| Stage | Symbol | Representation |
+| --- | --- | --- |
+| Activation conversion | in-kernel during LDS staging | F32 -> **F16** |
+| Matmul | `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32` | **F16** operands, F32 accumulate |
+
+Same accumulate width, same WMMA shape, same tile geometry. The operands differ:
+BF16 carries 8 significand bits, F16 carries 11. The `.hip` header already
+records the choice as deliberate - RDNA3 runs both at the same WMMA rate, and
+F16 matches the in-tree lineage in `gguf_q8_0_prefill.hip`.
+
+`mmb.cu` is **fork-specific**. It is present in `pwilkin-llamacpp` (`40a9f4d01`)
+and `halobox-pr63` (`c4aa30229`), and absent from `upstream-llamacpp` and
+`halobox-strix` in the same pinned set.
+
+### What the measurement says
+
+From the identical-operand replay packet (`layers.8.attn_qkv`, rows 1024,
+K 2560, M 10240) in
+`benchmarks/results/2026-09-16-dense-wide-q8-prefill-candidate/artifact.json`,
+where the exact F64 result has max absolute value `13.595`:
+
+| Arithmetic class | Max abs error vs exact F64 | Max relative |
+| --- | ---: | ---: |
+| F32 coltile (our strict and production default) | — | `1.51e-7` |
+| IU8 WMMA (`iu8_wmma_prefill`) | — | `3.90e-7` |
+| **F16 operands (our `dense_wide256`, `wmma_prefill`)** | `0.00283` | `2.08e-4` |
+| **BF16 operands (the comparator's class)** | `0.0922`-`0.0978` | `6.8e-3`-`7.2e-3` |
+
+The BF16 row is derived, not directly measured on the comparator's output. The
+artifact records `max_abs_vs_bf16both = 0.09499`: our F16 kernel's deviation
+from a reference with **both operands rounded to BF16**, which is the
+comparator's arithmetic class. Bounding that against our own `0.00283` from
+exact F64 gives the interval above. The comparator kernel's own output has not
+been compared against F64 directly, and the replay bridge already captures it,
+so closing that is cheap and is listed as E10 below.
+
+**The comparator's arithmetic is about 33x coarser than the path we spent this
+campaign gating.** For scale, our F16 kernel sits `1.11e-4` from an
+F16-simulated reference, so almost all of its `2.08e-4` relative error is
+operand rounding rather than accumulation order.
+
+### Why this matters to the campaign
+
+1. **We are not choosing between "their speed" and "our accuracy".** The
+   1.339 ms comparator kernel and our 2.573 ms `dense_wide256` are both
+   inexact; theirs is more inexact. The remaining 1.93x gap is the activation
+   path - converting once rather than once per column block - and is measured
+   as such, not a precision dividend.
+2. **A BF16 variant is available to us and would be faster still**, at the cost
+   of moving from `2.08e-4` to roughly `7e-3` relative. Whether that survives
+   the production envelope is an open question and must be answered by the
+   gate, not by the comparator's example. It is plausible that it does not:
+   the F16 path at layers 0-47 already fails mean KL, and BF16 would be coarser
+   everywhere.
+3. **Their shipping this ungated is not evidence that it is safe**, and equally
+   our gate failing a scope is not evidence that they are wrong. The two
+   projects answer different questions. What the comparison does establish is
+   that the accuracy budget on this operation is a *choice*, and that our
+   current choice is the conservative one by a wide margin.
+
 ## Campaign Experiments
 
 Do not restart completed R4 work or interrupt current Q5_1 admission.
@@ -304,6 +383,7 @@ external headline ratios do not supply current recoverable milliseconds.
 | E6 / P11 MTP | Count duplicate target replay forwards at each rejection depth; test full/partial restore into dirty destinations and shared target/draft allocation accounting. | Complete true-AR category/heldout economics and exact state/control remain binding. Capacity beyond1K and batch-invariant verification precede budget/confidence tuning. No headline-driven MTP default. |
 | E7 / separate serving-memory followup | Measure PLE page-cache pressure, pinned resident bytes, startup fragmentation, and ownership-preserving in-place prefix snapshots. | First compare with existing PLE/prefix ownership. Charge all retained KV/state and additional buffers; preserve cache-hit/cold policy and isolation. No host sysctl/THP change, Halogen installation or new weight format is authorized by this review. |
 | E8 / R7 QSA prefill + E1 MoE prefill | Screen the nasone32 RDNA3.5 mechanisms on our owners after the R2d re-rank: (a) D=256 QSA prefill tile-config/occupancy sweep (reference `ed11a0d2f`); (b) expert-row-aware tile J from typical expert width on the retained MoE grouped chains (references `47ff3777a`/`9a764c613`/`7dfa528e3`, strengthening E1). | Author rows are gfx1100/`UD_Q3_XXL`/PP8192 with RAM offload and are not transferable rates. Representation-preserving only: no arithmetic change in (a); charge tile-map and padding overhead against actual routing histograms in (b). The fork's multi-GPU machinery, expert cache and lazy-PLE staging stay out of this campaign's scope. |
+| E10 / comparator arithmetic | Measure the comparator's own dense MMB output against the exact F64 reference on the existing identical-operand replay packet, using `tools/replay_bridge/compare_outputs.py`. Then screen a BF16-operand variant of `dense_wide256` through the full production gate at the deepest admissible layer scope. | The BF16 row in the arithmetic table above is derived from our F16 kernel's distance to a BF16-simulated reference, not measured on the comparator. Do not quote it as the comparator's measured error until that run exists. A BF16 variant is admissible only on the same calibrated envelope as every other production path; the comparator shipping it ungated is not evidence. |
 | E9 / P10 long-context lane | First measure our own current-path context-scaling curve (16K/64K/256K prefill and decode, production default, chunk1024) - the existing P10 rows are pre-campaign, chunk512 and instrumented. Then, if deep-context memory or snapshot costs bind, screen the mlx-serve QSA raw-key ring (`e0a4264`): retain only an open-block-plus-verify-width ring of raw index keys with the pooled bank as history, redesigning snapshot/restore to carry block-close leftovers. | mlx-serve rows are M5 Max/4-bit MLX/llmprobe and are not comparator evidence; the flatness mechanism is the shared hybrid architecture, not a transferable rate. The ring changes state/snapshot semantics: full logits/state/KV gates, rollback and restore exactness, and the native-capacity memory ledger (262144 admission, 106.87 GB tracked) must be re-admitted. No protocol change without a measured baseline first. |
 
 Already covered mechanisms include radix QSA selection, gathered decode,
