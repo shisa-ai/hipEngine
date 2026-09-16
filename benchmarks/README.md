@@ -1519,7 +1519,29 @@ product's 32 (the replay takes 55 min, from
 the longest; the reference's own recorded runs take 150-370 s per case). Solver
 arithmetic parity is the M4 gate's claim, so step count does not affect what this
 one measures. Replaying `english-full-s1234` twice gives **bit-identical**
-latents.
+latents. The per-case replay times in the table are the figures this gate produced
+at the revision that established the frame and sample counts; the same twelve cases
+at 2 ODE steps replay in **527.4 s** in total with the attention and projection work
+that followed.
+
+Measured against the reference's own recorded runs on the same host, per stage,
+across all twelve cases at 2 ODE steps:
+
+| Stage | hipEngine | Reference | Ratio |
+| --- | ---: | ---: | ---: |
+| FP32 Oobleck decode | 332.78 s | 2 049.23 s | **6.16x faster** |
+| Acoustic solver, raw | 194.53 s | 537.52 s | 2.76x faster (fewer steps) |
+| Acoustic solver, per ODE step | 97.27 s | 16.80 s | **5.79x slower** |
+
+The decode row is fully matched: both sides decode the same latent frame counts and
+the stage does not depend on the step count, so 6.16x is like for like. The solver
+row is not, because the reference always solves at its own 32 steps, so its raw time
+is larger than a 2-step run's by construction; only the per-step row is matched. That
+row was **26.29x** before the attention and projection work described in the next
+section and is **5.79x** now, a 4.54x improvement in the per-step ratio.
+`scripts/yue2_reference_comparison.py` produces both tables. Evidence:
+[`comparison`](results/yue2_reference_comparison_20260917.json),
+[`pre-fix comparison`](results/yue2_reference_comparison_pre_attention_fix_20260917.json).
 
 A separate live run exercises the whole session rather than recorded
 conditioning: a greedy request plans and decodes 96 semantic
