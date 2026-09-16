@@ -1,0 +1,590 @@
+{
+ "schema_version": 1,
+ "kind": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+ "status": "complete",
+ "created_at": "2026-09-16T14:46:30.293747+00:00",
+ "measurement_valid": true,
+ "performance_claim": false,
+ "profile_qualification_claim": true,
+ "qualification_blockers": [],
+ "route": {
+  "surface": "post-binder HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
+  "candidate_layers": "28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+  "teacher_selector": "",
+  "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+  "candidate_chain": "wmma_prefill_f32_f32_out",
+  "warmup_request_after_selector_flip": true,
+  "selector_restored_after_capture": true
+ },
+ "protocol": {
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case_count": 12,
+  "decode_steps": 128,
+  "candidate_repeat_runs": 3,
+  "execution_profile": "production",
+  "prefill_chunk_size": 1024,
+  "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+  "teacher_scope": "production profile with the Q8 dense prefill selector cleared; candidate-local isolation of the changed route",
+  "thresholds_evaluated": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "profile_manifest_sha256": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+ },
+ "quality": {
+  "finite": true,
+  "top_k": 5,
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "summary": {
+   "rows": 1548,
+   "kl_mean": 9.342375191002489e-05,
+   "kl_p50": 1.7409981578039388e-06,
+   "kl_p95": 0.00040628265668058523,
+   "kl_p99": 0.001509618499715812,
+   "kl_max": 0.009671168818160577,
+   "top1_agreement": 0.9974160206718347,
+   "top1_matches": 1544,
+   "topk_overlap_mean": 0.9916020671834626,
+   "strict_teacher_nll_mean": 0.16820671144721927,
+   "candidate_teacher_nll_mean": 0.16821343302454195,
+   "teacher_nll_delta": 6.721577322676975e-06,
+   "teacher_delta_p_mean": -1.2087348460629955e-06,
+   "strict_margin_min": 0.00206756591796875,
+   "max_abs_logit_delta": 1.7705285549163818,
+   "flip_eligible_rows": 87,
+   "flip_eligible_share": 0.0562015503875969,
+   "top1_mismatches_flip_eligible": 4,
+   "top1_mismatches_outside_flip_eligible": 0
+  },
+  "by_scope": {
+   "category": {
+    "code": {
+     "rows": 387,
+     "kl_mean": 0.00010170955493971024,
+     "kl_p50": 6.785533090542157e-07,
+     "kl_p95": 0.00037937799677358465,
+     "kl_p99": 0.001357713736243478,
+     "kl_max": 0.009671168818160577,
+     "top1_agreement": 1.0,
+     "top1_matches": 387,
+     "topk_overlap_mean": 0.9901808785529715,
+     "strict_teacher_nll_mean": 0.13416915264392285,
+     "candidate_teacher_nll_mean": 0.13389792797159564,
+     "teacher_nll_delta": -0.00027122467232720826,
+     "teacher_delta_p_mean": 0.00019038699460754624,
+     "strict_margin_min": 0.030759811401367188,
+     "max_abs_logit_delta": 1.7705285549163818,
+     "flip_eligible_rows": 21,
+     "flip_eligible_share": 0.05426356589147287,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_en": {
+     "rows": 387,
+     "kl_mean": 0.00013812222307394128,
+     "kl_p50": 4.716948099298848e-06,
+     "kl_p95": 0.0006520214059036957,
+     "kl_p99": 0.0030753644700149355,
+     "kl_max": 0.00584786784621657,
+     "top1_agreement": 0.9922480620155039,
+     "top1_matches": 384,
+     "topk_overlap_mean": 0.9906976744186046,
+     "strict_teacher_nll_mean": 0.22039774034926424,
+     "candidate_teacher_nll_mean": 0.22053162748449487,
+     "teacher_nll_delta": 0.00013388713523063145,
+     "teacher_delta_p_mean": -4.7188755328829244e-05,
+     "strict_margin_min": 0.00206756591796875,
+     "max_abs_logit_delta": 1.385148525238037,
+     "flip_eligible_rows": 32,
+     "flip_eligible_share": 0.082687338501292,
+     "top1_mismatches_flip_eligible": 3,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_ja": {
+     "rows": 387,
+     "kl_mean": 6.054708218705674e-05,
+     "kl_p50": 2.579406155951341e-06,
+     "kl_p95": 0.00029937119364940385,
+     "kl_p99": 0.0008162159225840415,
+     "kl_max": 0.0020247633645764777,
+     "top1_agreement": 0.9974160206718347,
+     "top1_matches": 386,
+     "topk_overlap_mean": 0.9943152454780361,
+     "strict_teacher_nll_mean": 0.1707654076112409,
+     "candidate_teacher_nll_mean": 0.17100475234264606,
+     "teacher_nll_delta": 0.0002393447314051611,
+     "teacher_delta_p_mean": -0.0001845151681675493,
+     "strict_margin_min": 0.021602630615234375,
+     "max_abs_logit_delta": 1.7466926574707031,
+     "flip_eligible_rows": 12,
+     "flip_eligible_share": 0.031007751937984496,
+     "top1_mismatches_flip_eligible": 1,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "mixed_ja_en": {
+     "rows": 387,
+     "kl_mean": 7.33161474393913e-05,
+     "kl_p50": 6.326609914968319e-07,
+     "kl_p95": 0.0004065186004056906,
+     "kl_p99": 0.0012090210875682651,
+     "kl_max": 0.002056990021609573,
+     "top1_agreement": 1.0,
+     "top1_matches": 387,
+     "topk_overlap_mean": 0.9912144702842378,
+     "strict_teacher_nll_mean": 0.147494545184449,
+     "candidate_teacher_nll_mean": 0.14741942429943125,
+     "teacher_nll_delta": -7.512088501773762e-05,
+     "teacher_delta_p_mean": 3.6481989504580336e-05,
+     "strict_margin_min": 0.008342742919921875,
+     "max_abs_logit_delta": 1.3612384796142578,
+     "flip_eligible_rows": 22,
+     "flip_eligible_share": 0.056847545219638244,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "shape": {
+    "c1": {
+     "rows": 1536,
+     "kl_mean": 9.415360363814792e-05,
+     "kl_p50": 1.9051248580786804e-06,
+     "kl_p95": 0.0004099123708593311,
+     "kl_p99": 0.001520286326132768,
+     "kl_max": 0.009671168818160577,
+     "top1_agreement": 0.9973958333333334,
+     "top1_matches": 1532,
+     "topk_overlap_mean": 0.9916666666666667,
+     "strict_teacher_nll_mean": 0.16952082598819387,
+     "candidate_teacher_nll_mean": 0.16952760005606424,
+     "teacher_nll_delta": 6.774067870363165e-06,
+     "teacher_delta_p_mean": -1.2181563118687636e-06,
+     "strict_margin_min": 0.00206756591796875,
+     "max_abs_logit_delta": 1.7705285549163818,
+     "flip_eligible_rows": 87,
+     "flip_eligible_share": 0.056640625,
+     "top1_mismatches_flip_eligible": 4,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "prefill_last": {
+     "rows": 12,
+     "kl_mean": 2.730710275954894e-09,
+     "kl_p50": 4.208226314020881e-12,
+     "kl_p95": 1.4274003753883616e-08,
+     "kl_p99": 2.6280446892951564e-08,
+     "kl_max": 2.9282057677718528e-08,
+     "top1_agreement": 1.0,
+     "top1_matches": 12,
+     "topk_overlap_mean": 0.9833333333333334,
+     "strict_teacher_nll_mean": 5.020246823667352e-08,
+     "candidate_teacher_nll_mean": 5.298969000050946e-08,
+     "teacher_nll_delta": 2.78722176383594e-09,
+     "teacher_delta_p_mean": -2.7872229246828084e-09,
+     "strict_margin_min": 14.672698974609375,
+     "max_abs_logit_delta": 1.7466926574707031,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "transition": {
+    "prefill_to_c1": {
+     "rows": 12,
+     "kl_mean": 2.730710275954894e-09,
+     "kl_p50": 4.208226314020881e-12,
+     "kl_p95": 1.4274003753883616e-08,
+     "kl_p99": 2.6280446892951564e-08,
+     "kl_max": 2.9282057677718528e-08,
+     "top1_agreement": 1.0,
+     "top1_matches": 12,
+     "topk_overlap_mean": 0.9833333333333334,
+     "strict_teacher_nll_mean": 5.020246823667352e-08,
+     "candidate_teacher_nll_mean": 5.298969000050946e-08,
+     "teacher_nll_delta": 2.78722176383594e-09,
+     "teacher_delta_p_mean": -2.7872229246828084e-09,
+     "strict_margin_min": 14.672698974609375,
+     "max_abs_logit_delta": 1.7466926574707031,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "steady": {
+     "rows": 1536,
+     "kl_mean": 9.415360363814792e-05,
+     "kl_p50": 1.9051248580786804e-06,
+     "kl_p95": 0.0004099123708593311,
+     "kl_p99": 0.001520286326132768,
+     "kl_max": 0.009671168818160577,
+     "top1_agreement": 0.9973958333333334,
+     "top1_matches": 1532,
+     "topk_overlap_mean": 0.9916666666666667,
+     "strict_teacher_nll_mean": 0.16952082598819387,
+     "candidate_teacher_nll_mean": 0.16952760005606424,
+     "teacher_nll_delta": 6.774067870363165e-06,
+     "teacher_delta_p_mean": -1.2181563118687636e-06,
+     "strict_margin_min": 0.00206756591796875,
+     "max_abs_logit_delta": 1.7705285549163818,
+     "flip_eligible_rows": 87,
+     "flip_eligible_share": 0.056640625,
+     "top1_mismatches_flip_eligible": 4,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   }
+  },
+  "scope_failures": [],
+  "rows_over_review_boundary": [],
+  "top1_mismatch_rows": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 542,
+    "request_id": "general_en-p1024",
+    "teacher_step": 26,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 11567,
+    "row_index": 542,
+    "kl": 0.00017256549065002006,
+    "top1_equal": false,
+    "strict_top1_token_id": 11567,
+    "candidate_top1_token_id": 61446,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.0072193145751953125,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.7307204536745946,
+    "candidate_teacher_nll": 0.7464610880647218,
+    "teacher_delta_p": -0.007520744225810783,
+    "max_abs_logit_delta": 0.1494731903076172
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 607,
+    "request_id": "general_en-p1024",
+    "teacher_step": 91,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 9077,
+    "row_index": 607,
+    "kl": 2.0483260201018636e-05,
+    "top1_equal": false,
+    "strict_top1_token_id": 9077,
+    "candidate_top1_token_id": 25522,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.011167526245117188,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.7926807199822327,
+    "candidate_teacher_nll": 0.7981808841658509,
+    "teacher_delta_p": -0.0024827042805202204,
+    "max_abs_logit_delta": 0.08554363250732422
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 719,
+    "request_id": "general_en-p4096",
+    "teacher_step": 74,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 25522,
+    "row_index": 719,
+    "kl": 8.639884381372942e-05,
+    "top1_equal": false,
+    "strict_top1_token_id": 25522,
+    "candidate_top1_token_id": 9077,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.025753021240234375,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.8083030511099141,
+    "candidate_teacher_nll": 0.8211122124299605,
+    "teacher_delta_p": -0.005671535246717929,
+    "max_abs_logit_delta": 0.0688028335571289
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 1129,
+    "request_id": "general_ja-p4096",
+    "teacher_step": 97,
+    "category": "general_ja",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 1876,
+    "row_index": 1129,
+    "kl": 0.0005184163684594718,
+    "top1_equal": false,
+    "strict_top1_token_id": 1876,
+    "candidate_top1_token_id": 1483,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.0360107421875,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.730136028907498,
+    "candidate_teacher_nll": 0.7634322132819527,
+    "teacher_delta_p": -0.015779393480444437,
+    "max_abs_logit_delta": 0.12833654880523682
+   }
+  ],
+  "hard_gates_passed": true,
+  "requires_outlier_review": false,
+  "eligible_for_automatic_admission": true
+ },
+ "repeat_determinism": {
+  "runs": 3,
+  "passed": true,
+  "mismatches": [],
+  "trajectory_sha256_by_prompt": [
+   [
+    "e5f4f98fc9fd06da35bb7b8dc4f35d3981e4cb003cd0717778b5265ed2500b95",
+    "e5f4f98fc9fd06da35bb7b8dc4f35d3981e4cb003cd0717778b5265ed2500b95",
+    "e5f4f98fc9fd06da35bb7b8dc4f35d3981e4cb003cd0717778b5265ed2500b95"
+   ],
+   [
+    "dda9e5734bb4c6ed5cac86042f0030661d748650e86e1c9b4f5e00b6b3fbb2e1",
+    "dda9e5734bb4c6ed5cac86042f0030661d748650e86e1c9b4f5e00b6b3fbb2e1",
+    "dda9e5734bb4c6ed5cac86042f0030661d748650e86e1c9b4f5e00b6b3fbb2e1"
+   ],
+   [
+    "588eab60cffde32b110a908dc5d4cc80491545df8b95a195571d0ffc1b83c585",
+    "588eab60cffde32b110a908dc5d4cc80491545df8b95a195571d0ffc1b83c585",
+    "588eab60cffde32b110a908dc5d4cc80491545df8b95a195571d0ffc1b83c585"
+   ],
+   [
+    "c562a8fbe399d76574155e420238b6dc866849f8fe3620195a7efa6f47f83128",
+    "c562a8fbe399d76574155e420238b6dc866849f8fe3620195a7efa6f47f83128",
+    "c562a8fbe399d76574155e420238b6dc866849f8fe3620195a7efa6f47f83128"
+   ],
+   [
+    "eb5423b29e40f75c60b3e2df5adfc053c386511ca058bc03fb150f4f84b01bca",
+    "eb5423b29e40f75c60b3e2df5adfc053c386511ca058bc03fb150f4f84b01bca",
+    "eb5423b29e40f75c60b3e2df5adfc053c386511ca058bc03fb150f4f84b01bca"
+   ],
+   [
+    "571118fbe3956717e150cf5b385393522430c990d4b60b95cf3285be9257a0d7",
+    "571118fbe3956717e150cf5b385393522430c990d4b60b95cf3285be9257a0d7",
+    "571118fbe3956717e150cf5b385393522430c990d4b60b95cf3285be9257a0d7"
+   ],
+   [
+    "96dba7fb5354b1fb40fb8fbd351cd944e1e3c91f1a58d206ec97ab33a5267856",
+    "96dba7fb5354b1fb40fb8fbd351cd944e1e3c91f1a58d206ec97ab33a5267856",
+    "96dba7fb5354b1fb40fb8fbd351cd944e1e3c91f1a58d206ec97ab33a5267856"
+   ],
+   [
+    "c8a1bb2813c9a70f6234ae3d8fbeea65d60869950e42798c89ff171ab1b309a2",
+    "c8a1bb2813c9a70f6234ae3d8fbeea65d60869950e42798c89ff171ab1b309a2",
+    "c8a1bb2813c9a70f6234ae3d8fbeea65d60869950e42798c89ff171ab1b309a2"
+   ],
+   [
+    "40da76d9422652af1c7ca02735f442bacab8086571b8d9be09bc0cdae05f75ba",
+    "40da76d9422652af1c7ca02735f442bacab8086571b8d9be09bc0cdae05f75ba",
+    "40da76d9422652af1c7ca02735f442bacab8086571b8d9be09bc0cdae05f75ba"
+   ],
+   [
+    "a0e2c0e7a6ceba6980fccc88e0800e878f40aeb6bac2bbabbc29ae3eb59f8840",
+    "a0e2c0e7a6ceba6980fccc88e0800e878f40aeb6bac2bbabbc29ae3eb59f8840",
+    "a0e2c0e7a6ceba6980fccc88e0800e878f40aeb6bac2bbabbc29ae3eb59f8840"
+   ],
+   [
+    "63c454160335819366264acebfe5f8878d40404b89d59cd7765abc11a18f4b97",
+    "63c454160335819366264acebfe5f8878d40404b89d59cd7765abc11a18f4b97",
+    "63c454160335819366264acebfe5f8878d40404b89d59cd7765abc11a18f4b97"
+   ],
+   [
+    "72dd3a3d72ff749bc03ac96eb650807118bb5fed78f1b816fc453a6b29a0ac4f",
+    "72dd3a3d72ff749bc03ac96eb650807118bb5fed78f1b816fc453a6b29a0ac4f",
+    "72dd3a3d72ff749bc03ac96eb650807118bb5fed78f1b816fc453a6b29a0ac4f"
+   ]
+  ]
+ },
+ "strict_logits_sha256": "550bb9b832bc7ba273f6b3b3dc24fddcdb8edff724f19a2c781c46a400e118f6",
+ "candidate_logits_sha256": "be3ddac15664c36e6a1d264ffe6338375b59b98503968e74b5caad7e7ed8c4ec",
+ "variant_manifests": {
+  "candidate_evidentiary": {
+   "kind": "hipengine_execution_profile_manifest",
+   "schema_version": 1,
+   "execution_profile": "production",
+   "backend": "hip_gfx1151",
+   "model": "qwen4_exp_gguf",
+   "quant": "gguf_ud_q4_k_xl",
+   "kv_policy": "paged_bf16_qsa_index_f32",
+   "graph_policy": "request_owned_exact_moe_graph_c1",
+   "selections": [
+    {
+     "layer": "linear",
+     "scope": "prefill_dense_q8_wmma_layers",
+     "selected_variant": "wmma_prefill_f32_f32_out",
+     "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+     "evidence_artifact": null,
+     "registry_quant": "gguf_q8_0"
+    }
+   ]
+  }
+ },
+ "prompts": [
+  {
+   "id": "code-p512",
+   "category": "code",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7"
+  },
+  {
+   "id": "code-p1024",
+   "category": "code",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d"
+  },
+  {
+   "id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+  },
+  {
+   "id": "general_en-p512",
+   "category": "general_en",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6"
+  },
+  {
+   "id": "general_en-p1024",
+   "category": "general_en",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7"
+  },
+  {
+   "id": "general_en-p4096",
+   "category": "general_en",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91"
+  },
+  {
+   "id": "general_ja-p512",
+   "category": "general_ja",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295"
+  },
+  {
+   "id": "general_ja-p1024",
+   "category": "general_ja",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d"
+  },
+  {
+   "id": "general_ja-p4096",
+   "category": "general_ja",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87"
+  },
+  {
+   "id": "mixed_ja_en-p512",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8"
+  },
+  {
+   "id": "mixed_ja_en-p1024",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010"
+  },
+  {
+   "id": "mixed_ja_en-p4096",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51"
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-09-16T14:46:30.029434+00:00",
+  "host_name": "gfx1151",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "17c6ea7d65889a6d1b25452e4d30dd98bdbd37d7",
+  "git_branch": "qwen3.8-flash-next",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": true,
+  "untracked_count": 2,
+  "dirty": true,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [
+   "docs/superpowers/plans/2026-09-13-qwen38-gfx1151-release-qualification.md",
+   "worklog/entries/20260916T143214.687289Z-lhl-q8-wmma-layer-scope-value-73c28b.md"
+  ],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "kv_dtype": "bf16",
+  "command": [
+   "python3",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "--model-root",
+   "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--decode-steps",
+   "128",
+   "--repeat-runs",
+   "3",
+   "--layers",
+   "28-47",
+   "--prefill-chunk-size",
+   "1024",
+   "--output",
+   "benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact-layers28-47-4cat.json"
+  ],
+  "environment": {
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+  "timing_protocol": "none_full_logits_only_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": {
+   "enabled": false,
+   "kind": null,
+   "command": null
+  }
+ }
+}

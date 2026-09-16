@@ -409,15 +409,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=1, sort_keys=False) + "\n")
     quality = artifact["quality"]
+    # The evaluator nests its figures under "summary"; reading them from the
+    # top level printed nulls for every metric.
+    summary = quality.get("summary", {})
     print(
         json.dumps(
             {
                 "status": artifact["status"],
                 "measurement_valid": artifact["measurement_valid"],
-                "mean_kl": quality.get("mean_kl"),
-                "p95_kl": quality.get("p95_kl"),
-                "max_kl": quality.get("max_kl"),
-                "top1_rate": quality.get("top1_rate"),
+                "hard_gates_passed": quality.get("hard_gates_passed"),
+                "mean_kl": summary.get("kl_mean"),
+                "p95_kl": summary.get("kl_p95"),
+                "max_kl": summary.get("kl_max"),
+                "top1_rate": summary.get("top1_agreement"),
                 "repeat_deterministic": artifact["repeat_determinism"]["passed"],
                 "blockers": artifact["qualification_blockers"],
                 "output": str(args.output),
