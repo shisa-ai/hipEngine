@@ -1,5 +1,7 @@
 # Qwen4Exp Tools And Grammar
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated protocol record.
+
 The Qwen4Exp generator now owns its chat protocol. It renders the embedded
 GGUF Jinja template in an immutable sandbox, including the native XML
 function/parameter instructions, grouped tool responses, assistant tool

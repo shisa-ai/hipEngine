@@ -1,5 +1,7 @@
 # Qwen4Exp context capacity: the 2051 boundary, the cap that was raised, and what it cost
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated accounting record.
+
 **September15 accounting update:** the public generator supplies its prefill
 chunk size to admission. Per-runner scratch is now the larger of the4GiB
 floor and the mandatory allocation footprint, including full-capacity repair

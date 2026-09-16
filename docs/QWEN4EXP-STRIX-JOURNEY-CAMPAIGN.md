@@ -1,5 +1,7 @@
 # Flash-Next Strix Journey Campaign
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated record of the September 13-15 journey and is not updated to reflect new state.
+
 Date: September 13, 2026 UTC (runs span September 13-14 JST).
 Status: September 15 JST recovery review complete; guarded Q8/QSA restored.
 Optimization execution resumed September 15 JST. The reconciled

@@ -1,5 +1,7 @@
 # Flash-Next External Fork Review
 
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated review; its arithmetic tables remain current evidence and are linked from the status doc.
+
 Reviewed September 8, 2026 using GitHub's API through `gh`. This is a
 source/documentation review, not reproduced performance or hipEngine admission.
 No external runtime, weights, container or kernel was installed or executed.
