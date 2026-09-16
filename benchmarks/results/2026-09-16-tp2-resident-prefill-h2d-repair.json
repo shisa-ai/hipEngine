@@ -1,0 +1,831 @@
+{
+  "kind": "tp2_resident_prefill_unattributed_h2d_repair",
+  "status": "scoped_correctness_pass",
+  "performance_claim": false,
+  "production_qualified": false,
+  "host": "epyc",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    799,
+    1500,
+    314,
+    12654,
+    421,
+    22741,
+    23066,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "base_commit": "79743fb72a11cf13ef8af702095de3de64c846da",
+  "regression_commit": "7c2a7fb66751abf4fa10f008a47811a39ed2953a",
+  "binding_contract": "Exact host bytes copied to derived device views on ambient device; attributed uploads select/restore the owner; every call <=256 MiB. No arithmetic or variant changes.",
+  "root_cause": "copy_host_to_device only executed inside the device-is-not-None branch. Resident arena and token views with device=None silently skipped required H2D transfers.",
+  "red": {
+    "outer_command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=1 python3 scripts/tp2_resident_prefill_boundary_probe.py --json /tmp/tp2-prefill-boundary/red-xtx.json",
+    "exit_code": 1,
+    "first_bad_stage": "prefill/H2D/decode_scratch.position_buf+decode_scratch.position_tensor",
+    "build": {
+      "stage": "build",
+      "ok": true,
+      "device": "AMD Radeon RX 7900 XTX",
+      "uuid": "cc4d02090dc9c3ff",
+      "pci": "0000:10:00.0",
+      "host_embedding": true,
+      "mapped_embedding": true,
+      "fp16_state": false,
+      "kv": "DType.BF16",
+      "profile": "direct-session default; no promotion certificate",
+      "ms": 99540.32359365374
+    },
+    "last_upload": {
+      "boundary": "prefill/H2D/decode_scratch.position_buf+decode_scratch.position_tensor",
+      "attributed": false,
+      "current_device": 0,
+      "bytes": 8,
+      "sentinel_remaining_bytes": null
+    },
+    "fixture": "tests/fixtures/tp2/resident_position_h2d_noop.json",
+    "expected_i64": 0,
+    "actual_i64": -7878674376980526012,
+    "later_embedding_or_layers_launched": false
+  },
+  "intermediate_attempt": {
+    "exit_code": 1,
+    "stages": 742,
+    "first_bad_stage": "bulk-logits",
+    "reason": "All 64 instrumented layers finite; diagnostic validator incorrectly rejected real resident (1,vocab) logits shape. RED test then repaired validator; no GPU safety fault."
+  },
+  "controls": [
+    {
+      "lane": "final-xtx",
+      "outer_command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=1 python3 scripts/tp2_resident_prefill_boundary_probe.py --json /tmp/tp2-prefill-boundary/final-xtx/probe.json --reference",
+      "exit_code": 0,
+      "instrumented_stages": 746,
+      "all_stages_passed": true,
+      "layer_count": 64,
+      "layer_last_hidden_reference_max_abs": {
+        "0": {
+          "max_abs": 0.0009765625
+        },
+        "1": {
+          "max_abs": 0.001953125
+        },
+        "2": {
+          "max_abs": 0.001953125
+        },
+        "3": {
+          "max_abs": 0.0078125
+        },
+        "4": {
+          "max_abs": 0.0078125
+        },
+        "5": {
+          "max_abs": 0.0078125
+        },
+        "6": {
+          "max_abs": 0.015625
+        },
+        "7": {
+          "max_abs": 0.015625
+        },
+        "8": {
+          "max_abs": 0.015625
+        },
+        "9": {
+          "max_abs": 0.015625
+        },
+        "10": {
+          "max_abs": 0.03125
+        },
+        "11": {
+          "max_abs": 0.03125
+        },
+        "12": {
+          "max_abs": 0.03125
+        },
+        "13": {
+          "max_abs": 0.03125
+        },
+        "14": {
+          "max_abs": 0.03125
+        },
+        "15": {
+          "max_abs": 0.03125
+        },
+        "16": {
+          "max_abs": 0.03125
+        },
+        "17": {
+          "max_abs": 0.03125
+        },
+        "18": {
+          "max_abs": 0.25
+        },
+        "19": {
+          "max_abs": 0.25
+        },
+        "20": {
+          "max_abs": 0.25
+        },
+        "21": {
+          "max_abs": 0.25
+        },
+        "22": {
+          "max_abs": 0.25
+        },
+        "23": {
+          "max_abs": 0.25
+        },
+        "24": {
+          "max_abs": 0.0625
+        },
+        "25": {
+          "max_abs": 0.0625
+        },
+        "26": {
+          "max_abs": 0.03125
+        },
+        "27": {
+          "max_abs": 0.03515625
+        },
+        "28": {
+          "max_abs": 0.03125
+        },
+        "29": {
+          "max_abs": 0.0390625
+        },
+        "30": {
+          "max_abs": 0.046875
+        },
+        "31": {
+          "max_abs": 0.0625
+        },
+        "32": {
+          "max_abs": 0.0625
+        },
+        "33": {
+          "max_abs": 0.0625
+        },
+        "34": {
+          "max_abs": 0.0625
+        },
+        "35": {
+          "max_abs": 0.125
+        },
+        "36": {
+          "max_abs": 0.125
+        },
+        "37": {
+          "max_abs": 0.125
+        },
+        "38": {
+          "max_abs": 0.5
+        },
+        "39": {
+          "max_abs": 0.5
+        },
+        "40": {
+          "max_abs": 0.5
+        },
+        "41": {
+          "max_abs": 0.5
+        },
+        "42": {
+          "max_abs": 0.5
+        },
+        "43": {
+          "max_abs": 0.5
+        },
+        "44": {
+          "max_abs": 0.5
+        },
+        "45": {
+          "max_abs": 0.5
+        },
+        "46": {
+          "max_abs": 0.5
+        },
+        "47": {
+          "max_abs": 0.5
+        },
+        "48": {
+          "max_abs": 1.0
+        },
+        "49": {
+          "max_abs": 1.0
+        },
+        "50": {
+          "max_abs": 1.0
+        },
+        "51": {
+          "max_abs": 1.0
+        },
+        "52": {
+          "max_abs": 0.5
+        },
+        "53": {
+          "max_abs": 0.5
+        },
+        "54": {
+          "max_abs": 0.1875
+        },
+        "55": {
+          "max_abs": 0.25
+        },
+        "56": {
+          "max_abs": 0.5
+        },
+        "57": {
+          "max_abs": 0.25
+        },
+        "58": {
+          "max_abs": 0.375
+        },
+        "59": {
+          "max_abs": 1.5
+        },
+        "60": {
+          "max_abs": 2.0
+        },
+        "61": {
+          "max_abs": 2.0
+        },
+        "62": {
+          "max_abs": 2.0
+        },
+        "63": {
+          "max_abs": 2.0
+        }
+      },
+      "first_bulk_vs_token_eager_hidden_difference": {
+        "layer": 0,
+        "max_abs": 0.0009765625
+      },
+      "checks": [
+        {
+          "stage": "build",
+          "ok": true,
+          "device": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci": "0000:10:00.0",
+          "host_embedding": true,
+          "mapped_embedding": true,
+          "fp16_state": false,
+          "kv": "DType.BF16",
+          "profile": "direct-session default; no promotion certificate",
+          "ms": 93375.54257828742
+        },
+        {
+          "stage": "prefill/H2D/decode_scratch.position_buf+decode_scratch.position_tensor",
+          "ok": true,
+          "shape": [
+            8
+          ],
+          "dtype": "uint8",
+          "finite": 8,
+          "elements": 8,
+          "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 8,
+          "sentinel_remaining_bytes": null,
+          "ms": 0.1797415316104889
+        },
+        {
+          "stage": "prefill/H2D/decode_scratch.context_buf+decode_scratch.context_tensor",
+          "ok": true,
+          "shape": [
+            8
+          ],
+          "dtype": "uint8",
+          "finite": 8,
+          "elements": 8,
+          "sha256": "7c9fa136d4413fa6173637e883b6998d32e1d675f88cddff9dcbcf331820f4b8",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 8,
+          "sentinel_remaining_bytes": null,
+          "ms": 0.3099720925092697
+        },
+        {
+          "stage": "embedding/H2D/session._prefill_token_buf",
+          "ok": true,
+          "shape": [
+            168
+          ],
+          "dtype": "uint8",
+          "finite": 168,
+          "elements": 168,
+          "sha256": "846405413e9a44992aef6476fe05bd1f7360836e1bb8a5e3da309fec5a8a01f3",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 168,
+          "sentinel_remaining_bytes": 1,
+          "ms": 0.25938358157873154
+        },
+        {
+          "stage": "embedding/output",
+          "ok": true,
+          "shape": [
+            21,
+            5120
+          ],
+          "dtype": "float32",
+          "finite": 107520,
+          "elements": 107520,
+          "sha256": "b655ae72f3f02d58b8bc81b34f08454067aaa343e16c1c98ec5b47a0993642d9",
+          "ms": 0.4434743896126747
+        },
+        {
+          "stage": "bulk-logits",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "ms": 0.6177863106131554
+        },
+        {
+          "stage": "token-eager-reference",
+          "ok": true,
+          "kl_mean": 0.0014675709991777976,
+          "kl_max": 0.0014675709991777976,
+          "top1": 1.0,
+          "outer_smoke_pass": true,
+          "production_qualified": false,
+          "ms": 558.1536628305912
+        },
+        {
+          "stage": "bulk-repeat",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "repeat_exact": true,
+          "ms": 195.38950733840466
+        },
+        {
+          "stage": "eager-step",
+          "ok": true,
+          "token_id": 12305,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 12305,
+            "min": -12.632185935974121,
+            "max": 25.698558807373047,
+            "sha256": "3f527ae795a28e2271301d252fe56c710169857c605d5bdd98668b722b0053c3"
+          },
+          "ms": 26.912364177405834
+        },
+        {
+          "stage": "teardown",
+          "ok": true,
+          "ms": 22.542043589055538
+        }
+      ],
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1",
+        "HIPENGINE_GGUF_DECODE_REPACK": "1"
+      },
+      "script_sha256": "a138b8cd3bd89916874699d494f9d56c1fa4a522d5d85deab7b71c5861ace9a7",
+      "memory_sha256": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+      "reference_scope": "Same weights, same chat token IDs, same resident allocation, token-eager runner path. Numerical outer smoke only, not full production category/profile qualification."
+    },
+    {
+      "lane": "final-w7900",
+      "outer_command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=0 python3 scripts/tp2_resident_prefill_boundary_probe.py --json /tmp/tp2-prefill-boundary/final-w7900/probe.json --reference",
+      "exit_code": 0,
+      "instrumented_stages": 746,
+      "all_stages_passed": true,
+      "layer_count": 64,
+      "layer_last_hidden_reference_max_abs": {
+        "0": {
+          "max_abs": 0.0009765625
+        },
+        "1": {
+          "max_abs": 0.001953125
+        },
+        "2": {
+          "max_abs": 0.001953125
+        },
+        "3": {
+          "max_abs": 0.0078125
+        },
+        "4": {
+          "max_abs": 0.0078125
+        },
+        "5": {
+          "max_abs": 0.0078125
+        },
+        "6": {
+          "max_abs": 0.015625
+        },
+        "7": {
+          "max_abs": 0.015625
+        },
+        "8": {
+          "max_abs": 0.015625
+        },
+        "9": {
+          "max_abs": 0.015625
+        },
+        "10": {
+          "max_abs": 0.03125
+        },
+        "11": {
+          "max_abs": 0.03125
+        },
+        "12": {
+          "max_abs": 0.03125
+        },
+        "13": {
+          "max_abs": 0.03125
+        },
+        "14": {
+          "max_abs": 0.03125
+        },
+        "15": {
+          "max_abs": 0.03125
+        },
+        "16": {
+          "max_abs": 0.03125
+        },
+        "17": {
+          "max_abs": 0.03125
+        },
+        "18": {
+          "max_abs": 0.25
+        },
+        "19": {
+          "max_abs": 0.25
+        },
+        "20": {
+          "max_abs": 0.25
+        },
+        "21": {
+          "max_abs": 0.25
+        },
+        "22": {
+          "max_abs": 0.25
+        },
+        "23": {
+          "max_abs": 0.25
+        },
+        "24": {
+          "max_abs": 0.0625
+        },
+        "25": {
+          "max_abs": 0.0625
+        },
+        "26": {
+          "max_abs": 0.03125
+        },
+        "27": {
+          "max_abs": 0.03515625
+        },
+        "28": {
+          "max_abs": 0.03125
+        },
+        "29": {
+          "max_abs": 0.0390625
+        },
+        "30": {
+          "max_abs": 0.046875
+        },
+        "31": {
+          "max_abs": 0.0625
+        },
+        "32": {
+          "max_abs": 0.0625
+        },
+        "33": {
+          "max_abs": 0.0625
+        },
+        "34": {
+          "max_abs": 0.0625
+        },
+        "35": {
+          "max_abs": 0.125
+        },
+        "36": {
+          "max_abs": 0.125
+        },
+        "37": {
+          "max_abs": 0.125
+        },
+        "38": {
+          "max_abs": 0.5
+        },
+        "39": {
+          "max_abs": 0.5
+        },
+        "40": {
+          "max_abs": 0.5
+        },
+        "41": {
+          "max_abs": 0.5
+        },
+        "42": {
+          "max_abs": 0.5
+        },
+        "43": {
+          "max_abs": 0.5
+        },
+        "44": {
+          "max_abs": 0.5
+        },
+        "45": {
+          "max_abs": 0.5
+        },
+        "46": {
+          "max_abs": 0.5
+        },
+        "47": {
+          "max_abs": 0.5
+        },
+        "48": {
+          "max_abs": 1.0
+        },
+        "49": {
+          "max_abs": 1.0
+        },
+        "50": {
+          "max_abs": 1.0
+        },
+        "51": {
+          "max_abs": 1.0
+        },
+        "52": {
+          "max_abs": 0.5
+        },
+        "53": {
+          "max_abs": 0.5
+        },
+        "54": {
+          "max_abs": 0.1875
+        },
+        "55": {
+          "max_abs": 0.25
+        },
+        "56": {
+          "max_abs": 0.5
+        },
+        "57": {
+          "max_abs": 0.25
+        },
+        "58": {
+          "max_abs": 0.375
+        },
+        "59": {
+          "max_abs": 1.5
+        },
+        "60": {
+          "max_abs": 2.0
+        },
+        "61": {
+          "max_abs": 2.0
+        },
+        "62": {
+          "max_abs": 2.0
+        },
+        "63": {
+          "max_abs": 2.0
+        }
+      },
+      "first_bulk_vs_token_eager_hidden_difference": {
+        "layer": 0,
+        "max_abs": 0.0009765625
+      },
+      "checks": [
+        {
+          "stage": "build",
+          "ok": true,
+          "device": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci": "0000:0d:00.0",
+          "host_embedding": true,
+          "mapped_embedding": true,
+          "fp16_state": false,
+          "kv": "DType.BF16",
+          "profile": "direct-session default; no promotion certificate",
+          "ms": 93680.97323086113
+        },
+        {
+          "stage": "prefill/H2D/decode_scratch.position_buf+decode_scratch.position_tensor",
+          "ok": true,
+          "shape": [
+            8
+          ],
+          "dtype": "uint8",
+          "finite": 8,
+          "elements": 8,
+          "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 8,
+          "sentinel_remaining_bytes": null,
+          "ms": 0.15476252883672714
+        },
+        {
+          "stage": "prefill/H2D/decode_scratch.context_buf+decode_scratch.context_tensor",
+          "ok": true,
+          "shape": [
+            8
+          ],
+          "dtype": "uint8",
+          "finite": 8,
+          "elements": 8,
+          "sha256": "7c9fa136d4413fa6173637e883b6998d32e1d675f88cddff9dcbcf331820f4b8",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 8,
+          "sentinel_remaining_bytes": null,
+          "ms": 0.23076310753822327
+        },
+        {
+          "stage": "embedding/H2D/session._prefill_token_buf",
+          "ok": true,
+          "shape": [
+            168
+          ],
+          "dtype": "uint8",
+          "finite": 168,
+          "elements": 168,
+          "sha256": "846405413e9a44992aef6476fe05bd1f7360836e1bb8a5e3da309fec5a8a01f3",
+          "exact_reference": true,
+          "attributed": false,
+          "current_device": 0,
+          "bytes": 168,
+          "sentinel_remaining_bytes": 1,
+          "ms": 0.3125229850411415
+        },
+        {
+          "stage": "embedding/output",
+          "ok": true,
+          "shape": [
+            21,
+            5120
+          ],
+          "dtype": "float32",
+          "finite": 107520,
+          "elements": 107520,
+          "sha256": "b655ae72f3f02d58b8bc81b34f08454067aaa343e16c1c98ec5b47a0993642d9",
+          "ms": 0.3857826814055443
+        },
+        {
+          "stage": "bulk-logits",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "ms": 0.5815662443637848
+        },
+        {
+          "stage": "token-eager-reference",
+          "ok": true,
+          "kl_mean": 0.0014675709991777976,
+          "kl_max": 0.0014675709991777976,
+          "top1": 1.0,
+          "outer_smoke_pass": true,
+          "production_qualified": false,
+          "ms": 646.2746160104871
+        },
+        {
+          "stage": "bulk-repeat",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "repeat_exact": true,
+          "ms": 207.8589517623186
+        },
+        {
+          "stage": "eager-step",
+          "ok": true,
+          "token_id": 12305,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 12305,
+            "min": -12.632185935974121,
+            "max": 25.698558807373047,
+            "sha256": "3f527ae795a28e2271301d252fe56c710169857c605d5bdd98668b722b0053c3"
+          },
+          "ms": 31.47065918892622
+        },
+        {
+          "stage": "teardown",
+          "ok": true,
+          "ms": 23.52277096360922
+        }
+      ],
+      "env": {
+        "HIP_VISIBLE_DEVICES": "0",
+        "HIPENGINE_GGUF_DECODE_REPACK": "1"
+      },
+      "script_sha256": "a138b8cd3bd89916874699d494f9d56c1fa4a522d5d85deab7b71c5861ace9a7",
+      "memory_sha256": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+      "reference_scope": "Same weights, same chat token IDs, same resident allocation, token-eager runner path. Numerical outer smoke only, not full production category/profile qualification."
+    }
+  ],
+  "raw_artifacts": {
+    "/tmp/tp2-prefill-boundary/affected-green.log": "70753501ad0feed8d39c39092f540c47564a55b2855f243fbad105204bc7c95d",
+    "/tmp/tp2-prefill-boundary/copy-red.log": "0ded726e96a73dee06e349006661e5ec2cebc07875cb865e9cc9f59a5d327842",
+    "/tmp/tp2-prefill-boundary/cpu-green.log": "63e7046473c0318d05d26f78534e3040cc9e1ab23843bcf3b1056299b6e4c756",
+    "/tmp/tp2-prefill-boundary/final-w7900/probe.json": "141417fa4c6d6095643269185618de3502f831326d2ad449ab1d2ff089c117a5",
+    "/tmp/tp2-prefill-boundary/final-w7900/probe.log": "226835eb40201ec24934415d6285ec4aa8d87364d5143f66435649a4ffa887f6",
+    "/tmp/tp2-prefill-boundary/final-xtx/probe.json": "620cb53ccc1c9aac560c7ffa8eb73779114ddbc910da267b1102d0826bbaef7f",
+    "/tmp/tp2-prefill-boundary/final-xtx/probe.log": "e70df9a2aad7aa600400f5a355cfd7a06ac1e62a73712d4340336fd452944c11",
+    "/tmp/tp2-prefill-boundary/first-failure.npz": "c5f6a0e390e8f7603097d276f9d30926be8f2bd10f25a05b31294018f55233e1",
+    "/tmp/tp2-prefill-boundary/fixture-red.log": "0bf06c49796173908951b03685cfc55cfc750380f349b028729efa0b4f3e9a71",
+    "/tmp/tp2-prefill-boundary/focused-green.log": "f186e2f61d4840ad6b96f4378a4bbeb782942da2665840267ba0721797264ca6",
+    "/tmp/tp2-prefill-boundary/gpu-copy-green.log": "5ed957adafabd3dccb0fd904bc4df8e9280b90d747d178c37fe005acefd5eec6",
+    "/tmp/tp2-prefill-boundary/green-xtx/probe.json": "10bddbd3b71e2b61d15afedd5efb290a849b86672bf42d9bc66618310ae83b4f",
+    "/tmp/tp2-prefill-boundary/green-xtx/probe.log": "8617bbe3cd3a35989ef012502f4377401a98ce04f09953d56c85f432d6538b1c",
+    "/tmp/tp2-prefill-boundary/red-xtx.json": "ebd3e3467b21f6b6278593ac2bd45f3b6c46e1738f5d4c8031499a833a07275d",
+    "/tmp/tp2-prefill-boundary/red-xtx.log": "75822ca997e1ef865a2d0da98266a4e1a5c2f8ac5c3d47a9be294c7ceaa7f6cd",
+    "/tmp/tp2-prefill-boundary/shape-red.log": "4bd2eead0314263a070e4a97572d08125db6f8396201d2c67abcae157d573e3f"
+  },
+  "default_cpu_suite": "Not rerun per assignment. Prior 9476 passed / 17 skipped / 23 failed result remains historical evidence; no claim that the complete suite is now green.",
+  "next": "Parent review before optimized TP1 full baseline. Complete matched full-category/profile/graph baselines are not qualified by this single prompt.",
+  "cpu_validation": {
+    "affected_passed": 97,
+    "guarded_gpu_copy_passed": 2,
+    "cpu_red": "4 failed, 2 passed including recorded 8-byte failure and real resident embedding call",
+    "shape_red": "1 failed, 24 passed; accept the real singleton vocabulary row, reject multi-row/wrong-width/empty/nonfinite"
+  }
+}

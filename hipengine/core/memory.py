@@ -13,6 +13,7 @@ boundaries.
 from __future__ import annotations
 
 import ctypes
+from contextlib import nullcontext
 from dataclasses import dataclass
 from threading import Lock
 
@@ -188,17 +189,19 @@ def copy_host_to_device(
     _check_copy_size(count, buffer.nbytes)
     device = _buffer_device(buffer)
     ptr = buffer.ptr
-    if device is not None:
-        with scoped_current_device(runtime, device.index):
-            # Very large synchronous H2D copies are rejected by the driver
-            # (hard abort, not an error code), so multi-gigabyte resident
-            # uploads go through bounded chunks.
-            chunk = 1 << 28  # 256 MiB
-            offset = 0
-            while offset < count:
-                n = min(chunk, count - offset)
-                runtime.memcpy(ptr + offset, host_ptr + offset, n, MemcpyKind.HOST_TO_DEVICE)
-                offset += n
+    # Unattributed derived views retain the caller's current-device semantics.
+    # They still require the copy; attribution only selects its device scope.
+    scope = nullcontext() if device is None else scoped_current_device(runtime, device.index)
+    with scope:
+        # Very large synchronous H2D copies are rejected by the driver
+        # (hard abort, not an error code), so multi-gigabyte resident
+        # uploads go through bounded chunks, including unattributed views.
+        chunk = 1 << 28  # 256 MiB
+        offset = 0
+        while offset < count:
+            n = min(chunk, count - offset)
+            runtime.memcpy(ptr + offset, host_ptr + offset, n, MemcpyKind.HOST_TO_DEVICE)
+            offset += n
 
 
 def copy_host_array_to_device(

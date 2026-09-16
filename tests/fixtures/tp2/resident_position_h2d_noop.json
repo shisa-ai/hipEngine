@@ -1,0 +1,15 @@
+{
+  "kind": "resident_position_h2d_noop_regression",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "host": "epyc",
+  "device_uuid": "cc4d02090dc9c3ff",
+  "source": "79743fb72 plus diagnostic observer; core memory unchanged",
+  "boundary": "prefill/H2D/decode_scratch.position_buf",
+  "dtype": "int64_le",
+  "shape": [1],
+  "buffer_device": null,
+  "host_expected_bytes": [0, 0, 0, 0, 0, 0, 0, 0],
+  "device_observed_bytes": [68, 140, 26, 171, 101, 83, 169, 146],
+  "contract": "Exact byte copy to derived view on ambient device; no numerical tolerance. Observed bytes are stale data, not a deterministic expected failure pattern."
+}
