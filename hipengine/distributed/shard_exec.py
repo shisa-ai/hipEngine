@@ -138,6 +138,7 @@ class MlpShardRank:
         per_rank_ffn: int,
         partial_dtype: str = "f32",
         mlp_decode_variant: str | None = None,
+        rows: int = 1,
     ) -> None:
         if partial_dtype not in {"f32", "bf16"}:
             raise ValueError(
@@ -148,6 +149,9 @@ class MlpShardRank:
         self.stream = int(stream)
         self.hidden = int(hidden)
         self.per_rank_ffn = int(per_rank_ffn)
+        self.rows = int(rows)
+        if self.rows < 1:
+            raise ValueError(f"rows must be positive, got {rows!r}")
         self.partial_dtype = str(partial_dtype)
         self.partial_itemsize = 4 if partial_dtype == "f32" else 2
         # The shape-qualified fused gate/up+SiLU variant the policy table
@@ -165,14 +169,16 @@ class MlpShardRank:
             if role not in self._weights:
                 raise ValueError(f"MLP shard weights are missing {role!r}")
 
-        # Persistent activations, allocated once. Sizes: the bf16 input row,
-        # bf16 gate/up/act intermediates, and the down partial the exchange
-        # reduces from, in this rank's partial dtype.
-        self.x_ptr = self._alloc(self.hidden * 2)
-        self.gate_ptr = self._alloc(self.per_rank_ffn * 2)
-        self.up_ptr = self._alloc(self.per_rank_ffn * 2)
-        self.act_ptr = self._alloc(self.per_rank_ffn * 2)
-        self.down_partial_ptr = self._alloc(self.hidden * self.partial_itemsize)
+        # Persistent activations, allocated once for up to ``rows`` rows:
+        # the bf16 input, bf16 gate/up/act intermediates, and the down
+        # partial the exchange reduces from, in this rank's partial dtype.
+        self.x_ptr = self._alloc(self.rows * self.hidden * 2)
+        self.gate_ptr = self._alloc(self.rows * self.per_rank_ffn * 2)
+        self.up_ptr = self._alloc(self.rows * self.per_rank_ffn * 2)
+        self.act_ptr = self._alloc(self.rows * self.per_rank_ffn * 2)
+        self.down_partial_ptr = self._alloc(
+            self.rows * self.hidden * self.partial_itemsize
+        )
 
     # -- execution --------------------------------------------------------
 
@@ -192,18 +198,19 @@ class MlpShardRank:
             runtime=self._runtime,
         )
 
-    def write_input_from_device(self, src_ptr: int) -> None:
-        """Copy one bf16 input row from a device-resident buffer on this rank.
+    def write_input_from_device(self, src_ptr: int, rows: int | None = None) -> None:
+        """Copy up to ``rows`` bf16 rows from a device buffer on this rank.
 
         The producer is a kernel on this rank's device (for example the
-        replicated post-attention norm's output row), so the copy is a
+        replicated post-attention norm's output rows), so the copy is a
         same-device D2D on this rank's own stream: no host round trip, no
         cross-device visibility assumed. The copy is stream-ordered behind
         that producer and ahead of ``forward_partial``.
         """
 
         self._require_live()
-        nbytes = self.hidden * 2
+        rows = self._resolve_rows(rows)
+        nbytes = rows * self.hidden * 2
         from hipengine.core.runtime import MemcpyKind  # noqa: PLC0415
 
         with scoped_current_device(self._runtime, self.device):
@@ -215,11 +222,18 @@ class MlpShardRank:
                 self.stream,
             )
 
+    def _resolve_rows(self, rows: int | None) -> int:
+        selected = self.rows if rows is None else int(rows)
+        if not 1 <= selected <= self.rows:
+            raise ValueError(f"rows {selected} is outside 1..{self.rows}")
+        return selected
+
     def forward_partial(
         self,
         *,
         fused: bool | None = None,
         fused_variant: str | None = None,
+        rows: int | None = None,
     ) -> int:
         """Enqueue this rank's MLP chain; return the down partial's device pointer.
 
@@ -229,6 +243,12 @@ class MlpShardRank:
         partial's dtype is this rank's ``partial_dtype``: f32 where the
         layer's registered down consumer admits it, bf16 where it does not.
 
+        ``rows`` selects a batched (prefill) chain: the same sharded weights
+        and the same full-hidden partial, launched as a GEMM over ``rows``
+        rows instead of a single-row GEMV. Batched prefill always uses the
+        unfused gate/up/SiLU/down chain; the fused decode candidate is a
+        single-row route.
+
         The gate/up+SiLU route: an explicitly passed ``fused`` wins; by
         default the rank runs the fused pair when its construction-time
         ``mlp_decode_variant`` resolved from the policy table, else the
@@ -237,12 +257,16 @@ class MlpShardRank:
         """
 
         self._require_live()
+        rows = self._resolve_rows(rows)
         if fused is None:
             fused = self.mlp_decode_variant is not None
+        if rows > 1:
+            fused = False
         if fused and fused_variant is None:
             fused_variant = self.mlp_decode_variant
         if fused and fused_variant is None:
             raise ValueError("the fused chain needs its registered variant name")
+        use_gemv_decode = rows == 1
         runtime = self._runtime
         from hipengine.runtime.gguf_linear import (  # noqa: PLC0415
             launch_gguf_linear,
@@ -259,10 +283,10 @@ class MlpShardRank:
                     self._weights["ffn_up"],
                     self.x_ptr,
                     self.act_ptr,
-                    1,
+                    rows,
                     self.hidden,
                     self.per_rank_ffn,
-                    use_gemv_decode=True,
+                    use_gemv_decode=use_gemv_decode,
                     registered_decode_variant=fused_variant,
                     stream=self.stream,
                     runtime=runtime,
@@ -270,17 +294,17 @@ class MlpShardRank:
                 if not launched:
                     raise RuntimeError(
                         f"the fused pair+SiLU candidate did not launch at "
-                        f"(1, {self.hidden}, {self.per_rank_ffn})"
+                        f"({rows}, {self.hidden}, {self.per_rank_ffn})"
                     )
             else:
                 launch_gguf_linear(
                     self._weights["ffn_gate"],
                     self.x_ptr,
                     self.gate_ptr,
-                    1,
+                    rows,
                     self.hidden,
                     self.per_rank_ffn,
-                    use_gemv_decode=True,
+                    use_gemv_decode=use_gemv_decode,
                     stream=self.stream,
                     runtime=runtime,
                 )
@@ -288,10 +312,10 @@ class MlpShardRank:
                     self._weights["ffn_up"],
                     self.x_ptr,
                     self.up_ptr,
-                    1,
+                    rows,
                     self.hidden,
                     self.per_rank_ffn,
-                    use_gemv_decode=True,
+                    use_gemv_decode=use_gemv_decode,
                     stream=self.stream,
                     runtime=runtime,
                 )
@@ -299,13 +323,13 @@ class MlpShardRank:
                     self.gate_ptr,
                     self.up_ptr,
                     self.act_ptr,
-                    1,
+                    rows,
                     self.per_rank_ffn,
                     stream=self.stream,
                     runtime=runtime,
                 )
             down_kwargs = {
-                "use_gemv_decode": True,
+                "use_gemv_decode": use_gemv_decode,
                 "stream": self.stream,
                 "runtime": runtime,
             }
@@ -315,7 +339,7 @@ class MlpShardRank:
                 self._weights["ffn_down"],
                 self.act_ptr,
                 self.down_partial_ptr,
-                1,
+                rows,
                 self.per_rank_ffn,
                 self.hidden,
                 **down_kwargs,

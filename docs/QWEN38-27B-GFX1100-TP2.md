@@ -533,6 +533,82 @@ bitwise single-GPU parity just because the weight bytes are unchanged.
   measure the cost. Narrower transport or fused reduction is a separate
   numerical candidate, not an invisible communication optimization.
 
+## Rank-local bulk TP2 prefill design (2026-09-17)
+
+The TP2 session currently drives prefill token-by-token
+(`MlpTP2GenerationSession._forward_token(..., kind='prefill')`), while the
+optimized TP1 product path uses the resident bulk prefill schedule. The
+token-serial schedule is a registered fallback, not the bulk path. The following
+is the minimal bounded plan for rank-local batched/bulk TP2 prefill using
+in-tree primitives. It preserves actual sharded TP2 execution: the MLP stays
+column/row sharded with the cross-rank reduction, and the optimized TP1
+denominator is not bypassed by running a full TP1 model and copying hidden
+state.
+
+### Model geometry (from the supplied GGUF, not hardcoded by name)
+
+`/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` (SHA-256
+`7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b`), 64 layers:
+48 `linear_attention` (GDN) and 16 `full_attention` at interval 4.
+
+| Axis | Value |
+| --- | --- |
+| hidden / ffn / vocab | 5120 / 17408 / 248320 |
+| full attention | 24 q heads, 4 kv heads, key/value length 256, output width 6144 |
+| linear attention | `ssm_inner_size` 6144, `ssm_group_count` 16, `ssm_time_step_rank` 48, `ssm_state_size` 128, `ssm_conv_kernel` 4, `linear_qkv_width` 10240 |
+| MLP shard (N=2) | `per_rank_ffn` 8704 (17408/2, 34x256 block-aligned) |
+| vocab head shard (N=2) | 124160 rows/rank |
+
+Replicated per rank in the current diagnostic: attention and GDN (with the
+explicit tiled value-head mapping) and the final norm. Sharded: MLP gate/up
+(column, output/intermediate axis) and down (row, input axis), and the target
+vocab head. Residual and post-attention norm are replicated; the residual is
+added exactly once after the reduction.
+
+### State and metadata to preserve
+
+- **KV**: `KVLiveSpans` `(base_offsets, live_counts, token_positions,
+  evict_mask)` stays the attention ABI. Bulk prefill writes all prompt rows for
+the full-attention layers; logical positions and causal visibility must match
+the serial schedule. Per-rank KV stays the rank's owned heads.
+- **Conv state**: `(ssm_conv_kernel, linear_qkv_width)` = `(4, 10240)` per
+  linear layer; final value after the chunk must equal the serial final state
+  (up to the declared arithmetic contract).
+- **GDN recurrent state**: `(ssm_time_step_rank, ssm_state_size, ssm_state_size)`
+  = `(48, 128, 128)` per linear layer; the chunk's final recurrent state is the
+  decode entry state.
+- **Residual/hidden chain**: per-chunk `(rows, hidden)` bf16 residual stream;
+  the swap/ownership discipline must match the eager layer loop.
+- **Exchange payload**: down partials are `(rows, hidden)` f32 (or the declared
+  partial dtype) per layer; the reduction is over the shard axis, not rows.
+
+### Bounded packets
+
+1. **P0 (this unit) — CPU planning + reference + RED tests.** A pure module
+   (`hipengine/distributed/tp2_prefill.py`) that plans per-layer batched shapes,
+   chunk boundaries, MLP shard dims, KV/conv/GDN final-state shapes, and an
+   independent numpy reference for the batched sharded MLP reduction. RED CPU
+   tests assert ownership, shape, row independence, chunk boundaries, and
+   reference equality. No device calls, no arithmetic change.
+2. **P1 — Batched rank-local MLP shard.** Extend `MlpShardRank`/`MlpShardGroup`
+   to `rows > 1`: row-major persistent buffers, prefill GEMM launches
+   (`use_gemv_decode=False`) for gate/up/SiLU/down, and a batched reduction
+   payload `rows * hidden`. The strict token-serial path stays registered.
+3. **P2 — Batched replicated attention/GDN prefill per rank.** Reuse the
+   resident prefill primitives (`_run_linear_attention_prefill_layer_rows`,
+   full-attention prefill) per rank with KV span writes and final conv/GDN
+   state, then the prefill -> graph-decode transition (state reset, positions,
+   liveness, multi-GPU streams).
+4. **P3 — Validation.** Bounded GPU probes at the saved 64-token prompt /
+   position 146 plus at least one category-heldout control, then the full D128
+   sustained gate only after the failure is repaired. Kernel numerics that are
+   not bit-exact are evaluated against the production contract, not rejected.
+
+Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
+and register a strict fallback. No new kernel unless a concrete missing
+primitive is identified; no backend/quant dispatch branches; no Torch on the
+hot path.
+
 ## Ordered coder punchlist
 
 Each packet ends with focused tests, an immutable worklog entry, and a scoped
