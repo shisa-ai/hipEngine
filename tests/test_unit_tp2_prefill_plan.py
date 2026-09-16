@@ -16,6 +16,7 @@ from hipengine.distributed.tp2_prefill import (
     batched_sharded_mlp_reference,
     chunk_ranges,
     plan_batched_prefill,
+    run_sharded_mlp_with_residual,
     silu,
 )
 
@@ -125,3 +126,74 @@ def test_plan_layer_ids_and_types_are_complete_and_ordered():
     assert [layer.layer_id for layer in plan.layers] == list(range(64))
     assert [layer.layer_type for layer in plan.layers] == list(Config().layer_types)
     assert plan.chunk_ranges(64) == chunk_ranges(64, 32)
+
+
+class _FakeShardGroup:
+    """Duck-typed shard group: records forward calls, returns per-rank ptrs."""
+
+    def __init__(self, devices=(0, 1), rows=8):
+        self.devices = tuple(devices)
+        self.rows = int(rows)
+        self.calls = []
+
+    def forward(self, layer_id, inputs, *, rows=None):
+        self.calls.append((layer_id, dict(inputs), rows))
+        return {device: 0x1000 + device for device in self.devices}
+
+
+def test_sharded_mlp_with_residual_runs_group_once_and_adds_once_per_rank():
+    group = _FakeShardGroup()
+    events = []
+
+    def add_residual(device, residual_ptr, mlp_out_ptr, out_ptr, rows):
+        events.append((device, residual_ptr, mlp_out_ptr, out_ptr, rows))
+
+    result = run_sharded_mlp_with_residual(
+        group,
+        layer_id=5,
+        rows=4,
+        post_norm_ptrs={0: 0x200, 1: 0x201},
+        residual_ptrs={0: 0x300, 1: 0x301},
+        out_ptrs={0: 0x400, 1: 0x401},
+        add_residual=add_residual,
+    )
+
+    # Exactly one shard-group forward (one reduction) and one residual add per
+    # rank; the residual consumes the group's reduced MLP output pointer.
+    assert group.calls == [(5, {0: 0x200, 1: 0x201}, 4)]
+    assert events == [
+        (0, 0x300, 0x1000, 0x400, 4),
+        (1, 0x301, 0x1001, 0x401, 4),
+    ]
+    assert result == {0: 0x1000, 1: 0x1001}
+
+
+def test_sharded_mlp_with_residual_rejects_a_missing_rank_pointer():
+    group = _FakeShardGroup()
+    with pytest.raises(PrefillPlanError):
+        run_sharded_mlp_with_residual(
+            group,
+            layer_id=0,
+            rows=1,
+            post_norm_ptrs={0: 0x200},  # rank 1 missing
+            residual_ptrs={0: 0x300, 1: 0x301},
+            out_ptrs={0: 0x400, 1: 0x401},
+            add_residual=lambda *args: None,
+        )
+    assert group.calls == []
+
+
+@pytest.mark.parametrize("bad_rows", [0, 9, 1.5, True])
+def test_sharded_mlp_with_residual_rejects_invalid_rows(bad_rows):
+    group = _FakeShardGroup(rows=8)
+    with pytest.raises(ValueError):
+        run_sharded_mlp_with_residual(
+            group,
+            layer_id=0,
+            rows=bad_rows,
+            post_norm_ptrs={0: 0x200, 1: 0x201},
+            residual_ptrs={0: 0x300, 1: 0x301},
+            out_ptrs={0: 0x400, 1: 0x401},
+            add_residual=lambda *args: None,
+        )
+    assert group.calls == []
