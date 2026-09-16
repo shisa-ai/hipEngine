@@ -21,9 +21,11 @@ never models a full-TP1 forward or a hidden-state copy.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
+
+from hipengine.distributed.transport import require_rows_value
 
 LINEAR_ATTENTION = "linear_attention"
 FULL_ATTENTION = "full_attention"
@@ -283,3 +285,62 @@ def batched_sharded_mlp_reference(
         partials.append(activated @ down_shard.T)
     out = np.sum(partials, axis=0)
     return out, partials
+
+
+def run_sharded_mlp_with_residual(
+    group: Any,
+    *,
+    layer_id: int,
+    rows: int,
+    post_norm_ptrs: Mapping[int, int],
+    residual_ptrs: Mapping[int, int],
+    out_ptrs: Mapping[int, int],
+    add_residual: Callable[[int, int, int, int, int], None],
+) -> dict[int, int]:
+    """Run one layer's sharded MLP and add the residual exactly once per rank.
+
+    This is the rank-local bulk-prefill caller the attention/GDN split was
+    factored for: after the attention helper and the post-attention
+    norm+residual helper have written ``post_norm``/``residual`` on every rank,
+    this function
+
+    1. runs the shard group's MLP once (both ranks' chains + one staged
+       reduction) on the per-rank ``post_norm`` pointers,
+    2. adds the residual once per rank with
+       ``add_residual(device, residual_ptr, mlp_out_ptr, out_ptr, rows)``,
+       which performs the single ``out = residual + mlp_out`` on that rank's
+       stream.
+
+    The residual is never added inside the group and the shard chain is never
+    re-run, so the MLP+residual arithmetic is exactly the TP1 schedule's: one
+    reduced MLP output plus one residual add. ``rows`` must be a positive
+    integer within the group's capacity; every rank must supply all three
+    pointers. Returns the per-rank reduced bf16 MLP output pointer.
+    """
+
+    devices = tuple(int(device) for device in group.devices)
+    if not devices:
+        raise PrefillPlanError("the shard group has no ranks")
+    rows = require_rows_value(rows, capacity=int(group.rows))
+    for name, mapping in (
+        ("post_norm_ptrs", post_norm_ptrs),
+        ("residual_ptrs", residual_ptrs),
+        ("out_ptrs", out_ptrs),
+    ):
+        missing = [device for device in devices if device not in mapping]
+        if missing:
+            raise PrefillPlanError(f"no {name} for ranks {missing}")
+    mlp_out = group.forward(
+        int(layer_id),
+        {device: int(post_norm_ptrs[device]) for device in devices},
+        rows=rows,
+    )
+    for device in devices:
+        add_residual(
+            device,
+            int(residual_ptrs[device]),
+            int(mlp_out[device]),
+            int(out_ptrs[device]),
+            rows,
+        )
+    return {device: int(mlp_out[device]) for device in devices}
