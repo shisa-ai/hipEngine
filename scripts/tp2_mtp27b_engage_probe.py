@@ -11,9 +11,14 @@ Usage::
     python scripts/tp2_mtp27b_engage_probe.py [MAX_NEW_TOKENS]
 """
 
+import faulthandler
 import json
 import sys
 import time
+
+# Self-dump the Python stack every 5 minutes: names the loop we stall in
+# without needing ptrace permissions (entry 08fcef).
+faulthandler.dump_traceback_later(300, repeat=True, file=sys.stderr)
 
 sys.path.insert(0, "/home/lhl/hipEngine-main")
 
