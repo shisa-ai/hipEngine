@@ -5,9 +5,18 @@ at two layer scopes on the Qwen4Exp UD-Q4_K_XL canonical exact-token fixture.
 
 | Scope | Cases | Rows | Mean KL | p95 KL | p99 KL | Max KL | Top-1 | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| layers 28-47 | 12 (4 categories) | 1548 | 9.34e-5 | 4.06e-4 | 1.51e-3 | 9.67e-3 | 0.99742 | **pass** |
 | layers 32-47 | 12 (4 categories) | 1548 | 5.81e-5 | 1.75e-4 | 6.90e-4 | 1.36e-2 | 0.99677 | **pass** |
 | layers 0-47 | 3 (`code` only) | 387 | 1.099e-3 | 5.017e-3 | 1.510e-2 | 3.913e-2 | 0.9922 | fail |
 | limit | | | 1e-3 | 5e-3 | 2e-2 | 5e-2 | 0.99 | |
+
+**Layers 28-47 is the deepest certified scope.** It passes every calibrated
+gate with 10.7x headroom on the mean and 12.3x on p95, `hard_gates_passed` and
+`eligible_for_automatic_admission` both true, zero scope failures, and — unlike
+the two arms above it — `measurement_valid: true` with no qualification
+blockers, because the provenance rule now distinguishes a documentation-only
+dirty worktree from one that can change execution. It is worth about **+3.6 s**
+on the measured prefill against 32-47's measured +2.436 s.
 
 The certified scope passes every calibrated gate with 17x headroom on the mean
 and every category, shape and transition scope passing individually. The maximal
@@ -350,3 +359,34 @@ fallback, after which this gate runs against it directly.
 The arithmetic-class question is already settled in the candidate's own
 evidence: `dense_wide256` is bit-identical to the pre-existing f16 WMMA family
 on the compared packet, and both negative controls differ on 99.99% of elements.
+
+## Layers 28-47: pass, and a monotonicity caveat
+
+| Gate | Value | Limit | Headroom | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| mean KL | 9.342e-5 | 1e-3 | 10.7x | pass |
+| p95 KL | 4.063e-4 | 5e-3 | 12.3x | pass |
+| p99 KL | 1.510e-3 | 2e-2 | 13.2x | pass |
+| max KL | 9.671e-3 | 5e-2 | 5.2x | pass |
+| top-1 agreement | 1544/1548 = 0.99742 | 0.99 | — | pass |
+| repeat determinism | 3/3 identical trajectory hashes | exact | — | pass |
+| scope failures | none | none | — | pass |
+
+`hard_gates_passed`, `eligible_for_automatic_admission`, and `measurement_valid`
+are all true and `qualification_blockers` is empty.
+
+The flip-eligible population makes the four top-1 misses readable: 87 of 1548
+rows (5.6%) have a teacher top-2 gap narrow enough for the observed
+perturbation to close, all four misses fall inside that set, and none fall
+outside it. The misses are margin-limited rather than evidence of drift.
+
+**Adding layers 28-31 does not degrade every metric, so the layer axis is not
+monotone.** Mean KL rises in all four categories, but at the deeper scope
+`general_en`'s max KL *falls* from 1.362e-2 to 5.848e-3 and its top-1 agreement
+*rises* from 0.98966 to 0.99225, and `general_ja`'s max KL falls from 4.077e-3
+to 2.025e-3. A search that assumes more layers can only be worse is therefore
+unsafe on the tail metrics; it holds so far on the category means, which is what
+the screens in `scripts/qwen4exp_q8_wmma_layer_bisect.py` read. The practical
+consequence is that the boundary is a mean-KL boundary, and a scope rejected on
+a tail metric alone would need its own arm rather than an inference from a
+neighbour.
