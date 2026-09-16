@@ -183,8 +183,10 @@ and the 32-step solve reaches **54.76 s**. M7 numbers are in
 `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
 `benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
 `benchmarks/results/yue2_m7_attention_tile_max_20260917.json`,
-`benchmarks/results/yue2_m7_attention_weight_layout_20260917.json` and
-`benchmarks/results/yue2_m7_attention_dot_unroll_20260917.json`.
+`benchmarks/results/yue2_m7_attention_weight_layout_20260917.json`,
+`benchmarks/results/yue2_m7_attention_dot_unroll_20260917.json`,
+`benchmarks/results/yue2_m7_attention_wmma_20260917.json` and
+`benchmarks/results/yue2_m7_attention_wmma_geometry_20260917.json`.
 
 That is where the scalar design ends: profiling the pinned upstream on the same case
 puts **its** attention kernel at 4.14 s for the whole 32-step solve (1 792 calls at
@@ -197,14 +199,20 @@ geometry (16 query heads over 8 key/value heads, head_dim 128), following the
 fragment contracts of `laguna_flash_attention_prefill.hip` / llama.cpp's
 fattn-mma-f16: f16 WMMA operands with f32 score accumulation, a 16-key tile per
 lane-half reduction, K and V sharing one 64-key staged buffer, and an f16 output
-accumulator rescaled by the online softmax. It is **3.85 ms** per call against the
-scalar kernel's 20.1 ms and lands inside 1.7x of the reference's own kernel. It
+accumulator rescaled by the online softmax. It is **2.13 ms** per call against the
+scalar kernel's 19.0 ms and is faster than the reference's own kernel (2.31 ms). The
+geometry matters more than the instruction mix here: at a 128-thread block the kernel
+was latency-bound at two waves per SIMD (2 902 ISA instructions per key batch, 64 of
+them WMMA, ~11 cycles per instruction issued), and widening the block to 12 waves /
+384 threads with a 32-key batch is what took it from 3.85 ms to 2.13 ms. Vectorizing
+the K-fragment load produced a byte-identical ISA, and `__launch_bounds__` block hints
+do nothing because shared memory already limits the block count to one per CU. It
 changes arithmetic by design, so it is a production-profile variant held to the M4
-solver gates rather than to the parent fixture — all three pass and two improve
-(chunk0 latents rel L2 0.01225 -> 0.01042, multi-chunk 0.01071 -> 0.01054,
-restricted visibility 0.00885 -> 0.00938) — and `nar_attention_f32` remains the
-registered strict fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. The 32-step
-solve of `mandarin-off-s1234` is **32.22 s** against the pinned upstream's 27.32 s.
+solver gates rather than to the parent fixture — all three pass (chunk0 latents rel L2
+0.01099, multi-chunk 0.01090, restricted visibility 0.00894, against a 0.05 ceiling
+with cosine > 0.99994) — and `nar_attention_f32` remains the registered strict
+fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. The 32-step solve of
+`mandarin-off-s1234` is **26.07 s** against the pinned upstream's 27.32 s.
 Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
 
 ### Shared Qwen / PARO path

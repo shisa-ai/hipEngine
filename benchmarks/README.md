@@ -1529,21 +1529,21 @@ across all twelve cases at 2 ODE steps:
 
 | Stage | hipEngine | Reference | Ratio |
 | --- | ---: | ---: | ---: |
-| FP32 Oobleck decode | 332.78 s | 2 049.23 s | **6.16x faster** |
-| Acoustic solver, raw | 131.91 s | 537.52 s | 2.76x faster (fewer steps) |
-| Acoustic solver, per ODE step | 65.96 s | 16.80 s | **3.93x slower** |
+| FP32 Oobleck decode | 331.76 s | 2 049.23 s | **6.18x faster** |
+| Acoustic solver, raw | 126.92 s | 537.52 s | 2.81x faster (fewer steps) |
+| Acoustic solver, per ODE step | 63.46 s | 16.80 s | **3.78x slower** |
 
 The decode row is fully matched: both sides decode the same latent frame counts and
-the stage does not depend on the step count, so 6.16x is like for like. The solver
+the stage does not depend on the step count, so 6.18x is like for like. The solver
 row is not, because the reference always solves at its own 32 steps, so its raw time
 is larger than a 2-step run's by construction; only the per-step row is matched. That
 row was **26.29x** before the attention and projection work described in the next
-section, **5.79x** after the scalar attention work, and is **3.93x** with the
-tensor-core attention. At the product's 32 steps, where attention dominates the
-solve, the same case is **1.18x** behind the reference (32.22 s against 27.32 s)
-rather than 16.2x. `scripts/yue2_reference_comparison.py` produces both tables.
-Evidence:
-[`comparison`](results/yue2_reference_comparison_wmma_20260917.json),
+section, **5.79x** after the scalar attention work, and **3.78x** now. At the
+product's 32 steps, where the per-evaluation work dominates, the same case is
+**1.05x faster** than the reference (26.07 s against 27.32 s) rather than 16.2x
+behind. `scripts/yue2_reference_comparison.py` produces both tables. Evidence:
+[`comparison`](results/yue2_reference_comparison_geometry_20260917.json),
+[`previous geometry`](results/yue2_reference_comparison_wmma_20260917.json),
 [`scalar attention`](results/yue2_reference_comparison_20260917.json),
 [`pre-fix comparison`](results/yue2_reference_comparison_pre_attention_fix_20260917.json).
 
@@ -1581,16 +1581,17 @@ fast heuristic. Both now select by measured index.
 | The same kernel, softmax weights stored key-major (paired, same session) | 27.40 ms | **26.38 ms** | **1.04x** |
 | The same kernel, dot-product row loop specialized and walks unrolled (paired) | 26.27 ms | **19.33 ms** | **1.36x** |
 | `yue2_nar_attention_wmma_kernel`, same shape, per call | 20.1 ms | **3.85 ms** | **5.1x** |
+| The same kernel, block widened to 384 threads and the key batch to 32 (paired) | 3.85 ms | **2.13 ms** | **1.84x** |
 | NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
 | NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **5.14 s** | **5.40x** |
-| NAR solve of the same case, product 32 ODE steps | 443.4 s | **32.22 s** | **13.76x** |
-| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **60.28 s** | **7.73x** |
+| NAR solve of the same case, product 32 ODE steps | 443.4 s | **26.07 s** | **17.01x** |
+| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **46.16 s** | **10.09x** |
 
 All rows are gfx1151 (zbook) measurements. The kernel row is a median of six
 batches of five calls; every replay row was run on the same host with the gate's
 own JSON as the source, and the 32-step pair uses the protocol the reference's own
 27.32 s figure was measured under, which puts the solver 16.2× behind the pinned
-upstream before this work and **2.00×** after it. Eight rows per block is a
+upstream before this work and **1.05× ahead** of it now. Eight rows per block is a
 measured optimum: four rows lands at 22.53 ms, sixteen at 25.39 ms and thirty-two
 at 88.50 ms, where shared-memory and register pressure take over.
 
@@ -1627,23 +1628,40 @@ here. Closing the rest needs matrix cores, which is what the reference uses.
 `yue2_nar_attention_wmma_kernel` is that tensor-core path: a second attention for the
 production head geometry (16 query heads over 8 key/value heads at head_dim 128) with
 f16 WMMA operands, f32 score accumulation, a 16-key tile per lane-half reduction, K
-and V sharing one 64-key staged buffer, and an f16 output accumulator rescaled by the
+and V sharing one staged buffer, and an f16 output accumulator rescaled by the
 online softmax — the same arithmetic class as the reference. Its fragment contracts
 follow the in-tree Laguna flash attention, which preserves llama.cpp's
-`fattn-mma-f16` design. It runs the production shape in **3.85 ms per call against
-the scalar kernel's 20.1 ms (5.1×)**, landing inside 1.7× of the reference's own
-kernel, and takes the product's 32-step solve to **32.22 s against the reference's
-27.32 s (1.18×)**. It changes arithmetic by design, so the scalar kernel stays
+`fattn-mma-f16` design. It runs the production shape in **2.13 ms per call against
+the scalar kernel's 19.0 ms (9.3×)**, faster than the reference's own 2.31 ms
+dispatch, and takes the product's 32-step solve to **26.07 s against the reference's
+27.32 s (1.05× faster)**. It changes arithmetic by design, so the scalar kernel stays
 registered as the strict fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar` and
 this variant is held to the production gates instead of the parent-bits fixture: all
-three M4 solver gates pass and two improve (chunk0 latents rel L2 0.01225 ->
-**0.01042**, multi-chunk 0.01071 -> **0.01054**, restricted visibility 0.00885 ->
-0.00938 against a 0.05 ceiling), the full twelve-case replay passes with every case
-reproducing its exact frame and sample counts in 464.6 s against 527.4 s, and its own
-unit test checks seven shapes against an independent FP64 reference. Evidence:
-[`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json).
+three M4 solver gates pass (chunk0 latents rel L2 0.01099 / cosine 0.999941,
+restricted visibility 0.00894 / 0.999961, multi-chunk 0.01090 / 0.999943 against
+0.05 / 0.999), the full twelve-case replay passes with every case reproducing its
+exact frame and sample counts in 458.7 s against 527.4 s, and its own unit test
+checks seven shapes against an independent FP64 reference. Evidence:
+[`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json),
+[`M7 block geometry`](results/yue2_m7_attention_wmma_geometry_20260917.json).
 
-At 32 steps the solver is now ~9.6 s of attention, ~15 s of projections and ~7.6 s of
+The geometry is where most of that came from, and the measurement that found it was
+an instruction count rather than a timing. At the original 128-thread block the
+kernel was at 7.5 TFLOP/s, 15% of the device's fp16 peak, while the reference's
+kernel reached 12.4. A static ISA count of the built object showed 2 902
+instructions per key batch of which only 64 are WMMA, and 1 312 waves over 40 CUs ×
+4 SIMD against 11.2M cycles puts it at roughly **11 cycles per instruction** —
+latency-bound at two waves per SIMD, not issue-bound or WMMA-bound. Three
+instruction-level attempts came back as measured no-ops: vectorizing the K-fragment
+load produced a **byte-identical ISA** (the compiler had already done it) and
+tightening `__launch_bounds__` to 3 and 4 blocks per CU changed nothing, because the
+shared-memory footprint already limits the block count to one per CU. Widening the
+block from 4 waves to 12 (384 threads, 96 rows) with a 32-key batch took the kernel
+to **2.13 ms** while leaving the lane-to-column mapping untouched. The lane mapping
+is what made that a small change: 16 columns per wave means 8 query rows × 2 query
+heads, so the fragment code is independent of how many waves the block has.
+
+At 32 steps the solver is now ~5.3 s of attention, ~14.7 s of projections and ~6 s of
 conditioning prefill and other work, so the projections are the largest single item
 and run at hipBLASLt's rate.
 
@@ -1654,25 +1672,24 @@ inserting a synchronize around each kernel does not work, because with 200 proje
 launches per evaluation the sync cost alone exceeds the kernel time being measured. The
 result for the production case at 28 layers, 1 299 rows and 2 695 keys:
 
-| Stage | Per evaluation | At 32 steps | Share |
-| --- | ---: | ---: | ---: |
-| Projections (200 launches, 3 662 GFLOP) | 229 ms | **14.7 s** | 46% |
-| NAR attention (28 launches) | 136 ms | **8.7 s** | 27% |
-| Conditioning prefill (paid once) | — | **3.44 s** | 11% |
-| Everything else (norms, RoPE, casts, state) | 53 ms | **3.4 s** | 11% |
+| Stage | Per evaluation (old geometry) | Per evaluation (now) | At 32 steps | Share |
+| --- | ---: | ---: | ---: | ---: |
+| Projections (200 launches, 3 662 GFLOP) | 229 ms | 229 ms | **14.7 s** | 56% |
+| NAR attention (28 launches) | 136 ms | 83 ms | **5.3 s** | 20% |
+| Conditioning prefill (paid once) | — | — | **3.44 s** | 13% |
+| Everything else (norms, RoPE, casts, state) | 53 ms | 53 ms | **3.4 s** | 13% |
 
-Both remaining gaps are real but neither is free. The projections run at 16.0 TFLOP/s
-where the same shapes launched back to back by hipBLASLt measure 19.4 TFLOP/s, so
-three quarters of the library's own in-place rate is already reached; the runtime
-already selects the fastest zero-workspace algorithm, and a 4 096³ square GEMM also
-measures 21 TFLOP/s, so ~20 TFLOP/s is the library's practical ceiling on this device
-against a ~51 TFLOP/s fp16 peak for 40 CUs. The attention kernel is the better
-understood of the two: it is at 15% of that peak because 248 VGPRs cap occupancy at two
-blocks of 128 threads per CU (12.5% of the thread limit) and its K/V staging branches
-between the AR and NAR buffers for every 16-byte pack. Matching the reference's own
-2.31 ms per call would take its 8.7 s to 5.2 s. The solver is device-bound rather than
-host-bound — host enqueue for one evaluation is 28 ms against 419 ms of device time.
-Evidence:
+The projection and attention columns are the same measurement at the two attention
+geometries; the solve total is 26.07 s.
+
+The projections are the remaining lever, and they are close to a ceiling. They run at
+16.0 TFLOP/s where the same shapes launched back to back by hipBLASLt measure
+19.4 TFLOP/s, so three quarters of the library's own in-place rate is already reached;
+the runtime already selects the fastest zero-workspace algorithm, and a 4 096³ square
+GEMM also measures 21 TFLOP/s, so ~20 TFLOP/s is the library's practical ceiling on
+this device against a ~51 TFLOP/s fp16 peak for 40 CUs. The solver is device-bound
+rather than host-bound — host enqueue for one evaluation is 28 ms against 419 ms of
+device time. Evidence:
 [`solver stage profile`](results/yue2_solver_stage_profile_20260917.json).
 
 An earlier version of this section quoted a synchronize-wrapped split of the 7.95 s

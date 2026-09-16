@@ -52,11 +52,11 @@ constexpr int Q_HEADS = 16;
 // for both heads of one key/value head.
 constexpr int GQA_HEADS = Q_HEADS / KV_HEADS;
 constexpr int ROWS_PER_WAVE = 8;
-constexpr int WAVES = 4;
+constexpr int WAVES = 12;
 constexpr int THREADS = WAVES * 32;
 constexpr int ROWS_PER_BLOCK = WAVES * ROWS_PER_WAVE;
 constexpr int TILE_COLUMNS = ROWS_PER_BLOCK * GQA_HEADS;
-constexpr int K_BATCH = 64;
+constexpr int K_BATCH = 32;
 // llama.cpp measures its shared strides in half2 values: +4 means eight scalar
 // halves, yielding a 272-byte row aligned for 16-byte vector moves.
 constexpr int K_PAD = 8;
@@ -134,8 +134,10 @@ yue2_nar_attention_wmma_kernel(
     int num_q_heads,
     int num_kv_heads,
     float scale) {
-  __shared__ half_t shared_tile[K_BATCH][HEAD_DIM + K_PAD];
-  __shared__ half_t shared_query[TILE_COLUMNS][HEAD_DIM + K_PAD];
+  __shared__ __attribute__((aligned(16)))
+  half_t shared_tile[K_BATCH][HEAD_DIM + K_PAD];
+  __shared__ __attribute__((aligned(16)))
+  half_t shared_query[TILE_COLUMNS][HEAD_DIM + K_PAD];
 
   const int lane = static_cast<int>(threadIdx.x);
   const int wave = static_cast<int>(threadIdx.y);
@@ -211,12 +213,12 @@ yue2_nar_attention_wmma_kernel(
       scores[key_tile] = zero_float8();
 #pragma unroll
       for (int dim_tile = 0; dim_tile < HEAD_DIM / 16; ++dim_tile) {
-        half16_t key_fragment;
+        // The lane's 16 halves are consecutive in the padded row and both the row
+        // stride (272 B) and the tile offset (32 B) are 16-byte aligned, so this
+        // is a pair of 16-byte shared loads rather than 16 half loads.
         const int key_local = key_tile * 16 + (lane & 15);
-#pragma unroll
-        for (int k = 0; k < 16; ++k) {
-          key_fragment[k] = shared_tile[key_local][dim_tile * 16 + k];
-        }
+        const half16_t key_fragment = *reinterpret_cast<const half16_t*>(
+            &shared_tile[key_local][dim_tile * 16]);
         scores[key_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
             key_fragment, query_fragments[dim_tile], scores[key_tile]);
       }
