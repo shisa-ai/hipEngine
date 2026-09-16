@@ -7020,3 +7020,36 @@ Removal condition: when Qwen4Exp profile state becomes request-local (tracked in
 the 2026-08-29 entry above), the env transport disappears and this conflict
 reporting goes with it. Until then the warning is the guard; do not downgrade it
 to a comment.
+
+## 2026-09-17 Q8_0 wide-row dense prefill: a route for an unreachable kernel
+
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` is a default-off selector that routes Q8_0
+F32/F32 prefill linears with `rows > 256` and `in_features % 64 == 0` to
+`dense_wide256_f32_f32_out`. Before this the kernel was registered but nothing
+in `hipengine/runtime/` or `hipengine/dispatch/` referenced it, so no dispatch
+path could select it: it could not be gated end-to-end, benchmarked in the
+engine, or promoted. That is the state to avoid repeating — a registered kernel
+with no selector is invisible to every gate we own.
+
+The flag is default-off because the kernel's f16 operands change prefill
+arithmetic (2.08e-4 relative against the exact reference, against 1.5e-7 for the
+coltile family). The exact coltile parents remain the default path, the
+registered strict fallback, and the sole owner of the sub-256-row path, so the
+selector declining is always a fall back to an exact route.
+
+Removal condition: run the calibrated production envelope in
+`docs/EXECUTION-PROFILES.md` against this route at the deepest admissible layer
+scope. If it passes, promote it to the named production profile and delete the
+flag, keeping the coltile fallback registered. If it fails, delete the selector
+and the flag rather than leaving a dead default-off route — the kernel's
+measured 6.74x over the production dispatch is only worth keeping if it is
+reachable under a gate.
+
+`_variant_scoped_library` was extracted at the same time. Two launch paths had
+independently resolved caller-supplied libraries, one keyed by quant alone. That
+is a live trap for any variant with its own shared object: `dense_wide256` is
+exported from `gguf_q8_0_dense_wide.so` while the coltile family lives in the
+q8_0 gemv library, so a quant-only lookup hands the wide kernel a library that
+does not export its symbol. Both paths now share the helper. Fold the remaining
+`libraries.get(<key>.quant)` call sites for pair and fused launches into it when
+one of those families next gains a variant with its own object.

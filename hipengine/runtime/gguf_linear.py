@@ -2832,6 +2832,82 @@ def _q8_iu8_wmma_dispatch(
     return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
 
 
+# The wide kernel stages BK = 64 K-elements per LDS tile, so ``_launch`` raises
+# on any other K. Keep the constant next to the selector that has to honour it.
+def _variant_scoped_library(
+    libraries: Mapping[str, ctypes.CDLL] | None, key: KernelKey
+) -> ctypes.CDLL | None:
+    """Resolve a caller-supplied library for a dispatch key.
+
+    A variant with its own shared object must not be handed the quant's default
+    library: ``dense_wide256`` is exported from ``gguf_q8_0_dense_wide.so``
+    while the coltile family lives in the q8_0 gemv library, so a map keyed only
+    by quant would resolve a library that does not export the symbol. The
+    variant-scoped key wins, and the quant key remains the fallback.
+    """
+
+    if libraries is None:
+        return None
+    return libraries.get(f"{key.quant}:{key.variant}", libraries.get(key.quant))
+
+
+# The wide kernel stages BK = 64 K-elements per LDS tile, so ``_launch`` raises
+# on any other K. Keep the constant next to the selector that has to honour it.
+_Q8_DENSE_WIDE_K_TILE = 64
+_Q8_DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
+_Q8_DENSE_WIDE_EXACT_PARENTS = frozenset({
+    "prefill_f32_f32_out",
+    "coltile8_rowbatch4_f32_f32_out",
+    "coltile8_rowbatch4_wave_scale_f32_f32_out",
+})
+
+
+def _q8_dense_wide_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Default-off wide-row route for Q8_0 F32/F32 prefill linears.
+
+    The kernel covers 128 output columns by 256 rows per block with both
+    operands staged in LDS, so each weight byte is read once per 256 rows
+    instead of once per 4-32. On the 2026-09-16 replay packet it runs 6.74x the
+    production dispatch and 7.65x strict.
+
+    Its f16 operands change prefill arithmetic (2.08e-4 relative against the
+    exact reference, against 1.5e-7 for the coltile family), so this is
+    default-off and the exact coltile parents remain the default path, the
+    registered strict fallback, and the sole sub-256-row owner. Promotion needs
+    the calibrated production envelope in ``docs/EXECUTION-PROFILES.md``.
+    """
+
+    if (
+        dispatch.abi != "raw"
+        or dispatch.key.quant != "gguf_q8_0"
+        or dispatch.key.variant not in _Q8_DENSE_WIDE_EXACT_PARENTS
+        or rows <= 256
+        or in_features <= 0
+        or in_features % _Q8_DENSE_WIDE_K_TILE != 0
+        or out_features <= 0
+        or os.environ.get(_Q8_DENSE_WIDE_ENV, "0")
+        in {"", "0", "false", "False"}
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "dense_wide256_f32_f32_out",
+    )
+    if not is_registered(key):
+        # Populate the raw families before deciding so the very first launch of
+        # a process cannot silently fall back past this route.
+        _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+
+
 def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -> GGUFLinearDispatch:
     if not enabled or dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_f32_f32_out":
         return dispatch
@@ -3528,6 +3604,15 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
+        # After iu8: where both routes are enabled the iu8 kernel has already
+        # claimed the dispatch and its variant is not a wide-route parent, so
+        # iu8 keeps precedence and this is a no-op.
+        dispatch = _q8_dense_wide_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
             rows=rows,
@@ -3581,7 +3666,9 @@ def launch_gguf_linear(
     abi, fn, layer, quant, variant = cached
     library = None
     if libraries is not None:
-        library = libraries.get(f"{quant}:{variant}", libraries.get(quant))
+        library = _variant_scoped_library(
+            libraries, KernelKey(resolved_backend, "linear", quant, variant)
+        )
     kwargs = {"stream": stream, "runtime": runtime}
     if abi == "t16" and quant == "gguf_q8_0_t16_v1":
         q8_t16_threads = _resolve_q8_t16_threads(threads)
@@ -4635,7 +4722,7 @@ def launch_gguf_linear_raw_ptr(
         quant=dispatch.key.quant,
         variant=dispatch.key.variant,
     )
-    library = None if libraries is None else libraries.get(dispatch.key.quant)
+    library = _variant_scoped_library(libraries, dispatch.key)
     kwargs = {"stream": stream, "runtime": runtime}
     if threads and dispatch.abi != "wmma_raw":
         # The WMMA wrapper takes (tile_m, tile_n) instead of (threads); the
