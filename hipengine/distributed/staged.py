@@ -40,6 +40,7 @@ from hipengine.core.runtime import MemcpyKind
 from hipengine.distributed.transport import (
     TransportError,
     TransportStateError,
+    require_rows_value,
 )
 
 #: The staging arena holds ``slots`` slot sets of one row per rank. Two
@@ -74,6 +75,7 @@ class StagedExchangeTransport:
         streams: Mapping[int, int],
         hidden: int,
         staging_dtype: str = "f32",
+        rows: int = 1,
     ) -> None:
         if not devices:
             raise TransportStateError("a staged exchange needs at least one rank")
@@ -91,9 +93,15 @@ class StagedExchangeTransport:
         self.devices = tuple(int(d) for d in devices)
         self._streams = {int(d): int(streams[d]) for d in devices}
         self.hidden = int(hidden)
+        # ``rows`` is the buffer capacity: one slot holds up to this many rows
+        # per rank. A ``reduce(rows=n)`` stages and sums exactly ``n`` rows and
+        # zeroes the trailing capacity rows, so an inactive tail is never
+        # reduced as if it were a valid partial.
+        self.rows = require_rows_value(rows, capacity=rows)
         self.staging_dtype = str(staging_dtype)
-        self.staging_nbytes = self.hidden * _STAGING_DTYPE_BYTES[staging_dtype]
-        self._slot_nbytes = self.hidden * 4  # the published payload is f32
+        self.staging_row_bytes = self.hidden * _STAGING_DTYPE_BYTES[staging_dtype]
+        self.staging_nbytes = self.rows * self.staging_row_bytes
+        self._slot_nbytes = self.rows * self.hidden * 4  # the published payload is f32
         self._poisoned = False
         self.reductions = 0
 
@@ -136,24 +144,37 @@ class StagedExchangeTransport:
 
     # -- the reduction ----------------------------------------------------
 
-    def reduce(self, partial_ptrs: Mapping[int, int]) -> dict[int, int]:
-        """Reduce one partial per rank into every rank's reduced buffer.
+    def reduce(
+        self,
+        partial_ptrs: Mapping[int, int],
+        *,
+        rows: int | None = None,
+        slot: int | None = None,
+    ) -> dict[int, int]:
+        """Reduce ``rows`` active rows per rank into every rank's reduced buffer.
 
-        Both ranks' D2H copies are submitted on their own streams before any
-        wait, each stream is awaited once, the host sums the staged rows in
-        f32 (reading them in this transport's staging dtype), and every rank's
-        H2D of the f32 sum is submitted with no return wait. Returns the
-        reduced device pointer per rank; the value is stream-ordered after
-        the H2D on that rank's stream, so the caller's next consumer needs no
-        host synchronization.
+        ``rows`` defaults to the transport's capacity. Only the active rows are
+        staged, summed, and published; the trailing capacity rows of the
+        payload are zeroed so a later consumer never reads a stale or
+        never-written row as a valid partial. The reduction arithmetic for the
+        active rows is identical to the single-row route. This route has no
+        fixed payload slots, so ``slot`` must be None (the compiled route owns
+        the fixed-slot interface).
         """
 
         self._require_live()
+        if slot is not None:
+            raise TransportStateError(
+                "the Python staged route has no fixed payload slots; use the "
+                "compiled driver for slot-pinned reduces"
+            )
+        rows = require_rows_value(self.rows if rows is None else rows, capacity=self.rows)
         missing = [d for d in self.devices if int(d) not in partial_ptrs]
         if missing:
             self._poisoned = True
             raise TransportStateError(f"no partial given for ranks {missing}")
         runtime = self._runtime
+        active_nbytes = rows * self.staging_row_bytes
         try:
             slot = self._slot
             self._slot = 1 - slot
@@ -167,7 +188,7 @@ class StagedExchangeTransport:
                     runtime.memcpy_async(
                         partial_base + index * self.staging_nbytes,
                         int(partial_ptrs[device]),
-                        self.staging_nbytes,
+                        active_nbytes,
                         MemcpyKind.DEVICE_TO_HOST,
                         self._streams[device],
                     )
@@ -180,22 +201,23 @@ class StagedExchangeTransport:
                 with scoped_current_device(runtime, device):
                     runtime.stream_synchronize(self._streams[device])
 
-            # Single reduction over the contiguous (ranks, hidden) view: the
+            # Single reduction over the contiguous (ranks, active) view: the
             # staged rows are read in their partial dtype and summed in f32.
             row_start = slot * len(self.devices) * self.staging_nbytes
             row_stop = row_start + len(self.devices) * self.staging_nbytes
             staged = np.frombuffer(self._host, dtype=np.uint8)[row_start:row_stop]
+            active_floats = rows * self.hidden
             if self.staging_dtype == "f32":
-                rows = np.frombuffer(staged.tobytes(), dtype="<f4").reshape(
-                    len(self.devices), self.hidden
-                )
-                reduced = rows.sum(axis=0, dtype=np.float32)
+                rows_view = np.frombuffer(staged.tobytes(), dtype="<f4").reshape(
+                    len(self.devices), self.rows * self.hidden
+                )[:, :active_floats]
+                reduced = rows_view.sum(axis=0, dtype=np.float32)
             else:
                 # bf16 bits: widen each row to f32 by shifting into the high
                 # half, then sum in f32.
                 bits = np.frombuffer(staged.tobytes(), dtype="<u2").reshape(
-                    len(self.devices), self.hidden
-                )
+                    len(self.devices), self.rows * self.hidden
+                )[:, :active_floats]
                 wide = (bits.astype(np.uint32) << 16).view(np.float32)
                 reduced = wide.sum(axis=0, dtype=np.float32)
 
@@ -203,11 +225,13 @@ class StagedExchangeTransport:
             # rank's H2D from it with no return wait. The next call's write
             # into this slot cannot race this H2D: that write happens after
             # the next call's D2H wait, and that wait is queued on each rank's
-            # stream after this H2D.
+            # stream after this H2D. The trailing capacity rows are zeroed.
             payload_base = self._payload_ptr + slot * self._slot_nbytes
+            payload_slot = np.zeros(self.rows * self.hidden, dtype="<f4")
+            payload_slot[:active_floats] = reduced
             np.frombuffer(self._payload_host, dtype=np.uint8)[
                 slot * self._slot_nbytes : (slot + 1) * self._slot_nbytes
-            ] = np.ascontiguousarray(reduced, dtype="<f4").view(np.uint8)
+            ] = payload_slot.view(np.uint8)
             for device in self.devices:
                 with scoped_current_device(runtime, device):
                     runtime.memcpy_async(

@@ -39,7 +39,7 @@ from hipengine.core.device import scoped_current_device
 from hipengine.distributed.shard_exec import MlpShardRank
 from hipengine.distributed.staged import StagedExchangeTransport
 from hipengine.distributed.staged_compiled import CompiledStagedExchangeTransport
-from hipengine.distributed.transport import TransportError
+from hipengine.distributed.transport import TransportError, require_rows_value
 
 
 class ShardGroupError(RuntimeError):
@@ -73,6 +73,7 @@ class MlpShardGroup:
         driver: str = "compiled",
         mlp_decode_variant: str | None = None,
         slot_sets: int = 2,
+        rows: int = 1,
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
@@ -84,6 +85,9 @@ class MlpShardGroup:
         self.devices = tuple(int(d) for d in devices)
         self.hidden = int(hidden)
         self.per_rank_ffn = int(per_rank_ffn)
+        # ``rows`` is the buffer/slot capacity; each ``forward(rows=n)`` runs
+        # exactly ``n`` active rows and the exchange zeroes the inactive tail.
+        self.rows = require_rows_value(rows, capacity=rows)
         self._streams = {int(d): int(streams[d]) for d in self.devices}
         self._closed = False
         self._mlp_decode_variant = (
@@ -106,6 +110,7 @@ class MlpShardGroup:
                     per_rank_ffn=per_rank_ffn,
                     partial_dtype=staging_dtype,
                     mlp_decode_variant=mlp_decode_variant,
+                    rows=self.rows,
                 )
         if driver == "compiled":
             # The compiled host driver: the same batched protocol enqueued
@@ -121,6 +126,7 @@ class MlpShardGroup:
                     hidden=hidden,
                     staging_dtype=staging_dtype,
                     slot_sets=slot_sets,
+                    rows=self.rows,
                 )
             )
         else:
@@ -130,6 +136,14 @@ class MlpShardGroup:
                 streams=self._streams,
                 hidden=hidden,
                 staging_dtype=staging_dtype,
+                rows=self.rows,
+            )
+        # The rank partials and the transport staging must agree on dtype; a
+        # mismatch would stage an f32 partial as bf16 (or the reverse).
+        if str(getattr(self._transport, "staging_dtype", staging_dtype)) != str(staging_dtype):
+            raise ShardGroupError(
+                f"transport staging dtype {self._transport.staging_dtype!r} does not "
+                f"match the rank partial dtype {staging_dtype!r}"
             )
         # The bf16 boundary buffer per rank: the reduced f32 value cast to the
         # dtype the TP1 local chain's down projection writes, so the caller's
@@ -137,7 +151,7 @@ class MlpShardGroup:
         self._out_ptrs: dict[int, int] = {}
         for device in self.devices:
             with scoped_current_device(runtime, device):
-                self._out_ptrs[device] = int(runtime.malloc(self.hidden * 2))
+                self._out_ptrs[device] = int(runtime.malloc(self.rows * self.hidden * 2))
 
     # -- state -------------------------------------------------------------
 
@@ -170,6 +184,8 @@ class MlpShardGroup:
         self,
         layer_id: int,
         inputs: Mapping[int, int],
+        *,
+        rows: int | None = None,
     ) -> Mapping[int, int]:
         """Run one layer's sharded MLP; return the bf16 output pointer per rank.
 
@@ -177,9 +193,10 @@ class MlpShardGroup:
         reduction, and :meth:`cast_reduced`.
         """
 
-        partial_ptrs = self.enqueue_chain(layer_id, inputs)
+        partial_ptrs = self.enqueue_chain(layer_id, inputs, rows=rows)
+        rows = self._resolve_rows(rows)
         started = time.perf_counter()
-        reduced = self._transport.reduce(partial_ptrs)
+        reduced = self._transport.reduce(partial_ptrs, rows=rows)
         self.exchange_walls_s.append(time.perf_counter() - started)
         for device in self.devices:
             self.cast_reduced(device, reduced[device])
@@ -189,17 +206,20 @@ class MlpShardGroup:
         self,
         layer_id: int,
         inputs: Mapping[int, int],
+        *,
+        rows: int | None = None,
     ) -> Mapping[int, int]:
         """Enqueue both ranks' shard chains; return the down partial per rank.
 
         ``inputs`` maps device -> the device-resident bf16 post-attention-norm
-        row that rank's shard consumes. Stream-ordered and
+        rows that rank's shard consumes. Stream-ordered and
         host-synchronization-free: this is the capturable unit a graphed
         schedule captures (the transport reduction stays host-driven between
         graph segments).
         """
 
         self._require_live()
+        rows = self._resolve_rows(rows)
         if int(layer_id) not in {
             layer for layer, _device in self._ranks
         }:
@@ -213,9 +233,9 @@ class MlpShardGroup:
         partial_ptrs: dict[int, int] = {}
         try:
             for device in self.devices:
-                layer_ranks[device].write_input_from_device(int(inputs[device]))
+                layer_ranks[device].write_input_from_device(int(inputs[device]), rows=rows)
             for device in self.devices:
-                partial_ptrs[device] = layer_ranks[device].forward_partial()
+                partial_ptrs[device] = layer_ranks[device].forward_partial(rows=rows)
         except TransportError:
             raise
         except Exception as error:  # noqa: BLE001 - fail the group, not the rank
@@ -225,7 +245,14 @@ class MlpShardGroup:
             ) from error
         return partial_ptrs
 
-    def enqueue_rank_chain(self, layer_id: int, device: int, input_ptr: int) -> int:
+    def enqueue_rank_chain(
+        self,
+        layer_id: int,
+        device: int,
+        input_ptr: int,
+        *,
+        rows: int | None = None,
+    ) -> int:
         """Enqueue one rank's shard chain; return its down partial pointer.
 
         The per-rank building block of :meth:`enqueue_chain`, used by graphed
@@ -233,12 +260,13 @@ class MlpShardGroup:
         """
 
         self._require_live()
+        rows = self._resolve_rows(rows)
         rank = self._ranks.get((int(layer_id), int(device)))
         if rank is None:
             raise ShardGroupError(f"the group has no layer {layer_id} on device {device}")
         try:
-            rank.write_input_from_device(int(input_ptr))
-            return rank.forward_partial()
+            rank.write_input_from_device(int(input_ptr), rows=rows)
+            return rank.forward_partial(rows=rows)
         except TransportError:
             raise
         except Exception as error:  # noqa: BLE001 - fail the group, not the rank
@@ -252,6 +280,7 @@ class MlpShardGroup:
         partial_ptrs: Mapping[int, int],
         *,
         slot: int | None = None,
+        rows: int | None = None,
     ) -> Mapping[int, int]:
         """Reduce the given down partials; return the reduced pointer per rank.
 
@@ -261,8 +290,9 @@ class MlpShardGroup:
         """
 
         self._require_live()
+        rows = self._resolve_rows(rows)
         started = time.perf_counter()
-        reduced = self._transport.reduce(partial_ptrs, slot=slot)
+        reduced = self._transport.reduce(partial_ptrs, slot=slot, rows=rows)
         self.exchange_walls_s.append(time.perf_counter() - started)
         return reduced
 
@@ -286,8 +316,19 @@ class MlpShardGroup:
 
         self.exchange_walls_s.clear()
 
+    def _resolve_rows(self, rows: int | None) -> int:
+        """Resolve a caller row count to capacity-checked int (None = capacity)."""
+
+        return require_rows_value(self.rows if rows is None else rows, capacity=self.rows)
+
     def cast_reduced(self, device: int, reduced_ptr: int) -> None:
-        """Cast one rank's reduced f32 row into the group's bf16 boundary buffer."""
+        """Cast one rank's reduced f32 rows into the group's bf16 boundary buffer.
+
+        The full capacity is cast: the transport zeroes the inactive tail of
+        its reduced payload, so the output buffer's trailing rows are written as
+        explicit zeros rather than left holding a stale previous chunk. A
+        consumer that reads ``rows * hidden`` still sees only active data.
+        """
 
         self._require_live()
         # Imported lazily from the convert package (whose __init__ re-exports
@@ -301,7 +342,7 @@ class MlpShardGroup:
             f32_to_bf16(
                 int(reduced_ptr),
                 self._out_ptrs[int(device)],
-                self.hidden,
+                self.rows * self.hidden,
                 stream=self._streams[int(device)],
                 runtime=self._runtime,
             )

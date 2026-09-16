@@ -604,6 +604,37 @@ the serial schedule. Per-rank KV stays the rank's owned heads.
    sustained gate only after the failure is repaired. Kernel numerics that are
    not bit-exact are evaluated against the production contract, not rejected.
 
+### P1 status (2026-09-17)
+
+P1 is implemented and CPU+GPU validated at the MLP level, and the whole bulk
+route is still partial (no batched attention/GDN yet, no end-to-end quality
+run).
+
+- `MlpShardRank` gained an opt-in integer `rows` capacity and an
+  `active_rows` count; `write_input`, `write_input_from_device`, `read_input`,
+  `read_partial`, and `forward_partial` either use the declared active count
+  exactly or reject the call before any launch. Non-integer/bool row values and
+  over-capacity values are rejected.
+- `MlpShardGroup`, `StagedExchangeTransport`, and `CompiledStagedExchangeTransport`
+  carry the capacity; the staged exchange stages and sums exactly the active
+  rows and zeroes the inactive tail, and the group casts the full capacity so
+  the bf16 output tail is explicit zeros. The capacity-1 single-row route keeps
+  calling the original ABIs unchanged.
+- The compiled host driver (`staged_exchange_host.cpp`) gained
+  `tp2_staged_reduce_rows` / `tp2_staged_reduce_at_rows` and a capacity-rows
+  create argument; the device-graph exchange stays the single-row decode route
+  and rejects `rows != 1`.
+- **Dispatch finding:** the real launcher rewrites `rows>1` to
+  `t16_wmma_prefill` (Q4_K gate/up) and `t16_gemv_rowtile` (Q6_K down) leaves
+  that `resolve_gguf_linear_dispatch` does not name, so the shard preflight is a
+  dtype/layout support check, not a rows-aware proof. Q4_K t16 has no f32-output
+  dispatch surface and fails before launch.
+- **GPU evidence:** `scripts/tp2_batched_prefill_probe.py` on the real GGUF
+  shard quants (Q4_K t16 gate/up, Q6_K t16 qmicro planar down) at capacity 4
+  passes batch-composition invariance for active rows 1–4 (active 1 exact;
+  2–4 ≤ 1.9e-04 relative) and zeroes the inactive tail, for both the Python and
+  compiled drivers (`benchmarks/results/2026-09-17-w7900-tp2-batched-prefill-probe.json`).
+
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing
 primitive is identified; no backend/quant dispatch branches; no Torch on the

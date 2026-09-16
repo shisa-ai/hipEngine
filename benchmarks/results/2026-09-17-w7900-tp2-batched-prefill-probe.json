@@ -1,0 +1,192 @@
+{
+  "schema": "hipengine-benchmark-result/1",
+  "date": "2026-09-17",
+  "kind": "correctness-probe",
+  "title": "TP2 rank-local batched MLP prefill vs per-row serial (real GGUF shard quants)",
+  "performance_claim": false,
+  "protocol": {
+    "workload": "one Qwen3.8-27B Q4_K_M MLP layer (layer 0), batched rank-local chain on two GPUs",
+    "capacity_rows": 4,
+    "active_rows": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "staging_dtype": "bf16",
+    "reference": "per-row serial chain (rows=1) at the same input rows",
+    "gate": "batch-composition relative max abs <= 5e-3 (bf16 accumulation contract) and inactive tail zeroed",
+    "quants": {
+      "ffn_gate": "gguf_q4_k_t16_v1",
+      "ffn_up": "gguf_q4_k_t16_v1",
+      "ffn_down": "gguf_q6_k_t16_qmicro_planar_v1"
+    },
+    "drivers": [
+      "python",
+      "compiled"
+    ]
+  },
+  "host": {
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpus": [
+      {
+        "role": "rank0",
+        "model": "AMD Radeon Pro W7900",
+        "pci": "0000:0d:00.0"
+      },
+      {
+        "role": "rank1",
+        "model": "AMD Radeon RX 7900 XTX",
+        "pci": "0000:10:00.0"
+      }
+    ]
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "command": "python3 scripts/tp2_batched_prefill_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --layer 0 --capacity 4 --driver <python|compiled> --json <out>",
+  "results": {
+    "python": {
+      "driver": "python",
+      "passed": true,
+      "tolerance_rel": 0.005,
+      "rows": {
+        "1": {
+          "partial_rel": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "output_rel": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "partial_max_abs": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "tail_zero": true
+        },
+        "2": {
+          "partial_rel": {
+            "0": 0.000186012,
+            "1": 0.000137665
+          },
+          "output_rel": {
+            "0": 0.000223214,
+            "1": 0.000223214
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": true
+        },
+        "3": {
+          "partial_rel": {
+            "0": 0.000177557,
+            "1": 0.000128601
+          },
+          "output_rel": {
+            "0": 0.000209732,
+            "1": 0.000209732
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": true
+        },
+        "4": {
+          "partial_rel": {
+            "0": 0.000177557,
+            "1": 0.000128601
+          },
+          "output_rel": {
+            "0": 0.000209732,
+            "1": 0.000209732
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": null
+        }
+      }
+    },
+    "compiled": {
+      "driver": "compiled",
+      "passed": true,
+      "tolerance_rel": 0.005,
+      "rows": {
+        "1": {
+          "partial_rel": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "output_rel": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "partial_max_abs": {
+            "0": 0.0,
+            "1": 0.0
+          },
+          "tail_zero": true
+        },
+        "2": {
+          "partial_rel": {
+            "0": 0.000186012,
+            "1": 0.000137665
+          },
+          "output_rel": {
+            "0": 0.000223214,
+            "1": 0.000223214
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": true
+        },
+        "3": {
+          "partial_rel": {
+            "0": 0.000177557,
+            "1": 0.000128601
+          },
+          "output_rel": {
+            "0": 0.000209732,
+            "1": 0.000209732
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": true
+        },
+        "4": {
+          "partial_rel": {
+            "0": 0.000177557,
+            "1": 0.000128601
+          },
+          "output_rel": {
+            "0": 0.000209732,
+            "1": 0.000209732
+          },
+          "partial_max_abs": {
+            "0": 3.0518e-05,
+            "1": 1.5259e-05
+          },
+          "tail_zero": null
+        }
+      }
+    }
+  },
+  "notes": [
+    "The real launcher rewrites rows>1 to t16_wmma_prefill (Q4_K gate/up) and t16_gemv_rowtile (Q6_K down) leaves; the dispatch-surface helper does not name those leaves.",
+    "Q4_K t16 has no f32-output dispatch surface; MlpShardRank fails before launch for that combination.",
+    "Per-row differences of ~2e-4 relative are row-tiled accumulation-order reassociation inside the bf16 contract, not a correctness failure.",
+    "The compiled native driver reports identical numbers to the Python route.",
+    "Correctness probe only; no throughput or ratio is claimed."
+  ]
+}
