@@ -76,7 +76,9 @@ communication consumers may require registered kernel variants.
 The single-host TP=N architecture and first dense TP2 qualification plan is
 [`QWEN38-27B-GFX1100-TP2.md`](QWEN38-27B-GFX1100-TP2.md): one W7900 plus one
 RX 7900 XTX on the same PCIe host, prioritizing single-request latency and
-separately qualified MTP gains. This is planned work, not implemented support.
+separately qualified MTP gains. This is planned work, not implemented support;
+an MLP-only diagnostic session exists (replicated attention/GDN, sharded MLP,
+staged partial exchange) but does not constitute public TP support.
 It requires measured communication break-even, hybrid attention/state sharding,
 and topology-specific execution-profile qualification before default promotion.
 Use N-rank manifests and CPU reconstruction tests from the start; two-device
@@ -94,6 +96,14 @@ evidence does not certify arbitrary degrees or mixed backends.
 | Scheduler and KV | One existing model-owning loop, distributed runner adapter, composite `KVCacheBackend` | Atomic rank-qualified resource claims; one logical request and commit decision |
 | Plan identity | Immutable N-rank shard/topology/collective and local-variant manifests | Reject unsupported degree/profile/layout before allocation; no fifth kernel-registry axis |
 | Replay | HIP-stream baseline; separately qualify HIP graph/RCCL capture and native PM4 interoperability | Current native replay waits at HIP/HSA boundaries; do not assume asynchronous multi-rank replay |
+
+**Measured route (2026-09-16, diagnostic only).** The implemented session shards
+the MLP only (column-parallel gate/up, row-parallel down) with attention and GDN
+replicated on every rank, and carries one staged bf16-partial reduction per layer
+through a compiled host/device exchange rather than RCCL; the table above is the
+target design, not a description of that session. It is not public support and its
+TP2-vs-TP1 decode timing denominators are unqualified pending a matched
+re-measurement.
 
 Reuse local compute kernels where shapes/layouts permit. Validate packed quant
 boundaries and row-split arithmetic; sharding is not automatically bit-exact to

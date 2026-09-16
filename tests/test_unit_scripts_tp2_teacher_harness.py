@@ -414,6 +414,58 @@ def test_row_hash_is_content_stable(coverage):
     assert coverage._row_hash(row) != coverage._row_hash(other)
 
 
+def test_cross_teacher_check_proves_byte_equality(coverage):
+    rng = np.random.default_rng(5)
+    rows = [rng.normal(size=(6, 12)).astype(np.float32) for _ in range(3)]
+    cross = coverage.cross_teacher_check(rows, [r.copy() for r in rows])
+    assert cross["byte_identical"] is True
+    assert cross["differing_rows"] == 0
+    assert cross["max_abs_diff"] == 0.0
+    assert cross["metrics"]["mean_kl"] == 0.0
+    assert cross["metrics"]["top1_agreement"] == 1.0
+    # A digest is reported for each side and is content-stable.
+    assert cross["digest"]["tp1-d0"] == coverage._trajectory_digest(rows)
+    assert cross["digest"]["tp1-d1"] == coverage._trajectory_digest(rows)
+
+
+def test_equal_aggregates_do_not_prove_byte_equality(coverage):
+    # Two teachers whose softmax is bit-identical (a value far enough below the
+    # max underflows to 0) give exactly equal KL/top-1 aggregates against the
+    # shared student, yet the logits differ. Only the byte/digest comparison
+    # may be used to claim bit-identity.
+    rng = np.random.default_rng(7)
+    student = [rng.normal(size=(5, 12)).astype(np.float32)]
+    idx = int(student[0][0].argmin())
+    teacher_a = [student[0].copy()]
+    teacher_b = [student[0].copy()]
+    teacher_a[0][0, idx] = np.float32(-1e30)
+    teacher_b[0][0, idx] = np.float32(-1e31)
+    assert not np.array_equal(teacher_a[0], teacher_b[0])
+    score_a = coverage.score_arm(teacher_a, student, ["code"], [False])
+    score_b = coverage.score_arm(teacher_b, student, ["code"], [False])
+    assert score_a["global"] == score_b["global"], "aggregates are identical"
+    cross = coverage.cross_teacher_check(teacher_a, teacher_b)
+    assert cross["byte_identical"] is False
+    assert cross["differing_rows"] == 1
+    assert cross["max_abs_diff"] > 0.0
+    # The cross-teacher distribution is still identical, which is exactly why
+    # aggregate agreement cannot stand in for byte equality.
+    assert cross["metrics"]["mean_kl"] == 0.0
+
+
+def test_cross_teacher_check_rejects_shape_and_nonfinite(coverage):
+    good = np.zeros((4, 8), dtype=np.float32)
+    bad_shape = np.zeros((3, 8), dtype=np.float32)
+    cross = coverage.cross_teacher_check([good], [bad_shape], expected_positions=[4])
+    assert cross["byte_identical"] is False
+    assert cross["shape_mismatches"]
+    nan = good.copy()
+    nan[0, 0] = np.nan
+    cross = coverage.cross_teacher_check([nan], [good], expected_positions=[4])
+    assert cross["byte_identical"] is False
+    assert cross["nonfinite_rows"] == [0]
+
+
 # -- fail-closed gate evaluation --------------------------------------------
 
 
@@ -453,6 +505,28 @@ def _good_state_boundaries() -> dict[str, object]:
     }
 
 
+def _good_cross_check() -> dict[str, object]:
+    return {
+        "rows": 100,
+        "scored_rows": 100,
+        "byte_identical": True,
+        "differing_rows": 0,
+        "max_abs_diff": 0.0,
+        "digest": {"tp1-d0": "a" * 64, "tp1-d1": "a" * 64},
+        "metrics": {
+            "rows": 100,
+            "mean_kl": 0.0,
+            "p95_kl": 0.0,
+            "p99_kl": 0.0,
+            "max_kl": 0.0,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0,
+        },
+        "shape_mismatches": [],
+        "nonfinite_rows": [],
+    }
+
+
 def _evaluate(coverage, **overrides):
     kwargs = dict(
         comparisons=_good_comparisons(),
@@ -462,6 +536,7 @@ def _evaluate(coverage, **overrides):
         nonfinite_rows=[],
         determinism={"sweeps": coverage.MIN_DETERMINISM_SWEEPS, "per_row_match": True},
         state_boundaries=_good_state_boundaries(),
+        teacher_cross_check=_good_cross_check(),
     )
     kwargs.update(overrides)
     return coverage.evaluate_gates(**kwargs)
@@ -496,6 +571,28 @@ def test_evaluate_gates_rejects_state_boundary_failures(coverage):
         ok, failures = _evaluate(coverage, state_boundaries=boundaries)
         assert ok is False, key
         assert any("boundary" in f for f in failures), key
+
+
+def test_evaluate_gates_requires_teacher_cross_check(coverage):
+    ok, failures = _evaluate(coverage, teacher_cross_check=None)
+    assert ok is False and any("cross-check not measured" in f for f in failures)
+
+
+def test_evaluate_gates_rejects_non_byte_identical_controls(coverage):
+    cross = _good_cross_check()
+    cross["byte_identical"] = False
+    cross["differing_rows"] = 3
+    cross["max_abs_diff"] = 1.5e-7
+    ok, failures = _evaluate(coverage, teacher_cross_check=cross)
+    assert ok is False
+    assert any("not byte-identical" in f for f in failures)
+
+
+def test_evaluate_gates_rejects_cross_check_nonfinite(coverage):
+    cross = _good_cross_check()
+    cross["nonfinite_rows"] = [1]
+    ok, failures = _evaluate(coverage, teacher_cross_check=cross)
+    assert ok is False and any("cross-check non-finite" in f for f in failures)
 
 
 def test_evaluate_gates_requires_both_controls(coverage):
@@ -689,7 +786,7 @@ class _FakeRuntime:
 
 
 class _FakeCoverageSession:
-    def __init__(self, devices, mode, *, nonfinite=False):
+    def __init__(self, devices, mode, *, nonfinite=False, differ_teachers=False):
         self.devices = tuple(devices)
         self.mode = mode
         self.schedule = "eager"
@@ -700,10 +797,15 @@ class _FakeCoverageSession:
         self.vocab_size = 8
         self.runtime = _FakeRuntime()
         self._nonfinite = nonfinite
+        self._differ_teachers = differ_teachers
         self.closed = False
 
     def teacher_forced_logits(self, tokens):
         value = np.nan if self._nonfinite else 1.0
+        # A softmax-invariant shift: the rank-1 teacher's aggregates match the
+        # rank-0 teacher's exactly while the bytes differ.
+        if self._differ_teachers and self.devices == (1,):
+            value += 0.5
         return np.full((len(tokens), self.vocab_size), value, dtype=np.float32)
 
     def generate(self, tokens, max_new_tokens=2):
@@ -737,7 +839,7 @@ def _fake_suite():
     return rows
 
 
-def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True):
+def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True, differ_teachers=False):
     suite = _fake_suite()
     monkeypatch.setattr(coverage, "load_prompt_suite", lambda: suite)
     monkeypatch.setattr(
@@ -747,7 +849,9 @@ def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True):
     monkeypatch.setattr(
         coverage,
         "_session_factory",
-        lambda model, *, devices, mode: _FakeCoverageSession(devices, mode, nonfinite=nonfinite),
+        lambda model, *, devices, mode: _FakeCoverageSession(
+            devices, mode, nonfinite=nonfinite, differ_teachers=differ_teachers
+        ),
     )
     monkeypatch.setattr(coverage, "_git_dirty", lambda: False)
 
@@ -765,6 +869,26 @@ def test_coverage_main_passes_with_consistent_fake_arms(coverage, monkeypatch, t
     assert artifact["state_boundaries"]["reset_reuse_bit_exact"] is True
     assert artifact["suite"]["complete"] is True
     assert artifact["certification"].startswith("none")
+    # The direct control-vs-control comparison is part of the verdict.
+    assert artifact["teacher_cross_check"]["byte_identical"] is True
+    assert artifact["teacher_cross_check"]["differing_rows"] == 0
+
+
+def test_coverage_main_fails_when_controls_differ(coverage, monkeypatch, tmp_path, capsys):
+    # Equal aggregate metrics against the student are not enough: the direct
+    # byte comparison must also pass, or the control pair is not trustworthy.
+    _patch_coverage(coverage, monkeypatch, differ_teachers=True)
+    out = tmp_path / "artifact.json"
+    code = coverage.main(["--json", str(out), "--model-hash", "none", "--repeat-tp2", "3"])
+    capsys.readouterr()
+    assert code == 1
+    artifact = json.loads(out.read_text())
+    assert artifact["all_gates_passed"] is False
+    assert artifact["teacher_cross_check"]["byte_identical"] is False
+    assert any("not byte-identical" in f for f in artifact["gate_failures"])
+    # Both per-control envelopes still pass, which is the whole point.
+    assert artifact["comparison"]["tp1-d0"]["global"]["mean_kl"] == 0.0
+    assert artifact["comparison"]["tp1-d1"]["global"]["mean_kl"] == 0.0
 
 
 def test_coverage_main_fails_on_nonfinite_arm(coverage, monkeypatch, tmp_path, capsys):
