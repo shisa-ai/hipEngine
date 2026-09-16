@@ -2855,6 +2855,34 @@ def _variant_scoped_library(
 # on any other K. Keep the constant next to the selector that has to honour it.
 _Q8_DENSE_WIDE_K_TILE = 64
 _Q8_DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
+_Q8_DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
+
+
+def _q8_dense_wide_layers() -> frozenset[int] | None:
+    """Parse the layer scope for the wide route, or ``None`` for every layer.
+
+    The sibling f16 route fails the calibrated envelope at 0-47 and passes at
+    16-47, so a boolean with no scope can only express the configuration that
+    is already known to fail. An empty or unset value means every layer, which
+    is the shape a gate must be able to narrow.
+    """
+
+    raw = os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, "")
+    values = {int(part) for part in raw.split(",") if part.strip()}
+    return frozenset(values) if values else None
+
+
+def _weight_layer_index(weight: object | None) -> int | None:
+    """Return the transformer-block index owning a weight, if it has one."""
+
+    spec = getattr(weight, "spec", None)
+    slot_path = getattr(spec, "slot_path", None)
+    if not isinstance(slot_path, str):
+        return None
+    parts = slot_path.split(".")
+    if len(parts) < 3 or parts[0] != "layers" or not parts[1].isdigit():
+        return None
+    return int(parts[1])
 _Q8_DENSE_WIDE_EXACT_PARENTS = frozenset({
     "prefill_f32_f32_out",
     "coltile8_rowbatch4_f32_f32_out",
@@ -2868,6 +2896,7 @@ def _q8_dense_wide_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    weight: object | None = None,
 ) -> GGUFLinearDispatch:
     """Default-off wide-row route for Q8_0 F32/F32 prefill linears.
 
@@ -2881,6 +2910,10 @@ def _q8_dense_wide_dispatch(
     default-off and the exact coltile parents remain the default path, the
     registered strict fallback, and the sole sub-256-row owner. Promotion needs
     the calibrated production envelope in ``docs/EXECUTION-PROFILES.md``.
+
+    ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`` narrows the route to a layer
+    scope. Without it the route covers every layer, which is the 0-47 scope the
+    sibling f16 route already fails, so a gate has to be able to narrow it.
     """
 
     if (
@@ -2895,6 +2928,12 @@ def _q8_dense_wide_dispatch(
         in {"", "0", "false", "False"}
     ):
         return dispatch
+    scope = _q8_dense_wide_layers()
+    if scope is not None:
+        layer_index = _weight_layer_index(weight)
+        # A scoped route must not silently cover a weight it cannot place.
+        if layer_index is None or layer_index not in scope:
+            return dispatch
     key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
@@ -3612,6 +3651,7 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            weight=weight,
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,

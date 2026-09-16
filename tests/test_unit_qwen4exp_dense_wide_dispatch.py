@@ -190,3 +190,87 @@ def test_the_wide_selector_is_wired_into_the_launch_chain():
         "launch_gguf_linear must run the wide-row selector; Qwen4Exp prefill "
         "reaches its Q8_0 linears through this entry point"
     )
+
+
+def _weight(slot_path: str):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        spec=SimpleNamespace(slot_path=slot_path, quant_key="gguf_q8_0")
+    )
+
+
+def test_unscoped_route_covers_every_layer(monkeypatch):
+    """No scope means all 48 layers, which is the scope the f16 sibling fails."""
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
+
+    for layer in (0, 15, 16, 47):
+        actual = _q8_dense_wide_dispatch(
+            _parent(),
+            rows=1024,
+            in_features=PACKET_K,
+            out_features=PACKET_N,
+            weight=_weight(f"layers.{layer}.attn_qkv"),
+        )
+        assert actual == GGUFLinearDispatch(CANDIDATE, "raw"), layer
+
+
+def test_layer_scope_narrows_the_route_to_the_certified_window(monkeypatch):
+    """A gate must be able to ask for 16-47 rather than 0-47.
+
+    The sibling f16 route fails the calibrated envelope at 0-47 and passes at
+    16-47, so a route with no scope can only express the failing configuration.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.setenv(
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
+        ",".join(str(n) for n in range(16, 48)),
+    )
+
+    inside = _q8_dense_wide_dispatch(
+        _parent(), rows=1024, in_features=PACKET_K, out_features=PACKET_N,
+        weight=_weight("layers.16.attn_qkv"),
+    )
+    assert inside == GGUFLinearDispatch(CANDIDATE, "raw")
+
+    parent = _parent()
+    for layer in (0, 8, 15):
+        assert (
+            _q8_dense_wide_dispatch(
+                parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N,
+                weight=_weight(f"layers.{layer}.attn_qkv"),
+            )
+            == parent
+        ), layer
+
+
+@pytest.mark.parametrize(
+    "slot_path", ["token_embd", "output", "output_hc_down", "not.a.layer"]
+)
+def test_a_scoped_route_declines_a_weight_it_cannot_place(slot_path, monkeypatch):
+    """Fail closed: a weight with no layer index is outside any layer scope.
+
+    token_embd and output are Q8_0 in this model but sit outside the blocks, so
+    a scoped route must not silently claim them.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", "16,17,18")
+    parent = _parent()
+
+    assert (
+        _q8_dense_wide_dispatch(
+            parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N,
+            weight=_weight(slot_path),
+        )
+        == parent
+    )
+    # Unscoped, the same weight is claimed: the decline is the scope, not the path.
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS")
+    assert _q8_dense_wide_dispatch(
+        parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N,
+        weight=_weight(slot_path),
+    ) == GGUFLinearDispatch(CANDIDATE, "raw")
