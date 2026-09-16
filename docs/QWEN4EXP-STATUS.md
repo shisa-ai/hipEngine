@@ -171,7 +171,99 @@ Two readings the ratio column alone gets wrong:
   that family by 64.1% and we have no equivalent kernel. The base column flatters
   us on exactly the family where the comparator moved furthest.
 
-### 2.4 Where the comparator's time went, and what PR #63 changed
+### 2.4 How much of the gap we can close
+
+§2.2 says where the gap is; this says how much of it we have evidence to take
+back, and whether that evidence is admissible. Two sources, and their bases
+differ:
+
+- **The disabled-family sweep**
+  ([`2026-09-16-disabled-family-recoverable-time`](../benchmarks/results/2026-09-16-disabled-family-recoverable-time/README.md))
+  measured each disabled family as a post-binder override on this case, two
+  repetitions, median, against a 23.648 s fallback. Those savings are **wall**
+  seconds and **measured**.
+- **The layer gate** ([§4](#4-certified-but-not-promoted)) certifies a *scope* and
+  records no timing at all (`timing_protocol: none_full_logits_only_v1`). The
+  saving attached to a scope comes from the recoverable-time record, and every
+  figure below 32-47 there is a **byte-share prediction**; only 32-47 (+2.436 s)
+  and 0-47 (+7.041 s) are measured.
+
+Kernel time is 97% of wall on this case, so the two bases are close but they are
+not mixed in one column.
+
+| Family | ours ms | gap ms | recoverable | basis | Admissible today | residual gap | family gap closed |
+| --- | ---: | ---: | ---: | --- | --- | ---: | ---: |
+| `dense_projection` | 10562.2 | 9187.9 | **+4420** certified `Q8_WMMA_LAYERS` 16-47<br>+6614 `Q8_IU8_WMM` family-wide | prediction<br>measured wall | **yes at 16-47**<br>no verdict recorded | 4767.9 | **48.1%** |
+| `expert_gate_up` | 3414.2 | 2652.4 | 0 | both overrides are *slower*: `Q4_IU8_PREFILL` −77 ms, `PRODUCTION_MOE_PREFILL` −595 ms | — | 2652.4 | 0% |
+| `hyper_connection` | 2523.8 | 2188.1 | +2494 | measured wall | **no — rejected** | 2188.1 | 0% |
+| `expert_down` | 2389.0 | 1976.2 | none measured | — | — | 1976.2 | 0% |
+| `qsa_attention` | 1402.7 | 1247.0 | none measured | — | — | 1247.0 | 0% |
+| `gdn` | 821.2 | 557.4 | +354 | measured wall, **inside the run-to-run spread** | n/a | 557.4 | 0% |
+| `moe_reduce` | 762.5 | 658.6 | none measured | — | — | 658.6 | 0% |
+| `elementwise_norm` | 180.2 | −151.5 | — | already ahead of the comparator | — | −151.5 | — |
+
+**Residual and closed count only what is admissible.** The recoverable column
+shows what is *measured*; a family whose recovery is rejected keeps its full
+gap in the residual column, which is why `hyper_connection` shows +2494
+recoverable next to an unchanged 2188.1 residual. That +2494 is also larger than
+the family gap, so a corrected arithmetic there would close the family and
+contribute to the total rather than merely removing that row.
+
+**Admissible today: +4.42 s, which is 24.1% of the 18323.2 ms gap.** That takes
+the total ratio from **5.87x to 4.70x** — and it is a prediction, not a
+measurement, because the gate records no timing.
+
+The `hyper_connection` row is the one worth dwelling on. `GR_IU8` and
+`GR_IU8_DOWN` are **+2.494 s measured**, which would close that family's entire
+gap and 13.6% of the total, and both are numerically **rejected**: mean KL
+`1.4024e-3` and `1.3128e-3` against the `1e-3` limit, top-1 772/780 and 769/780
+([`REFACTOR.md`](REFACTOR.md)). A corrected arithmetic for that family is worth
+more than anything else on this list except dense, and it is blocked on
+numerics rather than on engineering.
+
+#### What the measured ceiling is
+
+The sweep also measured its four largest families **together**, which is the
+honest upper bound because the individual rows overlap:
+
+| | median prefill s | saved | speedup |
+| --- | ---: | ---: | ---: |
+| fallback | 23.648 | — | — |
+| sum of the four individually | — | +13.094 | (not reachable) |
+| `Q8_IU8_WMM` + `Q8_MMQ_PREFILL` + `GR_IU8` + `GR_IU8_DOWN` | **15.840** | **+7.808** | **1.493x** |
+
+**+7.808 s measured would close 42.6% of the gap and take the ratio to about
+3.80x.** None of it is promotable as measured, and the reasons differ per row:
+
+- `GR_IU8` and `GR_IU8_DOWN` are numerically **rejected** at this scope.
+- `Q8_MMQ_PREFILL` is a diagnostic override, not a profile state.
+- `Q8_IU8_WMM` family-wide has **no numerical verdict recorded at that scope**.
+  The rejection we do hold is for a *different* selector on the same tensors:
+  the f16 `Q8_WMMA_LAYERS` path, which fails at 0-47 (mean KL 1.099e-3) and
+  passes at 16-47. The two are siblings, not the same route, so one route's
+  verdict does not transfer to the other — the family-wide `Q8_IU8_WMM` number
+  is unmeasured for quality, not measured-and-failed.
+
+The promotable part of the ceiling is the certified 16-47 slice, which is the
++4.42 s above.
+
+So the summary, in shares of the 18323.2 ms gap:
+
+| | Share of gap |
+| --- | ---: |
+| `dense_projection` + `hyper_connection` — the only families where recovery is measured | **62.1%** |
+| ...of which **admissible today** (certified dense 16-47, predicted) | **24.1%** |
+| ...of which measured but not shippable (the +7.808 s combination) | 42.6% total |
+| No candidate at all: `expert_gate_up`, `expert_down`, `qsa_attention`, `moe_reduce` | 35.7% |
+| `gdn` — candidates measured, inside the run-to-run spread | 3.0% |
+| `elementwise_norm` — we are ahead of the comparator | −0.8% |
+
+The first two rows overlap by construction: the 24.1% admissible slice is inside
+the 42.6% measured combination. Read it as **24.1 points of the gap are
+shippable, another 18.5 points are measured but blocked, and 35.7 points have no
+candidate at all.**
+
+### 2.5 Where the comparator's time went, and what PR #63 changed
 
 Same case, base versus PR #63, milliseconds. Source:
 [`component-gap.json`](../benchmarks/results/2026-09-16-flashnext-delimited-components/component-gap.json).
@@ -193,7 +285,7 @@ Same case, base versus PR #63, milliseconds. Source:
 PR #63 is 13.9% faster end to end on the same case with identical 48/48 output
 ([worklog](../worklog/entries/20260916T042440.370650Z-lhl-flashnext-halobox-pr63-verified-e29646.md)).
 
-### 2.5 Accuracy basis
+### 2.6 Accuracy basis
 
 Max error against the exact F64 result on the identical-operand replay packet
 (`layers.8.attn_qkv`, rows 1024, K 2560, M 10240). Source:
@@ -220,15 +312,23 @@ their speed and our accuracy — both paths are inexact and theirs is more so.
 
 Ordered by share of the 18323.2 ms gap to PR #63 (see §2.3), not by ratio.
 
+**Read the "our state" column with care.** For `gguf_ud_q4_k_xl` the production
+binder zeroes fifteen `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` and then restores
+six `PRODUCTION_Q8_QSA_RESTORED_FLAGS`, so this quant's arithmetic comes from
+the production **selection table** (keyed on rows and quant) rather than from
+those flags. Reading the flag map therefore gives the wrong layer scope for
+several routes; the scopes below are read from the kernel trace instead
+([`role-analysis.json`](../benchmarks/results/2026-09-17-qwen4exp-per-role-cost/role-analysis.json)).
+
 | Mechanism | Their evidence | Gap share | Our state |
 | --- | --- | ---: | --- |
 | Dense projection: quantized weights dequantized to BF16 in LDS, activations converted to BF16 **once per graph and cached**, F32 accumulate on BF16 WMMA (`mmb.cu`, PR #63 `08de004`) | PR #63 dense_projection 1536.7 → 1374.3 ms | **50.1%** | **Partly built.** `dense_wide256` ports the tile (`mmb_dense_kernel<128,256,64,64,1>`) at 2.573 ms against the production dispatch's 17.319 ms on the packet (6.74x). Two gaps: f16 rather than bf16 operands (deliberate), and per-launch activation conversion — with a pre-converted f16 activation the same kernel runs **1.303 ms** against the comparator's 1.339 ms, so the activation path is the remaining 1.93x |
-| Routed MoE gate/up MMB kernels (`mmb_routed_glu_kernel`) | PR #63 expert_gate_up −7.0% | 14.5% | **Default-on at a certified scope.** WMMA-MoE layers 27-47, with iu8 gate/up 35-47, both in the named production profile |
-| Hyper-connection combine and mix (`hc_combine_norm_f32`, `hc_mix_reduce_f32`) | PR #63 hyper_connection −21.7% | 11.9% | **Open and diagnosed.** Our two `gr_read` passes (`gr_up` 2437 ms, `gr_write` 86 ms) are 2523.8 ms against their 335.7 ms for the fused combine-plus-norm. The same tensor is traversed twice: 2523.8 ms of reads against 1098 ms of matmuls consuming them |
-| Routed MoE down MMB kernel (`mmb_routed_kernel`) | PR #63 expert_down **−64.1%** (1149.8 → 412.8 ms) | 10.8% | **Not built.** This is the largest per-family move the comparator made and we have no equivalent kernel. Our `expert_down` is 2389.0 ms, of which 721 ms is iu8 exact-repair |
-| QSA attention | PR #63 −0.6% (156.6 → 155.7 ms) | 6.8% | **Default-on at a certified scope, and our worst ratio.** QSA flash layers 35-47; our 1402.7 ms is 9.01x theirs. Low priority by gap share: both sides are small |
+| Routed MoE gate/up WMMA-iu8 selection | PR #63 expert_gate_up −7.0% | 14.5% | **On for every layer, and already the best ratio in the table.** `gguf_q4_k_selected_dual_wmma_iu8_risk_prefill` ran on layers 0-1 and 3-47; the `selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out` selection is a production manifest entry keyed on `prefill_rows_ge64_exact_grouped_q4_gate_up`. This is **not** the `PRODUCTION_MOE_PREFILL` route (that flag is `0` for this quant) and **not** a 27-47 scope, which is what the profile's own comment claims |
+| Hyper-connection combine and mix (`hc_combine_norm_f32`, `hc_mix_reduce_f32`) | PR #63 hyper_connection −21.7% | 11.9% | **Open and diagnosed.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32` ran on all 48 layers for 2437.4 ms, plus `gr_write` at 86 ms: 2523.8 ms against their 335.7 ms for the fused combine-plus-norm. The same tensor is traversed twice, 2523.8 ms of reads against 1098 ms of matmuls consuming them. The `GR_IU8` variants that would fix it are numerically **rejected**; see §2.4 |
+| Routed MoE down MMB kernel (`mmb_routed_kernel`) | PR #63 expert_down **−64.1%** (1149.8 → 412.8 ms) | 10.8% | **Not built.** The largest per-family move the comparator made and we have no equivalent kernel. Our `expert_down` is 2389.0 ms, of which 721 ms is iu8 exact-repair. The down projection runs Q5_1 on 43 layers and Q8_0 on five (2, 4, 30, 46, 47) |
+| QSA attention | PR #63 −0.6% (156.6 → 155.7 ms) | 6.8% | **On, but not as "QSA flash".** The binder zeroes `QSA_FLASH_PREFILL` for this quant and restores `QSA_H256_WAVE_PREFILL=page256` and `QSA_HEAD_PAIR=quad`; `qsa_sparse_attention_h256_wave_rows_f32` ran on the 12 attention layers (3, 7, …, 47). Our 1402.7 ms is 9.01x theirs, the worst ratio in the table, but only 6.8% of the gap |
 | MoE reduction fusion | PR #63 moe_reduce −49.1% | 3.6% | **Open.** Our 762.5 ms covers router logits and select, group scatter/gather, the tile map and the weighted-lane reduction |
-| GDN prefill | PR #63 −8.3% | 3.0% | **Default-on at a certified scope.** Column-warp GDN layers 27-47 (supersedes peer-GDN); our 821.2 ms is 3.11x |
+| GDN prefill | PR #63 −8.3% | 3.0% | **The base kernel, not the column-warp variant.** `GDN_COLWARPS_PREFILL` is `0` for this quant, so `qwen4_exp_gdn_prefill_f32` ran on the 36 GDN layers. Enabling column warps is worth **+0.228 s measured**, inside the run-to-run spread; our 821.2 ms is 3.11x |
 | Elementwise and norm fusion | PR #63 −37.6% (531.4 → 331.7 ms) | **−0.8%** | **Not a gap: we are ahead.** 180.2 ms against their 331.7 ms, 0.54x, with the comparator spending 8.8% of its kernel time there against our 0.8%. An earlier revision of this document listed this as open; §2.2 retired that |
 | Activation packing elimination | PR #63 quantize_pack 284.8 → **0.0 ms** | 0.0% | **Done.** We have no packing row at all |
 | Dense Q8 prefill tiling | pwilkin dense variants 1387.5 ms per prefill against our 10562 ms | — | **Certified, not promoted.** F16 WMMA dense Q8 at layers 16-47 passes every calibrated gate; see §4 |
@@ -264,14 +364,15 @@ overestimated the full arm by 1.8x, the second deep-scope control point to do so
 
 `dense_wide256` is the larger prize and is not in this table because it cannot
 be gated yet: the route committed on 2026-09-17 is a plain boolean with no layer
-scope, so enabling it covers all 48 layers — the 0-47 scope the sibling f16
-route already fails. It needs a layer filter before an arm is worth running.
+scope, so enabling it covers all 48 layers — the 0-47 scope its sibling f16
+route already fails. It needs a layer filter before an arm is worth running, and
+the scope to target is now **16-47**, the deepest certified one.
 
 ## 5. What is left
 
 1. **Re-measure our own PP/TG at HEAD** on the §1.1 protocol. The current column
    is empty because nothing has re-measured it since 2026-09-13.
-2. **Give the `dense_wide256` selector a layer scope**, then gate it at 20-47.
+2. **Give the `dense_wide256` selector a layer scope**, then gate it at **16-47**.
    Without this the route cannot express the scope its own removal condition
    requires.
 3. **Cache the activation conversion** (convert once per graph, not per launch).
@@ -283,13 +384,20 @@ route already fails. It needs a layer filter before an arm is worth running.
    decision ([`PRODUCTION-ACCURACY-RECALIBRATION-PROPOSAL-2026-09-16.md`](PRODUCTION-ACCURACY-RECALIBRATION-PROPOSAL-2026-09-16.md));
    it does not change the current envelope, which remains the admission lane.
 6. **Close E10** — measure the comparator's own output against F64 with the
-   existing replay bridge, replacing the derived BF16 row in §2.5.
-7. **Open mechanisms from §3, in gap order**: the routed MoE down kernel
-   (10.8%, unbuilt), the duplicated hyper-connection read (11.9%, 2523.8 ms of
-   reads against 335.7 ms of fused comparator work), and MoE reduction (3.6%).
+   existing replay bridge, replacing the derived BF16 row in §2.6.
+7. **The largest blocked item is numerical, not mechanical.** `GR_IU8` and
+   `GR_IU8_DOWN` are **+2.494 s measured** — 13.6% of the total gap, more than
+   the entire `hyper_connection` family gap — and both are rejected at
+   mean KL `1.4e-3` against a `1e-3` limit. A corrected arithmetic for the
+   hyper-connection read is the **largest blocked item in the campaign** —
+   larger than the unbuilt routed MoE down projection, whose whole family gap is
+   1976 ms — and the only place where a numerics result buys seconds directly.
+   See §2.4.
+8. **Unbuilt mechanisms, in gap order**: the routed MoE down kernel (10.8%,
+   unbuilt, and the family where PR #63 moved furthest), MoE reduction (3.6%).
    Elementwise/norm fusion is **not** on this list — we are 0.54x the comparator
    there.
-8. **Reach layers 0-7**, which a contiguous scope cannot. Needs a per-layer cost
+9. **Reach layers 0-7**, which a contiguous scope cannot. Needs a per-layer cost
    profile rather than a boundary search.
 9. **Decode versus the comparators is not measured for this model.** The
    September 15 record is prefill only and says so: "Not a decode result.
