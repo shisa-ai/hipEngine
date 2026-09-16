@@ -7784,22 +7784,20 @@ from a kernel profile, and should expect the answer to be a work-partitioning
 change that preserves the reduction tree, or a quality candidate (fewer solver
 steps, lower precision) that the generated-audio suite has to justify.
 
-## VibeVoice-TTS: per-step diffusion D2H readback (open, ~5.6% of warm)
+## VibeVoice-TTS: per-step diffusion D2H readback (resolved 2026-09-16)
 
-`VibevoiceTTSDiffusionHeadGPU.forward()` reads `eps` back to the host every solver
-step, and `sample_speech_tokens` then runs the CFG combine and the DPM-Solver++ step
-in numpy. The blocking D2H makes the host wait for the whole queue to drain, leaving
-the GPU idle while the numpy step runs. `worklog/entries/20260915T205312.521230Z`
-measured the ceiling by removing only the readback: **1.2358x on the diffusion frame,
-+222.6 ms per request, +5.56% of warm**, RTF 1.201 -> ~1.134.
+The default diffusion loop keeps CFG and DPM-Solver++ state on device. The fused
+step preserves the reference rounding points, and timestep/condition invariants
+are cached. The host path remains the diagnostic oracle used by parity tests.
 
-`vv_diff_cfg_combine_bf16` already exists in
-`kernels/hip_gfx1100/vibevoice/diffusion.py` and is exported and registered, but is
-**unused by the runtime** -- it is the building block for this change. A DPM step
-kernel is still needed. Two properties decide whether the port can be bit-exact:
-the CFG combine applies `bf16_round` at two points, and
-`DPMSolverMultistepScheduler.step` is sequential fp32 accumulation. If it cannot be
-made bit-exact it needs the production-profile gate.
+The device solver measured a 14.9% diffusion-stage reduction and approximately
+3.5% warm-request reduction in a same-session A/B under host load. The invariant
+cache separately measured a 12.2% diffusion-stage reduction and 3.4% warm-request
+reduction on an idle host. These percentages are separate measurements, not an
+established combined speedup. Fresh ten-seed quality evaluation reproduces 58/60;
+broader TTS quality qualification remains pending.
 
-This is the last well-evidenced opportunity above 1% of warm anywhere in the
-pipeline, and it still does not approach 2x.
+Evidence: `worklog/entries/20260916T033657.511650Z-lhl-vibevoice-tts-device-solver-loop-bd1697.md`
+and `worklog/entries/20260916T042339.511052Z-lhl-vibevoice-tts-diffusion-cache-measurement-90ed57.md`.
+Desktop gfx1151 measurements must establish a new physical-host baseline before
+claiming further gains over torch or the previous implementation.
