@@ -16,6 +16,8 @@ compared token-for-token.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import time
 from dataclasses import dataclass, field
@@ -46,6 +48,7 @@ from hipengine.generation.yue2 import (
     token_prefixes,
 )
 from hipengine.runtime.yue2_ar import Yue2ArRuntime, bf16_bits_to_f32
+from hipengine.runtime.yue2_nar import song_chunks
 
 Cancelled = Callable[[], bool] | None
 TokenCallback = Callable[[str, int], None] | None
@@ -398,3 +401,389 @@ class Yue2ArSession:
 
     def close(self) -> None:
         self.runtime.close()
+
+
+# ---------------------------------------------------------------------------
+# product session
+# ---------------------------------------------------------------------------
+
+def canonical_identity(payload: dict) -> str:
+    """Stable SHA256 of a JSON-canonical payload (sorted keys, no whitespace)."""
+
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def tensor_identity(array: np.ndarray) -> str:
+    """Content hash of a tensor: dtype, shape, then FP32-contiguous bytes."""
+
+    host = np.ascontiguousarray(np.asarray(array, dtype=np.float32))
+    digest = hashlib.sha256()
+    digest.update(f"{host.dtype.str}{host.shape}".encode("ascii"))
+    digest.update(host.tobytes())
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class SongResult:
+    """One finished request: audio plus the identities of everything it produced.
+
+    ``audio`` is ``[channels, samples]`` FP32 at ``sample_rate``, unclipped, as
+    the reference decoder returns it. ``semantic`` retains the plan and the raw
+    semantic codes, so a saved result can be re-synthesized or re-decoded without
+    regenerating anything.
+    """
+
+    audio: np.ndarray
+    sample_rate: int
+    semantic: SemanticResult
+    latents: np.ndarray
+    config: dict
+    weights: dict
+    timing: dict
+    request_id: str
+    latent_identity: str
+    audio_identity: str
+
+    @property
+    def frames(self) -> int:
+        return int(self.latents.shape[0])
+
+    @property
+    def duration_seconds(self) -> float:
+        return float(self.audio.shape[-1]) / float(self.sample_rate)
+
+    @property
+    def truncation(self) -> dict:
+        return {
+            "abc": bool(self.semantic.plan.truncated),
+            "semantic": bool(self.semantic.truncated),
+        }
+
+    def to_dict(self) -> dict:
+        return {
+            "request_id": self.request_id,
+            "sample_rate": self.sample_rate,
+            "frames": self.frames,
+            "samples": int(self.audio.shape[-1]),
+            "channels": int(self.audio.shape[0]),
+            "duration_seconds": self.duration_seconds,
+            "latent_identity": self.latent_identity,
+            "audio_identity": self.audio_identity,
+            "abc_ids": list(self.semantic.plan.abc_ids),
+            "abc": self.semantic.plan.abc,
+            "semantic_tokens": list(self.semantic.tokens),
+            "truncation": self.truncation,
+            "config": self.config,
+            "weights": self.weights,
+            "timing": self.timing,
+            "request": self.semantic.plan.request.to_dict(),
+        }
+
+    def save(self, directory: str | Path) -> Path:
+        """Write ``result.json``, ``latents.npy`` and ``audio.npy``.
+
+        Tensors are plain ``.npy`` data, never pickle, so a saved result is data
+        rather than an executable object.
+        """
+
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        # The stages keep their own validated serialization (``plan.json`` and
+        # ``semantic.json``), which re-checks hashes, configuration, shapes and
+        # token domains on reload.
+        self.semantic.save(target)
+        np.save(target / "latents.npy", np.ascontiguousarray(self.latents, dtype=np.float32))
+        np.save(target / "audio.npy", np.ascontiguousarray(self.audio, dtype=np.float32))
+        payload = self.to_dict()
+        payload["files"] = {
+            "plan.json": "plan",
+            "semantic.json": "semantic",
+            "latents.npy": tensor_identity(self.latents),
+            "audio.npy": tensor_identity(self.audio),
+        }
+        path = target / "result.json"
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        return path
+
+
+class Yue2SessionBusy(RuntimeError):
+    """Raised when a second request is issued against a session that is running."""
+
+
+class Yue2Session:
+    """The complete torch-free YuE2 product path.
+
+    Stages compose the three runtimes: the AR session plans and generates
+    semantic codes, the NAR runtime conditions on the plan's exact prefix and
+    solves the flow-matching ODE, and the VAE runtime decodes the latents to
+    audio. Each stage is also usable on its own, and a saved plan or semantic
+    result can be replayed without regenerating it.
+
+    Requests are serialized per session explicitly: one request at a time, and
+    any stage raises :class:`Yue2SessionBusy` rather than interleaving two. State
+    is request-local (the AR session resets its per-branch contexts at the start
+    of every phase, and the NAR conditions freshly per chunk), so a cancelled or
+    failed request cannot leak into the next one. ``close`` is idempotent.
+    """
+
+    def __init__(
+        self,
+        ar_session: Yue2ArSession,
+        nar_runtime,
+        vae_runtime,
+        *,
+        config: GenerationConfig | None = None,
+        vae_core_frames: int = 1024,
+        vae_halo_frames: int = 16,
+        on_progress: Callable[[str, int, int], None] | None = None,
+    ) -> None:
+        self.ar = ar_session
+        self.nar = nar_runtime
+        self.vae = vae_runtime
+        self.config = config or ar_session.config
+        self.vae_core_frames = int(vae_core_frames)
+        self.vae_halo_frames = int(vae_halo_frames)
+        self.on_progress = on_progress
+        self._busy = False
+        self._closed = False
+
+    # -- lifecycle ------------------------------------------------------
+    def _enter(self) -> None:
+        if self._closed:
+            raise RuntimeError("session is closed")
+        if self._busy:
+            raise Yue2SessionBusy("this session is already running a request")
+        self._busy = True
+
+    def _leave(self) -> None:
+        self._busy = False
+
+    def reset(self) -> None:
+        """Drop request-local AR state; the session stays usable."""
+
+        self.ar.reset()
+
+    def close(self) -> None:
+        """Release every runtime. Idempotent."""
+
+        if self._closed:
+            return
+        self._closed = True
+        self._busy = False
+        self.nar.close()
+        self.vae.close()
+        self.ar.close()
+
+    def __enter__(self) -> "Yue2Session":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    # -- stages ---------------------------------------------------------
+    def plan(self, request: SongRequest, **kwargs) -> SymbolicPlan:
+        with self._serialized():
+            return self.ar.plan(request, **kwargs)
+
+    def generate_semantic(self, plan: SymbolicPlan, **kwargs) -> SemanticResult:
+        with self._serialized():
+            return self.ar.generate_semantic(plan, **kwargs)
+
+    @contextlib.contextmanager
+    def _serialized(self):
+        self._enter()
+        try:
+            yield
+        finally:
+            self._leave()
+
+    def _check_cancelled(self, cancelled: Cancelled, message: str) -> None:
+        if cancelled is not None and cancelled():
+            raise InterruptedError(message)
+
+    def synthesize(
+        self,
+        semantic: SemanticResult,
+        *,
+        steps: int | None = None,
+        context: int | None = None,
+        noise: np.ndarray | None = None,
+        nar_cond_end: int = 0,
+        cancelled: Cancelled = None,
+        on_chunk: Callable[[int, int], None] | None = None,
+    ) -> np.ndarray:
+        """Solve the acoustic flow-matching ODE for one semantic result.
+
+        The conditioning prefix is the plan's own positive prefix, so a
+        divergence cannot be read as a prompt-assembly difference. Cancellation
+        is checked between chunks and before each chunk's solve; the solver
+        itself is one device call per chunk.
+        """
+
+        if not isinstance(semantic, SemanticResult):
+            raise TypeError("Pass the SemanticResult returned by generate_semantic()")
+        request = semantic.plan.request
+        if tuple(token_prefixes(request, self.ar.encode, semantic.plan.abc_ids)) != tuple(
+            semantic.plan.prefix
+        ):
+            raise ValueError("Semantic result does not retain the request's exact prefix")
+        resolved_steps = int(self.config.ode_steps if steps is None else steps)
+        resolved_context = int(self.config.context if context is None else context)
+        chunks = song_chunks(
+            semantic.plan.prefix,
+            semantic.tokens,
+            request.seed,
+            context=resolved_context,
+            noise=noise,
+            nar_cond_end=nar_cond_end,
+        )
+        self._check_cancelled(cancelled, "Cancelled before acoustic prefill")
+        latents = []
+        for index, chunk in enumerate(chunks):
+            self._check_cancelled(cancelled, "Cancelled before acoustic prefill")
+            self.nar.condition(chunk)
+            latents.append(self.nar.solve(resolved_steps))
+            if on_chunk is not None:
+                on_chunk(index + 1, len(chunks))
+        return latents[0] if len(latents) == 1 else np.concatenate(latents, axis=0)
+
+    def decode(
+        self,
+        latents: np.ndarray,
+        *,
+        tiled: bool = True,
+        core_frames: int | None = None,
+        halo_frames: int | None = None,
+    ) -> np.ndarray:
+        """Decode latents to unclipped FP32 audio ``[channels, samples]``.
+
+        Accepts the solver's own ``[frames, latent_dim]`` layout or an already
+        batched ``[1, latent_dim, frames]`` tensor, and normalizes to the
+        decoder's channel-first layout.
+        """
+
+        values = np.asarray(latents, dtype=np.float32)
+        if values.ndim == 2:
+            values = values.T[None, ...]
+        elif values.ndim == 3 and values.shape[1] != self.vae.weights.latent_dim:
+            # A caller that batched the solver's layout gets the same treatment
+            # rather than a silently mis-shaped decode.
+            values = np.transpose(values, (0, 2, 1))
+        if tiled:
+            audio = self.vae.decode_tiled(
+                values,
+                core_frames=self.vae_core_frames if core_frames is None else int(core_frames),
+                halo_frames=self.vae_halo_frames if halo_frames is None else int(halo_frames),
+            )
+        else:
+            audio = self.vae.decode(values)
+        return audio[0]
+
+    # -- end to end -----------------------------------------------------
+    def effective_config(
+        self,
+        request: SongRequest,
+        abc_sampling: Sampling | dict | None = None,
+        semantic_sampling: Sampling | dict | None = None,
+        *,
+        steps: int | None = None,
+        context: int | None = None,
+    ) -> dict:
+        """The settings a request actually ran with, recorded in its result."""
+
+        return {
+            "abc": resolve_sampling(abc_sampling, self.config.abc).to_dict(),
+            "semantic": resolve_sampling(semantic_sampling, self.config.semantic).to_dict(),
+            "ode_steps": int(self.config.ode_steps if steps is None else steps),
+            "ode_method": self.config.ode_method,
+            "context": int(self.config.context if context is None else context),
+            "vae_core_frames": self.vae_core_frames,
+            "vae_halo_frames": self.vae_halo_frames,
+            "vae_tiled": True,
+            "guidance": request.guidance,
+            "cot": request.cot,
+        }
+
+    def generate(
+        self,
+        request: SongRequest,
+        *,
+        abc_sampling: Sampling | dict | None = None,
+        semantic_sampling: Sampling | dict | None = None,
+        steps: int | None = None,
+        context: int | None = None,
+        tiled: bool = True,
+        cancelled: Cancelled = None,
+        on_token: TokenCallback = None,
+    ) -> SongResult:
+        """Plan, generate, synthesize and decode one request end to end."""
+
+        with self._serialized():
+            return self._generate_locked(
+                request,
+                abc_sampling=abc_sampling,
+                semantic_sampling=semantic_sampling,
+                steps=steps,
+                context=context,
+                tiled=tiled,
+                cancelled=cancelled,
+                on_token=on_token,
+            )
+
+    def _generate_locked(
+        self,
+        request: SongRequest,
+        *,
+        abc_sampling,
+        semantic_sampling,
+        steps,
+        context,
+        tiled,
+        cancelled,
+        on_token,
+    ) -> SongResult:
+        config = self.effective_config(
+            request, abc_sampling, semantic_sampling, steps=steps, context=context
+        )
+        weights = {
+            "model": dict(self.ar.runtime.weights.identity),
+            "vae": dict(self.vae.weights.identity),
+        }
+        request_id = canonical_identity(
+            {"request": request.to_dict(), "config": config, "weights": weights}
+        )
+        started = time.perf_counter()
+        plan = self.ar.plan(request, sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
+        semantic = self.ar.generate_semantic(
+            plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token
+        )
+        self._check_cancelled(cancelled, "Cancelled before acoustic prefill")
+        nar_started = time.perf_counter()
+        latents = self.synthesize(
+            semantic, steps=steps, context=context, cancelled=cancelled
+        )
+        nar_seconds = time.perf_counter() - nar_started
+        self._check_cancelled(cancelled, "Cancelled before audio decode")
+        vae_started = time.perf_counter()
+        audio = self.decode(latents, tiled=tiled)
+        vae_seconds = time.perf_counter() - vae_started
+        timing = {
+            "abc": plan.timing,
+            "semantic": semantic.timing,
+            "nar_seconds": nar_seconds,
+            "vae_seconds": vae_seconds,
+            "e2e_seconds": time.perf_counter() - started,
+        }
+        return SongResult(
+            audio=audio,
+            sample_rate=int(self.vae.sample_rate),
+            semantic=semantic,
+            latents=np.asarray(latents, dtype=np.float32),
+            config=config,
+            weights=weights,
+            timing=timing,
+            request_id=request_id,
+            latent_identity=tensor_identity(latents),
+            audio_identity=tensor_identity(audio),
+        )

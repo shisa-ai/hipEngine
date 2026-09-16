@@ -191,6 +191,7 @@ class Yue2ArRuntime:
         if prefill_variant not in ("strict", "hipblaslt"):
             raise ValueError("prefill_variant must be strict or hipblaslt")
         spec = weights.config
+        self.weights = weights
         self.spec = spec
         self.max_context = int(max_context)
         self.branches = int(branches)

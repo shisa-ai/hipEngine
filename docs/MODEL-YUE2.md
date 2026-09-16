@@ -430,6 +430,25 @@ Milestone status:
   the full decode (1.51 s vs 0.68 s at 64 frames) because each tile re-decodes
   its halo; it bounds device residency rather than wall clock. See
   `worklog/entries/20260916T171559.133569Z-lhl-yue2-m5-vae-decoder-dfcdfd.md`.
+- **M6 complete** (2026-09-16): the staged session
+  (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
+  as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case
+  fixture carries the reference pipeline's own assembled prefix and semantic
+  codes, so the gate replays the reference's exact conditioning and checks the
+  product path against the audio the reference produced for it: **12/12** cases
+  reproduce the recorded latent frame count and sample count exactly (21 000
+  frames and 40.3 M samples in total, every case finite and non-silent), and
+  replaying `english-full-s1234` twice gives bit-identical latents. A separate
+  live run exercises the whole session rather than recorded conditioning: a greedy
+  request plans and decodes 96 semantic tokens to 96 latent frames and 3.84 s of
+  audio in 16.4 s, with identical latent and audio identities on a repeat. Neither
+  run imports torch, and the gate fails if one ever does. The replay uses 4 ODE
+  steps rather than the product's 32; solver arithmetic parity is the M4 gate's
+  claim. Two real interface defects were found here: the session's `decode`
+  treated the solver's `[frames, latent_dim]` output as channel-first, and
+  `Yue2ArRuntime` never exposed the weight identity the provenance block reads.
+  Not yet covered: the held-out task-quality suite. See
+  `worklog/entries/20260916T182720.934117Z-lhl-yue2-m6-product-session-e2e-b9c7d4.md`.
 - **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
   fixtures frozen behind a fail-closed validator, oracle environment recorded, all
   twelve production cases regenerated and committed
