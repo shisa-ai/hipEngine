@@ -145,10 +145,15 @@ def _load_tokenizer() -> object:
 
 
 def _session_factory(
-    model: str, *, devices: tuple[int, ...], mode: str
+    model: str, *, devices: tuple[int, ...], mode: str,
+    resident_control: bool = False, capacity: int = 2048, row_hook=None,
 ) -> object:
     """Seam for mocked tests; constructs one resident session."""
 
+    if resident_control:
+        from scripts.tp2_resident_control import create_coverage_session
+        return create_coverage_session(model, devices=devices, mode=mode,
+                                       capacity=capacity, row_hook=row_hook)
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 
     return MlpTP2GenerationSession(model, devices=devices, mode=mode)
@@ -714,7 +719,19 @@ def main(argv: list[str] | None = None) -> int:
         help="allow a diagnostic subset of the suite; the run still cannot pass "
         "the suite-completeness gate, it is labelled diagnostic",
     )
+    parser.add_argument('--capture-resident-arm', choices=('tp1-d0', 'tp1-d1', 'tp2'))
+    parser.add_argument('--resident-results', type=Path, nargs=3)
+    parser.add_argument('--max-sequence-length', type=int, default=71)
+    parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
     args = parser.parse_args(argv)
+    if args.capture_resident_arm or args.resident_results:
+        if not args.json:
+            parser.error('resident capture/report requires --json')
+        if args.repeat_tp2 < MIN_DETERMINISM_SWEEPS:
+            parser.error('resident controls require at least three sweeps per arm')
+        if args.capture_resident_arm:
+            return capture_resident_arm(args)
+        return report_resident_coverage(args)
     if args.repeat_tp2 < 1:
         parser.error("--repeat-tp2 must be >= 1")
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
@@ -947,6 +964,223 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     return 0 if all_pass else 1
+
+
+def _product_suite():
+    from scripts.gguf_mtp_bench import build_chat_prompt
+    suite = load_prompt_suite()
+    tokenizer = _load_tokenizer()
+    if any(len(row['messages']) != 1 or row['messages'][0]['role'] != 'user' for row in suite):
+        raise ValueError('product coverage requires the declared single-user prompt suite')
+    tokens = [tuple(build_chat_prompt(tokenizer, row['messages'][0]['content'])) for row in suite]
+    return suite, tokens
+
+
+def capture_resident_arm(args) -> int:
+    """One bounded fresh-process arm, reusing the session factory and suite logic."""
+    from scripts.tp2_resident_control import bind_resident_profile, resolved_scope_manifest
+    from scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder
+    from scripts.tp2_teacher_child import validate_logits
+    import uuid
+    arm = args.capture_resident_arm
+    expected_visibility = {'tp1-d0': '0', 'tp1-d1': '1'}.get(arm)
+    if expected_visibility is not None and os.environ.get('HIP_VISIBLE_DEVICES') != expected_visibility:
+        raise ValueError('resident TP1 controls require fresh physical-device visibility')
+    if arm == 'tp2' and any(os.environ.get(k) for k in ('HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES')):
+        raise ValueError('TP2 worker requires the unfiltered two-device process')
+    os.environ['HIPENGINE_GGUF_DECODE_REPACK'] = '1'
+    suite, token_rows = _product_suite()
+    if max(map(len, token_rows)) > args.max_sequence_length or len(token_rows[0]) + 2 > args.max_sequence_length:
+        raise ValueError('declared capacity does not cover the suite and lifecycle control')
+    path = Path(args.json)
+    root = path.parent / (path.stem + '-arrays')
+    root.mkdir(parents=True, exist_ok=True)
+    record = StageRecorder(path, {'kind': 'resident_tp_ar_capture', 'arm': arm,
+        'run_id': uuid.uuid4().hex, 'source_revision': _git_revision(), 'host': _host_identity(),
+        'command': shlex.join([sys.executable, *sys.argv]),
+        'model_sha256': _model_sha256(MODEL), 'performance_claim': False,
+        'suite': {'ids': [str(r['id']) for r in suite], 'categories': [r['category'] for r in suite],
+                  'heldout': [r['heldout'] for r in suite], 'tokens': token_rows,
+                  'positions': sum(map(len, token_rows)), 'renderer': 'product build_chat_prompt'},
+        'arrays': [], 'profile': bind_resident_profile(args.execution_profile)})
+    control_path = root / 'controls.jsonl'
+    current = {'sweep': -1, 'prompt_id': 'build'}
+    handle = control_path.open('w')
+    def row_hook(value):
+        handle.write(json.dumps({**current, **value}) + '\n')
+        handle.flush()
+    state = {}
+    def build():
+        devices = (0, 1) if arm == 'tp2' else (0,)
+        session = _session_factory(MODEL, devices=devices, mode='tp2' if arm == 'tp2' else 'tp1',
+            resident_control=True, capacity=args.max_sequence_length, row_hook=row_hook)
+        state['session'] = session
+        if arm == 'tp2':
+            session._ensure_graph_schedule()
+        record.artifact['devices'] = _device_identities(session)
+        record.artifact['route'] = _resolved_route(session)
+        record.artifact['scope_manifest'] = resolved_scope_manifest(session)
+        record.artifact['vocab_size'] = int(session.vocab_size)
+        return {'vocab_size': int(session.vocab_size)}
+    hashes = []
+    def capture(index, save=False):
+        session = state['session']
+        logits = run_teacher_arm(session, token_rows[index:index+1])[0]
+        ok, detail = validate_logits(logits, positions=len(token_rows[index]), vocab_size=session.vocab_size)
+        if not ok:
+            raise ValueError(detail)
+        digest = _row_hash(logits)
+        if save:
+            out = root / f'prompt-{index}.npy'
+            np.save(out, logits)
+            record.artifact['arrays'].append({'path': str(out), 'logit_sha256': digest,
+                                              'shape': list(logits.shape)})
+            hashes.append(digest)
+        elif digest != hashes[index]:
+            raise ValueError(f'same-schedule/reset mismatch: prompt {index}')
+        return {'prompt_id': suite[index]['id'], 'shape': list(logits.shape), 'logit_sha256': digest}
+    if record.guard('build', build):
+        for sweep in range(args.repeat_tp2):
+            for index, row in enumerate(suite):
+                current.update(sweep=sweep, prompt_id=str(row['id']))
+                if not record.guard(f'sweep-{sweep}/{row["id"]}', lambda i=index, s=sweep: capture(i, save=s == 0)):
+                    break
+            if record.exit_code:
+                break
+        if not record.exit_code:
+            current.update(sweep=-1, prompt_id=str(suite[0]['id']))
+            record.guard('reset-reuse', lambda: capture(0))
+            current['prompt_id'] = str(suite[1]['id'])
+            record.guard('intervening-prompt', lambda: capture(1))
+            current['prompt_id'] = str(suite[0]['id'])
+            record.guard('isolation-after-neighbor', lambda: capture(0))
+            def generation():
+                result = state['session'].generate(token_rows[0], max_new_tokens=2)
+                control = getattr(state['session'], 'generation_control', None)
+                if control is None:
+                    control = {'sampled_sequence': list(result.token_ids),
+                               'positions': [t.position for t in result.step_traces],
+                               'decode_transitions': sum(t.kind == 'decode' for t in result.step_traces)}
+                record.artifact['generation_control'] = control
+                return control
+            record.guard('generation', generation)
+            record.guard('reset-after-generation', lambda: capture(0))
+        if not record.exit_code:
+            record.artifact['determinism'] = {'sweeps': args.repeat_tp2, 'per_row_match': True}
+            record.artifact['state_boundaries'] = {
+                'reset_reuse_bit_exact': True, 'intervening_prompt_reuse_bit_exact': True,
+                'reset_after_generation_bit_exact': True,
+                'scope': 'c1 sequential request isolation/reset/reuse, not concurrent cN serving'}
+            record.guard('teardown', state['session'].close)
+    handle.close()
+    record.artifact['control_log'] = {'path': str(control_path),
+        'sha256': hashlib.sha256(control_path.read_bytes()).hexdigest()}
+    record.artifact['natural_teardown'] = bool(not record.exit_code)
+    record.finish()
+    if record.exit_code:
+        sys.stdout.flush(); sys.stderr.flush(); os._exit(1)
+    return 0
+
+
+def load_resident_capture(path: Path):
+    """Reject incomplete, forged-profile, truncated, or nonfinite capture data."""
+    from hipengine.execution_profiles import manifest_sha256
+    data = json.loads(path.read_text())
+    if data.get('status') != 'complete' or data.get('natural_teardown') is not True:
+        raise ValueError('capture did not complete natural teardown')
+    if data.get('first_bad_stage') is not None or not all(s.get('ok') is True for s in data['stages']):
+        raise ValueError('capture contains a failed/incomplete stage')
+    if manifest_sha256(data['profile']['manifest']) != data['profile']['manifest_sha256']:
+        raise ValueError('profile manifest hash mismatch')
+    scope = data['scope_manifest']
+    encoded = json.dumps(scope['manifest'], sort_keys=True, separators=(',', ':')).encode()
+    if hashlib.sha256(encoded).hexdigest() != scope['sha256']:
+        raise ValueError('scope manifest hash mismatch')
+    control = Path(data['control_log']['path'])
+    if hashlib.sha256(control.read_bytes()).hexdigest() != data['control_log']['sha256']:
+        raise ValueError('control log hash mismatch')
+    control_rows = [json.loads(line) for line in control.read_text().splitlines() if line.strip()]
+    for sweep in range(int(data['determinism']['sweeps'])):
+        for prompt_id, tokens in zip(data['suite']['ids'], data['suite']['tokens'], strict=True):
+            selected = [r for r in control_rows if r['sweep'] == sweep and r['prompt_id'] == prompt_id]
+            phase = 'tp2-output' if data['arm'] == 'tp2' else 'head-complete'
+            outputs = [r for r in selected if r['phase'] == phase]
+            if [r['position'] for r in outputs] != list(range(len(tokens))):
+                raise ValueError('control log lacks complete ordered output positions')
+            if [r['input_token'] for r in outputs] != tokens:
+                raise ValueError('control log has mismatched teacher inputs')
+            if data['arm'] == 'tp2':
+                for rank in (0, 1):
+                    inputs = [r for r in selected if r['phase'] == 'tp2-input' and r['logical_device'] == rank]
+                    if [r['input_token'] for r in inputs] != tokens or [r['position_context'] for r in inputs] != [[i, i+1] for i in range(len(tokens))]:
+                        raise ValueError('rank input/position control mismatch')
+            else:
+                states = [r for r in selected if r['phase'] == 'resident-state']
+                if len(states) != 1 or states[0]['device_token_rows'] != tokens or states[0]['position_context'] != [len(tokens), len(tokens)+1]:
+                    raise ValueError('resident input/state control mismatch')
+    entries = data['arrays']
+    if len(entries) != len(data['suite']['ids']):
+        raise ValueError('capture prompt array count mismatch')
+    arrays = []
+    for entry, tokens in zip(entries, data['suite']['tokens'], strict=True):
+        array = np.load(entry['path'], mmap_mode='r')
+        if array.dtype != np.float32 or array.shape != (len(tokens), data['vocab_size']) or not np.isfinite(array).all():
+            raise ValueError('capture trajectory shape/finiteness mismatch')
+        if _row_hash(array) != entry['logit_sha256']:
+            raise ValueError('capture logit hash mismatch')
+        arrays.append(array)
+    return data, arrays
+
+
+def report_resident_coverage(args) -> int:
+    """CPU aggregation through the existing category/scope numerical evaluator."""
+    captures = [load_resident_capture(path) for path in args.resident_results]
+    by_arm = {data['arm']: (data, arrays) for data, arrays in captures}
+    if set(by_arm) != {'tp1-d0', 'tp1-d1', 'tp2'} or len(by_arm) != len(captures):
+        raise ValueError('need exactly three distinct capture arms')
+    if len({d['run_id'] for d, _ in captures}) != 3:
+        raise ValueError('capture run identity reused')
+    first = by_arm['tp1-d0'][0]
+    for data, _ in captures:
+        for key in ('suite', 'model_sha256', 'host', 'source_revision', 'vocab_size', 'profile'):
+            if data[key] != first[key]:
+                raise ValueError(f'cross-arm {key} mismatch')
+    suite, tokens = _product_suite()
+    if first['suite']['ids'] != [r['id'] for r in suite] or first['suite']['tokens'] != [list(t) for t in tokens]:
+        raise ValueError('captures do not match current product prompt suite')
+    uuid0 = by_arm['tp1-d0'][0]['devices']['0']['uuid']
+    uuid1 = by_arm['tp1-d1'][0]['devices']['0']['uuid']
+    if uuid0 == uuid1 or {uuid0, uuid1} != {v['uuid'] for v in by_arm['tp2'][0]['devices'].values()}:
+        raise ValueError('physical control devices do not match distinct TP2 ranks')
+    categories = [str(r['category']) for r in suite]
+    heldout = [bool(r['heldout']) for r in suite]
+    expected = [len(t) for t in tokens]
+    comparisons = {arm: score_arm(by_arm[arm][1], by_arm['tp2'][1], categories, heldout,
+        expected_positions=expected, vocab_size=first['vocab_size']) for arm in ('tp1-d0', 'tp1-d1')}
+    cross = cross_teacher_check(by_arm['tp1-d0'][1], by_arm['tp1-d1'][1],
+                               expected_positions=expected, vocab_size=first['vocab_size'])
+    passed, failures = evaluate_gates(comparisons=comparisons, categories_present=set(categories),
+        suite_has_heldout=any(heldout), suite_complete=True, nonfinite_rows=[],
+        determinism=by_arm['tp2'][0]['determinism'], state_boundaries=by_arm['tp2'][0]['state_boundaries'],
+        teacher_cross_check=cross)
+    for data, _ in captures:
+        if data['determinism']['sweeps'] < 3 or data['determinism']['per_row_match'] is not True:
+            failures.append(f'{data["arm"]} determinism incomplete')
+        for key in ('reset_reuse_bit_exact', 'intervening_prompt_reuse_bit_exact', 'reset_after_generation_bit_exact'):
+            if data['state_boundaries'][key] is not True:
+                failures.append(f'{data["arm"]} {key} failed')
+    output = {'kind': 'optimized_resident_tp1_tp2_coverage', 'performance_claim': False,
+        'production_qualified': False, 'all_gates_passed': passed and not failures,
+        'gate_failures': failures, 'suite': first['suite'], 'coverage_scale': 'extended_probe',
+        'population_note': 'Natural causal prompt prefixes, not a sustained generated-token or full task population.',
+        'model_sha256': first['model_sha256'], 'host': first['host'], 'profile': first['profile'],
+        'comparison': comparisons, 'teacher_cross_check': cross,
+        'controls': {data['arm']: {k: data[k] for k in ('run_id', 'devices', 'route', 'scope_manifest',
+            'determinism', 'state_boundaries', 'generation_control', 'control_log', 'command', 'natural_teardown')} for data, _ in captures},
+        'captures': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in args.resident_results},
+        'thresholds': {**PRODUCTION_GATE, 'category_top1': CATEGORY_TOP1}}
+    _write_artifact(output, args.json)
+    return 0 if output['all_gates_passed'] else 1
 
 
 def _write_artifact(result: dict[str, object], path: str | None) -> None:

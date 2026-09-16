@@ -107,10 +107,41 @@ def validate_result(result, vocab_size: int) -> dict:
         'max': float(logits.max()), 'sha256': hashlib.sha256(logits.tobytes()).hexdigest()}}
 
 
+def graph_device_state(session) -> dict:
+    """Read the graph's prepared-next-transition metadata, not host mirrors."""
+    runtime = session.runtime
+    runtime.device_synchronize()
+    result = {}
+    for name, buffer in (('position', session.scratch.position_buf),
+                         ('context', session.scratch.context_buf),
+                         ('sampled_token', session._lm_out_index)):
+        host = np.empty(1, dtype=np.int64)
+        runtime.memcpy(host.ctypes.data, buffer.ptr, host.nbytes, 2)
+        result[name] = int(host[0])
+    return result
+
+
+def compare_graph_eager(eager, graph, vocab_size: int) -> dict:
+    """Full-vocabulary comparison; finiteness alone cannot certify replay."""
+    from scripts.tp2_teacher_coverage_broad import _kl_rows, _aggregate, _envelope_gate
+    validate_result(eager, vocab_size)
+    validate_result(graph, vocab_size)
+    left = np.asarray(eager.logits).reshape(1, vocab_size)
+    right = np.asarray(graph.logits).reshape(1, vocab_size)
+    kl, top1 = _kl_rows(left, right)
+    metrics = _aggregate(kl, top1)
+    gate = _envelope_gate(metrics, top1_bar=0.99)
+    if not gate['passed']:
+        raise ValueError(f'graph/eager numerical comparison failed: {metrics}')
+    return {**metrics, 'max_abs': float(np.max(np.abs(left - right))),
+            'byte_identical': bool(np.array_equal(left, right)), 'single_row_smoke_only': True}
+
+
 def run_stages(session, tokens, recorder, *, use_bulk=None, with_serial=False, with_graph=False):
     runtime = session.runtime
     vocab_size = int(session.runner.vocab_size)
     results = {}
+    samples = {}
 
     def sample(name, fn):
         def checked():
@@ -118,6 +149,7 @@ def run_stages(session, tokens, recorder, *, use_bulk=None, with_serial=False, w
             runtime.device_synchronize()
             payload = validate_result(result, vocab_size)
             results[name] = int(result.token_id)
+            samples[name] = result
             return payload
         return recorder.guard(name, checked)
 
@@ -135,19 +167,73 @@ def run_stages(session, tokens, recorder, *, use_bulk=None, with_serial=False, w
             return
     if with_graph:
         graphs = []
+        start_position = int(session.position)
+        seed_name = 'prefill-serial' if with_serial else 'eager-step'
+        seed_token = results[seed_name]
         def capture():
-            graphs.append(session.capture_decode_graph(position=int(session.position),
+            graphs.append(session.capture_decode_graph(position=start_position,
                 steps_per_replay=1, max_replay_steps=2,
-                attention_max_context_len=int(session.position) + 2))
+                attention_max_context_len=start_position + 2))
+            if int(session.position) != start_position:
+                raise ValueError('graph capture advanced the session position')
+            device_state = graph_device_state(session)
+            if device_state != {'position': start_position, 'context': start_position + 1, 'sampled_token': seed_token}:
+                raise ValueError(f'graph capture device state mismatch: {device_state}')
+            return {'input_position': start_position, 'input_token': seed_token, 'device_state': device_state}
         if not recorder.guard('graph-capture', capture, sync=runtime.device_synchronize):
             return
         graph = graphs[0]
-        if not recorder.guard('graph-replay', lambda: graph.replay(1), sync=runtime.device_synchronize):
-            return
-        if not sample('graph-read', lambda: graph.read_sample(return_logits=True)):
-            return
+        for step in range(2):
+            suffix = '' if step == 0 else '-2'
+            def replay():
+                graph.replay(1)
+                expected = start_position + step + 1
+                if int(session.position) != expected:
+                    raise ValueError('graph replay did not advance exactly one position')
+                device_state = graph_device_state(session)
+                if device_state['position'] != expected or device_state['context'] != expected + 1:
+                    raise ValueError(f'graph replay device cursor mismatch: {device_state}')
+                return {'output_position': expected, 'device_state': device_state,
+                        'transport': graph.transport_provenance()}
+            if not recorder.guard('graph-replay' + suffix, replay, sync=runtime.device_synchronize):
+                return
+            if not sample('graph-read' + suffix, lambda: graph.read_sample(return_logits=True)):
+                return
         if not recorder.guard('graph-close', lambda: graph.close(), sync=runtime.device_synchronize):
             return
+        if not recorder.guard('graph-eager-reset', lambda: session.reset(), sync=runtime.device_synchronize):
+            return
+        if not sample('graph-eager-prefill', lambda: session.prefill(
+                tokens, use_bulk=False if with_serial else use_bulk,
+                bulk_attention_mode='bulk', return_logits=True)):
+            return
+        reconstructed = 'graph-eager-prefill'
+        if not with_serial:
+            if not sample('graph-eager-reconstruct', lambda: session.step(
+                    results['graph-eager-prefill'], return_logits=True)):
+                return
+            reconstructed = 'graph-eager-reconstruct'
+        def check_start():
+            if int(session.position) != start_position or results[reconstructed] != seed_token:
+                raise ValueError('graph/eager input token or position mismatch')
+            if not np.array_equal(samples[reconstructed].logits, samples[seed_name].logits):
+                raise ValueError('same-schedule reconstruction changed seed logits')
+            return {'input_token': seed_token, 'input_position': start_position}
+        if not recorder.guard('graph-eager-input', check_start):
+            return
+        for step in range(2):
+            suffix = '' if step == 0 else '-2'
+            input_token = seed_token if step == 0 else results['graph-read']
+            if not sample('graph-eager-reference' + suffix, lambda: session.step(input_token, return_logits=True)):
+                return
+            def compare():
+                if int(session.position) != start_position + step + 1:
+                    raise ValueError('eager reference position mismatch')
+                return {**compare_graph_eager(samples['graph-eager-reference' + suffix], samples['graph-read' + suffix], vocab_size),
+                        'input_token': input_token, 'input_position': start_position + step,
+                        'output_position': int(session.position)}
+            if not recorder.guard('graph-eager-compare' + suffix, compare):
+                return
     recorder.guard('teardown', lambda: session.close(), sync=runtime.device_synchronize)
 
 
@@ -163,6 +249,8 @@ def main(argv=None) -> int:
     parser.add_argument('--os-exit', action='store_true', help='skip successful-process destructors too')
     parser.add_argument('--compiler-version-file', type=Path)
     parser.add_argument('--require-cached-build', action='store_true')
+    parser.add_argument('--execution-profile', choices=('strict', 'production'), default=None)
+    parser.add_argument('--max-sequence-length', type=int, default=None)
     args = parser.parse_args(argv)
     # Exactly the true-AR CLI assignment, not setdefault: inherited 0 must not
     # silently override the declared True. No causal claim about repack/NaNs.
@@ -177,8 +265,8 @@ def main(argv=None) -> int:
         'config': {'use_wmma_prefill': True, 'use_gemv_decode': args.use_gemv_decode,
                    'use_bulk': None, 'bulk_attention_mode': 'bulk', 'attn_aotriton_min_tokens': 512,
                    'kv_policy': 'session default (BF16)', 'kv_scale_dtype': 'fp16',
-                   'profile': 'session/environment default',
-                   'decode_transitions': 2 if args.with_graph else 1,
+                   'profile': args.execution_profile or 'session/environment default',
+                   'decode_transitions': 3 if args.with_graph else 1,
                    'require_cached_build': args.require_cached_build},
         'unwritten_check': 'not performed: no initialized sentinel',
     })
@@ -209,7 +297,14 @@ def main(argv=None) -> int:
         recorder.artifact['prompt_token_ids'] = tokens
         # True-AR formula at warmup=0/decode=1. Optional graph diagnostics
         # additionally reserve their two-position attention capture horizon.
-        capacity = len(tokens) + (4 if args.with_graph else 2)
+        if args.execution_profile is not None:
+            from scripts.tp2_resident_control import bind_resident_profile
+            recorder.artifact['execution_profile'] = bind_resident_profile(args.execution_profile)
+            recorder.artifact['env'] = {k: v for k, v in os.environ.items()
+                                       if k.startswith(('HIP', 'ROCR', 'HSA', 'ROCM'))}
+        capacity = args.max_sequence_length or (len(tokens) + (4 if args.with_graph else 2))
+        if capacity < len(tokens) + (4 if args.with_graph else 2):
+            raise ValueError('declared capacity does not cover diagnostic horizon')
         recorder.artifact['config']['max_sequence_length'] = capacity
         recorder.persist()
         session = Qwen35GGUFResidentSession(args.model, max_sequence_length=capacity,

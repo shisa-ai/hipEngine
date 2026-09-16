@@ -1,0 +1,1502 @@
+{
+  "kind": "tp2_optimized_resident_graph_and_teacher_controls",
+  "performance_claim": false,
+  "production_qualified": false,
+  "all_gates_passed": true,
+  "gate_failures": [],
+  "suite": {
+    "ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review",
+      "heldout_code_rate_limiter",
+      "heldout_code_interval_schedule",
+      "heldout_general_en_incident",
+      "heldout_general_en_quant",
+      "heldout_general_ja_migration",
+      "heldout_general_ja_speculative",
+      "heldout_mixed_summary",
+      "heldout_mixed_review"
+    ],
+    "categories": [
+      "code",
+      "code",
+      "code",
+      "code",
+      "general_en",
+      "general_en",
+      "general_ja",
+      "general_ja",
+      "mixed_ja_en",
+      "mixed_ja_en",
+      "code",
+      "code",
+      "general_en",
+      "general_en",
+      "general_ja",
+      "general_ja",
+      "mixed_ja_en",
+      "mixed_ja_en"
+    ],
+    "heldout": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "positions": 903,
+    "renderer": "product build_chat_prompt",
+    "token_lengths": [
+      40,
+      50,
+      47,
+      52,
+      39,
+      40,
+      43,
+      43,
+      64,
+      71,
+      55,
+      52,
+      45,
+      56,
+      53,
+      45,
+      52,
+      56
+    ],
+    "token_sha256": [
+      "338ab7fb6196178a16aeeffb82454e63d3414c6fc422bcacc7ce16d812d02bca",
+      "317f11d102d870eb0b76ef8d25ebdf83aa5c92a154c928aab1c709f749270f7a",
+      "8cf53e734f7bda8ef41211d38b9891badc09b974300425546c450973a15c2444",
+      "3be7b378b76bea848cc8ad67c3564faeac97ffe2a0d9ca3f76f3ac8d7a8ae0f0",
+      "e34dadb6a8a423693ac9de12fb8d6db2463567ac707ef2cd0a53ea1b5583985f",
+      "40a755eb9e854ac275b2fb842b1135a290f80a51105ee91da7dabcb15caa0ae6",
+      "4b74fc033519a42f68f7ca8fae9c700982ecb4027d27ab26dc081ec3911be472",
+      "3a7e981d5db23a8e811c8d0c3c9f65d2c727bffad196ff735fbb3cea08d4d9e3",
+      "dfc696b0afa90a5ec34aa4ca5b0a024720f642e45e9889f6ab8c609851389dc1",
+      "10a1ba0abe0e5f629d5498f9d950a5ceda8ee32b791afedcb067c71b06f4205b",
+      "330fbf7a582e81fd26b8b1650bea89b2e9ca5d98bd1f648e952191f1c2824a5f",
+      "ef33540f76ee293990a50f6088a0bf1341716dbc8801ac5abb8a6434bda1d510",
+      "6253642b5e10e17535bf886235483715cd5a333a0d05f373d6868f60fb1f79b4",
+      "48c444c58069711542c81675c1c972330cc73388f2e220618d0d2fed5612346a",
+      "3e01a5193e7cf2f249dc7c4d0c49067e273dbe02e3910cf46fdfe51f848e5894",
+      "a2c35f2cad1a21d6f23037b480152b2e4a235588f53f87e0e136264bfa7034e7",
+      "7e9730c6714b428537b5d4241b7edeabc387dc3c3908e5ea50e934ae031e15d6",
+      "4e11341ba77b432726850ab31858146457adcc2b2405f20def426482c31cb8ed"
+    ]
+  },
+  "coverage_scale": "extended_probe",
+  "population_note": "Natural causal prompt prefixes, not a sustained generated-token or full task population.",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "host": {
+    "node": "epyc",
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.43",
+    "machine": "x86_64",
+    "cpu_model": "AMD Ryzen 9 5950X 16-Core Processor",
+    "cpu_count": 32,
+    "nice": -4
+  },
+  "profile": {
+    "requested": "production",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1100",
+      "model": "qwen3_5_gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_policy": "paged_bf16",
+      "graph_policy": "specdec2_eager_c1_exact_qwen38_c8_q6_dp4a",
+      "selections": [
+        {
+          "layer": "linear_attn_chain_conv_decode",
+          "scope": "specdec2_mtp2_c1",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+          "selected_variant": "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        }
+      ]
+    },
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+    "fell_back_to_strict": false,
+    "env_after_binding": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "0",
+      "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "0",
+      "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28": "1",
+      "HIPENGINE_C8_Q6_DP4A_GROUPED": "1"
+    },
+    "scope_note": "Named TP1 arithmetic binder; not a distributed/AR-graph promotion certificate."
+  },
+  "comparison": {
+    "tp1-d0": {
+      "global": {
+        "rows": 903,
+        "mean_kl": 0.0002216215443855106,
+        "p95_kl": 0.0009215846342941083,
+        "p99_kl": 0.003915400447622605,
+        "max_kl": 0.010521674501743841,
+        "top1_agreement": 1.0,
+        "flipped_rows": 0
+      },
+      "categories": {
+        "code": {
+          "rows": 296,
+          "mean_kl": 0.00022259190279165606,
+          "p95_kl": 0.0007830338001376278,
+          "p99_kl": 0.0035882592035546544,
+          "max_kl": 0.010521674501743841,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "general_en": {
+          "rows": 180,
+          "mean_kl": 0.0003810396928293923,
+          "p95_kl": 0.001578016334327575,
+          "p99_kl": 0.005321618616425246,
+          "max_kl": 0.009778945057971396,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "general_ja": {
+          "rows": 184,
+          "mean_kl": 0.00017938661667161773,
+          "p95_kl": 0.0008796586576697581,
+          "p99_kl": 0.002565642819874375,
+          "max_kl": 0.004670189310467761,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "mixed_ja_en": {
+          "rows": 243,
+          "mean_kl": 0.00013433238344410538,
+          "p95_kl": 0.0004643696513890357,
+          "p99_kl": 0.0011060207793363815,
+          "max_kl": 0.007882676559135094,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        }
+      },
+      "scopes": {
+        "canonical": {
+          "rows": 489,
+          "mean_kl": 0.0002236275990090067,
+          "p95_kl": 0.0007161808947578368,
+          "p99_kl": 0.004506515407627774,
+          "max_kl": 0.010521674501743841,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "heldout": {
+          "rows": 414,
+          "mean_kl": 0.00021925207406935213,
+          "p95_kl": 0.001074963662232621,
+          "p99_kl": 0.0037457050458646088,
+          "max_kl": 0.009399824966825291,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        }
+      },
+      "category_scopes": {
+        "code": {
+          "canonical": {
+            "rows": 189,
+            "mean_kl": 0.00017600367148187787,
+            "p95_kl": 0.0005241791522557207,
+            "p99_kl": 0.002038521606799027,
+            "max_kl": 0.010521674501743841,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 107,
+            "mean_kl": 0.00030488326463789996,
+            "p95_kl": 0.0013701958512704895,
+            "p99_kl": 0.003550648613761615,
+            "max_kl": 0.009399824966825291,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "general_en": {
+          "canonical": {
+            "rows": 79,
+            "mean_kl": 0.0005187703889629286,
+            "p95_kl": 0.0028074082813030663,
+            "p99_kl": 0.009404029471909919,
+            "max_kl": 0.009778945057971396,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 101,
+            "mean_kl": 0.00027330974238830947,
+            "p95_kl": 0.0015674815728833474,
+            "p99_kl": 0.0037669125695764315,
+            "max_kl": 0.004124783106206591,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "general_ja": {
+          "canonical": {
+            "rows": 86,
+            "mean_kl": 0.00011916869871343816,
+            "p95_kl": 0.0006352525160090139,
+            "p99_kl": 0.0015603055079610243,
+            "max_kl": 0.0017427347637412986,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 98,
+            "mean_kl": 0.0002322309120226732,
+            "p95_kl": 0.0010384532661103332,
+            "p99_kl": 0.0039409835674203,
+            "max_kl": 0.004670189310467761,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "mixed_ja_en": {
+          "canonical": {
+            "rows": 135,
+            "mean_kl": 0.0001841320976881655,
+            "p95_kl": 0.00047213126729860007,
+            "p99_kl": 0.004456214958721491,
+            "max_kl": 0.007882676559135094,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 108,
+            "mean_kl": 7.208274063903021e-05,
+            "p95_kl": 0.0004546235279369099,
+            "p99_kl": 0.0009977192198611228,
+            "max_kl": 0.0011694730989584923,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        }
+      },
+      "shape_mismatches": [],
+      "nonfinite_rows": [],
+      "scored_rows": 18
+    },
+    "tp1-d1": {
+      "global": {
+        "rows": 903,
+        "mean_kl": 0.0002216215443855106,
+        "p95_kl": 0.0009215846342941083,
+        "p99_kl": 0.003915400447622605,
+        "max_kl": 0.010521674501743841,
+        "top1_agreement": 1.0,
+        "flipped_rows": 0
+      },
+      "categories": {
+        "code": {
+          "rows": 296,
+          "mean_kl": 0.00022259190279165606,
+          "p95_kl": 0.0007830338001376278,
+          "p99_kl": 0.0035882592035546544,
+          "max_kl": 0.010521674501743841,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "general_en": {
+          "rows": 180,
+          "mean_kl": 0.0003810396928293923,
+          "p95_kl": 0.001578016334327575,
+          "p99_kl": 0.005321618616425246,
+          "max_kl": 0.009778945057971396,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "general_ja": {
+          "rows": 184,
+          "mean_kl": 0.00017938661667161773,
+          "p95_kl": 0.0008796586576697581,
+          "p99_kl": 0.002565642819874375,
+          "max_kl": 0.004670189310467761,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "mixed_ja_en": {
+          "rows": 243,
+          "mean_kl": 0.00013433238344410538,
+          "p95_kl": 0.0004643696513890357,
+          "p99_kl": 0.0011060207793363815,
+          "max_kl": 0.007882676559135094,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        }
+      },
+      "scopes": {
+        "canonical": {
+          "rows": 489,
+          "mean_kl": 0.0002236275990090067,
+          "p95_kl": 0.0007161808947578368,
+          "p99_kl": 0.004506515407627774,
+          "max_kl": 0.010521674501743841,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        },
+        "heldout": {
+          "rows": 414,
+          "mean_kl": 0.00021925207406935213,
+          "p95_kl": 0.001074963662232621,
+          "p99_kl": 0.0037457050458646088,
+          "max_kl": 0.009399824966825291,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0
+        }
+      },
+      "category_scopes": {
+        "code": {
+          "canonical": {
+            "rows": 189,
+            "mean_kl": 0.00017600367148187787,
+            "p95_kl": 0.0005241791522557207,
+            "p99_kl": 0.002038521606799027,
+            "max_kl": 0.010521674501743841,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 107,
+            "mean_kl": 0.00030488326463789996,
+            "p95_kl": 0.0013701958512704895,
+            "p99_kl": 0.003550648613761615,
+            "max_kl": 0.009399824966825291,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "general_en": {
+          "canonical": {
+            "rows": 79,
+            "mean_kl": 0.0005187703889629286,
+            "p95_kl": 0.0028074082813030663,
+            "p99_kl": 0.009404029471909919,
+            "max_kl": 0.009778945057971396,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 101,
+            "mean_kl": 0.00027330974238830947,
+            "p95_kl": 0.0015674815728833474,
+            "p99_kl": 0.0037669125695764315,
+            "max_kl": 0.004124783106206591,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "general_ja": {
+          "canonical": {
+            "rows": 86,
+            "mean_kl": 0.00011916869871343816,
+            "p95_kl": 0.0006352525160090139,
+            "p99_kl": 0.0015603055079610243,
+            "max_kl": 0.0017427347637412986,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 98,
+            "mean_kl": 0.0002322309120226732,
+            "p95_kl": 0.0010384532661103332,
+            "p99_kl": 0.0039409835674203,
+            "max_kl": 0.004670189310467761,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        },
+        "mixed_ja_en": {
+          "canonical": {
+            "rows": 135,
+            "mean_kl": 0.0001841320976881655,
+            "p95_kl": 0.00047213126729860007,
+            "p99_kl": 0.004456214958721491,
+            "max_kl": 0.007882676559135094,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          },
+          "heldout": {
+            "rows": 108,
+            "mean_kl": 7.208274063903021e-05,
+            "p95_kl": 0.0004546235279369099,
+            "p99_kl": 0.0009977192198611228,
+            "max_kl": 0.0011694730989584923,
+            "top1_agreement": 1.0,
+            "flipped_rows": 0
+          }
+        }
+      },
+      "shape_mismatches": [],
+      "nonfinite_rows": [],
+      "scored_rows": 18
+    }
+  },
+  "teacher_cross_check": {
+    "rows": 18,
+    "scored_rows": 18,
+    "byte_identical": true,
+    "differing_rows": 0,
+    "max_abs_diff": 0.0,
+    "digest": {
+      "tp1-d0": "7f218f6a1c2b136ef809ac5681a861fb1addb904134488f29654797a96dbebc6",
+      "tp1-d1": "7f218f6a1c2b136ef809ac5681a861fb1addb904134488f29654797a96dbebc6"
+    },
+    "metrics": {
+      "rows": 903,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0,
+      "flipped_rows": 0
+    },
+    "shape_mismatches": [],
+    "nonfinite_rows": []
+  },
+  "controls": {
+    "tp1-d0": {
+      "run_id": "ebd868c356224d1ea67a805ef5bf2f6e",
+      "devices": {
+        "0": {
+          "name": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci_bus_id": "0000:0d:00.0"
+        }
+      },
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 71
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 71,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "7f8db87a4d59eaabe7825fd88cff5af679aab44325f33398179fe048504ce083"
+      },
+      "determinism": {
+        "sweeps": 3,
+        "per_row_match": true
+      },
+      "state_boundaries": {
+        "reset_reuse_bit_exact": true,
+        "intervening_prompt_reuse_bit_exact": true,
+        "reset_after_generation_bit_exact": true,
+        "scope": "c1 sequential request isolation/reset/reuse, not concurrent cN serving"
+      },
+      "generation_control": {
+        "start_position": 40,
+        "transitions": [
+          {
+            "input_position": 40,
+            "output_position": 41,
+            "sampled_token": 12305
+          },
+          {
+            "input_position": 41,
+            "output_position": 42,
+            "sampled_token": 198
+          }
+        ],
+        "graph": {
+          "schema_version": 1,
+          "transport": "hipgraph",
+          "backend": "hip_gfx1100",
+          "gfx_arch": "gfx1100",
+          "source": "hip_runtime_graph",
+          "graph_handle": 94435879202912,
+          "graph_exec": 94435907968768,
+          "launches": 2,
+          "submission_started": true,
+          "native_fallbacks": 0,
+          "closed": false,
+          "decode_graph_key_sha256": "0ab23c0e1c074912f3ba81f54de8d4fd6248146be09ced80e7ac026f6e9bea59",
+          "replayed_steps": 2
+        }
+      },
+      "control_log": {
+        "path": "/tmp/tp2-resident-qualification/tp1-d0/capture-arrays/controls.jsonl",
+        "sha256": "96f8e00cbd75bfe877b6e20be8c40fdaf8f705f609ae181fb313b84986d6eaf2"
+      },
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/tp2_teacher_coverage_broad.py --capture-resident-arm tp1-d0 --repeat-tp2 3 --execution-profile production --max-sequence-length 71 --json /tmp/tp2-resident-qualification/tp1-d0/capture.json",
+      "natural_teardown": true
+    },
+    "tp1-d1": {
+      "run_id": "eddffc1db7cc4dd5855ea220e8ab22d0",
+      "devices": {
+        "0": {
+          "name": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci_bus_id": "0000:10:00.0"
+        }
+      },
+      "route": {
+        "mode": "resident_tp1",
+        "schedule": "bulk-prefill/c1-head",
+        "driver": "resident",
+        "reduce_mode": "none",
+        "head_shard": false,
+        "max_sequence_length": 71
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": "dense_dual_local32_bf16_bf16_out"
+            }
+          },
+          "capacity": 71,
+          "schedule": "bulk-prefill/c1-head",
+          "mode": "resident_tp1",
+          "reduce_mode": "none",
+          "head_shard": false,
+          "mlp_shard_variant": null,
+          "per_rank_ffn": null,
+          "partial_dtypes": [],
+          "head_plan": null,
+          "layer_graph_count": 0,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "7f8db87a4d59eaabe7825fd88cff5af679aab44325f33398179fe048504ce083"
+      },
+      "determinism": {
+        "sweeps": 3,
+        "per_row_match": true
+      },
+      "state_boundaries": {
+        "reset_reuse_bit_exact": true,
+        "intervening_prompt_reuse_bit_exact": true,
+        "reset_after_generation_bit_exact": true,
+        "scope": "c1 sequential request isolation/reset/reuse, not concurrent cN serving"
+      },
+      "generation_control": {
+        "start_position": 40,
+        "transitions": [
+          {
+            "input_position": 40,
+            "output_position": 41,
+            "sampled_token": 12305
+          },
+          {
+            "input_position": 41,
+            "output_position": 42,
+            "sampled_token": 198
+          }
+        ],
+        "graph": {
+          "schema_version": 1,
+          "transport": "hipgraph",
+          "backend": "hip_gfx1100",
+          "gfx_arch": "gfx1100",
+          "source": "hip_runtime_graph",
+          "graph_handle": 94699943590848,
+          "graph_exec": 94699943761792,
+          "launches": 2,
+          "submission_started": true,
+          "native_fallbacks": 0,
+          "closed": false,
+          "decode_graph_key_sha256": "e6fc95667f0941882edf1243b134dccd8f2db98167c4f231f5c7648995297cb7",
+          "replayed_steps": 2
+        }
+      },
+      "control_log": {
+        "path": "/tmp/tp2-resident-qualification/tp1-d1/capture-arrays/controls.jsonl",
+        "sha256": "96f8e00cbd75bfe877b6e20be8c40fdaf8f705f609ae181fb313b84986d6eaf2"
+      },
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/tp2_teacher_coverage_broad.py --capture-resident-arm tp1-d1 --repeat-tp2 3 --execution-profile production --max-sequence-length 71 --json /tmp/tp2-resident-qualification/tp1-d1/capture.json",
+      "natural_teardown": true
+    },
+    "tp2": {
+      "run_id": "ee4777c0ca98465392aa2f908c1eb11b",
+      "devices": {
+        "0": {
+          "name": "AMD Radeon Pro W7900",
+          "uuid": "e282895b62c2b295",
+          "pci_bus_id": "0000:0d:00.0"
+        },
+        "1": {
+          "name": "AMD Radeon RX 7900 XTX",
+          "uuid": "cc4d02090dc9c3ff",
+          "pci_bus_id": "0000:10:00.0"
+        }
+      },
+      "route": {
+        "mode": "tp2",
+        "schedule": "graphed",
+        "driver": "compiled",
+        "reduce_mode": "device",
+        "head_shard": true,
+        "max_sequence_length": 71
+      },
+      "scope_manifest": {
+        "manifest": {
+          "kind": "measured_tp_ar_scope",
+          "ranks": {
+            "0": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": null
+            },
+            "1": {
+              "backend": "hip_gfx1100",
+              "hidden_size": 5120,
+              "vocab_size": 248320,
+              "ffn_size": 17408,
+              "fp16_recurrent_state": false,
+              "c1_full_mlp_variant": null
+            }
+          },
+          "capacity": 71,
+          "schedule": "graphed",
+          "mode": "tp2",
+          "reduce_mode": "device",
+          "head_shard": true,
+          "mlp_shard_variant": "dense_dual_local32_bf16_bf16_out",
+          "per_rank_ffn": 8704,
+          "partial_dtypes": [
+            "bf16"
+          ],
+          "head_plan": {
+            "world_size": 2,
+            "vocab_rows": 248320,
+            "hidden": 5120,
+            "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+            "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+            "rows_per_rank": 124160,
+            "blocks_per_rank": 485,
+            "source_row_bytes": 4200
+          },
+          "layer_graph_count": 128,
+          "source_sha256": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "6397315f1361c92ec12e71156d8af10f58c82dbc4f1d5662f2dd4d1d84a19afa",
+            "hipengine/runtime/gguf_linear.py": "4b7763b7a68e5a5228cd67ecbf00c10cb37ebc91e29a364d0ef0908468fc0ed6",
+            "hipengine/core/memory.py": "00fcb34ee0ab65212bf280d7bd7271655a9c086a81b52ac353a80d1494a71a12",
+            "hipengine/distributed/tp2_generate.py": "35f9dc3338d730027fa664621ecc10750bb51a9e5bdf2f8d84ecfe8ad10de708",
+            "hipengine/distributed/shard_exec.py": "4026e42bbfce86f9d90c4bf05f84314924ceee7b99ad4b21d5b663286164d036"
+          },
+          "profile_certificate": false
+        },
+        "sha256": "9f7f32a41b894754ecd485b19839621ec3fded8198c1c985cbbf4644967e784f"
+      },
+      "determinism": {
+        "sweeps": 3,
+        "per_row_match": true
+      },
+      "state_boundaries": {
+        "reset_reuse_bit_exact": true,
+        "intervening_prompt_reuse_bit_exact": true,
+        "reset_after_generation_bit_exact": true,
+        "scope": "c1 sequential request isolation/reset/reuse, not concurrent cN serving"
+      },
+      "generation_control": {
+        "sampled_sequence": [
+          71093,
+          12305
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41
+        ],
+        "decode_transitions": 2
+      },
+      "control_log": {
+        "path": "/tmp/tp2-resident-qualification/tp2/capture-arrays/controls.jsonl",
+        "sha256": "f0e9164f78be40d2ce737ce2c4ea88ab10f8f85979f72a23dd958ff2e94eb21a"
+      },
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/tp2_teacher_coverage_broad.py --capture-resident-arm tp2 --repeat-tp2 3 --execution-profile production --max-sequence-length 71 --json /tmp/tp2-resident-qualification/tp2/capture.json",
+      "natural_teardown": true
+    }
+  },
+  "captures": {
+    "/tmp/tp2-resident-qualification/tp1-d0/capture.json": "9f91c28bc5245b42c3d267d76ffdbf46b7bf6ca25ba74d547f9f4ea652ea3787",
+    "/tmp/tp2-resident-qualification/tp1-d1/capture.json": "f4ed8bbd3cb2c713461da3c7df3351ca3d93cc9d75ab112feee80e3109485454",
+    "/tmp/tp2-resident-qualification/tp2/capture.json": "0e7a1801716f5044f0f41fcdeea48cc256612facfb7daa7feee7f92d3f750fb4"
+  },
+  "thresholds": {
+    "mean_kl": 0.001,
+    "p95_kl": 0.005,
+    "p99_kl": 0.02,
+    "max_kl": 0.05,
+    "top1_agreement": 0.99,
+    "category_top1": 0.97
+  },
+  "supported_scope": {
+    "model": "Qwen3.8-27B Q4_K_M",
+    "quant": "gguf_q4_k_m",
+    "backend": "hip_gfx1100",
+    "concurrency": 1,
+    "declared_capacity": 71,
+    "physical_scratch_positions": 256,
+    "prefill_prompt_range": [
+      39,
+      71
+    ],
+    "teacher_positions": 903,
+    "graph_smoke_prompt_tokens": 21,
+    "graph_smoke_input_positions": [
+      22,
+      23
+    ],
+    "graph_generation_control_input_positions": [
+      40,
+      41
+    ],
+    "kv": "bf16",
+    "recurrent_state": "fp32",
+    "sampling": "greedy",
+    "eos_stop": false,
+    "profile_binding": "production",
+    "tp2_profile_certificate": false
+  },
+  "source_base": "8e2c1e74f2e0f33cb72a746a10fe9306fbe88bbc",
+  "diagnostic_source_sha256": {
+    "scripts/tp2_teacher_coverage_broad.py": "eee74e2ea1d697a8e0631758a76c5a8624a36f18cebcb040fef6a91f05379559",
+    "scripts/tp2_resident_control.py": "15ee3a00fb079497c9ff97d143773eaef3e9b06749b02fdfa85e28f6af34237e",
+    "scripts/tp2_xtx_tp1_eager_stage_probe.py": "ea4259f2ea039a4d905eb5113b682bad35d0fecccd833b447ccf80ef2c043f4b"
+  },
+  "source_note": "Full coverage used the earlier one-replay graph probe module as a validator dependency; validate_result was unchanged. Final graph-only hardening added device metadata reads and a second matched replay; only graph smokes were rerun.",
+  "capacity_probes": {
+    "xtx": {
+      "kind": "gguf_capacity_probe",
+      "protocol_tier": 1,
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "max_sequence_length": 71,
+      "kv_storage": "bf16",
+      "prompt_length": 16,
+      "decode_tokens": 1,
+      "max_batch_size": 1,
+      "status": "pass",
+      "finite_logits": true,
+      "first_token": 9707,
+      "tracked_peak_gib": 16.475305,
+      "resident_gib": 16.475305,
+      "resident_plus_transient_peak_gib": 16.475674,
+      "transient_peak_gib": 0.000369,
+      "scratch_max_positions": 256
+    },
+    "w7900": {
+      "kind": "gguf_capacity_probe",
+      "protocol_tier": 1,
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "max_sequence_length": 71,
+      "kv_storage": "bf16",
+      "prompt_length": 16,
+      "decode_tokens": 1,
+      "max_batch_size": 1,
+      "status": "pass",
+      "finite_logits": true,
+      "first_token": 9707,
+      "tracked_peak_gib": 16.475305,
+      "resident_gib": 16.475305,
+      "resident_plus_transient_peak_gib": 16.475674,
+      "transient_peak_gib": 0.000369,
+      "scratch_max_positions": 256
+    }
+  },
+  "graph_smokes": {
+    "xtx": {
+      "command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=1 python3 scripts/tp2_xtx_tp1_eager_stage_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --with-graph --execution-profile production --max-sequence-length 71 --json /tmp/tp2-resident-qualification/graph-xtx-final.json",
+      "exit_code": 0,
+      "os_exit_used": false,
+      "device": {
+        "name": "AMD Radeon RX 7900 XTX",
+        "uuid": "cc4d02090dc9c3ff",
+        "pci_bus_id": "0000:10:00.0"
+      },
+      "profile_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+      "script_sha256": "ea4259f2ea039a4d905eb5113b682bad35d0fecccd833b447ccf80ef2c043f4b",
+      "stages": [
+        {
+          "stage": "graph-capture",
+          "ok": true,
+          "input_position": 22,
+          "input_token": 12305,
+          "device_state": {
+            "position": 22,
+            "context": 23,
+            "sampled_token": 12305
+          },
+          "ms": 39.06511515378952
+        },
+        {
+          "stage": "graph-replay",
+          "ok": true,
+          "output_position": 23,
+          "device_state": {
+            "position": 23,
+            "context": 24,
+            "sampled_token": 198
+          },
+          "transport": {
+            "schema_version": 1,
+            "transport": "hipgraph",
+            "backend": "hip_gfx1100",
+            "gfx_arch": "gfx1100",
+            "source": "hip_runtime_graph",
+            "graph_handle": 94157463179168,
+            "graph_exec": 94157467986960,
+            "launches": 1,
+            "submission_started": true,
+            "native_fallbacks": 0,
+            "closed": false,
+            "decode_graph_key_sha256": "1e9ae853f51084ba4639d4ac60b36084465d5dabed0b48d11f40b1c8fc1b902b",
+            "replayed_steps": 1
+          },
+          "ms": 29.411815106868744
+        },
+        {
+          "stage": "graph-read",
+          "ok": true,
+          "token_id": 198,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 198,
+            "min": -13.457087516784668,
+            "max": 22.527793884277344,
+            "sha256": "ba114adf79f923be737b31a9a143cdda571ad843865d961b5ae0bd8ce1b400e9"
+          },
+          "ms": 1.217755489051342
+        },
+        {
+          "stage": "graph-replay-2",
+          "ok": true,
+          "output_position": 24,
+          "device_state": {
+            "position": 24,
+            "context": 25,
+            "sampled_token": 1302
+          },
+          "transport": {
+            "schema_version": 1,
+            "transport": "hipgraph",
+            "backend": "hip_gfx1100",
+            "gfx_arch": "gfx1100",
+            "source": "hip_runtime_graph",
+            "graph_handle": 94157463179168,
+            "graph_exec": 94157467986960,
+            "launches": 2,
+            "submission_started": true,
+            "native_fallbacks": 0,
+            "closed": false,
+            "decode_graph_key_sha256": "1e9ae853f51084ba4639d4ac60b36084465d5dabed0b48d11f40b1c8fc1b902b",
+            "replayed_steps": 2
+          },
+          "ms": 25.220463052392006
+        },
+        {
+          "stage": "graph-read-2",
+          "ok": true,
+          "token_id": 1302,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 1302,
+            "min": -11.02855396270752,
+            "max": 24.72264289855957,
+            "sha256": "f644ab36428e45c6cf618ba17f0c7c1738330b01bfc2eec7d22e5753ab93a64f"
+          },
+          "ms": 1.052473671734333
+        },
+        {
+          "stage": "graph-close",
+          "ok": true,
+          "ms": 1.2553464621305466
+        },
+        {
+          "stage": "graph-eager-reset",
+          "ok": true,
+          "ms": 2.2575082257390022
+        },
+        {
+          "stage": "graph-eager-prefill",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "ms": 193.30273289233446
+        },
+        {
+          "stage": "graph-eager-reconstruct",
+          "ok": true,
+          "token_id": 12305,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 12305,
+            "min": -12.632185935974121,
+            "max": 25.698558807373047,
+            "sha256": "3f527ae795a28e2271301d252fe56c710169857c605d5bdd98668b722b0053c3"
+          },
+          "ms": 26.167815551161766
+        },
+        {
+          "stage": "graph-eager-input",
+          "ok": true,
+          "input_token": 12305,
+          "input_position": 22,
+          "ms": 0.058210454881191254
+        },
+        {
+          "stage": "graph-eager-reference",
+          "ok": true,
+          "token_id": 198,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 198,
+            "min": -13.457087516784668,
+            "max": 22.527793884277344,
+            "sha256": "ba114adf79f923be737b31a9a143cdda571ad843865d961b5ae0bd8ce1b400e9"
+          },
+          "ms": 26.06743387877941
+        },
+        {
+          "stage": "graph-eager-compare",
+          "ok": true,
+          "rows": 1,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0,
+          "max_abs": 0.0,
+          "byte_identical": true,
+          "single_row_smoke_only": true,
+          "input_token": 12305,
+          "input_position": 22,
+          "output_position": 23,
+          "ms": 5.043113604187965
+        },
+        {
+          "stage": "graph-eager-reference-2",
+          "ok": true,
+          "token_id": 1302,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 1302,
+            "min": -11.02855396270752,
+            "max": 24.72264289855957,
+            "sha256": "f644ab36428e45c6cf618ba17f0c7c1738330b01bfc2eec7d22e5753ab93a64f"
+          },
+          "ms": 26.285876519978046
+        },
+        {
+          "stage": "graph-eager-compare-2",
+          "ok": true,
+          "rows": 1,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0,
+          "max_abs": 0.0,
+          "byte_identical": true,
+          "single_row_smoke_only": true,
+          "input_token": 198,
+          "input_position": 23,
+          "output_position": 24,
+          "ms": 4.797038622200489
+        },
+        {
+          "stage": "teardown",
+          "ok": true,
+          "ms": 31.114915385842323
+        }
+      ]
+    },
+    "w7900": {
+      "command": "timeout -k 5s 240s env HIP_VISIBLE_DEVICES=0 python3 scripts/tp2_xtx_tp1_eager_stage_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --with-graph --execution-profile production --max-sequence-length 71 --json /tmp/tp2-resident-qualification/graph-w7900-final.json",
+      "exit_code": 0,
+      "os_exit_used": false,
+      "device": {
+        "name": "AMD Radeon Pro W7900",
+        "uuid": "e282895b62c2b295",
+        "pci_bus_id": "0000:0d:00.0"
+      },
+      "profile_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+      "script_sha256": "ea4259f2ea039a4d905eb5113b682bad35d0fecccd833b447ccf80ef2c043f4b",
+      "stages": [
+        {
+          "stage": "graph-capture",
+          "ok": true,
+          "input_position": 22,
+          "input_token": 12305,
+          "device_state": {
+            "position": 22,
+            "context": 23,
+            "sampled_token": 12305
+          },
+          "ms": 42.7727522328496
+        },
+        {
+          "stage": "graph-replay",
+          "ok": true,
+          "output_position": 23,
+          "device_state": {
+            "position": 23,
+            "context": 24,
+            "sampled_token": 198
+          },
+          "transport": {
+            "schema_version": 1,
+            "transport": "hipgraph",
+            "backend": "hip_gfx1100",
+            "gfx_arch": "gfx1100",
+            "source": "hip_runtime_graph",
+            "graph_handle": 94468672849184,
+            "graph_exec": 94468649811632,
+            "launches": 1,
+            "submission_started": true,
+            "native_fallbacks": 0,
+            "closed": false,
+            "decode_graph_key_sha256": "221b89b246115a8ed4d7a7a62557639aacb43c289c14fef5f40040249579a9c0",
+            "replayed_steps": 1
+          },
+          "ms": 30.331476591527462
+        },
+        {
+          "stage": "graph-read",
+          "ok": true,
+          "token_id": 198,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 198,
+            "min": -13.457087516784668,
+            "max": 22.527793884277344,
+            "sha256": "ba114adf79f923be737b31a9a143cdda571ad843865d961b5ae0bd8ce1b400e9"
+          },
+          "ms": 1.1799447238445282
+        },
+        {
+          "stage": "graph-replay-2",
+          "ok": true,
+          "output_position": 24,
+          "device_state": {
+            "position": 24,
+            "context": 25,
+            "sampled_token": 1302
+          },
+          "transport": {
+            "schema_version": 1,
+            "transport": "hipgraph",
+            "backend": "hip_gfx1100",
+            "gfx_arch": "gfx1100",
+            "source": "hip_runtime_graph",
+            "graph_handle": 94468672849184,
+            "graph_exec": 94468649811632,
+            "launches": 2,
+            "submission_started": true,
+            "native_fallbacks": 0,
+            "closed": false,
+            "decode_graph_key_sha256": "221b89b246115a8ed4d7a7a62557639aacb43c289c14fef5f40040249579a9c0",
+            "replayed_steps": 2
+          },
+          "ms": 30.21849598735571
+        },
+        {
+          "stage": "graph-read-2",
+          "ok": true,
+          "token_id": 1302,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 1302,
+            "min": -11.02855396270752,
+            "max": 24.72264289855957,
+            "sha256": "f644ab36428e45c6cf618ba17f0c7c1738330b01bfc2eec7d22e5753ab93a64f"
+          },
+          "ms": 1.015281304717064
+        },
+        {
+          "stage": "graph-close",
+          "ok": true,
+          "ms": 1.4039762318134308
+        },
+        {
+          "stage": "graph-eager-reset",
+          "ok": true,
+          "ms": 2.3427689447999
+        },
+        {
+          "stage": "graph-eager-prefill",
+          "ok": true,
+          "token_id": 71093,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 71093,
+            "min": -8.464468955993652,
+            "max": 22.879573822021484,
+            "sha256": "293569d2d723694343f7bf8b4de938cf82544017c7a0dfc53d5f49a8a43b95c3"
+          },
+          "ms": 206.0773828998208
+        },
+        {
+          "stage": "graph-eager-reconstruct",
+          "ok": true,
+          "token_id": 12305,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 12305,
+            "min": -12.632185935974121,
+            "max": 25.698558807373047,
+            "sha256": "3f527ae795a28e2271301d252fe56c710169857c605d5bdd98668b722b0053c3"
+          },
+          "ms": 31.130758114159107
+        },
+        {
+          "stage": "graph-eager-input",
+          "ok": true,
+          "input_token": 12305,
+          "input_position": 22,
+          "ms": 0.06659142673015594
+        },
+        {
+          "stage": "graph-eager-reference",
+          "ok": true,
+          "token_id": 198,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 198,
+            "min": -13.457087516784668,
+            "max": 22.527793884277344,
+            "sha256": "ba114adf79f923be737b31a9a143cdda571ad843865d961b5ae0bd8ce1b400e9"
+          },
+          "ms": 31.279009766876698
+        },
+        {
+          "stage": "graph-eager-compare",
+          "ok": true,
+          "rows": 1,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0,
+          "max_abs": 0.0,
+          "byte_identical": true,
+          "single_row_smoke_only": true,
+          "input_token": 12305,
+          "input_position": 22,
+          "output_position": 23,
+          "ms": 4.903940483927727
+        },
+        {
+          "stage": "graph-eager-reference-2",
+          "ok": true,
+          "token_id": 1302,
+          "token_in_range": true,
+          "logits": {
+            "shape": [
+              1,
+              248320
+            ],
+            "finite": true,
+            "all_zero": false,
+            "argmax": 1302,
+            "min": -11.02855396270752,
+            "max": 24.72264289855957,
+            "sha256": "f644ab36428e45c6cf618ba17f0c7c1738330b01bfc2eec7d22e5753ab93a64f"
+          },
+          "ms": 31.095716170966625
+        },
+        {
+          "stage": "graph-eager-compare-2",
+          "ok": true,
+          "rows": 1,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "flipped_rows": 0,
+          "max_abs": 0.0,
+          "byte_identical": true,
+          "single_row_smoke_only": true,
+          "input_token": 198,
+          "input_position": 23,
+          "output_position": 24,
+          "ms": 4.66670747846365
+        },
+        {
+          "stage": "teardown",
+          "ok": true,
+          "ms": 31.318889930844307
+        }
+      ]
+    }
+  },
+  "cpu_validation": {
+    "focused_passed": 116,
+    "fixture_owner_followup_passed": 11,
+    "fresh_default": {
+      "passed": 9508,
+      "skipped": 17,
+      "failed": 3
+    },
+    "fresh_default_scope": "One run after shared H2D production fix; no broad rerun after harness-only changes. See CPU-impact worklog.",
+    "prior_failed_nodes_rerun": {
+      "passed": 20,
+      "failed": 3
+    }
+  },
+  "raw_artifact_sha256": {
+    "/tmp/tp2-resident-qualification/adapter-green.log": "2e685370cf8491d93aabfef7248a98ed6d44398367dc30fb8e5230bdea852318",
+    "/tmp/tp2-resident-qualification/adapter-red.log": "4391820a8ef3cd91b6cc4689a098345b69c7cd1cef01f1e7f1b92d5f38d18a3b",
+    "/tmp/tp2-resident-qualification/capacity-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/capacity-w7900-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/capacity-w7900.json": "4baaf8fb4d82807c58906638231c18fd10707519e3ad5f8e6e7ea6a0b07b86ff",
+    "/tmp/tp2-resident-qualification/capacity-w7900.log": "4baaf8fb4d82807c58906638231c18fd10707519e3ad5f8e6e7ea6a0b07b86ff",
+    "/tmp/tp2-resident-qualification/capacity-xtx.json": "4baaf8fb4d82807c58906638231c18fd10707519e3ad5f8e6e7ea6a0b07b86ff",
+    "/tmp/tp2-resident-qualification/capacity-xtx.log": "4baaf8fb4d82807c58906638231c18fd10707519e3ad5f8e6e7ea6a0b07b86ff",
+    "/tmp/tp2-resident-qualification/coverage-controller.log": "107cc5da3d320dfab13669ed258f8355ca6623ac14c4d3ee960973fe1685d5c4",
+    "/tmp/tp2-resident-qualification/coverage-cpu-v2.log": "da7c82dab6701b381505a073831c2a707cb58102ace8dbcb8dc9180d88995a00",
+    "/tmp/tp2-resident-qualification/coverage-cpu.log": "3deabcf55f0614b3fb68944cd35ed71da857bc83f25ce34d8dc9d4f9f6f4e8fb",
+    "/tmp/tp2-resident-qualification/coverage-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/coverage-report.log": "ae3c789c08795fad37290acb57fa11a4d6ccd15ca93cf58b734098d37f176787",
+    "/tmp/tp2-resident-qualification/coverage.json": "14295af71e533b0eb7800414e44e8027ca96b14da65484fb853d9568db4f7cdf",
+    "/tmp/tp2-resident-qualification/default-cpu-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/default-cpu.log": "93429da91692012f2e4f5f8e88aa1095d5b5e6e30c2792b7df644c7a19c8612a",
+    "/tmp/tp2-resident-qualification/final-cpu.log": "dcb019fd203ab327137f0c953420113fe866ed2ffb2b14760358907a59f22acd",
+    "/tmp/tp2-resident-qualification/graph-cpu-green.log": "9ae36bbad843a8a47e3976fb0161a7f4399f2ecc64cee216b8e60f78dc2b4850",
+    "/tmp/tp2-resident-qualification/graph-device-green.log": "ffe73fac0f23ab129b3c108b5e059828d1f4edfa5ff4ec2e6bb88663f08ee8b5",
+    "/tmp/tp2-resident-qualification/graph-device-red.log": "9469520576f92cb620aa6e07959c5952bf017cc3bb32ed2cacbada61c3c628aa",
+    "/tmp/tp2-resident-qualification/graph-final-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/graph-red.log": "bc8fa72a7fbfce9573c13ec11db3512144a0d3ab6b01ad75948f1d5946bfe88b",
+    "/tmp/tp2-resident-qualification/graph-w7900-final.json": "9ed749bd565e389f492db2f64778b40e18bd5565379d29133025cfe040a051b1",
+    "/tmp/tp2-resident-qualification/graph-w7900-final.log": "74768cc3aa3080cf98ce791eb3b93c1e30e0bcaf2a18ce7178b4255e0f4a36a8",
+    "/tmp/tp2-resident-qualification/graph-w7900-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/graph-w7900.json": "a8db7d5184e666f21d20ae0210614e104f261aebceb1829e44b77af539881d51",
+    "/tmp/tp2-resident-qualification/graph-w7900.log": "2fc4e976b5c706865cec20793f019687e0d2812cf6fdb272a8bdebafb9c72357",
+    "/tmp/tp2-resident-qualification/graph-xtx-final.json": "d2db9848bc8cf3b2f92d2d24f6b9a5fc46ca3645c9bf02421105d60e62333a36",
+    "/tmp/tp2-resident-qualification/graph-xtx-final.log": "2994bc7c39eee0652aab5dcc192ea0f8e35893d39bce78ceeca05e6c571d0b4b",
+    "/tmp/tp2-resident-qualification/graph-xtx-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/graph-xtx-v2-launch.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/tp2-resident-qualification/graph-xtx-v2.json": "e74f405485e5e0796715728edd35ddcaa808d0c1f07232c0102144f7b3303acf",
+    "/tmp/tp2-resident-qualification/graph-xtx-v2.log": "0e95eb860e714bbcbb15559b67eabeaf28ae9d7c191f8dac643806fa2639ec9e",
+    "/tmp/tp2-resident-qualification/graph-xtx.json": "2c36d6a1392fb565897cf1f2e37866669a9bd7895ff8c471139e25d2f695bf75",
+    "/tmp/tp2-resident-qualification/graph-xtx.log": "b32e6446465b36812af432c00e99b94e36f5f02e70f6b6fdcbd2f0de7a5a19db",
+    "/tmp/tp2-resident-qualification/prior-failures.log": "cb526c8434eb5e94bf33e0e60cdb5007376e7043365d1a00b78eb9453dfcd1c7",
+    "/tmp/tp2-resident-qualification/run-coverage.sh": "1e2daccc9067e59bf637fa72558107fc752fe3a53df9b2886b82d86d0aaf63e2",
+    "/tmp/tp2-resident-qualification/tp1-d0/capture.json": "9f91c28bc5245b42c3d267d76ffdbf46b7bf6ca25ba74d547f9f4ea652ea3787",
+    "/tmp/tp2-resident-qualification/tp1-d0/capture.log": "3f034f87d5c0029cf48f089e5f71871e4aad694f6460f97e13556d9de396749b",
+    "/tmp/tp2-resident-qualification/tp1-d1/capture.json": "f4ed8bbd3cb2c713461da3c7df3351ca3d93cc9d75ab112feee80e3109485454",
+    "/tmp/tp2-resident-qualification/tp1-d1/capture.log": "332f360ad1c34f417a35610d4fa2e4175249d0414bc4aa37b7cce03a44c5217e",
+    "/tmp/tp2-resident-qualification/tp2/capture.json": "0e7a1801716f5044f0f41fcdeea48cc256612facfb7daa7feee7f92d3f750fb4",
+    "/tmp/tp2-resident-qualification/tp2/capture.log": "b22feeaf2403eb342d5b3b036694a48529825f1909d0433cb3d208dc7587f09a"
+  },
+  "baseline_readiness": {
+    "runtime_ready_for_parent_review": true,
+    "performance_sweep_executed": false,
+    "product_protocol": "Same full product-formatted 18-prompt suite; production binder; normal token-index-only decode readbacks except final logits; AR graph admitted at D128; warmup=0; >=3 independent paired reps per physical GPU; capture/destruction timings explicit.",
+    "diagnostic_protocol": "--logits-every-decode-step is a separate matched-transfer diagnostic, never the optimized product denominator.",
+    "next_capacity": 200,
+    "next_capacity_note": "D128 + max prompt71 +1; run a Tier-1 allocation probe before increasing declared capacity, after parent authorization.",
+    "not_qualified": [
+      "D128 sustained numerical/task population",
+      "cN serving",
+      "public distributed profile",
+      "BF16-relative quality",
+      "MTP",
+      "performance win"
+    ]
+  }
+}
