@@ -260,3 +260,52 @@ treats strict parity as a debugging oracle. Bit-identity is being used here to
 proving equivalence over an open-ended shape set from a single established
 packet. Running this gate directly against `dense_wide256` is cheaper and does
 not create a claim that has to be re-defended whenever a new shape appears.
+
+## Route coverage: what this selector can own, read statically
+
+`scripts/qwen4exp_q8_route_coverage.py` reads the selector's own filter
+(`quant_key == "gguf_q8_0"` and a `layers.` slot path) off the GGUF index, so
+the route's blast radius is a static fact rather than something a kernel census
+has to discover. Artifact: `route-coverage.json`.
+
+```
+python3 scripts/qwen4exp_q8_route_coverage.py \
+  --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
+  --scope 32-47 --scope 0-47 --scope 28-47 --scope 24-47
+```
+
+The route's candidate set is **499 Q8_0 tensors, 7.68 GiB**, all inside
+transformer blocks.
+
+| Scope | Tensors | Share | Route bytes | Share |
+| --- | ---: | ---: | ---: | ---: |
+| 32-47 | 166/499 | 33.3% | 2.83 GiB | 36.8% |
+| 28-47 | 208/499 | 41.7% | 3.95 GiB | 51.4% |
+| 24-47 | 249/499 | 49.9% | 4.24 GiB | 55.2% |
+| 0-47 | 499/499 | 100% | 7.68 GiB | 100% |
+
+Two exclusions are worth stating because they remove hypotheses rather than
+just describing the model.
+
+**The MoE experts are not Q8_0.** `ffn_gate_exps` and `ffn_up_exps` are Q4_K on
+47 of 48 layers, and only five layers carry a Q8_0 `ffn_down_exps`. The expert
+GEMMs are therefore excluded from this route by the quant filter. The
+open-anomaly section's "a captured MoE graph replaying the teacher's kernels"
+explanation is not needed to account for the MoE path not moving: those weights
+were never eligible.
+
+**The largest Q8_0 matrix in the model never takes the route.** `output.weight`
+is 248320x2560 Q8_0, and together with `token_embd.weight`,
+`output_hc_down.weight`, and `output_hc_up.weight` it is excluded by the
+slot-path filter. Any prefill-time expectation for this selector should exclude
+the LM head.
+
+### The layer axis is periodic, so a bisect must respect it
+
+The Q8_0 roles are not uniform across depth. Layers congruent to 3 mod 4
+(3, 7, 11, ... 47) carry separate `attn_q` / `attn_k` / `attn_v` /
+`attn_output`; the other 36 layers carry fused `attn_qkv` plus `attn_gate` and
+`ssm_out`. A scope boundary that is not a multiple of 4 therefore changes the
+attention-role composition of the arm as well as its depth, and the two effects
+would be confounded. Bisect boundaries should be multiples of 4 — 28, 24, 20,
+16 — which is also why 32-47 and 0-47 are cleanly comparable.
