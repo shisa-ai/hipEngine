@@ -28,6 +28,7 @@ import hashlib
 import json
 import re
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -148,12 +149,34 @@ def main() -> int:
     )
     parser.add_argument("--profile", action="store_true")
     parser.add_argument(
+        "--inter-request-gap-ms",
+        type=float,
+        default=0.0,
+        help=(
+            "Idle time between requests. Back-to-back requests produce one "
+            "continuous run of dispatches, so a profiled trace cannot be split "
+            "into per-request windows. A gap above the profiler's burst "
+            "threshold makes each request its own burst and is what lets the "
+            "measured prefill be separated from the warmup one."
+        ),
+    )
+    parser.add_argument(
         "--marker-trace",
         action="store_true",
         help="Also pass --marker-trace to rocprofv3 (harmless when the engine emits no markers).",
     )
     parser.add_argument("--rocprof-bin", default="rocprofv3")
-    parser.add_argument("--trace-root", type=Path, required=True)
+    parser.add_argument(
+        "--trace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Where the server log and, with --profile, the rocprofv3 trace go. "
+            "Optional: an unprofiled run does not need a trace, and requiring "
+            "it there was what made a plain rate measurement look like it "
+            "needed the profiler. Defaults to a fresh temporary directory."
+        ),
+    )
     parser.add_argument("--startup-timeout", type=float, default=1800.0)
     parser.add_argument("--request-timeout", type=float, default=900.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -176,7 +199,10 @@ def main() -> int:
             f"--context {args.context} is below the largest case ({needed})"
         )
 
-    trace_root = args.trace_root.resolve()
+    if args.trace_root is None:
+        trace_root = Path(tempfile.mkdtemp(prefix="qwen4exp-comparator-"))
+    else:
+        trace_root = args.trace_root.resolve()
     trace_root.mkdir(parents=True, exist_ok=True)
     server_args = [
         str(args.server), "-m", str(args.model),
@@ -207,6 +233,7 @@ def main() -> int:
         "server_args": server_args,
         "server_arg_extra": list(args.server_arg or []),
         "marker_trace": bool(args.marker_trace),
+        "inter_request_gap_ms": args.inter_request_gap_ms,
         "source": _source_state(args.source_tree),
         "model": str(args.model),
         "model_sha256_first_shard": _sha256_file(args.model),
@@ -235,8 +262,15 @@ def main() -> int:
                 f"{args.label}: server did not become healthy; see {server_log}"
             )
         report["startup_seconds"] = time.monotonic() - started
+        # A plain list, not an attribute on _request: assigning an attribute to
+        # that name inside main() would make _request a local of main() and
+        # unbound at this line.
+        request_calls = [0]
 
         def _request(case, measured: bool, rep: int | None = None) -> dict:
+            if args.inter_request_gap_ms > 0 and request_calls[0]:
+                time.sleep(args.inter_request_gap_ms / 1e3)
+            request_calls[0] += 1
             payload = json.dumps({
                 "prompt": [int(t) for t in case["prompt_token_ids"]],
                 "n_predict": 1, "temperature": 0.0, "top_k": 1,

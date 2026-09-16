@@ -757,27 +757,44 @@ file fixed: unsloth Qwen3.8-Flash-Next `UD-Q4_K_XL`, twelve canonical cases,
 prefill only, one warmup and three measured repetitions, same host. Every row
 is an engine that can actually open that file.
 
-| Engine | Source | KV | 512 | 1K | 4K |
-| --- | --- | --- | ---: | ---: | ---: |
-| pwilkin `strix-halo` | `40a9f4d01` | f16 | 339.2 | 858.9 | **1061.9** |
-| halo-box `strix-llama.cpp` | `69946438a` | f16 | 451.6 | 620.7 | 660.6 |
-| halo-box `strix-llama.cpp` | `69946438a` | bf16 | 410.0 | 553.3 | 653.2 |
-| halo-box `strix-llama.cpp` | `5f85164` | bf16 | 468.1 | 606.9 | 712.2 |
-| upstream llama.cpp | `6011c34ce` | f16 | 321.3 | 415.1 | 459.0 |
-| upstream llama.cpp | `6011c34ce` | bf16 | 321.0 | 420.3 | 452.9 |
-| **hipEngine current default** | `ddfc2a746` | bf16 | **185.2** | **190.6** | **183.6** |
+| Engine | Source | KV | 512 | 1K | 4K | weighted |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| pwilkin `strix-halo` | `40a9f4d01` | f16 | 340.1 | 860.1 | **1061.8** | 859.4 |
+| halo-box PR #63 head | `c4aa30229` | bf16 | 479.4 | 860.8 | 1051.6 | **915.4** |
+| halo-box `strix-llama.cpp` | `5f85164` | bf16 | 467.9 | 605.7 | 704.9 | 655.3 |
+| halo-box `strix-llama.cpp` | `69946438a` | bf16 | 370.7 | 621.2 | 734.4 | 654.4 |
+| halo-box `strix-llama.cpp` | `69946438a` | f16 | 448.1 | 620.5 | 621.0 | 599.9 |
+| upstream llama.cpp | `6011c34ce` | f16 | 320.9 | 413.9 | 460.1 | 434.1 |
+| upstream llama.cpp | `6011c34ce` | bf16 | 316.4 | 419.7 | 452.9 | 429.9 |
+| **hipEngine current default** | `ddfc2a746` | bf16 | **185.2** | **190.6** | **183.6** | **185.0** |
+
+Every row is total prompt tokens over total prompt time, computed by
+`results/2026-09-15-flashnext-engine-comparison/comparison.py` from the raw
+per-repetition timings. That module refuses a row whose case set is not the
+canonical twelve, whose prompt token hashes differ from the shared reference,
+whose repetition count is wrong, or whose declared measurement class is not a
+rate measurement. Profiled captures are excluded by declaration rather than by
+filename.
+
+Two rows were re-measured on 2026-09-16. The `69946438a` bf16 row previously read
+357.3 / 378.9 / 595.7 (weighted 511.5); its `mixed_ja_en` cases had been depressed
+73-86% by a transient event that does not reproduce, and the clean re-measure is
+the row shown here. The PR #63 head row is new. Both were measured without the
+profiler; profiler overhead is 0.2-0.5% across the cases where the two agree, but
+it is not guaranteed equal between builds, so a rate row should not come from a
+profiled capture.
+
+The 512 column is the least trustworthy: within a single case the base arm's own
+repetitions drift (for example `code-p512` reads 355, 304, 302 tokens/s), so the
+512 ratios carry more run-order noise than the 1K and 4K ones.
 
 hipEngine's 4K coefficient of variation is 0.32% and its per-case medians span
-183.1-184.2, so it is flat across categories. The engines ahead of it are not,
-and a single-prompt number for them is not a rate.
+183.1-184.2, so it is flat across categories. Most engines ahead of it are not
+flat either, so a single-prompt number for them is not a rate.
 
-These rate rows are not yet a frozen comparison. The estimator is being
-reconciled across engines - the llama.cpp-family rows were an equal-weight mean
-of per-case medians while hipEngine's row was total tokens over total prefill
-time - and the runs have not been validated for identical case IDs, prompt token
-hashes and repetition counts. Treat the ratios as indicative until that
-validation lands. The halo-box rows differ by source (`5f85164` against
-`69946438a`) and that difference is not yet explained.
+Halo-box `69946438a` at bf16 was measured with the profiler in the capture that
+also produced the kernel attribution below. That capture is diagnostic and is not
+a rate row; the clean unprofiled capture is.
 
 The measurement floor for any per-component version of that comparison is now
 known, and it is not small. Three captures of the same 4K prefill - two at the

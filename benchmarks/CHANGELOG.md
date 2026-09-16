@@ -1,19 +1,41 @@
 # hipEngine Benchmark Changelog
 
-- **2026-09-16 UTC**: halo-box PR #63 head (`c4aa30229`) is **13.9% faster** on
-  the 4096-token shallow prefill than the current halo-box baseline (`69946438a`):
-  5552.5 -> 4873.5 ms, 737.7 -> 840.5 tok/s, with **48/48 identical greedy
-  tokens**. Matched protocol, same host, both arms `--no-warmup`. The gain is
-  attributable: `expert_down` -50.8% and `quantize_pack` -100% (the MMB BF16 WMMA
-  port replaces Q5_1 MMQ and its per-matmul activation quantization),
-  `moe_reduce` -48.5%, `elementwise_norm` -35.4%. One real regression:
-  `qsa_attention` +101.2%, the same `flash_attn_ext_f16` kernel at the same 48
-  dispatches going 270.98 -> 585.69 ms. One apparent regression that is not:
-  `indexer` +166% is the hipCUB top-k being replaced by named `top_k_radix_*`
-  kernels and moving out of `elementwise_norm` (combined 28.6 -> 30.4 ms).
-  This supersedes `69946438a` as the halo-box comparison target; the baseline
-  numbers are retained for the before/after pair.
-  [Artifact](results/2026-09-15-flashnext-engine-comparison/pr63-vs-baseline.md).
+- **2026-09-16 UTC**: halo-box PR #63 head (`c4aa30229`) is **39.9% faster** than
+  the current halo-box baseline (`69946438a`) on the **full twelve-case canonical
+  prefill suite**: 654.4 -> 915.4 tok/s weighted (total prompt tokens over total
+  prompt time), mean 8607.0 -> 6152.5 ms per repetition, zero stalls in either
+  arm, with **48/48 identical greedy tokens**. Same host, one session, both arms
+  measured **without the profiler**. The gain is attributable: `expert_down`
+  -64.1% and `quantize_pack` -100% (the MMB BF16 WMMA port replaces Q5_1 MMQ and
+  its per-matmul activation quantization), `elementwise_norm` -37.6%,
+  `hyper_connection` -21.7%, `moe_reduce` -49.1%. Total kernel time over one
+  delimited 4K prefill falls 5411.0 -> 3760.4 ms (-30.5%).
+  **This corrects an earlier +13.9% entry.** That number came from one measured
+  repetition per arm, and its baseline row was contaminated: an earlier capture
+  put `mixed_ja_en` 73-86% low, dragging that run's weighted rate from 654.4 to
+  511.5. It also claimed a `qsa_attention` regression (+101.2%); **that claim is
+  withdrawn**, because delimited to single prefills the family is 156.6 -> 155.7
+  ms with the same kernel, template arguments, 48 dispatches, grid `(24576, 8, 1)`
+  and workgroup `(32, 8, 1)`. `indexer` +167% is a reclassification (hipCUB top-k
+  replaced by named `top_k_radix_*`, moving out of `elementwise_norm`) carrying a
+  small real cost: 17.48 -> 19.61 ms per two prefills, +12.1% on the component
+  and ~+1.1 ms on a 4000 ms prefill.
+  [Corrected comparison](results/2026-09-15-flashnext-engine-comparison/pr63-vs-baseline-corrected.md).
+
+- **2026-09-16 UTC**: The same-file comparator table now uses one validated
+  estimator for every engine. All six llama.cpp-family rows are recomputed as
+  total prompt tokens over total prompt time by
+  `results/2026-09-15-flashnext-engine-comparison/comparison.py`, which rejects a
+  row whose case set, prompt token hashes, repetition count or declared
+  measurement class do not match. Two rows changed: halo-box `69946438a` bf16
+  went from a contaminated 511.5 to a clean **654.4** weighted tok/s after
+  re-measurement, and halo-box PR #63 head `c4aa30229` was added at **915.4**.
+  A `--inter-request-gap-ms` option was added to the comparator harness so an
+  idle gap makes each request its own profiler burst; per-component absolute
+  milliseconds now come from matched single-prefill windows with kernel-sum over
+  measured-prompt at 0.93-0.97, against roughly 1.7 for the undelimited captures
+  those earlier per-component numbers were read from.
+  [Component gap](results/2026-09-16-flashnext-delimited-components/component-gap.json).
 
 - **2026-09-16 UTC**: Established the run-to-run measurement floor for the
   Flash-Next prefill profile. Three captures of the same 4K `code-p4096`
