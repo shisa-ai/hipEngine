@@ -155,8 +155,51 @@ def _ids_hash(ids: Sequence[int]) -> str:
     return hashlib.sha256(",".join(str(int(t)) for t in ids).encode("ascii")).hexdigest()
 
 
+def _sha256_json(value: Any) -> str:
+    """Deterministic content hash: UTF-8 JSON with sorted keys.
+
+    Never uses Python's ``hash()``, which is randomized per process by
+    ``PYTHONHASHSEED`` and would make artifacts incomparable across runs.
+    """
+
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def prompt_ids_sha256(prompt_ids: Sequence[Any]) -> str:
+    return _sha256_json([str(pid) for pid in prompt_ids])
+
+
+def token_tuple_sha256(tokens: Sequence[Any]) -> str:
+    return _sha256_json([int(t) for t in tokens])
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
 def validate_accounting(arm: str, row: dict[str, Any], *, cell: dict[str, Any]) -> list[str]:
-    """Per-prompt protocol/accounting failures. Pure and fail-closed."""
+    """Per-prompt protocol/accounting failures. Pure and fail-closed.
+
+    Every numeric read goes through a safe converter so a missing/``None``/NaN
+    field produces a failure string rather than raising during aggregation.
+    """
 
     failures: list[str] = []
     prompt_id = str(row.get("id", "?"))
@@ -166,29 +209,30 @@ def validate_accounting(arm: str, row: dict[str, Any], *, cell: dict[str, Any]) 
         if not condition:
             failures.append(f"{prompt_id}: {message}")
 
+    prompt_tokens = _as_int(row.get("prompt_tokens"))
+    context_tokens = _as_int(row.get("context_tokens"))
     # -- declared work ------------------------------------------------------
-    need(int(row.get("output_tokens", -1)) == output, f"output_tokens != {output}")
+    need(_as_int(row.get("output_tokens")) == output, f"output_tokens != {output}")
     need(
-        int(row.get("timed_decode_transitions", -1)) == output,
+        _as_int(row.get("timed_decode_transitions")) == output,
         f"timed_decode_transitions != {output}",
     )
     # -- context semantics --------------------------------------------------
     context = cell["context"]
     if context == "natural":
         need(
-            int(row.get("context_tokens", -1)) == int(row.get("prompt_tokens", -2)),
+            context_tokens is not None and context_tokens == prompt_tokens,
             "natural-length context_tokens != prompt_tokens",
         )
     else:
-        need(
-            int(row.get("prompt_tokens", -1)) == int(context),
-            f"prompt_tokens != declared context {context}",
-        )
+        need(prompt_tokens == int(context), f"prompt_tokens != declared context {context}")
         need(False, "fixed-length cell construction is not implemented")
-    need(int(row.get("prompt_tokens", 0)) > 0, "prompt_tokens must be positive")
+    need(prompt_tokens is not None and prompt_tokens > 0, "prompt_tokens must be positive")
+    position = _as_int(row.get("context_position_at_timing_start"))
     need(
-        int(row.get("context_position_at_timing_start", -2))
-        == int(row.get("prompt_tokens", -1)) + int(cell["warmup_decode_tokens"]),
+        position is not None
+        and prompt_tokens is not None
+        and position == prompt_tokens + int(cell["warmup_decode_tokens"]),
         "context_position_at_timing_start != prompt_tokens + warmup",
     )
     # -- route --------------------------------------------------------------
@@ -206,22 +250,69 @@ def validate_accounting(arm: str, row: dict[str, Any], *, cell: dict[str, Any]) 
     )
     need(str(row.get("eos_policy", "")) == "none", "eos_policy != 'none'")
     # -- sampled-output alignment (not counts alone) ------------------------
-    sampled = list(row.get("sampled_output_ids", []))
-    need(len(sampled) == output, f"sampled_output_ids {len(sampled)} != {output}")
-    need(row.get("sampled_output_sha256") == _ids_hash(sampled), "sampled_output_sha256 mismatch")
+    sampled = row.get("sampled_output_ids")
+    if not isinstance(sampled, list):
+        failures.append(f"{prompt_id}: sampled_output_ids missing")
+    else:
+        need(len(sampled) == output, f"sampled_output_ids {len(sampled)} != {output}")
+        try:
+            need(row.get("sampled_output_sha256") == _ids_hash(sampled), "sampled_output_sha256 mismatch")
+        except (TypeError, ValueError):
+            failures.append(f"{prompt_id}: sampled_output_ids not integer-valued")
     need(row.get("prefill_sample_id") is not None, "prefill_sample_id missing")
+    need(
+        isinstance(row.get("prompt_token_sha256"), str) and bool(row.get("prompt_token_sha256")),
+        "prompt_token_sha256 missing",
+    )
     # -- timing windows -----------------------------------------------------
     for key in ("total_generation_ms", "capture_ms", "destroy_ms"):
-        value = row.get(key)
-        if value is None or not math.isfinite(float(value)) or float(value) < 0.0:
+        if _as_float(row.get(key)) is None:
             failures.append(f"{prompt_id}: {key} must be finite and non-negative")
-    total = float(row.get("total_generation_ms", 0.0))
-    adjusted = total - float(row.get("capture_ms", 0.0)) - float(row.get("destroy_ms", 0.0))
-    need(math.isfinite(adjusted) and adjusted > 0.0, "adjusted window must be positive and finite")
-    need(
-        float(row.get("prefill_ms", -1.0)) >= 0.0,
-        "prefill_ms must be non-negative",
-    )
+    total = _as_float(row.get("total_generation_ms"))
+    capture = _as_float(row.get("capture_ms"))
+    destroy = _as_float(row.get("destroy_ms"))
+    if total is not None and capture is not None and destroy is not None:
+        adjusted = total - capture - destroy
+        need(adjusted > 0.0, "adjusted window must be positive")
+    prefill = _as_float(row.get("prefill_ms"))
+    need(prefill is not None and prefill >= 0.0, "prefill_ms must be finite and non-negative")
+    return failures
+
+
+def validate_arm_rows(
+    arm: str,
+    rows: list[dict[str, Any]],
+    *,
+    expected_ids: Sequence[str],
+    expected_categories: dict[str, str],
+) -> list[str]:
+    """Returned prompt coverage/order/category vs the declared suite.
+
+    Rejects zero rows, duplicate/missing/extra ids, reordered ids, and changed
+    category membership. Cross-arm token-hash equality is a separate check.
+    """
+
+    failures: list[str] = []
+    if not rows:
+        return [f"{arm}: returned zero prompt rows"]
+    ids = [str(r.get("id", "")) for r in rows]
+    if len(set(ids)) != len(ids):
+        failures.append(f"{arm}: duplicate prompt ids in returned rows")
+    if ids != list(expected_ids):
+        missing = [i for i in expected_ids if i not in set(ids)]
+        extra = [i for i in ids if i not in set(expected_ids)]
+        failures.append(
+            f"{arm}: prompt id coverage/order mismatch "
+            f"(returned={len(ids)} expected={len(expected_ids)} missing={missing[:4]} extra={extra[:4]})"
+        )
+    for row in rows:
+        pid = str(row.get("id", ""))
+        if pid not in expected_categories:
+            continue
+        if str(row.get("category")) != expected_categories[pid]:
+            failures.append(
+                f"{arm}: {pid} category {row.get('category')!r} != {expected_categories[pid]!r}"
+            )
     return failures
 
 
@@ -262,23 +353,56 @@ def validate_rep(
 
 
 def adjusted_ms(row: dict[str, Any]) -> float:
-    return (
-        float(row["total_generation_ms"])
-        - float(row.get("capture_ms", 0.0))
-        - float(row.get("destroy_ms", 0.0))
-    )
+    total = _as_float(row.get("total_generation_ms"))
+    if total is None:
+        raise MatchedBaselineError("adjusted_ms requires a finite total_generation_ms")
+    capture = _as_float(row.get("capture_ms")) or 0.0
+    destroy = _as_float(row.get("destroy_ms")) or 0.0
+    return total - capture - destroy
+
+
+def cross_arm_token_hashes(
+    per_arm_rows: dict[str, list[dict[str, Any]]], *, expected_ids: Sequence[str]
+) -> list[str]:
+    """Require every arm to have tokenized each prompt identically.
+
+    This is a tokenizer/input-identity check only. Cross-arm *generated* token
+    equality is deliberately NOT required: TP1 and TP2 drift numerically under
+    the production numerical contract.
+    """
+
+    failures: list[str] = []
+    by_arm: dict[str, dict[str, str]] = {}
+    for arm, rows in per_arm_rows.items():
+        by_arm[arm] = {str(r.get("id", "")): r.get("prompt_token_sha256") for r in rows}
+    for pid in expected_ids:
+        hashes = {arm: table.get(pid) for arm, table in by_arm.items()}
+        values = {h for h in hashes.values() if h}
+        if len(values) != 1:
+            failures.append(
+                f"prompt {pid}: prompt_token_sha256 differs across arms: {hashes}"
+            )
+    return failures
 
 
 def aggregate_rows(rows: list[dict[str, Any]], *, arm: str) -> dict[str, Any]:
-    output_tokens = sum(int(r["output_tokens"]) for r in rows)
-    adjusted = sum(adjusted_ms(r) for r in rows)
+    output_tokens = sum(_as_int(r.get("output_tokens")) or 0 for r in rows)
+    adjusted = 0.0
+    total = 0.0
+    capture = 0.0
+    destroy = 0.0
+    for row in rows:
+        adjusted += adjusted_ms(row)
+        total += _as_float(row.get("total_generation_ms")) or 0.0
+        capture += _as_float(row.get("capture_ms")) or 0.0
+        destroy += _as_float(row.get("destroy_ms")) or 0.0
     return {
         "prompts": len(rows),
         "total_output_tokens": output_tokens,
         "adjusted_ms": adjusted,
-        "total_generation_ms": sum(float(r["total_generation_ms"]) for r in rows),
-        "capture_ms": sum(float(r.get("capture_ms", 0.0)) for r in rows),
-        "destroy_ms": sum(float(r.get("destroy_ms", 0.0)) for r in rows),
+        "total_generation_ms": total,
+        "capture_ms": capture,
+        "destroy_ms": destroy,
         "adjusted_tok_s": 1000.0 * output_tokens / adjusted if adjusted > 0 else 0.0,
     }
 
@@ -359,6 +483,9 @@ def run_tp2_arm(
         max_sequence_length=max_prompt + int(cell["output_tokens"]) + 1,
     )
     session_capture_ms = 0.0
+    session_destroy_ms = 0.0
+    devices: dict[str, Any] = {}
+    route: dict[str, Any] = {}
     sweeps: list[list[dict[str, Any]]] = []
     try:
         # Capture is a one-time session cost; measure it explicitly rather than
@@ -406,6 +533,7 @@ def run_tp2_arm(
                         "prefill_sample_id": int(result.token_ids[0]),
                         "sampled_output_ids": sampled,
                         "sampled_output_sha256": _ids_hash(sampled),
+                        "prompt_token_sha256": token_tuple_sha256(tokens),
                         "total_generation_ms": total_ms,
                         "prefill_ms": 1000.0
                         * sum(t.total_s for t in result.step_traces if t.kind == "prefill"),
@@ -414,15 +542,20 @@ def run_tp2_arm(
                     }
                 )
             sweeps.append(metrics)
+        devices = _device_identities(session)
+        route = _resolved_route(session)
     finally:
+        destroy_start = time.perf_counter()
         session.close()
+        session_destroy_ms = 1000.0 * (time.perf_counter() - destroy_start)
     return {
         "arm": "tp2",
         "session_capture_ms": session_capture_ms,
+        "session_destroy_ms": session_destroy_ms,
         "sweeps": sweeps,
         "prompt_metrics": sweeps[0] if sweeps else [],
-        "devices": _device_identities(session),
-        "route": _resolved_route(session),
+        "devices": devices,
+        "route": route,
     }
 
 
@@ -503,6 +636,7 @@ def run_arm(
             "log": str(log),
             "device": None,
             "session_capture_ms": float(payload.get("session_capture_ms", 0.0)),
+            "session_destroy_ms": float(payload.get("session_destroy_ms", 0.0)),
             "sweeps": payload["sweeps"],
             "devices": payload.get("devices", {}),
             "route": payload.get("route", {}),
@@ -514,6 +648,11 @@ def run_arm(
         "log": str(log),
         "device": device,
         "prompt_metrics": payload["prompt_metrics"],
+        # TP1 physical identities, execution profile, KV policy and variant
+        # manifest live in the child's own artifact provenance; persist it here
+        # so the orchestrator artifact is self-contained.
+        "tp1_provenance": payload.get("provenance"),
+        "tp1_timing_protocol": payload.get("timing_protocol"),
     }
 
 
@@ -553,98 +692,149 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     gate_failures: list[str] = []
     accounting_failures: list[str] = []
+    matching_failures: list[str] = []
+    provenance_gaps: list[str] = []
     cell_rows, suite_failures = load_cell_prompts(args.prompts, args.heldout_prompts)
     gate_failures.extend(suite_failures)
     accounting_failures.extend(suite_failures)
-    if not cell_rows:
-        print("no cell prompts; aborting", flush=True)
-        return 1
+    suite_ok = bool(cell_rows)
+    expected_ids = [str(row["id"]) for row in cell_rows]
+    expected_categories = {str(row["id"]): str(row["category"]) for row in cell_rows}
     cell_prompts = args.workdir / "cell_prompts.jsonl"
-    write_prompt_file(cell_rows, cell_prompts)
-    prompt_ids = [str(row["id"]) for row in cell_rows]
-    print(f"cell {CELL_C1_NATURAL['name']}: {len(cell_rows)} prompts (natural length)", flush=True)
+    if suite_ok:
+        write_prompt_file(cell_rows, cell_prompts)
+        print(
+            f"cell {CELL_C1_NATURAL['name']}: {len(cell_rows)} prompts (natural length)",
+            flush=True,
+        )
+    else:
+        # Still emit a blocked artifact: a missing suite is a recorded failure,
+        # not a silent early exit.
+        print("no cell prompts; emitting a blocked artifact", flush=True)
 
     arm_failures: dict[str, str] = {}
-    arm_runs: dict[str, list[dict[str, Any]]] = {arm: [] for arm in ARMS}
+    # Results are keyed by (rep, arm) immediately. Compressing successes into a
+    # per-arm list would shift a later rep's result into an earlier failed rep.
+    runs: dict[tuple[int, str], dict[str, Any]] = {}
 
-    def _attempt(arm: str, *, reps: int = 1) -> dict[str, Any] | None:
+    def _attempt(rep: int, arm: str) -> None:
         try:
-            run = run_arm(
+            runs[(rep, arm)] = run_arm(
                 arm,
                 model=args.model,
                 prompts=cell_prompts,
                 cell=CELL_C1_NATURAL,
                 workdir=args.workdir,
-                reps=reps,
+                reps=1,
                 timeout_s=args.arm_timeout,
             )
         except (MatchedBaselineError, subprocess.SubprocessError) as error:
-            arm_failures[arm] = f"{type(error).__name__}: {error}"
-            print(f"arm {arm} FAILED: {arm_failures[arm]}", flush=True)
-            return None
-        arm_runs[arm].append(run)
-        return run
+            key = f"rep{rep}:{arm}"
+            arm_failures[key] = f"{type(error).__name__}: {error}"
+            print(f"rep {rep} arm {arm} FAILED: {arm_failures[key]}", flush=True)
 
-    # Fault-safe order on this host: TP1 W7900, then TP2, then TP1 XTX last.
+    # Latin-square rotation over the three arms: every arm occupies every
+    # position exactly once across three reps, so no arm is always first.
+    latin = [
+        ["tp1-d0", "tp2", "tp1-d1"],
+        ["tp2", "tp1-d1", "tp1-d0"],
+        ["tp1-d1", "tp1-d0", "tp2"],
+    ]
     declared_orders: dict[int, list[str]] = {}
-    for rep in range(args.reps):
-        order = ["tp1-d0", "tp2", "tp1-d1"] if rep % 2 == 0 else ["tp1-d0", "tp1-d1", "tp2"]
-        declared_orders[rep] = order
-        print(f"rep {rep}: order {order}", flush=True)
-        for arm in order:
-            _attempt(arm, reps=1)
+    if suite_ok:
+        for rep in range(args.reps):
+            order = latin[rep % len(latin)]
+            declared_orders[rep] = order
+            print(f"rep {rep}: order {order}", flush=True)
+            for arm in order:
+                _attempt(rep, arm)
 
-    # Assemble independent reps. Each TP2 call above produced one sweep; TP1
-    # arms produced one run each. A rep is complete only if every arm has an
-    # execution that has not been reused in another rep.
-    tp2_runs = arm_runs["tp2"]
-    tp2_sweeps = [run["sweeps"][0] for run in tp2_runs if run.get("sweeps")]
     reps: list[dict[str, Any]] = []
     seen_run_ids: dict[str, str] = {}
     for rep in range(args.reps):
+        present: dict[str, list[dict[str, Any]]] = {}
         run_ids: dict[str, str] = {}
-        present: dict[str, Any] = {}
+        arm_entries: dict[str, Any] = {}
         for arm in ARMS:
-            if arm == "tp2":
-                if rep < len(tp2_sweeps):
-                    present[arm] = {
-                        "prompt_metrics": tp2_sweeps[rep],
-                        "session_capture_ms": tp2_runs[rep].get("session_capture_ms", 0.0),
-                    }
-                    run_ids[arm] = tp2_runs[rep]["run_id"]
-            else:
-                runs = arm_runs[arm]
-                if rep < len(runs):
-                    present[arm] = {"prompt_metrics": runs[rep]["prompt_metrics"]}
-                    run_ids[arm] = runs[rep]["run_id"]
+            run = runs.get((rep, arm))
+            if run is None:
+                continue
+            rows = (
+                run.get("sweeps", [[]])[0]
+                if arm == "tp2"
+                else run.get("prompt_metrics", [])
+            )
+            run_ids[arm] = run["run_id"]
+            # Validate BEFORE aggregation so a missing/None/NaN field or a
+            # wrong row set produces a fail-closed artifact instead of raising.
+            arm_row_failures = validate_arm_rows(
+                arm, rows, expected_ids=expected_ids, expected_categories=expected_categories
+            )
+            for row in rows:
+                arm_row_failures.extend(validate_accounting(arm, row, cell=CELL_C1_NATURAL))
+            for failure in arm_row_failures:
+                gate_failures.append(f"rep{rep} {failure}")
+                accounting_failures.append(f"rep{rep} {failure}")
+            entry: dict[str, Any] = {
+                "run_id": run["run_id"],
+                "command": run.get("command"),
+                "log": run.get("log"),
+                "device": run.get("device"),
+                "devices": run.get("devices"),
+                "route": run.get("route"),
+                "session_capture_ms": run.get("session_capture_ms"),
+                "session_destroy_ms": run.get("session_destroy_ms"),
+                "tp1_provenance": run.get("tp1_provenance"),
+                "tp1_timing_protocol": run.get("tp1_timing_protocol"),
+                "prompt_metrics": rows,
+            }
+            if not arm_row_failures and rows:
+                try:
+                    entry.update(aggregate_rows(rows, arm=arm))
+                    entry["categories"] = category_rows(rows, arm=arm)
+                except (MatchedBaselineError, KeyError, TypeError, ValueError) as error:
+                    failure = (
+                        f"rep{rep} {arm}: aggregation failed: {type(error).__name__}: {error}"
+                    )
+                    gate_failures.append(failure)
+                    accounting_failures.append(failure)
+            arm_entries[arm] = entry
+            present[arm] = rows
+            if arm in TP1_ARMS and not run.get("tp1_provenance"):
+                provenance_gaps.append(
+                    f"rep{rep} {arm}: TP1 physical identity/profile/KV/variant provenance "
+                    "not collected"
+                )
         rep_entry: dict[str, Any] = {
             "rep": rep,
             "independent": True,
             "declared_order": declared_orders.get(rep, list(ARMS)),
             "run_ids": run_ids,
-            "arms": {
-                arm: {
-                    **aggregate_rows(present[arm]["prompt_metrics"], arm=arm),
-                    "categories": category_rows(present[arm]["prompt_metrics"], arm=arm),
-                }
-                for arm in present
-            },
+            "complete": all(arm in present for arm in ARMS),
+            "arms": arm_entries,
         }
-        rep_entry["complete"] = all(arm in present for arm in ARMS)
         rep_failures = validate_rep(rep_entry, seen_run_ids=seen_run_ids)
         gate_failures.extend(rep_failures)
         accounting_failures.extend(rep_failures)
-        for arm in present:
-            for row in present[arm]["prompt_metrics"]:
-                for failure in validate_accounting(arm, row, cell=CELL_C1_NATURAL):
-                    gate_failures.append(f"rep{rep} {arm} {failure}")
-                    accounting_failures.append(f"rep{rep} {arm} {failure}")
+        if rep_entry["complete"]:
+            matching_failures.extend(
+                f"rep{rep} {failure}"
+                for failure in cross_arm_token_hashes(present, expected_ids=expected_ids)
+            )
         reps.append(rep_entry)
 
-    missing_arms = [arm for arm in ARMS if not arm_runs[arm]]
+    missing_arms = sorted(
+        {
+            arm
+            for arm in ARMS
+            if any((rep, arm) not in runs for rep in range(args.reps))
+        }
+    )
     if missing_arms:
-        gate_failures.append(f"missing arms (blocked): {missing_arms}")
-        accounting_failures.append(f"missing arms (blocked): {missing_arms}")
+        failure = f"missing arms (blocked): {missing_arms}"
+        gate_failures.append(failure)
+        accounting_failures.append(failure)
+    gate_failures.extend(provenance_gaps)
 
     # Qualification is separate from the timing ratio: none of these gates is
     # measured here, so the run can never be qualified, but a sound accounting
@@ -658,8 +848,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     gate_failures.extend(qualification_failures)
 
     all_gates_passed = not gate_failures
-    ratios = compute_ratios(reps) if not accounting_failures else None
+    # Ratios are suppressed whenever input matching or provenance is unverified,
+    # not only on per-row accounting failure.
+    unverified = bool(accounting_failures or matching_failures or provenance_gaps)
+    ratios = None if unverified else compute_ratios(reps)
 
+    run_provenance = [
+        {
+            "rep": rep,
+            "arm": arm,
+            "run_id": run["run_id"],
+            "command": run.get("command"),
+            "log": run.get("log"),
+            "device": run.get("device"),
+            "devices": run.get("devices"),
+            "route": run.get("route"),
+            "session_capture_ms": run.get("session_capture_ms"),
+            "session_destroy_ms": run.get("session_destroy_ms"),
+            "tp1_provenance": run.get("tp1_provenance"),
+            "tp1_timing_protocol": run.get("tp1_timing_protocol"),
+        }
+        for (rep, arm), run in sorted(runs.items())
+    ]
     provenance: dict[str, Any] = {
         "command": shlex.join([sys.executable, *sys.argv]),
         "source_revision": _git_revision(),
@@ -669,20 +879,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "path": str(args.model),
             "sha256": _model_sha256(args.model),
         },
-        "arms": {
-            arm: [
-                {
-                    "run_id": run["run_id"],
-                    "command": run.get("command"),
-                    "log": run.get("log"),
-                    "device": run.get("device"),
-                    "devices": run.get("devices"),
-                    "route": run.get("route"),
-                }
-                for run in arm_runs[arm]
-            ]
-            for arm in ARMS
-        },
+        "runs": run_provenance,
     }
     artifact = {
         "schema": 1,
@@ -695,15 +892,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             "optimized TP1 resident graph replay vs TP2 graphed session, natural "
             "per-prompt context, greedy, no EOS stop, full logits per timed decode "
             "step on both arms, external whole-generation window with capture and "
-            "destruction reported separately"
+            "destruction reported separately, Latin-square arm rotation"
+        ),
+        "window_overhead_note": (
+            "Diagnostic windows carry a small unequal overhead: TP1 checks logit "
+            "finiteness inside its timed loop, while TP2 performs its per-step "
+            "argmax/list work inside the session call and its final np.stack/argmax "
+            "after the timer. The rates are therefore a diagnostic comparison, not "
+            "a product baseline."
         ),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "prompt_suite": {
             "canonical": str(args.prompts),
             "heldout": str(args.heldout_prompts),
             "prompts": len(cell_rows),
-            "prompt_ids": prompt_ids,
-            "prompt_ids_sha256": _ids_hash([hash(pid) for pid in prompt_ids]),
+            "prompt_ids": expected_ids,
+            "prompt_ids_sha256": prompt_ids_sha256(expected_ids),
+            "categories": expected_categories,
         },
         "reps": reps,
         "ratios": ratios,
@@ -713,6 +918,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "missing_arms": missing_arms,
         "all_gates_passed": all_gates_passed,
         "accounting_failures": accounting_failures,
+        "matching_failures": matching_failures,
+        "provenance_gaps": provenance_gaps,
         "qualification_failures": qualification_failures,
         "gate_failures": gate_failures,
         "performance_claim": False,
@@ -730,7 +937,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"reps={len(reps)} ratio {ratio_text} gates={all_gates_passed}", flush=True)
     for failure in gate_failures[:20]:
         print(f"  FAIL {failure}", flush=True)
-    return 0 if not accounting_failures else 1
+    return 0 if not unverified else 1
 
 
 if __name__ == "__main__":

@@ -261,6 +261,9 @@ def run_prompt_true_ar(
     sampled_sha256 = hashlib.sha256(
         ",".join(str(t) for t in sampled_output_ids).encode("ascii")
     ).hexdigest()
+    prompt_token_sha256 = hashlib.sha256(
+        json.dumps([int(t) for t in prompt_tokens], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
     return {
         "id": str(prompt_row["id"]),
@@ -268,6 +271,7 @@ def run_prompt_true_ar(
         "prompt_chars": len(str(prompt_row["prompt"])),
         "prompt_sha256": prompt_sha256(str(prompt_row["prompt"])),
         "prompt_tokens": len(prompt_tokens),
+        "prompt_token_sha256": prompt_token_sha256,
         "context_tokens": len(prompt_tokens),
         "output_tokens": int(decode_tokens),
         "timed_decode_transitions": int(decode_tokens),
