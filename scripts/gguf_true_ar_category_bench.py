@@ -209,6 +209,8 @@ def run_prompt_true_ar(
     )
     final = None
     graph_capture_ms = 0.0
+    graph_destroy_ms = 0.0
+    all_decode_logits_finite = True
     decode_start = time.perf_counter()
     if use_graph:
         capture_start = time.perf_counter()
@@ -225,22 +227,39 @@ def run_prompt_true_ar(
                 final = graph.read_sample(
                     return_logits=(logits_every_decode_step or step_index == int(decode_tokens) - 1)
                 )
+                if logits_every_decode_step:
+                    all_decode_logits_finite = all_decode_logits_finite and bool(
+                        np.all(np.isfinite(final.logits))
+                    )
                 next_token = int(final.token_id)
                 generated.append(next_token)
         finally:
+            destroy_start = time.perf_counter()
             graph.close()
+            graph_destroy_ms = 1000.0 * (time.perf_counter() - destroy_start)
     else:
         for step_index in range(int(decode_tokens)):
             final = session.step(
                 next_token,
                 return_logits=(logits_every_decode_step or step_index == int(decode_tokens) - 1),
             )
+            if logits_every_decode_step:
+                all_decode_logits_finite = all_decode_logits_finite and bool(
+                    np.all(np.isfinite(final.logits))
+                )
             next_token = int(final.token_id)
             generated.append(next_token)
     decode_ms = 1000.0 * (time.perf_counter() - decode_start)
     finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
     generated_sha256 = hashlib.sha256(
         ",".join(str(int(token)) for token in generated).encode("ascii")
+    ).hexdigest()
+    # Sampled decode outputs only: TP1 appends the sampled output after each
+    # forward, so generated[0] is the prefill sample and the warmup samples
+    # precede the timed decode outputs.
+    sampled_output_ids = [int(t) for t in generated[1 + int(warmup_decode_tokens):]]
+    sampled_sha256 = hashlib.sha256(
+        ",".join(str(t) for t in sampled_output_ids).encode("ascii")
     ).hexdigest()
 
     return {
@@ -249,6 +268,7 @@ def run_prompt_true_ar(
         "prompt_chars": len(str(prompt_row["prompt"])),
         "prompt_sha256": prompt_sha256(str(prompt_row["prompt"])),
         "prompt_tokens": len(prompt_tokens),
+        "context_tokens": len(prompt_tokens),
         "output_tokens": int(decode_tokens),
         "timed_decode_transitions": int(decode_tokens),
         "context_position_at_timing_start": int(len(prompt_tokens)) + int(warmup_decode_tokens),
@@ -260,6 +280,16 @@ def run_prompt_true_ar(
         "prefill_ms": prefill_ms,
         "warmup_decode_ms": warmup_ms,
         "warmup_decode_tokens": int(warmup_decode_tokens),
+        # Matched external window: prefill + warmup + decode (capture and graph
+        # destruction are inside decode_ms and reported separately).
+        "total_generation_ms": prefill_ms + warmup_ms + decode_ms,
+        "capture_ms": graph_capture_ms,
+        "destroy_ms": graph_destroy_ms,
+        "graph_effective": bool(use_graph),
+        "finite_all_decode_logits": bool(all_decode_logits_finite) if logits_every_decode_step else False,
+        "prefill_sample_id": int(generated[0]) if generated else None,
+        "sampled_output_ids": sampled_output_ids,
+        "sampled_output_sha256": sampled_sha256,
         "graph_replay_decode": use_graph,
         "graph_replay_requested": bool(graph_replay_decode),
         "graph_replay_min_steps": None if graph_minimum is None else int(graph_minimum),

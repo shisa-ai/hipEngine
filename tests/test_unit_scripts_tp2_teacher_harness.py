@@ -578,14 +578,16 @@ def test_evaluate_gates_requires_teacher_cross_check(coverage):
     assert ok is False and any("cross-check not measured" in f for f in failures)
 
 
-def test_evaluate_gates_rejects_non_byte_identical_controls(coverage):
+def test_evaluate_gates_treats_byte_identity_as_diagnostic(coverage):
+    # Byte identity across a physical hardware boundary is a diagnostic, not a
+    # promotion requirement; the production numerical envelope controls.
     cross = _good_cross_check()
     cross["byte_identical"] = False
     cross["differing_rows"] = 3
     cross["max_abs_diff"] = 1.5e-7
     ok, failures = _evaluate(coverage, teacher_cross_check=cross)
-    assert ok is False
-    assert any("not byte-identical" in f for f in failures)
+    assert ok is True, failures
+    assert not any("byte-identical" in f for f in failures)
 
 
 def test_evaluate_gates_rejects_cross_check_nonfinite(coverage):
@@ -874,18 +876,19 @@ def test_coverage_main_passes_with_consistent_fake_arms(coverage, monkeypatch, t
     assert artifact["teacher_cross_check"]["differing_rows"] == 0
 
 
-def test_coverage_main_fails_when_controls_differ(coverage, monkeypatch, tmp_path, capsys):
-    # Equal aggregate metrics against the student are not enough: the direct
-    # byte comparison must also pass, or the control pair is not trustworthy.
+def test_coverage_main_records_byte_difference_as_diagnostic(coverage, monkeypatch, tmp_path, capsys):
+    # Equal aggregate metrics against the student plus a softmax-invariant shift
+    # means the numerical contract holds while the bytes differ. That is a
+    # diagnostic, not a gate failure.
     _patch_coverage(coverage, monkeypatch, differ_teachers=True)
     out = tmp_path / "artifact.json"
     code = coverage.main(["--json", str(out), "--model-hash", "none", "--repeat-tp2", "3"])
     capsys.readouterr()
-    assert code == 1
+    assert code == 0
     artifact = json.loads(out.read_text())
-    assert artifact["all_gates_passed"] is False
+    assert artifact["all_gates_passed"] is True
     assert artifact["teacher_cross_check"]["byte_identical"] is False
-    assert any("not byte-identical" in f for f in artifact["gate_failures"])
+    assert not any("byte-identical" in f for f in artifact["gate_failures"])
     # Both per-control envelopes still pass, which is the whole point.
     assert artifact["comparison"]["tp1-d0"]["global"]["mean_kl"] == 0.0
     assert artifact["comparison"]["tp1-d1"]["global"]["mean_kl"] == 0.0
