@@ -145,6 +145,16 @@ tensor-layout helpers live in `loading/vibevoice_layout.py`. Physical gfx1100
 qualification is separate from gfx1151 evidence. Variant manifests identify
 selected arithmetic and fallbacks; a manifest alone is not production approval.
 
+### YuE2 music generation
+
+| Family | Source / registry | Contract |
+| --- | --- | --- |
+| AR layer chain | primitives via `hipengine/runtime/yue2_ar.py` | BF16 storage, FP32 accumulation. Per layer: input RMSNorm, Q/K/V projection, per-head Q/K norm, split-half RoPE (`vv_rope_positions_f32`), span KV write (`vv_kv_write_spans`), span attention (`vv_attention_spans`), O projection, residual, post-norm, gate/up, SiLU, down, residual. Residual adds go through `vv_scale_residual_bf16` with a ones scale. |
+| Batched prefill route | `hipengine/core/hipblaslt.py` problems owned by the runtime | BF16 activations are converted to FP16 (`bf16_to_fp16`) and feed per-layer hipBLASLt GEMMs; the registered `strict` row-by-row route (decode-shaped GEMVs) is the fallback and any fallback records a reason. The two routes agree to one BF16 ulp on the layer chain. |
+| Decode route | shared Qwen3.5/PARO kernels | `qwen35_partial_rotary_kernel`, `dense_gemv_out_*`, `dense_dual_gemv_out_*` and `silu_mul_dual_out_bf16`, reused unchanged. |
+
+Both routes read the same `KVLiveSpans` ABI (identity slot map, uniform positions and eviction mask). Kernel names and durations for one replay are recorded in the M2 worklog entry; model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+
 ### Shared Qwen / PARO path
 
 These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attention, linear-attention, MoE, and common runtime glue. Some are also reused by GGUF paths.

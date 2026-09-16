@@ -1370,6 +1370,30 @@ within the evaluator's own reach on this lane's audio.
 
 Evidence: [quality suite](results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json).
 
+### Radeon 8060S: YuE2 3B AR replay
+
+The autoregressive stage of the pinned `m-a-p/YuE2-3B` checkpoint over the frozen
+18-case replay matrix: 128/512/2048-token prefixes, CFG on and off, unequal-prefix
+branches, scored against the pinned upstream oracle on the same host. Pooled over
+112 recorded full-vocabulary rows and 576 decode-step rows. `Prefill total` is the
+wall time to prefill all 18 prefixes, so it includes every case's 4-10 rows.
+
+| Prefill route | Mean KL | Max KL | Top-1 | Top-8 recall | Prefill total | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `strict` (row-by-row) | **1.43e-3** | **3.27e-2** | 95.83% | 95.88% | 522.5 s | [`strict replay`](results/yue2_ar_replay_strict_20260916.json) |
+| `hipblaslt` (batched, default) | 2.11e-3 | 9.10e-2 | **96.70%** | **96.05%** | **91.3 s** | [`batched replay`](results/yue2_ar_replay_hipblaslt_20260916.json) |
+
+Both routes replay the first case bit-for-bit after all 18 cases have run on the
+same runtime, and both stay inside the broad floor (mean KL ≤ 0.05, top-1 ≥ 90%).
+The batched route is 5.7× faster over the matrix (2.8-6.5× per case, ~5.0 ms/token
+at 2048-token prefixes) and wins on top-1/top-8 because the reference prefill is
+itself a single batched forward; its KL tail is wider on the flat ABC-planning
+distribution, where `abc-nocfg-L128-s5678` (5 rows) reaches 9.10e-2 against the
+strict route's 3.27e-2 and every other case stays at or below 2.3e-2. Both rows
+come from one same-session pair of runs; the strict route's absolute wall time
+moved about 2× between sessions of the identical protocol while the batched
+route stayed within ~6%, so only the paired ratio is quoted.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

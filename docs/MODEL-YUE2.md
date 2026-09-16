@@ -1,6 +1,7 @@
 # MODEL-YUE2.md — YuE2 music generation on hipEngine
 
-Status: **design and implementation handoff; no hipEngine YuE2 runtime or performance claim yet.**
+Status: **M0-M2 landed (oracle fixtures, protocol/loader contracts, HIP AR runtime);
+no end-to-end generation, NAR, VAE, or product-path claim yet.**
 Reviewed 2026-09-16 on branch `yue2`.
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
@@ -360,12 +361,22 @@ postscript work after declaring completion.
 Milestone status:
 
 - **M1 complete** (2026-09-16): protocol, tokenizer, loader, model plugin, CPU
-  operator contracts, 108 unit tests without torch or a GPU. See
+  operator contracts, unit tests without torch or a GPU. See
   `worklog/entries/20260916T142012.217732Z-lhl-yue2-m1-protocol-loader-b6a2b8.md`.
-- **M0 in progress**: oracle pinned, tensors inventoried by component, fixtures
-  frozen behind a fail-closed validator, oracle environment recorded. The twelve
-  production cases are regenerating; an independent repeat of representative
-  outputs and the 0.1.6-versus-baseline source diff remain open.
+- **M2 complete** (2026-09-16): torch-free AR runtime with both prefill routes,
+  decode, per-branch caches and positions, `KVLiveSpans`, and the 18-case replay
+  matrix plus a kernel-trace smoke. Pooled over 112 recorded full-vocabulary rows
+  and 576 decode-step rows against the pinned oracle on the same host: mean KL
+  1.43e-3 (strict) / 2.11e-3 (batched hipBLASLt), top-1 95.83% / 96.70%, and the
+  batched route takes the matrix's prefill from 522.5 s to 91.3 s (5.7x). The reduced head
+  is not implemented, so the validated path uses the full lm_head. See
+  `worklog/entries/20260916T144759.713427Z-lhl-yue2-m2-ar-runtime-bb886e.md` and
+  `benchmarks/README.md` "Radeon 8060S: YuE2 3B AR replay".
+- **M0 partial** (2026-09-16): oracle pinned, tensors inventoried by component,
+  fixtures frozen behind a fail-closed validator, oracle environment recorded, and
+  all twelve production cases regenerated and committed
+  (`tests/fixtures/yue2/cases/`). An independent repeat of representative outputs
+  and the 0.1.6-versus-baseline source diff remain open.
 
 The oracle fixtures were generated on gfx1151 (Ryzen AI MAX+ PRO 395 / Radeon
 8060S) with torch 2.13.0+rocm10.0.0; `tests/fixtures/yue2/oracle_env.json` is the
