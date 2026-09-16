@@ -940,7 +940,13 @@ should be removed or collapsed.
   `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
   The binder keeps the env transport as the request binding surface; fold it
   into request-local profile state together with the other Qwen4Exp bridges
-  and retain the registered strict-owner fallbacks.
+  and retain the registered strict-owner fallbacks. Note the binder writes
+  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` as `""` during its own pass, so a value
+  set before generator construction is silently inert; gates that need the route
+  must set it after the binder runs
+  (`scripts/execution_profile_q8_wmma_prefill_layers_gate.py`). Give the folded
+  request-local surface an explicit getter so callers stop depending on binder
+  ordering.
 - `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
   bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
   process-global transport with the MMQ bridges once Qwen4Exp profile state is
