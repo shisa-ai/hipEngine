@@ -766,6 +766,10 @@ def _summary(vectors: Mapping[str, np.ndarray], indices: np.ndarray) -> dict[str
     reference_nll = vectors["reference_teacher_nll"][indices]
     candidate_nll = vectors["candidate_teacher_nll"][indices]
     teacher_delta_p = vectors["teacher_delta_p"][indices]
+    # The top-2 gap moves by the difference of the two tokens' deltas, so it can
+    # change by at most twice the largest per-token delta. Using that bound makes
+    # the eligible set a true superset of the possible flips.
+    flip_eligible = margins <= 2.0 * max_abs
     percentiles = np.percentile(kl, _DEFAULT_PERCENTILES)
     return {
         "rows": int(indices.size),
@@ -783,6 +787,17 @@ def _summary(vectors: Mapping[str, np.ndarray], indices: np.ndarray) -> dict[str
         "teacher_delta_p_mean": float(teacher_delta_p.mean()),
         "strict_margin_min": float(margins.min()),
         "max_abs_logit_delta": float(max_abs.max()),
+        # A top-1 flip needs the perturbation to close the teacher's own top-2
+        # gap, so rows where it cannot are not at risk however large the mean KL
+        # is. Reporting the eligible population makes a mismatch count readable:
+        # misses concentrated in a small near-tie set are margin-limited, not
+        # evidence that the route's arithmetic drifted. A mismatch outside the
+        # eligible set is arithmetically impossible, so a non-zero count there
+        # indicates a row-alignment bug rather than a numerical one.
+        "flip_eligible_rows": int(flip_eligible.sum()),
+        "flip_eligible_share": float(flip_eligible.mean()),
+        "top1_mismatches_flip_eligible": int((~top1 & flip_eligible).sum()),
+        "top1_mismatches_outside_flip_eligible": int((~top1 & ~flip_eligible).sum()),
     }
 
 

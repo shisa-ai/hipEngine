@@ -315,6 +315,43 @@ def test_profile_logit_summary_attributes_top1_mismatch_below_review_boundary() 
     assert mismatch["max_abs_logit_delta"] == pytest.approx(1.1)
 
 
+def test_profile_logit_summary_separates_margin_limited_flips_from_drift() -> None:
+    """A mismatch count is unreadable without the population that could flip.
+
+    Rows whose teacher top-2 gap is wider than the perturbation can reach are
+    not at risk at any KL, so concentrating misses in a small near-tie set is a
+    different finding from arithmetic that drifted everywhere.
+    """
+
+    strict = _logits()
+    candidate = strict.copy()
+    # Row 2's teacher margin is 1.0 and the perturbation reaches 1.1, so it is
+    # the only row that could flip. Rows 0 and 1 are untouched.
+    candidate[2] = np.asarray([2.9, 3.1, 0.0, -2.0], dtype=np.float32)
+    permissive = EvaluationThresholds(
+        mean_kl_max=1.0,
+        p95_kl_max=1.0,
+        p99_kl_max=1.0,
+        max_kl_max=1.0,
+        top1_min=0.0,
+        per_scope_top1_min=0.0,
+        review_kl=1.0,
+    )
+
+    summary = compare_profile_logits(
+        strict, candidate, _rows(), thresholds=permissive
+    )["summary"]
+
+    assert summary["rows"] == 3
+    assert summary["flip_eligible_rows"] == 1
+    assert summary["flip_eligible_share"] == pytest.approx(1 / 3)
+    assert summary["top1_matches"] == 2
+    assert summary["top1_mismatches_flip_eligible"] == 1
+    # A flip outside the eligible set cannot happen arithmetically; a non-zero
+    # count here would mean the rows are misaligned, not that the route drifted.
+    assert summary["top1_mismatches_outside_flip_eligible"] == 0
+
+
 def test_profile_logit_summary_turns_nonfinite_candidate_into_failed_gate() -> None:
     candidate = _logits()
     candidate[0, 0] = np.nan
