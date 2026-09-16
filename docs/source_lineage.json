@@ -54,12 +54,17 @@
     "dflash": {
       "path": "/home/lhl/dflash",
       "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
-      "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
+      "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered. Not present on this host as of 2026-09-17 and the pinned commit is not reachable from any local checkout; check_lineage reports its files UNAVAILABLE until the reference is restored."
     },
     "halo-box": {
-      "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+      "path": "/home/lhl/halo-box-strix-llama",
       "baseline_ref": "a7ad7b7f508746870e03d0da60cca420295a04b9",
-      "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign."
+      "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign. Repointed 2026-09-17 from the removed hb-pr11 subdirectory to the repo root, where the PR11 commit is still reachable."
+    },
+    "halobox-pr63": {
+      "path": "/home/lhl/comparators-20260915/halobox-pr63",
+      "baseline_ref": "c4aa302294fcd5121af2039fd4d3dee0d472ec03",
+      "baseline_note": "Pinned halo-box PR63 comparator tree built as the identical-operand replay target; parent of the wide-row Q8_0 dense prefill port."
     }
   },
   "files": [
@@ -439,6 +444,13 @@
       "kind": "source",
       "family": "DFlash2 quantized-target MLX variant (comparator lane for GGUF target)",
       "baseline_ref": "07ebd93"
+    },
+    {
+      "repo": "halobox-pr63",
+      "path": "ggml/src/ggml-cuda/mmb.cu",
+      "kind": "kernel",
+      "family": "Wide-row Q8_0 dense prefill; parent of hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip (mmb_dense_kernel<128,256,64,64,1>). BF16 operands with F32 accumulate against our F16 operands; see docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md.",
+      "baseline_ref": "c4aa302294fcd5121af2039fd4d3dee0d472ec03"
     },
     {
       "repo": "halo-box",

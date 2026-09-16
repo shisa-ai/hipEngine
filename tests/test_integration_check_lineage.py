@@ -136,3 +136,113 @@ def git_output(repo: Path, *args: str) -> str:
         check=True,
     )
     return result.stdout.strip()
+
+
+def test_check_lineage_reports_a_missing_repo_instead_of_crashing(tmp_path: Path) -> None:
+    """One vanished reference checkout must not take the whole report down.
+
+    A single missing external repo used to raise out of build_report, so every
+    other tracked source became unreportable and real drift went unnoticed.
+    """
+
+    present = tmp_path / "present"
+    present.mkdir()
+    run(["git", "init"], cwd=present)
+    run(["git", "config", "user.email", "test@example.invalid"], cwd=present)
+    run(["git", "config", "user.name", "Test User"], cwd=present)
+    kernel = present / "kernels" / "ok.hip"
+    kernel.parent.mkdir()
+    kernel.write_text("extern \"C\" __global__ void ok() {}\n")
+    run(["git", "add", "kernels/ok.hip"], cwd=present)
+    run(["git", "commit", "-m", "baseline ok kernel"], cwd=present)
+    baseline = git_output(present, "rev-parse", "HEAD")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "evidence_paths": [],
+                "repositories": {
+                    "present": {"path": str(present), "baseline_ref": baseline},
+                    "vanished": {
+                        "path": str(tmp_path / "not-here"),
+                        "baseline_ref": "deadbeef",
+                    },
+                },
+                "files": [
+                    {
+                        "repo": "present",
+                        "path": "kernels/ok.hip",
+                        "kind": "kernel",
+                        "family": "present kernel",
+                    },
+                    {
+                        "repo": "vanished",
+                        "path": "kernels/gone.hip",
+                        "kind": "kernel",
+                        "family": "vanished kernel",
+                    },
+                ],
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--manifest", str(manifest), "--json"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    report = json.loads(result.stdout)
+    by_repo = {item["repo"]: item for item in report["sources"]}
+
+    # The reachable repo is still reported in full.
+    assert by_repo["present"]["available"] is True
+    assert by_repo["present"]["changed"] is False
+    assert by_repo["present"]["head"]
+
+    # The missing one is a finding with a reason, and counts as drift because
+    # nothing about the claimed parent can be verified.
+    assert by_repo["vanished"]["available"] is False
+    assert "does not exist" in by_repo["vanished"]["unavailable_reason"]
+    assert by_repo["vanished"]["changed"] is True
+
+
+def test_check_lineage_text_report_marks_a_missing_repo(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "evidence_paths": [],
+                "repositories": {
+                    "vanished": {
+                        "path": str(tmp_path / "not-here"),
+                        "baseline_ref": "deadbeef",
+                    }
+                },
+                "files": [
+                    {
+                        "repo": "vanished",
+                        "path": "kernels/gone.hip",
+                        "kind": "kernel",
+                        "family": "vanished kernel",
+                    }
+                ],
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--manifest", str(manifest)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "unavailable: 1" in result.stdout
+    assert "UNAVAILABLE" in result.stdout
+    assert "unavailable_reason:" in result.stdout
