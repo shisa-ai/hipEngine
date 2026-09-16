@@ -473,3 +473,29 @@ Top-1 is the other question the screens cannot answer. The miss counts trend the
 right way — 0 and 1 at the certified scopes, 2 at 24-47, 3 at 20-47 and 16-47,
 4 below — but every screen interval spans 0.99, so none of them separates a
 passing scope from a failing one. Only a 1548-row arm can.
+
+
+## Open: layers 16-47 and below are unmeasured, not excluded
+
+Layers 20-47 is the deepest **certified** scope. Three scopes below it remain
+open and none of them has been ruled out:
+
+| Scope | Screen mean KL | Full-arm range (0.50-1.20x) | Screen verdict | Predicted saving |
+| --- | ---: | --- | --- | ---: |
+| 16-47 | 6.728e-4 | 3.36e-4 - 8.07e-4 | pass | ~4.42 s |
+| 12-47 | 9.591e-4 | 4.80e-4 - 1.15e-3 | inconclusive | ~4.69 s |
+| 8-47 | 1.356e-3 | 6.78e-4 - 1.63e-3 | inconclusive | ~4.96 s |
+
+The 16-47 full arm was attempted twice on 2026-09-17 and both attempts were
+killed before writing an artifact. The cause is host memory, not the route: the
+`UD-Q4_K_XL` weights are 111 GB against 125 GB of system memory, so a full-model
+gate maps nearly the whole machine into page cache and trips the harness's
+background-task memory guard. No process was holding memory at the time — used
+was 16 GB with 108 GB available, while `buff/cache` climbed from 21 GB to 41 GB
+as the model paged in. The earlier arms in this campaign ran on the same margin
+and succeeded; that was luck rather than headroom.
+
+Remaining contiguous upside is about **+0.8 s across three arms**, against the
+**+4.15 s** already certified at 20-47 out of the +7.04 s the maximal scope
+offers. Re-attempt these on a quieter host, or when the gate can run against a
+smaller resident footprint.
