@@ -674,11 +674,14 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
   slice. Confirm one down-projection reduction per layer and exact single
   residual addition; use boundary probes to localize drift. (Commits
   75f75e335, e4403443c; full-model e2e with all production gates passing.)
-- [x] Add full-attention head sharding and then linear-attention group/state
+- [ ] Add full-attention head sharding and then linear-attention group/state
   sharding. Verify cold and warm trajectories separately; sharding only QKV
   without its convolution/GDN state is not a complete implementation.
-  (Replicated attention per rank with per-rank GDN/conv scratch zeroing;
-  stale-state discipline pinned by teacher-forced-after-generation tests.)
+  (NOT DONE: the current runner replicates attention and GDN per rank with
+  per-rank GDN/conv scratch zeroing; stale-state discipline is pinned by
+  teacher-forced-after-generation tests, but that is replicated attention,
+  not attention sharding. The vocabulary head IS row-sharded, commit
+  7c2a7fb66.)
 - [x] Connect prefill, one-token decode, positions, KV allocation, reset, EOS,
   and resource teardown. Prefill must produce the same rank-local state layout
   consumed by decode, including chunk boundaries and long contexts. (The
@@ -706,9 +709,11 @@ memory/timing evidence, and a decision on whether to proceed with optimization.
   Use common host wall for end-to-end latency; do not subtract unsynchronized
   timestamps from different GPUs as if they shared a clock. (rocprof
   kernel-trace wedges on full-stack sessions - blocked loop iteration with
-  symptoms; HIP-event attribution instead: wall 24.37 ms/step, 99.7% device,
-  layers 22.73, tail 1.25, metadata 0.31, rank skew 0.06, host idle 0.07
-  ms/step; attention is the majority of the ~350 us graphed layer.)
+  symptoms; HIP-event attribution instead: wall 24.37 ms/step with layers
+  22.73, tail 1.25, metadata 0.31, rank skew 0.06 ms/step - spans include
+  device-side waits and gaps (especially around the polled exchange), so
+  the near-100%-device figure is an upper bound on true execution, not a
+  proven floor; attention dominates the ~350 us graphed layer.)
 - [x] Capture stable per-device graph segments and collectives only where
   supported. Keep event dependencies explicit and verify repeated replay,
   address lifetimes, and graph invalidation. Do not assume one cross-device
