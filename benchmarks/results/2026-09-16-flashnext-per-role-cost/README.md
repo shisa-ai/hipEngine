@@ -38,6 +38,14 @@ Three records, all from the same run and the same model file:
 2. A launch census (`--launch-census`) recording quant, `K`, `N`, rows and launch
    count behind each owner call. It is reset after warmup, so graph
    instantiation and allocator growth are not attributed to the measured pass.
+   **The census needs `HIPENGINE_KERNEL_CENSUS` set in the environment.**
+   `--launch-census` only names the output path; it does not turn collection on,
+   and without the variable every `record_launch` returns immediately, so the
+   run completes normally and writes a well-formed census with
+   `total_launches: 0`. Nothing in the child report distinguishes that from a
+   real result, so check `total_launches` before using the census for shapes.
+   The capture also needs the TheRock `LD_LIBRARY_PATH`; both requirements are
+   recorded in [`../2026-09-17-qwen4exp-per-role-cost/README.md`](../2026-09-17-qwen4exp-per-role-cost/README.md).
 3. `model-shapes.json`, the GGUF tensor geometry and expert routing config. This
    supplies shapes for operations that do not go through the GGUF quant launch
    path — MoE, QSA, GR, GDN, indexer — which the census alone cannot cover.

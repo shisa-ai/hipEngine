@@ -1,0 +1,217 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_shared_family_comparison",
+ "performance_claim": false,
+ "numerics_evaluated": false,
+ "case_id": "code-p4096",
+ "question": "On one case on one host, what does each operation cost each engine, in one taxonomy?",
+ "taxonomy": {
+  "source": "scripts/qwen4exp_comparator_role_map.py",
+  "families": [
+   "dense_projection",
+   "expert_gate_up",
+   "expert_down",
+   "moe_reduce",
+   "hyper_connection",
+   "gdn",
+   "qsa_attention",
+   "ple",
+   "indexer",
+   "elementwise_norm",
+   "quantize_pack",
+   "other"
+  ],
+  "hipengine_mapper": "map_hipengine"
+ },
+ "caveats": [
+  "Both sides are the same case on the same host, but not the same arithmetic.",
+  "hipEngine's iu8 exact-repair passes are folded into the matmul family they correct; the folded total is reported as risk_or_repair_ms.",
+  "Milliseconds are kernel time, not wall. Neither side is a throughput claim."
+ ],
+ "hipengine": {
+  "label": "hipengine-725794c3f",
+  "window_ms": 22698.625927,
+  "attributed_ms": 22083.567883,
+  "attributed_time_pct": 100.0,
+  "total_ms": 22083.567882999956,
+  "kernel_count": 2024,
+  "by_family_ms": {
+   "dense_projection": 10562.2,
+   "hyper_connection": 2523.8,
+   "qsa_attention": 1402.7,
+   "expert_gate_up": 3414.2,
+   "expert_down": 2389.0,
+   "gdn": 821.2,
+   "moe_reduce": 762.5,
+   "elementwise_norm": 180.2,
+   "ple": 9.9,
+   "indexer": 17.5,
+   "other": 0.2
+  },
+  "by_family_kernel_count": {
+   "dense_projection": 641,
+   "hyper_connection": 97,
+   "qsa_attention": 84,
+   "expert_gate_up": 96,
+   "expert_down": 96,
+   "gdn": 108,
+   "moe_reduce": 384,
+   "elementwise_norm": 489,
+   "ple": 4,
+   "indexer": 24,
+   "other": 1
+  },
+  "risk_or_repair_ms": 1434.4,
+  "unmapped_over_floor": []
+ },
+ "comparators": [
+  {
+   "label": "halobox-base",
+   "dialect": "llamacpp",
+   "total_ms": 5411.0,
+   "by_family_ms": {
+    "dense_projection": 1536.7,
+    "elementwise_norm": 531.4,
+    "expert_down": 1149.8,
+    "expert_gate_up": 819.4,
+    "gdn": 287.6,
+    "hyper_connection": 428.9,
+    "indexer": 5.6,
+    "moe_reduce": 204.0,
+    "other": 6.2,
+    "ple": 0.0,
+    "qsa_attention": 156.6,
+    "quantize_pack": 284.8
+   }
+  },
+  {
+   "label": "halobox-pr63",
+   "dialect": "llamacpp",
+   "total_ms": 3760.4,
+   "by_family_ms": {
+    "dense_projection": 1374.3,
+    "elementwise_norm": 331.7,
+    "expert_down": 412.8,
+    "expert_gate_up": 761.8,
+    "gdn": 263.8,
+    "hyper_connection": 335.7,
+    "indexer": 15.0,
+    "moe_reduce": 103.9,
+    "other": 5.7,
+    "ple": 0.0,
+    "qsa_attention": 155.7,
+    "quantize_pack": 0.0
+   }
+  }
+ ],
+ "table": [
+  {
+   "family": "dense_projection",
+   "hipengine_ms": 10562.2,
+   "hipengine_share_pct": 47.8,
+   "halobox-base_ms": 1536.7,
+   "halobox-base_ratio": 6.87,
+   "halobox-pr63_ms": 1374.3,
+   "halobox-pr63_ratio": 7.69
+  },
+  {
+   "family": "expert_gate_up",
+   "hipengine_ms": 3414.2,
+   "hipengine_share_pct": 15.5,
+   "halobox-base_ms": 819.4,
+   "halobox-base_ratio": 4.17,
+   "halobox-pr63_ms": 761.8,
+   "halobox-pr63_ratio": 4.48
+  },
+  {
+   "family": "hyper_connection",
+   "hipengine_ms": 2523.8,
+   "hipengine_share_pct": 11.4,
+   "halobox-base_ms": 428.9,
+   "halobox-base_ratio": 5.88,
+   "halobox-pr63_ms": 335.7,
+   "halobox-pr63_ratio": 7.52
+  },
+  {
+   "family": "expert_down",
+   "hipengine_ms": 2389.0,
+   "hipengine_share_pct": 10.8,
+   "halobox-base_ms": 1149.8,
+   "halobox-base_ratio": 2.08,
+   "halobox-pr63_ms": 412.8,
+   "halobox-pr63_ratio": 5.79
+  },
+  {
+   "family": "qsa_attention",
+   "hipengine_ms": 1402.7,
+   "hipengine_share_pct": 6.4,
+   "halobox-base_ms": 156.6,
+   "halobox-base_ratio": 8.96,
+   "halobox-pr63_ms": 155.7,
+   "halobox-pr63_ratio": 9.01
+  },
+  {
+   "family": "gdn",
+   "hipengine_ms": 821.2,
+   "hipengine_share_pct": 3.7,
+   "halobox-base_ms": 287.6,
+   "halobox-base_ratio": 2.86,
+   "halobox-pr63_ms": 263.8,
+   "halobox-pr63_ratio": 3.11
+  },
+  {
+   "family": "moe_reduce",
+   "hipengine_ms": 762.5,
+   "hipengine_share_pct": 3.5,
+   "halobox-base_ms": 204.0,
+   "halobox-base_ratio": 3.74,
+   "halobox-pr63_ms": 103.9,
+   "halobox-pr63_ratio": 7.34
+  },
+  {
+   "family": "elementwise_norm",
+   "hipengine_ms": 180.2,
+   "hipengine_share_pct": 0.8,
+   "halobox-base_ms": 531.4,
+   "halobox-base_ratio": 0.34,
+   "halobox-pr63_ms": 331.7,
+   "halobox-pr63_ratio": 0.54
+  },
+  {
+   "family": "indexer",
+   "hipengine_ms": 17.5,
+   "hipengine_share_pct": 0.1,
+   "halobox-base_ms": 5.6,
+   "halobox-base_ratio": 3.12,
+   "halobox-pr63_ms": 15.0,
+   "halobox-pr63_ratio": 1.17
+  },
+  {
+   "family": "ple",
+   "hipengine_ms": 9.9,
+   "hipengine_share_pct": 0.0,
+   "halobox-base_ms": 0.0,
+   "halobox-base_ratio": null,
+   "halobox-pr63_ms": 0.0,
+   "halobox-pr63_ratio": null
+  },
+  {
+   "family": "other",
+   "hipengine_ms": 0.2,
+   "hipengine_share_pct": 0.0,
+   "halobox-base_ms": 6.2,
+   "halobox-base_ratio": 0.03,
+   "halobox-pr63_ms": 5.7,
+   "halobox-pr63_ratio": 0.04
+  },
+  {
+   "family": "quantize_pack",
+   "hipengine_ms": 0.0,
+   "hipengine_share_pct": 0.0,
+   "halobox-base_ms": 284.8,
+   "halobox-base_ratio": 0.0,
+   "halobox-pr63_ms": 0.0,
+   "halobox-pr63_ratio": null
+  }
+ ]
+}
