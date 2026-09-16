@@ -669,7 +669,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--worker-reps", type=int, default=1)
     parser.add_argument("--arm-timeout", type=float, default=2400.0)
     parser.add_argument("--run", action="store_true", help="orchestrate the cell")
+    parser.add_argument('--protocol', choices=('matched-transfer', 'product'), default='matched-transfer')
+    parser.add_argument('--product-arm', choices=ARMS)
+    parser.add_argument('--rep-index', type=int, default=0)
+    parser.add_argument('--capacity-only', action='store_true')
+    parser.add_argument('--quality-json', type=Path)
     args = parser.parse_args(argv)
+    if args.protocol == 'product':
+        if not args.json:
+            parser.error('product protocol requires --json')
+        if args.product_arm:
+            return product_worker(args)
+        if not args.run or args.reps < 3:
+            parser.error('product campaign requires --run and >=3 independent repetitions')
+        return run_product_campaign(args)
 
     if args.arm == "tp2":
         payload = run_tp2_arm(
@@ -939,6 +952,305 @@ def main(argv: Sequence[str] | None = None) -> int:
     for failure in gate_failures[:20]:
         print(f"  FAIL {failure}", flush=True)
     return 0 if not unverified else 1
+
+
+PRODUCT_ORDERS = (('tp1-d0', 'tp2', 'tp1-d1'), ('tp2', 'tp1-d1', 'tp1-d0'), ('tp1-d1', 'tp1-d0', 'tp2'))
+
+
+def product_inputs(model, rows):
+    from hipengine.loading.gguf import scan_gguf
+    from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(model))
+    return [build_chat_prompt(tokenizer, str(row['prompt'])) for row in rows]
+
+
+def product_identity(model):
+    from scripts.tp2_resident_control import bind_resident_profile
+    os.environ['HIPENGINE_GGUF_DECODE_REPACK'] = '1'
+    profile = bind_resident_profile('production')
+    paths = ('hipengine/core/memory.py', 'hipengine/runtime/qwen35_gguf_runner.py',
+             'hipengine/runtime/gguf_decode_graph.py', 'hipengine/runtime/gguf_linear.py',
+             'hipengine/distributed/tp2_generate.py', 'hipengine/distributed/shard_exec.py',
+             'scripts/tp2_resident_control.py')
+    return {'model_sha256': _model_sha256(model), 'source_revision': _git_revision(),
+        'staged_diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff', '--cached', '--binary'])).hexdigest(),
+        'source_sha256': {p: hashlib.sha256((REPO_ROOT/p).read_bytes()).hexdigest() for p in paths},
+        'profile_sha256': profile['manifest_sha256'], 'capacity': 200, 'kv': 'bf16',
+        'recurrent': 'fp32', 'sampling': 'greedy', 'host': _host_identity()}
+
+
+def _product_token(token, vocab):
+    if isinstance(token, (bool, np.bool_)) or not isinstance(token, (int, np.integer)) or not 0 <= token < vocab:
+        raise ValueError(f'invalid product sample {token!r}')
+    return int(token)
+
+
+def measure_product_prompt(adapter, tokens, prompt_row, *, clock=time.perf_counter, transitions=128):
+    """Identical outer clocks, native asymmetric transfers; checks after timers."""
+    from scripts.tp2_xtx_tp1_eager_stage_probe import validate_result
+    total_start = clock()
+    start = clock()
+    first = token = _product_token(adapter.prefill(tokens), adapter.vocab_size)
+    prefill_ms = (clock() - start) * 1000
+    start = clock()
+    adapter.begin_decode(transitions)
+    capture_ms = (clock() - start) * 1000
+    outputs = []
+    start = clock()
+    for step in range(transitions):
+        result = adapter.transition(token, return_logits=(not adapter.resident or step == transitions-1))
+        token = _product_token(result.token_id, adapter.vocab_size)
+        outputs.append(token)
+    decode_ms = (clock() - start) * 1000
+    start = clock()
+    adapter.end_decode()
+    destroy_ms = (clock() - start) * 1000
+    total_ms = (clock() - total_start) * 1000
+    validate_result(result, adapter.vocab_size)  # No extra quality scan inside timing.
+    if adapter.position != len(tokens) + transitions:
+        raise ValueError('product transition count/cursor mismatch')
+    return {'id': prompt_row['id'], 'category': prompt_row['category'],
+        'prompt_tokens': len(tokens), 'prompt_token_sha256': token_tuple_sha256(tokens),
+        'timed_decode_transitions': transitions, 'total_samples': transitions+1,
+        'user_visible_requested_horizon': transitions, 'api_128_completion_equivalent': False,
+        'decode_position_start': len(tokens), 'decode_position_end': len(tokens)+transitions-1,
+        'prefill_sample_id': first, 'sampled_output_ids': outputs, 'sampled_output_sha256': _ids_hash(outputs),
+        'vocab_size': adapter.vocab_size, 'finite_final_logits': True,
+        'finite_verification': 'final-only in timed run; separate all-position correctness companion',
+        'native_full_logits_every_step': not adapter.resident, 'graph_effective': True,
+        'prefill_ms': prefill_ms, 'capture_ms': capture_ms, 'decode_ms': decode_ms,
+        'destroy_ms': destroy_ms, 'total_generation_ms': total_ms}
+
+
+def product_summary(rows):
+    transitions = sum(r['timed_decode_transitions'] for r in rows)
+    samples = sum(r['total_samples'] for r in rows)
+    totals = {k: sum(r[k] for r in rows) for k in ('decode_ms', 'total_generation_ms', 'prefill_ms', 'capture_ms', 'destroy_ms')}
+    if not rows or any(not math.isfinite(v) or v < 0 for v in totals.values()) or totals['decode_ms'] <= 0 or totals['total_generation_ms'] <= 0:
+        raise ValueError('invalid product timing denominator')
+    return {**totals, 'decode_transitions': transitions, 'total_samples': samples,
+            'decode_tok_s': transitions * 1000 / totals['decode_ms'],
+            'generation_samples_s': samples * 1000 / totals['total_generation_ms']}
+
+
+def validate_product_run(run, *, arm, rep, expected_identity, rows, token_rows):
+    if run.get('status') != 'complete' or run.get('natural_teardown') is not True or run.get('first_bad_stage') is not None:
+        raise ValueError('product arm failed or did not close naturally')
+    if run.get('arm') != arm or run.get('rep') != rep or not run.get('run_id'):
+        raise ValueError('stale/mismatched execution identity')
+    if not expected_identity or run.get('identity') != expected_identity:
+        raise ValueError('product provenance mismatch/missing evidence')
+    for key in ('model_sha256', 'source_revision', 'source_sha256', 'profile_sha256', 'staged_diff_sha256'):
+        if not expected_identity.get(key): raise ValueError(f'missing identity field {key}')
+    if run.get('profile',{}).get('manifest_sha256') != expected_identity['profile_sha256']:
+        raise ValueError('missing/mismatched bound profile')
+    if run.get('route',{}).get('max_sequence_length') != 200:
+        raise ValueError('missing/mismatched actual route capacity')
+    scope = run.get('scope_manifest',{})
+    if not scope.get('manifest') or _sha256_json(scope['manifest']) != scope.get('sha256'):
+        raise ValueError('missing/invalid actual scope manifest')
+    for key in ('session_capture_ms','session_graph_destroy_ms','session_teardown_ms'):
+        value = _as_float(run.get(key))
+        if value is None or value < 0: raise ValueError(f'missing/invalid {key}')
+    failures = validate_arm_rows(arm, run.get('rows', []), expected_ids=[r['id'] for r in rows],
+                                expected_categories={r['id']: r['category'] for r in rows})
+    if failures: raise ValueError(str(failures))
+    for r, tokens in zip(run['rows'], token_rows, strict=True):
+        if r['prompt_token_sha256'] != token_tuple_sha256(tokens) or r['prompt_tokens'] != len(tokens):
+            raise ValueError('product input hash/length mismatch')
+        for key, expected in [('timed_decode_transitions',128), ('total_samples',129), ('user_visible_requested_horizon',128),
+                              ('decode_position_start',len(tokens)), ('decode_position_end',len(tokens)+127)]:
+            if type(r.get(key)) is not int or r[key] != expected: raise ValueError(f'bad {key}')
+        if r.get('api_128_completion_equivalent') is not False or r.get('graph_effective') is not True:
+            raise ValueError('wrong product horizon/route')
+        if r.get('native_full_logits_every_step') is not (arm == 'tp2'):
+            raise ValueError('native readback protocol mismatch')
+        if r.get('finite_final_logits') is not True: raise ValueError('nonfinite final output')
+        ids = r.get('sampled_output_ids', [])
+        if len(ids) != 128 or r.get('sampled_output_sha256') != _ids_hash(ids): raise ValueError('sample hash/count mismatch')
+        for token in [r['prefill_sample_id'], *ids]: _product_token(token, r['vocab_size'])
+        for key in ('decode_ms','total_generation_ms','prefill_ms','capture_ms','destroy_ms'):
+            value = _as_float(r.get(key))
+            if value is None or value < 0 or (key in ('decode_ms','total_generation_ms') and value <= 0):
+                raise ValueError(f'invalid {key}')
+        if r['total_generation_ms'] + 1e-6 < sum(r[k] for k in ('decode_ms','prefill_ms','capture_ms','destroy_ms')):
+            raise ValueError('outer generation window does not contain its phases')
+
+
+def product_idle_gate():
+    from scripts.tp2_teacher_bisect_parent import wait_for_idle
+    idle, snapshot = wait_for_idle(max_load=2.0, max_gpu=5.0, timeout_s=180, poll_s=5)
+    if not idle: raise ValueError(f'idle gate failed: {snapshot}')
+    return {'idle': True, **snapshot}
+
+
+def product_system_snapshot():
+    snapshot = {}
+    for name, command in [('hipcc',['hipcc','--version']),
+        ('gpu',['rocm-smi','--showuse','--showtemp','--showpower','--showclocks','--showmemuse','--json'])]:
+        try:
+            result = subprocess.run(command,capture_output=True,text=True,timeout=20)
+            snapshot[name] = {'command':command,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}
+        except (OSError,subprocess.SubprocessError) as error:
+            snapshot[name] = {'error':str(error)}
+    return snapshot
+
+
+def product_worker(args):
+    from scripts.tp2_resident_control import create_native_adapter, bind_resident_profile, resolved_scope_manifest
+    from scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder
+    arm = args.product_arm
+    visibility = os.environ.get('HIP_VISIBLE_DEVICES')
+    if (arm == 'tp2' and visibility) or (arm != 'tp2' and visibility != str(TP1_ARMS.index(arm))):
+        raise ValueError('product worker physical visibility mismatch')
+    rows = load_prompt_rows(args.prompts)
+    token_rows = product_inputs(args.model, rows)
+    identity = product_identity(args.model)
+    if max(map(len, token_rows)) + 129 > 200: raise ValueError('product capacity exceeded')
+    record = StageRecorder(args.json, {'kind':'tp2_product_arm', 'arm':arm, 'rep':args.rep_index,
+        'run_id':uuid.uuid4().hex, 'identity':identity, 'profile':bind_resident_profile('production'),
+        'command':shlex.join([sys.executable,*sys.argv]), 'git_status':subprocess.check_output(['git','status','--short'],text=True),
+        'harness_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'rows':[]})
+    state = {}
+    def build():
+        t = time.perf_counter()
+        state['adapter'] = a = create_native_adapter(args.model, arm, capacity=200)
+        record.artifact['devices'] = _device_identities(a.owner)
+        record.artifact['route'] = _resolved_route(a.owner)
+        return {'model_load_ms':(time.perf_counter()-t)*1000}
+    def timed_guard(stage, fn, field):
+        def timed():
+            start = time.perf_counter()
+            fn()
+            record.artifact[field] = (time.perf_counter()-start)*1000
+            return {field:record.artifact[field]}
+        return record.guard(stage,timed)
+    if record.guard('build', build):
+        a = state['adapter']
+        timed_guard('session-graph-capture', a.prepare, 'session_capture_ms')
+        if not record.exit_code:
+            record.artifact['scope_manifest'] = resolved_scope_manifest(a.owner)
+            ranks = record.artifact['scope_manifest']['manifest']['ranks']
+            kv = ([a.session.kv_storage_dtype] if a.resident else [s.kv_storage_dtype for s in a.session._scratches.values()])
+            record.artifact['effective'] = {'kv': [str(v) for v in kv],
+                'recurrent_fp16': [r['fp16_recurrent_state'] for r in ranks.values()],
+                'timed_decode_route': 'state_bound_hipgraph' if a.resident else 'per_layer_hipgraph_native_exchange',
+                'sampling': 'greedy', 'eos': None, 'request_warmup_transitions': 0,
+                'global_warmup': {'prompt_tokens':16,'transitions':2},
+                'readback': 'token_only_except_final' if a.resident else 'native_full_logits_every_transition'}
+            if any(r['fp16_recurrent_state'] for r in ranks.values()) or any(str(v).lower().split('.')[-1]!='bf16' for v in kv):
+                raise ValueError('actual state/KV precision differs from product declaration')
+            timed_guard('warmup', lambda: measure_product_prompt(a, token_rows[0][:16], rows[0], transitions=2), 'warmup_ms')
+        if not args.capacity_only and not record.exit_code:
+            record.artifact['system_before'] = product_system_snapshot()
+            for row,tokens in zip(rows,token_rows,strict=True):
+                def measure():
+                    metric = measure_product_prompt(a,tokens,row)
+                    if not a.resident:
+                        metric['native_trace_decode_ms'] = {key:1000*sum(t.stages.get(key,0) for t in a.traces if t.kind=='decode')
+                            for key in {k for t in a.traces for k in t.stages}}
+                        metric['trace_note'] = 'Host stage attribution only; never the throughput denominator.'
+                    record.artifact['rows'].append(metric)
+                    return metric
+                if not record.guard(row['id'],measure): break
+        if not record.exit_code:
+            if not args.capacity_only: record.artifact['system_after'] = product_system_snapshot()
+            timed_guard('session-graph-destroy', a.destroy_graphs, 'session_graph_destroy_ms')
+            timed_guard('teardown', a.close, 'session_teardown_ms')
+    record.artifact['capacity_only'] = bool(args.capacity_only)
+    record.artifact['natural_teardown'] = not bool(record.exit_code)
+    record.finish()
+    if record.exit_code:
+        sys.stdout.flush(); sys.stderr.flush(); os._exit(1)
+    return 0
+
+
+def run_product_child(arm, rep, args, prompts):
+    run_id = uuid.uuid4().hex
+    output = args.workdir / f'product-r{rep}-{arm}-{run_id}.json'
+    command = [sys.executable, str(Path(__file__).resolve()), '--protocol','product', '--product-arm',arm,
+               '--rep-index',str(rep), '--model',str(args.model), '--prompts',str(prompts), '--json',str(output)]
+    env = dict(os.environ)
+    env.pop('ROCR_VISIBLE_DEVICES',None)
+    if arm == 'tp2': env.pop('HIP_VISIBLE_DEVICES',None)
+    else: env['HIP_VISIBLE_DEVICES'] = str(TP1_ARMS.index(arm))
+    log = output.with_suffix('.log')
+    with log.open('w') as handle:
+        result = subprocess.run(['timeout','-k','10s',str(args.arm_timeout)+'s',*command], env=env,
+                                stdout=handle,stderr=subprocess.STDOUT)
+    if result.returncode != 0 or not output.exists():
+        raise ValueError(f'{arm} failed rc={result.returncode}; log={log}')
+    payload = json.loads(output.read_text())
+    payload['outer_command'] = shlex.join(command)
+    payload['log'] = str(log)
+    return payload
+
+
+def run_product_campaign(args):
+    from scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder
+    args.workdir = args.workdir or Path('/tmp/tp2-product-'+datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S'))
+    args.workdir.mkdir(parents=True,exist_ok=True)
+    rows, failures = load_cell_prompts(args.prompts,args.heldout_prompts)
+    tokens = product_inputs(args.model,rows) if rows else []
+    identity = product_identity(args.model)
+    prompt_path = args.workdir/'product-prompts.jsonl'
+    write_prompt_file(rows,prompt_path)
+    record = StageRecorder(args.json, {'kind':'tp2_native_product_baseline','identity':identity,
+        'protocol':'128 timed transitions at P..P+127; 129 total samples, not API max_new_tokens=128 latency',
+        'transfer_asymmetry':'TP1 token-only except final logits; TP2 native full logits and host argmax',
+        'qualified':False, 'performance_claim':'diagnostic measured baseline only', 'runs':[], 'ratios':None,
+        'orders':[list(PRODUCT_ORDERS[r%3]) for r in range(args.reps)],
+        'prompt_ids':[r['id'] for r in rows], 'prompt_token_hashes':[token_tuple_sha256(t) for t in tokens]})
+    if failures or not rows: raise ValueError(f'bad suite: {failures}')
+    def check_quality():
+        quality = json.loads(Path(args.quality_json).read_text())
+        if quality.get('all_gates_passed') is not True or quality.get('positions') != len(rows)*128:
+            raise ValueError('missing/failed sustained D128 correctness companion')
+        for key in ('model_sha256','source_sha256','profile_sha256','capacity','kv','recurrent','sampling','host'):
+            if quality['identity'].get(key) != identity.get(key): raise ValueError(f'stale correctness {key}')
+        if quality['suite']['ids'] != [r['id'] for r in rows] or quality['suite']['tokens'] != tokens:
+            raise ValueError('correctness/product prompt mismatch')
+        record.artifact['correctness'] = {'path':str(args.quality_json),
+            'sha256':hashlib.sha256(Path(args.quality_json).read_bytes()).hexdigest(), 'positions':quality['positions']}
+        return {'sustained_gate_passed':True}
+    if not record.guard('correctness-companion',check_quality):
+        record.finish(); return 1
+    seen = set()
+    for rep in range(args.reps):
+        for arm in PRODUCT_ORDERS[rep%3]:
+            def execute():
+                idle = product_idle_gate()
+                run = run_product_child(arm,rep,args,prompt_path)
+                validate_product_run(run,arm=arm,rep=rep,expected_identity=identity,rows=rows,token_rows=tokens)
+                if run['run_id'] in seen: raise ValueError('execution reused across reps')
+                seen.add(run['run_id'])
+                run['idle_gate'] = idle
+                run['aggregate'] = product_summary(run['rows'])
+                overhead = sum(run.get(k,0) for k in ('session_capture_ms','session_graph_destroy_ms','session_teardown_ms'))
+                run['aggregate']['session_generation_ms_including_graphs_and_teardown'] = run['aggregate']['total_generation_ms'] + overhead
+                run['aggregate']['session_generation_samples_s'] = 1000*run['aggregate']['total_samples']/(run['aggregate']['total_generation_ms']+overhead)
+                run['categories'] = {c:product_summary([r for r in run['rows'] if r['category']==c]) for c in sorted({r['category'] for r in rows})}
+                record.artifact['runs'].append(run)
+                return {'run_id':run['run_id'],'decode_tok_s':run['aggregate']['decode_tok_s']}
+            if not record.guard(f'rep-{rep}/{arm}',execute):
+                record.finish()
+                return 1
+    def ratios():
+        per_rep = []
+        for rep in range(args.reps):
+            runs = {r['arm']:r for r in record.artifact['runs'] if r['rep']==rep}
+            d0 = runs['tp1-d0']['devices']['0']['uuid']; d1 = runs['tp1-d1']['devices']['0']['uuid']
+            if d0==d1 or {d0,d1}!={d['uuid'] for d in runs['tp2']['devices'].values()}:
+                raise ValueError('physical paired denominators mismatch')
+            rates = {a:r['aggregate']['decode_tok_s'] for a,r in runs.items()}
+            faster = max(TP1_ARMS,key=lambda a:rates[a])
+            per_rep.append({'rep':rep,'rates':rates,'faster_tp1_arm':faster,'tp2_vs_faster_tp1':rates['tp2']/rates[faster]})
+        record.artifact['ratios'] = {'per_rep':per_rep,
+            'median_tp2_vs_faster_tp1':float(np.median([r['tp2_vs_faster_tp1'] for r in per_rep]))}
+        return {'paired_reps':len(per_rep)}
+    record.guard('paired-ratios',ratios)
+    record.finish()
+    return record.exit_code
 
 
 if __name__ == "__main__":
