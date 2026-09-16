@@ -11,7 +11,8 @@
   "change": "the diffusion head caches its invariant work: timestep MLP keyed by the bf16-rounded timestep, condition projection skipped on unchanged condition bytes, silu(c) hoisted above the layer loop",
   "protocol": {
     "workload": "pinned single-speaker session request, 121-token prompt, 27 generated tokens, 25 diffusion frames at 20 solver steps, CFG 1.3, 3.333 s of audio at 24 kHz",
-    "command": "uv run python /tmp/ab_cache.py",
+    "command": "uv run python scripts/vibevoice_tts_cache_ab.py",
+    "harness_provenance": {"original_invocation": "uv run python /tmp/ab_cache.py", "original_script_sha256": "e8736448ee6bb51e209649bc2112271cf8c787f12b85d3850761c24677430d9c", "note": "Original A/B harness moved in-tree during integration; same four arms and three repeats, with CLI options and exception-safe restoration. Recorded results were not rerun or changed."},
     "ab": "one process, one machine state, arm order cached/uncached/cached/uncached, 3 repeats per arm",
     "arms": {
       "cached": "HEAD behaviour",

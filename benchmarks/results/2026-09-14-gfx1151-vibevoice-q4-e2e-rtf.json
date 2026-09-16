@@ -8,7 +8,7 @@
   "workload": "LibriSpeech test-clean utterances at 24 kHz mono, round-robin across speakers; greedy decode, max_new_tokens 256, seed 20260914",
   "matched_request": "each clip's request is regenerated through the bench's prepare lane (HF processor, frozen seed) so both lanes consume identical PCM, noise, scales and prompt ids",
   "timing_boundaries": "each stage is bracketed by device synchronizes, so a stage is execution wall time rather than enqueue time. Weight loading, tokenization, request preparation and WER scoring are outside every timer. Real-time factor is total wall time / audio duration; the pooled value is total time over total audio (duration-weighted), the median is the median of per-clip RTFs.",
-  "command": "python3 scripts/vibevoice_q4_e2e_stage_breakdown.py --num-clips 20 --json <artifact>, and python3 scripts/vibevoice_asr_wer_q4.py --num-clips 40 --cache-dir /tmp/librispeech-clean-spread --gguf /tmp/vibevoice-asr-q4km.gguf"
+  "commands": [{"command": "python3 scripts/vibevoice_q4_e2e_stage_breakdown.py --num-clips 20 --json <artifact>"}, {"command": "python3 scripts/vibevoice_asr_wer_q4.py --num-clips 40 --cache-dir /tmp/librispeech-clean-spread --gguf /tmp/vibevoice-asr-q4km.gguf"}]
  },
  "results": {
   "rtf_pooled": 0.354,
