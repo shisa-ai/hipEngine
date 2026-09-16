@@ -409,8 +409,7 @@ Milestone status:
   midpoint buffer kept stale boundary rows from an earlier, longer chunk (0.16667
   -> 0.01071), and the hipBLASLt problem cache was built only for the largest
   chunk's tile, so a shorter later chunk launched an unprepared row count. Both
-  are fixed and the release case reproduces its numbers exactly. Throughput is
-  not claimed: the NAR attention kernel is ~1.03 ms per call and is an M7 target.
+  are fixed and the release case reproduces its numbers exactly.
 - **M5 complete** (2026-09-16): the torch-free FP32 Oobleck decoder
   (`hipengine/runtime/yue2_vae.py`) with weight-normalization folded once at load
   time, FP32 conv/transposed-conv/SnakeBeta kernels, and bounded tiled decode
@@ -460,17 +459,41 @@ Milestone status:
   bit-exact: a recorded parent-bits fixture
   (`tests/fixtures/yue2/operators/nar_attention_parent.npz`) pins the output, the
   kernel keeps a scalar fallback for head dimensions that are not a multiple of
-  eight (with its own test), and 221 YuE2 and hipBLASLt unit tests pass. At the
-  product's 32 steps the solver is attention-dominated again (about 53 s of the
-  81 s solve), because the AR conditioning prefill is paid once per solve. The
-  replay's largest consumer is the VAE decode at 20.1 s of 28.0 s (2 steps) and
-  20.1 s of 101.2 s (32 steps). Next candidates, in profile order: a warp-shuffle
-  tile maximum for the attention (`fmax` is order-independent, so it stays
-  bit-exact), the VAE conv1d (76 dispatches / 15.07 s of the profiled replay), and
-  the AR decode path's GEMVs. Artifacts:
+  eight (with its own test), and 221 YuE2 and hipBLASLt unit tests pass. The same
+  profile also showed that scalar attention's ceiling: at 1.3 TFLOP/s it could not be
+  fixed by loop surgery, because the pinned upstream's own attention kernel reaches
+  12.4 TFLOP/s on tensor cores. `nar_wmma.hip` adds that arithmetic class for the
+  production head geometry (16 query heads over 8 key/value heads at head_dim 128,
+  f16 WMMA operands, f32 score accumulation, an f16 output accumulator rescaled by
+  the online softmax, fragment contracts from the in-tree Laguna flash attention), as
+  a production-profile variant with `nar_attention_f32` registered as the strict
+  fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. It runs the production shape
+  in **2.13 ms** per call, from 3.85 ms when first landed and from the scalar
+  kernel's 19.0 ms, and is faster than the reference's own 2.31 ms dispatch. The gain
+  that mattered was geometry rather than instruction count: the kernel was
+  latency-bound at two waves per SIMD (2 902 ISA instructions per key batch, 64 of
+  them WMMA, ~11 cycles per instruction issued), so widening the block to 12 waves /
+  384 threads with a 32-key batch was the fix, while vectorizing the K-fragment load
+  produced a byte-identical ISA and `__launch_bounds__` hints did nothing.
+
+  That takes the product's 32-step solve of `mandarin-off-s1234` to **26.07 s against
+  the reference's 27.32 s** — 1.05x ahead, from 16.2x behind at the start of this
+  work — and the full replay to **46.16 s**. `scripts/yue2_solver_stage_profile.py`
+  measures where the remaining solve time sits: projections **14.7 s** (229 ms per
+  evaluation, 200 launches, 3 662 GFLOP, 16.0 TFLOP/s), NAR attention **5.3 s**,
+  conditioning prefill **3.44 s** and everything else **3.4 s**. The projections are
+  the remaining solver item and are close to a ceiling: they reach 74% of what
+  hipBLASLt measures for the same shapes launched back to back (19.4 TFLOP/s), the
+  runtime already selects the fastest zero-workspace algorithm, and a 4 096³ square
+  GEMM also measures 21 TFLOP/s against a ~51 TFLOP/s fp16 peak for 40 CUs. Past that
+  needs a hand-written GEMM. The replay's largest consumer is now the VAE decode at
+  20.08 s of 46.16 s, followed by the AR decode path's GEMVs. Artifacts:
   `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
   `benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
-  `benchmarks/results/yue2_m7_attention_20260917.json`.
+  `benchmarks/results/yue2_m7_attention_20260917.json`,
+  `benchmarks/results/yue2_m7_attention_wmma_20260917.json`,
+  `benchmarks/results/yue2_m7_attention_wmma_geometry_20260917.json`,
+  `benchmarks/results/yue2_solver_stage_profile_20260917.json`.
 - **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
   was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100
   correctness, capacity, task and performance gates are **unverified** rather than
