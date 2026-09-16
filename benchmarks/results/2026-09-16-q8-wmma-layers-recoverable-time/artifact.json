@@ -1,0 +1,129 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_disabled_family_recoverable_time",
+ "performance_claim": false,
+ "numerics_evaluated": false,
+ "why": "Each disabled family is worth whatever time its fast path saves on a real production prefill, but only if a corrected arithmetic can be made admissible. This measures the first half; admissibility is a separate axis recorded from the project's own rejection evidence.",
+ "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+ "case_id": "code-p4096",
+ "repetitions": 2,
+ "fallback": {
+  "ok": true,
+  "command": [
+   "/home/lhl/miniforge3/envs/therock10-staging-20260828/bin/python3.12",
+   "/home/lhl/hipEngine/scripts/qwen4exp_profile_gap.py",
+   "--model-root",
+   "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--mode",
+   "prefill",
+   "--fixture",
+   "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+   "--case-id",
+   "code-p4096",
+   "--repetitions",
+   "2",
+   "--risk-diagnostics",
+   "--output",
+   "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/wmma-layers-sweep/fallback.json"
+  ],
+  "wall_summary": {
+   "count": 2,
+   "sum": 47.68019757512957,
+   "mean": 23.840098787564784,
+   "median": 23.840098787564784,
+   "min": 23.827704195398837,
+   "max": 23.85249337973073,
+   "tok_s": 171.81136858948383
+  },
+  "wall_seconds": [
+   23.827704195398837,
+   23.85249337973073
+  ],
+  "route_env": {
+   "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": null,
+   "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+   "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+   "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+   "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "0",
+   "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null
+  },
+  "configuration_class": "named_profile",
+  "fell_back_to_strict": false,
+  "named_profile_intact": true,
+  "risk_calls": 1128,
+  "risk_outputs": 7392460800,
+  "risk_risky": 52645287,
+  "aggregate_repair_rate": 0.007121483417267495,
+  "max_repair_rate": 0.008089752197265624,
+  "over_capacity_calls": 0,
+  "risk_by_role": {
+   "q4_iu8_exact:expert_gate_up": 0.007121483417267495
+  },
+  "logits_sha256": "e717076fe080c887618e65e3810d039bc4fe7356e9b88d9ec6f64d265189a0b7",
+  "token_id": 248068
+ },
+ "fallback_median_s": 23.840098787564784,
+ "families": [
+  {
+   "family": "Q8_WMMA_LAYERS_32_47",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 21.4045,
+   "fallback_median_s": 23.8401,
+   "seconds_recoverable": 2.4356,
+   "speedup": 1.1138,
+   "aggregate_repair_rate": 0.007121668876485621,
+   "max_repair_rate": 0.008089752197265624,
+   "over_capacity_calls": 0,
+   "logits_sha256": "9c4f194e1ab09826a99ca2c8c05186344a39349c32d0af3e6d6884ba4492fa08",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  },
+  {
+   "family": "Q8_WMMA_LAYERS_0_47",
+   "env": {
+    "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+   },
+   "measured": true,
+   "candidate_median_s": 16.7992,
+   "fallback_median_s": 23.8401,
+   "seconds_recoverable": 7.0409,
+   "speedup": 1.4191,
+   "aggregate_repair_rate": 0.007120261090867063,
+   "max_repair_rate": 0.008033294677734375,
+   "over_capacity_calls": 0,
+   "logits_sha256": "2d83dd077ecddf772491db7fe5a6f65b4061608e87c40e1dc1b76f54bd8008f8",
+   "same_logits_as_fallback": false,
+   "named_profile_intact": false,
+   "fell_back_to_strict": false
+  }
+ ],
+ "ranked_by_seconds_recoverable": [
+  {
+   "family": "Q8_WMMA_LAYERS_0_47",
+   "seconds_recoverable": 7.0409,
+   "speedup": 1.4191
+  },
+  {
+   "family": "Q8_WMMA_LAYERS_32_47",
+   "seconds_recoverable": 2.4356,
+   "speedup": 1.1138
+  }
+ ],
+ "total_seconds_recoverable": 9.4765,
+ "all_candidates_bit_identical": false
+}

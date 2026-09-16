@@ -309,3 +309,44 @@ The Q8_0 roles are not uniform across depth. Layers congruent to 3 mod 4
 attention-role composition of the arm as well as its depth, and the two effects
 would be confounded. Bisect boundaries should be multiples of 4 — 28, 24, 20,
 16 — which is also why 32-47 and 0-47 are cleanly comparable.
+
+## What each scope is worth, measured
+
+The performance half of this decision is now measured in
+`../2026-09-16-q8-wmma-layers-recoverable-time/`, on the same host and model
+with the `code-p4096` production prefill.
+
+| Scope | Median s | Saved s | Speedup | Numerical verdict here |
+| --- | ---: | ---: | ---: | --- |
+| fallback | 23.840 | — | — | — |
+| layers 32-47 | 21.405 | +2.436 | 1.114x | passes every calibrated gate |
+| layers 0-47 | 16.799 | +7.041 | 1.419x | fails mean and p95 marginally |
+
+The maximal scope is the largest single recoverable-time family measured in this
+model, ahead of `Q8_IU8_WMM`'s +6.614 s. The admissible scope captures 34.6% of
+it, so the numerical boundary between layer 0 and layer 32 is withholding about
+4.6 s. That makes the layer bisect worth running on its own merits rather than
+as a tidiness exercise, and `route-coverage.json` predicts what each boundary is
+worth: recoverable time tracks route bytes owned to within 2.2 points.
+
+## Lane
+
+Everything here is `hip_gfx1151` / Radeon 8060S. Nothing in this directory
+constrains gfx1100; that is a separate machine and a separate lane, and its
+absolute rates must not be compared with these.
+
+## The `dense_wide256` link, restated
+
+The missing link is not evidence, it is a dispatch route. `dense_wide256_f32_f32_out`
+is registered in the kernel registry
+(`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.py`, pulled into
+gfx1151 through that backend's module list) but **nothing in
+`hipengine/runtime/` or `hipengine/dispatch/` references it**, so no dispatch
+path can select it and neither this gate nor any end-to-end measurement can
+reach it. Establishing per-shape bit-identity would not change that. The next
+step for that kernel is a selector plus its RED test and registered strict
+fallback, after which this gate runs against it directly.
+
+The arithmetic-class question is already settled in the candidate's own
+evidence: `dense_wide256` is bit-identical to the pre-existing f16 WMMA family
+on the compared packet, and both negative controls differ on 99.99% of elements.
