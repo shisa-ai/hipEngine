@@ -130,7 +130,7 @@
  },
  "interpretation": "The divergence is smooth, monotone T2 association drift with no ownership/control discontinuity: prefill-end logits agree to KL 6.08e-05 and the GDN recurrent state (the long accumulator) stays within RMS 4.5e-04. TP2 native prefill is token-serial while the TP1 teacher is bulk, so the sustained gate compared across prefill schedules.",
  "repair": {
-  "change": "record prefill_schedule in the adapter route/scope manifest and fail closed on a teacher/candidate prefill-schedule mismatch in report_sustained",
+  "change": "record per-arm prefill_schedule provenance and the comparison scope in the route/scope manifest; report_sustained requires provenance and same input/position/profile, scores across schedules, and enforces the unchanged envelopes (the earlier hard schedule-equality gate is withdrawn)",
   "files": [
    "hipengine/distributed/tp2_generate.py",
    "scripts/tp2_resident_control.py",
@@ -140,7 +140,7 @@
   "envelope_unchanged": true,
   "serial_substituted": false,
   "arithmetic_changed": false,
-  "remaining_blocker": "TP2 has no bulk prefill; the product comparison cannot be scored until prefill schedules match or the drift is reduced by other means"
+  "remaining_blocker": "TP2 native prefill is token-serial; the end-to-end production envelope still fails. Rank-local bulk/batched TP2 prefill is the approved implementation work, not a schedule-matching gate."
  },
  "raw": {
   "diag_json": "/home/lhl/.cache/hipengine/tp2-d128-baseline/bulk-serial-layer-bisect.json",
@@ -150,5 +150,15 @@
   "npz": "/home/lhl/.cache/hipengine/tp2-d128-baseline/bulk-serial-layer-bisect.npz",
   "npz_sha256": "af75cd790007710a45f2cfe7d8fc79b2f2685cb314247d100e5fd7aaf4eb48bd",
   "npz_note": "322 MB external raw boundary tensors; not committed"
+ },
+ "correction": {
+  "date": "2026-09-17",
+  "supersedes": [
+   "the claim that the harness must require a matched prefill schedule for a cross-product numerical score",
+   "the claim that the failure was a \"misattributed numerical failure\" rather than a genuine end-to-end quality failure",
+   "the claim that the bisect \"verified no control defect\" or proved causality / a T2-drift explanation"
+  ],
+  "current_interpretation": "Different native prefill algorithms are legitimate product paths and are NOT required to be identical. Every arm must still satisfy the unchanged production numerical envelope against the shared teacher, so the TP2 KL 0.108406 at position 146 remains a genuine end-to-end quality failure. The smooth, monotone per-layer RMS growth and the small prefill-end logit difference (KL 6.08e-05) are consistent with arithmetic amplification, but they do not rule out subtle state/layout errors and do not prove causality. The bisect is diagnostic, not exculpatory.",
+  "harness_behavior": "The sustained report now records per-arm prefill schedules and the comparison scope (matched-prefill-schedule or mixed-prefill-schedules), still requires prefill_schedule provenance and same input/position/profile, scores all arms, and enforces the unchanged envelopes. Missing provenance is blocked."
  }
 }
