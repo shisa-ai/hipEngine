@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +66,10 @@ LAYER_COUNT = 48
 # The measured saving at full scope on code-p4096, gfx1151. Used only to weight
 # probe order and to report what a bracket is worth; it is not a claim.
 FULL_SCOPE_SAVED_S = 7.0409
+# Screens read low against the full arm because they run p512 prompts only:
+# 8.606e-5 vs 9.342e-5 at layers 28-47 and 4.916e-5 vs 5.808e-5 at 32-47.
+# A screen must clear the limit with that correction applied.
+SCREEN_OPTIMISM_CORRECTION = 1.15
 
 
 def _scope_label(start: int) -> str:
@@ -186,10 +191,49 @@ def seed_from_full_gate(results_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _wilson(misses: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score interval for the top-1 agreement rate."""
+
+    if n <= 0:
+        return (0.0, 1.0)
+    phat = 1.0 - misses / n
+    denom = 1.0 + z * z / n
+    center = (phat + z * z / (2 * n)) / denom
+    half = z * math.sqrt(phat * (1.0 - phat) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, center - half), min(1.0, center + half))
+
+
 def _screened_side(row: dict[str, Any]) -> str | None:
+    """Which side of the boundary a row places a scope on.
+
+    A full-gate arm is judged by the gate's own verdict. A **screen** is judged
+    on mean and p95 KL only, never on the top-1 rate gates.
+
+    Testing a rate against the value it equals is a coin flip at any sample
+    size this fixture can produce: a scope whose true miss rate is exactly the
+    1% limit fails roughly 40-48% of the time at n from 132 to 1548, and the
+    fixture caps at 12 cases x 129 steps = 1548 rows. At screen size the
+    per-category gate is worse still - 33 rows per category means one miss is
+    0.9697, under the 0.97 per-scope floor - which is how a screen of layers
+    32-47 came back FAIL for a scope the full gate had already certified.
+    Continuous statistics do not have that problem: screen mean KL tracked the
+    full arm within 8-15% on both control scopes.
+    """
+
     if not row.get("ok"):
         return None
-    return "pass" if row.get("hard_gates_passed") else "fail"
+    if not row.get("screen", True):
+        return "pass" if row.get("hard_gates_passed") else "fail"
+    thresholds = row.get("thresholds") or {}
+    mean_limit = float(thresholds.get("mean_kl_max", 1e-3))
+    p95_limit = float(thresholds.get("p95_kl_max", 5e-3))
+    mean_kl, p95_kl = row.get("kl_mean"), row.get("kl_p95")
+    if mean_kl is None or p95_kl is None:
+        return None
+    # Screens run the shortest prompts only and read about 8-15% low against
+    # the full arm, so require the corrected value to clear the limit.
+    inflated = float(mean_kl) * SCREEN_OPTIMISM_CORRECTION
+    return "pass" if (inflated <= mean_limit and float(p95_kl) <= p95_limit) else "fail"
 
 
 def next_probe(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> int | None:
@@ -229,22 +273,47 @@ def next_probe(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> in
 
 
 def render(ledger: Sequence[dict[str, Any]], by_layer: dict[int, int]) -> str:
-    lines = ["# Screen ledger (screens bracket; they never admit a scope)", ""]
-    header = ["scope", "rows", "mean KL", "p95 KL", "top-1", "screen verdict", "pred saved s"]
+    lines = [
+        "# Screen ledger",
+        "",
+        "Screens decide on mean and p95 KL only. Top-1 is a rate gate and is",
+        "reported as a miss count with a 95% interval, never as a verdict: see",
+        "docs/EXECUTION-PROFILES.md 6.4. Screen mean KL is inflated by",
+        f"{SCREEN_OPTIMISM_CORRECTION:.2f}x before comparison, because screens run the",
+        "shortest prompts and read low against the full arm.",
+        "",
+    ]
+    header = [
+        "scope", "rows", "mean KL", "mean x corr", "p95 KL",
+        "top-1 misses", "top-1 95% CI", "verdict", "pred saved s",
+    ]
     rows = []
     for row in sorted(ledger, key=lambda item: item["start"]):
         if not row.get("ok"):
-            rows.append([row["scope"], "-", "-", "-", "-", "ERROR", "-"])
+            rows.append([row["scope"], "-", "-", "-", "-", "-", "-", "ERROR", "-"])
             continue
         predicted = _predicted_saving(row["start"], by_layer)
+        is_screen = row.get("screen", True)
+        n = int(row.get("rows") or 0)
+        top1 = row.get("top1_agreement")
+        misses = round((1.0 - float(top1)) * n) if top1 is not None and n else None
+        lo, hi = _wilson(misses, n) if misses is not None else (None, None)
+        side = _screened_side(row)
+        mean_kl = row.get("kl_mean")
+        corrected = (
+            float(mean_kl) * SCREEN_OPTIMISM_CORRECTION
+            if (mean_kl is not None and is_screen) else None
+        )
         rows.append([
             row["scope"],
-            str(row.get("rows")),
-            f"{row['kl_mean']:.3e}" if row.get("kl_mean") is not None else "-",
+            str(n),
+            f"{mean_kl:.3e}" if mean_kl is not None else "-",
+            f"{corrected:.3e}" if corrected is not None else "-",
             f"{row['kl_p95']:.3e}" if row.get("kl_p95") is not None else "-",
-            f"{row['top1_agreement']:.5f}" if row.get("top1_agreement") is not None else "-",
-            ("pass" if row.get("hard_gates_passed") else "FAIL")
-            + ("" if row.get("screen", True) else " (full gate)"),
+            f"{misses}/{n}" if misses is not None else "-",
+            f"{lo:.4f}-{hi:.4f}" if lo is not None else "-",
+            ("pass" if side == "pass" else "FAIL")
+            + ("" if is_screen else " (full gate)"),
             f"{predicted:.3f}" if predicted is not None else "-",
         ])
     widths = [
