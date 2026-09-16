@@ -796,3 +796,20 @@ def test_logits_stats_reports_nan_and_finite_ranges(child):
     assert "nan=1" in stats and "inf=0" in stats and "finite=2/3" in stats
     stats = child.logits_stats(np.full((2, 2), np.inf, dtype=np.float32))
     assert "inf=4" in stats and "finite=0/4" in stats
+
+
+# -- full-width GEMV sentinel probe (pure verdict) --------------------------
+
+
+@pytest.fixture(scope="module")
+def sentinel_probe():
+    return _load(
+        "tp2_fullwidth_gemv_sentinel_probe",
+        SCRIPTS / "tp2_fullwidth_gemv_sentinel_probe.py",
+    )
+
+
+def test_sentinel_classify_written_noop_partial(sentinel_probe):
+    assert sentinel_probe.classify(0, 0, 0, 17408).startswith("device 0: WRITTEN")
+    assert sentinel_probe.classify(1, 17408, 17408, 17408).startswith("device 1: NO-OP")
+    assert sentinel_probe.classify(1, 10, 0, 17408).startswith("device 1: PARTIAL")
