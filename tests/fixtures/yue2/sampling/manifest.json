@@ -1,0 +1,626 @@
+[
+  {
+    "file": "semantic-default-step0.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 0
+  },
+  {
+    "file": "semantic-default-step100.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 100
+  },
+  {
+    "file": "semantic-default-step199.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 199
+  },
+  {
+    "file": "semantic-default-step200.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 200
+  },
+  {
+    "file": "semantic-default-step201.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 201
+  },
+  {
+    "file": "semantic-default-step500.npz",
+    "legacy_off": false,
+    "name": "semantic-default",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 500
+  },
+  {
+    "file": "semantic-default-penalty.npz",
+    "kind": "window_penalty",
+    "name": "semantic-default-penalty",
+    "penalty_window": 50,
+    "phase": "semantic",
+    "repetition_penalty": 1.2
+  },
+  {
+    "file": "semantic-legacy-off-step0.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 0
+  },
+  {
+    "file": "semantic-legacy-off-step100.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 100
+  },
+  {
+    "file": "semantic-legacy-off-step199.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 199
+  },
+  {
+    "file": "semantic-legacy-off-step200.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 200
+  },
+  {
+    "file": "semantic-legacy-off-step201.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 201
+  },
+  {
+    "file": "semantic-legacy-off-step500.npz",
+    "legacy_off": true,
+    "name": "semantic-legacy-off",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 500
+  },
+  {
+    "file": "semantic-legacy-off-penalty.npz",
+    "kind": "window_penalty",
+    "name": "semantic-legacy-off-penalty",
+    "penalty_window": 50,
+    "phase": "semantic",
+    "repetition_penalty": 1.2
+  },
+  {
+    "file": "abc-default-step0.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 0
+  },
+  {
+    "file": "abc-default-step100.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 100
+  },
+  {
+    "file": "abc-default-step199.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 199
+  },
+  {
+    "file": "abc-default-step200.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 200
+  },
+  {
+    "file": "abc-default-step201.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 201
+  },
+  {
+    "file": "abc-default-step500.npz",
+    "legacy_off": false,
+    "name": "abc-default",
+    "phase": "abc",
+    "sampling": {
+      "max_tokens": 4096,
+      "min_tokens": 32,
+      "penalty_window": 100,
+      "repetition_penalty": 1.005,
+      "temperature": 0.7,
+      "top_k": 30,
+      "top_p": 0.9
+    },
+    "step": 500
+  },
+  {
+    "file": "abc-default-penalty.npz",
+    "kind": "window_penalty",
+    "name": "abc-default-penalty",
+    "penalty_window": 100,
+    "phase": "abc",
+    "repetition_penalty": 1.005
+  },
+  {
+    "file": "zero-temperature-step0.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 0
+  },
+  {
+    "file": "zero-temperature-step100.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 100
+  },
+  {
+    "file": "zero-temperature-step199.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 199
+  },
+  {
+    "file": "zero-temperature-step200.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 200
+  },
+  {
+    "file": "zero-temperature-step201.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 201
+  },
+  {
+    "file": "zero-temperature-step500.npz",
+    "legacy_off": false,
+    "name": "zero-temperature",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 0.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 500
+  },
+  {
+    "file": "zero-temperature-penalty.npz",
+    "kind": "window_penalty",
+    "name": "zero-temperature-penalty",
+    "penalty_window": 50,
+    "phase": "semantic",
+    "repetition_penalty": 1.2
+  },
+  {
+    "file": "top-p-one-step0.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 0
+  },
+  {
+    "file": "top-p-one-step100.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 100
+  },
+  {
+    "file": "top-p-one-step199.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 199
+  },
+  {
+    "file": "top-p-one-step200.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 200
+  },
+  {
+    "file": "top-p-one-step201.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 201
+  },
+  {
+    "file": "top-p-one-step500.npz",
+    "legacy_off": false,
+    "name": "top-p-one",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.2,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 1.0
+    },
+    "step": 500
+  },
+  {
+    "file": "top-p-one-penalty.npz",
+    "kind": "window_penalty",
+    "name": "top-p-one-penalty",
+    "penalty_window": 50,
+    "phase": "semantic",
+    "repetition_penalty": 1.2
+  },
+  {
+    "file": "no-penalty-step0.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 0
+  },
+  {
+    "file": "no-penalty-step100.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 100
+  },
+  {
+    "file": "no-penalty-step199.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 199
+  },
+  {
+    "file": "no-penalty-step200.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 200
+  },
+  {
+    "file": "no-penalty-step201.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 201
+  },
+  {
+    "file": "no-penalty-step500.npz",
+    "legacy_off": false,
+    "name": "no-penalty",
+    "phase": "semantic",
+    "sampling": {
+      "max_tokens": 9000,
+      "min_tokens": 200,
+      "penalty_window": 50,
+      "repetition_penalty": 1.0,
+      "temperature": 1.0,
+      "top_k": 100,
+      "top_p": 0.95
+    },
+    "step": 500
+  },
+  {
+    "file": "no-penalty-penalty.npz",
+    "kind": "window_penalty",
+    "name": "no-penalty-penalty",
+    "penalty_window": 50,
+    "phase": "semantic",
+    "repetition_penalty": 1.0
+  }
+]

@@ -357,6 +357,20 @@ postscript work after declaring completion.
 | M7 — Optimize and compare | Profile then isolated candidates above; matched same-host multi-request baseline and optimized measurements; quality gates, artifacts, rollups, lineage/catalog, refactor ledger updated |
 | M8 — Hardware qualification | Independently run applicable correctness/capacity/task/performance gates on gfx1151 and gfx1100; clearly retain unverified status for unavailable hardware |
 
+Milestone status:
+
+- **M1 complete** (2026-09-16): protocol, tokenizer, loader, model plugin, CPU
+  operator contracts, 108 unit tests without torch or a GPU. See
+  `worklog/entries/20260916T142012.217732Z-lhl-yue2-m1-protocol-loader-b6a2b8.md`.
+- **M0 in progress**: oracle pinned, tensors inventoried by component, fixtures
+  frozen behind a fail-closed validator, oracle environment recorded. The twelve
+  production cases are regenerating; an independent repeat of representative
+  outputs and the 0.1.6-versus-baseline source diff remain open.
+
+The oracle fixtures were generated on gfx1151 (Ryzen AI MAX+ PRO 395 / Radeon
+8060S) with torch 2.13.0+rocm10.0.0; `tests/fixtures/yue2/oracle_env.json` is the
+committed record. Any same-host comparison must state the architecture it ran on.
+
 Before closing each unit: focused RED/GREEN where practical, applicable profile
 gate, HIP availability guards in GPU tests, worklog, and atomic commit. Name new
 tests `test_unit_yue2_*` / `test_gpu_yue2_*` under the repository's discovery

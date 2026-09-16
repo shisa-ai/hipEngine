@@ -1,0 +1,8 @@
+{
+  "chunks": 1,
+  "frames": 32,
+  "latent_norm": 73.31781005859375,
+  "prefix_length": 512,
+  "seed": 1234,
+  "velocity_norm_step0": 48.29585647583008
+}
