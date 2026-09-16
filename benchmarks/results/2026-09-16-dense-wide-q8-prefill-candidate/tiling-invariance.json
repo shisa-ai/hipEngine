@@ -1,0 +1,277 @@
+{
+  "packet": "/tmp/replay-bridge/packets/q8-attnqkv-L8-c0",
+  "question": "Does the f16 WMMA Q8_0 prefill path produce the same output bits across different tilings, or does the sweep simply not resolve the differences?",
+  "answer": "Tiling-invariant. Every f16 WMMA variant tested is bit-identical to every other, across tilings from 16x16 to 128x256, and both negative controls differ on >99.98% of elements.",
+  "pairs": [
+    {
+      "left": "dense_wide256_f32_f32_out",
+      "left_tile": null,
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        16,
+        32
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide256_f32_f32_out",
+      "left_tile": null,
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        16,
+        16
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide256_f32_f32_out",
+      "left_tile": null,
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        64,
+        32
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide64x128_f32_f32_out",
+      "left_tile": null,
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        64,
+        32
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide128x128_f32_f32_out",
+      "left_tile": null,
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        32,
+        16
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "wmma_prefill_f32_f32_out",
+      "left_tile": [
+        16,
+        16
+      ],
+      "right": "wmma_prefill_f32_f32_out",
+      "right_tile": [
+        64,
+        32
+      ],
+      "bit_identical": true,
+      "differing_elements": 0,
+      "elements": 10485760,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "max_abs_delta_relative": 0.0,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 0.002834421909281737,
+          "identical": true
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.09499034425243735,
+          "identical": true
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.00011111789535789285,
+          "identical": true
+        }
+      },
+      "expectation": "identical",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide256_f32_f32_out",
+      "left_tile": null,
+      "right": "coltile8_rowbatch4_f32_f32_out",
+      "right_tile": null,
+      "bit_identical": false,
+      "differing_elements": 10484319,
+      "elements": 10485760,
+      "max_abs_delta": 0.002834796905517578,
+      "mean_abs_delta": 0.00010686127643566579,
+      "max_abs_delta_relative": 0.00020851802723966136,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 2.055452263505231e-06,
+          "identical": false
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.0943113281391561,
+          "identical": false
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.0027886807561117166,
+          "identical": false
+        }
+      },
+      "expectation": "differ",
+      "as_expected": true
+    },
+    {
+      "left": "dense_wide256_f32_f32_out",
+      "left_tile": null,
+      "right": "iu8_wmma_prefill_f32_f32_out",
+      "right_tile": null,
+      "bit_identical": false,
+      "differing_elements": 10484403,
+      "elements": 10485760,
+      "max_abs_delta": 0.002833843231201172,
+      "mean_abs_delta": 0.0001068613346433267,
+      "max_abs_delta_relative": 0.0002084478781976968,
+      "refs": {
+        "f64_exact": {
+          "left": 0.002834421909281737,
+          "right": 5.303479799323441e-06,
+          "identical": false
+        },
+        "bf16_both": {
+          "left": 0.09499034425243735,
+          "right": 0.0943113281391561,
+          "identical": false
+        },
+        "f16_both": {
+          "left": 0.00011111789535789285,
+          "right": 0.0027877270817953104,
+          "identical": false
+        }
+      },
+      "expectation": "differ",
+      "as_expected": true
+    }
+  ],
+  "unexpected": 0
+}

@@ -907,6 +907,20 @@ is a bound, not a measured end-to-end delta: the per-call time and call count
 come from one capture, the prefill total from a different commit.
 [Cross-engine replay](results/2026-09-16-cross-engine-replay/README.md).
 
+A wide-row Q8_0 kernel ported from the comparator's own MMB tile closes most of
+that gap on the same packet: `dense_wide256_f32_f32_out` runs **2.570 ms**
+against the production dispatch's 19.663 ms, **7.65x**, and 1.72x the
+comparator's complete-operation 1.492 ms. The two matmul kernels now use
+identical resources and launch geometry (256 VGPRs, 55,296 bytes of LDS, grid
+20480x4) and differ by 1.93x; a timing-only probe of the same kernel reading a
+pre-converted f16 activation runs **1.303 ms**, at the comparator's 1.339 ms
+kernel time, which attributes the remainder to the activation representation
+rather than the kernel. It is registered but not a default: f16 operands put it
+at 2.83e-03 against the exact float64 reference, the same arithmetic class the
+registered `wmma_prefill` family already has, and no production gate has been
+run.
+[Wide-row Q8_0 prefill candidate](results/2026-09-16-dense-wide-q8-prefill-candidate/README.md).
+
 ## Current Qwen3.6-35B quantization quality
 
 The current gate scores 90 full-vocabulary BF16-teacher positions across all ten

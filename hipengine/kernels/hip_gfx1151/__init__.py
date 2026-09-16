@@ -3308,6 +3308,7 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.quant",
     "hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill",
     "hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill",
+    "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide",
     "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill",
     "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill",
     "hipengine.kernels.hip_gfx1100.quant.maple_ternary",

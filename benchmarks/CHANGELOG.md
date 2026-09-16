@@ -1,5 +1,22 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: Follow-on to the identical-operand replay protocol: a
+  wide-row Q8_0 prefill kernel ported from the comparator's own MMB tile closes
+  most of the 11.70x gap on the same packet. `dense_wide256_f32_f32_out` runs
+  **2.570 ms** against the production dispatch's **19.663 ms** (2.73 -> 20.87
+  TFLOP/s, **7.65x**) on `layers.8.attn_qkv` rows=1024 K=2560 M=10240 on
+  `gfx1151`, and 1.72x the comparator's complete-operation 1.492 ms. Both matmul
+  kernels now use identical resources and launch geometry (256 VGPRs, 55,296
+  bytes of LDS, grid 20480x4) and differ by 1.93x; a timing-only probe of the
+  same kernel reading a pre-converted f16 activation runs **1.303 ms**, at the
+  comparator's 1.339 ms kernel time, so the remainder is the activation
+  representation rather than the kernel. Registered but not promoted: f16
+  operands put it at 2.83e-03 against the exact float64 reference, the same
+  arithmetic class the registered `wmma_prefill` family already has (the two are
+  bit-identical across tilings from 16x16 to 128x256), and no model-level
+  production gate has been run.
+  [Wide-row Q8_0 prefill candidate](results/2026-09-16-dense-wide-q8-prefill-candidate/README.md).
+
 - **2026-09-16 UTC**: New protocol, first result: **identical-operand
   cross-engine replay**. Both engines now run on the same captured bytes for one
   operation, with dispatch proof from a shared `rocprofv3` trace, a measured
