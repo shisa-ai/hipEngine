@@ -6961,3 +6961,36 @@ The KV policy comparison in `hipengine/server/api.py` now resolves the
 re-resolving `config.kv_storage`. Before that, an artifact that failed closed to
 BF16 would reject an explicit BF16 request, because the comparison still believed
 the server was on INT8.
+
+## 2026-09-16 Artifact provenance: execution-affecting dirty classification
+
+Artifact provenance is schema 3. `collect_repo_state` now records
+`dirty_paths` / `untracked_paths` (capped at 64 entries each, with
+`dirty_path_count` and the existing `untracked_count` carrying the true totals)
+plus an `execution_affecting_dirty` flag derived from
+`is_execution_affecting()`. The classification is a denylist — `docs/`,
+`worklog/`, `benchmarks/results/`, `.claude/`, `.github/`, and any `*.md` are
+inert; everything else, including fixtures, `pyproject.toml`, and unrecognised
+paths, counts. The conservative answer is therefore the default.
+
+Two motivations. A bare `untracked_dirty` boolean meant any concurrent agent's
+scratch file invalidated every measurement in the shared worktree, which is what
+happened to both arms of
+`benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/`. And a bare
+boolean does not say *which* file was dirty, so a measurement cannot be judged
+after the fact — the passing 32-47 arm of that gate records
+`unstaged_dirty: true` with no way to recover what was modified.
+
+`scripts/execution_profile_q8_wmma_prefill_layers_gate.py` and
+`scripts/execution_profile_q8_mmq_plane_gate.py` key `measurement_valid` and
+their qualification blocker on the new flag. Seven other call sites still use
+the coarse `not provenance.get("dirty")` and raise rather than record a blocker:
+`scripts/qwen36_moe_mtp2_production_gate.py`,
+`scripts/qwen36_dense_mtp2_c2_production_gate.py`,
+`scripts/specdec2_perf_bridge.py`, `scripts/qwen4exp_halo_box_campaign_ab.py`,
+`scripts/q8t16_batch_route_perf.py`, `scripts/run_gfx1151_readme_refresh.sh`,
+and `scripts/run_w7900_readme_refresh.sh`. Removal condition: migrate those to
+the same helper once the publication protocols have been re-read, then delete
+the `provenance.get("dirty")` fallback argument from the two migrated gates.
+Retained-row publication scripts may deliberately want the stricter rule; decide
+per script rather than sweeping.

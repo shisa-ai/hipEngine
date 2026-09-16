@@ -36,7 +36,7 @@
   ],
   "properties": {
     "kind": {"const": "hipengine_artifact_provenance"},
-    "schema_version": {"enum": [1, 2]},
+    "schema_version": {"enum": [1, 2, 3]},
     "collected_at": {"type": "string"},
     "host_name": {"type": "string", "minLength": 1},
     "repo_root": {"type": "string", "minLength": 1},
@@ -93,12 +93,29 @@
     "timing_protocol": {"type": ["string", "null"]},
     "warmups": {"type": ["integer", "null"], "minimum": 0},
     "repetitions": {"type": ["integer", "null"], "minimum": 0},
-    "profiler": {"type": ["object", "null"]}
+    "profiler": {"type": ["object", "null"]},
+    "dirty_paths": {"type": "array", "items": {"type": "string"}},
+    "dirty_path_count": {"type": "integer", "minimum": 0},
+    "untracked_paths": {"type": "array", "items": {"type": "string"}},
+    "execution_affecting_dirty": {"type": "boolean"},
+    "execution_affecting_paths": {"type": "array", "items": {"type": "string"}}
   },
   "allOf": [
     {
-      "if": {"properties": {"schema_version": {"const": 2}}},
+      "if": {"properties": {"schema_version": {"minimum": 2}}},
       "then": {"required": ["host_name"]}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": 3}}},
+      "then": {
+        "required": [
+          "dirty_paths",
+          "dirty_path_count",
+          "untracked_paths",
+          "execution_affecting_dirty",
+          "execution_affecting_paths"
+        ]
+      }
     }
   ],
   "additionalProperties": false

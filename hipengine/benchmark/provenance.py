@@ -29,10 +29,57 @@ from hipengine.kernels.backends import (
 
 
 ARTIFACT_PROVENANCE_KIND = "hipengine_artifact_provenance"
-ARTIFACT_PROVENANCE_SCHEMA_VERSION = 2
+ARTIFACT_PROVENANCE_SCHEMA_VERSION = 3
 _FULL_HASH_MAX_BYTES = 8 * 1024 * 1024
 _SAMPLE_BYTES = 1024 * 1024
 _UNSET = object()
+_MAX_RECORDED_PATHS = 64
+
+# Paths that cannot change what a kernel computes or how it is dispatched.
+# The classification is a denylist rather than an allowlist on purpose: an
+# unrecognised new path counts as execution-affecting, so the conservative
+# answer is the default and only prose/evidence trees are excused.
+INERT_PATH_PREFIXES = (
+    "docs/",
+    "worklog/",
+    "benchmarks/results/",
+    "benchmarks/fixtures/README",
+    ".claude/",
+    ".github/",
+)
+INERT_PATH_SUFFIXES = (".md",)
+INERT_PATHS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "WORKLOG.md",
+    "WORKLOG-LEGACY.md",
+)
+
+
+def is_execution_affecting(path: str) -> bool:
+    """Return whether a repo-relative path can change measured execution.
+
+    Documentation, worklog entries, and previously emitted result artifacts
+    cannot alter dispatch or arithmetic, so a dirty worktree limited to those
+    trees does not invalidate a measurement.  Everything else does, including
+    fixtures, ``pyproject.toml``, and any unrecognised path.
+    """
+
+    candidate = str(path).strip().lstrip("./")
+    if not candidate:
+        return False
+    if candidate in INERT_PATHS:
+        return False
+    if candidate.startswith(INERT_PATH_PREFIXES):
+        return False
+    # A bare top-level Markdown file is prose; a Markdown file nested inside a
+    # source tree is still prose, so the suffix rule is global.
+    if candidate.endswith(INERT_PATH_SUFFIXES):
+        return False
+    return True
+
+
 _DEFAULT_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -74,6 +121,13 @@ _REQUIRED_FIELDS = (
     "warmups",
     "repetitions",
     "profiler",
+)
+_SCHEMA3_REQUIRED_FIELDS = (
+    "dirty_paths",
+    "dirty_path_count",
+    "untracked_paths",
+    "execution_affecting_dirty",
+    "execution_affecting_paths",
 )
 
 
@@ -120,6 +174,22 @@ def collect_repo_state(repo_root: str | Path) -> dict[str, Any]:
     staged_dirty = staged_result.returncode == 1
     unstaged_dirty = unstaged_result.returncode == 1
     untracked_dirty = bool(untracked_paths)
+    # Name the dirty paths rather than only counting them. A bare boolean makes
+    # a measurement unreproducible after the fact: nothing in the artifact says
+    # whether the modified file was a kernel or a doc.
+    tracked_dirty_result = _git(
+        root, "diff", "--name-only", "--no-ext-diff", "HEAD"
+    )
+    if tracked_dirty_result.returncode != 0:
+        raise ValueError(f"could not list tracked dirty paths for benchmark repo: {root}")
+    dirty_paths = sorted(
+        {line.strip() for line in tracked_dirty_result.stdout.splitlines() if line.strip()}
+    )
+    execution_affecting_paths = sorted(
+        path
+        for path in (*dirty_paths, *untracked_paths)
+        if is_execution_affecting(path)
+    )
     return {
         "repo_root": str(root),
         "hipengine_commit": commit_result.stdout.strip(),
@@ -129,6 +199,11 @@ def collect_repo_state(repo_root: str | Path) -> dict[str, Any]:
         "untracked_dirty": untracked_dirty,
         "untracked_count": len(untracked_paths),
         "dirty": staged_dirty or unstaged_dirty or untracked_dirty,
+        "dirty_paths": dirty_paths[:_MAX_RECORDED_PATHS],
+        "dirty_path_count": len(dirty_paths),
+        "untracked_paths": untracked_paths[:_MAX_RECORDED_PATHS],
+        "execution_affecting_dirty": bool(execution_affecting_paths),
+        "execution_affecting_paths": execution_affecting_paths[:_MAX_RECORDED_PATHS],
     }
 
 
@@ -397,9 +472,13 @@ def validate_artifact_provenance(
     """Validate and return a plain dict for the canonical provenance schema."""
 
     schema_version = payload.get("schema_version")
-    if type(schema_version) is not int or schema_version not in {1, 2}:
-        raise ValueError("artifact provenance schema_version must be 1 or 2")
-    required_fields = _REQUIRED_FIELDS + (("host_name",) if schema_version >= 2 else ())
+    if type(schema_version) is not int or schema_version not in {1, 2, 3}:
+        raise ValueError("artifact provenance schema_version must be 1, 2, or 3")
+    required_fields = (
+        _REQUIRED_FIELDS
+        + (("host_name",) if schema_version >= 2 else ())
+        + (_SCHEMA3_REQUIRED_FIELDS if schema_version >= 3 else ())
+    )
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise ValueError(f"artifact provenance missing fields: {missing}")
@@ -431,6 +510,43 @@ def validate_artifact_provenance(
         raise ValueError("artifact provenance dirty does not match the three dirty axes")
     if payload["untracked_dirty"] is not bool(untracked_count):
         raise ValueError("artifact provenance untracked_dirty does not match untracked_count")
+    if schema_version >= 3:
+        for field in ("dirty_paths", "untracked_paths", "execution_affecting_paths"):
+            value = payload.get(field)
+            if not isinstance(value, list) or any(
+                not isinstance(part, str) for part in value
+            ):
+                raise ValueError(f"artifact provenance {field} must be a list of strings")
+        dirty_path_count = payload.get("dirty_path_count")
+        if type(dirty_path_count) is not int or dirty_path_count < 0:
+            raise ValueError(
+                "artifact provenance dirty_path_count must be a non-negative int"
+            )
+        if len(payload["dirty_paths"]) > dirty_path_count:
+            raise ValueError(
+                "artifact provenance dirty_paths is longer than dirty_path_count"
+            )
+        if len(payload["untracked_paths"]) > untracked_count:
+            raise ValueError(
+                "artifact provenance untracked_paths is longer than untracked_count"
+            )
+        if type(payload.get("execution_affecting_dirty")) is not bool:
+            raise ValueError(
+                "artifact provenance execution_affecting_dirty must be a bool"
+            )
+        # The recorded path lists are truncated for large worktrees, so the flag
+        # may be true with an empty list only when nothing survived truncation.
+        if payload["execution_affecting_paths"] and not payload["execution_affecting_dirty"]:
+            raise ValueError(
+                "artifact provenance execution_affecting_dirty contradicts its paths"
+            )
+        if any(
+            not is_execution_affecting(path)
+            for path in payload["execution_affecting_paths"]
+        ):
+            raise ValueError(
+                "artifact provenance execution_affecting_paths contains an inert path"
+            )
     if str(payload["resolved_backend"]).startswith("hip_"):
         if not isinstance(payload.get("target_arch"), str) or not str(payload["target_arch"]).strip():
             raise ValueError("HIP artifact provenance requires target_arch")
