@@ -69,21 +69,20 @@ __global__ void yue2_nar_add_broadcast_kernel(
 //
 // Two roundings, in this order: the reference computes `state - v * (h/2)` as
 // BF16 tensor ops, so the product is rounded to BF16 before the subtraction.
-// A fused multiply-add would round once and is therefore not equivalent.
+// A fused multiply-add would round once and is therefore not equivalent. The
+// scale stays FP32 because the reference multiplies by a Python float, which
+// torch applies in the tensor's FP32 compute type.
 __global__ void yue2_nar_state_update_kernel(
     const uint16_t* __restrict__ state,
     const uint16_t* __restrict__ velocity,
-    const uint16_t* __restrict__ scale,
+    float scale,
     uint16_t* __restrict__ out,
-    int64_t total,
-    int64_t width) {
+    int64_t total) {
   const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= total) return;
-  const int64_t col = idx % width;
   const float sv = yue2_bf16_to_float(state[idx]);
   const float vv = yue2_bf16_to_float(velocity[idx]);
-  const float gv = yue2_bf16_to_float(scale[col]);
-  const float product = yue2_bf16_to_float(yue2_float_to_bf16(vv * gv));
+  const float product = yue2_bf16_to_float(yue2_float_to_bf16(vv * scale));
   out[idx] = yue2_float_to_bf16(sv - product);
 }
 
@@ -173,6 +172,67 @@ __global__ void yue2_nar_attention_kernel(
   out[(row * num_q_heads + q_head) * head_dim + lane] = accumulator / total;
 }
 
+// Rotate-half RoPE with per-row positions for the NAR projections.
+//
+// Same convention as the vibevoice/AR rope (and therefore the same table): the
+// first half of a head is paired with the second half and negated. The
+// difference is that either head count may be zero, which skips that side. The
+// NAR needs that because its keys must be rotated for *every* row before any
+// query tile attends to them, while its queries are rotated per tile -- and the
+// cached AR keys arrive already rotated.
+__global__ void yue2_nar_rope_kernel(
+    const float* __restrict__ q,
+    const float* __restrict__ k,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int64_t* __restrict__ positions,
+    float* __restrict__ q_out,
+    float* __restrict__ k_out,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  const int64_t total_q = rows * num_q_heads * head_dim;
+  const int64_t total_k = rows * num_kv_heads * head_dim;
+  const int64_t half = head_dim / 2;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total_q + total_k;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const bool is_q = idx < total_q;
+    const int64_t local = is_q ? idx : idx - total_q;
+    const int64_t heads = is_q ? num_q_heads : num_kv_heads;
+    const int64_t row = local / (heads * head_dim);
+    const int64_t within = local - row * heads * head_dim;
+    const int64_t dim = within % head_dim;
+    const float* src = is_q ? q : k;
+    float* dst = is_q ? q_out : k_out;
+    const float* cos_p = cos_table + positions[row] * head_dim;
+    const float* sin_p = sin_table + positions[row] * head_dim;
+    const int64_t base = local - dim;
+    const int64_t pair_dim = dim < half ? dim + half : dim - half;
+    const float paired = src[base + pair_dim];
+    const float rotated = dim < half ? -paired : paired;
+    dst[local] = src[local] * cos_p[dim] + rotated * sin_p[dim];
+  }
+}
+
+extern "C" int hipengine_yue2_nar_rope_f32(
+    const float* q, const float* k, const float* cos_table, const float* sin_table,
+    const int64_t* positions, float* q_out, float* k_out,
+    int64_t rows, int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim,
+    hipStream_t stream) {
+  if (rows <= 0 || num_q_heads < 0 || num_kv_heads < 0 || head_dim <= 0
+      || head_dim % 2 || num_q_heads + num_kv_heads <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * (num_q_heads + num_kv_heads) * head_dim;
+  const int64_t blocks = (total + 255) / 256;
+  hipLaunchKernelGGL(yue2_nar_rope_kernel, dim3(static_cast<unsigned int>(blocks)), dim3(256),
+                     0, stream, q, k, cos_table, sin_table, positions, q_out, k_out,
+                     rows, num_q_heads, num_kv_heads, head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_yue2_nar_gather_add_bf16(
     const uint16_t* x, const uint16_t* table, const int64_t* positions,
     uint16_t* out, int64_t rows, int64_t width, hipStream_t stream) {
@@ -198,14 +258,14 @@ extern "C" int hipengine_yue2_nar_add_broadcast_bf16(
 }
 
 extern "C" int hipengine_yue2_nar_state_update_bf16(
-    const uint16_t* state, const uint16_t* velocity, const uint16_t* scale,
+    const uint16_t* state, const uint16_t* velocity, float scale,
     uint16_t* out, int64_t rows, int64_t width, hipStream_t stream) {
   if (rows < 0 || width <= 0) return static_cast<int>(hipErrorInvalidValue);
   const int64_t total = rows * width;
   if (total == 0) return static_cast<int>(hipSuccess);
   const unsigned int blocks = static_cast<unsigned int>((total + 255) / 256);
   hipLaunchKernelGGL(yue2_nar_state_update_kernel, dim3(blocks), dim3(256), 0, stream,
-                     state, velocity, scale, out, total, width);
+                     state, velocity, scale, out, total);
   return static_cast<int>(hipGetLastError());
 }
 
