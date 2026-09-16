@@ -38,10 +38,10 @@ from hipengine.core.runtime import MemcpyKind
 from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 from hipengine.loading.vibevoice_layout import f32_to_bf16_bits
 
-# Block size for the head's GEMVs. The shared default of 256 spends most of the
-# call in the block-wide reduction tree: this head is 123M params over 17 GEMVs
-# with only 2 rows, so each block reduces 1536-4608 values for one output. At 64
-# threads a full head call measures 2.08 ms against 3.33 ms at 256.
+# Production arithmetic: 64-thread reduction. The injected-condition branch
+# diagnostic was calibrated at 256 threads and explicitly selects that reference
+# schedule. Restoring 128/256 globally passes its bound but degrades generated
+# speech on held-out seeds; production boundary/task gates remain separate.
 _GEMV_THREADS = 64
 
 
@@ -57,7 +57,7 @@ def _bf16_bits_to_f32(bits: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
 
 
 class VibevoiceTTSDiffusionHeadGPU:
-    """MLP-DiT diffusion head on HIP with the host-side DPMSolver."""
+    """MLP-DiT diffusion head and DPMSolver on HIP."""
 
     def __init__(self, spec, weights, *, runtime=None) -> None:
         from hipengine.core.hip import get_hip_runtime
@@ -322,7 +322,7 @@ class VibevoiceTTSDiffusionHeadGPU:
         readback -- and the per-step snapshots when ``collect`` is requested.
         The head, the CFG combine and the solver step are all bit-faithful to
         the host path: ``vv_diff_cfg_combine_bf16`` implements exactly
-        ``r(u + r(cfg * r(c - u)))`` with an unrounded fp32 ``cfg``, and
+        ``r(u + r(cfg * (c - u)))`` with an unrounded fp32 difference and ``cfg``, and
         ``vv_diff_dpm_step_bf16`` is verified bit-identical to
         ``DPMSolverMultistepScheduler.step``.
         """
@@ -373,7 +373,7 @@ class VibevoiceTTSDiffusionHeadGPU:
             )
             self.forward_into(float(t), cond_u16)
 
-            # half = r(uncond + r(cfg * r(cond - uncond))) from eps rows 1/0,
+            # half = r(uncond + r(cfg * (cond - uncond))) from eps rows 1/0,
             # duplicated into both rows for the (2, latent) solver step. The
             # head's own eps buffer is left untouched so the final raw eps is
             # still available for the return value.
