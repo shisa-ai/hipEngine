@@ -4571,6 +4571,64 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "prefill_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> bool:
+        """Full-attention bulk prefill layer: attention subgraph + FFN.
+
+        The attention subgraph lives in
+        :meth:`_run_full_attention_prefill_attn_rows`; this wrapper runs it and
+        then the unchanged post-attention FFN, so the original launch order is
+        preserved. A sharded TP2 caller runs the same attention helper and then
+        a sharded MLP instead of this full-width FFN.
+        """
+        used_aotriton = self._run_full_attention_prefill_attn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch,
+            cos_table_ptr=cos_table_ptr,
+            sin_table_ptr=sin_table_ptr,
+            max_positions=max_positions,
+            attn_aotriton_min_tokens=attn_aotriton_min_tokens,
+            stream=stream,
+            aotriton_bridge=aotriton_bridge,
+            dms_capture=dms_capture,
+            allow_aotriton=allow_aotriton,
+            aotriton_min_tokens=aotriton_min_tokens,
+            paged_max_context_len=paged_max_context_len,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
+        )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=scratch.rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+            stage_prefix=f"{stage_prefix}_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
+        )
+        return used_aotriton
+
+    def _run_full_attention_prefill_attn_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        scratch,
+        *,
+        cos_table_ptr: int,
+        sin_table_ptr: int,
+        max_positions: int,
+        attn_aotriton_min_tokens: int | None = None,
+        stream: int = 0,
+        aotriton_bridge: AotritonPrefillStreamBridge | None = None,
+        dms_capture: DMSCaptureSink | None = None,
+        allow_aotriton: bool = True,
+        aotriton_min_tokens: int | None = None,
+        paged_max_context_len: int | None = None,
+        stage_prefix: str = "prefill_full_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
+    ) -> bool:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -5129,18 +5187,6 @@ class Qwen35GGUFFullStackRunner:
             )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_output")
-        self._run_post_attention_ffn_rows(
-            layer_id,
-            hidden_ptr,
-            scratch.attn_out.ptr,
-            out_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            expert_sidecar=expert_sidecar,
-            stage_prefix=f"{stage_prefix}_ffn",
-            gpu_stage_recorder=gpu_stage_recorder,
-        )
         return used_aotriton
 
     def _capture_dms_full_attention_prefill_chunk(
@@ -8032,6 +8078,68 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "target_block_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
+        """Linear-attention (GDN) bulk prefill layer: attention subgraph + FFN.
+
+        The attention/GDN subgraph lives in
+        :meth:`_run_linear_attention_prefill_attn_rows`; this wrapper runs it
+        and then the unchanged post-attention FFN, so the original launch order
+        is preserved. A sharded TP2 caller runs the same attention helper and
+        then a sharded MLP + single residual instead of this full-width FFN.
+        """
+        attn_out_f32_ptr = self._run_linear_attention_prefill_attn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch,
+            rows=rows,
+            decode_scratch=decode_scratch,
+            stream=stream,
+            linear_state_rows=linear_state_rows,
+            commit_final_linear_state=commit_final_linear_state,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
+        )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            attn_out_f32_ptr=attn_out_f32_ptr,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=f"{stage_prefix}_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
+        )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
+
+    def _run_linear_attention_prefill_attn_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        stream: int = 0,
+        linear_state_rows: tuple[object, object] | None = None,
+        commit_final_linear_state: bool = True,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_linear_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
+    ) -> int | None:
         assert self.weights is not None
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -8721,26 +8829,7 @@ class Qwen35GGUFFullStackRunner:
             )
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
-            self._run_post_attention_ffn_rows(
-                layer_id,
-                hidden_ptr,
-                scratch.attn_out.ptr,
-                out_ptr,
-                scratch,
-                rows=rows,
-                stream=stream,
-                expert_sidecar=expert_sidecar,
-                hidden_f32_ptr=hidden_f32_ptr,
-                out_f32_ptr=out_f32_ptr,
-                attn_out_f32_ptr=attn_out_f32_ptr,
-                stage_timings=stage_timings,
-                sync_stage_timings=sync_stage_timings,
-                stage_prefix=f"{stage_prefix}_ffn",
-                gpu_stage_recorder=gpu_stage_recorder,
-            )
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
-            return
+            return attn_out_f32_ptr
         if not linear_qkv_f32_ready:
             bf16_to_f32(
                 scratch.linear_qkv.ptr,
@@ -8878,24 +8967,7 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
-        self._run_post_attention_ffn_rows(
-            layer_id,
-            hidden_ptr,
-            scratch.attn_out.ptr,
-            out_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            expert_sidecar=expert_sidecar,
-            hidden_f32_ptr=hidden_f32_ptr,
-            out_f32_ptr=out_f32_ptr,
-            stage_timings=stage_timings,
-            sync_stage_timings=sync_stage_timings,
-            stage_prefix=f"{stage_prefix}_ffn",
-            gpu_stage_recorder=gpu_stage_recorder,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
+        return None
 
     def _run_full_attention_layer(
         self,
