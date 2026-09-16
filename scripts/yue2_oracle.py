@@ -643,8 +643,9 @@ def cmd_nar(args) -> int:
     from yue2.protocol import CODEC_OFFSET
 
     pipe, model = load_model()
-    out = Path(args.out) / "nar"
-    compact = Path(args.compact) / "nar"
+    subdir = str(getattr(args, "nar_subdir", "") or "nar")
+    out = Path(args.out) / subdir
+    compact = Path(args.compact) / subdir
     phase = "off"
     length = int(args.prefix_length)
     seed = int(args.seed)
@@ -654,70 +655,84 @@ def cmd_nar(args) -> int:
     rng = np.random.default_rng(seed)
     codec = [int(v) for v in rng.integers(0, 32768, size=frames)]
 
-    chunks = song_chunks(prefix, codec, seed)
+    chunks = song_chunks(prefix, codec, seed, context=int(getattr(args, "context", 0) or 24576))
     for entry in chunks:
         entry.nar_cond_end = int(getattr(args, "nar_cond_end", 0) or 0)
-    report = {"prefix_length": len(prefix), "frames": frames, "chunks": len(chunks), "seed": seed,
-              "steps": int(args.steps), "nar_cond_end": int(getattr(args, "nar_cond_end", 0))}
-    engine = CachedNAR(model, chunks[0])
-    chunk = chunks[0]
-    state = chunk.noise.to(device=engine.device, dtype=engine.dtype)
     steps = int(args.steps)
     dt = 1.0 / steps
-    velocities = []
-    states = []
-    with torch.inference_mode():
-        for step in range(steps):
-            t = 1.0 - step * dt
-            raw = float(torch.logit(torch.tensor(t, dtype=torch.float64)).clamp(-20, 20))
-            first = engine.velocity(state, raw)
-            velocities.append(first.float().cpu().numpy())
-            states.append(state.float().cpu().numpy())
-            mid = state - first * (dt / 2)
-            raw_mid = float(torch.logit(torch.tensor(t - dt / 2, dtype=torch.float64)).clamp(-20, 20))
-            state = state - engine.velocity(mid, raw_mid) * dt
-    latents = state.float().cpu().numpy()
-    # A recorded trace is only useful if it is self-consistent: re-evaluate every
-    # recorded velocity at its own recorded state and timestep before writing it,
-    # so a schedule or bookkeeping error cannot silently produce a fixture that no
-    # correct implementation can match.
-    with torch.inference_mode():
-        for step in range(steps):
-            t = 1.0 - step * dt
-            raw = float(torch.logit(torch.tensor(t, dtype=torch.float64)).clamp(-20, 20))
-            replay = engine.velocity(
-                torch.from_numpy(np.asarray(states[step])).to(device=engine.device, dtype=engine.dtype),
-                raw,
-            ).float().cpu().numpy()
-            drift = float(np.abs(replay - np.asarray(velocities[step])).max())
-            report[f"replay_step{step}_max_abs"] = drift
-            if drift > 1e-3:
-                raise RuntimeError(
-                    f"NAR trace replay mismatch at step {step}: max abs {drift}; "
-                    "the recorded velocity does not correspond to the recorded state"
-                )
-    save_npz(
-        out / "chunk0.npz",
-        prefix=np.asarray(prefix, dtype=np.int32),
-        codec=np.asarray(codec, dtype=np.int32),
-        ar_tokens=np.asarray(chunk.ar_tokens, dtype=np.int32),
-        noise=chunk.noise.numpy(),
-        velocities=np.asarray(velocities),
-        states=np.asarray(states),
-        latents=latents,
-    )
-    save_npz(
-        compact / "chunk0.npz",
-        prefix=np.asarray(prefix, dtype=np.int32),
-        codec=np.asarray(codec, dtype=np.int32),
-        noise=chunk.noise.numpy(),
-        velocities=np.asarray(velocities[:4]),
-        states=np.asarray(states[:4]),
-        latents=latents,
-    )
-    report["latent_norm"] = float(np.linalg.norm(latents))
-    report["velocity_norm_step0"] = float(np.linalg.norm(velocities[0]))
-    engine.close()
+    report = {"prefix_length": len(prefix), "frames": frames, "chunks": len(chunks), "seed": seed,
+              "steps": steps, "nar_cond_end": int(getattr(args, "nar_cond_end", 0)),
+              "context": int(getattr(args, "context", 0) or 24576), "chunk_reports": []}
+    for index, chunk in enumerate(chunks):
+        engine = CachedNAR(model, chunk)
+        state = chunk.noise.to(device=engine.device, dtype=engine.dtype)
+        velocities = []
+        states = []
+        with torch.inference_mode():
+            for step in range(steps):
+                t = 1.0 - step * dt
+                raw = float(torch.logit(torch.tensor(t, dtype=torch.float64)).clamp(-20, 20))
+                first = engine.velocity(state, raw)
+                velocities.append(first.float().cpu().numpy())
+                states.append(state.float().cpu().numpy())
+                mid = state - first * (dt / 2)
+                raw_mid = float(torch.logit(torch.tensor(t - dt / 2, dtype=torch.float64)).clamp(-20, 20))
+                state = state - engine.velocity(mid, raw_mid) * dt
+        latents = state.float().cpu().numpy()
+        # A recorded trace is only useful if it is self-consistent: re-evaluate
+        # every recorded velocity at its own recorded state and timestep before
+        # writing it, so a schedule or bookkeeping error cannot silently produce a
+        # fixture that no correct implementation can match.
+        residuals = []
+        with torch.inference_mode():
+            for step in range(steps):
+                t = 1.0 - step * dt
+                raw = float(torch.logit(torch.tensor(t, dtype=torch.float64)).clamp(-20, 20))
+                replay = engine.velocity(
+                    torch.from_numpy(np.asarray(states[step])).to(device=engine.device, dtype=engine.dtype),
+                    raw,
+                ).float().cpu().numpy()
+                drift = float(np.abs(replay - np.asarray(velocities[step])).max())
+                residuals.append(drift)
+                if drift > 1e-3:
+                    raise RuntimeError(
+                        f"NAR trace replay mismatch at chunk {index} step {step}: max abs {drift}; "
+                        "the recorded velocity does not correspond to the recorded state"
+                    )
+        common = {
+            "prefix": np.asarray(prefix, dtype=np.int32),
+            "codec": np.asarray(codec, dtype=np.int32),
+            "noise": chunk.noise.numpy(),
+            "velocities": np.asarray(velocities),
+            "states": np.asarray(states),
+            "latents": latents,
+            "nar_cond_end": np.asarray(chunk.nar_cond_end, dtype=np.int64),
+        }
+        save_npz(out / f"chunk{index}.npz", ar_tokens=np.asarray(chunk.ar_tokens, dtype=np.int32), **common)
+        save_npz(
+            compact / f"chunk{index}.npz",
+            prefix=common["prefix"],
+            codec=common["codec"],
+            noise=common["noise"],
+            velocities=common["velocities"][:4],
+            states=common["states"][:4],
+            latents=latents,
+            nar_cond_end=common["nar_cond_end"],
+        )
+        report["chunk_reports"].append({
+            "index": index,
+            "frames": int(chunk.frames),
+            "ar_tokens": int(len(chunk.ar_tokens)),
+            "latent_norm": float(np.linalg.norm(latents)),
+            "velocity_norm_step0": float(np.linalg.norm(velocities[0])),
+            "replay_step_max_abs": residuals,
+        })
+        engine.close()
+    first_chunk = report["chunk_reports"][0]
+    report["latent_norm"] = first_chunk["latent_norm"]
+    report["velocity_norm_step0"] = first_chunk["velocity_norm_step0"]
+    for step, drift in enumerate(first_chunk["replay_step_max_abs"]):
+        report[f"replay_step{step}_max_abs"] = drift
     write_json(compact / "manifest.json", report)
     write_json(out / "manifest.json", report)
     print(f"[nar] {report}", flush=True)
@@ -2271,6 +2286,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prefix-length", type=int, default=512)
     p.add_argument("--frames", type=int, default=32)
     p.add_argument("--steps", type=int, default=8)
+    p.add_argument("--nar-subdir", default="nar",
+                   help="fixture subdirectory under --compact/--out (one per recorded case)")
+    p.add_argument("--context", type=int, default=0,
+                   help="override the chunking context (0 = the reference default)")
     p.add_argument("--nar-cond-end", type=int, default=0,
                    help="restrict NAR visibility to the first N AR positions")
     p.add_argument("--seed", type=int, default=1234)

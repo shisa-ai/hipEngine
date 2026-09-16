@@ -1414,6 +1414,31 @@ phase is budget-truncated in every case.
 
 Teacher-forced agreement is at least 96.1% on every phase of every case; the symbolic ABC phases agree on 100.0% and 99.1% of steps. Every recorded mismatch sits on a near-tie: the first semantic mismatch is 1.2e-01 / 1.2e-01 / 6.2e-02 below my own top-1 score for melody / full / off, inside the BF16 logit noise the replay matrix above already quantifies (mean KL 2.1e-3, top-1 96.7%). The unassisted trajectories track the reference until their first flip and are chaotic afterwards, so the forced columns, not the free agreement rates, carry the fidelity claim. Free comparison is context-aligned only where the ABC stage itself matched (`english-melody-s1234`) or is absent (`mandarin-off-s1234`); `english-full-s1234` diverged during ABC planning, so its free semantic row compares continuations of different prefixes and is diagnostic only. Unassisted wall clock: `melody` 34.8 s, `full` 36.7 s, `off` 29.0 s.
 
+### Radeon 8060S: YuE2 3B acoustic flow-matching solver
+
+The torch-free NAR runtime's midpoint ODE solve against the pinned upstream
+reference on the same host, on a recorded 34-row / 545-token-AR chunk with a
+4-step schedule. `Forced` evaluates the native velocity at each *recorded*
+state, which isolates a velocity defect from a trajectory defect; the end-to-end
+row runs the native solver from the recorded noise and compares its own latents.
+Every row is relative L2 against the reference, whose final latent norm is
+72.743.
+
+| Quantity | rel_l2 | cosine | max abs | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| Forced velocity, step 0 (`t=1.0`) | 0.01327 | 0.999912 | 0.0859 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 1 (`t=0.75`) | 0.01495 | 0.999888 | 0.0625 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 2 (`t=0.5`) | 0.01892 | 0.999821 | 0.1218 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 3 (`t=0.25`) | 0.01221 | 0.999926 | 0.0781 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| 4-step solve, final latents | **0.01225** | **0.999926** | 0.0781 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+
+The solver is the reference's own scheme: `mid = state - v(state, t) * h/2`, then
+`state = state - v(mid, t - h/2) * h`, with each update rounded through BF16
+exactly as the reference does. The 1.2% residual is BF16 rounding noise, not
+structural drift - 16.2% of the produced latent entries are BF16-identical to
+the reference and the produced norm is 72.855 against 72.743. Condition 1.00 s
+and forced-velocity plus solve 0.80 s on this chunk.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
