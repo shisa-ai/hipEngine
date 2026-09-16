@@ -87,11 +87,20 @@ def _ggml_type(name: str) -> int | None:
 
 
 def map_llamacpp(name: str, grid: tuple[str, str, str]) -> str:
-    """llama.cpp / ggml kernels."""
+    """llama.cpp / ggml kernels.
+
+    Also handles the ``mmb_*`` family: halo-box PR #63 ports the Strix Halo
+    optimization line's MMB kernels into this tree, so a current llama.cpp-family
+    build emits both naming schemes. Dialect is no longer a reliable
+    discriminator and the two mappers delegate to each other.
+    """
+    if "mmb_" in name or "mm_ids" in name or "hc_gate_mix" in name:
+        return map_mmb(name, grid)
     if "gated_delta_net" in name or "gdn_conv" in name or "ssm_conv" in name:
         return "gdn"
     if ("flash_attn_ext" in name or "qsa3_attn" in name or "rope_multi" in name
-            or "qsa3_rows" in name or "qsa3_merge" in name or "flash_attn_mask" in name):
+            or "qsa3_rows" in name or "qsa3_merge" in name or "flash_attn_mask" in name
+            or "qsa_expand" in name):
         return "qsa_attention"
     if "quantize_mmq_q8_1" in name or "quantize_row_q8" in name:
         return "quantize_pack"
@@ -114,7 +123,7 @@ def map_llamacpp(name: str, grid: tuple[str, str, str]) -> str:
         if grid[1] in {str(y) for y in ROUTED_GRID_Y}:
             return "expert_down"
         return "dense_projection"
-    if "rms_norm" in name or "norm_f32" in name:
+    if "rms_norm" in name or "rms_rows" in name or "norm_f32" in name:
         return "elementwise_norm"
     if "k_bin_bcast" in name or "k_fill" in name or "fillBuffer" in name:
         return "elementwise_norm"
@@ -131,7 +140,13 @@ def map_llamacpp(name: str, grid: tuple[str, str, str]) -> str:
 
 
 def map_mmb(name: str, grid: tuple[str, str, str]) -> str:
-    """pwilkin's MMB kernels, which name the family directly."""
+    """pwilkin's MMB kernels, which name the family directly.
+
+    Delegates to the llama.cpp rules for names this dialect does not own, so one
+    mapper serves a build that contains both schemes.
+    """
+    if not ("mmb_" in name or "mm_ids" in name or "hc_gate_mix" in name):
+        return map_llamacpp(name, grid)
     if "gated_delta_net" in name or "gdn_conv" in name or "ssm_conv" in name:
         return "gdn"
     if ("flash_attn_ext" in name or "qsa3_attn" in name or "qsa_expand" in name
@@ -174,42 +189,99 @@ MAPPERS: dict[str, Callable[[str, tuple[str, str, str]], str]] = {
 }
 
 
-def read_trace(path: Path, mapper: Callable[[str, tuple[str, str, str]], str]) -> dict[str, Any]:
+def read_trace(
+    path: Path,
+    mapper: Callable[[str, tuple[str, str, str]], str],
+    burst_gap_ms: float = 250.0,
+    delimit: str = "none",
+) -> dict[str, Any]:
+    dispatches: list[tuple[int, int, str, tuple[str, str, str]]] = []
+    with path.open() as fh:
+        for row in csv.DictReader(fh):
+            if row.get("Kind") != "KERNEL_DISPATCH":
+                continue
+            dispatches.append((
+                int(row["Start_Timestamp"]),
+                int(row["End_Timestamp"]),
+                row["Kernel_Name"],
+                (row["Grid_Size_X"], row["Grid_Size_Y"], row["Grid_Size_Z"]),
+            ))
+    if not dispatches:
+        raise SystemExit(f"no KERNEL_DISPATCH rows in {path}")
+    dispatches.sort(key=lambda d: d[0])
+
+    # Split on idle gaps. A prefill request is a dense run of dispatches; the
+    # gaps between requests, and the long tail of graph building at startup,
+    # are where the boundaries are. This is what delimits a comparator capture
+    # whose trace covers the whole server lifetime.
+    gap_ns = int(burst_gap_ms * 1e6)
+    bursts: list[list[tuple[int, int, str, tuple[str, str, str]]]] = [[dispatches[0]]]
+    for prev, cur in zip(dispatches, dispatches[1:]):
+        if cur[0] - prev[1] > gap_ns:
+            bursts.append([])
+        bursts[-1].append(cur)
+
+    burst_report = []
+    for index, burst in enumerate(bursts):
+        span = (burst[-1][1] - burst[0][0]) / 1e6
+        busy = sum(e - s for s, e, _, _ in burst) / 1e6
+        burst_report.append({
+            "index": index,
+            "dispatches": len(burst),
+            "span_ms": round(span, 1),
+            "kernel_ms": round(busy, 1),
+            "duty_pct": round(100.0 * busy / span, 1) if span else None,
+        })
+
+    selected = dispatches
+    selected_bursts: list[int] | None = None
+    if delimit != "none":
+        if delimit == "last-burst":
+            chosen = [len(bursts) - 1]
+        elif delimit == "last-two":
+            chosen = list(range(max(0, len(bursts) - 2), len(bursts)))
+        elif delimit.startswith("burst:"):
+            chosen = [int(delimit.split(":", 1)[1])]
+        else:
+            raise SystemExit(f"unknown --delimit {delimit!r}")
+        for index in chosen:
+            if index >= len(bursts):
+                raise SystemExit(
+                    f"--delimit {delimit} asks for burst {index} but the trace "
+                    f"has {len(bursts)}"
+                )
+        selected_bursts = chosen
+        selected = [d for index in chosen for d in bursts[index]]
+
     by_family: Counter[str] = Counter()
     by_family_count: Counter[str] = Counter()
     by_kernel: dict[tuple[str, str], list[float]] = {}
     unmapped: Counter[str] = Counter()
     total = 0.0
+    starts = [d[0] for d in selected]
 
-    starts: list[int] = []
-    with path.open() as fh:
-        for row in csv.DictReader(fh):
-            if row.get("Kind") != "KERNEL_DISPATCH":
-                continue
-            name = row["Kernel_Name"]
-            grid = (row["Grid_Size_X"], row["Grid_Size_Y"], row["Grid_Size_Z"])
-            start = int(row["Start_Timestamp"])
-            starts.append(start)
-            ms = (int(row["End_Timestamp"]) - start) / 1e6
-            family = mapper(name, grid)
-            total += ms
-            by_family[family] += ms
-            by_family_count[family] += 1
-            entry = by_kernel.setdefault((family, name), [0.0, 0.0])
-            entry[0] += ms
-            entry[1] += 1
-            if family == "other":
-                unmapped[name] += ms
+    for start, end, name, grid in selected:
+        ms = (end - start) / 1e6
+        family = mapper(name, grid)
+        total += ms
+        by_family[family] += ms
+        by_family_count[family] += 1
+        entry = by_kernel.setdefault((family, name), [0.0, 0.0])
+        entry[0] += ms
+        entry[1] += 1
+        if family == "other":
+            unmapped[name] += ms
 
-    # A trace is only usable for a gap comparison if it is delimited to the
-    # measured window. Comparators profiled as a whole server lifetime carry
-    # warmup prefills, which inflates every family total.
     span_ms = (max(starts) - min(starts)) / 1e6 if len(starts) > 1 else 0.0
     active_ms = total
     return {
         "total_ms": round(total, 1),
         "trace_span_ms": round(span_ms, 1),
         "kernel_duty_cycle_pct": round(100.0 * active_ms / span_ms, 2) if span_ms else None,
+        "delimit": delimit,
+        "delimit_bursts": selected_bursts,
+        "bursts_in_trace": burst_report,
+        "burst_gap_ms": burst_gap_ms,
         "dispatches": sum(by_family_count.values()),
         "by_family_ms": {f: round(by_family.get(f, 0.0), 1) for f in FAMILIES},
         "by_family_dispatches": {f: by_family_count.get(f, 0) for f in FAMILIES},
@@ -239,6 +311,22 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--unmapped-floor-ms", type=float, default=5.0)
     parser.add_argument(
+        "--delimit",
+        default="none",
+        help=(
+            "Restrict the family split to part of the trace: 'none', "
+            "'last-burst', 'last-two', or 'burst:N'. Bursts are the dense runs "
+            "of dispatches separated by idle gaps, so this is what recovers a "
+            "single measured prefill from a whole-server capture."
+        ),
+    )
+    parser.add_argument(
+        "--burst-gap-ms",
+        type=float,
+        default=250.0,
+        help="Idle gap that separates two bursts (default 250 ms).",
+    )
+    parser.add_argument(
         "--measured-prompt-ms",
         type=float,
         default=None,
@@ -250,7 +338,10 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    result = read_trace(args.trace, MAPPERS[args.dialect])
+    result = read_trace(
+        args.trace, MAPPERS[args.dialect],
+        burst_gap_ms=args.burst_gap_ms, delimit=args.delimit,
+    )
     result["label"] = args.label
     result["measured_prompt_ms"] = args.measured_prompt_ms
     result["delimited"] = (
@@ -274,6 +365,15 @@ def main() -> int:
 
     print(f"\ntrace span {result['trace_span_ms']:.0f} ms, kernel time "
           f"{result['total_ms']:.0f} ms, duty cycle {result['kernel_duty_cycle_pct']}%")
+    print(f"bursts in trace (gap > {result['burst_gap_ms']:.0f} ms), "
+          f"delimit={result['delimit']}")
+    for burst in result["bursts_in_trace"]:
+        mark = ""
+        if result["delimit_bursts"] and burst["index"] in result["delimit_bursts"]:
+            mark = "  <- selected"
+        print(f"  burst {burst['index']:3d}: {burst['dispatches']:6d} disp  "
+              f"span {burst['span_ms']:9.1f} ms  kernel {burst['kernel_ms']:9.1f} ms  "
+              f"duty {burst['duty_pct']}%{mark}")
     if args.measured_prompt_ms is not None:
         ratio = result["total_ms"] / args.measured_prompt_ms
         verdict = "delimited" if result["delimited"] else "NOT DELIMITED"

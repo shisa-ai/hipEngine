@@ -1,5 +1,20 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: halo-box PR #63 head (`c4aa30229`) is **13.9% faster** on
+  the 4096-token shallow prefill than the current halo-box baseline (`69946438a`):
+  5552.5 -> 4873.5 ms, 737.7 -> 840.5 tok/s, with **48/48 identical greedy
+  tokens**. Matched protocol, same host, both arms `--no-warmup`. The gain is
+  attributable: `expert_down` -50.8% and `quantize_pack` -100% (the MMB BF16 WMMA
+  port replaces Q5_1 MMQ and its per-matmul activation quantization),
+  `moe_reduce` -48.5%, `elementwise_norm` -35.4%. One real regression:
+  `qsa_attention` +101.2%, the same `flash_attn_ext_f16` kernel at the same 48
+  dispatches going 270.98 -> 585.69 ms. One apparent regression that is not:
+  `indexer` +166% is the hipCUB top-k being replaced by named `top_k_radix_*`
+  kernels and moving out of `elementwise_norm` (combined 28.6 -> 30.4 ms).
+  This supersedes `69946438a` as the halo-box comparison target; the baseline
+  numbers are retained for the before/after pair.
+  [Artifact](results/2026-09-15-flashnext-engine-comparison/pr63-vs-baseline.md).
+
 - **2026-09-16 UTC**: Established the run-to-run measurement floor for the
   Flash-Next prefill profile. Three captures of the same 4K `code-p4096`
   prefill (two at the production default, one with

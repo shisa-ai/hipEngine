@@ -20,10 +20,57 @@
   "quantize_pack",
   "other"
  ],
- "measured_prompt_ms": 5530.972,
+ "measured_prompt_ms": null,
  "total_ms": 10856.3,
  "trace_span_ms": 79196.6,
  "kernel_duty_cycle_pct": 13.71,
+ "delimit": "none",
+ "delimit_bursts": null,
+ "bursts_in_trace": [
+  {
+   "index": 0,
+   "dispatches": 1,
+   "span_ms": 0.4,
+   "kernel_ms": 0.4,
+   "duty_pct": 100.0
+  },
+  {
+   "index": 1,
+   "dispatches": 193,
+   "span_ms": 2.7,
+   "kernel_ms": 0.2,
+   "duty_pct": 8.8
+  },
+  {
+   "index": 2,
+   "dispatches": 204,
+   "span_ms": 2.3,
+   "kernel_ms": 0.3,
+   "duty_pct": 11.5
+  },
+  {
+   "index": 3,
+   "dispatches": 3,
+   "span_ms": 130.3,
+   "kernel_ms": 1.1,
+   "duty_pct": 0.8
+  },
+  {
+   "index": 4,
+   "dispatches": 5957,
+   "span_ms": 431.7,
+   "kernel_ms": 92.1,
+   "duty_pct": 21.3
+  },
+  {
+   "index": 5,
+   "dispatches": 20144,
+   "span_ms": 11164.0,
+   "kernel_ms": 10762.2,
+   "duty_pct": 96.4
+  }
+ ],
+ "burst_gap_ms": 250.0,
  "dispatches": 26502,
  "by_family_ms": {
   "dense_projection": 3116.4,
@@ -707,7 +754,7 @@
    "ms": 0.01
   }
  ],
- "delimited": false,
+ "delimited": null,
  "notes": [
   "Shared taxonomy for the hipEngine/comparator gap attribution.",
   "llama.cpp expert families are identified by ggml quant type; the Q8_0 expert-down layers are separated by routed grid Y.",
