@@ -430,7 +430,7 @@ Milestone status:
   the full decode (1.51 s vs 0.68 s at 64 frames) because each tile re-decodes
   its halo; it bounds device residency rather than wall clock. See
   `worklog/entries/20260916T171559.133569Z-lhl-yue2-m5-vae-decoder-dfcdfd.md`.
-- **M6 complete** (2026-09-16): the staged session
+- **M6 product path complete** (2026-09-16): the staged session
   (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
   as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case
   fixture carries the reference pipeline's own assembled prefix and semantic
