@@ -133,11 +133,18 @@ def _attention_reference(q, nar_k, nar_v, ar_k, ar_v, num_q_heads, num_kv_heads,
 
 @requires_hip
 @pytest.mark.parametrize("ar_rows,nar_rows", [(512, 34), (0, 40), (300, 7), (1, 1), (0, 1)])
-def test_attention_matches_the_numpy_reference(ar_rows, nar_rows):
+@pytest.mark.parametrize("head_dim", [128, 100])
+def test_attention_matches_the_numpy_reference(ar_rows, nar_rows, head_dim):
+    """Both the packed and the scalar K path agree with the reference.
+
+    ``head_dim`` 128 takes the eight-wide loads; 100 is not a multiple of eight,
+    so the rows are not 16-byte aligned and the kernel must fall back to the
+    scalar walk. Both have to produce the same attention.
+    """
     from hipengine.kernels.hip_gfx1100.yue2 import nar
 
-    num_q_heads, num_kv_heads, head_dim = 16, 8, 128
-    rng = np.random.default_rng(ar_rows * 131 + nar_rows)
+    num_q_heads, num_kv_heads = 16, 8
+    rng = np.random.default_rng(ar_rows * 131 + nar_rows + head_dim)
     q = (rng.standard_normal((nar_rows, num_q_heads, head_dim)) * 0.5).astype(np.float32)
     nar_k = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))
     nar_v = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))

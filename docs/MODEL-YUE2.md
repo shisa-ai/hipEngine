@@ -431,21 +431,30 @@ Milestone status:
   its halo; it bounds device residency rather than wall clock. See
   `worklog/entries/20260916T171559.133569Z-lhl-yue2-m5-vae-decoder-dfcdfd.md`.
 - **M7 in progress** (2026-09-17): profiling the e2e path found the NAR attention
-  kernel walking the whole K/V cache once per (query row, query head) pair -- 27.9 GB
-  of traffic per call on a 1 299-frame song, and the largest single consumer of GPU
-  time. Blocks now own four query rows and reuse each loaded K or V element across
-  them, and each lane evaluates its own key's exponential once instead of once per
-  lane. The replay of `mandarin-off-s1234` at 2 ODE steps falls from 78.0 s to
-  51.6 s (1.51x) and the kernel's own average from 1 208.26 us to 724.99 us (1.67x)
-  over 140 dispatches. The rewrite is bit-exact: a recorded parent-bits fixture
-  (`tests/fixtures/yue2/operators/nar_attention_parent.npz`) pins the output, and all
-  three M4 parity gates reproduce their pre-change numbers exactly. The same host's
-  pinned upstream reference solves the same case at 32 steps in 27.32 s against
-  443.4 s here, so the NAR solver is the largest remaining gap; the decoder is
-  faster than the reference's (22.47 s against 69.09 s) and the AR stage runs at
-  19.35 tokens/s against 31.97. Next candidates, in profile order: the VAE conv1d
-  (76 dispatches / 16.25 s of the profiled replay), eight rows per block, and a tree
-  reduction for the tile maximum. Artifact:
+  kernel stalled rather than bandwidth-bound. `rocprofv3 --pmc` on the
+  row-blocked kernel measures 3.5e8 cycles carrying 3.7e9 VALU instructions at
+  **19% achieved occupancy**, with the scalar K walk asking the L1 for 32 sectors
+  per request (a lane owns one key, so lanes land `head_dim * 2` bytes apart) and
+  every lane re-reading the whole query row per row. K now arrives as 16-byte
+  `uint4` (eight BF16), Q as two `float4` per eight dimensions, the V walk steps
+  by pointer from its AR/NAR split, and blocks own eight query rows instead of
+  four. The kernel's own per-call time at the production shape (1 299 rows /
+  2 695 keys) falls from 177.22 ms to **28.34 ms (6.25x)**, achieved occupancy
+  reaches **93%**, and the NAR solve of `mandarin-off-s1234` falls from 27.76 s to
+  11.03 s at 2 ODE steps and from **443.4 s to 116.53 s at the product's 32
+  steps** (3.80x; the whole replay goes 465.9 s -> 136.59 s). The rewrite is
+  bit-exact: a recorded parent-bits fixture
+  (`tests/fixtures/yue2/operators/nar_attention_parent.npz`) pins the output, the
+  kernel keeps a scalar fallback for head dimensions that are not a multiple of
+  eight (with its own test), and 219 YuE2 unit tests pass. Attention is now
+  2.93 s of the 11.11 s 2-step solve, so the solver's remaining cost is its
+  hipBLASLt projection path (8.18 s) rather than its attention, and the reference
+  is now 4.27x ahead instead of 16.2x. The replay's largest consumer is the VAE
+  decode at 20.07 s of 31.10 s. Next candidates, in profile order: the NAR
+  projections (1 494 hipBLASLt dispatches of a 32x32 macro-tile kernel), the VAE
+  conv1d (76 dispatches / 15.07 s of the profiled replay), and a warp-shuffle tile
+  maximum for the attention (`fmax` is order-independent, so it stays bit-exact).
+  Artifacts: `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
   `benchmarks/results/yue2_m7_attention_20260917.json`.
 - **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
   was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100

@@ -156,14 +156,19 @@ selected arithmetic and fallbacks; a manifest alone is not production approval.
 | NAR solver | `nar_state_update_kernel` | BF16 midpoint update `state - bf16(v * scale)` with exactly the reference's two roundings; the caller passes the positive `h/2` and `h` step sizes. Registered alongside the per-step velocity path, so a solver defect cannot hide behind a correct velocity. |
 | VAE decoder | `hipengine/kernels/hip_gfx1100/yue2/vae.py` via `hipengine/runtime/yue2_vae.py` | FP32 throughout, matching the released Oobleck decoder. `vae_conv1d_f32` and `vae_conv_transpose1d_f32` accumulate in the reference's loop order (kernel tap outside, input channel inside); `vae_snake_beta_f32` uses log-scale alpha/beta and the released `1e-9` denominator epsilon; `vae_add_f32` applies a residual unit's skip. Weight normalization is folded once at load time (`hipengine.loading.yue2.fold_weight_norm`), never per call. |
 
-Both routes read the same `KVLiveSpans` ABI (identity slot map, uniform positions and eviction mask). Kernel names and durations for one replay are recorded in the M2 worklog entry, and for one NAR velocity plus 2-step solve in the M4 closure entry (`yue2_nar_attention_kernel` 140 dispatches / 144.0 ms total, `yue2_nar_rope_kernel` 280 / 0.94 ms, `yue2_nar_state_update_kernel` 4 / 0.006 ms, plus `nar_gather_add` and `nar_add_broadcast`); for the VAE, three decodes in the M5 entry (`yue2_vae_conv1d_f32_kernel` 114 dispatches / 57.5 ms, `yue2_vae_conv_transpose1d_f32_kernel` 18 / 57.0 ms, `yue2_vae_snake_beta_f32_kernel` 129 / 0.95 ms, `yue2_vae_add_f32_kernel` 54 / 0.25 ms). `yue2_nar_attention_kernel` owns four query rows per block
-(`YUE2_NAR_ROWS_PER_BLOCK`), so one loaded K or V element serves four rows; the
-replay of `mandarin-off-s1234` at 2 ODE steps fell from 78.0 s to 51.6 s and the
-kernel's own average from 1028.59 us to 724.99 us over 140 dispatches, bit-identical
-to the parent kernel (`tests/fixtures/yue2/operators/nar_attention_parent.npz`). The
-kernel is bandwidth-bound rather than compute-bound: a per-(row, head) block re-reads
-the whole K/V cache for every query row. M7 numbers are in
-`benchmarks/results/yue2_m7_attention_20260917.json`. Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+Both routes read the same `KVLiveSpans` ABI (identity slot map, uniform positions and eviction mask). Kernel names and durations for one replay are recorded in the M2 worklog entry, and for one NAR velocity plus 2-step solve in the M4 closure entry (`yue2_nar_attention_kernel` 140 dispatches / 144.0 ms total, `yue2_nar_rope_kernel` 280 / 0.94 ms, `yue2_nar_state_update_kernel` 4 / 0.006 ms, plus `nar_gather_add` and `nar_add_broadcast`); for the VAE, three decodes in the M5 entry (`yue2_vae_conv1d_f32_kernel` 114 dispatches / 57.5 ms, `yue2_vae_conv_transpose1d_f32_kernel` 18 / 57.0 ms, `yue2_vae_snake_beta_f32_kernel` 129 / 0.95 ms, `yue2_vae_add_f32_kernel` 54 / 0.25 ms). `yue2_nar_attention_kernel` owns eight query rows per block
+(`YUE2_NAR_ROWS_PER_BLOCK`), so one loaded K or V element serves eight rows, and it
+reads K eight elements and Q four elements per instruction. Those three changes take
+the kernel's own per-call time at the production shape (1 299 rows / 2 695 keys) from
+177.22 ms to 28.34 ms, and the replay of `mandarin-off-s1234` at 2 ODE steps from
+27.76 s of solve to 11.03 s, bit-identical to the parent kernel
+(`tests/fixtures/yue2/operators/nar_attention_parent.npz`). It is not bandwidth-bound
+at that point: `rocprofv3 --pmc` on the pre-packing kernel measures 3.5e8 cycles
+carrying 3.7e9 VALU instructions at 19% occupancy, and the same run afterwards
+reaches 93%, so it is instruction- and latency-limited rather than traffic-limited.
+Attention is now 2.93 s of the 11.11 s solve; the remainder is the hipBLASLt
+projection path. M7 numbers are in
+`benchmarks/results/yue2_m7_attention_packed_20260917.json`. Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
 
 ### Shared Qwen / PARO path
 
