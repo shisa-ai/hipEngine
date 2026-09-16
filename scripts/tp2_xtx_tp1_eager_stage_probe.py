@@ -93,8 +93,8 @@ def validate_result(result, vocab_size: int) -> dict:
     if result.logits is None:
         raise ValueError('missing logits')
     logits = np.asarray(result.logits)
-    if vocab_size <= 0 or logits.shape != (vocab_size,):
-        raise ValueError(f'logits shape {logits.shape} != ({vocab_size},)')
+    if vocab_size <= 0 or logits.shape not in {(vocab_size,), (1, vocab_size)}:
+        raise ValueError(f'logits shape {logits.shape} is not one vocabulary row ({vocab_size})')
     if not np.isfinite(logits).all():
         raise ValueError('nonfinite logits (upstream source unresolved)')
     if not np.any(logits != 0):

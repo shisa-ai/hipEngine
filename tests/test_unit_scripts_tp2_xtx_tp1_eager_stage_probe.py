@@ -9,7 +9,7 @@ from scripts import tp2_xtx_tp1_eager_stage_probe as probe
 
 
 @pytest.mark.parametrize("logits", [None, [], [1, np.nan, 2], [1, np.inf, 2],
-                                    [0, 0, 0], [[1, 2, 3]], [1, 2]])
+                                    [0, 0, 0], [[1, 2, 3], [1, 2, 3]], [1, 2]])
 def test_invalid_logits_fail(logits):
     with pytest.raises(ValueError):
         probe.validate_result(SimpleNamespace(token_id=1, logits=logits), 3)
@@ -19,6 +19,12 @@ def test_invalid_logits_fail(logits):
 def test_invalid_token_fails(token):
     with pytest.raises(ValueError):
         probe.validate_result(SimpleNamespace(token_id=token, logits=np.array([1., 3., 2.])), 3)
+
+
+def test_resident_single_row_logits_shape_is_valid():
+    # The real resident _logits_host allocation is (1, vocab), not (vocab,).
+    result = probe.validate_result(SimpleNamespace(token_id=1, logits=np.array([[1., 3., 2.]])), 3)
+    assert result['logits']['shape'] == [1, 3]
 
 
 def test_valid_logits_do_not_claim_unwritten():
