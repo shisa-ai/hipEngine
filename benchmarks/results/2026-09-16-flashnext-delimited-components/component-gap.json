@@ -1,0 +1,217 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_prefill_component_gap",
+ "performance_claim": false,
+ "numerics_evaluated": false,
+ "question": "Held to one case on one host, which kernel families account for the prefill-time difference between these two engines?",
+ "base": {
+  "label": "halobox-base-69946438a-bf16",
+  "trace": "/tmp/delim-base-halobox.raw/trace/gfx1151/648988_kernel_trace.csv",
+  "report": "/tmp/delim-base-halobox.json",
+  "measured_prompt_ms": 5569.2,
+  "kernel_sum_ms": 5411.0,
+  "kernel_sum_over_prompt_ms": [
+   0.9708,
+   0.9724
+  ]
+ },
+ "candidate": {
+  "label": "halobox-pr63-c4aa30229-bf16",
+  "trace": "/tmp/delim-pr63-halobox.raw/trace/gfx1151/644944_kernel_trace.csv",
+  "report": "/tmp/delim-pr63-halobox.json",
+  "measured_prompt_ms": 3989.316,
+  "kernel_sum_ms": 3760.4,
+  "kernel_sum_over_prompt_ms": [
+   0.9343,
+   0.9693
+  ]
+ },
+ "measured_prompt_delta_ms": -1579.88,
+ "measured_prompt_ratio": 0.7163,
+ "kernel_sum_delta_ms": -1650.6,
+ "kernel_sum_ratio": 0.695,
+ "components": [
+  {
+   "family": "dense_projection",
+   "base_ms": 1536.7,
+   "candidate_ms": 1374.3,
+   "delta_ms": -162.4,
+   "delta_pct": -10.57,
+   "base_share_pct": 28.4,
+   "candidate_share_pct": 36.55,
+   "base_kernels": null
+  },
+  {
+   "family": "expert_down",
+   "base_ms": 1149.8,
+   "candidate_ms": 412.8,
+   "delta_ms": -737.0,
+   "delta_pct": -64.1,
+   "base_share_pct": 21.25,
+   "candidate_share_pct": 10.98,
+   "base_kernels": null
+  },
+  {
+   "family": "expert_gate_up",
+   "base_ms": 819.4,
+   "candidate_ms": 761.8,
+   "delta_ms": -57.6,
+   "delta_pct": -7.03,
+   "base_share_pct": 15.14,
+   "candidate_share_pct": 20.26,
+   "base_kernels": null
+  },
+  {
+   "family": "elementwise_norm",
+   "base_ms": 531.4,
+   "candidate_ms": 331.7,
+   "delta_ms": -199.7,
+   "delta_pct": -37.58,
+   "base_share_pct": 9.82,
+   "candidate_share_pct": 8.82,
+   "base_kernels": null
+  },
+  {
+   "family": "hyper_connection",
+   "base_ms": 428.9,
+   "candidate_ms": 335.7,
+   "delta_ms": -93.2,
+   "delta_pct": -21.73,
+   "base_share_pct": 7.93,
+   "candidate_share_pct": 8.93,
+   "base_kernels": null
+  },
+  {
+   "family": "gdn",
+   "base_ms": 287.6,
+   "candidate_ms": 263.8,
+   "delta_ms": -23.8,
+   "delta_pct": -8.28,
+   "base_share_pct": 5.32,
+   "candidate_share_pct": 7.02,
+   "base_kernels": null
+  },
+  {
+   "family": "quantize_pack",
+   "base_ms": 284.8,
+   "candidate_ms": 0.0,
+   "delta_ms": -284.8,
+   "delta_pct": -100.0,
+   "base_share_pct": 5.26,
+   "candidate_share_pct": 0.0,
+   "base_kernels": null
+  },
+  {
+   "family": "moe_reduce",
+   "base_ms": 204.0,
+   "candidate_ms": 103.9,
+   "delta_ms": -100.1,
+   "delta_pct": -49.07,
+   "base_share_pct": 3.77,
+   "candidate_share_pct": 2.76,
+   "base_kernels": null
+  },
+  {
+   "family": "qsa_attention",
+   "base_ms": 156.6,
+   "candidate_ms": 155.7,
+   "delta_ms": -0.9,
+   "delta_pct": -0.57,
+   "base_share_pct": 2.89,
+   "candidate_share_pct": 4.14,
+   "base_kernels": null
+  },
+  {
+   "family": "other",
+   "base_ms": 6.2,
+   "candidate_ms": 5.7,
+   "delta_ms": -0.5,
+   "delta_pct": -8.06,
+   "base_share_pct": 0.11,
+   "candidate_share_pct": 0.15,
+   "base_kernels": null
+  },
+  {
+   "family": "indexer",
+   "base_ms": 5.6,
+   "candidate_ms": 15.0,
+   "delta_ms": 9.4,
+   "delta_pct": 167.86,
+   "base_share_pct": 0.1,
+   "candidate_share_pct": 0.4,
+   "base_kernels": null
+  },
+  {
+   "family": "ple",
+   "base_ms": 0.0,
+   "candidate_ms": 0.0,
+   "delta_ms": 0.0,
+   "delta_pct": null,
+   "base_share_pct": 0.0,
+   "candidate_share_pct": 0.0,
+   "base_kernels": null
+  }
+ ],
+ "largest_deltas_ms": [
+  {
+   "family": "expert_down",
+   "base_ms": 1149.8,
+   "candidate_ms": 412.8,
+   "delta_ms": -737.0,
+   "delta_pct": -64.1,
+   "base_share_pct": 21.25,
+   "candidate_share_pct": 10.98,
+   "base_kernels": null
+  },
+  {
+   "family": "quantize_pack",
+   "base_ms": 284.8,
+   "candidate_ms": 0.0,
+   "delta_ms": -284.8,
+   "delta_pct": -100.0,
+   "base_share_pct": 5.26,
+   "candidate_share_pct": 0.0,
+   "base_kernels": null
+  },
+  {
+   "family": "elementwise_norm",
+   "base_ms": 531.4,
+   "candidate_ms": 331.7,
+   "delta_ms": -199.7,
+   "delta_pct": -37.58,
+   "base_share_pct": 9.82,
+   "candidate_share_pct": 8.82,
+   "base_kernels": null
+  },
+  {
+   "family": "dense_projection",
+   "base_ms": 1536.7,
+   "candidate_ms": 1374.3,
+   "delta_ms": -162.4,
+   "delta_pct": -10.57,
+   "base_share_pct": 28.4,
+   "candidate_share_pct": 36.55,
+   "base_kernels": null
+  },
+  {
+   "family": "moe_reduce",
+   "base_ms": 204.0,
+   "candidate_ms": 103.9,
+   "delta_ms": -100.1,
+   "delta_pct": -49.07,
+   "base_share_pct": 3.77,
+   "candidate_share_pct": 2.76,
+   "base_kernels": null
+  },
+  {
+   "family": "hyper_connection",
+   "base_ms": 428.9,
+   "candidate_ms": 335.7,
+   "delta_ms": -93.2,
+   "delta_pct": -21.73,
+   "base_share_pct": 7.93,
+   "candidate_share_pct": 8.93,
+   "base_kernels": null
+  }
+ ]
+}

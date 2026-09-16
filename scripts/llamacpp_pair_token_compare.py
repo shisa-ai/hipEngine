@@ -27,6 +27,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -105,13 +106,18 @@ def run_one(
         log.close()
 
     tokens = payload.get("tokens")
+    if tokens is None:
+        raise SystemExit(
+            f"{label}: server response has no 'tokens' array; the comparison "
+            "cannot be made and must not be reported as agreement"
+        )
+    tokens = [int(t) for t in tokens]
     if not tokens:
-        # Older servers only return the decoded text plus one id per call.
-        tokens = []
-        if payload.get("tokens_predicted") is None and payload.get("content"):
-            raise SystemExit(
-                f"{label}: server returned no token ids; the comparison needs them"
-            )
+        raise SystemExit(
+            f"{label}: server returned an empty 'tokens' array; an empty "
+            "sequence would compare equal to another empty sequence, so this "
+            "is a failure rather than a pass"
+        )
     return {
         "label": label,
         "server": str(server),
@@ -121,6 +127,47 @@ def run_one(
         "prompt_ms": (payload.get("timings") or {}).get("prompt_ms"),
         "predicted_ms": (payload.get("timings") or {}).get("predicted_ms"),
         "content_head": (payload.get("content") or "")[:200],
+    }
+
+
+def compare_arms(a: dict, b: dict, n_predict: int) -> dict:
+    """Decide whether two arms emitted the same sequence.
+
+    Raises rather than returning a result when the inputs cannot support a
+    comparison. A checker that reports agreement for two empty sequences, or for
+    a three-token sequence compared over its own length, is worse than no checker
+    because it reads as evidence.
+    """
+    problems = []
+    for arm in (a, b):
+        tokens = arm.get("tokens")
+        if tokens is None:
+            problems.append(f"{arm.get('label')}: no 'tokens' array in the response")
+            continue
+        if not tokens:
+            problems.append(
+                f"{arm.get('label')}: empty 'tokens' array; two empty sequences "
+                "would compare equal, so this is a failure rather than a pass"
+            )
+            continue
+        if len(tokens) != n_predict:
+            problems.append(
+                f"{arm.get('label')}: emitted {len(tokens)} tokens, "
+                f"expected {n_predict}"
+            )
+    if problems:
+        raise SystemExit(
+            "token comparison cannot be evaluated:\n  " + "\n  ".join(problems)
+        )
+
+    ta, tb = a["tokens"], b["tokens"]
+    n = min(len(ta), len(tb))
+    first_diff = next((i for i in range(n) if ta[i] != tb[i]), None)
+    return {
+        "compared_positions": n,
+        "identical_positions": sum(1 for i in range(n) if ta[i] == tb[i]),
+        "first_divergence": first_diff,
+        "sequences_identical": first_diff is None and len(ta) == len(tb),
     }
 
 
@@ -165,10 +212,12 @@ def main() -> int:
     a = run_one(args.server_a, args.label_a, **common)
     b = run_one(args.server_b, args.label_b, **common)
 
+    verdict = compare_arms(a, b, args.n_predict)
     ta, tb = a["tokens"], b["tokens"]
-    n = min(len(ta), len(tb))
-    first_diff = next((i for i in range(n) if ta[i] != tb[i]), None)
-    agree = sum(1 for i in range(n) if ta[i] == tb[i])
+    n = verdict["compared_positions"]
+    first_diff = verdict["first_divergence"]
+    agree = verdict["identical_positions"]
+    identical = verdict["sequences_identical"]
 
     print(f"{args.case_id}: {len(prompt_ids)} prompt tokens, "
           f"n_predict={args.n_predict}")
@@ -196,7 +245,7 @@ def main() -> int:
         "identical_positions": agree,
         "compared_positions": n,
         "first_divergence": first_diff,
-        "sequences_identical": first_diff is None and len(ta) == len(tb),
+        "sequences_identical": identical,
         "arms": [
             {k: v for k, v in a.items() if k != "tokens"},
             {k: v for k, v in b.items() if k != "tokens"},
@@ -208,6 +257,13 @@ def main() -> int:
         ],
     }, indent=1) + "\n")
     print(f"\nwrote {args.output}")
+    if not identical:
+        print(
+            f"FAIL: {a['label']} and {b['label']} diverge at index {first_diff}; "
+            "a non-zero exit here is what stops this check from passing vacuously",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

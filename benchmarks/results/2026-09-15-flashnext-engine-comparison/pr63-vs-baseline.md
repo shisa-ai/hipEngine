@@ -1,5 +1,13 @@
 # halo-box PR #63: shallow-prefill comparison against the current baseline
 
+> **SUPERSEDED 2026-09-16.** The +13.9% headline and the attention-regression
+> claim below are both wrong. The candidate sample was one repetition and read
+> about 24% high; the baseline row it was compared against was contaminated by a
+> transient event that depressed three cases by 73-86%. The corrected comparison
+> is `pr63-vs-baseline-corrected.md`: **+39.9%** on the full twelve-case suite,
+> measured without the profiler, and **no attention regression**. This file is
+> kept as the record of what was claimed and why it failed review.
+
 **Result: the PR head is 13.9% faster on the 4096-token prefill with identical
 output.** Measured 2026-09-16 on Framework `gfx1151` (AMD Radeon 8060S), machine
 `55ea6c509d0b49eea8de7094a1023668`, both arms on the same host in one session.

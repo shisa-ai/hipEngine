@@ -15,14 +15,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import comparison  # noqa: E402  (sibling module, resolved by the insert above)
 
 RATE_SOURCES = {
     "pwilkin-40a9f4d01": "pwilkin-40a9f4d01-f16.json",
     "halobox-69946438a-f16": "halobox-69946438a-f16.json",
-    "halobox-69946438a-bf16": "halobox-69946438a.json",
+    # Re-measured unprofiled on 2026-09-16. The earlier capture of this same
+    # source put mixed_ja_en 73-86% low and is not used as a rate row.
+    "halobox-69946438a-bf16": "halobox-69946438a-bf16-clean.json",
+    "halobox-pr63-c4aa30229-bf16": "halobox-pr63-c4aa30229-bf16.json",
     "halobox-5f85164": "halobox-5f85164.json",
     "upstream-6011c34ce-f16": "upstream-6011c34ce-f16.json",
     "upstream-6011c34ce-bf16": "upstream-6011c34ce.json",
@@ -36,40 +43,6 @@ PROFILE_SOURCES = {
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _rate_row(label: str, payload: dict) -> dict:
-    per_shape: dict[str, list[float]] = {}
-    for case in payload["cases"]:
-        values = sorted(
-            row["prompt_tok_s"] for row in case["repetitions"] if row.get("prompt_tok_s")
-        )
-        if values:
-            per_shape.setdefault(str(case["prompt_tokens"]), []).append(
-                values[len(values) // 2]
-            )
-    per_case = {}
-    for case in payload["cases"]:
-        values = sorted(
-            row["prompt_tok_s"] for row in case["repetitions"] if row.get("prompt_tok_s")
-        )
-        if values:
-            per_case[case["id"]] = round(values[len(values) // 2], 2)
-    return {
-        "label": label,
-        "kv_dtype": payload["kv_dtype"],
-        "server": payload["server"],
-        "server_sha256": payload["server_sha256"],
-        "source": payload.get("source") or {},
-        "warmups": payload.get("warmups"),
-        "repetitions": payload.get("repetitions"),
-        "prefill_tok_s_by_shape": {
-            shape: round(sum(values) / len(values), 2)
-            for shape, values in sorted(per_shape.items())
-        },
-        "prefill_tok_s_by_case": per_case,
-        "stalled_reps": payload.get("total_stalled_reps"),
-    }
 
 
 def main() -> int:
@@ -99,12 +72,28 @@ def main() -> int:
     args = parser.parse_args()
 
     raw = args.raw_root
-    rates = []
-    raw_hashes = {}
+    raw_hashes: dict[str, str] = {}
+
+    # Every engine is loaded through the same validated path and reduced with
+    # the same estimator. The llama.cpp-family rows used to be an equal-weight
+    # mean of per-case medians while hipEngine's was total tokens over total
+    # prefill time; those are different quantities, so their ratio was not a
+    # speedup. comparison.py now rejects a run whose case set, prompt token
+    # hashes, repetition count, or timing scope do not line up, and
+    # weighted_tok_s gives one estimator to every row.
+    measurements = []
     for label, name in RATE_SOURCES.items():
         path = raw / name
-        rates.append(_rate_row(label, json.loads(path.read_text())))
+        measurements.append(comparison.load_comparator(path, label))
         raw_hashes[str(path)] = _sha256(path)
+    hipengine_measurement = comparison.load_hipengine(
+        args.hipengine, "hipengine-current"
+    )
+    measurements.append(hipengine_measurement)
+
+    validation_notes = comparison.validate(measurements)
+    rates = comparison.comparison_table(measurements)
+    rate_eligible = {row["label"]: row for row in rates if not row["excluded"]}
 
     profiles = []
     for label, name in PROFILE_SOURCES.items():
@@ -249,16 +238,23 @@ def main() -> int:
         ),
     }
 
-    reference = next(
-        row for row in rates if row["label"] == "pwilkin-40a9f4d01"
-    )["prefill_tok_s_by_shape"]
+    reference = rate_eligible["pwilkin-40a9f4d01"]["estimate"]
+    hipengine_rates = rate_eligible["hipengine-current"]["estimate"]
     ratios = {
-        row["label"]: {
-            shape: round(value / hipengine_row["prefill_tok_s_by_shape"][shape], 3)
-            for shape, value in row["prefill_tok_s_by_shape"].items()
-            if shape in hipengine_row["prefill_tok_s_by_shape"]
+        label: {
+            shape: round(value / hipengine_rates["weighted_tok_s_by_shape"][shape], 3)
+            for shape, value in row["estimate"]["weighted_tok_s_by_shape"].items()
+            if shape in hipengine_rates["weighted_tok_s_by_shape"]
         }
-        for row in rates
+        for label, row in rate_eligible.items()
+    }
+    ratios_weighted = {
+        label: round(
+            row["estimate"]["weighted_tok_s"]
+            / hipengine_rates["weighted_tok_s"],
+            3,
+        )
+        for label, row in rate_eligible.items()
     }
 
     artifact = {
@@ -285,10 +281,28 @@ def main() -> int:
             ),
             "warmups_per_case": 1,
             "measured_repetitions_per_case": 3,
-            "aggregation": "median per case, then equal-weight mean across cases",
+            "aggregation": (
+                "one estimator for every engine: total prompt tokens over total "
+                "prompt time (weighted_tok_s), with per-case medians, "
+                "per-category and per-shape weighted rates reported beside it"
+            ),
+            "validation": validation_notes,
             "hipengine_protocol": hip["protocol"],
         },
         "rates": rates,
+        "rates_by_shape": {
+            label: row["estimate"]["weighted_tok_s_by_shape"]
+            for label, row in rate_eligible.items()
+        },
+        "rates_by_category": {
+            label: row["estimate"]["weighted_tok_s_by_category"]
+            for label, row in rate_eligible.items()
+        },
+        "case_medians_by_engine": {
+            label: row["estimate"]["case_medians_tok_s"]
+            for label, row in rate_eligible.items()
+        },
+        "rate_ratios_weighted": ratios_weighted,
         "hipengine_current": hipengine_row,
         "ratio_vs_hipengine": ratios,
         "kernel_profiles": profiles,
@@ -341,9 +355,15 @@ def main() -> int:
     }
     args.output.write_text(json.dumps(artifact, indent=1) + "\n")
     print(json.dumps({
-        "rates": {row["label"]: row["prefill_tok_s_by_shape"] for row in rates},
-        "hipengine": hipengine_row["prefill_tok_s_by_shape"],
-        "ratios": ratios,
+        "weighted_tok_s": {
+            label: round(row["estimate"]["weighted_tok_s"], 2)
+            for label, row in rate_eligible.items()
+        },
+        "ratios_weighted_vs_hipengine": ratios_weighted,
+        "excluded": [
+            {"label": row["label"], "reason": row["exclusion_reason"]}
+            for row in rates if row["excluded"]
+        ],
     }, indent=1))
     print(f"wrote {args.output}")
     return 0
