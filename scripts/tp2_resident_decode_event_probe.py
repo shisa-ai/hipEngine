@@ -43,7 +43,12 @@ rt = get_hip_runtime()
 events: list[tuple[str, object, object]] = []
 
 def wrap(runner: Qwen35GGUFFullStackRunner) -> None:
-    for name in ("_run_linear_attention_layer", "_run_full_attention_layer"):
+    for name in (
+        "_run_linear_attention_layer",
+        "_run_full_attention_layer",
+        "_run_full_attention_attn_only",
+        "_run_post_attention_ffn",
+    ):
         original = getattr(runner, name)
         kind = name.split("_run_")[1]
 
