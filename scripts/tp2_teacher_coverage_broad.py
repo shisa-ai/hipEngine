@@ -1,141 +1,789 @@
 """Broadened AR teacher-forced coverage: TP2 vs both per-GPU TP1 controls.
 
-Extends the 16-row diagnostic gate to 64 prompt rows across the engine's
-categories (code, general English, general Japanese, mixed), comparing
-full-vocabulary last-position logits of the production TP2 runner against
-the TP1 control on each card. Reports mean/p95/max KL and top-1 agreement
-per control, plus per-row worst cases, and writes a JSON artifact.
+Compares the production TP2 runner against the matched TP1 control on each
+physical card over the engine's canonical multi-category prompt suite plus its
+heldout-only rows, using FULL teacher-forced trajectories (every position of
+every prompt), not only the final position.
+
+The harness is fail-closed. ``all_gates_passed`` is False unless *all* of the
+following hold, and every failure is named in ``gate_failures``:
+
+* the intended suite is complete (all canonical + heldout prompt ids) unless
+  ``--allow-partial`` is given, in which case the run is labelled a diagnostic
+  subset and still does not certify anything;
+* both controls (``tp1-d0`` and ``tp1-d1``) were scored against TP2;
+* every declared category (code / general_en / general_ja / mixed_ja_en) has
+  rows and passes the production KL envelope and the 97% top-1 bar, and the
+  same holds within each scope (canonical and heldout) so an aggregate cannot
+  mask a localized failure;
+* the global and canonical-scope production envelope passes for each control,
+  and the heldout scope passes its KL envelope and the global 99% top-1 bar;
+* every teacher/student trajectory matches the expected prompt length and
+  vocabulary width and is finite;
+* every reported metric is finite (a NaN cannot pass a comparison);
+* the TP2 arm is deterministic across at least three identical sweeps
+  (docs/EXECUTION-PROFILES.md 6.4);
+* reset/reuse boundaries hold: a fresh teacher-forced call after the sweep, an
+  intervening different prompt, and a `generate()` call are all bit-identical
+  to prompt 0's first occurrence. Because `teacher_forced_logits` zeroes state
+  itself, these verify reset/reuse, not warm-state continuation.
+
+The row count only chooses the ``coverage_scale`` label; it never turns a run
+into a "complete" or "qualified" result. The gates above are the verdict.
 
 Usage::
 
-    python scripts/tp2_teacher_coverage_broad.py [N_ROWS] [--json PATH]
+    python scripts/tp2_teacher_coverage_broad.py \
+        --repeat-tp2 3 \
+        --json benchmarks/results/2026-09-16-w7900-tp2-teacher-coverage-broad.json
 """
 
+from __future__ import annotations
+
+import argparse
+import hashlib
 import json
+import math
+import os
+import platform
+import shlex
+import subprocess
 import sys
 import time
-
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+from pathlib import Path
 
 import numpy as np
 
-from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
-from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
-from hipengine.loading.gguf import scan_gguf
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
-N_ROWS = int(sys.argv[1]) if len(sys.argv) > 1 else 64
-OUT = sys.argv[sys.argv.index("--json") + 1] if "--json" in sys.argv else \
-    "benchmarks/results/2026-09-15-w7900-tp2-teacher-coverage-broad.json"
-
-PROMPTS = (
-    # code
-    "Write a Python function that reverses a list.",
-    "def binary_search(arr, x):\n    lo, hi = 0, len(arr) - 1\n",
-    "Explain what a红黑树 guarantees about tree height.",
-    "git rebase --onto main feature~3 feature\n",
-    "Implement a thread-safe LRU cache in Python.",
-    "SELECT user_id, count(*) FROM orders GROUP BY user_id HAVING",
-    "```python\nfor i in range(len(a)):\n",
-    "Fix this bug: IndexError: list index out of range\n",
-    # general English
-    "The weather today is",
-    "Paris is the capital of",
-    "Summarize the plot of Hamlet in three sentences.",
-    "Explain photosynthesis to a ten-year-old.",
-    "The committee concluded that",
-    "What are the main causes of inflation?",
-    "Translate 'good morning' into French.",
-    "Write a haiku about autumn rain.",
-    # general Japanese
-    "日本の首都は",
-    "東京タワーはどこにありますか",
-    "日本語で「ありがとう」の意味を説明してください。",
-    "大阪と東京の違いは何ですか",
-    "今日の天気はどうですか",
-    "日本の伝統料理を三つ挙げてください。",
-    "「頑張って」の使い方を例文で示してください。",
-    "夏休みの宿題について書いてください。",
-    # mixed
-    "日本語でPythonのリストを説明してください。",
-    "Explain 漢字 etymology briefly.",
-    "このコードのバグを直してください: print(x[10])\n",
-    "Write カタカナ for 'computer'.",
-    "比較してください: lists vs tuples in Python.",
-    "「機械学習」を英語で何と言いますか",
-    "Review this 日本語 sentence for grammar:",
-    "Mix English and 日本語 in one sentence about AI.",
+from tp2_mlp_generate_e2e import (  # noqa: E402
+    PRODUCTION_GATE,
+    _gate_passes,
+    _softmax,
 )
 
+MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
+CANONICAL_SUITE = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+HELDOUT_SUITE = REPO_ROOT / "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl"
+CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
+CATEGORY_TOP1 = 0.97
+#: docs/EXECUTION-PROFILES.md 6.4 requires at least three fixed-seed runs.
+MIN_DETERMINISM_SWEEPS = 3
+#: A row count below this cannot resolve the 99% global / 97% per-category
+#: top-1 bars (docs/EXECUTION-PROFILES.md "Teacher-forced probe row-count
+#: standard"); it only labels the probe scale, it does not certify anything.
+QUALIFICATION_ROWS = 500
 
-def _softmax(logits: np.ndarray) -> np.ndarray:
-    shifted = logits - logits.max(axis=-1, keepdims=True)
-    exp = np.exp(shifted.astype(np.float64))
-    return exp / exp.sum(axis=-1, keepdims=True)
+
+def qualification_label(rows: int) -> str:
+    """Probe-scale label only: ``short_probe`` or ``extended_probe``.
+
+    This is deliberately not called "full" or "complete": a row count cannot
+    certify correctness. The enforced gates are the verdict.
+    """
+
+    return "extended_probe" if rows >= QUALIFICATION_ROWS else "short_probe"
 
 
-def _kl_row(teacher: np.ndarray, student: np.ndarray) -> dict[str, float]:
+# -- suite / rendering ------------------------------------------------------
+
+
+def load_prompt_suite(
+    canonical_path: Path = CANONICAL_SUITE,
+    heldout_path: Path = HELDOUT_SUITE,
+) -> list[dict[str, object]]:
+    """Canonical suite plus heldout-only rows, deduplicated by id."""
+
+    canonical: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for path in (canonical_path, heldout_path):
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            row_id = str(row["id"])
+            if row_id in seen:
+                continue
+            seen.add(row_id)
+            row["heldout"] = path == heldout_path
+            canonical.append(row)
+    return canonical
+
+
+def full_suite_ids(
+    canonical_path: Path = CANONICAL_SUITE,
+    heldout_path: Path = HELDOUT_SUITE,
+) -> set[str]:
+    ids: set[str] = set()
+    for path in (canonical_path, heldout_path):
+        for line in path.read_text().splitlines():
+            if line.strip():
+                ids.add(str(json.loads(line)["id"]))
+    return ids
+
+
+def render_chat(tokenizer: object, messages: list[dict[str, str]]) -> tuple[int, ...]:
+    parts = []
+    for message in messages:
+        parts.append(
+            f"<|im_start|>{message['role']}\n{message['content']}<|im_end|>\n"
+        )
+    parts.append("<|im_start|>assistant\n")
+    return tuple(int(t) for t in tokenizer.encode("".join(parts)))  # type: ignore[attr-defined]
+
+
+def _load_tokenizer() -> object:
+    """Seam for mocked tests; returns the GGUF tokenizer."""
+
+    import hipengine.loading as _loading
+    from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+    return Qwen35GGUFTokenizer.from_gguf_info(_loading.load_gguf_index(MODEL))
+
+
+def _session_factory(
+    model: str, *, devices: tuple[int, ...], mode: str
+) -> object:
+    """Seam for mocked tests; constructs one resident session."""
+
+    from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
+
+    return MlpTP2GenerationSession(model, devices=devices, mode=mode)
+
+
+# -- metrics ----------------------------------------------------------------
+
+
+def _kl_rows(teacher: np.ndarray, student: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-row KL(P||Q) and top-1 match flags; shapes must agree."""
+
+    if teacher.shape != student.shape:
+        raise ValueError(f"shape mismatch: teacher {teacher.shape} vs student {student.shape}")
     p = _softmax(teacher)
     q = _softmax(student)
-    eps = 1e-12
-    kl = float(np.sum(p * (np.log(p + eps) - np.log(q + eps))))
-    return {"kl": kl, "top1": int(np.argmax(teacher)) == int(np.argmax(student))}
+    kl = (p * (np.log(p + 1e-45) - np.log(q + 1e-45))).sum(axis=-1)
+    return kl, teacher.argmax(axis=-1) == student.argmax(axis=-1)
 
 
-def render(tok, text: str) -> tuple[int, ...]:
-    return tuple(int(t) for t in tok.encode(f"<|im_start|>user\n{text}<|im_end|>\n<|im_start|>assistant\n"))
-
-
-t0 = time.perf_counter()
-info = scan_gguf(MODEL)
-import hipengine.loading as _loading
-tok = Qwen35GGUFTokenizer.from_gguf_info(_loading.load_gguf_index(MODEL))
-tokens_by_row = [render(tok, text) for text in PROMPTS[:N_ROWS]]
-tokens_by_row = [t for t in tokens_by_row if len(t) >= 4]
-
-# Sequential arms: three resident sessions cannot coexist in VRAM.
-logits_by_arm: dict[str, list[np.ndarray]] = {}
-for arm, devices in (("tp1-d0", (0,)), ("tp1-d1", (1,)), ("tp2", (0, 1))):
-    build0 = time.perf_counter()
-    session = MlpTP2GenerationSession(MODEL, devices=devices, mode="tp2" if arm == "tp2" else "tp1")
-    print(f"{arm} session built in {time.perf_counter() - build0:.0f}s", flush=True)
-    arm_logits = []
-    for index, tokens in enumerate(tokens_by_row):
-        row_logits = np.asarray(session.teacher_forced_logits(tokens)[-1], dtype=np.float64)
-        arm_logits.append(row_logits)
-        if arm == "tp2":
-            print(f"row {index}: tp2 done", flush=True)
-    logits_by_arm[arm] = arm_logits
-    session.close()
-    print(f"{arm} swept; session closed", flush=True)
-
-rows = []
-for index, tokens in enumerate(tokens_by_row):
-    row = {"index": index, "tokens": len(tokens)}
-    for control in ("tp1-d0", "tp1-d1"):
-        m = _kl_row(logits_by_arm[control][index], logits_by_arm["tp2"][index])
-        row[control] = m
-    rows.append(row)
-    print(f"row {index}: kl_d0={row['tp1-d0']['kl']:.3e} "
-          f"kl_d1={row['tp1-d1']['kl']:.3e} "
-          f"top1_d0={row['tp1-d0']['top1']} top1_d1={row['tp1-d1']['top1']}", flush=True)
-
-summary = {}
-for control in ("tp1-d0", "tp1-d1"):
-    kls = np.array([r[control]["kl"] for r in rows])
-    top1 = [r[control]["top1"] for r in rows]
-    summary[control] = {
-        "rows": len(rows),
-        "mean_kl": float(kls.mean()),
-        "p95_kl": float(np.percentile(kls, 95)),
-        "max_kl": float(kls.max()),
-        "top1_agreement": sum(top1) / len(top1),
+def _aggregate(kl: np.ndarray, top1: np.ndarray) -> dict[str, float]:
+    if kl.size == 0:
+        return {
+            "rows": 0,
+            "mean_kl": float("nan"),
+            "p95_kl": float("nan"),
+            "p99_kl": float("nan"),
+            "max_kl": float("nan"),
+            "top1_agreement": float("nan"),
+            "flipped_rows": 0,
+        }
+    return {
+        "rows": int(kl.size),
+        "mean_kl": float(kl.mean()),
+        "p95_kl": float(np.percentile(kl, 95)),
+        "p99_kl": float(np.percentile(kl, 99)),
+        "max_kl": float(kl.max()),
+        "top1_agreement": float(top1.mean()),
+        "flipped_rows": int((~top1).sum()),
     }
-    print(f"{control}: mean_kl={summary[control]['mean_kl']:.3e} "
-          f"p95={summary[control]['p95_kl']:.3e} max={summary[control]['max_kl']:.3e} "
-          f"top1={summary[control]['top1_agreement']:.3f}", flush=True)
 
-json.dump({"summary": summary, "rows": rows}, open(OUT, "w"), indent=1)
-print(f"artifact: {OUT}", flush=True)
-for name, s in sessions.items():
-    s.close()
+
+def _envelope_gate(summary: dict[str, float], *, top1_bar: float) -> dict[str, object]:
+    """Production KL envelope plus a caller-supplied top-1 bar.
+
+    Any non-finite metric fails: a NaN cannot pass a comparison.
+    """
+
+    failures: list[str] = []
+    if summary["rows"] == 0:
+        failures.append("no rows")
+    else:
+        for key in ("mean_kl", "p95_kl", "p99_kl", "max_kl", "top1_agreement"):
+            if not math.isfinite(float(summary[key])):
+                failures.append(f"{key} non-finite ({summary[key]})")
+        for key in ("mean_kl", "p95_kl", "p99_kl", "max_kl"):
+            if math.isfinite(float(summary[key])) and summary[key] > PRODUCTION_GATE[key]:
+                failures.append(f"{key} {summary[key]:.6g} > {PRODUCTION_GATE[key]}")
+        if (
+            math.isfinite(float(summary["top1_agreement"]))
+            and summary["top1_agreement"] < top1_bar
+        ):
+            failures.append(f"top1_agreement {summary['top1_agreement']:.6f} < {top1_bar}")
+    return {"passed": not failures, "failures": failures, "top1_bar": top1_bar}
+
+
+def _row_hash(logits: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(logits, dtype=np.float32).tobytes()).hexdigest()
+
+
+# -- arms -------------------------------------------------------------------
+
+
+def run_teacher_arm(session: object, token_rows: list[tuple[int, ...]]) -> list[np.ndarray]:
+    """Full-trajectory logits for one arm (one resident session)."""
+
+    return [
+        np.asarray(session.teacher_forced_logits(tokens), dtype=np.float32)  # type: ignore[attr-defined]
+        for tokens in token_rows
+    ]
+
+
+def score_arm(
+    teacher: list[np.ndarray],
+    student: list[np.ndarray],
+    categories: list[str],
+    heldout: list[bool],
+    *,
+    expected_positions: list[int] | None = None,
+    vocab_size: int | None = None,
+) -> dict[str, object]:
+    """Per-position KL/top-1 for one control, aggregated globally, per category,
+    per scope, and per category-within-scope.
+
+    Trajectory completeness is checked against the *expected* prompt lengths and
+    vocabulary width (not merely teacher vs student), so two identically
+    truncated trajectories do not pass.
+    """
+
+    shape_mismatches: list[dict[str, object]] = []
+    nonfinite_rows: list[int] = []
+    if expected_positions is None:
+        expected_positions = [int(row.shape[0]) for row in teacher]
+    if len(teacher) != len(student) or len(teacher) != len(expected_positions):
+        shape_mismatches.append(
+            {
+                "kind": "count",
+                "teacher_rows": len(teacher),
+                "student_rows": len(student),
+                "expected_rows": len(expected_positions),
+            }
+        )
+    row_kl: list[np.ndarray] = []
+    row_top1: list[np.ndarray] = []
+    row_index: list[int] = []
+    for index, (t_row, s_row) in enumerate(zip(teacher, student)):
+        expected = expected_positions[index] if index < len(expected_positions) else None
+        row_invalid = False
+        for label, row in (("teacher", t_row), ("student", s_row)):
+            if row.ndim != 2:
+                shape_mismatches.append({"kind": "ndim", "index": index, "which": label})
+                row_invalid = True
+                continue
+            if expected is not None and row.shape[0] != expected:
+                shape_mismatches.append(
+                    {
+                        "kind": "positions",
+                        "index": index,
+                        "which": label,
+                        "shape": list(row.shape),
+                        "expected_positions": expected,
+                    }
+                )
+                row_invalid = True
+            if vocab_size is not None and row.shape[1] != vocab_size:
+                shape_mismatches.append(
+                    {
+                        "kind": "vocab",
+                        "index": index,
+                        "which": label,
+                        "cols": int(row.shape[1]),
+                        "expected_vocab": vocab_size,
+                    }
+                )
+                row_invalid = True
+        if t_row.shape != s_row.shape:
+            shape_mismatches.append(
+                {
+                    "kind": "row",
+                    "index": index,
+                    "teacher_shape": list(t_row.shape),
+                    "student_shape": list(s_row.shape),
+                }
+            )
+            row_invalid = True
+        if row_invalid:
+            continue
+        if not (np.isfinite(t_row).all() and np.isfinite(s_row).all()):
+            nonfinite_rows.append(index)
+            continue
+        kl, top1 = _kl_rows(t_row, s_row)
+        row_kl.append(kl)
+        row_top1.append(top1)
+        row_index.append(index)
+
+    def agg(indices: list[int]) -> dict[str, float]:
+        kl = np.concatenate([row_kl[i] for i in indices]) if indices else np.empty(0)
+        top1 = (
+            np.concatenate([row_top1[i] for i in indices])
+            if indices
+            else np.empty(0, dtype=bool)
+        )
+        return _aggregate(kl, top1)
+
+    all_indices = list(range(len(row_index)))
+    per_category = {
+        category: agg(
+            [pos for pos, src in enumerate(row_index) if categories[src] == category]
+        )
+        for category in CATEGORIES
+    }
+    per_scope = {
+        "canonical": agg([pos for pos, src in enumerate(row_index) if not heldout[src]]),
+        "heldout": agg([pos for pos, src in enumerate(row_index) if heldout[src]]),
+    }
+    per_category_scope: dict[str, dict[str, dict[str, float]]] = {}
+    for category in CATEGORIES:
+        per_category_scope[category] = {}
+        for scope, want_heldout in (("canonical", False), ("heldout", True)):
+            per_category_scope[category][scope] = agg(
+                [
+                    pos
+                    for pos, src in enumerate(row_index)
+                    if categories[src] == category and heldout[src] == want_heldout
+                ]
+            )
+    return {
+        "global": agg(all_indices),
+        "categories": per_category,
+        "scopes": per_scope,
+        "category_scopes": per_category_scope,
+        "shape_mismatches": shape_mismatches,
+        "nonfinite_rows": nonfinite_rows,
+        "scored_rows": len(row_index),
+    }
+
+
+# -- gate evaluation (pure, unit-tested) ------------------------------------
+
+
+def evaluate_gates(
+    *,
+    comparisons: dict[str, dict[str, object]],
+    expected_controls: tuple[str, ...] = ("tp1-d0", "tp1-d1"),
+    categories_present: set[str],
+    expected_categories: tuple[str, ...] = CATEGORIES,
+    suite_has_heldout: bool,
+    suite_complete: bool,
+    require_suite_complete: bool = True,
+    nonfinite_rows: list[str],
+    determinism: dict[str, object] | None,
+    state_boundaries: dict[str, object] | None,
+) -> tuple[bool, list[str]]:
+    """Fail-closed verdict over every required gate."""
+
+    failures: list[str] = []
+    if require_suite_complete and not suite_complete:
+        failures.append("intended prompt suite incomplete (diagnostic subset)")
+    for control in expected_controls:
+        data = comparisons.get(control)
+        if data is None:
+            failures.append(f"missing control {control}")
+            continue
+        global_gate = _envelope_gate(
+            data["global"], top1_bar=PRODUCTION_GATE["top1_agreement"]  # type: ignore[arg-type]
+        )
+        if not global_gate["passed"]:
+            failures.append(f"{control} global: {'; '.join(global_gate['failures'])}")
+        canonical = data["scopes"]["canonical"]  # type: ignore[index]
+        canon_gate = _envelope_gate(canonical, top1_bar=PRODUCTION_GATE["top1_agreement"])
+        if not canon_gate["passed"]:
+            failures.append(f"{control} canonical: {'; '.join(canon_gate['failures'])}")
+        heldout = data["scopes"]["heldout"]  # type: ignore[index]
+        heldout_gate = _envelope_gate(
+            heldout, top1_bar=PRODUCTION_GATE["top1_agreement"]
+        )
+        if not heldout_gate["passed"]:
+            failures.append(f"{control} heldout: {'; '.join(heldout_gate['failures'])}")
+        for category in expected_categories:
+            summary = data["categories"].get(category)  # type: ignore[union-attr]
+            if summary is None:
+                failures.append(f"{control} missing category {category}")
+                continue
+            gate = _envelope_gate(summary, top1_bar=CATEGORY_TOP1)
+            if not gate["passed"]:
+                failures.append(
+                    f"{control} category {category}: {'; '.join(gate['failures'])}"
+                )
+            # Per category-within-scope: only require a scope the suite covers.
+            for scope in ("canonical", "heldout"):
+                scope_summary = data["category_scopes"][category][scope]  # type: ignore[index]
+                if scope_summary["rows"] == 0:
+                    continue
+                scope_gate = _envelope_gate(scope_summary, top1_bar=CATEGORY_TOP1)
+                if not scope_gate["passed"]:
+                    failures.append(
+                        f"{control} {category}/{scope}: {'; '.join(scope_gate['failures'])}"
+                    )
+        mismatches = data.get("shape_mismatches") or []
+        if mismatches:
+            failures.append(f"{control} incomplete trajectories: {len(mismatches)}")
+        bad_rows = data.get("nonfinite_rows") or []
+        if bad_rows:
+            failures.append(f"{control} non-finite trajectories: {len(bad_rows)}")
+
+    missing_categories = set(expected_categories) - set(categories_present)
+    if missing_categories:
+        failures.append(f"suite missing categories: {sorted(missing_categories)}")
+    if not suite_has_heldout:
+        failures.append("suite has no heldout rows")
+
+    if nonfinite_rows:
+        failures.append(f"non-finite logit rows: {len(nonfinite_rows)}")
+
+    if determinism is None:
+        failures.append("determinism not measured")
+    else:
+        if int(determinism.get("sweeps", 0)) < MIN_DETERMINISM_SWEEPS:
+            failures.append(
+                f"determinism needs >={MIN_DETERMINISM_SWEEPS} identical sweeps"
+            )
+        if not determinism.get("per_row_match", False):
+            failures.append("determinism per-row mismatch")
+
+    if state_boundaries is None:
+        failures.append("state boundaries not measured")
+    else:
+        if not state_boundaries.get("reset_reuse_bit_exact", False):
+            failures.append("reset/reuse boundary not bit-exact")
+        if not state_boundaries.get("intervening_prompt_reuse_bit_exact", False):
+            failures.append("intervening-prompt reuse boundary not bit-exact")
+        if not state_boundaries.get("reset_after_generation_bit_exact", False):
+            failures.append("reset-after-generation boundary not bit-exact")
+
+    return (not failures), failures
+
+
+# -- provenance -------------------------------------------------------------
+
+
+def _git_revision() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return out.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _git_dirty() -> bool:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return bool(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+
+def _model_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 24), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _host_identity() -> dict[str, object]:
+    cpu_model = "unknown"
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                cpu_model = line.split(":", 1)[1].strip()
+                break
+    except OSError:
+        pass
+    return {
+        "node": platform.node(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "cpu_model": cpu_model,
+        "cpu_count": os.cpu_count(),
+        "nice": os.nice(0),
+    }
+
+
+def _device_identities(session: object) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for device in session.devices:  # type: ignore[attr-defined]
+        info = session.runtime.device_info(int(device))  # type: ignore[attr-defined]
+        out[str(device)] = {
+            "name": info.name,
+            "uuid": info.uuid,
+            "pci_bus_id": info.pci_bus_id,
+        }
+    return out
+
+
+def _resolved_route(session: object) -> dict[str, object]:
+    return {
+        "mode": session.mode,  # type: ignore[attr-defined]
+        "schedule": session.schedule,  # type: ignore[attr-defined]
+        "driver": session.driver,  # type: ignore[attr-defined]
+        "reduce_mode": session.reduce_mode,  # type: ignore[attr-defined]
+        "head_shard": session.head_shard,  # type: ignore[attr-defined]
+        "max_sequence_length": session.max_sequence_length,  # type: ignore[attr-defined]
+    }
+
+
+# -- driver -----------------------------------------------------------------
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--json", default=None)
+    parser.add_argument("--limit-rows", type=int, default=None)
+    parser.add_argument(
+        "--arms",
+        default="tp1-d0,tp1-d1,tp2",
+        help="comma-separated subset of tp1-d0,tp1-d1,tp2",
+    )
+    parser.add_argument(
+        "--repeat-tp2",
+        type=int,
+        default=MIN_DETERMINISM_SWEEPS,
+        help=f"identical TP2 sweeps; >={MIN_DETERMINISM_SWEEPS} required for determinism",
+    )
+    parser.add_argument(
+        "--model-hash",
+        choices=("full", "none"),
+        default="full",
+        help="full sha256 of the model artifact, or 'none' for a fast probe",
+    )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="allow a diagnostic subset of the suite; the run still cannot pass "
+        "the suite-completeness gate, it is labelled diagnostic",
+    )
+    args = parser.parse_args(argv)
+    if args.repeat_tp2 < 1:
+        parser.error("--repeat-tp2 must be >= 1")
+    arms = [a.strip() for a in args.arms.split(",") if a.strip()]
+
+    suite = load_prompt_suite()
+    if args.limit_rows is not None:
+        suite = suite[: args.limit_rows]
+    tokenizer = _load_tokenizer()
+    token_rows = [render_chat(tokenizer, row["messages"]) for row in suite]  # type: ignore[arg-type]
+    categories = [str(row["category"]) for row in suite]
+    heldout = [bool(row["heldout"]) for row in suite]
+    total_positions = sum(len(t) for t in token_rows)
+    category_counts = {c: categories.count(c) for c in CATEGORIES}
+    categories_present = {c for c in CATEGORIES if category_counts.get(c, 0) > 0}
+    expected_ids = full_suite_ids()
+    suite_complete = {str(row["id"]) for row in suite} == expected_ids
+
+    t0 = time.perf_counter()
+    print(
+        f"suite: {len(suite)} prompts ({total_positions} teacher-forced positions) "
+        f"categories={category_counts} heldout={sum(heldout)} complete={suite_complete}",
+        flush=True,
+    )
+
+    teacher_logits: dict[str, list[np.ndarray]] = {}
+    arm_build_s: dict[str, float] = {}
+    device_identities: dict[str, object] = {}
+    resolved_routes: dict[str, object] = {}
+    vocab_size: int | None = None
+    student: list[np.ndarray] | None = None
+    repeats: list[list[np.ndarray]] = []
+    reset_logits: np.ndarray | None = None
+    intervening_logits: np.ndarray | None = None
+    after_generation_logits: np.ndarray | None = None
+    for arm in arms:
+        if arm not in {"tp1-d0", "tp1-d1", "tp2"}:
+            raise SystemExit(f"unknown arm {arm!r}")
+        devices = {"tp1-d0": (0,), "tp1-d1": (1,), "tp2": (0, 1)}[arm]
+        mode = "tp2" if arm == "tp2" else "tp1"
+        session: object | None = None
+        try:
+            build0 = time.perf_counter()
+            session = _session_factory(MODEL, devices=devices, mode=mode)
+            arm_build_s[arm] = time.perf_counter() - build0
+            device_identities[arm] = _device_identities(session)
+            resolved_routes[arm] = _resolved_route(session)
+            vocab_size = int(session.vocab_size)  # type: ignore[attr-defined]
+            print(
+                f"{arm}: session built in {arm_build_s[arm]:.0f}s "
+                f"route={resolved_routes[arm]} vocab={vocab_size}",
+                flush=True,
+            )
+            logits = run_teacher_arm(session, token_rows)
+            if arm in {"tp1-d0", "tp1-d1"}:
+                teacher_logits[arm] = logits
+            else:
+                student = logits
+                repeats = [student]
+                for rep in range(1, max(args.repeat_tp2, 1)):
+                    print(f"tp2: determinism repeat {rep}", flush=True)
+                    repeats.append(run_teacher_arm(session, token_rows))
+                # State boundaries. teacher_forced_logits zeroes all state
+                # itself, so these are RESET/REUSE boundaries - they verify a
+                # fresh call does not inherit prior state. They do NOT certify
+                # warm-state continuation.
+                print("tp2: reset/reuse re-run of prompt 0", flush=True)
+                reset_logits = run_teacher_arm(session, token_rows[:1])[0]
+                if len(token_rows) > 1:
+                    print("tp2: intervening-prompt reuse re-run", flush=True)
+                    run_teacher_arm(session, token_rows[1:2])
+                    intervening_logits = run_teacher_arm(session, token_rows[:1])[0]
+                print("tp2: reset-after-generation re-run", flush=True)
+                session.generate(token_rows[0], max_new_tokens=2)  # type: ignore[attr-defined]
+                after_generation_logits = run_teacher_arm(session, token_rows[:1])[0]
+        finally:
+            if session is not None:
+                session.close()  # type: ignore[attr-defined]
+        print(f"{arm}: swept; session closed", flush=True)
+
+    # Finite checks (teacher and student).
+    nonfinite: list[str] = []
+    for arm_name, arm_logits in teacher_logits.items():
+        for index, row in enumerate(arm_logits):
+            if not np.isfinite(row).all():
+                nonfinite.append(f"{arm_name}:{index}")
+    for index, row in enumerate(student or []):
+        if not np.isfinite(row).all():
+            nonfinite.append(f"tp2:{index}")
+
+    expected_positions = [len(t) for t in token_rows]
+    comparisons: dict[str, dict[str, object]] = {}
+    for control in ("tp1-d0", "tp1-d1"):
+        if control not in teacher_logits or student is None:
+            continue
+        summary = score_arm(
+            teacher_logits[control],
+            student,
+            categories,
+            heldout,
+            expected_positions=expected_positions,
+            vocab_size=vocab_size,
+        )
+        comparisons[control] = summary
+        print(f"{control}: global={summary['global']}", flush=True)
+        print(f"{control}: scopes={summary['scopes']}", flush=True)
+        for c in CATEGORIES:
+            print(f"  {c}: {summary['categories'][c]}", flush=True)
+
+    determinism: dict[str, object] | None = None
+    if student is not None:
+        hashes = [_row_hash(row) for row in student]
+        determinism = {
+            "sweeps": max(args.repeat_tp2, 1),
+            "per_row_match": True,
+            "mismatched_sweeps": [],
+        }
+        for rep, sweep in enumerate(repeats[1:], start=1):
+            rep_hashes = [_row_hash(row) for row in sweep]
+            if rep_hashes != hashes:
+                determinism["per_row_match"] = False
+                determinism["mismatched_sweeps"].append(rep)  # type: ignore[union-attr]
+    state_boundaries: dict[str, object] | None = None
+    if student is not None:
+        first_hash = _row_hash(student[0])
+        state_boundaries = {
+            "prompt_index": 0,
+            "certifies_warm_continuation": False,
+            "note": (
+                "teacher_forced_logits zeroes state per call; these verify "
+                "reset/reuse, not warm-state continuation"
+            ),
+            "reset_reuse_bit_exact": bool(
+                reset_logits is not None and _row_hash(reset_logits) == first_hash
+            ),
+            "intervening_prompt_reuse_bit_exact": bool(
+                intervening_logits is not None
+                and _row_hash(intervening_logits) == first_hash
+            ),
+            "reset_after_generation_bit_exact": bool(
+                after_generation_logits is not None
+                and _row_hash(after_generation_logits) == first_hash
+            ),
+        }
+
+    all_pass, gate_failures = evaluate_gates(
+        comparisons=comparisons,
+        categories_present=categories_present,
+        suite_has_heldout=any(heldout),
+        suite_complete=suite_complete,
+        require_suite_complete=not args.allow_partial,
+        nonfinite_rows=nonfinite,
+        determinism=determinism,
+        state_boundaries=state_boundaries,
+    )
+
+    result: dict[str, object] = {
+        "protocol": (
+            "full teacher-forced trajectories, canonical suite + heldout-only rows, "
+            "matched per-GPU TP1 controls, sequential arms, fail-closed gates"
+        ),
+        "command": shlex.join([sys.executable, *sys.argv]),
+        "source_revision": _git_revision(),
+        "source_dirty": _git_dirty(),
+        "host": _host_identity(),
+        "model": {
+            "path": MODEL,
+            "size_bytes": os.path.getsize(MODEL),
+            "sha256": _model_sha256(MODEL) if args.model_hash == "full" else None,
+            "hash_mode": args.model_hash,
+        },
+        "suite": {
+            "canonical": str(CANONICAL_SUITE),
+            "heldout": str(HELDOUT_SUITE),
+            "prompts": len(suite),
+            "positions": total_positions,
+            "categories": category_counts,
+            "heldout_prompts": int(sum(heldout)),
+            "prompt_ids": [str(row["id"]) for row in suite],
+            "complete": suite_complete,
+            "diagnostic_scope": not suite_complete,
+        },
+        "arms_run": arms,
+        "arm_build_s": arm_build_s,
+        "device_identities": device_identities,
+        "resolved_routes": resolved_routes,
+        "thresholds": {
+            **PRODUCTION_GATE,
+            "category_top1_agreement": CATEGORY_TOP1,
+            "min_determinism_sweeps": MIN_DETERMINISM_SWEEPS,
+        },
+        "coverage_scale": qualification_label(total_positions),
+        "certification": "none (probe only; gates are the verdict)",
+        "nonfinite_rows": nonfinite,
+        "comparison": comparisons,
+        "determinism": determinism,
+        "state_boundaries": state_boundaries,
+        "all_gates_passed": all_pass,
+        "gate_failures": gate_failures,
+        "wall_s": time.perf_counter() - t0,
+    }
+
+    if args.json:
+        _write_artifact(result, args.json)
+    print(
+        f"done in {result['wall_s']:.0f}s; coverage_scale={result['coverage_scale']} "
+        f"all_gates_passed={all_pass} failures={gate_failures}",
+        flush=True,
+    )
+    return 0 if all_pass else 1
+
+
+def _write_artifact(result: dict[str, object], path: str | None) -> None:
+    if not path:
+        return
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=1) + "\n")
+    print(f"artifact: {out}", flush=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

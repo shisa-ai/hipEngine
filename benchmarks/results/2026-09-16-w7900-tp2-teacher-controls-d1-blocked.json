@@ -1,0 +1,229 @@
+{
+ "reference_tokens": [
+  248045,
+  846,
+  198,
+  7734,
+  264,
+  12654,
+  709,
+  421,
+  16915,
+  287,
+  264,
+  1103,
+  321,
+  10033,
+  1141,
+  22373
+ ],
+ "results": [
+  {
+   "case": {
+    "positions": 16,
+    "devices": "1",
+    "mode": "tp1",
+    "schedule": "eager",
+    "calls": 1,
+    "reset_between": false
+   },
+   "verdict": "FAIL[returncode=1 | child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan) | no CHILD_OK | call count=0 expected 1]",
+   "reasons": [
+    "returncode=1",
+    "child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "no CHILD_OK",
+    "call count=0 expected 1"
+   ],
+   "wall_s": 84.7203127713874,
+   "snapshot": {
+    "nice": -4,
+    "loadavg": [
+     0.976,
+     1.023,
+     1.109
+    ],
+    "gpu_busy_percent": [
+     0,
+     0
+    ],
+    "gpu_telemetry_available": true
+   },
+   "idle": true,
+   "timed_out": false,
+   "returncode": 1,
+   "tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    12654,
+    709,
+    421,
+    16915,
+    287,
+    264,
+    1103,
+    321,
+    10033,
+    1141,
+    22373
+   ],
+   "build_s": 83.369,
+   "exec_started": true,
+   "calls": [],
+   "ok": null,
+   "fail": "reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+   "cleanup_ok": true,
+   "lines": [
+    "CHILD_TOKENS [248045, 846, 198, 7734, 264, 12654, 709, 421, 16915, 287, 264, 1103, 321, 10033, 1141, 22373]",
+    "CHILD_BUILD_OK elapsed_s=83.369 mode=tp1 schedule=eager devices=[1] vocab_size=248320",
+    "CHILD_EXEC_START calls=1 positions=16 reset_between=False",
+    "CHILD_CALL_STATS call=0 shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan",
+    "CHILD_FAIL reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "CHILD_CLEANUP_OK",
+    "CHILD_EXITING code=1 status=invalid_logits"
+   ],
+   "prefix_consistent": true,
+   "prefix_detail": "reference"
+  },
+  {
+   "case": {
+    "positions": 16,
+    "devices": "1",
+    "mode": "tp1",
+    "schedule": "eager",
+    "calls": 1,
+    "reset_between": false
+   },
+   "verdict": "FAIL[returncode=1 | child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan) | no CHILD_OK | call count=0 expected 1]",
+   "reasons": [
+    "returncode=1",
+    "child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "no CHILD_OK",
+    "call count=0 expected 1"
+   ],
+   "wall_s": 85.52685685269535,
+   "snapshot": {
+    "nice": -4,
+    "loadavg": [
+     1.429,
+     1.111,
+     1.125
+    ],
+    "gpu_busy_percent": [
+     0,
+     0
+    ],
+    "gpu_telemetry_available": true
+   },
+   "idle": true,
+   "timed_out": false,
+   "returncode": 1,
+   "tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    12654,
+    709,
+    421,
+    16915,
+    287,
+    264,
+    1103,
+    321,
+    10033,
+    1141,
+    22373
+   ],
+   "build_s": 84.121,
+   "exec_started": true,
+   "calls": [],
+   "ok": null,
+   "fail": "reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+   "cleanup_ok": true,
+   "lines": [
+    "CHILD_TOKENS [248045, 846, 198, 7734, 264, 12654, 709, 421, 16915, 287, 264, 1103, 321, 10033, 1141, 22373]",
+    "CHILD_BUILD_OK elapsed_s=84.121 mode=tp1 schedule=eager devices=[1] vocab_size=248320",
+    "CHILD_EXEC_START calls=1 positions=16 reset_between=False",
+    "CHILD_CALL_STATS call=0 shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan",
+    "CHILD_FAIL reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "CHILD_CLEANUP_OK",
+    "CHILD_EXITING code=1 status=invalid_logits"
+   ],
+   "prefix_consistent": true,
+   "prefix_detail": "consistent"
+  },
+  {
+   "case": {
+    "positions": 16,
+    "devices": "1",
+    "mode": "tp1",
+    "schedule": "eager",
+    "calls": 1,
+    "reset_between": false
+   },
+   "verdict": "FAIL[returncode=1 | child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan) | no CHILD_OK | call count=0 expected 1]",
+   "reasons": [
+    "returncode=1",
+    "child failure: reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "no CHILD_OK",
+    "call count=0 expected 1"
+   ],
+   "wall_s": 84.72614242043346,
+   "snapshot": {
+    "nice": -4,
+    "loadavg": [
+     1.102,
+     1.081,
+     1.109
+    ],
+    "gpu_busy_percent": [
+     0,
+     0
+    ],
+    "gpu_telemetry_available": true
+   },
+   "idle": true,
+   "timed_out": false,
+   "returncode": 1,
+   "tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    12654,
+    709,
+    421,
+    16915,
+    287,
+    264,
+    1103,
+    321,
+    10033,
+    1141,
+    22373
+   ],
+   "build_s": 83.359,
+   "exec_started": true,
+   "calls": [],
+   "ok": null,
+   "fail": "reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+   "cleanup_ok": true,
+   "lines": [
+    "CHILD_TOKENS [248045, 846, 198, 7734, 264, 12654, 709, 421, 16915, 287, 264, 1103, 321, 10033, 1141, 22373]",
+    "CHILD_BUILD_OK elapsed_s=83.359 mode=tp1 schedule=eager devices=[1] vocab_size=248320",
+    "CHILD_EXEC_START calls=1 positions=16 reset_between=False",
+    "CHILD_CALL_STATS call=0 shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan",
+    "CHILD_FAIL reason=invalid-logits call=0 detail=non-finite logits (shape=[16, 248320] finite=0/3973120 nan=3973120 inf=0 min=nan max=nan)",
+    "CHILD_CLEANUP_OK",
+    "CHILD_EXITING code=1 status=invalid_logits"
+   ],
+   "prefix_consistent": true,
+   "prefix_detail": "consistent"
+  }
+ ]
+}
