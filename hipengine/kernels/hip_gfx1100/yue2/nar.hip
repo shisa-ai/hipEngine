@@ -259,7 +259,8 @@ __global__ void yue2_nar_attention_kernel(
       // expf(score - new_max) for the same score and the same tile maximum, and
       // the sums below still walk the tile in the same order, so this is
       // bit-exact against the parent kernel.
-      weights[r * blockDim.x + lane] = k_row != 0 ? expf(tile[lane] - new_max[r]) : 0.0f;
+      weights[lane * YUE2_NAR_ROWS_PER_BLOCK + r] =
+          k_row != 0 ? expf(tile[lane] - new_max[r]) : 0.0f;
     }
     __syncthreads();
 
@@ -271,12 +272,35 @@ __global__ void yue2_nar_attention_kernel(
     // split at the AR/NAR boundary so each key costs a pointer step instead of a
     // 64-bit multiply plus an ar/nar compare, and both ranges run key-ascending
     // exactly as the single loop did.
+    //
+    // The weights are stored key-major -- [key][row] -- so one key's whole row
+    // block sits in eight consecutive floats. The row index is then a
+    // compile-time offset in an unrolled loop rather than `r * blockDim.x`
+    // against a runtime block size, which the profiler counts as eight scalar
+    // instructions per key, and the block arrives in two shared-memory requests
+    // instead of eight. The sums still walk the tile key-ascending, so this is
+    // bit-exact.
     auto accumulate = [&](const uint16_t* v_row, int64_t t) {
       const float v = yue2_bf16_to_float(v_row[lane]);
+      const float* w = weights + t * YUE2_NAR_ROWS_PER_BLOCK;
+      float ws[YUE2_NAR_ROWS_PER_BLOCK];
+#if (YUE2_NAR_ROWS_PER_BLOCK % 4) == 0
+      const float4* wq = reinterpret_cast<const float4*>(w);
+      for (int q = 0; q < YUE2_NAR_ROWS_PER_BLOCK / 4; ++q) {
+        const float4 quad = wq[q];
+        ws[q * 4 + 0] = quad.x;
+        ws[q * 4 + 1] = quad.y;
+        ws[q * 4 + 2] = quad.z;
+        ws[q * 4 + 3] = quad.w;
+      }
+#else
       for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
-        const float weight = weights[r * blockDim.x + t];
-        tile_sum[r] += weight;
-        tile_acc[r] += weight * v;
+        ws[r] = w[r];
+      }
+#endif
+      for (int r = 0; r < YUE2_NAR_ROWS_PER_BLOCK; ++r) {
+        tile_sum[r] += ws[r];
+        tile_acc[r] += ws[r] * v;
       }
     };
     const int64_t v_stride = num_kv_heads * head_dim;
