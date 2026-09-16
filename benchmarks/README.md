@@ -712,9 +712,12 @@ Median prefill wall; the wide-row route is **5.4%** below the default at 1K and
 21.1%/20.0%/19.6%. All three arms launch the same 7191 kernels over the same
 roles, and the wide arm's logits digest and sampled token are identical to the
 certified WMMA arm on all three cases in both runs, while both differ from the
-exact chain. The wide route is opt-in (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`) and
-not promoted; its 12-case production numerical gate has not been run, and this
-single-category prefill protocol is not a topline rate row.
+exact chain. The wide route has since passed its own 12-case production envelope
+at 16-47, with strict and candidate logits digests byte-identical to the
+certified WMMA route's, so the two routes hold the same numerical verdict
+([gate](results/2026-09-17-q8-dense-wide-16-47-gate/README.md)). It remains
+opt-in and not yet promoted; this single-category prefill protocol is not a
+topline rate row.
 [Route A/B evidence](results/2026-09-17-q8-dense-route-ab/README.md).
 
 September 14 numerical refresh of the previous production profile on
