@@ -397,9 +397,20 @@ Milestone status:
   recorder had produced a fixture that was not reproducible from its own
   recorded states (it now replays every velocity before writing). All five NAR
   kernels are confirmed in a `rocprofv3 --kernel-trace` run. See
-  `worklog/entries/20260916T165718.660589Z-lhl-yue2-m4-nar-solver-parity-dc0471.md`.
-  The `nar_cond_end` visibility case, a request crossing a real chunk boundary,
-  and the M4 closure entry are still open.
+  `worklog/entries/20260916T165718.660589Z-lhl-yue2-m4-nar-solver-parity-dc0471.md`
+  and, for the closure, `worklog/entries/20260916T170959.772982Z-lhl-yue2-m4-closure-5493db.md`.
+- **M4 complete** (2026-09-16): two further recorded cases cover the rest of the
+  exit condition. A song crossing a real chunk boundary (96 frames at a reduced
+  chunking context; chunks of 26/26/26/18 frames) solves to rel_l2 0.00878 /
+  0.01026 / 0.00876 / 0.01071 with cosine 0.9999+, and a restricted-visibility
+  case (`nar_cond_end = 128`) solves to rel_l2 0.00885, cosine 0.999962. Every
+  chunk passes both its teacher-forced velocities and its own solved trajectory.
+  These cases exposed two defects the single release chunk could not: the
+  midpoint buffer kept stale boundary rows from an earlier, longer chunk (0.16667
+  -> 0.01071), and the hipBLASLt problem cache was built only for the largest
+  chunk's tile, so a shorter later chunk launched an unprepared row count. Both
+  are fixed and the release case reproduces its numbers exactly. Throughput is
+  not claimed: the NAR attention kernel is ~1.03 ms per call and is an M7 target.
 - **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
   fixtures frozen behind a fail-closed validator, oracle environment recorded, all
   twelve production cases regenerated and committed
