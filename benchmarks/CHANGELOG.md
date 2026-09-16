@@ -3,9 +3,10 @@
 - **2026-09-16 UTC**: Follow-on to the identical-operand replay protocol: a
   wide-row Q8_0 prefill kernel ported from the comparator's own MMB tile closes
   most of the 11.70x gap on the same packet. `dense_wide256_f32_f32_out` runs
-  **2.570 ms** against the production dispatch's **19.663 ms** (2.73 -> 20.87
-  TFLOP/s, **7.65x**) on `layers.8.attn_qkv` rows=1024 K=2560 M=10240 on
-  `gfx1151`, and 1.72x the comparator's complete-operation 1.492 ms. Both matmul
+  **2.570 ms** against the production dispatch's **17.319 ms** (2.73 -> 20.87
+  TFLOP/s, **6.74x**; 7.65x against the strict dispatch's 19.663 ms) on
+  `layers.8.attn_qkv` rows=1024 K=2560 M=10240 on `gfx1151`, and 1.72x the
+  comparator's complete-operation 1.492 ms. Both matmul
   kernels now use identical resources and launch geometry (256 VGPRs, 55,296
   bytes of LDS, grid 20480x4) and differ by 1.93x; a timing-only probe of the
   same kernel reading a pre-converted f16 activation runs **1.303 ms**, at the

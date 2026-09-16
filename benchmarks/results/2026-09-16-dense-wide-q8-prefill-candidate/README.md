@@ -2,11 +2,12 @@
 
 On the identical-operand replay packet where hipEngine measured 11.70x the
 pinned comparator, a new wide-row Q8_0 kernel runs **2.570 ms** against the
-production dispatch's **19.663 ms** — **7.65x** — and 1.72x the comparator's
-complete-operation 1.492 ms. The remaining difference is the activation
-representation, and that is measured rather than inferred: the same kernel
-reading a pre-converted f16 activation runs **1.303 ms**, at the comparator's
-kernel time of 1.339 ms.
+production dispatch's **17.319 ms** — **6.74x** — and 1.72x the comparator's
+complete-operation 1.492 ms. Against the strict dispatch it is 7.65x (2.570 ms
+against 19.663 ms). The remaining difference from the comparator is the
+activation representation, and that is measured rather than inferred: the same
+kernel reading a pre-converted f16 activation runs **1.303 ms**, at the
+comparator's kernel time of 1.339 ms.
 
 The candidate is registered but is not a default. Its f16 operands change
 prefill arithmetic, and the calibrated production gates in
@@ -22,14 +23,21 @@ read back through the same float32 output.
 
 | Engine | Kernel | ms | TFLOP/s | max abs err vs exact f64 | Bit-exact vs capture |
 | --- | --- | ---: | ---: | ---: | --- |
-| hipEngine production (strict) | `coltile8_rowbatch4_f32_f32_out` | 19.663 | 2.73 | 2.06e-06 | yes |
-| hipEngine production (wave-scale) | `coltile8_rowbatch4_wave_scale_f32_f32_out` | 17.319 | 3.10 | 2.06e-06 | yes |
+| hipEngine strict dispatch | `coltile8_rowbatch4_f32_f32_out` | 19.663 | 2.73 | 2.06e-06 | yes |
+| hipEngine production dispatch | `coltile8_rowbatch4_wave_scale_f32_f32_out` | 17.319 | 3.10 | 2.06e-06 | yes |
 | hipEngine best registered int8 WMMA | `iu8_wmma_prefill_f32_f32_out` | 7.129 | 7.53 | 5.30e-06 | no |
 | hipEngine best registered f16 WMMA | `wmma_prefill_f32_f32_out@tile16x32` | 4.401 | 12.20 | 2.83e-03 | no |
 | **candidate** | `dense_wide256_f32_f32_out` | **2.573 / 2.566** | **20.87 / 20.92** | 2.83e-03 | no |
 | comparator, kernel only | `mmb_dense_kernel<128, 256, 64, 64, 1>` | 1.339 | — | — | — |
 | comparator, complete operation | plus `mmb_cvt_f32_bf16` | 1.492 | 35.99 | — | — |
 | candidate, pre-converted f16 activation | same kernel | **1.303** | — | — | — |
+
+The candidate is 6.74x the production dispatch and 7.65x the strict dispatch. The
+strict dispatch is the profile the capture ran under; production replaces it with
+the wave-scale sibling for this shape. Three captures of the same slot and chunk
+- strict, production, and production with the MMQ route enabled - carry identical
+weight, activation and output hashes, so the two dispatches were timed on the
+same bytes and produced the same output.
 
 The candidate row is two independent 50-repetition runs; the other rows are one
 30-repetition run. The comparator's complete-operation time and its 35.99 TFLOP/s
@@ -156,7 +164,7 @@ Not gate-passed. What is established:
   gfx1100 code running in a compatibility mode.
 
 Not established: any model-level KL, top-1, determinism, isolation or task gate.
-No end-to-end A/B was run; 7.65x is one leaf on one packet, not a model rate.
+No end-to-end A/B was run; 6.74x is one leaf on one packet, not a model rate.
 One geometry, one layer, one chunk and one host were measured, and `ssm_out`,
 `attn_gate` and the Q5_1 expert-down shapes were not.
 

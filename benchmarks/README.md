@@ -909,8 +909,9 @@ come from one capture, the prefill total from a different commit.
 
 A wide-row Q8_0 kernel ported from the comparator's own MMB tile closes most of
 that gap on the same packet: `dense_wide256_f32_f32_out` runs **2.570 ms**
-against the production dispatch's 19.663 ms, **7.65x**, and 1.72x the
-comparator's complete-operation 1.492 ms. The two matmul kernels now use
+against the production dispatch's **17.319 ms** (`coltile8_rowbatch4_wave_scale`),
+**6.74x**, and 1.72x the comparator's complete-operation 1.492 ms; against the
+strict dispatch's 19.663 ms it is 7.65x. The two matmul kernels now use
 identical resources and launch geometry (256 VGPRs, 55,296 bytes of LDS, grid
 20480x4) and differ by 1.93x; a timing-only probe of the same kernel reading a
 pre-converted f16 activation runs **1.303 ms**, at the comparator's 1.339 ms
