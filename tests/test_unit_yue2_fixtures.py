@@ -127,3 +127,30 @@ def _rewrite_manifest(path: Path, patch: dict) -> None:
     manifest = json.loads(path.read_text())
     manifest.update(patch)
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+
+
+def test_wheel_diff_flags_a_changed_pinned_module(oracle, tmp_path):
+    """A release that touches an oracle module is a re-pin decision, not a note."""
+
+    upstream = tmp_path / "upstream" / "yue2"
+    wheel = tmp_path / "wheel" / "yue2"
+    upstream.mkdir(parents=True)
+    wheel.mkdir(parents=True)
+    for name in ("protocol.py", "sampling.py"):
+        (upstream / name).write_text("PINNED\n")
+        (wheel / name).write_text("PINNED\n")
+    (upstream / "cli.py").write_text("old\n")
+    (wheel / "cli.py").write_text("new\n")
+    (wheel / "brand_new.py").write_text("added\n")
+
+    report = oracle.compare_wheel_source(wheel.parent, upstream.parent)
+    assert report["identical"] == ["protocol.py", "sampling.py"]
+    assert report["changed"] == ["cli.py"]
+    assert report["only_in_wheel"] == ["brand_new.py"]
+    assert report["pinned_modules_changed"] == []
+    assert report["repin_required"] is False
+
+    (wheel / "protocol.py").write_text("CHANGED\n")
+    report = oracle.compare_wheel_source(wheel.parent, upstream.parent)
+    assert report["pinned_modules_changed"] == ["protocol.py"]
+    assert report["repin_required"] is True
