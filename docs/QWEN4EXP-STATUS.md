@@ -354,15 +354,22 @@ Numerical verdicts are from the calibrated envelope in
 | layers 32-47 | pass, 17x mean headroom | +2.436 s | measured |
 | layers 28-47 | pass, `measurement_valid: true`, no blockers | ~+3.6 s | byte-share prediction |
 | layers 20-47 | pass, `measurement_valid: true` | ~+4.15 s | byte-share prediction |
-| **layers 16-47** | **pass, deepest certified** — mean KL 3.80e-4 (2.6x), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 = 0.99354, 3/3 deterministic, no scope failures | ~+4.42 s | byte-share prediction |
+| **layers 16-47** | **pass, deepest certified** — mean KL 3.80e-4 (2.6x), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 = 0.99354, 3/3 deterministic, no scope failures | +4.44 s | measured (route A/B, `code-p4096`) |
 | layers 12-47, 8-47 | screens inconclusive, not excluded | ~+4.69 / +4.96 s | byte-share prediction |
 
-Only the 0-47 and 32-47 rows are measured time. Every deeper figure is
-`7.0409 s x owned byte share`, an interpolation from those two points that the
-source README explicitly labels as a prediction. **We have therefore measured
-+2.436 s at 32-47, and the "captured" share of the +7.04 s maximum is a
-prediction until a sweep arm measures it.** The 16-47 arm confirms a scope, not
-a time: this gate records no timing (`timing_protocol: none_full_logits_only_v1`).
+Only the 0-47 and 32-47 rows are measured by the sweep; 16-47 is measured by the
+2026-09-17 route A/B
+([`2026-09-17-q8-dense-route-ab`](../benchmarks/results/2026-09-17-q8-dense-route-ab/README.md),
+`code-p4096`: 22.648 -> 18.208 s). That measurement lands within 0.4% of the
++4.42 s byte-share prediction for the same scope, but the two protocols' exact
+arms differ by 5% (23.840 s with the sweep's `--risk-diagnostics` instrument
+against 22.648 s interleaved), so it confirms the interpolation's shape rather
+than reproducing its number. Every figure deeper than 16-47 is still
+`7.0409 s x owned byte share`, an interpolation from two measured points that
+the source README explicitly labels as a prediction. **We have therefore measured
++2.436 s at 32-47 and +4.439 s at 16-47; the "captured" share of the +7.04 s
+maximum is still a prediction below 16-47.** The 16-47 quality gate itself
+records no timing (`timing_protocol: none_full_logits_only_v1`).
 
 16-47 supersedes 20-47 as the deepest certified scope, and its screen
 overestimated the full arm by 1.8x, the second deep-scope control point to do so.
@@ -378,8 +385,28 @@ the wide arm runs `hipengine_gguf_q8_0_dense_wide256_f32_f32_out` on the same 26
 roles, both producing `logits_sha256` `e15dce79…` and `token_id` 248068. The
 wide kernel is a retiling of the certified f16 arithmetic rather than a new
 arithmetic class, so the certified 16-47 envelope figures above are the number
-its own arm has to reproduce — which is a prediction from one case, not a
-verdict. The arm has not been run on the 12-case protocol.
+its own arm has to reproduce — a prediction that now rests on bit-identical
+logits digests across three canonical cases and two processes, which is still not
+the 12-case envelope verdict. The arm has not been run on that protocol.
+
+Its performance half is now measured. On the `code` category, three interleaved
+arms in one process, one model load, selectors flipped after the production
+binder, three repetitions each with the arm order rotated, and a second process
+reproducing every ratio within 0.1 percentage points
+([`2026-09-17-q8-dense-route-ab`](../benchmarks/results/2026-09-17-q8-dense-route-ab/README.md)):
+
+| Route at layers 16-47 | 512 | 1K | 4K |
+| --- | ---: | ---: | ---: |
+| exact coltile chain | 2.822 s | 5.487 s | 22.648 s |
+| WMMA (production default) | 2.225 s | 4.389 s | 18.208 s |
+| `dense_wide256` (opt-in) | 2.201 s | 4.151 s | 17.217 s |
+
+The wide route is 5.4% below the WMMA default at 1K and 4K and indistinguishable
+from it at 512, and 5.43 s below the exact chain at 4K against the default's
+4.44 s. All three arms launch the same 7191 kernels over the same roles, and the
+wide arm's logits digest and sampled token match the certified WMMA arm on all
+three cases in both runs. That is a timing and route-identity result; the
+envelope verdict is still owed.
 
 ## 5. What is left
 
@@ -390,7 +417,9 @@ verdict. The arm has not been run on the 12-case protocol.
    the same window and the wide selector only accepted pre-rewrite parents, so
    it declined before its own gates ran. Fixed on 2026-09-17 (§5 item 2 below);
    `scripts/execution_profile_q8_wmma_prefill_layers_gate.py --route dense_wide
-   --layers 16-47` is the run that is owed.
+   --layers 16-47` is the run that is owed. Its timing half is done and it is
+   worth +5.43 s against the exact chain at 4K, 0.99 s of that ahead of the
+   default (see §4).
 3. **Cache the activation conversion** (convert once per graph, not per launch).
    Measured at 2.573 → 1.303 ms on the packet, against the comparator's 1.339 ms
    kernel. This is the whole remaining dense gap.

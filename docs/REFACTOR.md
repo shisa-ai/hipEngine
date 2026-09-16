@@ -7079,7 +7079,12 @@ Verified end to end on `code-p512`: layers 16-47 run
 default runs `hipengine_gguf_q8_0_wmma_prefill_f32_f32_out` (same 264 roles),
 layers 0-15 keep the exact coltile chain in both, and the two arms produce the
 same `logits_sha256` (`e15dce79…`) - the wide kernel is a retiling of the
-certified f16 arithmetic, not a new arithmetic class.
+certified f16 arithmetic, not a new arithmetic class. Its end-to-end value at
+that scope is measured too: on the `code` category at 4K it saves 5.43 s against
+the exact chain where the WMMA default saves 4.44 s, and 5.4% against the default
+at both 1K and 4K, with the two routes indistinguishable at 512 (three
+interleaved arms, one process, two processes agreeing within 0.1 pp -
+`benchmarks/results/2026-09-17-q8-dense-route-ab/`).
 
 Removal trigger: once the calibrated envelope passes at the promoted scope,
 make the wide route the default there and retire the f16 WMMA dense route for
