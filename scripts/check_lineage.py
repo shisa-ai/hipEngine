@@ -66,9 +66,18 @@ class SourceReport:
     commits_since_baseline: tuple[CommitInfo, ...]
     diffstat: str
     evidence_hits: tuple[EvidenceHit, ...]
+    unavailable_reason: str = ""
+
+    @property
+    def available(self) -> bool:
+        return not self.unavailable_reason
 
     @property
     def changed(self) -> bool:
+        # An unreachable reference is drift: the catalog claims a parent this
+        # host cannot show, so nothing about it can be verified.
+        if self.unavailable_reason:
+            return True
         return bool((not self.baseline_exists) or self.dirty_status or self.commits_since_baseline)
 
 
@@ -202,6 +211,25 @@ def build_report(
 ) -> SourceReport:
     repo = manifest.repos[source.repo]
     baseline_ref = baseline_override or source.baseline_ref or repo.baseline_ref
+    # A reference repo that has moved or been removed must not take the whole
+    # report down with it: one missing external checkout used to make every
+    # other tracked source unreportable, which is how drift goes unnoticed.
+    unavailable = _repo_unavailable_reason(repo.path)
+    if unavailable:
+        return SourceReport(
+            source=source,
+            repo=repo,
+            head="",
+            branch="",
+            baseline_ref=baseline_ref,
+            baseline_exists=False,
+            dirty_status="",
+            last_commit=None,
+            commits_since_baseline=(),
+            diffstat="",
+            evidence_hits=(),
+            unavailable_reason=unavailable,
+        )
     baseline_exists = git_ok(repo.path, ["cat-file", "-e", f"{baseline_ref}^{{commit}}"])
     head = git(repo.path, ["rev-parse", "--short", "HEAD"])
     branch = git(repo.path, ["branch", "--show-current"], check=False) or "(detached)"
@@ -264,9 +292,13 @@ def print_text_report(
     diff_mode: str,
 ) -> None:
     changed = sum(1 for report in reports if report.changed)
+    unavailable = sum(1 for report in reports if not report.available)
     print("Source-lineage drift report")
     print(f"manifest: {manifest_path}")
-    print(f"tracked_sources: {len(reports)} changed_or_dirty: {changed}")
+    print(
+        f"tracked_sources: {len(reports)} changed_or_dirty: {changed} "
+        f"unavailable: {unavailable}"
+    )
     if not reports:
         print("no sources selected")
         return
@@ -277,14 +309,27 @@ def print_text_report(
         if key not in repo_keys:
             repo_keys.append(key)
     for name, path, head, branch in repo_keys:
-        print(f"repo {name}: {path} branch={branch} head={head}")
+        if head:
+            print(f"repo {name}: {path} branch={branch} head={head}")
+        else:
+            print(f"repo {name}: {path} UNAVAILABLE")
     print()
 
     for report in reports:
-        status = "DRIFT" if report.changed else "clean"
+        status = (
+            "UNAVAILABLE" if not report.available
+            else "DRIFT" if report.changed
+            else "clean"
+        )
         print(f"[{status}] {report.source.kind} {report.source.path}")
         print(f"  family: {report.source.family}")
         print(f"  baseline: {report.baseline_ref}")
+        if not report.available:
+            print(f"  unavailable_reason: {report.unavailable_reason}")
+            if report.repo.baseline_note:
+                print(f"  baseline_note: {report.repo.baseline_note}")
+            print()
+            continue
         if report.repo.baseline_note:
             print(f"  baseline_note: {report.repo.baseline_note}")
         if not report.baseline_exists:
@@ -339,6 +384,8 @@ def reports_to_json(reports: tuple[SourceReport, ...]) -> dict[str, Any]:
                 "family": report.source.family,
                 "baseline_ref": report.baseline_ref,
                 "baseline_exists": report.baseline_exists,
+                "available": report.available,
+                "unavailable_reason": report.unavailable_reason,
                 "changed": report.changed,
                 "dirty_status": report.dirty_status.splitlines(),
                 "last_commit": commit_to_json(report.last_commit),
@@ -434,6 +481,18 @@ def parse_one_commit(line: str) -> CommitInfo | None:
     if len(parts) != 3:
         return CommitInfo(parts[0], "", " ".join(parts[1:]))
     return CommitInfo(parts[0], parts[1], parts[2])
+
+
+def _repo_unavailable_reason(path: Path) -> str:
+    """Return why a reference repo cannot be inspected, or "" when it can."""
+
+    if not path.exists():
+        return f"path does not exist: {path}"
+    if not path.is_dir():
+        return f"path is not a directory: {path}"
+    if not git_ok(path, ["rev-parse", "--git-dir"]):
+        return f"not a git worktree: {path}"
+    return ""
 
 
 def git(repo: Path, args: list[str], *, check: bool = True) -> str:
