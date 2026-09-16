@@ -551,18 +551,27 @@ class Yue2NarRuntime:
             [self.ar.embed_row(int(token)) for token in chunk.ar_tokens], branch=0, start_pos=0
         )
         self._prepare_gemm(rows)
-        self._write_state(chunk.noise)
+        self.load_state(chunk.noise)
 
-    def _write_state(self, noise: np.ndarray) -> None:
-        """Stage the draw as the ODE state, with zero boundary rows."""
+    def load_state(self, state: np.ndarray) -> None:
+        """Stage FP32 ``[frames, 64]`` values as the ODE state.
 
-        assert self._chunk is not None
-        frames = self._chunk.frames
-        latent = self._latent
-        padded = np.zeros((frames + 2, latent), dtype=np.uint16)
-        padded[1:-1] = f32_to_bf16_bits(np.asarray(noise, dtype=np.float32))
+        The reference pads the state with one zero row at each end for every
+        velocity evaluation; the runtime keeps that padding in place, so only the
+        content rows are written here.
+        """
+
+        chunk = self._chunk
+        if chunk is None:
+            raise RuntimeError("condition() must be called before load_state()")
+        values = np.asarray(state, dtype=np.float32)
+        if values.shape != (chunk.frames, self._latent):
+            raise ValueError(f"state must have shape ({chunk.frames}, {self._latent})")
+        if not np.isfinite(values).all():
+            raise ValueError("state contains non-finite values")
+        padded = np.zeros((chunk.frames + 2, self._latent), dtype=np.uint16)
+        padded[1:-1] = f32_to_bf16_bits(values)
         copy_host_array_to_device(self._state, np.ascontiguousarray(padded))
-        copy_host_array_to_device(self._mid, np.ascontiguousarray(padded))
 
     # -- velocity ------------------------------------------------------
     def _timestep_embedding(self, raw_t: float) -> None:
@@ -810,15 +819,18 @@ class Yue2NarRuntime:
         latent = self._latent
         offset = latent * 2
         for raw, raw_mid in schedule:
+            # ``nar_state_update_bf16`` computes ``state - bf16(v * scale)``, so
+            # both scales are the positive step sizes: the midpoint state uses
+            # ``h/2`` and the step itself uses ``h``.
             self._velocity(self._state, raw, self._first_velocity)
             nar_kernels.nar_state_update_bf16(
-                self._state.ptr + offset, self._first_velocity.ptr + offset, -h / 2.0,
+                self._state.ptr + offset, self._first_velocity.ptr + offset, h / 2.0,
                 self._mid.ptr + offset, frames, latent,
                 runtime=self.runtime,
             )
             self._velocity(self._mid, raw_mid, self._out_latent)
             nar_kernels.nar_state_update_bf16(
-                self._state.ptr + offset, self._out_latent.ptr + offset, -h,
+                self._state.ptr + offset, self._out_latent.ptr + offset, h,
                 self._state.ptr + offset, frames, latent,
                 runtime=self.runtime,
             )
