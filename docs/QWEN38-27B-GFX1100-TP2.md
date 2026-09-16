@@ -598,7 +598,16 @@ the serial schedule. Per-rank KV stays the rank's owned heads.
    resident prefill primitives (`_run_linear_attention_prefill_layer_rows`,
    full-attention prefill) per rank with KV span writes and final conv/GDN
    state, then the prefill -> graph-decode transition (state reset, positions,
-   liveness, multi-GPU streams).
+   liveness, multi-GPU streams). **P2 blocker found (2026-09-17):** those
+   resident functions are full-width monolithic layer functions — they run
+   attention/GDN *and* the full-width MLP *and* the residual in one call
+   (`qwen35_gguf_runner.py` `_run_linear_attention_prefill_layer_rows` ~L8015,
+   `_run_full_attention_prefill_layer_aotriton` ~L4553). Calling them from TP2
+   would be exactly the forbidden full-TP1 forward + hidden-state copy. P2 must
+   first factor the attention/GDN prefill subgraph out of the monolithic layer
+   function (preserving its `commit_final_linear_state` / chunk-metadata
+   behavior) and then run the sharded batched MLP + reduction, or add a
+   sharded-MLP layer variant; this is a decomposition unit, not a wiring unit.
 4. **P3 — Validation.** Bounded GPU probes at the saved 64-token prompt /
    position 146 plus at least one category-heldout control, then the full D128
    sustained gate only after the failure is repaired. Kernel numerics that are
