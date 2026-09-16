@@ -115,8 +115,19 @@ class VibevoiceTTSDiffusionHeadGPU:
         self._buffers["final_ada"] = malloc(2 * 2 * h * 2)
         self._buffers["t_freq_rows"] = malloc(2 * spec.frequency_embedding_size * 2)
         self._buffers["x_rows"] = malloc(2 * spec.latent_size * 2)
+        # Caches for work that is invariant either across the 20 solver steps of a
+        # frame (the condition projection) or across the 25 frames of a request
+        # (the timestep MLP, whose 20-step schedule repeats). Both skip weight
+        # reads, not merely a copy: cond_proj is 4.7 MB and the two t-MLP
+        # matrices are 5.5 MB of the head's 246.6 MB per step.
+        self._t_mlp_cache: dict[float, DeviceBuffer] = {}
+        self._cond_proj_key: np.ndarray | None = None
 
     def close(self) -> None:
+        for buffer in self._t_mlp_cache.values():
+            free(buffer)
+        self._t_mlp_cache.clear()
+        self._cond_proj_key = None
         for buffer in self._buffers.values():
             free(buffer)
         self._buffers.clear()
@@ -177,25 +188,40 @@ class VibevoiceTTSDiffusionHeadGPU:
         h = b["h"]
 
         # t = t_embedder(t): host sinusoid (fp32 constants + one rounding),
-        # device MLPs.
-        t_freq = diff_ref.timestep_embedding(t_bf, spec.frequency_embedding_size)
-        t_freq_u16 = np.repeat(_bf16_u16(t_freq.reshape(1, -1)), rows, axis=0)
-        copy_host_array_to_device(b["t_freq_rows"], t_freq_u16)
-        self._gemv("t_mlp_0", b["t_freq_rows"].ptr, b["t_mlp"].ptr, rows)
-        self._silu(b["t_mlp"], b["silu"], rows * h_dim)
-        self._gemv("t_mlp_2", b["silu"].ptr, b["t_mlp"].ptr, rows)
+        # device MLPs. The 20-step schedule repeats across the request's frames,
+        # so each distinct timestep's MLP output is computed once and kept.
+        t_mlp = self._t_mlp_cache.get(t_bf)
+        if t_mlp is None:
+            t_freq = diff_ref.timestep_embedding(t_bf, spec.frequency_embedding_size)
+            t_freq_u16 = np.repeat(_bf16_u16(t_freq.reshape(1, -1)), rows, axis=0)
+            copy_host_array_to_device(b["t_freq_rows"], t_freq_u16)
+            self._gemv("t_mlp_0", b["t_freq_rows"].ptr, b["t_mlp"].ptr, rows)
+            self._silu(b["t_mlp"], b["silu"], rows * h_dim)
+            t_mlp = malloc(2 * h_dim * 2)
+            self._gemv("t_mlp_2", b["silu"].ptr, t_mlp.ptr, rows)
+            self._t_mlp_cache[t_bf] = t_mlp
 
-        # condition = cond_proj(condition); c = r(condition + t)
-        copy_host_array_to_device(b["cond"], np.ascontiguousarray(condition_bf16_u16))
-        self._gemv("cond_proj", b["cond"].ptr, b["cond_proj"].ptr, rows)
-        self.kernels.vv_diff_add_bf16(b["cond_proj"].ptr, b["t_mlp"].ptr, b["c"].ptr, rows * h_dim)
+        # condition = cond_proj(condition); c = r(condition + t). The condition
+        # is fixed for all 20 steps of a frame, so its projection is computed
+        # once per frame and the buffer reused thereafter.
+        cond_rows = np.ascontiguousarray(condition_bf16_u16)
+        if self._cond_proj_key is None or not np.array_equal(cond_rows, self._cond_proj_key):
+            copy_host_array_to_device(b["cond"], cond_rows)
+            self._gemv("cond_proj", b["cond"].ptr, b["cond_proj"].ptr, rows)
+            self._cond_proj_key = cond_rows
+        self.kernels.vv_diff_add_bf16(b["cond_proj"].ptr, t_mlp.ptr, b["c"].ptr, rows * h_dim)
         c_buf = b["c"]
+
+        # silu(c) is invariant across the head layers and the final projection,
+        # so it is computed once per step instead of once per layer. Nothing in
+        # the loop below writes b["silu"].
+        self._silu(c_buf, b["silu"], rows * h_dim)
+        silu_c = b["silu"]
 
         for i in range(spec.head_layers):
             # adaLN modulation: silu(c) -> linear -> chunk(3)
-            self._silu(c_buf, b["silu"], rows * h_dim)
             ada = b[f"ada{i}"]
-            self._gemv(f"L{i}_adaLN", b["silu"].ptr, ada.ptr, rows)
+            self._gemv(f"L{i}_adaLN", silu_c.ptr, ada.ptr, rows)
             gate = ada.ptr + 2 * h_dim * 2  # column 2H of each (rows, 3H) row
 
             # normed = rmsnorm(h, layer weight); modulated = r(r(normed * r(1 + scale)) + shift)
@@ -226,9 +252,8 @@ class VibevoiceTTSDiffusionHeadGPU:
             h = b["h_out"]
 
         # final layer: no-affine norm, adaLN chunk(2), modulate, linear
-        self._silu(c_buf, b["silu"], rows * h_dim)
         fada = b["final_ada"]
-        self._gemv("final_adaLN", b["silu"].ptr, fada.ptr, rows)
+        self._gemv("final_adaLN", silu_c.ptr, fada.ptr, rows)
         self.kernels.vv_diff_rmsnorm_modulate_bf16(
             h.ptr, None, fada.ptr, b["modulated"].ptr, rows, h_dim,
             2 * h_dim, self.spec.rms_norm_eps,
