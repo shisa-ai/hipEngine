@@ -390,3 +390,54 @@ the screens in `scripts/qwen4exp_q8_wmma_layer_bisect.py` read. The practical
 consequence is that the boundary is a mean-KL boundary, and a scope rejected on
 a tail metric alone would need its own arm rather than an inference from a
 neighbour.
+
+## Bracketing the boundary with screens
+
+The full protocol costs about twenty minutes per arm, so the admissible
+boundary was bracketed with reduced-protocol screens and the full gate spent
+only on candidates the screens had already placed. Driver:
+`scripts/qwen4exp_q8_wmma_layer_bisect.py`. Ledger: `screens/ledger.json`.
+
+A screen is this same gate at one prompt per category at p512 and 32 decode
+steps — 132 rows against the full arm's 1548, roughly a twelfth of the cost.
+`general_en` is mandatory in the screen set because it carries the tail and
+every top-1 miss in the 32-47 arm.
+
+### What a screen may decide
+
+Screens decide on mean and p95 KL only. They do not decide top-1, and the
+reason is recorded normatively in `docs/EXECUTION-PROFILES.md` 6.4: a rate gate
+tested against the value it equals is near a coin flip at any sample size this
+fixture can reach, and the per-category `0.97` floor is sharper still at screen
+size, where 33 rows per category means a single miss scores `32/33 = 0.9697`.
+
+That is not a hypothetical. The screen of layers **32-47 returned FAIL** on the
+per-scope floor for a scope this same gate had already certified at top-1
+`0.99677`. Two control scopes with known full-gate verdicts were screened for
+exactly this purpose, and they also calibrated the correction: screens read low
+because they run the shortest prompts, by a factor of `1.085` at 28-47
+(`8.606e-5` against `9.342e-5`) and `1.181` at 32-47 (`4.916e-5` against
+`5.808e-5`). A screen must clear the limit with that correction applied.
+
+### Series
+
+| Scope | Screen mean KL | x1.15 | vs `1e-3` | Screen p95 | Top-1 misses | 95% CI | Predicted saving |
+| --- | ---: | ---: | --- | ---: | ---: | --- | ---: |
+| 8-47 | 1.356e-3 | 1.560e-3 | fail | 5.976e-3 | 4/132 | 0.9247-0.9882 | 4.955 s |
+| 12-47 | 9.591e-4 | 1.103e-3 | fail | 4.087e-3 | 4/132 | 0.9247-0.9882 | 4.688 s |
+| 16-47 | 6.728e-4 | 7.738e-4 | pass 1.29x | 2.305e-3 | 3/132 | 0.9353-0.9922 | 4.421 s |
+| 20-47 | 4.986e-4 | 5.734e-4 | pass 1.74x | 1.787e-3 | 3/132 | 0.9353-0.9922 | 4.153 s |
+| 24-47 | 2.869e-4 | 3.299e-4 | pass 3.03x | 1.405e-3 | 2/132 | 0.9464-0.9958 | 3.886 s |
+| 28-47 *(control)* | 8.606e-5 | — | certified | 4.128e-4 | 0/132 | — | 3.618 s |
+| 32-47 *(control)* | 4.916e-5 | — | certified | 2.557e-4 | 1/132 | — | 2.591 s |
+
+Mean KL is monotone across all seven scopes, from `5.81e-5` at 32-47 to
+`1.356e-3` at 8-47, so the mean-KL boundary sits between layers 12 and 16.
+Contiguous scopes reaching layers 0-7 are therefore out of range, which means
+the roughly +2.09 s those layers carry is unreachable without a non-contiguous
+scope.
+
+Top-1 is the open question the screens cannot answer. The miss counts trend the
+right way — 0 and 1 at the certified scopes, 2 at 24-47, 3 at 20-47 and 16-47,
+4 below — but every screen interval spans 0.99, so none of them separates a
+passing scope from a failing one. Only a 1548-row arm can.

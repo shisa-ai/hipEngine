@@ -1,0 +1,273 @@
+[
+ {
+  "scope": "28-47",
+  "start": 28,
+  "ok": true,
+  "screen": false,
+  "artifact": "benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact-layers28-47-4cat.json",
+  "rows": 1548,
+  "kl_mean": 9.342375191002489e-05,
+  "kl_p95": 0.00040628265668058523,
+  "kl_max": 0.009671168818160577,
+  "top1_agreement": 0.9974160206718347,
+  "flip_eligible_share": 0.0562015503875969,
+  "max_abs_logit_delta": 1.7705285549163818,
+  "hard_gates_passed": true,
+  "repeat_deterministic": true,
+  "scope_failures": []
+ },
+ {
+  "scope": "32-47",
+  "start": 32,
+  "ok": true,
+  "screen": false,
+  "artifact": "benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact-layers32-47-4cat.json",
+  "rows": 1548,
+  "kl_mean": 5.8079620932051935e-05,
+  "kl_p95": 0.00017513282385355579,
+  "kl_max": 0.013620511340448851,
+  "top1_agreement": 0.9967700258397932,
+  "flip_eligible_share": null,
+  "max_abs_logit_delta": 1.8606910705566406,
+  "hard_gates_passed": true,
+  "repeat_deterministic": true,
+  "scope_failures": []
+ },
+ {
+  "scope": "0-47",
+  "start": 0,
+  "ok": true,
+  "screen": false,
+  "artifact": "benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact.json",
+  "rows": 387,
+  "kl_mean": 0.0010992532984660966,
+  "kl_p95": 0.005017015386370136,
+  "kl_max": 0.039132477818547576,
+  "top1_agreement": 0.9922480620155039,
+  "flip_eligible_share": null,
+  "max_abs_logit_delta": 3.165567398071289,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "code"
+   },
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ]
+ },
+ {
+  "scope": "8-47",
+  "start": 8,
+  "ok": true,
+  "screen": true,
+  "artifact": "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/bisect/screen-layers8-47.json",
+  "rows": 132,
+  "kl_mean": 0.001356358723061655,
+  "kl_p95": 0.005975899683474458,
+  "kl_max": 0.01706488635303961,
+  "top1_agreement": 0.9696969696969697,
+  "flip_eligible_share": 0.24242424242424243,
+  "max_abs_logit_delta": 2.201669692993164,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "code"
+   },
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "category",
+    "value": "general_ja"
+   },
+   {
+    "dimension": "category",
+    "value": "mixed_ja_en"
+   },
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ],
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  }
+ },
+ {
+  "scope": "16-47",
+  "start": 16,
+  "ok": true,
+  "screen": true,
+  "artifact": "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/bisect/screen-layers16-47.json",
+  "rows": 132,
+  "kl_mean": 0.0006728489139702297,
+  "kl_p95": 0.002304974748394633,
+  "kl_max": 0.015304399916084921,
+  "top1_agreement": 0.9772727272727273,
+  "flip_eligible_share": 0.14393939393939395,
+  "max_abs_logit_delta": 0.8674345016479492,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "code"
+   },
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "category",
+    "value": "mixed_ja_en"
+   }
+  ],
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  }
+ },
+ {
+  "scope": "20-47",
+  "start": 20,
+  "ok": true,
+  "screen": true,
+  "artifact": "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/bisect/screen-layers20-47.json",
+  "rows": 132,
+  "kl_mean": 0.00049859204213422,
+  "kl_p95": 0.0017865235578437692,
+  "kl_max": 0.019852337617713264,
+  "top1_agreement": 0.9772727272727273,
+  "flip_eligible_share": 0.14393939393939395,
+  "max_abs_logit_delta": 1.544997215270996,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "category",
+    "value": "mixed_ja_en"
+   }
+  ],
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  }
+ },
+ {
+  "scope": "24-47",
+  "start": 24,
+  "ok": true,
+  "screen": true,
+  "artifact": "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/bisect/screen-layers24-47.json",
+  "rows": 132,
+  "kl_mean": 0.00028689569644465787,
+  "kl_p95": 0.001404615383758223,
+  "kl_max": 0.003306726458618555,
+  "top1_agreement": 0.9848484848484849,
+  "flip_eligible_share": 0.12121212121212122,
+  "max_abs_logit_delta": 1.705708384513855,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "category",
+    "value": "mixed_ja_en"
+   }
+  ],
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  }
+ },
+ {
+  "scope": "12-47",
+  "start": 12,
+  "ok": true,
+  "screen": true,
+  "artifact": "/tmp/claude-1000/-home-lhl-hipEngine/9d8d5c9c-3b6a-46cb-9774-d6317ba63068/scratchpad/bisect/screen-layers12-47.json",
+  "rows": 132,
+  "kl_mean": 0.0009590984248093527,
+  "kl_p95": 0.004086514143395682,
+  "kl_max": 0.021193551280112286,
+  "top1_agreement": 0.9696969696969697,
+  "flip_eligible_share": 0.19696969696969696,
+  "max_abs_logit_delta": 1.4471415877342224,
+  "hard_gates_passed": false,
+  "repeat_deterministic": true,
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "code"
+   },
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "category",
+    "value": "mixed_ja_en"
+   },
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ],
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  }
+ }
+]
