@@ -2868,7 +2868,8 @@ def _q8_dense_wide_layers() -> frozenset[int] | None:
     The sibling f16 route fails the calibrated envelope at 0-47 and passes at
     16-47, so a boolean with no scope can only express the configuration that
     is already known to fail. An empty or unset value means every layer, which
-    is the shape a gate must be able to narrow.
+    is the shape a gate must be able to narrow. Production does not run that
+    shape: the certified plan for ``gguf_ud_q4_k_xl`` binds 16-47 explicitly.
     """
 
     raw = os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, "")
@@ -2899,6 +2900,13 @@ _Q8_DENSE_WIDE_WMMA_PREFIX = "wmma_"
 
 
 def _q8_dense_wide_enabled() -> bool:
+    """Whether this process bound the route on, by env or by lane plan.
+
+    Off unless something binds it: the profile plan for the certified lane, or
+    an explicit opt-in. See :func:`_q8_dense_wide_dispatch` for why the unbound
+    default is the exact chain.
+    """
+
     return os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
         "",
         "0",
@@ -2944,7 +2952,7 @@ def _q8_dense_wide_dispatch(
     out_features: int,
     weight: object | None = None,
 ) -> GGUFLinearDispatch:
-    """Default-off wide-row route for Q8_0 F32/F32 prefill linears.
+    """Wide-row route for Q8_0 F32/F32 prefill linears.
 
     The kernel covers 128 output columns by 256 rows per block with both
     operands staged in LDS, so each weight byte is read once per 256 rows
@@ -2952,10 +2960,25 @@ def _q8_dense_wide_dispatch(
     production dispatch and 7.65x strict.
 
     Its f16 operands change prefill arithmetic (2.08e-4 relative against the
-    exact reference, against 1.5e-7 for the coltile family), so this is
-    default-off and the exact coltile parents remain the default path, the
-    registered strict fallback, and the sole sub-256-row owner. Promotion needs
-    the calibrated production envelope in ``docs/EXECUTION-PROFILES.md``.
+    exact reference, against 1.5e-7 for the coltile family), so the route is
+    gated by lane and layer window rather than by shape alone. The certified
+    production plan for ``gguf_ud_q4_k_xl`` on ``hip_gfx1151`` binds
+    ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1`` at layers 16-47, which is the
+    shipped default for that lane: 12 cases, 1548 rows, mean KL 3.80e-4, top-1
+    0.99354, and strict/candidate logits digests byte-identical to the f16
+    WMMA gate it replaced (2026-09-17).
+
+    The selector itself stays default-off, so a process that binds nothing runs
+    the exact chain. That direction is deliberate. Certification is per lane and
+    per layer window, and this selector cannot see the lane: every pack's Q8_0
+    dense tensors share the quant key ``gguf_q8_0``. A selector-level default-on
+    would claim, among others, the Qwen3.6-35B-A3B pack's 25 in-window layers of
+    ``attn_qkv``/``attn_gate``/``ffn_*_shexp`` prefill, which no envelope covers.
+    Extending the default to a lane is a decision for that lane's plan, recorded
+    in ``docs/REFACTOR.md``.
+
+    The exact coltile parents remain the registered strict fallback, the owner
+    of every layer below 16, and the sole sub-256-row owner (decode included).
 
     ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`` narrows the route to a layer
     scope. Without it the route covers every layer, which is the 0-47 scope the

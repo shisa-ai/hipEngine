@@ -412,7 +412,7 @@ second process reproducing every ratio within 0.1 percentage points
 | --- | ---: | ---: | ---: |
 | exact coltile chain | 2.822 s | 5.487 s | 22.648 s |
 | WMMA (production default) | 2.225 s | 4.389 s | 18.208 s |
-| `dense_wide256` (opt-in) | 2.201 s | 4.151 s | 17.217 s |
+| `dense_wide256` (default at 16-47 since 2026-09-17) | 2.201 s | 4.151 s | 17.217 s |
 
 The wide route is 5.4% below the WMMA default at 1K and 4K and indistinguishable
 from it at 512, and 5.43 s below the exact chain at 4K against the default's
@@ -434,7 +434,11 @@ selector and env var remain registered for explicit opt-in and re-gating.
    `dense_wide256` on 264 roles with zero `wmma_prefill` launches (§4). What
    remains from this item is cleanup, not promotion: delete the wide selector's
    env flag once nothing needs to bisect against it, and retire the WMMA dense
-   route for this quant (see `docs/REFACTOR.md`).
+   route for this quant (see `docs/REFACTOR.md`). The route is not the default
+   for other Q8_0-dense lanes yet, and should not be until each one passes the
+   same envelope: the largest is Qwen3.6-35B-A3B-UD-Q4_K_M, whose Q8_0 dense
+   prefill covers 25 of its 41 layers, and this model's own `gguf_q4_k_m` plan
+   still binds the route off because its pack is not on this box to measure.
 3. **Cache the activation conversion** (convert once per graph, not per launch).
    Measured at 2.573 → 1.303 ms on the packet, against the comparator's 1.339 ms
    kernel. This is the whole remaining dense gap.

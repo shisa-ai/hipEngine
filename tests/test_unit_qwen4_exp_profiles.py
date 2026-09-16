@@ -530,3 +530,101 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
+
+
+def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:
+    """A caller that names no profile must still get the wide kernel at 16-47.
+
+    Promotion is only real if the shipped default reaches the route, and that
+    guarantee is split across three places: the default profile resolution, the
+    production binder, and the selector's own precedence. Each was pinned
+    separately, so this test joins them. Removing any one link -- the registered
+    production plan, the binding, or the route's claim on the f16 parent --
+    fails here rather than silently reverting prefill to the exact chain.
+
+    The two scopes the default must leave alone are checked in the same place:
+    below the certified window, and every row count the sub-256-row owner
+    covers.
+    """
+
+    from hipengine.execution_profiles import resolve_default_execution_profile
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.runtime.gguf_linear import (
+        GGUFLinearDispatch,
+        _q8_dense_wide_dispatch,
+    )
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+
+    # Unbound: this is the migration path, which keeps the exact chain.
+    assert os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE") is None
+
+    requested = resolve_default_execution_profile(
+        model=QWEN4_EXP_MODEL,
+        backend=QWEN4_EXP_BACKEND,
+        quant="gguf_ud_q4_k_xl",
+    )
+    assert requested is ExecutionProfile.PRODUCTION
+
+    resolved = resolve_runtime_profile(
+        model=QWEN4_EXP_MODEL,
+        backend=QWEN4_EXP_BACKEND,
+        quant="gguf_ud_q4_k_xl",
+        profile=requested,
+    )
+    assert resolved.binder is not None
+    resolved.binder(SimpleNamespace(runner=None), resolved)
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
+
+    candidate = KernelKey(
+        QWEN4_EXP_BACKEND, "linear", "gguf_q8_0", "dense_wide256_f32_f32_out"
+    )
+    register(candidate, lambda *args, **kwargs: None, replace=True)
+    parent = GGUFLinearDispatch(
+        KernelKey(
+            QWEN4_EXP_BACKEND,
+            "linear",
+            "gguf_q8_0",
+            "coltile8_rowbatch4_wave_scale_f32_f32_out",
+        ),
+        "raw",
+    )
+
+    def weight(layer: int):
+        # ffn_up_shexp on this pack is 2560 -> 640 in Q8_0, the shape the route
+        # was certified on.
+        return SimpleNamespace(
+            spec=SimpleNamespace(
+                slot_path=f"layers.{layer}.ffn_up_shexp", quant_key="gguf_q8_0"
+            )
+        )
+
+    for layer in (16, 47):
+        assert _q8_dense_wide_dispatch(
+            parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
+        ) == GGUFLinearDispatch(candidate, "raw"), layer
+
+    for layer in (0, 15):
+        assert (
+            _q8_dense_wide_dispatch(
+                parent,
+                rows=1024,
+                in_features=2560,
+                out_features=640,
+                weight=weight(layer),
+            )
+            == parent
+        ), layer
+
+    for rows in (1, 256):
+        assert (
+            _q8_dense_wide_dispatch(
+                parent,
+                rows=rows,
+                in_features=2560,
+                out_features=640,
+                weight=weight(16),
+            )
+            == parent
+        ), rows

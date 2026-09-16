@@ -7023,19 +7023,33 @@ to a comment.
 
 ## 2026-09-17 Q8_0 wide-row dense prefill: a route for an unreachable kernel
 
-`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` is a default-off selector that routes Q8_0
-F32/F32 prefill linears with `rows > 256` and `in_features % 64 == 0` to
-`dense_wide256_f32_f32_out`. Before this the kernel was registered but nothing
-in `hipengine/runtime/` or `hipengine/dispatch/` referenced it, so no dispatch
-path could select it: it could not be gated end-to-end, benchmarked in the
-engine, or promoted. That is the state to avoid repeating — a registered kernel
-with no selector is invisible to every gate we own.
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` routes Q8_0 F32/F32 prefill linears with
+`rows > 256` and `in_features % 64 == 0` to `dense_wide256_f32_f32_out`. Before
+this the kernel was registered but nothing in `hipengine/runtime/` or
+`hipengine/dispatch/` referenced it, so no dispatch path could select it: it
+could not be gated end-to-end, benchmarked in the engine, or promoted. That is
+the state to avoid repeating — a registered kernel with no selector is invisible
+to every gate we own.
 
-The flag is default-off because the kernel's f16 operands change prefill
-arithmetic (2.08e-4 relative against the exact reference, against 1.5e-7 for the
-coltile family). The exact coltile parents remain the default path, the
-registered strict fallback, and the sole owner of the sub-256-row path, so the
-selector declining is always a fall back to an exact route.
+The route is the shipped default for `gguf_ud_q4_k_xl` on `hip_gfx1151` at
+layers 16-47: a caller that names no profile resolves to `production`, whose
+binder sets this flag, so no user action and no env var is involved. The
+selector's own default stays off, so a process that binds nothing keeps the
+exact chain — the unbound direction is always the exact route, never the f16
+one. Both halves are pinned by
+`test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel`, which
+joins the default resolution, the binder, and the selector's decision, because
+pinning them in three separate tests let a break in the middle go unnoticed.
+
+The reason the default cannot simply live in the selector is that the selector
+cannot see the lane: `gguf_q8_0` is the tensor quant key in every pack that
+stores Q8_0 dense tensors, so a lane-agnostic default-on would claim lanes whose
+envelopes were measured against the exact chain. See "The default is per lane"
+below for the measured set.
+
+The exact coltile parents remain the registered strict fallback and the sole
+owner of the sub-256-row path, so the selector declining is always a fall back
+to an exact route.
 
 `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` narrows it to a layer scope, added
 2026-09-17 after review found the first cut was a plain boolean: with no scope
@@ -7102,6 +7116,45 @@ binder binds the wide route at 16-47 and no longer binds
 launch `dense_wide256` on the 264 layer-16-47 roles with zero `wmma_prefill`
 launches. What is left is deleting this route's selector and env var once
 nothing needs to bisect against it.
+
+### The default is per lane, and the route cannot see the lane
+
+Promotion means the fast path is the default for the lane it was certified on,
+and for `gguf_ud_q4_k_xl` on `hip_gfx1151` that is now true without any caller
+action. It does not mean a lane-agnostic selector default, and the measured
+reason is worth keeping written down. `_q8_dense_wide_dispatch` sees the tensor
+quant key, and every pack that stores Q8_0 dense tensors reports `gguf_q8_0`, so
+flipping its default on claims all of them. A GGUF header scan of the packs on
+this box (2026-09-17, tensor-type histogram, no model load) gives the set:
+
+| Pack | Shape-eligible Q8_0 dense | Block layers | Inside 16-47 |
+| --- | ---: | --- | ---: |
+| Qwen3.6-35B-A3B-UD-Q4_K_M | 259 | 0-40 | **25** |
+| Qwen3.8-27B-UD-Q4_K_M | 106 | 0-64 | 26 (10 with >128 outputs) |
+| Qwen3.8-27B-UD-Q4_K_S | 99 | 0-64 | 24 (3 with >128 outputs) |
+| mtp-Qwen3.8-Flash-Next-Q8_0 | 18 | 48 only | 0 |
+
+The Qwen3.6 pack is the case that decides it: its Q8_0 dense tensors are
+`attn_qkv` (2048x8192), `attn_gate` (2048x4096) and `ffn_{gate,up,down}_shexp`,
+which is real prefill work on 25 of its 41 layers, and that lane's production
+envelope was certified against the exact coltile parents. The Qwen3.8-27B packs
+are mostly `ssm_alpha`/`ssm_beta` (5120x48) with a handful of `attn_k`/`attn_v`
+(5120x1024), so the exposure there is smaller but not zero. The MTP pack's single
+block is layer 48, outside the window, so the drafter is unaffected either way.
+
+Keep the unbound default on the exact chain. The asymmetry is the argument: a
+lane that binds nothing today gets exact arithmetic, so a missing binding is a
+slow measurement, while a lane-agnostic default-on would make a missing binding a
+silently different arithmetic composition in lanes that believe they are exact -
+the same misattribution class as the census coverage gap below.
+
+Extension trigger: a lane joins the default by running the calibrated envelope
+(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/` is the protocol and
+the template) and then binding the route in that lane's production plan. The next
+candidate is this model's own `gguf_q4_k_m` plan, which still binds `0`; its pack
+is not on this box, so the envelope has not been run and the binding stays off.
+A lane whose envelope fails keeps the exact chain at that scope rather than a
+narrower window nobody measured.
 
 ### The variant manifest does not name env-scoped post-binder routes
 
