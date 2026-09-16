@@ -1460,6 +1460,32 @@ hipBLASLt problem cache was built only for the largest chunk's tile, so a shorte
 later chunk launched an unprepared row count. Both are fixed and both cases pass
 every chunk.
 
+### Radeon 8060S: YuE2 3B VAE decoder
+
+The torch-free FP32 Oobleck decoder against the pinned upstream reference on the
+same host. Weight normalization is folded once at load time; the conv,
+transposed-conv and SnakeBeta kernels accumulate in FP32 with the reference's own
+loop order. Error is measured against the reference waveform, whose own tiled and
+full decodes already differ by 1.33e-06 - so these figures sit at the reference's
+own FP32 noise floor rather than at a modelling difference.
+
+| Case | Samples | max abs | rel L2 | Peak | Full decode | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 3-frame latent | 5 696 | 1.27e-06 | 1.99e-06 | 0.483541 | 0.04 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+| 64-frame latent | 122 816 | 2.99e-06 | 1.88e-06 | 0.991600 | 0.68 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+| 64-frame latent, tiled 16/16 | 122 816 | 2.79e-06 | - | - | 1.51 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+
+Tiling is exact rather than approximate: with a 16-frame core and 16 frames of
+halo the tiled waveform is **bit-identical** to the same runtime's full decode,
+and it matches the reference's own tiled output to 2.79e-06. There is no
+crossfade, no boundary smoothing, and no zero padding of the final audio; the
+last tile's crop is shorter than its own output because the natural length is
+`1920 * frames - 64`. The decoder's own dependency interval gives a required halo
+of 12 frames for a 16-frame core, which the gate asserts against the recorded
+value. Tiled decoding is slower than the full decode here (1.51 s vs 0.68 s at
+64 frames) because every tile re-decodes its halo context; its purpose is
+bounding device residency, not wall clock.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

@@ -466,6 +466,43 @@ class YuE2VaeDecoderWeights:
         convs.append(self.output_conv)
         return convs
 
+    def required_halo(self, core_frames: int = 1024) -> int:
+        """Frames of context each side of a core needs, from the dependency interval.
+
+        Mirrors the reference's own rule: the output interval ``[0, core * ratio)
+        is walked backwards through the decoder, and the halo is the largest
+        amount by which an output position can depend on input frames outside the
+        core. Residual units keep their identity path, so their interval is the
+        union of the walked layers and the incoming interval.
+        """
+
+        core = int(core_frames)
+        if core < 1:
+            raise ValueError("core_frames must be positive")
+
+        def walk(conv: YuE2ConvWeights, low: int, high: int) -> tuple[int, int]:
+            kernel = conv.weight.shape[-1]
+            if conv.transposed:
+                return (
+                    -(-(low + conv.padding - conv.dilation * (kernel - 1)) // conv.stride),
+                    (high + conv.padding) // conv.stride,
+                )
+            return (
+                low * conv.stride - conv.padding,
+                high * conv.stride - conv.padding + conv.dilation * (kernel - 1),
+            )
+
+        low, high = 0, core * self.downsampling_ratio - 1
+        low, high = walk(self.output_conv, low, high)
+        for block in reversed(self.blocks):
+            for unit in reversed(block.residual_units):
+                unit_low, unit_high = walk(unit.pointwise, low, high)
+                unit_low, unit_high = walk(unit.conv, unit_low, unit_high)
+                low, high = min(unit_low, low), max(unit_high, high)
+            low, high = walk(block.upsample, low, high)
+        low, high = walk(self.input_conv, low, high)
+        return max(0, -low, high - core + 1)
+
 
 def _read_f32(index, name: str, shape: tuple[int, ...]) -> np.ndarray:
     info: TensorInfo = index.tensors[name]

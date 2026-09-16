@@ -411,6 +411,25 @@ Milestone status:
   chunk's tile, so a shorter later chunk launched an unprepared row count. Both
   are fixed and the release case reproduces its numbers exactly. Throughput is
   not claimed: the NAR attention kernel is ~1.03 ms per call and is an M7 target.
+- **M5 complete** (2026-09-16): the torch-free FP32 Oobleck decoder
+  (`hipengine/runtime/yue2_vae.py`) with weight-normalization folded once at load
+  time, FP32 conv/transposed-conv/SnakeBeta kernels, and bounded tiled decode
+  with exact interior crops. Against the pinned upstream reference on the same
+  host: a 3-frame latent lands at max abs 1.27e-06 / rel L2 1.99e-06 and a
+  64-frame latent at max abs 2.99e-06 / rel L2 1.88e-06, with peak 0.991600
+  against 0.991599. The reference's own tiled and full decodes differ by
+  1.33e-06, so these sit at its FP32 noise floor. Tiled decoding (16-frame core,
+  16 frames of halo) is bit-identical to the same runtime's full decode and
+  matches the reference's tiled output to 2.79e-06; the decoder's dependency
+  interval gives a required halo of 12 frames for a 16-frame core, matching the
+  value recorded with the fixture. All four VAE kernels are confirmed in a
+  `rocprofv3 --kernel-trace` run. One real defect was found by stage-by-stage
+  comparison against a NumPy chain built from the same folded weights: the first
+  SnakeBeta of each residual unit was applied in place, so the residual branch
+  added the activation instead of the unit's input. Tiled decoding is slower than
+  the full decode (1.51 s vs 0.68 s at 64 frames) because each tile re-decodes
+  its halo; it bounds device residency rather than wall clock. See
+  `worklog/entries/20260916T171559.133569Z-lhl-yue2-m5-vae-decoder-dfcdfd.md`.
 - **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
   fixtures frozen behind a fail-closed validator, oracle environment recorded, all
   twelve production cases regenerated and committed
