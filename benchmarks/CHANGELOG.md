@@ -1,5 +1,18 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-16 UTC**: The wide-row Q8_0 dense prefill route became the production
+  default at layers 16-47 for `gguf_ud_q4_k_xl`, replacing the certified f16 WMMA
+  route at that scope and retiring its binding; the exact coltile chain stays on
+  layers 0-15 and as the registered strict fallback. The promoted default was
+  verified on the launch census to run
+  `hipengine_gguf_q8_0_dense_wide256_f32_f32_out` on 264 roles at 16-47 and the
+  coltile chain on the other 134, with **zero** `wmma_prefill` launches and the
+  same `logits_sha256` (`e15dce79…`) and `token_id` 248068 as before. The change
+  is a default-path swap, not a new arithmetic class: the two routes hold the
+  identical 12-case envelope, and the wide route is 5.4% faster at 1K/4K.
+  [Route A/B](results/2026-09-17-q8-dense-route-ab/README.md) and
+  [gate](results/2026-09-17-q8-dense-wide-16-47-gate/README.md).
+
 - **2026-09-16 UTC**: The wide-row Q8_0 prefill route passed the production
   numerical envelope at layers 16-47, and its envelope is the **same envelope**
   the certified f16 WMMA route already holds: 12 cases, 1548 rows, mean KL

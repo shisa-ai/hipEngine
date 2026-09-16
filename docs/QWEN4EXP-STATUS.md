@@ -329,7 +329,7 @@ several routes; the scopes below are read from the kernel trace instead
 
 | Mechanism | Their evidence | Gap share | Our state |
 | --- | --- | ---: | --- |
-| Dense projection: quantized weights dequantized to BF16 in LDS, activations converted to BF16 **once per graph and cached**, F32 accumulate on BF16 WMMA (`mmb.cu`, PR #63 `08de004`) | PR #63 dense_projection 1536.7 → 1374.3 ms | **50.1%** | **Partly built.** `dense_wide256` ports the tile (`mmb_dense_kernel<128,256,64,64,1>`) at 2.573 ms against the production dispatch's 17.319 ms on the packet (6.74x). Two gaps: f16 rather than bf16 operands (deliberate), and per-launch activation conversion — with a pre-converted f16 activation the same kernel runs **1.303 ms** against the comparator's 1.339 ms, so the activation path is the remaining 1.93x |
+| Dense projection: quantized weights dequantized to BF16 in LDS, activations converted to BF16 **once per graph and cached**, F32 accumulate on BF16 WMMA (`mmb.cu`, PR #63 `08de004`) | PR #63 dense_projection 1536.7 → 1374.3 ms | **50.1%** | **Partly built, and the ported half is now the default.** `dense_wide256` ports the tile (`mmb_dense_kernel<128,256,64,64,1>`) at 2.573 ms against the production dispatch's 17.319 ms on the packet (6.74x) and is the production default at layers 16-47 since 2026-09-17, worth 5.4% of prefill wall at 1K/4K. Two gaps remain: f16 rather than bf16 operands (deliberate), and per-launch activation conversion — with a pre-converted f16 activation the same kernel runs **1.303 ms** against the comparator's 1.339 ms, so the activation path is the remaining 1.93x |
 | Routed MoE gate/up WMMA-iu8 selection | PR #63 expert_gate_up −7.0% | 14.5% | **On for every layer, and already the best ratio in the table.** `gguf_q4_k_selected_dual_wmma_iu8_risk_prefill` ran on layers 0-1 and 3-47; the `selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out` selection is a production manifest entry keyed on `prefill_rows_ge64_exact_grouped_q4_gate_up`. This is **not** the `PRODUCTION_MOE_PREFILL` route (that flag is `0` for this quant) and **not** a 27-47 scope, which is what the profile's own comment claims |
 | Hyper-connection combine and mix (`hc_combine_norm_f32`, `hc_mix_reduce_f32`) | PR #63 hyper_connection −21.7% | 11.9% | **Open and diagnosed.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32` ran on all 48 layers for 2437.4 ms, plus `gr_write` at 86 ms: 2523.8 ms against their 335.7 ms for the fused combine-plus-norm. The same tensor is traversed twice, 2523.8 ms of reads against 1098 ms of matmuls consuming them. The `GR_IU8` variants that would fix it are numerically **rejected**; see §2.4 |
 | Routed MoE down MMB kernel (`mmb_routed_kernel`) | PR #63 expert_down **−64.1%** (1149.8 → 412.8 ms) | 10.8% | **Not built.** The largest per-family move the comparator made and we have no equivalent kernel. Our `expert_down` is 2389.0 ms, of which 721 ms is iu8 exact-repair. The down projection runs Q5_1 on 43 layers and Q8_0 on five (2, 4, 30, 46, 47) |
@@ -338,11 +338,23 @@ several routes; the scopes below are read from the kernel trace instead
 | GDN prefill | PR #63 −8.3% | 3.0% | **The base kernel, not the column-warp variant.** `GDN_COLWARPS_PREFILL` is `0` for this quant, so `qwen4_exp_gdn_prefill_f32` ran on the 36 GDN layers. Enabling column warps is worth **+0.228 s measured**, inside the run-to-run spread; our 821.2 ms is 3.11x |
 | Elementwise and norm fusion | PR #63 −37.6% (531.4 → 331.7 ms) | **−0.8%** | **Not a gap: we are ahead.** 180.2 ms against their 331.7 ms, 0.54x, with the comparator spending 8.8% of its kernel time there against our 0.8%. An earlier revision of this document listed this as open; §2.2 retired that |
 | Activation packing elimination | PR #63 quantize_pack 284.8 → **0.0 ms** | 0.0% | **Done.** We have no packing row at all |
-| Dense Q8 prefill tiling | pwilkin dense variants 1387.5 ms per prefill against our 10562 ms | — | **Certified, not promoted.** F16 WMMA dense Q8 at layers 16-47 passes every calibrated gate; see §4 |
+| Dense Q8 prefill tiling | pwilkin dense variants 1387.5 ms per prefill against our 10562 ms | — | **Promoted 2026-09-17.** The wide-row route (`dense_wide256`) is the production default at layers 16-47, with the exact coltile chain on 0-15 and as the registered strict fallback. It holds the f16 WMMA route's certified envelope byte for byte and is 5.4% faster at 1K/4K; see §4 |
 | Indexer | PR #63 +168% | 0.0% | **Not a target** — their regression, 15.0 ms absolute |
 
-## 4. Certified but not promoted
+## 4. Certified and promoted
 
+**Layers 16-47 is the promoted scope.** The wide-row route (`dense_wide256`) is
+the production default there since 2026-09-17: it holds the certified f16 WMMA
+route's envelope byte for byte (see below) and is 5.4% faster at 1K/4K, so it
+replaced that route rather than sitting beside it. Layers 0-15 stay on the exact
+coltile chain, which is also the registered strict fallback for the whole scope.
+The end-to-end check after promotion: the default runs
+`hipengine_gguf_q8_0_dense_wide256_f32_f32_out` on 264 roles at layers 16-47 and
+`..._gemv_coltile8_rowbatch4_wave_scale_f32_f32_out` on the other 134, with zero
+`wmma_prefill` launches and the same `logits_sha256` (`e15dce79…`) and
+`token_id` 248068 as before the promotion.
+
+The remaining rows below are certified scopes that are **not** promoted.
 Numerical verdicts are from the calibrated envelope in
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) §6.1. Sources:
 [`2026-09-16-q8-wmma-dense-prefill-layers-gate`](../benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/README.md),
@@ -354,7 +366,7 @@ Numerical verdicts are from the calibrated envelope in
 | layers 32-47 | pass, 17x mean headroom | +2.436 s | measured |
 | layers 28-47 | pass, `measurement_valid: true`, no blockers | ~+3.6 s | byte-share prediction |
 | layers 20-47 | pass, `measurement_valid: true` | ~+4.15 s | byte-share prediction |
-| **layers 16-47** | **pass, deepest certified** — mean KL 3.80e-4 (2.6x), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 = 0.99354, 3/3 deterministic, no scope failures | +4.44 s | measured (route A/B, `code-p4096`) |
+| **layers 16-47** | **pass, deepest certified** — mean KL 3.80e-4 (2.6x), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 = 0.99354, 3/3 deterministic, no scope failures | +4.44 s WMMA / +5.43 s wide | measured (route A/B, `code-p4096`); **promoted** |
 | layers 12-47, 8-47 | screens inconclusive, not excluded | ~+4.69 / +4.96 s | byte-share prediction |
 
 Only the 0-47 and 32-47 rows are measured by the sweep; 16-47 is measured by the
@@ -406,21 +418,23 @@ The wide route is 5.4% below the WMMA default at 1K and 4K and indistinguishable
 from it at 512, and 5.43 s below the exact chain at 4K against the default's
 4.44 s. All three arms launch the same 7191 kernels over the same roles, and the
 wide arm's logits digest and sampled token match the certified WMMA arm on all
-three cases in both runs. Both halves are therefore in hand; the route is
-certified at 16-47 and is 0.99 s faster than the route it takes precedence over.
+three cases in both runs. Both halves are therefore in hand, and the promotion
+this section used to owe is done: the production binder now binds
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1` with `..._DENSE_WIDE_LAYERS=16..47` for
+`gguf_ud_q4_k_xl` and no longer binds `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`, whose
+selector and env var remain registered for explicit opt-in and re-gating.
 
 ## 5. What is left
 
 1. **Re-measure our own PP/TG at HEAD** on the §1.1 protocol. The current column
    is empty because nothing has re-measured it since 2026-09-13.
-2. **Promote the `dense_wide` route at 16-47.** The route has a layer scope
-   (`be2d3fa73`), it reaches the kernel (fixed 2026-09-17; the promoted WMMA
-   default owned the same window and the wide selector only accepted pre-rewrite
-   parents, so it declined before its own gates ran), and as of 2026-09-17 it has
-   both halves: a passing 12-case production envelope that is bit-identical to
-   the certified WMMA route's, and a measured 5.4% prefill win at 1K/4K against
-   it (see §4). What is owed is the promotion itself and the retirement of the
-   f16 WMMA dense route for this quant at that scope.
+2. ~~**Promote the `dense_wide` route at 16-47.**~~ **Done 2026-09-17.** The
+   production binder binds the wide route at 16-47 for `gguf_ud_q4_k_xl` and
+   stops binding the f16 WMMA route there; the default was verified to run
+   `dense_wide256` on 264 roles with zero `wmma_prefill` launches (§4). What
+   remains from this item is cleanup, not promotion: delete the wide selector's
+   env flag once nothing needs to bisect against it, and retire the WMMA dense
+   route for this quant (see `docs/REFACTOR.md`).
 3. **Cache the activation conversion** (convert once per graph, not per launch).
    Measured at 2.573 → 1.303 ms on the packet, against the comparator's 1.339 ms
    kernel. This is the whole remaining dense gap.

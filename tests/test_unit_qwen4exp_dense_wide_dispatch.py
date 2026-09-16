@@ -202,13 +202,14 @@ def _wmma_claimed_parent(rows: int = 512, in_features: int = PACKET_K):
 def test_claims_the_weight_the_wmma_rewrite_already_claimed(monkeypatch):
     """The WMMA rewrite runs first and changes the ABI out from under this route.
 
-    ``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` is bound to layers 16-47 for this
-    quant by the production default, which is the same window this route is
-    scoped to. Every Q8_0 dense linear in that window therefore reaches the
-    wide selector as ``wmma_prefill_f32_f32_out`` with ABI ``wmma_raw``.
-    Declining that parent is what left the route unreachable while its own
-    gates passed, its layer scope was correct and its family was registered:
-    the selector returned before any of that was consulted.
+    ``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` was bound to layers 16-47 for this
+    quant by the production default until 2026-09-17, which is the same window
+    this route is scoped to, and an explicit opt-in still produces that binding.
+    Every Q8_0 dense linear in that window therefore reaches the wide selector as
+    ``wmma_prefill_f32_f32_out`` with ABI ``wmma_raw``. Declining that parent is
+    what left the route unreachable while its own gates passed, its layer scope
+    was correct and its family was registered: the selector returned before any
+    of that was consulted.
     """
 
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")

@@ -89,7 +89,9 @@ def test_the_dense_wide_teacher_is_the_exact_chain():
     }
 
 
-def test_restoring_the_route_env_removes_keys_that_were_unset():
+def test_restoring_the_route_env_removes_keys_that_were_unset(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """A gate must not leave the process with a selector it invented."""
 
     import os
@@ -100,6 +102,8 @@ def test_restoring_the_route_env_removes_keys_that_were_unset():
     )
 
     route = SELECTORS["dense_wide"]
+    for key in route.env_keys:
+        monkeypatch.delenv(key, raising=False)
     bound = {key: os.environ.get(key) for key in route.env_keys}
     assert bound == {WMMA_LAYERS_ENV: None, DENSE_WIDE_ENV: None, DENSE_WIDE_LAYERS_ENV: None}
     try:

@@ -7046,13 +7046,15 @@ outside the blocks) is outside any scope and the route declines it.
 
 Removal condition: run the calibrated production envelope in
 `docs/EXECUTION-PROFILES.md` against this route at the deepest admissible layer
-scope. **Met 2026-09-17 at 16-47**: the route passes the 12-case envelope and its
-strict/candidate logits digests are byte-identical to the certified WMMA route's,
-so the next unit promotes it to the named production profile and deletes the
-flag, keeping the coltile fallback registered. If that promotion is reverted, the
-selector and the flag go rather than being left as a dead default-off route -
-the kernel's measured 6.74x over the production dispatch is only worth keeping if
-it is reachable under a gate.
+scope. **Met and executed 2026-09-17 at 16-47**: the route passes the 12-case
+envelope with strict/candidate logits digests byte-identical to the certified WMMA
+route's, so the production binder now binds it at that scope for
+`gguf_ud_q4_k_xl`. What is left of this entry is the flag itself: once nothing
+needs to bisect against the wide route, delete `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`
+and let the layer scope alone decide, keeping the coltile fallback registered. If
+the promotion is ever reverted, delete the selector and the flag rather than
+leaving a dead default-off route - the kernel's measured 6.74x over the
+production dispatch is only worth keeping if it is reachable under a gate.
 
 `_variant_scoped_library` was extracted at the same time. Two launch paths had
 independently resolved caller-supplied libraries, one keyed by quant alone. That
@@ -7092,10 +7094,31 @@ Removal trigger: once the calibrated envelope passes at the promoted scope,
 make the wide route the default there and retire the f16 WMMA dense route for
 this quant (keeping the registered exact coltile fallback). Do not keep both
 families selectable for the same layers once one is the default: that is the
-contention this fix had to resolve. **The envelope passed on 2026-09-17 with a
-bit-identical candidate digest to this route's**
-(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/`), so the trigger is
-now active rather than pending.
+contention this fix had to resolve. **Executed 2026-09-17**: the envelope passed
+with a bit-identical candidate digest to this route's
+(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/`), the production
+binder binds the wide route at 16-47 and no longer binds
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`, and the promoted default was verified to
+launch `dense_wide256` on the 264 layer-16-47 roles with zero `wmma_prefill`
+launches. What is left is deleting this route's selector and env var once
+nothing needs to bisect against it.
+
+### The variant manifest does not name env-scoped post-binder routes
+
+The Qwen4Exp production manifest's `prefill_exact_q8_f32_coltile` selection still
+names `coltile8_rowbatch4_wave_scale_f32_f32_out` for the Q8 dense prefill role,
+while the binder has routed layers 16-47 to `wmma_prefill_f32_f32_out` since
+2026-09-17 and to `dense_wide256_f32_f32_out` after this promotion. Both gate
+artifacts therefore record the same `profile_manifest_sha256`
+(`35e57360e648bcc8…`) for three different arithmetic compositions, and only their
+`route.surface` distinguishes them. Removal trigger: mirror the layer-windowed
+precedent this package already has (`prefill_rows_ge16_hk16_hv32_48_d128_layers27_47`
+exists in both the strict and production plans) by adding a
+`prefill_rows_gt256_layers16_47_q8_f32_dense_wide` scope to both plans, so the
+manifest hash identifies the composition again. Do it in a unit that re-runs the
+16-47 envelope under the new manifest, since a manifest change after a gate means
+the gate did not cover the new identity. Until then, read the composition from
+`route.surface` in the artifact, never from the manifest hash alone.
 
 ### The launch census has a per-module coverage boundary
 

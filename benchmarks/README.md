@@ -703,21 +703,22 @@ selectors flipped after the production binder in one process:
 | Prefill route at layers 16-47 | 512 | 1K | 4K |
 | --- | ---: | ---: | ---: |
 | Exact coltile chain | 2.822 s | 5.487 s | 22.648 s |
-| WMMA (production default) | 2.225 s | 4.389 s | 18.208 s |
-| Wide-row, opt-in | **2.201 s** | **4.151 s** | **17.217 s** |
+| WMMA | 2.225 s | 4.389 s | 18.208 s |
+| Wide-row, now the default | **2.201 s** | **4.151 s** | **17.217 s** |
 
-Median prefill wall; the wide-row route is **5.4%** below the default at 1K and
-4K and indistinguishable from it at 512. Against the exact chain it is
+Median prefill wall; the wide-row route is **5.4%** below the WMMA route at 1K
+and 4K and indistinguishable from it at 512. Against the exact chain it is
 22.0%/24.3%/24.0% faster, of which the WMMA route already holds
 21.1%/20.0%/19.6%. All three arms launch the same 7191 kernels over the same
 roles, and the wide arm's logits digest and sampled token are identical to the
-certified WMMA arm on all three cases in both runs, while both differ from the
-exact chain. The wide route has since passed its own 12-case production envelope
-at 16-47, with strict and candidate logits digests byte-identical to the
-certified WMMA route's, so the two routes hold the same numerical verdict
-([gate](results/2026-09-17-q8-dense-wide-16-47-gate/README.md)). It remains
-opt-in and not yet promoted; this single-category prefill protocol is not a
-topline rate row.
+WMMA arm on all three cases in both runs, while both differ from the exact
+chain. The wide route has since passed its own 12-case production envelope at
+16-47, with strict and candidate logits digests byte-identical to the WMMA
+route's ([gate](results/2026-09-17-q8-dense-wide-16-47-gate/README.md)), and it
+**is the production default at that scope** as of 2026-09-17: the promoted
+default launches `dense_wide256` on the 264 layer-16-47 roles with zero
+`wmma_prefill` launches and keeps the exact coltile chain on layers 0-15. This
+single-category prefill protocol is not a topline rate row.
 [Route A/B evidence](results/2026-09-17-q8-dense-route-ab/README.md).
 
 September 14 numerical refresh of the previous production profile on

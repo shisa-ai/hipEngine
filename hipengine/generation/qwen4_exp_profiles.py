@@ -38,7 +38,18 @@ PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
 # f16 WMMA dense Q8_0 prefill route: mean KL 3.796e-4 against the 1e-3 limit,
 # p95 1.762e-3, top-1 1538/1548, 3/3 deterministic, no scope failures.
 # 12-47 and 8-47 screen inconclusive and are not certified.
+#
+# Retired as the production default at this scope on 2026-09-17: the wide-row
+# route below holds the identical envelope (byte-identical strict and candidate
+# logits digests) and is 5.4% faster at 1K/4K. The selector and its env var stay
+# registered for explicit opt-in and for re-gating.
 PRODUCTION_Q8_WMMA_PREFILL_LAYERS = tuple(range(16, 48))
+# Deepest scope certified for the wide-row f16 dense Q8_0 prefill route:
+# the same envelope as the WMMA route at 16-47 (mean KL 3.80e-4, p95 1.76e-3,
+# p99 5.42e-3, max 1.53e-2, top-1 1538/1548, 3/3 deterministic, no scope
+# failures), with `strict_logits_sha256` and `candidate_logits_sha256` equal to
+# that route's gate artifact byte for byte.
+PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(16, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
 PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
@@ -725,11 +736,21 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
-        # Certified 2026-09-17 at layers 16-47 and measured +4.636 s / 1.245x on
-        # the code-p4096 production prefill. The exact coltile chain stays the
-        # registered strict fallback and keeps every layer below 16.
-        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": (
-            ",".join(map(str, PRODUCTION_Q8_WMMA_PREFILL_LAYERS))
+        # Certified 2026-09-17 at layers 16-47 and measured 5.4% below the f16
+        # WMMA route at 1K/4K, with that route's own envelope (bit-identical
+        # strict and candidate logits digests). The wide route replaces it here
+        # rather than sitting beside it: both families selectable for the same
+        # layers is the contention the 2026-09-17 route fix had to resolve. The
+        # exact coltile chain stays the registered strict fallback and keeps
+        # every layer below 16.
+        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": (
+            "1"
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else "0"
+        ),
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS))
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
         ),
