@@ -1,0 +1,141 @@
+{
+  "ar_tokens": 545,
+  "condition_seconds": 0.9992705549811944,
+  "frames": 32,
+  "latent_scale": 72.74337005615234,
+  "latents": {
+    "bf16_exact": 0.16162109375,
+    "cosine": 0.9999262431018069,
+    "max_abs": 0.078125,
+    "mean_abs": 0.014974445104598999,
+    "produced_norm": 72.85534391310179,
+    "reference_norm": 72.7433711128897,
+    "relative_l2": 0.012251949288506014,
+    "relative_to_scale": 0.0010739810368930315
+  },
+  "nar_rows": 34,
+  "passed": true,
+  "provenance": {
+    "command_line": "scripts/yue2_nar_gate.py --json benchmarks/results/yue2_nar_gate_20260916.json",
+    "fixture": "/home/lhl/hipEngine/tests/fixtures/yue2/nar/chunk0.npz",
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "gfx1151",
+      "hostname": "zbook",
+      "platform": "linux"
+    },
+    "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+    "protocol": "yue2-nar-fixture-gate-v1",
+    "revision": "ce23e720c28459925dc97abdc6c6e17608db1097"
+  },
+  "solve_seconds": 0.804160690982826,
+  "steps": 4,
+  "steps_report": [
+    {
+      "raw_mid": 1.9459101490553132,
+      "raw_t": 20.0,
+      "state": {
+        "bf16_exact": 1.0,
+        "cosine": 1.0000000000000002,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "produced_norm": 46.732211558634624,
+        "reference_norm": 46.732211558634624,
+        "relative_l2": 0.0,
+        "relative_to_scale": 0.0
+      },
+      "step": 0,
+      "velocity": {
+        "bf16_exact": 0.13916015625,
+        "cosine": 0.999912298057268,
+        "max_abs": 0.0859375,
+        "mean_abs": 0.010478268377482891,
+        "produced_norm": 48.33277400511318,
+        "reference_norm": 48.295856607441635,
+        "relative_l2": 0.01327110670358943,
+        "relative_to_scale": 0.0011813791405823348
+      }
+    },
+    {
+      "raw_mid": 0.5108256237659907,
+      "raw_t": 1.0986122886681098,
+      "state": {
+        "bf16_exact": 1.0,
+        "cosine": 0.9999999999999999,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "produced_norm": 40.859739241973216,
+        "reference_norm": 40.859739241973216,
+        "relative_l2": 0.0,
+        "relative_to_scale": 0.0
+      },
+      "step": 1,
+      "velocity": {
+        "bf16_exact": 0.10888671875,
+        "cosine": 0.999888239008246,
+        "max_abs": 0.0625,
+        "mean_abs": 0.011326305568218231,
+        "produced_norm": 44.37183296478248,
+        "reference_norm": 44.383375723947196,
+        "relative_l2": 0.014950969479644529,
+        "relative_to_scale": 0.0008591848295144253
+      }
+    },
+    {
+      "raw_mid": -0.5108256237659907,
+      "raw_t": 0.0,
+      "state": {
+        "bf16_exact": 1.0,
+        "cosine": 0.9999999999999998,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "produced_norm": 45.77492560767213,
+        "reference_norm": 45.77492560767213,
+        "relative_l2": 0.0,
+        "relative_to_scale": 0.0
+      },
+      "step": 2,
+      "velocity": {
+        "bf16_exact": 0.1142578125,
+        "cosine": 0.9998212494800867,
+        "max_abs": 0.121826171875,
+        "mean_abs": 0.014769598376005888,
+        "produced_norm": 49.80381597474447,
+        "reference_norm": 49.77431451037469,
+        "relative_l2": 0.018922585210672915,
+        "relative_to_scale": 0.001674739179405071
+      }
+    },
+    {
+      "raw_mid": -1.9459101490553135,
+      "raw_t": -1.0986122886681098,
+      "state": {
+        "bf16_exact": 1.0,
+        "cosine": 1.0,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "produced_norm": 57.78930823286887,
+        "reference_norm": 57.78930823286887,
+        "relative_l2": 0.0,
+        "relative_to_scale": 0.0
+      },
+      "step": 3,
+      "velocity": {
+        "bf16_exact": 0.14990234375,
+        "cosine": 0.9999255096144761,
+        "max_abs": 0.078125,
+        "mean_abs": 0.012204626575112343,
+        "produced_norm": 59.38786864995577,
+        "reference_norm": 59.36958650468137,
+        "relative_l2": 0.01221153035525538,
+        "relative_to_scale": 0.0010739810368930315
+      }
+    }
+  ],
+  "teacher_forced_seconds": 0.4053210880374536,
+  "thresholds": {
+    "max_relative_l2": 0.05,
+    "min_cosine": 0.999
+  },
+  "worst_velocity_relative_l2": 0.018922585210672915
+}

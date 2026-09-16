@@ -1,8 +1,14 @@
 {
   "chunks": 1,
   "frames": 32,
-  "latent_norm": 73.31781005859375,
+  "latent_norm": 72.74337005615234,
+  "nar_cond_end": 0,
   "prefix_length": 512,
+  "replay_step0_max_abs": 0.0,
+  "replay_step1_max_abs": 0.0,
+  "replay_step2_max_abs": 0.0,
+  "replay_step3_max_abs": 0.0,
   "seed": 1234,
+  "steps": 4,
   "velocity_norm_step0": 48.29585647583008
 }

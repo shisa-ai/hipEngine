@@ -172,20 +172,29 @@ def main() -> int:
 
     recorded_velocities = arrays["velocities"]
     recorded_states = arrays["states"]
+    # Teacher-forced attribution: evaluate the native velocity at each *recorded*
+    # state, so a velocity defect is separated from the solver's own trajectory.
     started = time.perf_counter()
     for index, (raw, raw_mid) in enumerate(solver_schedule(steps)):
+        runtime.load_state(recorded_states[index])
         report["steps_report"].append(
             {
                 "step": index,
                 "raw_t": raw,
+                "raw_mid": raw_mid,
                 "state": _compare(recorded_states[index], runtime.state_bits(), scale=scale),
                 "velocity": _compare(
                     recorded_velocities[index], runtime.velocity_bits(raw), scale=scale
                 ),
             }
         )
+    report["teacher_forced_seconds"] = time.perf_counter() - started
+    # End-to-end: the native solver's own trajectory from the recorded noise.
+    started = time.perf_counter()
+    runtime.load_state(np.asarray(arrays["states"][0], dtype=np.float32))
+    latents = runtime.solve(steps)
     report["solve_seconds"] = time.perf_counter() - started
-    report["latents"] = _compare(arrays["latents"], runtime.state_bits(), scale=scale)
+    report["latents"] = _compare(arrays["latents"], to_bf16_bits(latents), scale=scale)
 
     latents = report["latents"]
     worst_step = max(
@@ -193,7 +202,9 @@ def main() -> int:
     )
     report["worst_velocity_relative_l2"] = worst_step
     report["passed"] = bool(
-        latents["relative_l2"] <= args.max_relative_l2 and latents["cosine"] >= args.min_cosine
+        latents["relative_l2"] <= args.max_relative_l2
+        and latents["cosine"] >= args.min_cosine
+        and worst_step <= args.max_relative_l2
     )
 
     print(

@@ -635,10 +635,13 @@ def cmd_operators(args) -> int:
 
 def cmd_nar(args) -> int:
     import torch
+
+    # The reference package is imported lazily but the path must be installed
+    # first: this module is not a dependency of the repository.
+    _install_path()
     from yue2.nar import CachedNAR, song_chunks
     from yue2.protocol import CODEC_OFFSET
 
-    _install_path()
     pipe, model = load_model()
     out = Path(args.out) / "nar"
     compact = Path(args.compact) / "nar"
