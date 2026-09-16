@@ -344,3 +344,111 @@ def test_the_shard_group_runs_both_ranks_and_reduces_to_bf16() -> None:
             with scoped_current_device(runtime, d):
                 runtime.free(inputs[d])
                 runtime.stream_destroy(streams[d])
+
+
+@needs_two_gpus
+def test_batched_shard_rows_match_the_cpu_oracle_and_zero_the_tail() -> None:
+    """Batched rows equal the per-row oracle and the inactive tail is zeroed."""
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.runtime import MemcpyKind
+    from hipengine.distributed.shard_exec import upload_shard_weight
+    from hipengine.distributed.shard_group import MlpShardGroup
+
+    runtime = get_hip_runtime()
+    devices = (0, 1)
+    hidden, full_ffn = 16, 8
+    per_rank = full_ffn // 2
+    capacity = 3
+    scale = 0.05
+    rng = np.random.default_rng(23)
+
+    gate_f = (rng.standard_normal((full_ffn, hidden)) * scale).astype(np.float32)
+    up_f = (rng.standard_normal((full_ffn, hidden)) * scale).astype(np.float32)
+    down_f = (rng.standard_normal((hidden, full_ffn)) * scale).astype(np.float32)
+    gate_b = _bf16_bytes(gate_f)
+    up_b = _bf16_bytes(up_f)
+    down_b = _bf16_bytes(down_f)
+    x_f32 = (rng.standard_normal((capacity, hidden)) * scale).astype(np.float32)
+    x_bf16 = _bf16_round(x_f32)
+
+    gate_v = _bf16_values_from_bytes(gate_b)
+    up_v = _bf16_values_from_bytes(up_b)
+    down_v = _bf16_values_from_bytes(down_b)
+    expected = []
+    for row in range(capacity):
+        partials = []
+        for rank in range(2):
+            g = (x_bf16[row] @ gate_v[rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32)
+            u = (x_bf16[row] @ up_v[rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32)
+            act = _bf16_round(_silu(g) * u)
+            partials.append(
+                (act @ down_v[:, rank * per_rank : (rank + 1) * per_rank].T).astype(np.float32)
+            )
+        expected.append(_bf16_round(partials[0] + partials[1]))
+    expected = np.stack(expected)
+
+    streams = {}
+    for d in devices:
+        with scoped_current_device(runtime, d):
+            streams[d] = runtime.stream_create(nonblocking=True)
+    weights = {
+        0: {
+            d: {
+                role: upload_shard_weight(
+                    runtime,
+                    device=d,
+                    name="raw",
+                    layout="dense_bf16",
+                    quant_key="dense_bf16",
+                    payload=(
+                        gate_b[d * per_rank : (d + 1) * per_rank]
+                        if role == "ffn_gate"
+                        else up_b[d * per_rank : (d + 1) * per_rank]
+                        if role == "ffn_up"
+                        else down_b[:, d * per_rank : (d + 1) * per_rank]
+                    ),
+                )
+                for role in ("ffn_gate", "ffn_up", "ffn_down")
+            }
+            for d in devices
+        }
+    }
+    group = MlpShardGroup(
+        runtime, devices=devices, streams=streams, hidden=hidden,
+        per_rank_ffn=per_rank, weights=weights, rows=capacity,
+    )
+    x_bytes = _bf16_bytes(x_f32).reshape(capacity, hidden, 2)
+    inputs = {}
+    try:
+        for d in devices:
+            with scoped_current_device(runtime, d):
+                buf = runtime.malloc(capacity * hidden * 2)
+                runtime.memcpy(
+                    int(buf), x_bytes.reshape(-1).ctypes.data, capacity * hidden * 2,
+                    MemcpyKind.HOST_TO_DEVICE,
+                )
+                inputs[d] = int(buf)
+        for active in range(1, capacity + 1):
+            outputs = group.forward(0, inputs, rows=active)
+            for d in devices:
+                out = np.empty(capacity * hidden, dtype="<u2")
+                with scoped_current_device(runtime, d):
+                    runtime.memcpy(
+                        out.ctypes.data, outputs[d], capacity * hidden * 2,
+                        MemcpyKind.DEVICE_TO_HOST,
+                    )
+                got = (out.astype("<u4") << 16).view("<f4").reshape(capacity, hidden)
+                assert np.abs(got[:active] - expected[:active]).max() < 2e-2, (
+                    f"rank {d} active={active} left the bf16 contract"
+                )
+                assert np.array_equal(got[active:], np.zeros_like(got[active:])), (
+                    f"rank {d} active={active} left a stale inactive tail"
+                )
+    finally:
+        group.close()
+        for d in devices:
+            with scoped_current_device(runtime, d):
+                runtime.free(inputs[d])
+                runtime.stream_destroy(streams[d])

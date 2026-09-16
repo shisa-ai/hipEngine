@@ -38,6 +38,7 @@ from hipengine.core.build import build_hip
 from hipengine.distributed.transport import (
     TransportError,
     TransportStateError,
+    require_rows_value,
 )
 
 _SOURCE = Path(__file__).with_name("staged_exchange_host.cpp")
@@ -96,6 +97,7 @@ def _bind(library: Any) -> None:
         ctypes.c_int32,  # hidden
         ctypes.c_int32,  # staging dtype code
         ctypes.c_int32,  # slot sets
+        ctypes.c_int32,  # capacity rows
         ctypes.POINTER(ctypes.c_int32),  # out error code
     ]
     library.tp2_staged_create.restype = ctypes.c_void_p
@@ -105,6 +107,13 @@ def _bind(library: Any) -> None:
         ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
     ]
     library.tp2_staged_reduce.restype = ctypes.c_int32
+    library.tp2_staged_reduce_rows.argtypes = [
+        ctypes.c_void_p,  # handle
+        ctypes.POINTER(ctypes.c_void_p),  # per-rank partial pointers
+        ctypes.c_int32,  # active rows
+        ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
+    ]
+    library.tp2_staged_reduce_rows.restype = ctypes.c_int32
     library.tp2_staged_reduce_at.argtypes = [
         ctypes.c_void_p,  # handle
         ctypes.POINTER(ctypes.c_void_p),  # per-rank partial pointers
@@ -112,6 +121,14 @@ def _bind(library: Any) -> None:
         ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
     ]
     library.tp2_staged_reduce_at.restype = ctypes.c_int32
+    library.tp2_staged_reduce_at_rows.argtypes = [
+        ctypes.c_void_p,  # handle
+        ctypes.POINTER(ctypes.c_void_p),  # per-rank partial pointers
+        ctypes.c_int32,  # caller-chosen payload slot
+        ctypes.c_int32,  # active rows
+        ctypes.POINTER(ctypes.c_uint64),  # out payload device pointer
+    ]
+    library.tp2_staged_reduce_at_rows.restype = ctypes.c_int32
     library.tp2_staged_payload_base.argtypes = [ctypes.c_void_p]
     library.tp2_staged_payload_base.restype = ctypes.c_uint64
     library.tp2_staged_slot_stride.argtypes = [ctypes.c_void_p]
@@ -143,6 +160,7 @@ class CompiledStagedExchangeTransport:
         staging_dtype: str = "f32",
         library: Any | None = None,
         slot_sets: int = _SLOT_SETS,
+        rows: int = 1,
     ) -> None:
         if not devices:
             raise TransportStateError("a staged exchange needs at least one rank")
@@ -159,8 +177,12 @@ class CompiledStagedExchangeTransport:
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
         self.hidden = int(hidden)
+        # ``rows`` is the capacity of one slot; ``reduce(rows=n)`` stages and
+        # sums exactly the first ``n`` rows and zeroes the inactive tail.
+        self.rows = require_rows_value(rows, capacity=rows)
         self.staging_dtype = str(staging_dtype)
-        self.staging_nbytes = self.hidden * (2 if staging_dtype == "bf16" else 4)
+        self.staging_row_bytes = self.hidden * (2 if staging_dtype == "bf16" else 4)
+        self.staging_nbytes = self.rows * self.staging_row_bytes
         self._poisoned = False
         self.reductions = 0
         self._handle: int | None = None
@@ -185,6 +207,7 @@ class CompiledStagedExchangeTransport:
             self.hidden,
             _STAGING_DTYPE_CODES[staging_dtype],
             slot_sets,
+            self.rows,
             ctypes.byref(error_code),
         )
         if not handle:
@@ -225,37 +248,64 @@ class CompiledStagedExchangeTransport:
 
     # -- the reduction ----------------------------------------------------
 
-    def reduce(self, partial_ptrs: Mapping[int, int], *, slot: int | None = None) -> dict[int, int]:
-        """Reduce one partial per rank into the mapped reduced payload.
+    def reduce(
+        self,
+        partial_ptrs: Mapping[int, int],
+        *,
+        slot: int | None = None,
+        rows: int | None = None,
+    ) -> dict[int, int]:
+        """Reduce the active rows of one partial per rank into the mapped payload.
 
         Both ranks' D2H copies are submitted before any wait, each stream is
         awaited once, the compiled host sums the staged rows in f32 (reading
         them in this transport's staging dtype), and the payload's
         device-visible address is returned per rank with no H2D copy: every
         rank's consumer reads the mapped host row zero-copy on its own
-        stream. With ``slot`` the reduce publishes into that fixed payload
-        slot set and the internal alternation is untouched - the stable
-        pointer a captured graph's consumer needs.
+        stream. Only the first ``rows`` rows are summed; the trailing capacity
+        rows of the payload are zeroed. With ``slot`` the reduce publishes into
+        that fixed payload slot set and the internal alternation is untouched.
+
+        The capacity-1 single-row route keeps calling the original ABI
+        functions unchanged.
         """
 
         self._require_live()
+        active = require_rows_value(self.rows if rows is None else rows, capacity=self.rows)
         missing = [d for d in self.devices if int(d) not in partial_ptrs]
         if missing:
             self._poisoned = True
             raise TransportStateError(f"no partial given for ranks {missing}")
         for index, device in enumerate(self.devices):
             self._partial_array[index] = int(partial_ptrs[device])
+        single_row = self.rows == 1 and active == 1
         if slot is None:
-            code = self._library.tp2_staged_reduce(
-                ctypes.c_void_p(self._handle),
-                self._partial_array,
-                ctypes.byref(self._payload_out),
-            )
-        else:
+            if single_row:
+                code = self._library.tp2_staged_reduce(
+                    ctypes.c_void_p(self._handle),
+                    self._partial_array,
+                    ctypes.byref(self._payload_out),
+                )
+            else:
+                code = self._library.tp2_staged_reduce_rows(
+                    ctypes.c_void_p(self._handle),
+                    self._partial_array,
+                    active,
+                    ctypes.byref(self._payload_out),
+                )
+        elif single_row:
             code = self._library.tp2_staged_reduce_at(
                 ctypes.c_void_p(self._handle),
                 self._partial_array,
                 int(slot),
+                ctypes.byref(self._payload_out),
+            )
+        else:
+            code = self._library.tp2_staged_reduce_at_rows(
+                ctypes.c_void_p(self._handle),
+                self._partial_array,
+                int(slot),
+                active,
                 ctypes.byref(self._payload_out),
             )
         if code != _REDUCE_OK:

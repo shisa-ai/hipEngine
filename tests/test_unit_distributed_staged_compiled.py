@@ -36,9 +36,11 @@ class FakeDriver:
     """
 
     def __init__(self, *, fail_reduce_code: int = 0, fail_create: bool = False) -> None:
-        self.create_calls: list[tuple[tuple[int, ...], int, int, int, int]] = []
+        self.create_calls: list[tuple[tuple[int, ...], int, int, int, int, int]] = []
         self.reduce_calls: list[list[int]] = []
         self.reduce_at_calls: list[tuple[int, list[int]]] = []
+        self.reduce_rows_calls: list[tuple[int, list[int]]] = []
+        self.reduce_at_rows_calls: list[tuple[int, int, list[int]]] = []
         self.destroyed: list[int] = []
         self.fail_reduce_code = int(fail_reduce_code)
         self.fail_create = fail_create
@@ -46,7 +48,7 @@ class FakeDriver:
 
         driver = self
 
-        def tp2_staged_create(devices, world, streams, hidden, dtype, slots, err):
+        def tp2_staged_create(devices, world, streams, hidden, dtype, slots, rows, err):
             code_ptr = ctypes.cast(err, ctypes.POINTER(ctypes.c_int32))
             if driver.fail_create:
                 code_ptr[0] = -1
@@ -54,7 +56,7 @@ class FakeDriver:
                 return 0
             code_ptr[0] = 0
             driver.create_calls.append(
-                (tuple(devices), int(world), int(hidden), int(dtype), int(slots))
+                (tuple(devices), int(world), int(hidden), int(dtype), int(slots), int(rows))
             )
             return _CREATE_HANDLE
 
@@ -80,6 +82,30 @@ class FakeDriver:
             out[0] = _PAYLOAD_PTR + int(slot) * 32
             return 0
 
+        def tp2_staged_reduce_rows(handle, partials, rows, out_payload):
+            array = ctypes.cast(partials, ctypes.POINTER(ctypes.c_void_p))
+            driver.reduce_rows_calls.append(
+                (int(rows), [int(array[i]) for i in range(2)])
+            )
+            out = ctypes.cast(out_payload, ctypes.POINTER(ctypes.c_uint64))
+            if driver.fail_reduce_code:
+                driver._message = b"simulated reduce failure"
+                return driver.fail_reduce_code
+            out[0] = _PAYLOAD_PTR
+            return 0
+
+        def tp2_staged_reduce_at_rows(handle, partials, slot, rows, out_payload):
+            array = ctypes.cast(partials, ctypes.POINTER(ctypes.c_void_p))
+            driver.reduce_at_rows_calls.append(
+                (int(slot), int(rows), [int(array[i]) for i in range(2)])
+            )
+            out = ctypes.cast(out_payload, ctypes.POINTER(ctypes.c_uint64))
+            if driver.fail_reduce_code:
+                driver._message = b"simulated reduce failure"
+                return driver.fail_reduce_code
+            out[0] = _PAYLOAD_PTR + int(slot) * 32
+            return 0
+
         def tp2_staged_payload_base(handle):
             return _PAYLOAD_PTR
 
@@ -95,7 +121,9 @@ class FakeDriver:
 
         self.tp2_staged_create = tp2_staged_create
         self.tp2_staged_reduce = tp2_staged_reduce
+        self.tp2_staged_reduce_rows = tp2_staged_reduce_rows
         self.tp2_staged_reduce_at = tp2_staged_reduce_at
+        self.tp2_staged_reduce_at_rows = tp2_staged_reduce_at_rows
         self.tp2_staged_payload_base = tp2_staged_payload_base
         self.tp2_staged_slot_stride = tp2_staged_slot_stride
         self.tp2_staged_last_error = tp2_staged_last_error
@@ -125,8 +153,9 @@ def test_create_receives_the_validated_configuration() -> None:
     transport = _transport(
         library, devices=(3, 5), streams={3: 9, 5: 7}, hidden=12, staging_dtype="bf16"
     )
-    assert library.create_calls == [((3, 5), 2, 12, 1, 2)], (
-        "the driver gets the device list, world, hidden, the bf16 code, and two slot sets"
+    assert library.create_calls == [((3, 5), 2, 12, 1, 2, 1)], (
+        "the driver gets the device list, world, hidden, the bf16 code, two slot sets, "
+        "and the capacity rows"
     )
     assert transport.staging_nbytes == 12 * 2
     transport.close()
@@ -447,7 +476,7 @@ def staged_compiled_module():
 def test_create_receives_the_requested_slot_sets() -> None:
     library = FakeDriver()
     transport = _transport(library, slot_sets=7)
-    assert library.create_calls == [((0, 1), 2, 8, 0, 7)], (
+    assert library.create_calls == [((0, 1), 2, 8, 0, 7, 1)], (
         "the driver gets the caller's slot-set count, not the default two"
     )
     transport.close()

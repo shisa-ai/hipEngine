@@ -104,11 +104,18 @@ class CompiledDeviceExchange:
         hidden: int,
         library: Any | None = None,
         max_spins: int = 2_000_000,
+        rows: int = 1,
     ) -> None:
         if len(devices) != 2:
             raise TransportStateError("the device exchange serves exactly two ranks")
         if len(set(devices)) != len(devices):
             raise TransportStateError("device-exchange ranks must be distinct devices")
+        if rows != 1:
+            raise TransportStateError(
+                "the device-graph exchange is the single-row decode route; "
+                f"rows={rows} is unsupported - batched prefill uses the staged "
+                "transports instead"
+            )
         missing = [d for d in devices if d not in streams]
         if missing:
             raise TransportStateError(f"no stream given for ranks {missing}")

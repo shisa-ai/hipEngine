@@ -44,6 +44,27 @@ class TimeoutError_(TransportError):
     """Completion did not arrive before the deadline (device may be hung)."""
 
 
+def require_rows_value(value: object, *, capacity: int, name: str = "rows") -> int:
+    """Validate a row count is a real positive integer within ``capacity``.
+
+    ``int(1.5)`` and ``int(True)`` both silently collapse to 1, so a caller
+    passing a float or bool would get a single-row transfer while believing it
+    asked for a batch. Reject anything that is not an ``int`` (bools are not
+    integers here) before any allocation or launch. Shared by the shard
+    executor and both staged transports so every boundary agrees.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"{name} must be an integer, got {type(value).__name__} {value!r}"
+        )
+    if value < 1:
+        raise ValueError(f"{name} must be positive, got {value!r}")
+    if value > int(capacity):
+        raise ValueError(f"{name} {value} exceeds capacity {capacity}")
+    return value
+
+
 class CollectiveKind(enum.Enum):
     BROADCAST = "broadcast"
     ALL_REDUCE_SUM = "all_reduce_sum"

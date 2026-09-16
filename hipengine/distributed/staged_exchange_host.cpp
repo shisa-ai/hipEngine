@@ -55,10 +55,11 @@ std::string& create_error_slot() {
 struct Tp2StagedExchange {
   int world = 0;
   int hidden = 0;
+  int capacity_rows = 0;
   int staging_dtype = 0;
   int slot_sets = 0;
-  size_t staging_row_bytes = 0;  // per-rank row in the staging dtype
-  size_t payload_row_bytes = 0;  // hidden * 4: the published f32 row
+  size_t staging_row_bytes = 0;  // per-rank capacity row block in the staging dtype
+  size_t payload_row_bytes = 0;  // capacity_rows * hidden * 4: the published f32 block
   size_t staging_nbytes = 0;
   size_t payload_nbytes = 0;
   std::vector<int> devices;
@@ -90,6 +91,7 @@ void* tp2_staged_create(
     int32_t hidden,
     int32_t staging_dtype,
     int32_t slot_sets,
+    int32_t capacity_rows,
     int32_t* out_error) {
   create_error_slot().clear();
   if (out_error != nullptr) {
@@ -112,8 +114,9 @@ void* tp2_staged_create(
   if (devices[0] == devices[1]) {
     return fail(kErrArg, "staged-exchange ranks must be distinct devices");
   }
-  if (hidden <= 0 || slot_sets < 2) {
-    return fail(kErrArg, "hidden must be positive and slot_sets at least 2");
+  if (hidden <= 0 || slot_sets < 2 || capacity_rows < 1) {
+    return fail(kErrArg, "hidden must be positive, slot_sets at least 2, and "
+                         "capacity_rows at least 1");
   }
   if (staging_dtype != kStagingF32 && staging_dtype != kStagingBf16) {
     return fail(kErrArg, "staging_dtype must be 0 (f32) or 1 (bf16)");
@@ -127,11 +130,14 @@ void* tp2_staged_create(
   }
   ex->world = static_cast<int>(world);
   ex->hidden = static_cast<int>(hidden);
+  ex->capacity_rows = static_cast<int>(capacity_rows);
   ex->staging_dtype = static_cast<int>(staging_dtype);
   ex->slot_sets = static_cast<int>(slot_sets);
   ex->staging_row_bytes =
-      static_cast<size_t>(hidden) * (staging_dtype == kStagingBf16 ? 2u : 4u);
-  ex->payload_row_bytes = static_cast<size_t>(hidden) * 4u;
+      static_cast<size_t>(capacity_rows) * static_cast<size_t>(hidden) *
+      (staging_dtype == kStagingBf16 ? 2u : 4u);
+  ex->payload_row_bytes =
+      static_cast<size_t>(capacity_rows) * static_cast<size_t>(hidden) * 4u;
   ex->staging_nbytes =
       static_cast<size_t>(slot_sets) * ex->world * ex->staging_row_bytes;
   ex->payload_nbytes = static_cast<size_t>(slot_sets) * ex->payload_row_bytes;
@@ -193,6 +199,7 @@ static int32_t reduce_into(
     Tp2StagedExchange* ex,
     void* const* partials,
     int32_t slot,
+    int32_t active_rows,
     uint64_t* out_payload) {
   if (ex == nullptr || partials == nullptr) {
     return kErrArg;
@@ -202,6 +209,14 @@ static int32_t reduce_into(
       ex->error = "payload slot " + std::to_string(slot) +
                   " outside this transport's " + std::to_string(ex->slot_sets) +
                   " slot sets";
+    }
+    return kErrArg;
+  }
+  if (active_rows < 1 || active_rows > ex->capacity_rows) {
+    if (ex != nullptr) {
+      ex->error = "active rows " + std::to_string(active_rows) +
+                  " outside this transport's 1.." +
+                  std::to_string(ex->capacity_rows);
     }
     return kErrArg;
   }
@@ -218,6 +233,11 @@ static int32_t reduce_into(
     previous_device = 0;
   }
 
+  const size_t element_bytes =
+      static_cast<size_t>(ex->staging_dtype == kStagingBf16 ? 2 : 4);
+  const size_t active_bytes =
+      static_cast<size_t>(active_rows) * static_cast<size_t>(ex->hidden) * element_bytes;
+
   hipError_t code = hipSuccess;
   unsigned char* staging_slot =
       ex->staging + static_cast<size_t>(slot) * ex->world * ex->staging_row_bytes;
@@ -230,7 +250,7 @@ static int32_t reduce_into(
     code = hipMemcpyAsync(
         staging_slot + static_cast<size_t>(rank) * ex->staging_row_bytes,
         partials[rank],
-        ex->staging_row_bytes,
+        active_bytes,
         hipMemcpyDeviceToHost,
         ex->streams[rank]);
     if (code != hipSuccess) {
@@ -252,8 +272,12 @@ static int32_t reduce_into(
   }
 
   // The host sum: the same single f32 addition per element, in rank order,
-  // as the Python route's (ranks, hidden) reduction. bf16 staging widens by
-  // the same bit shift into the high half before the f32 sum.
+  // as the Python route's (ranks, active) reduction. bf16 staging widens by
+  // the same bit shift into the high half before the f32 sum. Only the active
+  // rows are summed; the trailing capacity rows are zeroed so an inactive tail
+  // is never published as a valid partial.
+  const int active_floats = active_rows * ex->hidden;
+  const int capacity_floats = ex->capacity_rows * ex->hidden;
   float* out = reinterpret_cast<float*>(
       ex->payload + static_cast<size_t>(slot) * ex->payload_row_bytes);
   if (ex->staging_dtype == kStagingBf16) {
@@ -261,7 +285,7 @@ static int32_t reduce_into(
         reinterpret_cast<const uint16_t*>(staging_slot);
     const uint16_t* row1 =
         reinterpret_cast<const uint16_t*>(staging_slot + ex->staging_row_bytes);
-    for (int j = 0; j < ex->hidden; ++j) {
+    for (int j = 0; j < active_floats; ++j) {
       const uint32_t bits0 = static_cast<uint32_t>(row0[j]) << 16;
       const uint32_t bits1 = static_cast<uint32_t>(row1[j]) << 16;
       float value0;
@@ -274,9 +298,12 @@ static int32_t reduce_into(
     const float* row0 = reinterpret_cast<const float*>(staging_slot);
     const float* row1 =
         reinterpret_cast<const float*>(staging_slot + ex->staging_row_bytes);
-    for (int j = 0; j < ex->hidden; ++j) {
+    for (int j = 0; j < active_floats; ++j) {
       out[j] = row0[j] + row1[j];
     }
+  }
+  for (int j = active_floats; j < capacity_floats; ++j) {
+    out[j] = 0.0f;
   }
 
   if (out_payload != nullptr) {
@@ -293,7 +320,7 @@ int32_t tp2_staged_reduce(void* handle, void* const* partials, uint64_t* out_pay
     return kErrArg;
   }
   const int32_t slot = ex->slot;
-  const int32_t code = reduce_into(ex, partials, slot, out_payload);
+  const int32_t code = reduce_into(ex, partials, slot, ex->capacity_rows, out_payload);
   if (code == kOk) {
     ex->slot = 1 - slot;
   }
@@ -305,7 +332,40 @@ int32_t tp2_staged_reduce_at(
     void* const* partials,
     int32_t slot,
     uint64_t* out_payload) {
-  return reduce_into(static_cast<Tp2StagedExchange*>(handle), partials, slot, out_payload);
+  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+  if (ex == nullptr) {
+    return kErrArg;
+  }
+  return reduce_into(ex, partials, slot, ex->capacity_rows, out_payload);
+}
+
+// Batched siblings: stage and sum exactly `active_rows` rows (1..capacity) and
+// zero the trailing capacity rows. The single-row ABI above is unchanged.
+int32_t tp2_staged_reduce_rows(
+    void* handle,
+    void* const* partials,
+    int32_t active_rows,
+    uint64_t* out_payload) {
+  auto* ex = static_cast<Tp2StagedExchange*>(handle);
+  if (ex == nullptr) {
+    return kErrArg;
+  }
+  const int32_t slot = ex->slot;
+  const int32_t code = reduce_into(ex, partials, slot, active_rows, out_payload);
+  if (code == kOk) {
+    ex->slot = 1 - slot;
+  }
+  return code;
+}
+
+int32_t tp2_staged_reduce_at_rows(
+    void* handle,
+    void* const* partials,
+    int32_t slot,
+    int32_t active_rows,
+    uint64_t* out_payload) {
+  return reduce_into(
+      static_cast<Tp2StagedExchange*>(handle), partials, slot, active_rows, out_payload);
 }
 
 const char* tp2_staged_last_error(void* handle) {

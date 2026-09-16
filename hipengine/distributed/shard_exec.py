@@ -29,9 +29,14 @@ import numpy as np
 
 from hipengine.core.device import Device, scoped_current_device
 from hipengine.core.memory import copy_host_to_device
+from hipengine.distributed.transport import require_rows_value
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     silu_mul_separate_out_bf16,
 )
+
+
+class MlpShardRankError(RuntimeError):
+    """A requested batched shard route is unsupported; fail before launch."""
 
 
 class ShardWeightSpec:
@@ -149,9 +154,17 @@ class MlpShardRank:
         self.stream = int(stream)
         self.hidden = int(hidden)
         self.per_rank_ffn = int(per_rank_ffn)
-        self.rows = int(rows)
+        # ``rows`` is the buffer capacity; ``active_rows`` is how many rows the
+        # most recent input staging actually filled. Every consumer must
+        # either use exactly the active count or be rejected before launch.
+        if isinstance(rows, bool) or not isinstance(rows, int):
+            raise ValueError(
+                f"rows must be an integer, got {type(rows).__name__} {rows!r}"
+            )
+        self.rows = rows
         if self.rows < 1:
             raise ValueError(f"rows must be positive, got {rows!r}")
+        self.active_rows = 1
         self.partial_dtype = str(partial_dtype)
         self.partial_itemsize = 4 if partial_dtype == "f32" else 2
         # The shape-qualified fused gate/up+SiLU variant the policy table
@@ -182,13 +195,30 @@ class MlpShardRank:
 
     # -- execution --------------------------------------------------------
 
-    def write_input(self, x_bf16_bytes: np.ndarray) -> None:
-        """Stage one bf16 input row into this rank's persistent input buffer."""
+    def write_input(self, x_bf16_bytes: np.ndarray, rows: int | None = None) -> None:
+        """Stage one or more bf16 input rows into this rank's input buffer.
+
+        ``rows`` defaults to the payload's own row count (a ``hidden * 2``
+        byte payload is one row). The byte count must match exactly and fit
+        the rank's capacity; ``active_rows`` is then fixed so a later
+        ``forward_partial`` cannot silently run a different row count.
+        """
 
         self._require_live()
         payload = np.ascontiguousarray(x_bf16_bytes, dtype=np.uint8).reshape(-1)
-        if payload.size != self.hidden * 2:
-            raise ValueError(f"input row is {payload.size} bytes, expected {self.hidden * 2}")
+        if payload.size % (self.hidden * 2) != 0:
+            raise ValueError(
+                f"input payload is {payload.size} bytes, not a whole number of "
+                f"{self.hidden * 2}-byte rows"
+            )
+        payload_rows = payload.size // (self.hidden * 2)
+        rows = require_rows_value(
+            payload_rows if rows is None else rows, capacity=self.rows
+        )
+        if rows != payload_rows:
+            raise ValueError(
+                f"input payload has {payload_rows} rows but rows={rows} was declared"
+            )
         from hipengine.core.memory import copy_host_to_device  # noqa: PLC0415
 
         copy_host_to_device(
@@ -197,6 +227,7 @@ class MlpShardRank:
             payload.size,
             runtime=self._runtime,
         )
+        self.active_rows = rows
 
     def write_input_from_device(self, src_ptr: int, rows: int | None = None) -> None:
         """Copy up to ``rows`` bf16 rows from a device buffer on this rank.
@@ -221,12 +252,13 @@ class MlpShardRank:
                 MemcpyKind.DEVICE_TO_DEVICE,
                 self.stream,
             )
+        self.active_rows = rows
 
     def _resolve_rows(self, rows: int | None) -> int:
-        selected = self.rows if rows is None else int(rows)
-        if not 1 <= selected <= self.rows:
-            raise ValueError(f"rows {selected} is outside 1..{self.rows}")
-        return selected
+        """Resolve an explicit row count, or the active count, to capacity-checked int."""
+
+        selected = self.active_rows if rows is None else rows
+        return require_rows_value(selected, capacity=self.rows)
 
     def forward_partial(
         self,
@@ -258,6 +290,13 @@ class MlpShardRank:
 
         self._require_live()
         rows = self._resolve_rows(rows)
+        if rows != self.active_rows:
+            raise ValueError(
+                f"forward_partial rows {rows} does not match the {self.active_rows} "
+                f"rows staged by write_input; stage and run the same row count"
+            )
+        if rows > 1:
+            self._require_batched_route(rows)
         if fused is None:
             fused = self.mlp_decode_variant is not None
         if rows > 1:
@@ -353,13 +392,50 @@ class MlpShardRank:
         with scoped_current_device(self._runtime, self.device):
             self._runtime.stream_synchronize(self.stream)
 
-    def read_partial(self) -> np.ndarray:
+    def _require_batched_route(self, rows: int) -> None:
+        """Fail before launch when the shard quant has no declared batched route.
+
+        This checks that the dispatch surface admits a multi-row launch for the
+        weight's layout/activation/output combination (an unsupported
+        combination raises there). It does **not** by itself prove the resolved
+        leaf is rows-aware: the real launcher rewrites to ``t16_wmma_prefill`` /
+        ``t16_gemv_rowtile`` leaves that the surface table does not name, so the
+        empirical per-row GPU probe is the rows-aware validation. What this
+        prevents is launching a multi-row buffer into a route the surface does
+        not admit at all.
+        """
+
+        from hipengine.runtime.gguf_linear import (  # noqa: PLC0415
+            resolve_gguf_linear_dispatch,
+        )
+
+        output_dtype = "f32" if self.partial_dtype == "f32" else "bf16"
+        for role in ("ffn_gate", "ffn_up", "ffn_down"):
+            weight = self._weights[role]
+            try:
+                resolve_gguf_linear_dispatch(
+                    weight, output_dtype=output_dtype, rows=rows
+                )
+            except Exception as error:  # noqa: BLE001 - surface the route failure
+                raise MlpShardRankError(
+                    f"no batched ({rows}-row) {output_dtype}-output route for "
+                    f"{weight.spec.layout}/{weight.spec.quant_key} ({role}): "
+                    f"{type(error).__name__}: {error}"
+                ) from error
+
+    def read_partial(self, rows: int | None = None) -> np.ndarray:
         """Read the down partial back (diagnostics only, never the serving path)."""
 
         self._require_live()
+        rows = self._resolve_rows(rows)
+        if rows != self.active_rows:
+            raise ValueError(
+                f"read_partial rows {rows} does not match the {self.active_rows} "
+                f"rows staged by write_input"
+            )
         from hipengine.core.memory import copy_device_to_host  # noqa: PLC0415
 
-        nbytes = self.hidden * self.partial_itemsize
+        nbytes = rows * self.hidden * self.partial_itemsize
         out = np.empty(nbytes, dtype=np.uint8)
         with scoped_current_device(self._runtime, self.device):
             copy_device_to_host(
@@ -369,17 +445,25 @@ class MlpShardRank:
                 runtime=self._runtime,
             )
         if self.partial_dtype == "f32":
-            return out.view("<f4")
-        bits = out.view("<u2").astype(np.uint32) << 16
-        return bits.view(np.float32)
+            values = out.view("<f4")
+        else:
+            bits = out.view("<u2").astype(np.uint32) << 16
+            values = bits.view(np.float32)
+        return values if rows == 1 else values.reshape(rows, self.hidden)
 
-    def read_input(self) -> np.ndarray:
-        """Read the staged bf16 input row back (diagnostics only)."""
+    def read_input(self, rows: int | None = None) -> np.ndarray:
+        """Read the staged bf16 input rows back (diagnostics only)."""
 
         self._require_live()
+        rows = self._resolve_rows(rows)
+        if rows != self.active_rows:
+            raise ValueError(
+                f"read_input rows {rows} does not match the {self.active_rows} "
+                f"rows staged by write_input"
+            )
         from hipengine.core.memory import copy_device_to_host  # noqa: PLC0415
 
-        nbytes = self.hidden * 2
+        nbytes = rows * self.hidden * 2
         out = np.empty(nbytes, dtype=np.uint8)
         with scoped_current_device(self._runtime, self.device):
             copy_device_to_host(
