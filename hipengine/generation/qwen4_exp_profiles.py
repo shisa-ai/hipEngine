@@ -34,6 +34,11 @@ PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
+# Deepest scope certified against the calibrated production envelope for the
+# f16 WMMA dense Q8_0 prefill route: mean KL 3.796e-4 against the 1e-3 limit,
+# p95 1.762e-3, top-1 1538/1548, 3/3 deterministic, no scope failures.
+# 12-47 and 8-47 screen inconclusive and are not certified.
+PRODUCTION_Q8_WMMA_PREFILL_LAYERS = tuple(range(16, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
 PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
@@ -720,7 +725,14 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
-        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+        # Certified 2026-09-17 at layers 16-47 and measured +4.636 s / 1.245x on
+        # the code-p4096 production prefill. The exact coltile chain stays the
+        # registered strict fallback and keeps every layer below 16.
+        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q8_WMMA_PREFILL_LAYERS))
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else ""
+        ),
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",

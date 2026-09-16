@@ -22,6 +22,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_Q4_IU8_PREFILL_LAYERS,
     PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS,
     PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS,
+    PRODUCTION_Q8_WMMA_PREFILL_LAYERS,
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
     QWEN4_EXP_QUANTS,
@@ -480,3 +481,39 @@ def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
         warnings.simplefilter("error", RuntimeWarning)
         production.binder(SimpleNamespace(runner=None), production)
     assert last_prebinder_conflicts() == {}
+
+
+def test_production_binds_the_certified_q8_wmma_prefill_scope() -> None:
+    """The f16 WMMA dense Q8_0 prefill route is a default at its certified scope.
+
+    Layers 16-47 passes the calibrated envelope (mean KL 3.796e-4 against 1e-3,
+    top-1 1538/1548, 3/3 deterministic) and measures +4.636 s / 1.245x on the
+    code-p4096 production prefill, so it is promoted rather than left behind a
+    flag. Layers below 16 stay on the exact coltile chain: 12-47 and 8-47 screen
+    inconclusive and 0-47 fails the mean and p95 gates.
+    """
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    assert production.binder is not None
+
+    production.binder(SimpleNamespace(runner=None), production)
+
+    assert PRODUCTION_Q8_WMMA_PREFILL_LAYERS == tuple(range(16, 48))
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ",".join(
+        str(n) for n in range(16, 48)
+    )
+
+
+def test_strict_leaves_the_q8_wmma_prefill_scope_empty() -> None:
+    """Strict keeps the exact coltile chain on every layer."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    assert strict.binder is not None
+
+    strict.binder(SimpleNamespace(runner=None), strict)
+
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""

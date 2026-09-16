@@ -3457,8 +3457,22 @@ def launch_gguf_linear(
         if weight.spec.layout == LAYOUT_RAW_GGUF
         else None
     )
+    # The wide route's decision depends on an enable flag, a layer scope, and
+    # which layer owns this weight. All three must be in the memoization key or
+    # the first resolution for a shape is replayed for every layer and the
+    # scope becomes an artifact of cache-fill order rather than a contract.
+    _dense_wide_enabled = os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
+        "", "0", "false", "False"
+    }
+    _dense_wide_scope = _q8_dense_wide_layers() if _dense_wide_enabled else None
+    _dense_wide_key = (
+        _dense_wide_enabled,
+        _dense_wide_scope,
+        _weight_layer_index(weight) if _dense_wide_scope is not None else None,
+    )
     cache_key = (
         generation(),
+        _dense_wide_key,
         weight.spec.layout,
         weight.spec.quant_key,
         rows,
