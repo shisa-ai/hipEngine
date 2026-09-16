@@ -26,20 +26,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hipengine.loading.safetensors import load_weight_index, read_tensor_storage_bytes  # noqa: E402
 
 # Expected checkpoint identity from docs/MODEL-YUE2.md.
+#: Pinned identity of the two checkpoints. ``file_bytes`` is the on-disk size the
+#: checkpoint's own ``weights_manifest.json`` declares, which is the tensor
+#: payload **plus** the safetensors JSON header; ``tensor_bytes`` is the payload
+#: alone. Keep the two apart: comparing a payload against a file size always
+#: reports a spurious mismatch equal to the header size.
 PINNED = {
     "model": {
         "repo": "m-a-p/YuE2-3B",
         "revision": "29b3558dd46954a0cd9021dc76d5c91864a0f1c7",
         "sha256": "1d55c42c1a9875c34f5d736e15078449992b044e807ce2a138e6cf289a1e59e9",
         "tensors": 628,
-        "bytes": 7261441640,
+        "file_bytes": 7261441640,
+        "tensor_bytes": 7261368448,
     },
     "vae": {
         "repo": "m-a-p/YuE2-Vae",
         "revision": "9a94e1d0ea9f8087e98f77fa88df4a4068104d2a",
         "sha256": None,
         "tensors": None,
-        "bytes": 530512720,
+        "file_bytes": 530512720,
+        "tensor_bytes": 530464520,
     },
 }
 
@@ -110,12 +117,15 @@ def inventory(path: Path, *, verify_hash: bool = False) -> dict:
             entry["sha256_matches_manifest"] = entry["declared_sha256"] in (None, entry["sha256"])
         shards.append(entry)
 
+    file_bytes = sum(shard.stat().st_size for shard in index.shards)
     return {
         "path": str(index.model_path),
         "config": index.config,
         "shards": shards,
         "tensor_count": len(index.tensors),
         "payload_bytes": payload_bytes,
+        "file_bytes": file_bytes,
+        "header_bytes": file_bytes - payload_bytes,
         "dtypes": dict(sorted(dtypes.items())),
         "components": {
             key: dict(value) for key, value in sorted(groups.items())
@@ -145,6 +155,15 @@ def compare(entry: dict, kind: str | None, previous: dict) -> list[str]:
         problems.append(
             f"payload bytes {entry['payload_bytes']} != {previous['payload_bytes']}"
         )
+    if entry["file_bytes"] != previous.get("file_bytes", entry["file_bytes"]):
+        problems.append(
+            f"file bytes {entry['file_bytes']} != {previous['file_bytes']}"
+        )
+    if entry["header_bytes"] != entry["file_bytes"] - entry["payload_bytes"]:
+        problems.append(
+            f"payload {entry['payload_bytes']} + header {entry['header_bytes']} "
+            f"does not account for the {entry['file_bytes']}-byte file"
+        )
     old = {item["name"]: item for item in previous["tensors"]}
     new = {item["name"]: item for item in entry["tensors"]}
     for name in sorted(set(old) - set(new)):
@@ -163,9 +182,13 @@ def compare(entry: dict, kind: str | None, previous: dict) -> list[str]:
             problems.append(
                 f"tensor count {entry['tensor_count']} != pinned {pinned['tensors']}"
             )
-        if pinned["bytes"] is not None and entry["payload_bytes"] != pinned["bytes"]:
+        if pinned["file_bytes"] is not None and entry["file_bytes"] != pinned["file_bytes"]:
             problems.append(
-                f"payload bytes {entry['payload_bytes']} != pinned {pinned['bytes']}"
+                f"file bytes {entry['file_bytes']} != pinned {pinned['file_bytes']}"
+            )
+        if pinned["tensor_bytes"] is not None and entry["payload_bytes"] != pinned["tensor_bytes"]:
+            problems.append(
+                f"payload bytes {entry['payload_bytes']} != pinned {pinned['tensor_bytes']}"
             )
         for shard in entry["shards"]:
             if pinned["sha256"] and shard.get("declared_sha256") not in (None, pinned["sha256"]):
@@ -197,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"== {kind}: {entry['path']}")
             print(
                 f"   tensors={entry['tensor_count']} payload={entry['payload_bytes'] / 2**20:.1f} MiB "
-                f"dtypes={entry['dtypes']}"
+                f"file={entry['file_bytes'] / 2**20:.1f} MiB "
+                f"header={entry['header_bytes']} B dtypes={entry['dtypes']}"
             )
             for shard in entry["shards"]:
                 extra = ""
