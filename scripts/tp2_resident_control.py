@@ -39,6 +39,7 @@ class ResidentTP1Control:
         self.devices = (0,)
         self.mode, self.schedule = 'resident_tp1', 'bulk-prefill/c1-head'
         self.driver, self.reduce_mode, self.head_shard = 'resident', 'none', False
+        self.prefill_schedule = 'bulk'
         self.row_hook = row_hook or (lambda record: None)
         self.owns_buffer = owns_buffer
 
@@ -200,6 +201,7 @@ def resolved_scope_manifest(session):
     group = getattr(session, '_shard_group', None)
     manifest = {'kind': 'measured_tp_ar_scope', 'ranks': ranks,
                 'capacity': session.max_sequence_length, 'schedule': session.schedule,
+                'prefill_schedule': 'bulk' if resident else 'token-serial',
                 'mode': session.mode, 'reduce_mode': session.reduce_mode,
                 'head_shard': session.head_shard,
                 'mlp_shard_variant': None if group is None else group.mlp_decode_variant,
@@ -229,6 +231,7 @@ class NativeARAdapter:
         self.session = owner.session if resident else owner
         self.runtime = self.session.runtime
         self.vocab_size = owner.vocab_size
+        self.prefill_schedule = 'bulk' if resident else 'token-serial'
         self.position = 0
         self.graph = None
         self.traces = []

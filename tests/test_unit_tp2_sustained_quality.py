@@ -13,7 +13,8 @@ def test_report_scores_candidates_not_redundant_teacher_self(monkeypatch,tmp_pat
         path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
         data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
               'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
-              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True}
+              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True,
+              'prefill_schedule':'bulk'}
         captures[path]=(data,reference if arm=='tp1-d0' else [object()])
     monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
     def score(teacher,student,*args,**kw):
@@ -26,7 +27,53 @@ def test_report_scores_candidates_not_redundant_teacher_self(monkeypatch,tmp_pat
     out=tmp_path/'report.json'
     assert coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=str(out)))==0
     assert len(calls)==2
-    assert json.loads(out.read_text())['reference_arm']=='tp1-d0'
+    report=json.loads(out.read_text())
+    assert report['reference_arm']=='tp1-d0'
+    assert report['prefill_schedule']=='bulk'
+
+
+def test_report_refuses_mixed_prefill_schedules(monkeypatch,tmp_path):
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths=[]; captures={}
+    for arm,schedule in (('tp1-d0','bulk'),('tp1-d1','bulk'),('tp2','token-serial')):
+        path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
+        data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
+              'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
+              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True,
+              'prefill_schedule':schedule}
+        captures[path]=(data,[object()])
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    with pytest.raises(ValueError,match='prefill schedule'):
+        coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=None))
+
+
+def test_report_refuses_missing_prefill_schedule(monkeypatch,tmp_path):
+    from scripts import tp2_teacher_coverage_broad as coverage
+    paths=[]; captures={}
+    for arm in ('tp1-d0','tp1-d1','tp2'):
+        path=tmp_path/(arm+'.json'); path.write_text('{}'); paths.append(path)
+        data={'arm':arm,'identity':{},'suite':{'categories':[], 'heldout':[]},'forced_inputs':[],
+              'vocab_size':3,'profile':{},'run_id':arm,'devices':{},'route':{},'scope_manifest':{},
+              'determinism':{},'state_boundaries':{},'control_log':{},'natural_teardown':True}
+        captures[path]=(data,[object()])
+    monkeypatch.setattr(coverage,'load_sustained',lambda p:captures[p])
+    with pytest.raises(ValueError,match='prefill schedule'):
+        coverage.report_sustained(SimpleNamespace(sustained_report=paths,json=None))
+
+
+def test_prefill_schedule_provenance_is_recorded():
+    from scripts import tp2_teacher_coverage_broad as coverage
+    from scripts.tp2_resident_control import NativeARAdapter
+    runtime=SimpleNamespace()
+    tp1=NativeARAdapter(SimpleNamespace(session=SimpleNamespace(runtime=runtime),vocab_size=7),
+                        resident=True)
+    tp2=NativeARAdapter(SimpleNamespace(runtime=runtime,vocab_size=7),resident=False)
+    assert tp1.prefill_schedule=='bulk'
+    assert tp2.prefill_schedule=='token-serial'
+    route=coverage._resolved_route(SimpleNamespace(
+        mode='tp2',schedule='graphed',driver='compiled',reduce_mode='device',
+        head_shard=True,max_sequence_length=200,prefill_schedule='token-serial'))
+    assert route['prefill_schedule']=='token-serial'
 
 
 class Adapter:

@@ -367,6 +367,18 @@ class MlpTP2GenerationSession:
     def vocab_size(self) -> int:
         return int(self._runners[self.control_device].vocab_size)
 
+    @property
+    def prefill_schedule(self) -> str:
+        """Prefill arithmetic schedule; TP2 drives token-by-token prefill only.
+
+        This is an ownership/provenance fact, not a performance claim. It exists
+        so a teacher-forced comparison cannot silently mix a bulk prefill teacher
+        with a token-serial candidate and misattribute the schedule difference to
+        a distributed numerical failure.
+        """
+
+        return 'token-serial'
+
     def reset(self) -> None:
         """Zero every rank's KV/GDN state and rewind positions to zero."""
 
