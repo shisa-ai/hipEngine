@@ -467,7 +467,55 @@ The strict trajectory supplies teacher tokens so all profiles are compared at
 identical contexts. Free-running divergence is a diagnostic, not a substitute
 for this comparison.
 
-### 6.4 Determinism and task quality
+### 6.4 Sample size: which gates a reduced run may judge
+
+The envelope in 6.1 mixes two kinds of statistic, and they do not survive a
+reduced protocol equally. Any run smaller than the declared full protocol - a
+screen, a bisection probe, a smoke arm - may report every metric but may
+**decide** only the continuous ones.
+
+**Rate gates cannot be judged by a reduced run.** Top-1 agreement is a
+proportion tested against a fixed limit, and a scope whose true miss rate sits
+at the `1%` limit fails the `>= 99%` test roughly 40-48% of the time at *every*
+sample size from 132 to 1548 rows. That is inherent to testing a rate against
+the value it equals; it does not improve with more rows, and the canonical
+fixture caps at 12 cases x 129 transitions = 1548 rows, so no larger run is
+available to buy the power back. The per-scope `>= 97%` floor is sharper still:
+at 132 rows split across four categories, 33 rows per category means a *single*
+miss scores `32/33 = 0.9697` and trips the floor on its own.
+
+This is not hypothetical. A 132-row screen of Qwen4Exp layers 32-47 returned
+`FAIL` on the per-scope floor for a scope the full 1548-row gate had already
+certified at top-1 `0.99677`
+(`benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/`). One miss
+in one category was enough.
+
+**Continuous gates survive a reduced run, with a correction.** Mean and p95 KL
+are averages over rows rather than counts of threshold crossings, and they
+tracked the full arm within 8-15% on both control scopes in that campaign
+(screen `8.606e-5` against full `9.342e-5` at layers 28-47; screen `4.916e-5`
+against full `5.808e-5` at 32-47). Screens read *low*, because a reduced
+protocol usually runs the shortest prompts, so a screen must clear the limit
+with its measured optimism applied before it counts as a pass.
+
+Rules for any reduced run:
+
+1. Decide on mean and p95 KL only. Report top-1 as a raw miss count with an
+   interval, never as a pass/fail.
+2. Inflate the screen's mean KL by the measured screen-to-full ratio before
+   comparing it with the limit. Do not assume the ratio; measure it.
+3. Include at least one **control scope** whose full-gate verdict is already
+   known, in the same batch. A screen batch without a control cannot be
+   interpreted, because the screen-to-full ratio is protocol- and
+   model-specific.
+4. Never admit a profile on a screen. Admission requires the full protocol,
+   because admission depends on the rate gates a screen cannot judge.
+
+The reduced protocol is for *bracketing* a boundary so the full protocol is
+spent once, on the winner - the same two-tier rule `benchmarks/HARNESSES.md`
+applies to capacity probes.
+
+### 6.5 Determinism and task quality
 
 A retained production manifest must:
 
