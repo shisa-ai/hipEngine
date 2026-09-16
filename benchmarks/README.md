@@ -1439,6 +1439,27 @@ structural drift - 16.2% of the produced latent entries are BF16-identical to
 the reference and the produced norm is 72.855 against 72.743. Condition 1.00 s
 and forced-velocity plus solve 0.80 s on this chunk.
 
+Two further recorded cases cover the rest of the solver's contract. A song that
+crosses a real chunk boundary (96 frames at a reduced chunking context, so the
+chunks are 26 / 26 / 26 / 18 frames) and a restricted-visibility case
+(`nar_cond_end = 128`, where the NAR sees only the first 128 AR keys):
+
+| Case | Solved latents rel_l2 | cosine | Worst forced velocity | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| `nar_cond_end = 128` | 0.00885 | 0.999962 | 0.01443 | [`cond_end gate`](results/yue2_nar_gate_condend_20260916.json) |
+| Multi-chunk, chunk 0 (26 frames) | 0.00878 | 0.999964 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 1 (26 frames) | 0.01026 | 0.999948 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 2 (26 frames) | 0.00876 | 0.999963 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 3 (18 frames) | 0.01071 | 0.999944 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+
+These cases are why the gate exists: they exposed two defects that the single
+release chunk could not. The solver's midpoint buffer was only partially
+re-initialized, so a chunk shorter than the one before it evaluated its midpoint
+against stale boundary rows (0.16667 before the fix, 0.01071 after), and the
+hipBLASLt problem cache was built only for the largest chunk's tile, so a shorter
+later chunk launched an unprepared row count. Both are fixed and both cases pass
+every chunk.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
