@@ -756,6 +756,108 @@ def cmd_vae(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# greedy AR trajectories
+# ---------------------------------------------------------------------------
+
+
+def cmd_greedy(args) -> int:
+    """Free AR generation at temperature zero, recorded for the session gate.
+
+    Only the AR stages run (no NAR, no VAE), so the fixture is cheap to
+    regenerate. Greedy decoding removes the RNG from the comparison: a torch-free
+    session that reproduces these trajectories has matching prompt assembly,
+    masks, penalties, CFG arithmetic and EOS/truncation behavior.
+    """
+
+    import dataclasses
+
+    _install_path()
+    from yue2.protocol import (
+        CODEC_OFFSET,
+        GenerationConfig,
+        SongRequest,
+        negative_prefix,
+        token_prefixes,
+    )
+    from yue2.sampling import generate_tokens
+
+    pipe, model = load_model()
+    tokenizer = pipe.tokenizer
+    config = GenerationConfig()
+    abc_sampling = dataclasses.replace(config.abc, temperature=0.0, max_tokens=args.max_abc)
+    semantic_sampling = dataclasses.replace(
+        config.semantic, temperature=0.0, max_tokens=args.max_semantic
+    )
+    out = Path(args.out) / "greedy"
+    compact = Path(args.compact) / "greedy"
+    names = args.only.split(",") if args.only else None
+    cases = []
+    for entry in prompts():
+        for cot in ("off", "melody", "full"):
+            for seed in entry["seeds"]:
+                name = f"{entry['id']}-{cot}-s{seed}"
+                if names and name not in names:
+                    continue
+                cases.append((name, entry, cot, seed))
+    if not cases:
+        raise SystemExit("no greedy cases selected")
+    manifest = {}
+    for name, entry, cot, seed in cases:
+        request = SongRequest(style=entry["style"], lyrics=entry["lyrics"], cot=cot, seed=seed, id=name)
+        started = time.perf_counter()
+        abc_ids: list[int] = []
+        abc_truncated = False
+        if cot != "off":
+            abc_ids, _, abc_truncated = generate_tokens(
+                model, token_prefixes(request, tokenizer), abc_sampling, seed, "abc"
+            )
+        prefix = token_prefixes(request, tokenizer, abc_ids)
+        negative = (
+            negative_prefix(request, tokenizer, abc_ids) if request.guidance != 1.0 else None
+        )
+        semantic, _, semantic_truncated = generate_tokens(
+            model,
+            prefix,
+            semantic_sampling,
+            seed,
+            "semantic",
+            negative=negative,
+            cfg_scale=request.guidance,
+            legacy_off=cot == "off",
+        )
+        arrays = {
+            "prefix": np.asarray(prefix, dtype=np.int32),
+            "semantic": np.asarray(
+                [int(token) - CODEC_OFFSET for token in semantic], dtype=np.int32
+            ),
+        }
+        if abc_ids:
+            arrays["abc_ids"] = np.asarray(abc_ids, dtype=np.int32)
+        if negative is not None:
+            arrays["negative_prefix"] = np.asarray(negative, dtype=np.int32)
+        save_npz(compact / f"{name}.npz", **arrays)
+        save_npz(out / f"{name}.npz", **arrays)
+        manifest[name] = {
+            "request": request.to_dict(),
+            "cot": cot,
+            "seed": seed,
+            "abc_tokens": len(abc_ids),
+            "semantic_tokens": len(semantic),
+            "truncated_abc": bool(abc_truncated),
+            "truncated_semantic": bool(semantic_truncated),
+            "cfg_scale": request.guidance,
+            "prefix_tokens": len(prefix),
+            "negative_prefix_tokens": len(negative) if negative is not None else 0,
+            "sampling": {"abc": dataclasses.asdict(abc_sampling), "semantic": dataclasses.asdict(semantic_sampling)},
+            "seconds": time.perf_counter() - started,
+        }
+        print(f"[greedy] {name}: {manifest[name]}", flush=True)
+        write_json(out / "manifest.json", manifest)
+    write_json(compact / "manifest.json", manifest)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # cases
 # ---------------------------------------------------------------------------
 
@@ -915,7 +1017,9 @@ def cmd_tokenizer(args) -> int:
 # ---------------------------------------------------------------------------
 
 VOCAB = 184704
-FIXTURE_FAMILIES = ("ar_replay", "cases", "nar", "operators", "sampling", "tokenizer", "vae")
+EOD = 151643
+CODEC_SIZE = 32768
+FIXTURE_FAMILIES = ("ar_replay", "cases", "greedy", "nar", "operators", "sampling", "tokenizer", "vae")
 INTEGRITY_NAME = "integrity.json"
 
 
@@ -1531,6 +1635,76 @@ def _check_vae(root, problems):
     )
 
 
+def _check_greedy(root, problems):
+    """Free AR trajectories at temperature zero, one file per case."""
+
+    manifest_path = root / "greedy/manifest.json"
+    if not manifest_path.is_file():
+        problems.add(manifest_path, "missing manifest")
+        return
+    manifest = json.loads(manifest_path.read_text())
+    for name, entry in sorted(manifest.items()):
+        path = root / f"greedy/{name}.npz"
+        if not path.is_file():
+            problems.add(path, "missing fixture")
+            continue
+        arrays = _load_arrays(path, problems)
+        if arrays is None:
+            continue
+        _check_schema(
+            problems,
+            path,
+            arrays,
+            {
+                "prefix": ("int32", 1),
+                "semantic": ("int32", 1),
+            },
+            optional={
+                "abc_ids": ("int32", 1),
+                "negative_prefix": ("int32", 1),
+            },
+        )
+        problems.require(
+            arrays["prefix"].size == int(entry["prefix_tokens"]),
+            path,
+            "prefix length does not match the manifest",
+        )
+        problems.require(
+            arrays["semantic"].size == int(entry["semantic_tokens"]),
+            path,
+            "semantic token count does not match the manifest",
+        )
+        problems.require(
+            int(arrays.get("abc_ids", np.empty(0, dtype=np.int32)).size) == int(entry["abc_tokens"]),
+            path,
+            "ABC token count does not match the manifest",
+        )
+        problems.require(
+            bool((arrays["semantic"] >= 0).all()) and bool((arrays["semantic"] < CODEC_SIZE).all()),
+            path,
+            "semantic tokens outside the codec range",
+        )
+        problems.require(
+            bool((arrays["prefix"] >= 0).all()) and bool((arrays["prefix"] < VOCAB).all()),
+            path,
+            "prefix tokens outside the vocabulary",
+        )
+        if "abc_ids" in arrays:
+            problems.require(
+                bool((arrays["abc_ids"] >= 0).all()) and bool((arrays["abc_ids"] < EOD).all()),
+                path,
+                "ABC IDs outside the ordinary text vocabulary",
+            )
+        # Greedy decoding must be reproducible from the recorded request: the
+        # sampling temperature is the whole point of this family.
+        problems.require(
+            float(entry["sampling"]["abc"]["temperature"]) == 0.0
+            and float(entry["sampling"]["semantic"]["temperature"]) == 0.0,
+            path,
+            "greedy fixture was not generated at temperature zero",
+        )
+
+
 def _check_cases(root, problems):
     directory = root / "cases"
     if not directory.is_dir():
@@ -1607,6 +1781,7 @@ def _check_cases(root, problems):
 
 CHECKERS = {
     "ar_replay": _check_ar_replay,
+    "greedy": _check_greedy,
     "cases": _check_cases,
     "nar": _check_nar,
     "operators": _check_operators,
@@ -2087,6 +2262,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("freeze", help="rewrite the fixture integrity index")
     p.add_argument("--exclude", default="", help="comma-separated families to leave out")
     p.set_defaults(func=cmd_freeze)
+    p = sub.add_parser("greedy", help="free AR trajectories at temperature zero")
+    p.add_argument("--only", default="")
+    p.add_argument("--max-abc", type=int, default=4096)
+    p.add_argument("--max-semantic", type=int, default=512)
+    p.set_defaults(func=cmd_greedy)
     p = sub.add_parser(
         "wheel-diff",
         help="compare a released wheel's package against the pinned oracle source",

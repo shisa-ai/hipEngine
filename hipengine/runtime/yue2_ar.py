@@ -334,6 +334,11 @@ class Yue2ArRuntime:
             if branch is None or branch == index:
                 self._ctx_len_host[index][0] = 0
 
+    def context_length(self, branch: int = 0) -> int:
+        """Current context length of a branch, i.e. the next append position."""
+        self._validate_branch(branch)
+        return int(self._ctx_len_host[branch][0])
+
     def hidden_state(self, branch: int = 0) -> np.ndarray:
         """Post-final-norm hidden row as fp32 (bf16 values)."""
         hidden = self.spec.hidden_size
