@@ -175,13 +175,41 @@
     "bytes": 3838,
     "sha256": "35424e3cd7bfe82bf6982960e79c543cee39821f634878f1ebb61091be21f965"
   },
+  "nar-condend/chunk0.npz": {
+    "bytes": 53658,
+    "sha256": "c117304f0054b85eece0f3618980669988b546aac907eec7381a7191193cdb17"
+  },
+  "nar-condend/manifest.json": {
+    "bytes": 613,
+    "sha256": "93165e4677f295e4478fc26c33455ac2e99fb8b614805fbcc824427a3ec8b12b"
+  },
+  "nar-multichunk/chunk0.npz": {
+    "bytes": 60785,
+    "sha256": "2490e08417cede780f7f4b42266faff95e8d3e3c8f5a92e22f404afd724082b1"
+  },
+  "nar-multichunk/chunk1.npz": {
+    "bytes": 60670,
+    "sha256": "49bb4ca3bcf7fa76330a8e00a268b940e8e2fd8e57461aded61e69b79a54a7bf"
+  },
+  "nar-multichunk/chunk2.npz": {
+    "bytes": 60653,
+    "sha256": "04bcd1c8f10cdb25537a9e162b9cf4bdf77ba5a0b5110c8ec7681c41560983f9"
+  },
+  "nar-multichunk/chunk3.npz": {
+    "bytes": 49961,
+    "sha256": "fdc5eb7656903324df625c7c8e7be20d715b39121a199f2801c58c0ffd549b5b"
+  },
+  "nar-multichunk/manifest.json": {
+    "bytes": 1364,
+    "sha256": "2aa866937fd8586f2bc5d435f7da4ae9efc61d4d20f06e8089469e1e50394e3b"
+  },
   "nar/chunk0.npz": {
-    "bytes": 45704,
-    "sha256": "5761ed26e7f4480f5ee29ee9aad5c15e3add986a5ef360001bb2f803efe0485f"
+    "bytes": 45643,
+    "sha256": "0975f4cadba1ecdace11469b1c87d9412a3b12918e31e7ad5a881c19007cc1cd"
   },
   "nar/manifest.json": {
-    "bytes": 154,
-    "sha256": "8058274ae11a6d8aca03380802f58bebbe852f5ff8c1ae1594f300d20019a58c"
+    "bytes": 313,
+    "sha256": "6b948470636330a7414291effc258782540dd7766b2e9c06cc61532f60c4eb05"
   },
   "operators/attn_decode.npz": {
     "bytes": 7507,

@@ -491,9 +491,17 @@ class Yue2NarRuntime:
 
     # -- hipBLASLt plumbing --------------------------------------------
     def _prepare_gemm(self, rows: int) -> None:
-        """Build the hipBLASLt problems for this chunk's row counts."""
+        """Build the hipBLASLt problems for this chunk's row counts.
 
-        if rows in self._prepared:
+        Buffers are sized for the largest chunk seen, so a later, shorter chunk
+        keeps the older ``_tile`` and runs as a single ``rows``-row tile. Problems
+        must therefore exist for every row count the solver will actually launch
+        with, not just for the buffer's tile.
+        """
+
+        tile = self._tile
+        counts = sorted({min(tile, rows - start) for start in range(0, rows, tile)}) if rows else []
+        if all(count in self._prepared for count in counts):
             return
         if self._lt is None:
             if self.ar._lt is None:
@@ -502,17 +510,22 @@ class Yue2NarRuntime:
         hidden = self._hidden_size
         ffn = self._ffn
         latent = self._latent
-        tile = self._tile
-        keys = [
-            (rows, latent, hidden),
-            (rows, hidden, latent),
-            (tile, hidden, hidden),
-            (tile, hidden, self._kv_width),
-            (tile, hidden, ffn),
-            (tile, ffn, hidden),
-            (1, TIME_FREQUENCY_SIZE, hidden),
-            (1, hidden, hidden),
-        ]
+        q_width = self._q_width
+        kv_width = self._kv_width
+        keys: list[tuple[int, int, int]] = []
+        for count in counts:
+            keys.extend(
+                [
+                    (count, latent, hidden),
+                    (count, hidden, latent),
+                    (count, hidden, kv_width),
+                    (count, hidden, q_width),
+                    (count, q_width, hidden),
+                    (count, hidden, ffn),
+                    (count, ffn, hidden),
+                ]
+            )
+        keys.extend([(1, TIME_FREQUENCY_SIZE, hidden), (1, hidden, hidden)])
         for key in keys:
             if key[0] == 0 or key in self.ar._lt_problems:
                 continue
@@ -522,7 +535,7 @@ class Yue2NarRuntime:
                 raise RuntimeError(f"no zero-workspace hipBLASLt algorithm for {key}")
             self.ar._lt_problems[key] = problem
             self.ar._lt_algos[key] = algorithms[0]
-        self._prepared.add(rows)
+        self._prepared.update(counts)
 
     def _gemm(self, x16: DeviceBuffer, weight16: DeviceBuffer, out: DeviceBuffer, rows, inputs, outputs) -> None:
         key = (rows, inputs, outputs)
@@ -572,6 +585,11 @@ class Yue2NarRuntime:
         padded = np.zeros((chunk.frames + 2, self._latent), dtype=np.uint16)
         padded[1:-1] = f32_to_bf16_bits(values)
         copy_host_array_to_device(self._state, np.ascontiguousarray(padded))
+        # ``_mid`` keeps the same zero boundary rows as the reference's own padded
+        # midpoint state. The solver's state-update kernel only writes the content
+        # rows, so a chunk shorter than the previous one would otherwise evaluate
+        # its midpoint against stale boundary values left by the longer chunk.
+        copy_host_array_to_device(self._mid, np.ascontiguousarray(padded))
 
     # -- velocity ------------------------------------------------------
     def _timestep_embedding(self, raw_t: float) -> None:
