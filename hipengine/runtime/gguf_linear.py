@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import os
+import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -85,6 +86,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
     register_gguf_q8_0_pack8_gemv_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
+    register_gguf_q8_0_dense_wide_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
@@ -2888,6 +2892,48 @@ _Q8_DENSE_WIDE_EXACT_PARENTS = frozenset({
     "coltile8_rowbatch4_f32_f32_out",
     "coltile8_rowbatch4_wave_scale_f32_f32_out",
 })
+# ``_wmma_prefill_dispatch`` sits earlier in the launch chain than this selector
+# and rewrites a claimable parent to ``wmma_<parent>`` under this ABI.
+_Q8_DENSE_WIDE_WMMA_ABI = "wmma_raw"
+_Q8_DENSE_WIDE_WMMA_PREFIX = "wmma_"
+
+
+def _q8_dense_wide_enabled() -> bool:
+    return os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
+        "",
+        "0",
+        "false",
+        "False",
+    }
+
+
+def _q8_dense_wide_claims_parent(dispatch: GGUFLinearDispatch) -> bool:
+    """Whether the wide route may replace this dispatch's family.
+
+    The f16 WMMA prefill rewrite runs earlier in the launch chain, so a weight
+    the WMMA route claims arrives here as ``wmma_<parent>`` under ABI
+    ``wmma_raw`` rather than as the exact coltile parent. The production
+    default binds that route to layers 16-47 for ``gguf_ud_q4_k_xl``, which is
+    the window this route is scoped to, so requiring the exact parent made the
+    two scopes disjoint: the selector returned before its own gates, its layer
+    scope or its registration were consulted, and the registered kernel stayed
+    unreachable.
+
+    Both families are f16-operand WMMA, so the rewritten parent is inside the
+    wide kernel's arithmetic class. The layer scope, not the parent family,
+    decides where this route may run.
+    """
+
+    if dispatch.abi == "raw":
+        return dispatch.key.variant in _Q8_DENSE_WIDE_EXACT_PARENTS
+    if dispatch.abi == _Q8_DENSE_WIDE_WMMA_ABI:
+        variant = dispatch.key.variant
+        return (
+            variant.startswith(_Q8_DENSE_WIDE_WMMA_PREFIX)
+            and variant[len(_Q8_DENSE_WIDE_WMMA_PREFIX) :]
+            in _Q8_DENSE_WIDE_EXACT_PARENTS
+        )
+    return False
 
 
 def _q8_dense_wide_dispatch(
@@ -2914,19 +2960,33 @@ def _q8_dense_wide_dispatch(
     ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`` narrows the route to a layer
     scope. Without it the route covers every layer, which is the 0-47 scope the
     sibling f16 route already fails, so a gate has to be able to narrow it.
+
+    The layer scope is the authority on where this route runs. Where it runs it
+    also takes precedence over the f16 WMMA prefill family, which is the family
+    it replaces at this tile. See :func:`_q8_dense_wide_claims_parent`.
     """
 
+    if not _q8_dense_wide_enabled():
+        return dispatch
     if (
-        dispatch.abi != "raw"
-        or dispatch.key.quant != "gguf_q8_0"
-        or dispatch.key.variant not in _Q8_DENSE_WIDE_EXACT_PARENTS
+        dispatch.key.quant != "gguf_q8_0"
         or rows <= 256
         or in_features <= 0
         or in_features % _Q8_DENSE_WIDE_K_TILE != 0
         or out_features <= 0
-        or os.environ.get(_Q8_DENSE_WIDE_ENV, "0")
-        in {"", "0", "false", "False"}
     ):
+        return dispatch
+    if not _q8_dense_wide_claims_parent(dispatch):
+        # Enabled, eligible shape, and still declining: another route owns the
+        # parent. Name it. Returning the parent quietly is how this kernel sat
+        # unreachable while a measurement was attributed to it.
+        warnings.warn(
+            f"{_Q8_DENSE_WIDE_ENV} is enabled and this shape is eligible, but "
+            f"{dispatch.key.variant!r} ({dispatch.abi}) is not a family this "
+            "route may replace; the route did not run for this weight.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return dispatch
     scope = _q8_dense_wide_layers()
     if scope is not None:
@@ -2944,7 +3004,20 @@ def _q8_dense_wide_dispatch(
         # Populate the raw families before deciding so the very first launch of
         # a process cannot silently fall back past this route.
         _ensure_linear_kernel_registered(key)
-    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+    if not is_registered(key):
+        # The route was asked for and the shape is eligible, so falling back here
+        # is a registration bug, not a routing decision. Returning the parent
+        # quietly is how this kernel sat unreachable while a measurement was
+        # attributed to it.
+        warnings.warn(
+            f"{_Q8_DENSE_WIDE_ENV} is enabled and the shape is eligible, but "
+            f"{key.variant} is not registered for {key.backend}; falling back "
+            "to the exact parent. The route did not run.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return dispatch
+    return GGUFLinearDispatch(key, "raw")
 
 
 def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -> GGUFLinearDispatch:
@@ -3461,9 +3534,7 @@ def launch_gguf_linear(
     # which layer owns this weight. All three must be in the memoization key or
     # the first resolution for a shape is replayed for every layer and the
     # scope becomes an artifact of cache-fill order rather than a contract.
-    _dense_wide_enabled = os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
-        "", "0", "false", "False"
-    }
+    _dense_wide_enabled = _q8_dense_wide_enabled()
     _dense_wide_scope = _q8_dense_wide_layers() if _dense_wide_enabled else None
     _dense_wide_key = (
         _dense_wide_enabled,
@@ -8353,6 +8424,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()
     register_gguf_q8_0_pack8_gemv_kernels()
+    register_gguf_q8_0_dense_wide_kernels()
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
     register_gguf_q8_0_t16_prefill_kernels()

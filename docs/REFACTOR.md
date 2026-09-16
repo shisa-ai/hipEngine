@@ -7060,3 +7060,44 @@ q8_0 gemv library, so a quant-only lookup hands the wide kernel a library that
 does not export its symbol. Both paths now share the helper. Fold the remaining
 `libraries.get(<key>.quant)` call sites for pair and fused launches into it when
 one of those families next gains a variant with its own object.
+
+### Precedence over the f16 WMMA family is a decision, not a line number
+
+`_wmma_prefill_dispatch` runs earlier in the launch chain than
+`_q8_dense_wide_dispatch` and rewrites a claimable parent to
+`wmma_<parent>`/`wmma_raw`. Until 2026-09-17 the wide selector required the
+exact coltile parent, so on the promoted production default - which binds
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` to layers 16-47 for `gguf_ud_q4_k_xl` - it
+declined in its first condition, before its own gates, its layer scope or its
+registration were consulted. Its certified window and the WMMA route's window
+were the same window, so no configuration could run it: 134 eligible dispatches
+in layers 0-15 passed the gates and fell to the scope check, and layers 16-47
+never reached the selector's first print. The route now claims the rewritten
+parent in its own scope, and the layer scope is the authority on where it runs.
+Verified end to end on `code-p512`: layers 16-47 run
+`hipengine_gguf_q8_0_dense_wide256_f32_f32_out` (264 roles) where the named
+default runs `hipengine_gguf_q8_0_wmma_prefill_f32_f32_out` (same 264 roles),
+layers 0-15 keep the exact coltile chain in both, and the two arms produce the
+same `logits_sha256` (`e15dce79…`) - the wide kernel is a retiling of the
+certified f16 arithmetic, not a new arithmetic class.
+
+Removal trigger: once the calibrated envelope passes at the promoted scope,
+make the wide route the default there and retire the f16 WMMA dense route for
+this quant (keeping the registered exact coltile fallback). Do not keep both
+families selectable for the same layers once one is the default: that is the
+contention this fix had to resolve.
+
+### The launch census has a per-module coverage boundary
+
+`launch_census.record_launch` was called only from `gguf_k_gemv`. The f16 WMMA
+prefill family (`gguf_q8_0_prefill`) and the wide kernel
+(`gguf_q8_0_dense_wide`) did not record, so the census reported "2144 coltile
+launches and zero `wmma_prefill` launches" on the promoted default and the
+2026-09-17 promotion entry read that as evidence the Q8 dense linear route was
+not where its +4.542 s came from. The instrument was blind to the family under
+question: the 134 roles it did see were exactly the layers the WMMA route had
+not claimed. Both families now record. Removal trigger: move the record call to
+the registry launch boundary so coverage is a property of the registry rather
+than of which module remembered to call it, and keep the coverage list in the
+census docstring until then. Never read an empty census row as "did not run"
+while coverage is per-module.

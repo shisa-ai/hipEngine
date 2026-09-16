@@ -178,6 +178,103 @@ def test_variant_scoped_library_beats_the_quant_default():
     assert _variant_scoped_library(None, CANDIDATE) is None
 
 
+def _wmma_claimed_parent(rows: int = 512, in_features: int = PACKET_K):
+    """Run the rewrite the launch chain runs before the wide selector.
+
+    ``_wmma_prefill_dispatch`` sits earlier in ``launch_gguf_linear`` than
+    ``_q8_dense_wide_dispatch``, so this is the dispatch the wide selector
+    actually receives on any weight the WMMA route claims.
+    """
+
+    from hipengine.runtime.gguf_linear import _wmma_prefill_dispatch
+
+    claimed = _wmma_prefill_dispatch(
+        _parent("prefill_f32_f32_out"),
+        rows=rows,
+        in_features=in_features,
+        use_wmma=True,
+    )
+    assert claimed.key.variant == "wmma_prefill_f32_f32_out"
+    assert claimed.abi == "wmma_raw"
+    return claimed
+
+
+def test_claims_the_weight_the_wmma_rewrite_already_claimed(monkeypatch):
+    """The WMMA rewrite runs first and changes the ABI out from under this route.
+
+    ``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` is bound to layers 16-47 for this
+    quant by the production default, which is the same window this route is
+    scoped to. Every Q8_0 dense linear in that window therefore reaches the
+    wide selector as ``wmma_prefill_f32_f32_out`` with ABI ``wmma_raw``.
+    Declining that parent is what left the route unreachable while its own
+    gates passed, its layer scope was correct and its family was registered:
+    the selector returned before any of that was consulted.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.setenv(
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
+        ",".join(str(n) for n in range(16, 48)),
+    )
+
+    actual = _q8_dense_wide_dispatch(
+        _wmma_claimed_parent(),
+        rows=512,
+        in_features=PACKET_K,
+        out_features=PACKET_N,
+        weight=_weight("layers.20.attn_qkv"),
+    )
+
+    assert actual == GGUFLinearDispatch(CANDIDATE, "raw")
+
+
+def test_an_unclaimable_parent_is_named_rather_than_ignored(monkeypatch):
+    """The silent decline is what hid this route; the diagnostic must name it."""
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    parent = GGUFLinearDispatch(
+        KernelKey(
+            BACKEND,
+            "linear",
+            "gguf_q8_0",
+            "iu8_wmma_prefill_f32_f32_out",
+        ),
+        "raw",
+    )
+
+    with pytest.warns(RuntimeWarning, match="iu8_wmma_prefill_f32_f32_out"):
+        assert (
+            _q8_dense_wide_dispatch(
+                parent,
+                rows=512,
+                in_features=PACKET_K,
+                out_features=PACKET_N,
+                weight=_weight("layers.20.attn_qkv"),
+            )
+            == parent
+        )
+
+
+def test_a_wmma_claim_does_not_widen_the_layer_scope(monkeypatch):
+    """Accepting the rewritten parent must not hand the route an unscoped window."""
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", "16,17,18")
+    parent = _wmma_claimed_parent()
+
+    for layer in (0, 8, 15, 47):
+        assert (
+            _q8_dense_wide_dispatch(
+                parent,
+                rows=512,
+                in_features=PACKET_K,
+                out_features=PACKET_N,
+                weight=_weight(f"layers.{layer}.attn_qkv"),
+            )
+            == parent
+        ), layer
+
+
 def test_the_wide_selector_is_wired_into_the_launch_chain():
     """A selector nothing calls is what left this kernel unreachable before."""
 
@@ -189,6 +286,29 @@ def test_the_wide_selector_is_wired_into_the_launch_chain():
     assert "_q8_dense_wide_dispatch(" in chain, (
         "launch_gguf_linear must run the wide-row selector; Qwen4Exp prefill "
         "reaches its Q8_0 linears through this entry point"
+    )
+
+
+def test_the_wide_selector_claims_a_parent_the_wmma_rewrite_produced():
+    """The rewrite runs earlier in the chain, so the parent set must cover it.
+
+    A route that only accepts the pre-rewrite parent is unreachable wherever
+    the WMMA route is enabled, which is the entire certified layer window.
+    """
+
+    import inspect
+
+    from hipengine.runtime import gguf_linear
+
+    chain = inspect.getsource(gguf_linear.launch_gguf_linear)
+    assert chain.index("_wmma_prefill_dispatch(") < chain.index(
+        "_q8_dense_wide_dispatch("
+    ), "the WMMA rewrite must precede the wide selector for this contract to hold"
+    assert gguf_linear._q8_dense_wide_claims_parent(
+        GGUFLinearDispatch(
+            KernelKey(BACKEND, "linear", "gguf_q8_0", "wmma_prefill_f32_f32_out"),
+            "wmma_raw",
+        )
     )
 
 
