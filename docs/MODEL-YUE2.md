@@ -1,7 +1,7 @@
 # MODEL-YUE2.md — YuE2 music generation on hipEngine
 
-Status: **M0-M2 landed (oracle fixtures, protocol/loader contracts, HIP AR runtime);
-no end-to-end generation, NAR, VAE, or product-path claim yet.**
+Status: **M0-M2 complete (oracle fixtures and closure, protocol/loader contracts,
+HIP AR runtime); no end-to-end generation, NAR, VAE, or product-path claim yet.**
 Reviewed 2026-09-16 on branch `yue2`.
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
@@ -372,11 +372,13 @@ Milestone status:
   is not implemented, so the validated path uses the full lm_head. See
   `worklog/entries/20260916T144759.713427Z-lhl-yue2-m2-ar-runtime-bb886e.md` and
   `benchmarks/README.md` "Radeon 8060S: YuE2 3B AR replay".
-- **M0 partial** (2026-09-16): oracle pinned, tensors inventoried by component,
-  fixtures frozen behind a fail-closed validator, oracle environment recorded, and
-  all twelve production cases regenerated and committed
-  (`tests/fixtures/yue2/cases/`). An independent repeat of representative outputs
-  and the 0.1.6-versus-baseline source diff remain open.
+- **M0 complete** (2026-09-16): oracle pinned, tensors inventoried by component,
+  fixtures frozen behind a fail-closed validator, oracle environment recorded, all
+  twelve production cases regenerated and committed
+  (`tests/fixtures/yue2/cases/`), the 0.1.6 release reviewed against the pinned
+  0.1.5 source (no oracle module changed, so the oracle stays pinned), and a
+  production case independently re-run bit-for-bit against its committed fixture.
+  See `worklog/entries/20260916T155756.081223Z-lhl-yue2-m0-oracle-closure-dd8799.md`.
 
 The oracle fixtures were generated on gfx1151 (Ryzen AI MAX+ PRO 395 / Radeon
 8060S) with torch 2.13.0+rocm10.0.0; `tests/fixtures/yue2/oracle_env.json` is the

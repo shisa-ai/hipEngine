@@ -1965,6 +1965,92 @@ def _check_oracle_env(root: Path, problems) -> None:
 
 
 
+def compare_wheel_source(wheel_root: Path, upstream: Path = UPSTREAM) -> dict:
+    """Compare a released wheel's package against the pinned oracle source.
+
+    The oracle fixtures are derived from ``upstream/yue2``. A release that
+    changes one of those modules is a re-pin decision, so this reports the three
+    sets separately: pinned modules that differ, other modules that differ, and
+    modules only one side has.
+    """
+
+    package = wheel_root / "yue2"
+    if not package.is_dir():
+        raise SystemExit(f"{wheel_root} does not contain a yue2/ package")
+    pinned = upstream / "yue2"
+    names = {path.name for path in package.glob("*.py")}
+    reference = {path.name for path in pinned.glob("*.py")}
+    identical, changed, added = [], [], []
+    for name in sorted(names | reference):
+        left, right = package / name, pinned / name
+        if not right.is_file():
+            added.append(name)
+        elif not left.is_file():
+            changed.append(name)
+        elif left.read_bytes() == right.read_bytes():
+            identical.append(name)
+        else:
+            changed.append(name)
+    pinned_changed = sorted(name for name in changed if name in ORACLE_SOURCE_FILES)
+    other_changed = sorted(name for name in changed if name not in ORACLE_SOURCE_FILES)
+    removed = sorted(name for name in reference if not (package / name).is_file())
+    return {
+        "wheel_root": str(wheel_root),
+        "upstream": str(upstream),
+        "identical": identical,
+        "changed": changed,
+        "only_in_wheel": added,
+        "only_in_pinned": removed,
+        "pinned_modules_changed": pinned_changed,
+        "repin_required": bool(pinned_changed),
+    }
+
+
+def cmd_wheel_diff(args) -> int:
+    import hashlib
+    import tempfile
+    import zipfile
+
+    wheel = Path(args.wheel)
+    if not wheel.is_file():
+        raise SystemExit(f"missing wheel: {wheel}")
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    record: dict = {"wheel": str(wheel), "sha256": digest}
+    if args.sha256sums:
+        expected = ""
+        for line in Path(args.sha256sums).read_text().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and Path(parts[1]).name == wheel.name:
+                expected = parts[0]
+        if not expected:
+            raise SystemExit(f"{wheel.name} is not listed in {args.sha256sums}")
+        record["sha256_matches_release"] = expected == digest
+        if expected != digest:
+            raise SystemExit(f"sha256 mismatch: {digest} != {expected}")
+    with tempfile.TemporaryDirectory() as scratch:
+        with zipfile.ZipFile(wheel) as archive:
+            archive.extractall(scratch)
+        record.update(compare_wheel_source(Path(scratch)))
+    if args.json:
+        write_json(Path(args.json), record)
+    print(f"[wheel-diff] {wheel.name} sha256={digest}")
+    for key in ("identical", "changed", "only_in_wheel", "only_in_pinned"):
+        print(f"[wheel-diff] {key}: {record[key]}")
+    print(
+        "[wheel-diff] pinned oracle modules changed: "
+        f"{record['pinned_modules_changed'] or 'none'}"
+    )
+    print(
+        "[wheel-diff] decision: "
+        + (
+            "re-pin and regenerate fixtures"
+            if record["repin_required"]
+            else "keep the pinned oracle; the release does not touch it"
+        )
+    )
+    return 1 if record["repin_required"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(REPO / "artifacts/yue2/oracle"))
@@ -2001,6 +2087,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("freeze", help="rewrite the fixture integrity index")
     p.add_argument("--exclude", default="", help="comma-separated families to leave out")
     p.set_defaults(func=cmd_freeze)
+    p = sub.add_parser(
+        "wheel-diff",
+        help="compare a released wheel's package against the pinned oracle source",
+    )
+    p.add_argument("--wheel", required=True)
+    p.add_argument("--sha256sums", default="", help="release SHA256SUMS to verify against")
+    p.add_argument("--json", default="")
+    p.set_defaults(func=cmd_wheel_diff)
     p = sub.add_parser("validate", help="fail-closed fixture validation")
     p.add_argument("--self-test", action="store_true", help="also prove the validator rejects broken trees")
     p.set_defaults(func=cmd_validate)
