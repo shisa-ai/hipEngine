@@ -183,9 +183,119 @@ def map_mmb(name: str, grid: tuple[str, str, str]) -> str:
     return "other"
 
 
+def _hipengine_bare(name: str) -> str:
+    """Strip the template-argument and anonymous-namespace noise from a symbol."""
+    name = re.sub(r"^\(anonymous namespace\)::", "", name)
+    name = re.sub(r"^void\s+", "", name)
+    return name.strip()
+
+
+def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
+    """hipEngine's Qwen4Exp prefill kernels, in the shared taxonomy.
+
+    hipEngine carries the tensor role in a separate mechanism -- a ROCTX range,
+    or the launch-census role stack -- and not in the symbol, so one symbol can
+    serve several roles. These rules therefore key on the operation the symbol
+    performs. The two genuinely ambiguous groups are resolved by quant type,
+    the same way the llama.cpp rules resolve the expert families:
+
+    * ``selected_dual_wmma_iu8_risk_prefill`` is the routed gate+up pair, and
+      this model's gate/up expert tensors are Q4_K/Q5_K.
+    * ``q5_1_selected_wmma_iu8_risk_prefill`` and
+      ``q8_0_selected_grouped_wmma_prefill`` are the routed down projection,
+      which is Q5_1 in 43 of 48 layers and Q8_0 in the remaining five.
+
+    Two deliberate folds, both reported separately in the comparison output so
+    they cannot hide:
+
+    * The iu8 exact-repair passes are folded into the family of the matmul they
+      correct, because that is the operation whose cost they are. hipEngine has
+      no equivalent of this machinery on the dense path and the comparator has
+      none at all, so the folded milliseconds are also totalled as
+      ``risk_or_repair_ms``.
+    * GLU-style activations (``silu_mul``, ``scaled_silu``, ``gated_mean_sigmoid``)
+      go to ``elementwise_norm``, matching the comparator rules, where
+      ``unary_gated_op`` is elementwise and not part of the expert matmul.
+
+    ``grid`` is accepted for signature compatibility and is not used: no rule
+    here needs it, unlike the llama.cpp rules where grid Y separates a routed
+    dispatch from a dense one.
+    """
+    bare = _hipengine_bare(name)
+
+    # Routed MoE projections and their exact-repair passes.
+    if "selected_dual_wmma_iu8_risk_prefill" in bare:
+        return "expert_gate_up"
+    if "selected_dual_sparse_exact_repair" in bare:
+        return "expert_gate_up"
+    if "selected_wmma_iu8_risk_prefill" in bare:
+        return "expert_down"
+    if "selected_grouped_wmma_prefill" in bare:
+        return "expert_down"
+    if "selected_sparse_exact_repair" in bare or "selected_sparse_repair" in bare:
+        return "expert_down"
+
+    # Routing, scatter and reduction around the routed experts.
+    for token in (
+        "router_logits", "router_select", "moe_group_scatter_gather",
+        "moe_wmma_tile_map", "moe_group_prefix", "moe_group_count",
+        "weighted_lanes_sum", "weighted_lanes_inverse",
+    ):
+        if token in bare:
+            return "moe_reduce"
+
+    # Hyper-connection read/up and write-back. The projections that consume
+    # these tensors are dense_projection, as in the comparator taxonomy.
+    if "gr_up" in bare or bare.startswith("gr_write"):
+        return "hyper_connection"
+
+    if "gdn_prefill" in bare or "linear_attn_conv" in bare:
+        return "gdn"
+
+    for token in (
+        "paged_full_attn", "qsa_sparse_attention", "qsa_score",
+        "qsa_split_norm_rope", "qsa_norm_rope", "qsa_gate_context",
+        "qsa_pool_norm_rope",
+    ):
+        if token in bare:
+            return "qsa_attention"
+
+    # Selection and gather for the sparse-attention index, analogous to the
+    # comparator's top_k / nary_search / mm_ids_helper rules.
+    if "qsa_topk_expand" in bare or "qsa_scatter_index_keys" in bare:
+        return "indexer"
+
+    if "ple_" in bare:
+        return "ple"
+
+    for token in (
+        "rmsnorm", "silu_mul", "scaled_silu", "gated_mean_sigmoid",
+        "f32_to_bf16", "bf16_to_f32", "shared_gate_combine",
+        "repeat_bf16_branches", "fillBuffer", "copyBuffer",
+    ):
+        if token in bare:
+            return "elementwise_norm"
+
+    # The prompt K/V write into the paged cache. The comparator writes the same
+    # bytes with a ``set_rows``/``cpy`` op, which the llama.cpp rules send to
+    # elementwise_norm, so this goes there too rather than to ``other``.
+    if "write_paged_kv" in bare:
+        return "elementwise_norm"
+
+    for token in (
+        "dense_gemv", "gguf_k_prefill_out_coltile_rowbatch",
+        "gguf_k_pack8_prefill_out",
+    ):
+        if token in bare:
+            return "dense_projection"
+
+    return "other"
+
+
 MAPPERS: dict[str, Callable[[str, tuple[str, str, str]], str]] = {
     "llamacpp": map_llamacpp,
     "mmb": map_mmb,
+    "hipengine": map_hipengine,
 }
 
 
