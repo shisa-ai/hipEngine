@@ -135,7 +135,23 @@ def main() -> int:
     parser.add_argument("--ubatch", type=int, default=2048)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--source-tree", type=Path, default=None)
+    parser.add_argument(
+        "--server-arg",
+        action="append",
+        default=None,
+        help=(
+            "Extra argument passed to the server verbatim; repeatable. Used for "
+            "delimitation, e.g. --server-arg --no-warmup so a profiled trace "
+            "contains only the measured prefills and not the server's own "
+            "warmup run."
+        ),
+    )
     parser.add_argument("--profile", action="store_true")
+    parser.add_argument(
+        "--marker-trace",
+        action="store_true",
+        help="Also pass --marker-trace to rocprofv3 (harmless when the engine emits no markers).",
+    )
     parser.add_argument("--rocprof-bin", default="rocprofv3")
     parser.add_argument("--trace-root", type=Path, required=True)
     parser.add_argument("--startup-timeout", type=float, default=1800.0)
@@ -168,12 +184,14 @@ def main() -> int:
         "--parallel", "1", "--no-webui", "-ngl", "999", "-fa", "on",
         "-ctk", args.kv_dtype, "-ctv", args.kv_dtype, "-c", str(args.context),
         "-b", str(args.batch), "-ub", str(args.ubatch), "-t", str(args.threads),
+        *(args.server_arg or []),
     ]
-    launched = (
-        [args.rocprof_bin, "--kernel-trace", "--output-format", "csv",
+    profiler_args = [args.rocprof_bin, "--kernel-trace"]
+    if args.marker_trace:
+        profiler_args.append("--marker-trace")
+    profiler_args += ["--output-format", "csv",
          "-d", str(trace_root / "trace"), "--", *server_args]
-        if args.profile else list(server_args)
-    )
+    launched = profiler_args if args.profile else list(server_args)
     report: dict = {
         "schema": 1,
         "kind": "llamacpp_family_prefill_comparator",
@@ -187,6 +205,8 @@ def main() -> int:
         "server": str(args.server),
         "server_sha256": _sha256_file(args.server),
         "server_args": server_args,
+        "server_arg_extra": list(args.server_arg or []),
+        "marker_trace": bool(args.marker_trace),
         "source": _source_state(args.source_tree),
         "model": str(args.model),
         "model_sha256_first_shard": _sha256_file(args.model),
