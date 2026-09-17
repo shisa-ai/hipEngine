@@ -759,6 +759,36 @@ default-off and the token-serial route remains the committed prefill schedule.
   context (it is not a resident layer helper, and the Q6_K planar
   `t16_wmma_prefill_bf16_f32_out` leaf is unregistered); both are recorded in
   `docs/REFACTOR.md`. Do not relax the envelope.
+- **Layer-0 MLP boundary measured (2026-09-17):** the sharded MLP chain is not a
+  defect source. `scripts/tp2_bulk_vs_resident_layer0.py` now also captures the
+  MLP half, and `scripts/tp2_layer0_mlp_reference_check.py` compares it against
+  an independent numpy f32 reference built from the dequantized layer-0 weights.
+  On the same 64-token prompt, with bit-identical `post_norm`/`residual` and a
+  bit-identical concatenated activation (1,114,112 cells, both rank slices), the
+  route's schedule-internal steps are exact: the staged f32 reduce equals the sum
+  of the staged bf16 partials to rel **5.1e-11**, `cast` is exactly the bf16
+  rounding of `reduced`, and `out` is exactly `bf16(residual + cast)` on both
+  ranks. The whole remaining difference sits in the down projection:
+  `cast` vs the teacher's `ffn_down` is max_abs **0.125** / rel **6.90e-03**
+  (110,629 of 327,680 cells, 17,021 beyond one bf16 ULP). The reference
+  decomposition attributes it: f32 partials vs the full-width f32 projection
+  differ by rel **1.05e-07**, the bf16 partial boundary costs max_abs **0.0309**
+  / rel **1.70e-03**, and each route's own output deviates from that same f32
+  reference by 1-2 bf16 ULPs (teacher **0.125**, candidate **0.0625**), so the
+  gap is the two down kernels' f32 accumulation order plus the bf16 partial
+  boundary — not slicing, layout, kernel selection, or state ownership. Evidence:
+  `benchmarks/results/2026-09-17-w7900-tp2-layer0-mlp-boundary.json`.
+- **Remaining work (2026-09-17):** with layer 0 explained, the end-to-end gap is
+  accumulated bf16-level association drift over 64 layers, and it is
+  prompt-dependent: the heldout fails against **both** TP1 references post-fix
+  (teacher max KL 0.261, token-serial 0.182), while the saved prompt is inside
+  the envelope against token-serial (max 0.0259, mean 4.67e-04, p99 0.0164,
+  top-1 1.0) and outside it against the resident teacher (0.167). The failure is
+  carried by a few near-tie rows (heldout p95 6.9e-04 against max 0.261). The
+  next decision is arithmetic, not defect-hunting: either remove the introduced
+  rounding by staging f32 down partials where a registered f32 partial consumer
+  exists, or accept the bf16 partial boundary and requalify the envelope on the
+  full mtp-bench category suite. Do not relax the envelope.
 
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing

@@ -7777,8 +7777,25 @@ prompt improves sharply, but `mixed_ja_en_translate` (bulk-vs-teacher max KL
 0.167, mean 0.00256, p99 0.0913) and `heldout_mixed_summary` (max KL 0.261,
 mean 0.00241, p99 0.0187) both still exceed the production envelope. The
 heldout max/mean got worse while its p95/p99/top-1 got better, so the remaining
-gap is not a single monotone defect. Localize it downstream of layer 0 — the
-sharded MLP chain route (whose Q6_K down projection changed to
-`t16_wmma_prefill` when the context was wired in) and later-layer accumulation
-are the remaining candidates. The bulk route stays opt-in and default-off until
-the full mtp-bench category suite clears the envelope.
+gap is not a single monotone defect. The bulk route stays opt-in and
+default-off until the full mtp-bench category suite clears the envelope.
+
+**Layer-0 MLP chain is cleared as a defect source (2026-09-17).** The sharded
+MLP half was captured field-by-field and checked against an independent numpy f32
+reference built from the dequantized layer-0 weights
+(`benchmarks/results/2026-09-17-w7900-tp2-layer0-mlp-boundary.json`): the MLP
+input and the concatenated rank activation are bit-identical to the teacher, and
+`reduced`/`cast`/`out` are exact by construction on both ranks. The remaining
+difference is confined to the down projection at the bf16 rounding floor — 1-2
+bf16 ULPs, roughly half from the bf16 partial boundary (reference-level max_abs
+0.0309) and half from the two down kernels' own f32 accumulation order. So the
+remaining candidates downstream of layer 0 are **not** a slicing, layout,
+kernel-selection or state-ownership defect; they are accumulated bf16-level
+association drift, and the choice in front of the campaign is arithmetic:
+remove the introduced rounding by staging f32 down partials where a registered
+f32 partial consumer exists, or accept the bf16 partial boundary and requalify
+the end-to-end envelope. Note the failure is prompt-dependent and carried by few
+near-tie rows: post-fix the heldout fails against **both** TP1 references
+(teacher 0.261, token-serial 0.182) while the saved prompt is inside the
+envelope against token-serial (max 0.0259) and outside it against the resident
+teacher (0.167). Do not relax the envelope.
