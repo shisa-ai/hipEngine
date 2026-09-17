@@ -1578,21 +1578,37 @@ normalisation of one onto the other is not valid for attention-heavy work; the
 per-unit rows are the comparison, and the whole-path figure awaits a fixed-token run
 of both sides.
 
-The AR row is the entire remaining gap, and the stage is 69% of our elapsed time. The
-reference's torch path batches both CFG branches into one forward per step
+The AR row is the entire remaining gap, and the stage is 69% of our elapsed time. Two
+further measurements pin it down. First, a fixed-token comparison of the two AR decode
+paths, with both sides driving the same recorded trajectory for the same 1 296 steps
+over the same 98-token positive and 12-token negative prefixes and the same two CFG
+branches, timed alternately in one session (`scripts/yue2_ar_matched_timing.py`,
+`scripts/yue2_reference_ar_timing.py`): **58.30 ms per decode step against 30.87**, so
+the reference is **1.89x faster** on matched work, reproduced at 58.35 against 30.95.
+Sampling is excluded there by design, because the token is recorded. Second, the
+product loop's own context scaling, measured at four budgets: 67.62 ms per token at
+context 398, 72.57 at 798, 77.70 at 1 198 and 82.84 at 1 549, i.e. **13.17 us per
+context token plus a 62.20 ms intercept** (max residual 0.28 ms). The sampling path the
+harness excludes costs **7.61 ms per token** on its own (`scripts/yue2_ar_sampling_cost.py`,
+CPU-only: 5.32 ms of it is the repetition-penalty/top-k/top-p distribution, 1.03 ms the
+CFG combine). So the product's 82 ms per token at the reference's token count is about
+62 ms of step work, about 8 ms of host sampling and about 20 ms of context-dependent
+device work, and those are three separate levers rather than one. The reference's torch
+path batches both CFG branches into one forward per step
 (`GraphAR(model, [prefix, negative], ...)` in its `yue2/sampling.py`), while this path
 forwards each branch separately, which costs one extra pass over that branch's weights
-per token. A branch reads ~3.575 GB per step - 28 layers of q/k/v/o/gate/up/down plus
-the 756 MB output head, from the checkpoint's own tensor sizes - so two serial forwards
-read ~7.15 GB per token against the reference's 3.575 GB. At 82.1 ms per token that is
-87 GB/s of weight traffic against the reference's 114 GB/s, and both are far below this
-host's ~256 GB/s LPDDR5X peak. The stage is therefore not at a bandwidth ceiling:
-branch batching is a candidate to measure, not a proven route, and the current GEMV
-launches one block per (output element, row), so a two-row forward would re-read the
-weights unless the kernel loops over rows inside a block. This host's single-row decode
-GEMVs are already documented at 20-28% of peak
-(`scripts/gguf_q8_0_dense_bw_microbench.py`), which is the efficiency family the AR
-decode belongs to. Evidence:
+per token: a branch reads ~3.575 GB per step (28 layers of q/k/v/o/gate/up/down plus the
+756 MB output head, from the checkpoint's own tensor sizes), so two serial forwards read
+~7.15 GB per token against the reference's 3.575 GB, which is 87 GB/s of weight traffic
+at 58.3 ms of step work against the reference's 116 GB/s at 30.9 ms. Both are far below
+this host's ~256 GB/s LPDDR5X peak, so the stage is not at a bandwidth ceiling and
+batching is a candidate to measure rather than a proven route; the current GEMV launches
+one block per (output element, row), so a two-row forward re-reads the weights unless
+the kernel loops over rows inside a block, and this host's single-row decode GEMVs are
+documented at 20-28% of peak (`scripts/gguf_q8_0_dense_bw_microbench.py`), which is the
+family the AR decode belongs to. Evidence:
+[`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
+[`AR sampling cost`](results/yue2_ar_sampling_cost_20260917.json),
 [`product case timing`](results/yue2_product_case_timing_20260917.json), whose
 `known_issues` records the readings withdrawn from the first version of this section.
 
