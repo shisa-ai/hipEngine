@@ -1701,19 +1701,25 @@ masked anyway.
 
 | Phase | Head, full 184 704 rows | Head, windowed | Speedup | Rows | Weight read |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `semantic` | 3.830 ms | **0.795 ms** | **4.82x** | 32 769 | 722 MiB → 128 MiB |
-| `abc` | 3.829 ms | 3.635 ms | 1.05x | 151 849 | 722 MiB → 593 MiB |
+| `semantic` | 3.84 ms | **0.82 ms** | **4.68x** | 32 769 | 722 MiB → 128 MiB |
+| `abc` | 4.13 ms | 3.44 ms | 1.20x | 151 849 | 722 MiB → 593 MiB |
+
+Both rows are medians of 15 interleaved pairs, with the two arms measured inside one
+repetition and the order flipped each repetition; the paired ratio spans 4.41-5.01 for
+`semantic` and 1.18-1.39 for `abc`. A separate interleaved run gave 4.53x and 1.20x.
 
 The production session loop, windowed against a control that forces the full projection,
-at temperature 1.0 on `mandarin-off-s1234`: **60.14 ms → 56.23 ms per token** (1.07x,
-3.91 ms per token saved) with **identical tokens and identical RNG state**. The saving is
-larger than the head call's own 3.0 ms because the device-to-host row shrinks from 739 KB
-to 131 KB as well. The windowed row is bit-identical to the full projection inside the
-window and `-inf` outside it, for both phases, and `distribution` over either row produces
-identical scores, masks, softmax probabilities and top-1. Evidence:
-[`window validation`](results/yue2_ar_head_window_20260917.json). The unwindowed call
-remains the route the replay matrix and the matched-timing harnesses use, so the AR replay
-gate above still scores full-vocabulary rows and is unchanged (pooled mean KL 1.1579e-3).
+at temperature 1.0 on `mandarin-off-s1234`: **61.4 ms → 56.8 ms per token** (median of 5
+interleaved repetitions per arm, both arms warm; 4.7 ms per token saved, 1.08x), with
+**identical tokens and an identical PCG64 state digest in all ten runs**. A separate
+interleaved run gave 4.2 ms per token saved. The saving is larger than the head call's own
+3.0 ms because the device-to-host row shrinks from 739 KB to 131 KB as well. The windowed
+row is bit-identical to the full projection inside the window and `-inf` outside it, for
+both phases, and `distribution` over either row produces identical scores, masks, softmax
+probabilities and top-1. Windowed execution is covered by those checks and by the session
+gate below; the replay matrix keeps using the unwindowed call, so it validates that
+fallback and the paired head rather than the window itself. Evidence:
+[`window validation`](results/yue2_ar_head_window_20260917.json).
 
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 

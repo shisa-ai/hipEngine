@@ -533,3 +533,53 @@ def test_combine_cfg_keeps_masked_rows_masked():
         assert combined[index] == expected
     # Scale 1.0 returns the conditional row untouched, as the reference does.
     assert np.array_equal(combine_cfg(conditional, unconditional, 1.0), bf16(conditional))
+
+
+def test_distribution_rejects_non_finite_inside_the_allowed_domain():
+    """A NaN or +inf where the phase can select is a failure, not something to mask.
+
+    A windowed head row is -inf outside its window on purpose, and folding that to -inf
+    is right. Inside the domain the same treatment would hide a broken head or a broken
+    CFG combination, so it raises instead.
+    """
+
+    wide = Sampling(top_k=VOCAB_SIZE, top_p=1.0, min_tokens=0)
+    clean = np.zeros(VOCAB_SIZE, dtype=np.float32)
+    # Intentional masking outside the domain, including NaN, is fine. For `semantic` the
+    # allowed set is the codec range plus MUSIC_END, which sits just below CODEC_OFFSET,
+    # so the masked prefix stops there.
+    outside = clean.copy()
+    outside[:MUSIC_END] = np.nan
+    assert np.isfinite(distribution(outside, wide, [], 0, "semantic")[CODEC_OFFSET])
+    for bad_value in (np.nan, np.inf, -np.inf):
+        broken = clean.copy()
+        broken[CODEC_OFFSET + 3] = bad_value
+        with pytest.raises(FloatingPointError):
+            distribution(broken, wide, [], 0, "semantic")
+        with pytest.raises(FloatingPointError):
+            distribution(broken, wide, [], 0, "semantic", legacy_off=True)
+    # The end token is selectable too, so it is covered by the same guard.
+    broken = clean.copy()
+    broken[MUSIC_END] = np.nan
+    with pytest.raises(FloatingPointError):
+        distribution(broken, wide, [], 5, "semantic")
+    # And abc's own holes are still just masked, not errors.
+    holes = clean.copy()
+    holes[EOD + 5] = np.nan
+    assert np.isfinite(distribution(holes, wide, [], 5, "abc")[ABC_END])
+
+
+def test_random_state_digest_tracks_the_stream_position():
+    """`state()` records the identity; the digest is what proves identical consumption."""
+
+    first = YuE2Random(1234)
+    second = YuE2Random(1234)
+    assert first.state() == second.state() == {"algorithm": "numpy-pcg64-v1", "seed": 1234}
+    assert first.state_digest() == second.state_digest()
+    first.uniform()
+    assert first.state_digest() != second.state_digest()
+    assert first.state() == second.state(), "identity is unchanged by consumption"
+    second.uniform()
+    assert first.state_digest() == second.state_digest()
+    # Equal digests mean every later draw agrees, which is the point of comparing them.
+    assert [first.uniform() for _ in range(4)] == [second.uniform() for _ in range(4)]

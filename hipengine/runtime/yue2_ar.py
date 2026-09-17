@@ -377,6 +377,30 @@ class Yue2ArRuntime:
         self._logits_pair_cache = None
         self._logits_window_filled = False
 
+    def _validate_domain(self, domain) -> tuple[int, int]:
+        """Check a projection window before anything offsets a device pointer.
+
+        A negative lower bound would offset the weight pointer ahead of its allocation,
+        and a lower bound above the upper one would produce an empty projection, so the
+        whole range is checked here rather than partly here and partly at the host
+        scatter.
+        """
+
+        try:
+            low, high = domain
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"domain must be a (low, high) pair; got {domain!r}") from error
+        for name, value in (("low", low), ("high", high)):
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise ValueError(f"domain {name} must be an integer; got {value!r}")
+        low, high = int(low), int(high)
+        if low < 0 or high > self.spec.vocab_size or high <= low:
+            raise ValueError(
+                f"domain ({low}, {high}) must satisfy 0 <= low < high <= "
+                f"{self.spec.vocab_size}"
+            )
+        return low, high
+
     def _fill_window_rows(self, domain: tuple[int, int]) -> None:
         """Project only `domain` and scatter it into a row that is -inf outside.
 
@@ -386,10 +410,9 @@ class Yue2ArRuntime:
         would have computed for the full projection, in the same reduction order.
         """
 
-        low, high = domain
+        low, high = self._validate_domain(domain)
+        domain = (low, high)
         width = high - low
-        if width <= 0 or high > self.spec.vocab_size:
-            raise ValueError(f"output window {domain} is not inside the vocabulary")
         hidden = self.spec.hidden_size
         if self._logits_window_domain != domain:
             self._logits_window_domain = domain
@@ -436,7 +459,11 @@ class Yue2ArRuntime:
         """
         hidden = self.spec.hidden_size
         if domain is not None:
-            if not self._logits_window_filled:
+            low, high = self._validate_domain(domain)
+            domain = (low, high)
+            # The domain is part of the cache key: a caller that switches windows without
+            # moving a hidden row must still get a projection of the window it asked for.
+            if not self._logits_window_filled or self._logits_window_domain != domain:
                 self._fill_window_rows(domain)
             host = self._logits_window_host[branch]
         else:

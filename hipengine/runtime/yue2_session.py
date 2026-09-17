@@ -271,6 +271,10 @@ def generate_tokens(
         "execution": "eager",
         "attention": "spans",
         "random": generator.state(),
+        # The live PCG64 position, not just the algorithm and seed: two runs that
+        # consumed the same stream share it, and equal digests mean every later draw
+        # agrees too.
+        "random_state_digest": generator.state_digest(),
     }
     return history, timing, not eos
 

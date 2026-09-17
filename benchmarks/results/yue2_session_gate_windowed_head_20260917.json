@@ -89,7 +89,7 @@
         "seed": 1234,
         "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
       },
-      "seconds": 34.669344853027724,
+      "seconds": 34.68549664400052,
       "semantic": {
         "agreement": 0.01171875,
         "first_divergence": 2,
@@ -241,7 +241,7 @@
         "seed": 1234,
         "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
       },
-      "seconds": 31.432027108967304,
+      "seconds": 31.467888084007427,
       "semantic": {
         "agreement": 0.08984375,
         "first_divergence": 27,
@@ -374,7 +374,7 @@
         "seed": 1234,
         "style": "Mandarin pop, warm expressive lead vocal, gentle piano, bass and light drums, moderate tempo"
       },
-      "seconds": 26.806073057930917,
+      "seconds": 26.807935477001593,
       "semantic": {
         "agreement": 0.044921875,
         "first_divergence": 23,
@@ -479,7 +479,7 @@
   "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
   "passed": true,
   "provenance": {
-    "command_line": "scripts/yue2_session_gate.py --json /tmp/yue2_session_gate_window_final.json",
+    "command_line": "scripts/yue2_session_gate.py --json /tmp/yue2_session_gate_guard.json",
     "fixtures": "/home/lhl/hipEngine/tests/fixtures/yue2/greedy",
     "host": {
       "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
@@ -488,6 +488,6 @@
     },
     "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
     "protocol": "yue2-greedy-session-gate-v1",
-    "revision": "dbafb1955c651ef99d39f1c168369757bbe55768"
+    "revision": "4b5910d4d7e962052fa3121ea13608e91149f9db"
   }
 }

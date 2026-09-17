@@ -66,19 +66,55 @@ def _prefill(runtime, prefix, negative):
         runtime.prefill_host_rows([runtime.embed_row(t) for t in negative], branch=1, start_pos=0)
 
 
-def _timed_head(runtime, *, domain, repeats: int = 10) -> float:
-    """Milliseconds for one head fill (both branches), best of `repeats`."""
+def _timed_head_once(runtime, *, domain) -> float:
+    """Milliseconds for one head fill (both branches), single shot."""
 
-    best = None
-    for _ in range(repeats):
-        runtime._reset_logits_cache()
-        dense_gemv.get_hip_runtime().device_synchronize()
+    runtime._reset_logits_cache()
+    dense_gemv.get_hip_runtime().device_synchronize()
+    started = time.perf_counter()
+    runtime.logits(0, as_bf16=False, domain=domain)
+    dense_gemv.get_hip_runtime().device_synchronize()
+    return (time.perf_counter() - started) * 1000.0
+
+
+def _stats(samples: list[float]) -> dict:
+    ordered = sorted(samples)
+    count = len(ordered)
+    return {
+        "n": count,
+        "median": float(np.median(ordered)),
+        "min": float(ordered[0]),
+        "max": float(ordered[-1]),
+        "p25": float(np.percentile(ordered, 25)),
+        "p75": float(np.percentile(ordered, 75)),
+        "samples": [float(value) for value in samples],
+    }
+
+
+def _run_loop(runtime, *, full_control: bool, prefix, negative, sampling, seed):
+    """One production-loop arm; `full_control` forces the whole vocabulary."""
+
+    original = session_module.phase_window
+    if full_control:
+        session_module.phase_window = lambda phase: (0, 184704)
+    try:
+        runtime.reset()
         started = time.perf_counter()
-        runtime.logits(0, as_bf16=False, domain=domain)
-        dense_gemv.get_hip_runtime().device_synchronize()
-        elapsed = (time.perf_counter() - started) * 1000.0
-        best = elapsed if best is None else min(best, elapsed)
-    return best
+        ids, tok_timing, truncated = generate_tokens(
+            runtime, prefix, sampling, seed, "semantic",
+            negative=negative, cfg_scale=1.01 if negative is not None else 1.0,
+        )
+        elapsed = time.perf_counter() - started
+    finally:
+        session_module.phase_window = original
+    return {
+        "ids": ids,
+        "seconds": elapsed,
+        "ms_per_token": elapsed / max(1, len(ids)) * 1000.0,
+        "truncated": truncated,
+        "rng_state": tok_timing["random"],
+        "rng_state_digest": tok_timing.get("random_state_digest"),
+    }
 
 
 def main() -> int:
@@ -87,6 +123,8 @@ def main() -> int:
     parser.add_argument("--fixtures", default=str(FIXTURES))
     parser.add_argument("--case", default=CASE)
     parser.add_argument("--tokens", type=int, default=48)
+    parser.add_argument("--head-repeats", type=int, default=15)
+    parser.add_argument("--loop-repeats", type=int, default=5)
     args = parser.parse_args()
 
     model_dir = os.environ.get("YUE2_MODEL_DIR") or sorted(
@@ -98,7 +136,7 @@ def main() -> int:
     negative = [int(t) for t in fixture["negative_prefix"]] if "negative_prefix" in fixture else None
 
     report = {
-        "protocol": "yue2-ar-head-window-validation-v1",
+        "protocol": "yue2-ar-head-window-validation-v2",
         "date": time.strftime("%Y-%m-%d"),
         "host": Path("/etc/hostname").read_text().strip(),
         "case": args.case,
@@ -138,6 +176,18 @@ def main() -> int:
             print(f"A {phase}: window [{low}, {high}) = {high - low} rows "
                   f"({(high - low) / 184704:.1%}), inside bit-identical {inside}, "
                   f"outside -inf {outside_inf}")
+        report["parts"]["coverage"] = {
+            "windowed_execution_covered_by": [
+                "A: windowed vs full rows, both phases",
+                "B: distribution/softmax/top-1 over windowed rows, both phases",
+                "D: the production loop with the real phase window",
+                "scripts/yue2_session_gate.py: unassisted token agreement",
+            ],
+            "fallback_covered_by": [
+                "scripts/yue2_ar_replay.py: full-vocabulary rows through the unwindowed "
+                "route (this validates the fallback and the paired head, not the window)",
+            ],
+        }
         report["parts"]["window_equivalence"] = equivalence
 
         # B. The sampler sees the same distribution through either row.
@@ -179,60 +229,104 @@ def main() -> int:
                   f"top1 {sampler[phase]['top1']}")
         report["parts"]["sampler_equivalence"] = sampler
 
-        # C. The head call's own time.
+        # C. The head call's own time, interleaved. Both arms are measured inside one
+        # repetition and the order flips every repetition, so drift, clock changes and
+        # thermal state hit both arms instead of being attributed to whichever ran
+        # second. Best-of-N is deliberately not used: it hides spread.
         timing = {}
         for phase in ("semantic", "abc"):
             window = phase_window(phase)
-            full_ms = _timed_head(runtime, domain=None)
-            window_ms = _timed_head(runtime, domain=window)
+            full_samples: list[float] = []
+            window_samples: list[float] = []
+            ratios: list[float] = []
+            for repeat in range(args.head_repeats):
+                windowed_first = repeat % 2 == 1
+                if windowed_first:
+                    window_ms = _timed_head_once(runtime, domain=window)
+                    full_ms = _timed_head_once(runtime, domain=None)
+                else:
+                    full_ms = _timed_head_once(runtime, domain=None)
+                    window_ms = _timed_head_once(runtime, domain=window)
+                full_samples.append(full_ms)
+                window_samples.append(window_ms)
+                ratios.append(full_ms / window_ms)
             timing[phase] = {
                 "window": list(window),
                 "rows": window[1] - window[0],
-                "full_ms": full_ms,
-                "windowed_ms": window_ms,
-                "speedup": full_ms / window_ms,
+                "full": _stats(full_samples),
+                "windowed": _stats(window_samples),
+                "paired_ratio_median": float(np.median(ratios)),
+                "paired_ratio_min": float(min(ratios)),
+                "paired_ratio_max": float(max(ratios)),
                 "weight_mib_full": 184704 * 2048 * 2 / 2**20,
                 "weight_mib_window": (window[1] - window[0]) * 2048 * 2 / 2**20,
-                "full_gbs": 184704 * 2048 * 2 / (full_ms * 1e-3) / 1e9,
-                "windowed_gbs": (window[1] - window[0]) * 2048 * 2 / (window_ms * 1e-3) / 1e9,
+                "full_gbs": 184704 * 2048 * 2 / (np.median(full_samples) * 1e-3) / 1e9,
+                "windowed_gbs": (window[1] - window[0]) * 2048 * 2
+                / (np.median(window_samples) * 1e-3) / 1e9,
             }
-            print(f"C {phase}: head {full_ms:.3f} ms full -> {window_ms:.3f} ms windowed "
-                  f"({full_ms / window_ms:.2f}x, {timing[phase]['windowed_gbs']:.0f} GB/s)")
+            print(f"C {phase}: head {np.median(full_samples):.3f} ms full -> "
+                  f"{np.median(window_samples):.3f} ms windowed "
+                  f"({timing[phase]['paired_ratio_median']:.2f}x median of "
+                  f"{args.head_repeats} interleaved pairs, ratio "
+                  f"{timing[phase]['paired_ratio_min']:.2f}-"
+                  f"{timing[phase]['paired_ratio_max']:.2f})")
         report["parts"]["head_timing"] = timing
 
-        # D. The production loop, windowed against a full-projection control.
-        loop = {}
-        for label, patched in (("windowed", False), ("full_control", True)):
-            original = session_module.phase_window
-            if patched:
-                session_module.phase_window = lambda phase: (0, 184704)
-            try:
-                runtime.reset()
-                started = time.perf_counter()
-                ids, tok_timing, truncated = generate_tokens(
-                    runtime, prefix, sampling, 1234, "semantic",
-                    negative=negative, cfg_scale=1.01 if negative is not None else 1.0,
-                )
-                elapsed = time.perf_counter() - started
-            finally:
-                session_module.phase_window = original
-            loop[label] = {
-                "ids": ids,
-                "seconds": elapsed,
-                "ms_per_token": elapsed / max(1, len(ids)) * 1000.0,
-                "truncated": truncated,
-                "rng_state": tok_timing["random"],
-            }
-            print(f"D {label}: {len(ids)} tokens in {elapsed:.3f} s "
-                  f"({loop[label]['ms_per_token']:.2f} ms/token)")
-        loop["tokens_identical"] = loop["windowed"]["ids"] == loop["full_control"]["ids"]
-        loop["rng_identical"] = loop["windowed"]["rng_state"] == loop["full_control"]["rng_state"]
-        loop["speedup"] = loop["full_control"]["seconds"] / loop["windowed"]["seconds"]
-        loop["ms_per_token_saved"] = (
-            loop["full_control"]["ms_per_token"] - loop["windowed"]["ms_per_token"]
+        # D. The production loop, windowed against a full-projection control, interleaved
+        # the same way. One run per arm cannot separate a 7% difference from run-to-run
+        # variance, so each arm gets a discarded warmup and `--loop-repeats` measured
+        # runs, alternating order.
+        loop: dict = {"runs": []}
+        for label in ("windowed", "full_control"):
+            _run_loop(runtime, full_control=label == "full_control", prefix=prefix,
+                      negative=negative, sampling=sampling, seed=1234)
+        for repeat in range(args.loop_repeats):
+            order = ("windowed", "full_control") if repeat % 2 == 0 else (
+                "full_control", "windowed")
+            for label in order:
+                run = _run_loop(runtime, full_control=label == "full_control", prefix=prefix,
+                                negative=negative, sampling=sampling, seed=1234)
+                run.update({"repeat": repeat, "arm": label, "tokens": len(run["ids"])})
+                loop["runs"].append(run)
+                print(f"D {label} repeat {repeat}: {run['tokens']} tokens in "
+                      f"{run['seconds']:.3f} s ({run['ms_per_token']:.2f} ms/token)")
+        by_arm = {
+            label: [r for r in loop["runs"] if r["arm"] == label]
+            for label in ("windowed", "full_control")
+        }
+        loop["windowed"] = _stats([r["ms_per_token"] for r in by_arm["windowed"]])
+        loop["full_control"] = _stats([r["ms_per_token"] for r in by_arm["full_control"]])
+        paired = [
+            by_arm["full_control"][index]["ms_per_token"]
+            - by_arm["windowed"][index]["ms_per_token"]
+            for index in range(args.loop_repeats)
+        ]
+        loop["paired_ms_per_token_saved"] = _stats(paired)
+        loop["speedup_median"] = float(np.median([
+            by_arm["full_control"][index]["seconds"] / by_arm["windowed"][index]["seconds"]
+            for index in range(args.loop_repeats)
+        ]))
+        reference = by_arm["windowed"][0]["ids"]
+        loop["tokens_identical"] = all(r["ids"] == reference for r in loop["runs"])
+        digests = [r["rng_state_digest"] for r in loop["runs"]]
+        loop["rng_state_digest_identical"] = (
+            None not in digests and len(set(digests)) == 1
         )
-        print(f"D tokens identical {loop['tokens_identical']}, rng identical {loop['rng_identical']}, "
-              f"{loop['speedup']:.3f}x, {loop['ms_per_token_saved']:.2f} ms/token saved")
+        loop["rng_identity_identical"] = all(
+            r["rng_state"] == loop["runs"][0]["rng_state"] for r in loop["runs"]
+        )
+        loop["rng_state_digest"] = digests[0]
+        print(f"D windowed median {loop['windowed']['median']:.2f} ms/token "
+              f"({loop['windowed']['min']:.2f}-{loop['windowed']['max']:.2f}), "
+              f"full control median {loop['full_control']['median']:.2f} ms/token "
+              f"({loop['full_control']['min']:.2f}-{loop['full_control']['max']:.2f})")
+        print(f"D paired saving median {loop['paired_ms_per_token_saved']['median']:.2f} ms/token "
+              f"({loop['paired_ms_per_token_saved']['min']:.2f}-"
+              f"{loop['paired_ms_per_token_saved']['max']:.2f}), "
+              f"median speedup {loop['speedup_median']:.3f}x")
+        print(f"D tokens identical {loop['tokens_identical']}, "
+              f"PCG64 state digest identical {loop['rng_state_digest_identical']} "
+              f"({loop['rng_state_digest']})")
         report["parts"]["product_loop"] = loop
 
         ok = (
@@ -240,7 +334,9 @@ def main() -> int:
                 for v in equivalence.values())
             and all(v["scores_exact"] and v["probs_exact"] and v["top1_agreement"]
                     for v in sampler.values())
-            and loop["tokens_identical"] and loop["rng_identical"]
+            and loop["tokens_identical"] and loop["rng_state_digest_identical"]
+            and all(v["paired_ratio_median"] > 1.0 for v in timing.values())
+            and loop["paired_ms_per_token_saved"]["median"] > 0.0
         )
         report["status"] = "pass" if ok else "fail"
     finally:
