@@ -84,11 +84,19 @@
   split-attention boundary. `strict_long_rows` still derives from
   `_use_gguf_full_attention_split_decode(start_position + rows)` for that
   decision; once linear rows are per-row exact it can read the same per-row
-  readiness check the full-attention chain uses.
+  readiness check the full-attention chain uses. This is the dominant blocker
+  for long-context MTP economics: 48 of the 64 layers are linear, and a serving
+  measurement with the batched full-attention chain in place but linear rows
+  still row-wise lands at 0.90x AR at a 945-token prompt and 0.68x at 3,530
+  tokens (Qwen3.8-27B Q4_K_M, gfx1151, budget 3, split-K decode at its default
+  threshold, same server process for both arms), against 1.38x when the
+  split-K threshold is raised so both chains batch
+  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
 - Historical note: the only measured way to reach the batched long-row route
   before this was to raise the split threshold past the request's context (or
   disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
-  tokens. That workaround is no longer needed.
+  tokens. That workaround is no longer needed for full attention, but it is
+  still the only way to batch the linear rows.
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
