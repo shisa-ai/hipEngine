@@ -479,6 +479,55 @@ binder now binds
 `gguf_ud_q4_k_xl` and binds `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` empty. Its
 selector and env var remain registered for explicit opt-in and re-gating.
 
+#### What the promoted scope's qualification record contains
+
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) §9 lists what a
+profile-sensitive artifact records. Reconciled against that list, the promoted
+scope has a full-protocol numerical envelope with determinism, a measured
+performance delta, and an end-to-end launch-census identity check, and it has
+nothing yet for four of the listed fields:
+
+| §9 field | Promoted scope, 16-47 |
+| --- | --- |
+| Execution profile and manifest hashes | recorded: `production`, `35e57360…`, strict `1335b824…` |
+| Backend, hardware, stack, model, quant, KV policy | recorded in provenance |
+| Workload shape and dynamic schedule | recorded: 12 cases, 4 categories, 512/1024/4096, chunk1024, 128 decode transitions, c1 |
+| Prompt-suite and heldout hashes | fixture `42b562bd…` and 12 per-prompt token-id hashes; **no heldout is run** |
+| Teacher source | candidate-local — the production profile with this route's selectors cleared, `teacher_chain` exact `coltile8_rowbatch4_f32_f32_out` — so it is not §6.1's named-strict comparison |
+| Mean/p95/p99/max KL and top-1 by scope | recorded over 1548 rows, 3 scopes, no failures |
+| Finiteness and determinism | recorded: finite, three identical trajectory hashes |
+| Isolation, graph/eager, lifecycle verdicts | **not recorded** (§4.2, §6.5) |
+| Task-quality verdicts | **not recorded**; the gate README disclaims them (§6.5) |
+| BF16-relative non-inferiority | **not recorded** (§6.2) |
+| Exact command and performance metrics | command recorded; `timing_protocol: none_full_logits_only_v1`, `performance_claim: false` |
+| Generated-ID equality binding or diagnostic | **not stated in the artifact** |
+
+Three retained artifacts touch qualification for this model, and none closes
+those fields:
+
+- [`2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json)
+  — 8 predeclared category-heldouts, top-1 8/8, mean KL 9.87e-3, max 2.87e-2,
+  but against a **llama.cpp oracle** (`bea3b12da…`) at the **broad-floor**
+  thresholds (max KL 0.05, top-1 0.90), on the `zbook` host (`87c566d30a…`, not
+  this campaign's `55ea6c509d…`), dated 2026-08-27 — before `49ffa3cb5` and
+  before both route promotions. Its own caveat: the merged 18-prompt diagnostic
+  is not reported as passing (`mixed_ja_en_review` measured KL 0.089147 there).
+- [`2026-09-03-gfx1151-qwen38-flash-next-pf1-admission-suite-reconciliation.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-admission-suite-reconciliation.json)
+  — 18 prompts with context and incumbent-relative quality blocks, but
+  `measurement_valid: false`, `status: invalid_or_screen_only`, one qualification
+  blocker, and the `zbook` host.
+- [`2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json`](../benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json)
+  — on **this** host, the canonical 12 cases with
+  `cross_mode_output_exact: true`, `within_mode_deterministic: true`, clean
+  teardown, and a follow-up comparing all 128 logits plus recurrent and complete
+  paged K/V bytes. It qualifies the QSA h256 route at manifest `b3afcd55…` and
+  records a decode finding it does not waive; it says nothing about the dense
+  route.
+
+Missing evidence here is a gap in the record, not a failed check, and the route
+stays promoted on the numerical and performance halves above. §5 item 2 is what
+would close the table.
+
 ## 5. What is left
 
 ### Measurement and qualification prerequisites
