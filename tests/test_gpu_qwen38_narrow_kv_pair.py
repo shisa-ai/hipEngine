@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_dense_single_col4_bf16_bf16_out,
+    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
 )
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -49,6 +50,8 @@ _Q4_Q4_GFX1151_KEY = KernelKey(
 _Q4_Q6_GFX1151_KEY = KernelKey(
     "hip_gfx1151", "linear_pair", _Q4_Q6_QUANT, _Q4_Q6_VARIANT
 )
+_QUALIFIED_NARROW_KV_SHAPES = frozenset({(1, 5_120, 1_024, 1_024)})
+_PRODUCTION_SHAPE = (5_120, 1_024)
 
 
 def _hip_available() -> bool:
@@ -94,10 +97,24 @@ def _bf16_to_f32(values: np.ndarray) -> np.ndarray:
     return (bits.astype(np.uint32) << 16).view(np.float32).reshape(bits.shape).copy()
 
 
-def _softmax(values: np.ndarray) -> np.ndarray:
-    shifted = values.astype(np.float64) - np.max(values)
-    probs = np.exp(shifted)
-    return probs / np.sum(probs)
+def _softmax_kl(reference: np.ndarray, candidate: np.ndarray) -> float:
+    """KL(reference || candidate) in log-softmax space.
+
+    The ratio form ``sum(p * log(p / q))`` produces 0/0 for the many entries
+    whose probability underflows to zero once the logit spread grows (the
+    production shape sums 5120 terms, so most of the 2048 columns are far
+    below the max). Both sides here are evaluated as log-softmax, where an
+    underflowed reference entry contributes exactly zero by definition.
+    """
+
+    def log_softmax(values: np.ndarray) -> np.ndarray:
+        shifted = values.astype(np.float64)
+        shifted = shifted - np.max(shifted, axis=-1, keepdims=True)
+        return shifted - np.log(np.exp(shifted).sum(axis=-1, keepdims=True))
+
+    log_ref = log_softmax(reference)
+    log_candidate = log_softmax(candidate)
+    return float(np.max(np.sum(np.exp(log_ref) * (log_ref - log_candidate), axis=-1)))
 
 
 def _upload(runtime, buffers, value: np.ndarray):
@@ -119,22 +136,29 @@ def test_narrow_kv_pair_wrappers_are_exposed() -> None:
     assert callable(_q4_q6_wrapper())
 
 
-def test_narrow_kv_pairs_route_only_qualified_gfx1151_shapes() -> None:
+@pytest.mark.parametrize("backend", ("hip_gfx1151", "hip_gfx1100"))
+def test_narrow_kv_pairs_route_only_qualified_shapes(backend: str) -> None:
     pair_module.register_gguf_q6_q4_pair_kernels(replace=True)
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
-    assert backend_package_capability(
-        "hip_gfx1151",
-        "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
-        (),
-    ) == frozenset({(1, 5_120, 1_024, 1_024)})
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
-        (),
-    ) == ()
+    # Both gfx1100 and gfx1151 admit exactly the Qwen3.8-27B K/V shape. A peer
+    # backend declaring it without a device gate is a policy bug, so assert the
+    # whole set rather than only the backend under test.
+    for candidate in ("hip_gfx1151", "hip_gfx1100"):
+        assert (
+            backend_package_capability(
+                candidate,
+                "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
+                (),
+            )
+            == _QUALIFIED_NARROW_KV_SHAPES
+        )
 
+    keys = (
+        KernelKey(backend, "linear_pair", _Q4_Q4_QUANT, _Q4_Q4_VARIANT),
+        KernelKey(backend, "linear_pair", _Q4_Q6_QUANT, _Q4_Q6_VARIANT),
+    )
     originals = {
         key: resolve(
             backend=key.backend,
@@ -142,7 +166,7 @@ def test_narrow_kv_pairs_route_only_qualified_gfx1151_shapes() -> None:
             quant=key.quant,
             variant=key.variant,
         )
-        for key in (_Q4_Q4_GFX1151_KEY, _Q4_Q6_GFX1151_KEY)
+        for key in keys
     }
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
@@ -152,24 +176,24 @@ def test_narrow_kv_pairs_route_only_qualified_gfx1151_shapes() -> None:
     def pair_q6(*args, **kwargs):
         calls.append(("q4_q6", args, kwargs))
 
-    register(_Q4_Q4_GFX1151_KEY, pair_q4, replace=True)
-    register(_Q4_Q6_GFX1151_KEY, pair_q6, replace=True)
+    register(keys[0], pair_q4, replace=True)
+    register(keys[1], pair_q6, replace=True)
     clear_gguf_linear_dispatch_cache()
     q4_a = _fake_weight(
         20,
-        backend="hip_gfx1151",
+        backend=backend,
         layout=LAYOUT_GGUF_Q4_K_T16,
         quant_key="gguf_q4_k",
     )
     q4_b = _fake_weight(
         30,
-        backend="hip_gfx1151",
+        backend=backend,
         layout=LAYOUT_GGUF_Q4_K_T16,
         quant_key="gguf_q4_k",
     )
     q6_b = _fake_weight(
         31,
-        backend="hip_gfx1151",
+        backend=backend,
         layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
         quant_key="gguf_q6_k_t16_qmicro_planar_v1",
     )
@@ -180,7 +204,7 @@ def test_narrow_kv_pairs_route_only_qualified_gfx1151_shapes() -> None:
         rows=1,
         in_features=5_120,
         out_features=1_024,
-        backend="hip_gfx1151",
+        backend=backend,
         stream=7,
         runtime="runtime-sentinel",
     )
@@ -220,7 +244,13 @@ def test_narrow_kv_pair_wrappers_reject_unscreened_geometry() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
+@pytest.mark.parametrize(
+    "in_features,out_features",
+    ((512, 256), _PRODUCTION_SHAPE),
+)
+def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1(
+    in_features: int, out_features: int
+) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -228,8 +258,6 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
     q4_library = build_gguf_t16_selected_gemv(load=True)
     q6_library = build_gguf_q6_k_t16_gemv(load=True)
     rows = 1
-    in_features = 512
-    out_features = 256
     rng = np.random.default_rng(0x4_6_4_38)
     x_bits = _f32_to_bf16_bits(
         rng.normal(0.0, 0.25, size=(rows, in_features)).astype(np.float32)
@@ -249,10 +277,18 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
         control_a = malloc(rows * out_features * 2, runtime=runtime)
         control_q4_b = malloc(rows * out_features * 2, runtime=runtime)
         control_q6_b = malloc(rows * out_features * 2, runtime=runtime)
+        control_local32_a = malloc(rows * out_features * 2, runtime=runtime)
         candidate_a = malloc(rows * out_features * 2, runtime=runtime)
         candidate_b = malloc(rows * out_features * 2, runtime=runtime)
         buffers.extend(
-            (control_a, control_q4_b, control_q6_b, candidate_a, candidate_b)
+            (
+                control_a,
+                control_q4_b,
+                control_q6_b,
+                control_local32_a,
+                candidate_a,
+                candidate_b,
+            )
         )
 
         gguf_q4_k_t16_dense_single_col4_bf16_bf16_out(
@@ -285,6 +321,20 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
             library=q6_library,
             runtime=runtime,
         )
+        # The gfx1100 c1 policy routes this shape's Q4_K singleton to the col4
+        # owner so the pair below composes from it. That swap is only admissible
+        # if col4 reproduces the incumbent local32 tree bit-for-bit on the same
+        # inputs, which is what this control asserts.
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out(
+            x.ptr,
+            q4_a.ptr,
+            control_local32_a.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=q4_library,
+            runtime=runtime,
+        )
         _q4_q4_wrapper()(
             x.ptr,
             q4_a.ptr,
@@ -301,6 +351,7 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
         runtime.device_synchronize()
         expected_a = _read(runtime, control_a, (rows, out_features))
         expected_q4_b = _read(runtime, control_q4_b, (rows, out_features))
+        expected_local32_a = _read(runtime, control_local32_a, (rows, out_features))
         actual_a = _read(runtime, candidate_a, (rows, out_features))
         actual_q4_b = _read(runtime, candidate_b, (rows, out_features))
         _q4_q6_wrapper()(
@@ -328,6 +379,7 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
     np.testing.assert_array_equal(actual_q4_b, expected_q4_b)
     np.testing.assert_array_equal(actual_q6_a, expected_a)
     np.testing.assert_array_equal(actual_q6_b, expected_q6_b)
+    np.testing.assert_array_equal(expected_a, expected_local32_a)
 
     x_f32 = _bf16_to_f32(x_bits)
     for raw_b, gpu_b in (
@@ -350,8 +402,6 @@ def test_narrow_kv_pairs_are_bit_exact_and_pass_cpu_kl_top1() -> None:
         gpu_logits = np.concatenate(
             (_bf16_to_f32(actual_a), _bf16_to_f32(gpu_b)), axis=1
         )[0]
-        cpu_probs = _softmax(cpu_logits)
-        gpu_probs = _softmax(gpu_logits)
-        kl = float(np.sum(cpu_probs * np.log(cpu_probs / gpu_probs)))
+        kl = _softmax_kl(cpu_logits, gpu_logits)
         assert kl <= 0.05
         assert int(np.argmax(cpu_logits)) == int(np.argmax(gpu_logits))

@@ -45,9 +45,13 @@ from hipengine.core.device import scoped_current_device
 from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 from hipengine.loading.gguf import scan_gguf
 from hipengine.runtime.gguf_linear import (
+    GGUF_ACTIVATION_BF16,
+    GGUF_OUTPUT_BF16,
     launch_gguf_linear,
     launch_gguf_linear_pair,
     resolve_gguf_linear_dispatch,
+    _resolve_gguf_linear_pair_kind,
+    _t16_c1_variant_dispatch,
 )
 
 #: Roles to audit, in report order. ``want`` selects which layer type carries the
@@ -220,6 +224,25 @@ def _audit_device(
                 else None
             )
             dispatch = resolve_gguf_linear_dispatch(weights[0][0], rows=1)
+            # The effective owner, not the pre-policy dispatch: the c1 tables
+            # may route a rows-1 shape to an exact sibling (e.g. the Q4_K K/V
+            # shape to col4, which is what admits the narrow pair below).
+            owner = _t16_c1_variant_dispatch(
+                dispatch,
+                rows=1,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            owner_b = (
+                _t16_c1_variant_dispatch(
+                    resolve_gguf_linear_dispatch(weights[0][1], rows=1),
+                    rows=1,
+                    in_features=in_features,
+                    out_features=int(shape_b[0]),
+                )
+                if shape_b is not None
+                else None
+            )
             input_ptr = _buffer_ptr(scratch, spec["inp"])  # type: ignore[arg-type]
             out_a_ptr = _buffer_ptr(scratch, spec["out_a"])  # type: ignore[arg-type]
             out_b_ptr = (
@@ -227,6 +250,33 @@ def _audit_device(
                 if spec["out_b"]
                 else out_a_ptr
             )
+
+            # Ask the launcher's own classifier so the record names the pair it
+            # actually composed (operand A's quant alone cannot distinguish the
+            # Q4/Q4 pair from the Q4/planar-Q6 one). Resolved once, outside the
+            # timed window: this is a host-side call, and a host-side call
+            # between the start and stop event records is charged to the
+            # launch - it moved this row from 33.0 to 61.4 us when it lived in
+            # ``enqueue``.
+            pair_kind = (
+                _resolve_gguf_linear_pair_kind(
+                    weights[0][0],
+                    weights[0][1],
+                    rows=1,
+                    in_features=in_features,
+                    out_features=out_features,
+                    out_features_b=int(shape_b[0]),
+                    activation_dtype=GGUF_ACTIVATION_BF16,
+                    output_dtype=GGUF_OUTPUT_BF16,
+                    backend=owner.key.backend,
+                    use_wmma=False,
+                    use_gemv=False,
+                    registered_decode_only=False,
+                )
+                if len(suffix_list) == 2
+                else None
+            )
+            pair_route: list[str] = []
 
             def enqueue(layer_weights: list[object]) -> None:
                 if len(suffix_list) == 2:
@@ -243,6 +293,7 @@ def _audit_device(
                         stream=stream,
                         runtime=runtime,
                     )
+                    pair_route.append("fused" if launched else "two_singles")
                     if not launched:
                         launch_gguf_linear(
                             layer_weights[0],
@@ -311,7 +362,12 @@ def _audit_device(
                     "input_buffer": spec["inp"][0],
                     "output_buffer": spec["out_a"][0],
                     "quant_key": str(getattr(weights[0][0].spec, "quant_key", "?")),
-                    "resolved_kernel": str(dispatch.key),
+                    "resolved_kernel": str(owner.key),
+                    "resolved_kernel_b": (
+                        str(owner_b.key) if owner_b is not None else None
+                    ),
+                    "pair_route": pair_route[-1] if pair_route else None,
+                    "pair_kind": pair_kind,
                     "median_ms": round(ms, 4),
                     "min_ms": round(float(min(measured)), 4),
                     "max_ms": round(float(max(measured)), 4),
@@ -387,6 +443,9 @@ def _audit_device(
                     "shape_b": None,
                     "quant_key": "-",
                     "resolved_kernel": "-",
+                    "resolved_kernel_b": None,
+                    "pair_route": None,
+                    "pair_kind": None,
                     "median_ms": round(ms, 4),
                     "min_ms": round(float(min(measured)), 4),
                     "max_ms": round(float(max(measured)), 4),
@@ -425,7 +484,17 @@ def main(argv: list[str] | None = None) -> int:
             "several layers per role so every timed launch streams from DRAM "
             "instead of the 96 MB Infinity Cache. Shapes are (out, in) from the "
             "GGUF index; sharded shapes are not audited here (the MLP shard "
-            "chain is measured in scripts/tp2_layer_segment_attribution.py)."
+            "chain is measured in scripts/tp2_layer_segment_attribution.py). "
+            "resolved_kernel / resolved_kernel_b are the *effective* owners "
+            "(the c1 policy applied), so a rows-1 shape routed to an exact "
+            "sibling names the sibling, not the pre-policy dispatch. "
+            "pair_route == 'fused' means one pair kernel served both operands "
+            "and the pair row's bytes are that single launch; 'two_singles' "
+            "means the pair declined and two launches were timed. pair_kind is "
+            "the launcher's own classifier answer, which operand A's quant "
+            "alone cannot give: the Qwen3.8-27B K/V row is K=Q4_K + V=planar-Q6 "
+            "and therefore composes q4_q6_t16_narrow_col4_planar, not the "
+            "q4_q4 pair."
         ),
     }
     print(f"host {platform.node()} | model {args.model}")
@@ -451,10 +520,14 @@ def main(argv: list[str] | None = None) -> int:
             rate = (
                 f"{row['gb_per_s']:7.1f}" if row["gb_per_s"] is not None else "      -"
             )
+            route = row["pair_route"]
+            owner = row["resolved_kernel"]
+            if route == "fused":
+                owner = f"fused {row['pair_kind']}"
             print(
                 f"  {row['role']:22s} {shape:>16s} {row['quant_key']:>20s} "
                 f"{row['mb']:8.1f} {row['median_ms']:8.4f} "
-                f"{rate}  {row['resolved_kernel']}"
+                f"{rate}  {owner}"
             )
         result["rows"].extend(rows)  # type: ignore[attr-defined]
     if args.json is not None:

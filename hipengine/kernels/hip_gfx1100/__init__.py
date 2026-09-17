@@ -606,6 +606,17 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 # Exact c1 sibling selection is architecture/shape qualified. W7900 retains
 # the established direct owners until an independent device gate admits one.
 GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
+    # The Qwen3.8-27B K/V shape (5120 -> 1024) is fixed-cost-bound at rows 1:
+    # two local32 launches move 7.2 MB in 45.8 us (158 GB/s) where the same
+    # bytes inside a wider launch run above 590 GB/s. The col4 owner is the
+    # exact sibling the registered narrow K/V pair composes from, so routing
+    # the K singleton to it is what admits the pair below. Admitted on gfx1100
+    # by the device gate in tests/test_gpu_qwen38_narrow_kv_pair.py
+    # (col4 == local32 bit-exact at (1, 5120, 1024); pair == the two primitive
+    # projections bit-exact at (1, 5120, 1024, 1024) for both pair kinds).
+    "gguf_q4_k_t16_v1": {
+        (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
+    },
     # Q5 dense decode singles route to the local32 owner (decode lever 3,
     # 2026-09-11). The direct GEMV re-decodes the per-column d/dmin and the
     # superblock scale/min bytes inside the K loop - four redundant byte
@@ -628,6 +639,18 @@ GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
         (5_120, 12_288): "dense_single_local32_bf16_bf16_out",
     },
 }
+# The 16 full-attention K/V pairs share one BF16 norm row. K is compact Q4T16
+# and V is either Q4T16 or byte-neutral planar-Q6; one local128 block-parallel
+# grid preserves each qualified singleton arithmetic tree while removing the
+# serial launch boundary. Both pair kernels are registered on gfx1100 and the
+# col4 c1 owner above supplies the qualified K singleton, so the same shape is
+# admitted here; native rows, other shapes, and peers keep the two primitive
+# projections. This model is K=Q4_K + V=planar-Q6, so the composed kernel is
+# the planar pair; measured on that pair alone (1, 5120, 1024, 1024):
+# 45.8 -> 32.8 us on the W7900 and 46.7 -> 30.6 us on the RX 7900 XTX.
+GGUF_NARROW_KV_PAIR_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 1_024, 1_024)}
+)
 # Selected-expert owners are a separate contract from rank-2 C1 linear owners.
 # The key is (in_features, out_features) as the selected launcher names them.
 # The Q5 MoE down projection of Qwen3.6-35B-A3B (moe_inter 512 -> hidden 2048)
@@ -1578,6 +1601,7 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
+    "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
     "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

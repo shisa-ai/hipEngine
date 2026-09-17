@@ -48,6 +48,59 @@ from hipengine.distributed.tp2_generate import (  # noqa: E402
     GenerationResult,
     MlpTP2GenerationSession,
 )
+from hipengine.runtime.gguf_linear import (  # noqa: E402
+    GGUF_ACTIVATION_BF16,
+    GGUF_OUTPUT_BF16,
+    _resolve_gguf_linear_pair_kind,
+    clear_gguf_linear_dispatch_cache,
+)
+
+#: The full-attention K/V role of the Qwen3.8-27B geometry this cell measures.
+_KV_PAIR_SHAPE = (5_120, 1_024)
+
+
+def _kv_pair_route(session: MlpTP2GenerationSession) -> str:
+    """Resolve the route the 16 full-attention K/V pairs take in this session.
+
+    The attention projections are replicated on every rank, so they do not
+    depend on the shard group; the route is decided by the backend's c1 table
+    and narrow-pair shape capability against the resident weights. Ask the same
+    classifier the launcher asks rather than re-deriving the policy here.
+    """
+
+    try:
+        runner = session._runners[session.control_device]
+        in_features, out_features = _KV_PAIR_SHAPE
+        layer = next(
+            (
+                resident
+                for resident in runner.weights.layers
+                if resident.layer_type == "full_attention"
+            ),
+            None,
+        )
+        if layer is None:
+            return "no_full_attention_layers"
+        weight = layer.weight("attn_k")
+        weight_v = layer.weight("attn_v")
+        clear_gguf_linear_dispatch_cache()
+        kind = _resolve_gguf_linear_pair_kind(
+            weight,
+            weight_v,
+            rows=1,
+            in_features=in_features,
+            out_features=out_features,
+            out_features_b=out_features,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=runner.weights.backend,
+            use_wmma=False,
+            use_gemv=False,
+            registered_decode_only=False,
+        )
+    except Exception as exc:  # pragma: no cover - diagnostic only
+        return f"unresolved: {type(exc).__name__}"
+    return f"fused ({kind})" if kind != "none" else "two_singletons"
 
 #: Short prompts across the categories the engine's own suites use (code,
 #: general English, general Japanese, mixed). Token counts stay small: this
@@ -247,6 +300,13 @@ def run_arm(
             if mode == "tp2" and session._shard_group is not None
             else None
         ),
+        # The attention projections are replicated, so they are not part of the
+        # sharding story - but the K/V pair's route is policy-resolved (the c1
+        # table plus the narrow-pair shape capability), and a wall record that
+        # cannot say which route produced it is not readable evidence. Resolve
+        # the same pair-kind classifier the launcher uses, on the session's own
+        # resident weights.
+        "attention_kv_pair_route": _kv_pair_route(session),
         "devices": list(devices),
         "device_names": _device_names(session),
         "memory_after_load": _device_memory(session),

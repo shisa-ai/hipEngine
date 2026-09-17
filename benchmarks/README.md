@@ -1130,11 +1130,14 @@ per rank, and actual generated text out of the session.
 Each decode token makes 64 reductions.
 
 Matched on one revision, one session and one host, the default TP2 route runs
-decode at p50 **24.155 ms/token** against the two optimized resident TP1 controls
-on the same run - **31.753 ms/token** (W7900) and **26.329 ms/token**
-(RX 7900 XTX) - so **1.315x** and **1.090x** on this 16-token cell. Three
-repeats span 24.155-24.167 ms/token, and all three arms keep the recorded
-teacher gates (mean KL 3.945e-04, max KL 2.365e-03, top-1 100%). This is a
+decode at p50 **24.025 ms/token** against the two optimized resident TP1 controls
+on the same run - **31.713 ms/token** (W7900) and **26.256 ms/token**
+(RX 7900 XTX) - so **1.320x** and **1.093x** on this 16-token cell. Six repeats
+span 23.979-24.077 ms/token (TP1 W7900 31.672-31.730, TP1 XTX 26.231-26.273),
+every one of them below the preceding cell's range (24.155-24.167 / 31.753-31.764
+/ 26.320-26.355), and all three arms keep the recorded teacher gates (mean KL
+3.945e-04, max KL 2.365e-03, top-1 100%) with bit-identical logits against the
+preceding cell. This is a
 matched diagnostic cell, not a product speedup: the horizon is 16 decode
 transitions and the sustained numerical gate that would qualify a product claim
 is still the open blocker. The exchange runs on the compiled host
@@ -1142,7 +1145,15 @@ driver (`hipengine/distributed/staged_exchange_host.cpp`): both ranks' D2H
 submits, one wait per stream, a compiled f32 sum, and no H2D return copy - both
 ranks' boundary-cast kernels read the mapped pinned payload zero-copy over the
 bus, and the MLP shard chain resolves the fused gate/up+SiLU pair at the shard
-shape through the shape-qualified decode policy.
+shape through the shape-qualified decode policy. Both ranks also run the exact
+block-parallel narrow K/V pair for the 16 full-attention layers instead of two
+primitive projections (K is Q4_K and V is planar-Q6, so the composed kernel is
+`narrow_col4_planar_pair_bf16_bf16_out`). The pair kernel was already registered
+on gfx1100 and the missing piece was policy: the c1 table now routes that shape's
+Q4_K K singleton to the exact col4 sibling the pair composes from, and the shape
+capability is declared. Both swaps are bit-exact with the previous owners and
+move 7.2 MB per launch in 32.8 us (W7900) / 30.6 us (RX 7900 XTX) instead of
+45.8 / 46.7 us.
 
 **The token schedule is the captured per-layer graph schedule.** Each
 (layer, rank) pair's whole enqueue segment - the prior layer's boundary cast
