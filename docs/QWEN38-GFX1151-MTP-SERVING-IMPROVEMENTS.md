@@ -151,10 +151,17 @@ Raising the window alone therefore **loses** throughput: the exact per-row route
 (`strict_long_rows`) is 0.57x normal decoding at 3,530 tokens. The batched staged
 rows are what make long-context MTP economical — 1.24x and 1.26x the shipping
 window, and 1.82x and 1.26x default AR — and they produced text byte-identical to
-AR at both shapes. Reaching them currently requires disabling split decode
-globally (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=0`), which costs
-normal decoding about 9% at 3,530 tokens; a verifier-scoped row policy is the
-promotion-quality shape of this change ([REFACTOR.md](REFACTOR.md)).
+AR at both shapes.
+
+Reaching them is not a flag flip: `_run_full_attention_attn_chain_rows_exact`
+raises `"staged full-attention chain currently requires non-split decode"`,
+because it attends every verifier row in one non-split call. The lever is
+`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT` raised past the request's
+context (or `0`), which costs normal decoding about 9% at 3,530 tokens; raising
+it to the session capacity is the better interim setting because split-K returns
+for contexts beyond it. A batched split-K attention leaf, or a verifier-scoped
+row schedule that keeps split-K per row while batching the rest, is what would
+remove that cost ([REFACTOR.md](REFACTOR.md)).
 
 This is a screen, not a promotion. Not yet run: the full category suite and
 category heldouts at these shapes, the production numerical gates

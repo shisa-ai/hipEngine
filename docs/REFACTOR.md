@@ -15,22 +15,31 @@
   prompt gate and advertised `max_context_tokens` must keep reading the same
   value so admission and per-cycle policy cannot disagree.
 
-## Long-context verifier route is selected by a global decode policy (found 2026-09-17)
+## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17)
 
 - `qwen35_gguf_runner.py` derives `strict_long_rows` from
   `_use_gguf_full_attention_split_decode(start_position + rows)`, i.e. from the
   *normal decoding* split-attention threshold
-  (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`). A multi-row verifier
-  therefore cannot use the batched staged rows while ordinary decoding keeps
-  split-K attention, and the only measured way to reach the batched long-row
-  route is to disable split decode globally, which costs normal decoding about
-  9% at 3,530 prompt tokens (10.96 to 10.01 tok/s).
-- Wanted: a verifier-scoped long-context row policy so the target keeps split-K
-  attention while the verifier batches its rows, and so the choice is a
-  registered capability rather than an environment variable that also changes
-  the AR path. The measured screen shows the batched route is the difference
-  between long-context MTP being slower than normal decoding (per-row strict,
-  0.57x at 3,530 tokens) and faster than it (1.38x).
+  (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`). This is not a policy
+  choice that can be flipped: the batched route,
+  `_run_full_attention_attn_chain_rows_exact`, raises
+  `"staged full-attention chain currently requires non-split decode"` when that
+  predicate is true, because it attends every verifier row in one non-split
+  call. A multi-row verifier therefore cannot batch its rows while ordinary
+  decoding keeps split-K attention.
+- The only measured way to reach the batched long-row route today is to raise
+  the split threshold past the request's context (or disable it with `0`),
+  which costs normal decoding about 9% at 3,530 prompt tokens (10.96 to 10.01
+  tok/s). Raising the threshold to the session capacity is the better interim
+  setting: it keeps split-K for contexts beyond it while still letting the
+  verifier batch rows below it, and it is identical to `0` for the measured
+  shapes.
+- Wanted: a batched split-K attention leaf for the staged chain, or a
+  verifier-scoped row schedule that keeps split-K per row while batching the
+  remaining work, so the target keeps split-K attention and the verifier still
+  batches. The measured screen shows this is the difference between
+  long-context MTP being slower than normal decoding (per-row strict, 0.57x at
+  3,530 tokens) and faster than it (1.38x).
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
