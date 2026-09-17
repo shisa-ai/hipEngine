@@ -1,5 +1,70 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## TP2 `decode_partial_dtype` knob (2026-09-17)
+
+- `MlpTP2GenerationSession` `decode_partial_dtype="bf16"` is the shipped
+  single-row decode/serial-prefill schedule: each rank's row-parallel down
+  projection rounds its partial to bf16 before the staged f32 reduction.
+  `"f32"` keeps the rank partial in f32 (`q4_k_t16`
+  `dense_single_local32_bf16_f32_out`, the pre-existing `q6_k_t16`
+  `t16_gemv_decode_bf16_f32_out`) and removes that rounding. It is an
+  arithmetic option, not a speed option: the f32 rows double the staged
+  exchange bytes.
+- `"f32"` currently requires `reduce_mode="host"` and the session raises
+  otherwise. The compiled device-exchange driver
+  (`device_exchange_host.cpp`) hardcodes bf16 rows (`row_bytes = hidden * 2`)
+  and spin-sums bf16, so an f32 partial would be read at half width - silent
+  corruption. A device-side f32 driver (row-bytes + spin-sum template on the
+  staged dtype) is the follow-up that would let the f32 partial keep the
+  graphed device reduction.
+- Decision recorded (2026-09-17): `"f32"` is **not** promoted. Measured end to
+  end against the optimized resident TP1 teacher on the same 2 prompts x 128
+  forced-decode rows, the f32 partial is arithmetically exact (layer-0 partial
+  vs an independent f64 oracle max_abs 5.0e-08 / 7.7e-08; two-rank sum vs the
+  resident TP1 f32 down output 1.9e-09) and the transport control is exact, but
+  agreement with the teacher gets **worse** (max KL 0.108406 -> 0.732890 and
+  0.046893 -> 0.242473; mean KL 0.0014286 -> 0.0084696 and 0.0010041 ->
+  0.0028254). A 2x2 of prefill route x partial dtype shows the same metric is
+  not ordered by distance from the teacher (bulk prefill is worse still: mean KL
+  0.0024068 / 0.0025576), so the residual is bf16-ULP-level route difference
+  amplified over 64 layers rather than this rounding. Artifact:
+  `benchmarks/results/2026-09-17-w7900-tp2-f32-down-partial-ab.json`.
+- Removal condition: the knob stays only while it is the bisection control for
+  that conclusion. Delete the knob, the f32 surface row and the f32 kernel leaf
+  once the TP2 qualification basis is decided and this arm is no longer needed
+  to demonstrate it (the basis question is recorded in
+  `docs/QWEN38-27B-GFX1100-TP2.md`: score against the independent llama.cpp BF16
+  teacher protocol, declare a TP2-specific envelope, or close the route
+  difference). Do not leave both dtypes wired indefinitely.
+
+## TP2 T16 dispatch rewrites and the requested output dtype (2026-09-17)
+
+- Fixed in this unit: `gguf_linear`'s `_q4_t16_dense_native_dispatch` (rows 2-8)
+  and `_t16_c1_variant_dispatch` (rows 1) rewrite an `abi="t16"` dispatch to a
+  shape-qualified sibling from row/shape policy alone. Both return bf16 leaves,
+  so a non-bf16 request would have silently acquired a bf16 store (bf16 bits
+  written into an f32 partial buffer). Both now take the resolved `output_dtype`
+  and return the dispatch unchanged for a non-bf16 output; the main chain passes
+  it, the residual/narrow call sites keep the bf16 default they already gated on.
+  Pinned by `tests/test_unit_gguf_linear_dispatch.py::
+  test_q4_t16_f32_output_never_acquires_a_bf16_rowtile_leaf` (RED with the guard
+  disabled: the rows=2 f32 dispatch became `dense_rowtile_bf16_bf16_out`).
+- Still open: the rest of `launch_gguf_linear`'s rewrite chain has not been
+  audited for non-bf16 outputs. The steps that could reach a T16 dispatch are
+  name-keyed (`_native_batch_decode_dispatch` keys on the exact
+  `t16_gemv_decode_bf16_bf16_out` variant; `_wmma_prefill_dispatch` rewrites
+  `t16_gemv_decode_*` suffixes) so they are dtype-preserving by construction,
+  but that is a reading, not a test.
+- Still open: the rows>1 f32 leaf. `variant_for_rows(rows>1)` names
+  `t16_wmma_prefill_bf16_f32_out` (dtype-preserving) and no `hip_gfx1100` kernel
+  is registered under it, so a multirow f32 down partial cannot acquire a bf16
+  GPU store; the protection is that absence plus the dtype guard, **not** a
+  `MissingKernelError` — the resolver's last-resort candidate is the generic
+  `cpu_reference`/`fp16` linear kernel, which a GPU launch cannot use.
+  Registering the leaf means templating the WMMA prefill owner's store the way
+  the Q4_K local32 owner now is; do it only when a multirow f32 down partial is
+  actually wanted.
+
 ## TP2 `reduce_mode` knob (device default for graphed, 2026-09-15)
 
 - `MlpTP2GenerationSession` `reduce_mode="device"` is the graphed schedule's

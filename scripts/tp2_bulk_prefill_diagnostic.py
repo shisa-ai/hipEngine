@@ -44,6 +44,48 @@ from tp2_teacher_coverage_broad import (  # noqa: E402
 
 MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
 
+# ``gguf_linear.resolve`` is wrapped so every resolution records the leaf it
+# selected. The surface row names the rows=1 owner, but the launcher rewrites
+# Q4/Q6 T16 dispatches to row- and shape-qualified leaves, so the log is what
+# proves *which* kernel the route actually launched (and that an f32 request did
+# not silently land on a bf16 store).
+_RESOLVE_LOG: list | None = None
+
+
+def _install_resolve_logger(module) -> None:
+    original = getattr(module, "resolve", None)
+    if original is None or getattr(original, "__wrapped__", None) is not None:
+        return
+
+    def logged_resolve(*args, **kwargs):
+        log = _RESOLVE_LOG
+        if log is not None:
+            log.append({key: str(value) for key, value in kwargs.items()})
+        return original(*args, **kwargs)
+
+    logged_resolve.__wrapped__ = original
+    module.resolve = logged_resolve
+
+
+def _summarize_resolve_log(entries: list) -> dict:
+    """Group the resolved leaves by (layer, quant, variant) with call counts."""
+
+    counts: dict[tuple[str, str, str], int] = {}
+    for entry in entries:
+        key = (
+            str(entry.get("layer", "")),
+            str(entry.get("quant", "")),
+            str(entry.get("variant", "")),
+        )
+        counts[key] = counts.get(key, 0) + 1
+    return {
+        "entries": len(entries),
+        "leaves": [
+            {"layer": layer, "quant": quant, "variant": variant, "calls": calls}
+            for (layer, quant, variant), calls in sorted(counts.items())
+        ],
+    }
+
 
 def _load_reference(path: Path) -> tuple[dict, list[np.ndarray]]:
     reference = json.loads(Path(path).read_text())
@@ -57,6 +99,8 @@ def _build_session(
     rows: int | None = None,
     schedule: str = "graphed",
     bulk: bool = True,
+    decode_partial_dtype: str = "bf16",
+    reduce_mode: str | None = None,
 ):
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 
@@ -66,6 +110,8 @@ def _build_session(
         kwargs["bulk_prefill_rows"] = (
             rows if rows is not None else max_sequence_length
         )
+    if reduce_mode is not None:
+        kwargs["reduce_mode"] = reduce_mode
     return MlpTP2GenerationSession(
         MODEL,
         devices=(0, 1),
@@ -73,6 +119,7 @@ def _build_session(
         max_sequence_length=max_sequence_length,
         schedule=schedule,
         head_shard=True,
+        decode_partial_dtype=decode_partial_dtype,
         **kwargs,
     )
 
@@ -128,6 +175,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--schedule", default="graphed", choices=("eager", "graphed"))
     parser.add_argument(
+        "--decode-partial-dtype",
+        default="bf16",
+        choices=("bf16", "f32"),
+        help=(
+            "dtype of the single-row down partial before the staged reduction; "
+            "f32 removes one bf16 rounding per rank"
+        ),
+    )
+    parser.add_argument(
+        "--reduce-mode",
+        default=None,
+        choices=("host", "device"),
+        help=(
+            "exchange reduction owner; default is the session's own default "
+            "(device for graphed, host for eager). f32 partials need host"
+        ),
+    )
+    parser.add_argument(
         "--compare-serial",
         action="store_true",
         help="also run the token-serial TP2 prefill on the same session",
@@ -170,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
             "bulk_prefill_rows": (
                 args.bulk_capacity if args.bulk_capacity > 0 else args.max_sequence_length
             ),
+            "decode_partial_dtype": args.decode_partial_dtype,
+            "reduce_mode": args.reduce_mode or "session-default",
         },
         "protocol": "prefill(prompt) then forced decode (matches the teacher capture)",
         "smoke_rows": int(args.smoke_rows),
@@ -178,6 +245,11 @@ def main(argv: list[str] | None = None) -> int:
 
     session = None
     started = time.perf_counter()
+    global _RESOLVE_LOG
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    _install_resolve_logger(gguf_linear)
+    _RESOLVE_LOG = []
     try:
         bulk_capacity = (
             args.bulk_capacity
@@ -189,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
             rows=bulk_capacity,
             schedule=args.schedule,
             bulk=not args.serial_only,
+            decode_partial_dtype=args.decode_partial_dtype,
+            reduce_mode=args.reduce_mode,
         )
         # Match the saved capture: build the decode schedule before running any
         # trajectory, so the decode replays the captured graphs and the bulk
@@ -258,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if session is not None:
             session.close()
+        result["resolve_log"] = _summarize_resolve_log(_RESOLVE_LOG or [])
+        _RESOLVE_LOG = None
     result["seconds"] = time.perf_counter() - started
     result["production_gate"] = PRODUCTION_GATE
     result["all_passed"] = all(

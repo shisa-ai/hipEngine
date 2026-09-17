@@ -1,0 +1,543 @@
+{
+ "arms": {
+  "bf16_device": {
+   "heldout_mixed_summary": {
+    "flipped_rows": 2,
+    "gate_failures": [
+     "mean_kl 0.00100411 > 0.001",
+     "p99_kl 0.0287777 > 0.02"
+    ],
+    "max_kl": 0.04689266909404144,
+    "mean_kl": 0.001004108491908253,
+    "p95_kl": 0.0010188445920952212,
+    "p99_kl": 0.02877766064989385,
+    "top1_agreement": 0.984375,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   },
+   "mixed_ja_en_translate": {
+    "flipped_rows": 0,
+    "gate_failures": [
+     "mean_kl 0.0014286 > 0.001",
+     "p99_kl 0.0397893 > 0.02",
+     "max_kl 0.108406 > 0.05"
+    ],
+    "max_kl": 0.10840648252763026,
+    "mean_kl": 0.0014285995479406206,
+    "p95_kl": 0.0005657767430383239,
+    "p99_kl": 0.03978930656895689,
+    "top1_agreement": 1.0,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   }
+  },
+  "bf16_host": {
+   "heldout_mixed_summary": {
+    "flipped_rows": 2,
+    "gate_failures": [
+     "mean_kl 0.00100411 > 0.001",
+     "p99_kl 0.0287777 > 0.02"
+    ],
+    "max_kl": 0.04689266909404144,
+    "mean_kl": 0.001004108491908253,
+    "p95_kl": 0.0010188445920952212,
+    "p99_kl": 0.02877766064989385,
+    "top1_agreement": 0.984375,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   },
+   "mixed_ja_en_translate": {
+    "flipped_rows": 0,
+    "gate_failures": [
+     "mean_kl 0.0014286 > 0.001",
+     "p99_kl 0.0397893 > 0.02",
+     "max_kl 0.108406 > 0.05"
+    ],
+    "max_kl": 0.10840648252763026,
+    "mean_kl": 0.0014285995479406206,
+    "p95_kl": 0.0005657767430383239,
+    "p99_kl": 0.03978930656895689,
+    "top1_agreement": 1.0,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   }
+  },
+  "f32_host": {
+   "heldout_mixed_summary": {
+    "flipped_rows": 3,
+    "gate_failures": [
+     "mean_kl 0.00282542 > 0.001",
+     "p99_kl 0.0557548 > 0.02",
+     "max_kl 0.242473 > 0.05"
+    ],
+    "max_kl": 0.24247260210960186,
+    "mean_kl": 0.002825422441576847,
+    "p95_kl": 0.0007720120213890868,
+    "p99_kl": 0.05575476662856518,
+    "top1_agreement": 0.9765625,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   },
+   "mixed_ja_en_translate": {
+    "flipped_rows": 3,
+    "gate_failures": [
+     "mean_kl 0.00846957 > 0.001",
+     "p99_kl 0.159997 > 0.02",
+     "max_kl 0.73289 > 0.05"
+    ],
+    "max_kl": 0.732889935503368,
+    "mean_kl": 0.008469573695920444,
+    "p95_kl": 0.0009739633016394784,
+    "p99_kl": 0.1599970551689173,
+    "top1_agreement": 0.9765625,
+    "within_run_bulk_vs_serial_max_kl": 0.0
+   }
+  }
+ },
+ "commands": {
+  "bf16_device": "scripts/tp2_bulk_prefill_diagnostic.py --serial-only --schedule graphed --decode-partial-dtype bf16 --reduce-mode device --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_partial_bf16_device --json /tmp/tp2_partial_bf16_device.json",
+  "bf16_host": "scripts/tp2_bulk_prefill_diagnostic.py --serial-only --schedule graphed --decode-partial-dtype bf16 --reduce-mode host --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_partial_bf16_host --json /tmp/tp2_partial_bf16_host.json",
+  "f32_host": "scripts/tp2_bulk_prefill_diagnostic.py --serial-only --schedule graphed --decode-partial-dtype f32 --reduce-mode host --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_partial_f32_host --json /tmp/tp2_partial_f32_host.json"
+ },
+ "cross_process_determinism": {
+  "arm": "f32_host",
+  "command": "scripts/tp2_bulk_prefill_diagnostic.py --serial-only --schedule graphed --decode-partial-dtype f32 --reduce-mode host --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_partial_f32_host --json /tmp/tp2_partial_f32_host.json",
+  "conclusion": "the f32 arm is deterministic across processes: both prompts reproduce byte-identical logits and identical KL metrics.",
+  "protocol": "same command, two separate processes, back to back",
+  "result": {
+   "heldout_mixed_summary": {
+    "logits_identical": true,
+    "max_kl": 0.24247260210960186,
+    "metrics_identical": true,
+    "run1_sha256": "9fe3effacdcb200e37f3e5cac5b542102399441a1bac2ca947c8ebf6993d7c08",
+    "run2_sha256": "9fe3effacdcb200e37f3e5cac5b542102399441a1bac2ca947c8ebf6993d7c08"
+   },
+   "mixed_ja_en_translate": {
+    "logits_identical": true,
+    "max_kl": 0.732889935503368,
+    "metrics_identical": true,
+    "run1_sha256": "cc7db398805e64b7f64903f3eab981f204269118036edd37561150891d3ca6aa",
+    "run2_sha256": "cc7db398805e64b7f64903f3eab981f204269118036edd37561150891d3ca6aa"
+   }
+  },
+  "second_run_json": "/tmp/tp2_partial_f32_host_repeat.json"
+ },
+ "date": "2026-09-17",
+ "decision": "Keep decode_partial_dtype='bf16' (the shipped schedule). The f32 option stays implemented, registered, documented and fail-closed (it requires reduce_mode='host' and the rows>1 f32 leaf is deliberately unregistered) as a qualified alternative and bisection control, not as a default.",
+ "finding": [
+  "The f32 down partial is arithmetically exact: on layer 0 each rank's f32 partial matches the independent f64 oracle to 5.0e-08 / 7.7e-08 max_abs, and the two-rank f32 sum matches the resident TP1 f32 down output to 1.9e-09, so the kernel, the staged transport and the host sum all do what the design says.",
+  "The transport control is exact: bf16 partials with the device-side spin sum and with the host-side staged sum produce byte-identical logits (same sha256 on both prompts, in separate processes), so the arm comparison isolates the partial dtype.",
+  "End to end the f32 partial does not improve agreement with the optimized resident TP1 teacher; it degrades it on both prompts (max KL 0.108 -> 0.733 and 0.0469 -> 0.242, mean KL 0.00143 -> 0.00847 and 0.00100 -> 0.00283, top-1 1.000 -> 0.977 and 0.984 -> 0.977 with 3 flipped rows each).",
+  "The two TP2 arms differ from each other by about as much as each differs from the teacher, which is the signature of bf16-ULP-level chaos amplified over 64 layers: the partial rounding is one such perturbation among several, and removing it moves the trajectory rather than improving it.",
+  "The dominant TP2-vs-teacher term is kernel-level, not the partial boundary: at layer 0 the resident route's down output deviates from the same f32 reference by 0.125 while the sharded route's deviates by 0.0625 (the resident rows>1 prefill leaf rounds dequantized weights to fp16 for WMMA; the sharded rows=1 leaf uses f32 weights). No partial-dtype choice addresses that.",
+  "The comparison basis is route parity, not oracle correctness: the reference is hipEngine TP1's own logits (quality-tp1-d0.json, arm tp1-d0), while hipEngine's production quality basis is the llama.cpp BF16 teacher protocol (scripts/qwen38_llama_teacher.py). Measured route perturbations move the TP2-vs-TP1 tail by more than the envelope, so this basis cannot separate a TP2 arithmetic defect from legitimate route difference."
+ ],
+ "hardware": {
+  "rank0": "AMD Radeon Pro W7900 (gfx1100, 48 GB)",
+  "rank1": "AMD Radeon RX 7900 XTX (gfx1100, 24 GB)"
+ },
+ "host": "epyc",
+ "kind": "tp2-f32-down-partial-ab",
+ "limitations": [
+  "2 prompts (mixed_ja_en_translate, heldout_mixed_summary) x 128 forced-decode rows, one host, one model hash, one layer-shape set.",
+  "The reference is the resident TP1 bulk-prefill teacher; the TP2 arms prefill token-serially, so the prefill state difference is a shared constant across the three arms, not a variable.",
+  "max/p99 KL are dominated by a few near-tie rows; the mean KL move is the more robust of the reported differences.",
+  "One layer-0 mechanism check (Q6_K qmicro planar down); the Q4_K f32 leaf is covered by its own bit-level kernel test (bf16_round(f32_out) == bf16_out) but not by a layer-level oracle.",
+  "No throughput measurement; the f32 partial doubles the staged exchange bytes and no rate is claimed or measured here."
+ ],
+ "logits_sha256": {
+  "bf16_device": {
+   "heldout_mixed_summary": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+   "mixed_ja_en_translate": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0"
+  },
+  "bf16_host": {
+   "heldout_mixed_summary": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+   "mixed_ja_en_translate": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0"
+  },
+  "f32_host": {
+   "heldout_mixed_summary": "9fe3effacdcb200e37f3e5cac5b542102399441a1bac2ca947c8ebf6993d7c08",
+   "mixed_ja_en_translate": "cc7db398805e64b7f64903f3eab981f204269118036edd37561150891d3ca6aa"
+  }
+ },
+ "mechanism_check": {
+  "artifacts": {
+   "bf16": "/tmp/tp2_slice_bf16.json",
+   "f32": "/tmp/tp2_slice_f32.json"
+  },
+  "interpretation": [
+   "With the f32 partial the two-rank TP2 down output is 1.9e-09 from the resident TP1 teacher's f32 down output - f32 reduction-order noise on ~1e1-magnitude values - so at this boundary the sharded path reproduces the teacher rather than approximating it.",
+   "The bf16 partial replaces that with 1.7e-05 (one rounding of the partial before the sum), which is still ~2x below the teacher's own 3.9e-05 distance from the f64 truth: the down-projection partial rounding is not the term that separates TP2 from TP1 at layer 0.",
+   "The f32 arm's end-to-end KL is nevertheless worse than the bf16 arm's, so a smaller boundary error produced larger logit divergence. The TP2-vs-teacher gap is therefore carried by amplification downstream of this boundary (near-tie rows), not by the partial dtype."
+  ],
+  "protocol": "the same synthetic input (seed 20260915) and the same f64 oracle for both arms, so the two dtypes are compared on identical data; layer 0 is Q6_K qmicro planar down, the layer the resident TP1 teacher routes through",
+  "readings": {
+   "bf16": {
+    "fused_vs_f64_truth_max_abs": 2.1457672119140625e-05,
+    "fused_vs_unfused_sum_max_abs": 0.0,
+    "rank0_partial_vs_f64_oracle_max_abs": 7.62939453125e-06,
+    "tp1_teacher_vs_f64_truth_max_abs": 3.8504600524902344e-05,
+    "tp2_sum_vs_f64_truth_max_abs": 2.1457672119140625e-05,
+    "tp2_sum_vs_tp1_f32_teacher_max_abs": 1.704692840576172e-05
+   },
+   "f32": {
+    "fused_vs_f64_truth_max_abs": 3.8504600524902344e-05,
+    "fused_vs_unfused_sum_max_abs": 0.0,
+    "rank0_partial_vs_f64_oracle_max_abs": 5.0175003707408905e-08,
+    "tp1_teacher_vs_f64_truth_max_abs": 3.8504600524902344e-05,
+    "tp2_sum_vs_f64_truth_max_abs": 3.8504600524902344e-05,
+    "tp2_sum_vs_tp1_f32_teacher_max_abs": 1.862645149230957e-09
+   }
+  },
+  "script": "scripts/tp2_mlp_slice_e2e.py --layer 0 --world-size 2 --down-output-dtype {f32,bf16}"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "next_action": "Decide the TP2 qualification basis before further arithmetic work: (a) score TP2 against the independent llama.cpp BF16 teacher capture on the mtp-bench protocol that the TP1 production profile already uses, and gate TP2's own oracle-KL against the same envelope; (b) declare a TP2-specific envelope from TP2's own repeat/isolation distribution; or (c) close the route difference by moving the sharded leaves into the resident leaf family (most expensive, least certain). (a) is the principled option and reuses existing infrastructure. Do not promote the f32 partial as a numerical fix.",
+ "pairwise": {
+  "heldout_mixed_summary": {
+   "bf16_device_vs_bf16_host": {
+    "flipped_rows": 0,
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "p95_kl": 0.0,
+    "p99_kl": 0.0,
+    "rows": 128,
+    "top1_agreement": 1.0
+   },
+   "bf16_device_vs_f32_host": {
+    "flipped_rows": 1,
+    "max_kl": 0.16783010750213126,
+    "mean_kl": 0.0031553714779666694,
+    "p95_kl": 0.001259174725932249,
+    "p99_kl": 0.12877818384119,
+    "rows": 128,
+    "top1_agreement": 0.9921875
+   },
+   "sha256_bf16_device": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+   "sha256_bf16_host": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+   "sha256_f32_host": "9fe3effacdcb200e37f3e5cac5b542102399441a1bac2ca947c8ebf6993d7c08",
+   "vs_teacher_bf16_device": {
+    "flipped_rows": 2,
+    "max_kl": 0.046892669093352476,
+    "mean_kl": 0.0010041084917309505,
+    "p95_kl": 0.0010188445921375893,
+    "p99_kl": 0.02877766065010927,
+    "rows": 128,
+    "top1_agreement": 0.984375
+   },
+   "vs_teacher_bf16_host": {
+    "flipped_rows": 2,
+    "max_kl": 0.046892669093352476,
+    "mean_kl": 0.0010041084917309505,
+    "p95_kl": 0.0010188445921375893,
+    "p99_kl": 0.02877766065010927,
+    "rows": 128,
+    "top1_agreement": 0.984375
+   },
+   "vs_teacher_f32_host": {
+    "flipped_rows": 3,
+    "max_kl": 0.24247260210964391,
+    "mean_kl": 0.0028254224413052967,
+    "p95_kl": 0.0007720120212935764,
+    "p99_kl": 0.05575476662890726,
+    "rows": 128,
+    "top1_agreement": 0.9765625
+   }
+  },
+  "mixed_ja_en_translate": {
+   "bf16_device_vs_bf16_host": {
+    "flipped_rows": 0,
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "p95_kl": 0.0,
+    "p99_kl": 0.0,
+    "rows": 128,
+    "top1_agreement": 1.0
+   },
+   "bf16_device_vs_f32_host": {
+    "flipped_rows": 3,
+    "max_kl": 0.8016008176717239,
+    "mean_kl": 0.006905515078521423,
+    "p95_kl": 0.0010438504288877207,
+    "p99_kl": 0.03978333548597615,
+    "rows": 128,
+    "top1_agreement": 0.9765625
+   },
+   "sha256_bf16_device": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0",
+   "sha256_bf16_host": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0",
+   "sha256_f32_host": "cc7db398805e64b7f64903f3eab981f204269118036edd37561150891d3ca6aa",
+   "vs_teacher_bf16_device": {
+    "flipped_rows": 0,
+    "max_kl": 0.10840648253852846,
+    "mean_kl": 0.0014285995483106174,
+    "p95_kl": 0.0005657767430937627,
+    "p99_kl": 0.03978930657231204,
+    "rows": 128,
+    "top1_agreement": 1.0
+   },
+   "vs_teacher_bf16_host": {
+    "flipped_rows": 0,
+    "max_kl": 0.10840648253852846,
+    "mean_kl": 0.0014285995483106174,
+    "p95_kl": 0.0005657767430937627,
+    "p99_kl": 0.03978930657231204,
+    "rows": 128,
+    "top1_agreement": 1.0
+   },
+   "vs_teacher_f32_host": {
+    "flipped_rows": 3,
+    "max_kl": 0.7328899355030916,
+    "mean_kl": 0.008469573695911019,
+    "p95_kl": 0.0009739633017304257,
+    "p99_kl": 0.15999705517446966,
+    "rows": 128,
+    "top1_agreement": 0.9765625
+   }
+  }
+ },
+ "performance_claim": false,
+ "prefill_route_arm": {
+  "commands": {
+   "bulk_bf16": "scripts/tp2_bulk_prefill_diagnostic.py --schedule graphed --decode-partial-dtype bf16 --reduce-mode device --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --json /tmp/tp2_bulk_bf16.json",
+   "bulk_f32": "scripts/tp2_bulk_prefill_diagnostic.py --schedule graphed --decode-partial-dtype f32 --reduce-mode host --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --json /tmp/tp2_bulk_f32.json"
+  },
+  "cross_artifact_reproduction": {
+   "arm": "arms.post_fix.prompts[*].bulk_vs_teacher",
+   "artifact": "benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-dispatch-context-ab.json",
+   "result": "the bulk_bf16 arm in this file reproduces that artifact's post-fix bulk route exactly: identical logits sha256 on both prompts (af4b3ce0095a\u2026, b4c14c35c66e\u2026) and identical max/mean/p95/p99/top-1/flipped on both, from a different session on the same host.",
+   "serial_arm": "the serial_bf16 arm's logits sha256 (aff76c7958c2\u2026, 8bb9ed33df8b\u2026) also match that artifact's serial_logits_sha256 for both prompts."
+  },
+  "finding": [
+   "The shipped schedule (serial prefill + bf16 partial) is the best of the four on every reported metric; it is still outside the envelope (mean KL 0.001004 / 0.001429 vs 0.001, max KL 0.0469 / 0.1084 vs 0.05).",
+   "Bulk prefill makes the comparison worse, not better (mean KL 0.002407 / 0.002558), so the serial-vs-bulk prefill difference is an additional route divergence rather than the explanation for the layer-0 boundary agreement.",
+   "The four arms do not order monotonically by distance from the teacher: serial+bf16 < bulk+bf16 < bulk+f32 on heldout mean, but bulk+f32 < serial+f32 on mixed mean while serial+f32 has by far the worst max (0.7329). p95 barely moves across all four (0.00057-0.00102) while mean/p99/max move by 2-6x.",
+   "Read together with the exact layer-0 boundary and the exact within-route repeatability, this is bf16-ULP-scale chaos amplified over 64 layers: each route perturbation (partial rounding, prefill leaf) moves the tail by more than the envelope width, so no single arithmetic fix can bring the comparison inside it.",
+   "The shipped route is at the envelope edge rather than far outside it: on heldout mean KL 0.0010041 vs the 0.001 bar (+0.4%), p99 0.0288 vs 0.02, max 0.0469 inside the 0.05 ceiling, top-1 0.9844; on mixed mean 0.0014286, p99 0.0398, max 0.1084. Whether that residual is a TP2 defect or route difference is exactly what the route-parity basis cannot answer."
+  ],
+  "metrics": {
+   "bulk_bf16": {
+    "heldout_mixed_summary": {
+     "flipped_rows": 2,
+     "logits_sha256": "af4b3ce0095a82eac3e9c2f9c7a4a23f1b1d40e57a8940f8b1ef5185c18405f6",
+     "max_kl": 0.26077550858777865,
+     "mean_kl": 0.0024068130614897268,
+     "p95_kl": 0.0006870128237073894,
+     "p99_kl": 0.01873827367731936,
+     "top1_agreement": 0.984375
+    },
+    "mixed_ja_en_translate": {
+     "flipped_rows": 0,
+     "logits_sha256": "b4c14c35c66e7a8469b3f8a0ee0865cdc91da8cfb509112bcb4edb5559fc48b5",
+     "max_kl": 0.16705312926134894,
+     "mean_kl": 0.002557612045921964,
+     "p95_kl": 0.0009884388612576842,
+     "p99_kl": 0.09134977608861948,
+     "top1_agreement": 1.0
+    }
+   },
+   "bulk_f32": {
+    "heldout_mixed_summary": {
+     "flipped_rows": 1,
+     "logits_sha256": "2612ad5d867607f33f8594befd20d09c108cf6820396c8f36d1a4e26aca8d804",
+     "max_kl": 0.24128792968683938,
+     "mean_kl": 0.003464892890996265,
+     "p95_kl": 0.0006927959669696243,
+     "p99_kl": 0.1325793434194712,
+     "top1_agreement": 0.9921875
+    },
+    "mixed_ja_en_translate": {
+     "flipped_rows": 0,
+     "logits_sha256": "1265a2a6b7109e1318aa45a4b052c59da0679287d59bce504118af6b27e2adb1",
+     "max_kl": 0.16914093415267542,
+     "mean_kl": 0.003320502542038996,
+     "p95_kl": 0.0008582804348885482,
+     "p99_kl": 0.13296967341257868,
+     "top1_agreement": 1.0
+    }
+   }
+  },
+  "route": {
+   "bulk_prefill": true,
+   "bulk_prefill_rows": 200,
+   "decode_partial_dtype": "bf16",
+   "head_shard": true,
+   "mode": "tp2",
+   "reduce_mode": "device",
+   "schedule": "graphed"
+  },
+  "serial_route_metrics": {
+   "serial_bf16": {
+    "heldout_mixed_summary": {
+     "flipped_rows": 2,
+     "logits_sha256": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+     "max_kl": 0.04689266909404144,
+     "mean_kl": 0.001004108491908253,
+     "p95_kl": 0.0010188445920952212,
+     "p99_kl": 0.02877766064989385,
+     "top1_agreement": 0.984375
+    },
+    "mixed_ja_en_translate": {
+     "flipped_rows": 0,
+     "logits_sha256": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0",
+     "max_kl": 0.10840648252763026,
+     "mean_kl": 0.0014285995479406206,
+     "p95_kl": 0.0005657767430383239,
+     "p99_kl": 0.03978930656895689,
+     "top1_agreement": 1.0
+    }
+   },
+   "serial_f32": {
+    "heldout_mixed_summary": {
+     "flipped_rows": 3,
+     "logits_sha256": "9fe3effacdcb200e37f3e5cac5b542102399441a1bac2ca947c8ebf6993d7c08",
+     "max_kl": 0.24247260210960186,
+     "mean_kl": 0.002825422441576847,
+     "p95_kl": 0.0007720120213890868,
+     "p99_kl": 0.05575476662856518,
+     "top1_agreement": 0.9765625
+    },
+    "mixed_ja_en_translate": {
+     "flipped_rows": 3,
+     "logits_sha256": "cc7db398805e64b7f64903f3eab981f204269118036edd37561150891d3ca6aa",
+     "max_kl": 0.732889935503368,
+     "mean_kl": 0.008469573695920444,
+     "p95_kl": 0.0009739633016394784,
+     "p99_kl": 0.1599970551689173,
+     "top1_agreement": 0.9765625
+    }
+   }
+  },
+  "why": "the three arms above used --serial-only (token-serial TP2 prefill) while the teacher reference is a bulk-prefill TP1 run, so the prefill route was a variable rather than a shared constant; these two runs repeat the same protocol on the production bulk-prefill route"
+ },
+ "protocol": "scripts/tp2_bulk_prefill_diagnostic.py --serial-only --schedule graphed, the saved teacher protocol (prefill the prompt, then feed the saved 128 forced-decode tokens) on 2 prompts, 128 scored rows each. The three arms differ only in the down-partial dtype and the reduction owner.",
+ "reference": "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0.json",
+ "reference_arm": "tp1-d0 (resident TP1 bulk prefill, c1 decode)",
+ "resolve_log": {
+  "bf16_device": {
+   "entries": 268,
+   "leaves": [
+    {
+     "calls": 1,
+     "layer": "dense_gemv",
+     "quant": "f32",
+     "variant": "bf16_hidden_bf16_out"
+    },
+    {
+     "calls": 6,
+     "layer": "linear",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q5_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 3,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_bf16_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_f32_out"
+    },
+    {
+     "calls": 256,
+     "layer": "linear_pair_silu",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_dual_local32_bf16_bf16_out"
+    }
+   ]
+  },
+  "bf16_host": {
+   "entries": 268,
+   "leaves": [
+    {
+     "calls": 1,
+     "layer": "dense_gemv",
+     "quant": "f32",
+     "variant": "bf16_hidden_bf16_out"
+    },
+    {
+     "calls": 6,
+     "layer": "linear",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q5_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 3,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_bf16_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_f32_out"
+    },
+    {
+     "calls": 256,
+     "layer": "linear_pair_silu",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_dual_local32_bf16_bf16_out"
+    }
+   ]
+  },
+  "f32_host": {
+   "entries": 268,
+   "leaves": [
+    {
+     "calls": 1,
+     "layer": "dense_gemv",
+     "quant": "f32",
+     "variant": "bf16_hidden_bf16_out"
+    },
+    {
+     "calls": 5,
+     "layer": "linear",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_single_local32_bf16_f32_out"
+    },
+    {
+     "calls": 1,
+     "layer": "linear",
+     "quant": "gguf_q5_k_t16_v1",
+     "variant": "dense_single_local32_bf16_bf16_out"
+    },
+    {
+     "calls": 2,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_bf16_out"
+    },
+    {
+     "calls": 2,
+     "layer": "linear",
+     "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+     "variant": "t16_gemv_decode_bf16_f32_out"
+    },
+    {
+     "calls": 256,
+     "layer": "linear_pair_silu",
+     "quant": "gguf_q4_k_t16_v1",
+     "variant": "dense_dual_local32_bf16_bf16_out"
+    }
+   ]
+  }
+ },
+ "schema": 1,
+ "status": "hypothesis-falsified-route-stays-bf16",
+ "title": "TP2 f32 down partials: implemented, verified, and rejected as an envelope fix"
+}

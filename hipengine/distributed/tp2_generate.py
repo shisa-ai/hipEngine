@@ -142,6 +142,7 @@ class MlpTP2GenerationSession:
         bulk_prefill_rows: int | None = None,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
+        decode_partial_dtype: str = "bf16",
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -266,6 +267,30 @@ class MlpTP2GenerationSession:
         self._uploaded_shard_weights: Any | None = None
         self._per_rank_ffn: int | None = None
         self._fused_shard_variant: str | None = None
+        # Partial dtype of the single-row decode/serial-prefill exchange. The
+        # row-parallel down projection rounds its partial once before the
+        # staged f32 reduction, so the dtype is an arithmetic choice: ``bf16``
+        # is the original schedule, ``f32`` removes that rounding wherever the
+        # layer's registered down consumer admits an f32 output. The bulk
+        # prefill group keeps ``bf16`` (its rows>1 f32-out leaves are not
+        # registered); see docs/REFACTOR.md.
+        if decode_partial_dtype not in {"bf16", "f32"}:
+            raise ValueError(
+                f"unknown decode_partial_dtype {decode_partial_dtype!r}; "
+                "expected 'bf16' or 'f32'"
+            )
+        if decode_partial_dtype == "f32" and self.reduce_mode == "device":
+            # The compiled device-exchange driver stages and spin-sums bf16
+            # rows (``row_bytes = hidden * 2``), so an f32 partial would be
+            # read at half width and summed as bf16 - silent numerical
+            # corruption, not a slowdown. The host transport already reduces
+            # f32 rows, so require it explicitly; a device-side f32 driver is
+            # the tracked follow-up (docs/REFACTOR.md).
+            raise ValueError(
+                "decode_partial_dtype='f32' needs reduce_mode='host': the "
+                "device exchange stages bf16 rows"
+            )
+        self.decode_partial_dtype = str(decode_partial_dtype)
         self._tp1_mlp_ptrs: dict[int, tuple[int, int, int]] = {}
         self._step_buffers: dict[int, Any] = {}
         self._add_norm_cache: dict[int, Any] = {}
@@ -375,12 +400,13 @@ class MlpTP2GenerationSession:
             hidden=int(config.hidden_size),
             per_rank_ffn=per_rank_ffn,
             weights=uploaded,
-            # One uniform partial schedule: the artifact's Q4_K down
-            # projections only register a bf16 partial consumer, so every
-            # layer stages bf16 partials and the exchange sums them in f32.
-            # The Q6_K layers' registered f32 partial variant is a per-layer
-            # numerical candidate, not this run's schedule.
-            staging_dtype="bf16",
+            # One uniform partial schedule for the decode/serial-prefill group:
+            # the layer's registered down consumer decides the dtype, and the
+            # exchange reduces in f32 either way. ``f32`` stages the partial
+            # unrounded; ``bf16`` rounds each rank's partial first (the shipped
+            # schedule - measured against the resident TP1 teacher, the f32
+            # partial does not improve agreement; see docs/REFACTOR.md).
+            staging_dtype=self.decode_partial_dtype,
             driver=self.driver,
             mlp_decode_variant=fused_variant,
             # Graphed schedules give every layer its own fixed mapped payload

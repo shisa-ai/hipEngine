@@ -126,8 +126,12 @@ class GgufLinearDispatchSurfaceRow:
             return self.variant
         if self.layout in (LAYOUT_GGUF_Q4_K_T16, LAYOUT_GGUF_Q4_K_QMICRO_T16):
             # resolve_gguf_linear_dispatch rewrites Q4 T16 multirow launches
-            # to the WMMA prefill leaf regardless of the table variant.
-            return "t16_wmma_prefill_bf16_bf16_out"
+            # to the WMMA prefill leaf. The rewrite is dtype-preserving: the
+            # leaf is named from this row's own activation/output pair, so a
+            # multirow request cannot silently acquire a different output
+            # dtype. No hip_gfx1100 kernel is registered for the rows>1 f32
+            # variant, so such a request cannot reach a bf16 GPU store.
+            return f"t16_wmma_prefill_{self.activation}_{self.output}_out"
         return linear_variant_for_rows(self.variant, rows=rows)
 
 
@@ -527,6 +531,7 @@ GGUF_LINEAR_DISPATCH_SURFACE: tuple[GgufLinearDispatchSurfaceRow, ...] = (
     _row(LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "dense_gemv", "f32", "bf16_hidden_bf16_out", "dense_bf16"),
     _row(LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32, "dense_gemv", "f32", "f32_hidden_f32_out", "dense_bf16"),
     _row(LAYOUT_GGUF_Q4_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q4_k_t16_v1", "dense_single_local32_bf16_bf16_out", "t16"),
+    _row(LAYOUT_GGUF_Q4_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32, "linear", "gguf_q4_k_t16_v1", "dense_single_local32_bf16_f32_out", "t16"),
     _row(LAYOUT_GGUF_Q4_K_QMICRO_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q4_k_qmicro_t16_v1", "dense_single_local32_bf16_bf16_out", "t16"),
     _row(LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out", "t16"),
     _row(LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out", "t16"),
