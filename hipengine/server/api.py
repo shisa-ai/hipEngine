@@ -89,6 +89,7 @@ from hipengine.speculative.policy import (
 )
 from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
+from hipengine.speculative.serving import STRUCTURAL_REJECTION_AXES
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -2325,7 +2326,13 @@ def _realized_model_serving_plan(
     sampling: SamplingParams,
     precomputed_decision: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Re-resolve model evidence after the queue's physical group is known."""
+    """Re-resolve model evidence after the queue's physical group is known.
+
+    A request-time screening intent is carried forward only when the realized
+    rejection is itself screenable: the realized group can fail a structural
+    axis (for example memory fit at the wider group) that the request-time plan
+    did not, and the request-time eligibility must not authorize that.
+    """
 
     if not prompts or not isinstance(precomputed_decision, Mapping):
         return None
@@ -2362,8 +2369,10 @@ def _realized_model_serving_plan(
     if not isinstance(payload, Mapping):
         raise TypeError("realized speculative MTP serving plan must be a mapping")
     realized = deepcopy(dict(payload))
-    if not bool(realized.get("admitted")) and bool(
-        precomputed_decision.get("screening")
+    if (
+        not bool(realized.get("admitted"))
+        and bool(precomputed_decision.get("screening"))
+        and _mtp_plan_structural_rejection(realized) is None
     ):
         # The realized re-resolution runs the same evidence resolver against the
         # realized group, so an unqualified cell can only be rejected again.
@@ -13335,6 +13344,26 @@ def _engine_speculative_mtp_serving_plan(
     return deepcopy(dict(payload))
 
 
+def _mtp_plan_structural_rejection(plan: Mapping[str, Any]) -> str | None:
+    """Return the plan's failed correctness axis, if it failed one.
+
+    The resolver reports only the first failed axis as ``reason``, so a plan
+    that fails both a screenable physical axis and a structural one reports the
+    screenable axis. Structural safety therefore has to be read from
+    ``failed_axes``; a plan carrying no ``failed_axes`` (an older or hand-built
+    payload) is judged on its summary reason alone.
+    """
+
+    failed_axes = plan.get("failed_axes")
+    if isinstance(failed_axes, (list, tuple, frozenset, set)):
+        for axis in failed_axes:
+            if str(axis) in STRUCTURAL_REJECTION_AXES:
+                return str(axis)
+        return None
+    reason = str(plan.get("reason") or "")
+    return reason if reason in STRUCTURAL_REJECTION_AXES else None
+
+
 def _mtp_screening_static_eligibility(
     plan: Mapping[str, Any],
     *,
@@ -13348,10 +13377,21 @@ def _mtp_screening_static_eligibility(
     so no operator override may enter the speculative route through them. The
     resulting eligibility is never automatic, and the qualification marker it
     carries is what keeps a screening run out of qualified evidence.
+
+    Structural safety is read from ``failed_axes``, not from the summary
+    ``reason``. A plan can fail several axes at once and the resolver reports
+    only the first one in declaration order, so a plan that fails both
+    ``candidate_budget_not_qualified`` and ``insufficient_memory`` reports the
+    screenable axis as its reason. Reading only the reason would admit a
+    memory-fit failure through the override. A plan that carries no
+    ``failed_axes`` (an older or hand-built payload) is judged on its reason
+    alone, which is the pre-existing behaviour.
     """
 
     reason = str(plan.get("reason") or "")
     if reason not in _MTP_SCREENING_REASONS:
+        return None
+    if _mtp_plan_structural_rejection(plan) is not None:
         return None
     key = plan.get("key") if isinstance(plan.get("key"), Mapping) else {}
     budget = int(key.get("candidate_budget", 0) or 0)

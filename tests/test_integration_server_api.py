@@ -541,11 +541,21 @@ class UnqualifiedBudgetSpeculativeMTPFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM
         plan["key"]["candidate_budget"] = 4
         plan["admitted"] = False
         plan["selected_candidate_count"] = 0
-        plan["reason"] = (
-            "sampling_mode_not_qualified"
-            if kwargs["sampling_mode"] != "greedy_fast"
-            else "candidate_budget_not_qualified"
+        sampling_ok = kwargs["sampling_mode"] == "greedy_fast"
+        # Shape-accurate: the live resolver reports every failed axis with the
+        # first one in declaration order as the summary reason, and the budget
+        # axis precedes the sampling axis. A non-greedy request that is also
+        # over the qualified depth therefore reports the *screenable* budget
+        # reason while the sampling boundary is one of its failed axes.
+        plan["failed_axes"] = (
+            ["candidate_budget_not_qualified"]
+            if sampling_ok
+            else [
+                "candidate_budget_not_qualified",
+                "sampling_mode_not_qualified",
+            ]
         )
+        plan["reason"] = plan["failed_axes"][0]
         plan["plan_fingerprint"] = "sha256:" + "9" * 64
         return plan
 
@@ -577,6 +587,77 @@ class QualifiedServingPlanFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM):
             "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-s0.json"],
         }
         return plan
+
+
+def test_realized_re_resolution_keeps_screening_closed_on_a_structural_rejection(
+    monkeypatch,
+) -> None:
+    """A wider realized group that fails memory fit must not carry screening in.
+
+    Reproduced finding: the request-time plan is rejected on a screenable axis
+    and carries a screening eligibility; the realized re-resolution then fails
+    the same screenable axis *and* the memory-fit axis. Carrying the
+    request-time intent forward unconditionally would authorize a cell the
+    realized group does not fit, so the carry-forward has to read the realized
+    plan's own failed set rather than its summary reason.
+    """
+
+    class RealizedMemoryMissFakeLLM(UnqualifiedBudgetSpeculativeMTPFakeLLM):
+        @staticmethod
+        def _plan(**kwargs: Any) -> dict[str, Any]:
+            plan = UnqualifiedBudgetSpeculativeMTPFakeLLM._plan(**kwargs)
+            if int(kwargs["realized_group_rows"]) > 1:
+                plan["failed_axes"] = [
+                    "candidate_budget_not_qualified",
+                    "insufficient_memory",
+                ]
+            else:
+                plan["failed_axes"] = ["candidate_budget_not_qualified"]
+            return plan
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = RealizedMemoryMissFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert plan is not None and plan["screening"] is True
+
+    # The singleton realized group still screens: its only failed axis is
+    # screenable, which is the control for the case below.
+    singleton = _realized_model_serving_plan(fake, ("one",), sampling, plan)
+    assert singleton is not None
+    assert singleton["screening"] is True
+
+    wider = _realized_model_serving_plan(fake, ("one", "two"), sampling, plan)
+    assert wider is not None
+    assert wider["admitted"] is False
+    assert wider.get("screening") is None
+    assert wider.get("static_intent_allowed") is None
+    assert wider.get("qualification") is None
+    # The realized rejection is still reported in full, so the caller can see
+    # why the screening intent was refused.
+    assert wider["reason"] == "candidate_budget_not_qualified"
+    assert "insufficient_memory" in wider["failed_axes"]
+
+    realized_route, _decision = _resolve_realized_generation_route(
+        route,
+        group_rows=2,
+        sampling=sampling,
+        precomputed_decision=wider,
+    )
+    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
 
 
 class PromotedArtifactScopedSpeculativeMTPFakeLLM(
@@ -6345,7 +6426,13 @@ def test_screening_override_never_widens_automatic_intent(monkeypatch) -> None:
 
 
 def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> None:
-    """Sampling semantics are a correctness boundary, not an unmeasured cell."""
+    """Sampling semantics are a correctness boundary, not an unmeasured cell.
+
+    The summary reason here is the screenable budget axis, because the budget
+    axis precedes the sampling axis and the resolver reports only the first
+    failed one. Reading that reason alone would admit the request; the
+    boundary has to be read from the failed axes.
+    """
 
     monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
     fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
@@ -6372,7 +6459,9 @@ def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> No
     )
     assert route != _SPECULATIVE_MTP_BATCH_ROUTE
     assert plan is not None
-    assert plan["reason"] == "sampling_mode_not_qualified"
+    assert plan["reason"] == "candidate_budget_not_qualified"
+    assert plan["reason"] in _MTP_SCREENING_REASONS
+    assert "sampling_mode_not_qualified" in plan["failed_axes"]
     assert plan["static_intent_allowed"] is False
     assert plan.get("screening") is None
 
@@ -6695,6 +6784,55 @@ def test_mtp_screening_helper_refuses_plans_it_cannot_authorize() -> None:
     assert eligibility.max_candidate_count == 3
     assert eligibility.max_realized_group_rows == 4
     assert eligibility.evidence_key == "explicit_screening_unqualified_cell"
+
+
+def test_screening_override_reads_every_failed_axis_not_the_summary_reason() -> None:
+    """A screenable summary reason must not admit a structural failure.
+
+    Reproduced finding: the resolver reports only its first failed
+    qualification axis, so ``candidate_budget=4`` with ``memory_fit=False``
+    reports ``candidate_budget_not_qualified`` - a screenable axis - while the
+    cell does not fit in memory at all. The helper must read the whole failed
+    set, because memory fit and sampling semantics are correctness boundaries
+    that no operator override may cross.
+    """
+
+    screenable = {
+        "reason": "candidate_budget_not_qualified",
+        "key": {"candidate_budget": 3},
+        "plan_fingerprint": "sha256:" + "6" * 64,
+    }
+    assert _mtp_screening_static_eligibility(screenable, physical_max_rows=4) is not None
+
+    for structural in (
+        "insufficient_memory",
+        "sampling_mode_not_qualified",
+        "artifact_identity_unverified",
+    ):
+        plan = dict(screenable)
+        plan["failed_axes"] = ["candidate_budget_not_qualified", structural]
+        assert (
+            _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
+        ), structural
+
+    # A plan whose failed set is entirely screenable still screens.
+    only_screenable = dict(screenable)
+    only_screenable["failed_axes"] = [
+        "candidate_budget_not_qualified",
+        "resident_capacity_not_qualified",
+    ]
+    assert (
+        _mtp_screening_static_eligibility(only_screenable, physical_max_rows=4)
+        is not None
+    )
+
+    # An empty failed set is not a structural rejection.
+    empty_axes = dict(screenable)
+    empty_axes["failed_axes"] = []
+    assert (
+        _mtp_screening_static_eligibility(empty_axes, physical_max_rows=4)
+        is not None
+    )
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:

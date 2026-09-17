@@ -24,7 +24,15 @@
   campaign is stopped.
 - Keep the invariant while it lives: screening never applies to automatic
   intent, and sampling-mode, artifact-identity, and memory-fit rejections stay
-  fail-closed for every request.
+  fail-closed for every request. The invariant is enforced against *every*
+  failed qualification axis, not against the plan's summary reason: the resolver
+  reports only the first failed axis in declaration order, and the budget axis
+  precedes both the sampling axis and memory fit, so a plan that fails a
+  screenable axis and a structural one at once reports the screenable one
+  (`worklog/entries/20260917T170815.296012Z-lhl-mtp-screening-structural-axes-b6a093.md`). Structural
+  axes are named once in `serving.STRUCTURAL_REJECTION_AXES` and read by both
+  override sites (the request-time helper and the realized-intent carry-forward
+  in `_realized_model_serving_plan`).
 
 ## Long-context MTP window override (found 2026-09-17)
 
