@@ -315,7 +315,8 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
 
     for token in (
         "rmsnorm", "silu_mul", "scaled_silu", "gated_mean_sigmoid",
-        "f32_to_bf16", "bf16_to_f32", "shared_gate_combine",
+        "f32_to_bf16", "bf16_to_f32", "f32_to_f16", "f16_to_f32",
+        "shared_gate_combine",
         "repeat_bf16_branches", "fillBuffer", "copyBuffer",
     ):
         if token in bare:

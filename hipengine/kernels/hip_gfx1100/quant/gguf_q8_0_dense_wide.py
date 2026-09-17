@@ -6,10 +6,12 @@ and a converted activation tile in LDS, so each weight byte is read from global
 memory once per 256 rows instead of once per 4-32 rows. See the header of the
 ``.hip`` file for the port provenance and the tiling.
 
-The registered variant is an experimental candidate, not a production default:
-it changes prefill arithmetic (f16 operands) relative to the strict coltile
-family, so promoting it requires the calibrated production gates in
-``docs/EXECUTION-PROFILES.md`` rather than strict bit parity.
+The ``f32`` variants convert the activation during LDS staging and are the
+registered production default for the certified lane (layers 16-47 of
+``gguf_ud_q4_k_xl`` on ``hip_gfx1151``, gated in ``docs/EXECUTION-PROFILES.md``
+rather than by strict bit parity). The ``f16in`` variants take an activation
+already converted by :func:`f32_to_f16`, for a caller that hoists that conversion
+out of the K loop; they are measurement surface, not a bound route.
 """
 
 from __future__ import annotations
@@ -122,6 +124,49 @@ def _launch(
         runtime.check(int(err))
 
 
+_CAST_SYMBOL = "hipengine_gguf_q8_0_f32_to_f16"
+
+
+def f32_to_f16(
+    x_ptr: int,
+    out_ptr: int,
+    n: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Convert ``n`` f32 activation values to f16, in place of the kernel's own
+    staging conversion.
+
+    Not recorded in the launch census: the census covers dense GGUF *linears*,
+    and a conversion pass is not one. A route that consumes this reports its own
+    launch count and timing. The output must hold ``n`` f16 values in a
+    16-byte-aligned buffer, which is what the ``*_f16in_*`` variants require.
+    """
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    library = library or build_gguf_q8_0_dense_wide(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _CAST_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(n),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _make_wrapper(symbol: str, variant: str):
     def wrapper(*args, **kwargs) -> None:
         _launch(symbol, *args, **kwargs)
@@ -137,12 +182,20 @@ def _make_wrapper(symbol: str, variant: str):
 
 
 # The tile family. The name records (columns x rows) per block; see the
-# ``.hip`` header for the weight-traffic and register-pressure tradeoff.
+# ``.hip`` header for the weight-traffic and register-pressure tradeoff. The
+# ``f16in`` variants take a pre-converted f16 activation instead of f32, for a
+# caller that hoists the conversion out of the K loop with :func:`f32_to_f16`.
 _VARIANTS = {
     "dense_wide256_f32_f32_out": "hipengine_gguf_q8_0_dense_wide256_f32_f32_out",
     "dense_wide64x256_f32_f32_out": "hipengine_gguf_q8_0_dense_wide64x256_f32_f32_out",
     "dense_wide128x128_f32_f32_out": "hipengine_gguf_q8_0_dense_wide128x128_f32_f32_out",
     "dense_wide64x128_f32_f32_out": "hipengine_gguf_q8_0_dense_wide64x128_f32_f32_out",
+    "dense_wide256_f16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out"
+    ),
+    "dense_wide128x128_f16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out"
+    ),
 }
 
 _WRAPPERS = {
@@ -150,6 +203,9 @@ _WRAPPERS = {
 }
 
 gguf_q8_0_dense_wide256_f32_f32_out = _WRAPPERS["dense_wide256_f32_f32_out"]
+gguf_q8_0_dense_wide256_f16in_f32_f32_out = _WRAPPERS[
+    "dense_wide256_f16in_f32_f32_out"
+]
 
 
 def register_gguf_q8_0_dense_wide_kernels(*, replace: bool = True) -> None:
@@ -167,6 +223,8 @@ register_gguf_q8_0_dense_wide_kernels()
 __all__ = [
     "K_TILE",
     "build_gguf_q8_0_dense_wide",
+    "f32_to_f16",
+    "gguf_q8_0_dense_wide256_f16in_f32_f32_out",
     "gguf_q8_0_dense_wide256_f32_f32_out",
     "plan_gguf_q8_0_dense_wide_build",
     "register_gguf_q8_0_dense_wide_kernels",
