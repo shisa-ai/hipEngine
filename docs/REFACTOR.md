@@ -1,5 +1,37 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Long-context MTP window override (found 2026-09-17)
+
+- `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` (`hipengine/generation/qwen35_gguf_mtp2.py`)
+  raises the dense MTP adapter's 1,023-token prompt/generation window. It exists
+  only to measure what the speculative route does past the 1,024-token attention
+  transition, and it defaults to the qualified value. It is not a promotion: the
+  measured long-context arms are a diagnostic screen
+  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`),
+  not retained evidence rows.
+- Replace it with a capability derived from the model/provider plugin once a
+  long-context verifier route passes the production numerical and task gates, or
+  delete it if no long-context route is ever qualified. Until then the adapter's
+  prompt gate and advertised `max_context_tokens` must keep reading the same
+  value so admission and per-cycle policy cannot disagree.
+
+## Long-context verifier route is selected by a global decode policy (found 2026-09-17)
+
+- `qwen35_gguf_runner.py` derives `strict_long_rows` from
+  `_use_gguf_full_attention_split_decode(start_position + rows)`, i.e. from the
+  *normal decoding* split-attention threshold
+  (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`). A multi-row verifier
+  therefore cannot use the batched staged rows while ordinary decoding keeps
+  split-K attention, and the only measured way to reach the batched long-row
+  route is to disable split decode globally, which costs normal decoding about
+  9% at 3,530 prompt tokens (10.96 to 10.01 tok/s).
+- Wanted: a verifier-scoped long-context row policy so the target keeps split-K
+  attention while the verifier batches its rows, and so the choice is a
+  registered capability rather than an environment variable that also changes
+  the AR path. The measured screen shows the batched route is the difference
+  between long-context MTP being slower than normal decoding (per-row strict,
+  0.57x at 3,530 tokens) and faster than it (1.38x).
+
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
 - `python -m hipengine.server` defaults `--speculative-candidate-budget` to 4

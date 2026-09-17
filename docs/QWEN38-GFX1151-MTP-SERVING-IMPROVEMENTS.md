@@ -47,9 +47,13 @@ The artifact's separate non-streaming probes support that second failure mode:
 For an ordinary greedy speculative cycle, accepted drafts plus one verifier
 output account for emitted tokens. The 945-token row fits the context boundary:
 945 + 77 = 1022. About 39% of its post-first-token outputs are unaccounted for
-by MTP and are consistent with an AR tail. This is an inference from counters
-and source, not a captured per-cycle trace of the timed streaming requests.
-Confirm it with per-cycle positions, selected depth, emitted IDs, and AR reasons.
+by MTP and are consistent with an AR tail. **Confirmed by direct measurement**
+(2026-09-17): raising the adapter window to the 16,384-token session turned the
+same shape into 44 cycles + 83 accepted = 127 of 127 post-first-token outputs,
+and the 3,530-token prompt then ran 54 cycles + 74 accepted = 128 outputs
+instead of being refused. Both raised-window runs produced text byte-identical
+to the AR arm (690 and 666 characters). The window, not the counter arithmetic,
+was the cause.
 
 The 517-token row actually has the larger measured speedup (1.533x versus
 1.467x), despite lower draft acceptance. Acceptance alone cannot explain these
@@ -125,6 +129,39 @@ that hipEngine can obtain by removing a guard.
 - Expected benefit: reliable diagnosis and regression tests, not intrinsic speed.
 
 ### P1 — Extend MTP through the whole request, then beyond short prompts
+
+**Measured screen (2026-09-17).** The window can be raised today:
+`HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` (default 1,023, experimental) replaces both
+literal limits, and the route above the transition is what decides whether that
+is worth anything. Diagnostic artifact:
+[long-context MTP screen](../benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json).
+All rows are the comparison protocol (greedy 128 outputs, streaming client, one
+active request, zbook `gfx1151`, `Q4_K_M`, BF16 KV), three runs after a warmup,
+decode-throughput CV under 0.1%:
+
+| Arm | ~1024 (945-token prompt) | ~4096 (3,530-token prompt) |
+| --- | ---: | ---: |
+| Normal decoding, default policy | 11.72 | 10.96 |
+| Normal decoding, matched control | 11.60 | 10.01 |
+| MTP, shipping window (1,023) | 17.20 | 10.94 (MTP refused) |
+| MTP, raised window, per-row strict above the transition | 11.92 | 6.29 |
+| MTP, raised window, batched rows above the transition | **21.30** | **13.82** |
+
+Raising the window alone therefore **loses** throughput: the exact per-row route
+(`strict_long_rows`) is 0.57x normal decoding at 3,530 tokens. The batched staged
+rows are what make long-context MTP economical — 1.24x and 1.26x the shipping
+window, and 1.82x and 1.26x default AR — and they produced text byte-identical to
+AR at both shapes. Reaching them currently requires disabling split decode
+globally (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=0`), which costs
+normal decoding about 9% at 3,530 tokens; a verifier-scoped row policy is the
+promotion-quality shape of this change ([REFACTOR.md](REFACTOR.md)).
+
+This is a screen, not a promotion. Not yet run: the full category suite and
+category heldouts at these shapes, the production numerical gates
+(mean/p95/p99/max KL, top-1 by category, determinism, isolation, task quality),
+and reconciliation of the one recorded BF16 rounding difference in the staged
+long-row verifier at a row ending exactly at position 1024, which these two
+token streams did not reproduce.
 
 - Replace the adapter's literal 1023 limits with a provider/backend capability
   that covers prompt priming, proposal, target verification, commit/rollback,
