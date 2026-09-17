@@ -1839,6 +1839,35 @@ def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
     return _env_wmma_prefill_enabled()
 
 
+def gguf_prefill_dispatch_context() -> Mapping[str, bool]:
+    """Report the session-scoped GGUF linear dispatch toggles.
+
+    A resident bulk prefill establishes this context for the whole request
+    (see ``Qwen35GGUFResidentSession``); the Q6/Q4/Q5 prefill owners rewrite
+    the resolved dispatch from these values, so a caller that invokes a
+    resident layer helper *outside* the context selects different kernels for
+    the same weight and rows. Exposing the resolved state lets a diagnostic
+    (or a regression test) show whether two routes really share a dispatch
+    context instead of assuming a shared environment implies a shared route.
+    """
+
+    return MappingProxyType(
+        {
+            "wmma_prefill": bool(_resolve_use_wmma_prefill(None)),
+            "gemv_decode": bool(_resolve_use_gemv_decode(None)),
+            "q8_t16_dual_wmma_prefill": bool(_q8_t16_dual_wmma_prefill_enabled.get()),
+            "q4_pack8_dual_wmma_silu_prefill": bool(
+                _q4_pack8_dual_wmma_silu_prefill_enabled.get()
+            ),
+            "q4_t16_unequal_pair_prefill": bool(
+                _q4_t16_unequal_pair_prefill_enabled.get()
+            ),
+            "t16_f16_rocblas_prefill": _t16_f16_rocblas_prefill_session.get()
+            is not None,
+        }
+    )
+
+
 def set_q4k_rowtile_enabled(enabled: bool | None) -> None:
     """Set the session-scoped opt-out for exact small-B row-tile GEMVs.
 
@@ -8704,6 +8733,7 @@ __all__ = [
     "Q5F32ResidentPlane",
     "Q6T16F16RocblasPrefillSession",
     "T16F16RocblasPrefillSession",
+    "gguf_prefill_dispatch_context",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_q8_1",

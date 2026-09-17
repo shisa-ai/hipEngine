@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 import hipengine.distributed.tp2_generate as tg
+import hipengine.runtime.gguf_linear as gguf_linear
 from hipengine.distributed.tp2_generate import (
     LINEAR_ATTENTION,
     MlpTP2GenerationSession,
@@ -129,6 +130,12 @@ class RunnerSpy:
         # bulk capacity.
         self.prefill_attn_scratch_rows: list[int] = []
         self.prefill_attn_rows_arg: list[int] = []
+        # The session-scoped GGUF linear dispatch toggles that were active when
+        # the prefill attention helper ran. The resident bulk prefill
+        # establishes these for the whole request; a caller that runs the same
+        # helper outside the context resolves different kernels for the same
+        # weight and rows.
+        self.prefill_dispatch_context: list[dict] = []
 
     def _run_linear_attention_attn_only(self, layer_id, hidden_ptr, attn_out, scratch, **kwargs):
         self._attn(layer_id)
@@ -141,6 +148,9 @@ class RunnerSpy:
     ):
         self.prefill_attn_scratch_rows.append(int(scratch.rows))
         self.prefill_attn_rows_arg.append(int(rows))
+        self.prefill_dispatch_context.append(
+            dict(gguf_linear.gguf_prefill_dispatch_context())
+        )
         self._prefill_attn(layer_id, "linear_prefill_attn")
         return None
 
@@ -157,6 +167,9 @@ class RunnerSpy:
         **kwargs,
     ):
         self.prefill_attn_scratch_rows.append(int(scratch.rows))
+        self.prefill_dispatch_context.append(
+            dict(gguf_linear.gguf_prefill_dispatch_context())
+        )
         self._prefill_attn(layer_id, "full_prefill_attn")
         return True
 
@@ -1288,4 +1301,45 @@ def test_bulk_full_attention_uses_the_active_prompt_rows(env) -> None:
         # scratch.rows, so the scratch it receives must carry the active
         # prompt rows (4), never the bulk capacity (8)
         assert runner.prefill_attn_scratch_rows == [4, 4, 4]
+    session.close()
+
+
+# --------------------------------------------------------------------------
+# dispatch-context contract (known defect, recorded as xfail)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "TP2 bulk prefill runs the resident attention helper outside the "
+        "session-scoped GGUF linear dispatch context that the resident TP1 "
+        "bulk prefill establishes (wmma/gemv/q8_t16/q4/q6 f16-rocBLAS), so a "
+        "Q6_K projection resolves a different kernel for the same weight and "
+        "rows; see docs/REFACTOR.md"
+    ),
+)
+def test_bulk_prefill_establishes_the_resident_dispatch_context(env) -> None:
+    """The bulk prefill must select the same kernels as the resident teacher.
+
+    ``Qwen35GGUFResidentSession`` wraps its whole bulk prefill in the
+    session-scoped dispatch owners (``wmma_prefill_session``,
+    ``gemv_decode_session``, the q8_t16/q4 pair sessions and
+    ``_q6_f16_rocblas_prefill_context``). The shared layer helper reads those
+    context variables when it resolves a GGUF linear kernel, so a route that
+    calls the helper outside them runs different arithmetic on the same
+    weights. The GPU layer-0 comparison shows exactly that: with identical
+    inputs, weights and initial state, the Q6_K ``attn_qkv`` projection
+    differs (rel 3.7e-03) while the Q4_K ``attn_gate`` projection from the
+    same launch group is bit-identical.
+    """
+
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    for runner in env["runners"]:
+        assert runner.prefill_dispatch_context, "helper never ran"
+        assert all(
+            any(context.values()) for context in runner.prefill_dispatch_context
+        ), runner.prefill_dispatch_context
     session.close()
