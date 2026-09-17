@@ -25,6 +25,7 @@ from hipengine.generation.batch_scheduler import (
     PerRowSamplingParams,
     ResidentBatchScheduler,
 )
+from hipengine.generation.concurrency2 import stream_mailbox_bound
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
@@ -63,6 +64,15 @@ DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 # Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
 # client-facing queue remains independently bounded by ServerConfig (default 16).
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
+
+
+def _resident_stream_queue_bound(state: _ResidentStreamState) -> int:
+    """Resolve one resident stream's chunk-queue bound from its output budget."""
+
+    return stream_mailbox_bound(
+        DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS,
+        getattr(state.submission.request, "max_tokens", None),
+    )
 
 
 def _speculative_sampling_mode(runner, request_id, params):
@@ -1288,7 +1298,7 @@ class SubmitPollTextGenerator:
             if state is None:
                 continue
             for stream_chunk in _stop_safe_resident_stream_chunks(state, event):
-                if len(state.events) >= self._stream_queue_max_chunks:
+                if len(state.events) >= _resident_stream_queue_bound(state):
                     state.overflowed_request_ids.add(request_id)
                     self._loop.cancel(request_id, reason="cancel")
                     break

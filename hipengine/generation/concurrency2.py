@@ -11,6 +11,32 @@ from typing import Protocol, runtime_checkable
 
 from hipengine.generation.registry import GenerationOutput, GenerationStreamChunk
 
+# A streaming mailbox holds at most one entry per committed output token, so a
+# child's own output budget is its natural bound: a consumer that is slower than
+# the producer must slow the child down, not lose its request. The configured
+# bound is a floor for tiny budgets and the hard cap keeps the backlog of a
+# consumer that has stopped reading entirely finite.
+STREAM_MAILBOX_HARD_CAP_CHUNKS = 4096
+STREAM_MAILBOX_BUDGET_SLACK = 8
+
+
+def stream_mailbox_bound(configured: int, max_tokens: int | None) -> int:
+    """Resolve one streaming child's mailbox bound from its output budget."""
+
+    floor = int(configured)
+    if floor <= 0:
+        raise ValueError("stream mailbox bound must be positive")
+    ceiling = max(floor, STREAM_MAILBOX_HARD_CAP_CHUNKS)
+    if max_tokens is None:
+        return floor
+    try:
+        budget = int(max_tokens)
+    except (TypeError, ValueError):
+        return floor
+    if budget <= 0:
+        return floor
+    return max(floor, min(budget + STREAM_MAILBOX_BUDGET_SLACK, ceiling))
+
 
 class ChildPhase(str, Enum):
     """Scheduler-owned lifecycle phase for one generated sequence."""
@@ -401,5 +427,8 @@ __all__ = [
     "OutputCollector",
     "OutputKind",
     "ParentRequest",
+    "STREAM_MAILBOX_BUDGET_SLACK",
+    "STREAM_MAILBOX_HARD_CAP_CHUNKS",
     "StreamingOutputCollector",
+    "stream_mailbox_bound",
 ]

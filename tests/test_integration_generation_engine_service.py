@@ -737,18 +737,19 @@ def test_engine_service_stop_holdback_is_owned_per_child_collector() -> None:
     assert chunks[0].finish_details.reason == "stop"
 
 
-def test_engine_service_backpressure_and_cancel_are_child_scoped() -> None:
+def test_engine_service_slow_consumer_and_cancel_are_child_scoped() -> None:
     driver = _FakeSoleDriver()
     service = EngineService(driver, command_queue_size=16, stream_queue_max_chunks=1)
     try:
+        # A consumer that has not started reading yet buffers the child's whole
+        # output budget instead of losing the request; the bound is the budget
+        # (20 tokens), not the configured floor of one chunk.
         slow = service.submit_child(_request("slow:20"), streaming=True)
         neighbor = service.submit_child(_request("neighbor:4"))
 
-        with pytest.raises(GenerationCancelled) as overflow:
-            slow.result(timeout=2.0)
-        assert overflow.value.finish_details.budget_pressure == "client_backpressure"
         assert neighbor.result(timeout=2.0).generated_tokens == 4
-        assert slow.backend_request_id in driver.abort_reasons
+        assert slow.result(timeout=2.0).generated_tokens == 20
+        assert slow.backend_request_id not in driver.abort_reasons
 
         cancelled = service.submit_child(_request("cancelled:20"))
         survivor = service.submit_child(_request("survivor:3"))
@@ -756,6 +757,27 @@ def test_engine_service_backpressure_and_cancel_are_child_scoped() -> None:
         with pytest.raises(GenerationCancelled):
             cancelled.result(timeout=2.0)
         assert survivor.result(timeout=2.0).generated_tokens == 3
+    finally:
+        service.close()
+
+
+def test_engine_service_stream_budget_overrun_is_client_backpressure() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=16, stream_queue_max_chunks=1)
+    try:
+        # A child that publishes past its own budget (a runaway child, not a slow
+        # client) still trips the backpressure guard and stays child-scoped.
+        overrun = service.submit_child(
+            replace(_request("slow:20"), max_tokens=8),
+            streaming=True,
+        )
+        survivor = service.submit_child(_request("survivor:3"))
+
+        with pytest.raises(GenerationCancelled) as overflow:
+            overrun.result(timeout=2.0)
+        assert overflow.value.finish_details.budget_pressure == "client_backpressure"
+        assert survivor.result(timeout=2.0).generated_tokens == 3
+        assert overrun.backend_request_id in driver.abort_reasons
     finally:
         service.close()
 
