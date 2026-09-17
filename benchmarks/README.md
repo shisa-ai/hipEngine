@@ -1557,6 +1557,35 @@ reproducing command. Evidence:
 [`e2e replay`](results/yue2_e2e_gate_20260916.json),
 [`e2e live`](results/yue2_e2e_live_gate_20260916.json).
 
+The stage comparison above replays recorded conditioning, so it never times the AR
+stage. `scripts/yue2_case_timing.py` drives one recorded case through the complete
+product path at the product's 32 ODE steps - plan, semantic decode, solve, decode -
+and prints each stage against the reference's own recorded timing for that request
+(`mandarin-off-s1234`, 51.9 s of audio):
+
+| Stage | hipEngine | Reference | Ratio | Matched unit |
+| --- | ---: | ---: | ---: | --- |
+| AR semantic decode | 119.16 s | 40.60 s | **2.63x slower** | 82.1 vs 31.3 ms per token |
+| Acoustic solver, 32 steps | 30.79 s | 27.32 s | 1.01x slower | 21.2 vs 21.1 ms per frame |
+| FP32 Oobleck decode | 22.47 s | 69.09 s | **3.44x faster** | 15.5 vs 53.3 ms per frame |
+| Whole path | 154.1 s | 137.8 s | 1.12x slower | normalised to 1 297 frames |
+
+The run generates 1 451 semantic tokens where the reference generated 1 297, so
+every row is compared per token or per frame and the total is normalised to the
+reference's frame count. The two stages this campaign worked on are now matched
+(the solver) and 3.4x ahead (the decoder); the AR decode is 69% of the whole path
+and is the entire remaining gap. The reference's torch path batches both CFG
+branches into one forward per step (`GraphAR(model, [prefix, negative], ...)` in its
+`yue2/sampling.py`), while the torch-free path forwards each branch separately and
+therefore reads the 3.63 B-parameter weight set twice per token: 13 GB per token
+against 6.5 GB for the reference, which is 158 GB/s of weight traffic at our 82.1 ms
+against the 208 GB/s the reference's 31.3 ms implies. Reaching 415 GB/s by running
+the branches apart is above this host's ~256 GB/s peak, so sharing one read across
+them is the lever: at our current per-forward efficiency it puts the stage near
+41 ms per token, and matching the reference's efficiency would make the whole path
+**1.56x faster** than torch instead of 1.12x slower. Evidence:
+[`product case timing`](results/yue2_product_case_timing_20260917.json).
+
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 
 The NAR attention kernel walked the key/value cache once per (query row, query
