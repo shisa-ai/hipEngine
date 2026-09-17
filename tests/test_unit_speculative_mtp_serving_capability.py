@@ -10,6 +10,7 @@ from hipengine.llm import LLM
 from hipengine.models.kv_capabilities import ModelArtifactIdentity
 from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
+    STRUCTURAL_REJECTION_AXES,
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
     SpeculativeMTPStaticState,
@@ -399,6 +400,86 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
     assert decision.selected_candidate_count == 0
     assert decision.reason == reason
     assert decision.strict_fallback_key == "gguf_target_ar"
+    # The summary reason is the first failed axis; the full set is what a
+    # screening decision has to read, because the first axis can be screenable
+    # while a later one is not.
+    assert decision.failed_axes == (reason,)
+    assert decision.structural_rejection == (
+        reason if reason in STRUCTURAL_REJECTION_AXES else None
+    )
+
+
+def test_structural_rejection_axes_are_the_correctness_boundaries() -> None:
+    """Pin the fail-closed set so widening it is a deliberate edit."""
+
+    assert STRUCTURAL_REJECTION_AXES == frozenset(
+        {
+            "artifact_identity_unverified",
+            "sampling_mode_not_qualified",
+            "insufficient_memory",
+        }
+    )
+
+
+def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> None:
+    """A screenable first axis must not hide a structural failure behind it.
+
+    Reproduced finding: with real model evidence, ``candidate_budget=4`` (over
+    the row's qualified depth) plus ``memory_fit=False`` reported
+    ``candidate_budget_not_qualified`` as its reason, which is a screenable
+    axis, so the screening helper granted override eligibility for a cell that
+    did not fit in memory at all. Memory fit is a correctness boundary and must
+    stay blocked for every request.
+    """
+
+    decision = resolve_speculative_mtp_serving_plan(
+        (_evidence(),),
+        key=_key(candidate_budget=4, memory_fit=False),
+    )
+
+    assert decision.admitted is False
+    assert decision.reason == "candidate_budget_not_qualified"
+    assert decision.failed_axes == (
+        "candidate_budget_not_qualified",
+        "insufficient_memory",
+    )
+    assert decision.structural_rejection == "insufficient_memory"
+    assert "failed_axes" in decision.as_dict()
+    assert decision.as_dict()["failed_axes"] == [
+        "candidate_budget_not_qualified",
+        "insufficient_memory",
+    ]
+
+    masked_sampling = resolve_speculative_mtp_serving_plan(
+        (_evidence(),),
+        key=_key(
+            candidate_budget=4,
+            sampling_mode="processed_argmax",
+            memory_fit=False,
+        ),
+    )
+    assert masked_sampling.reason == "candidate_budget_not_qualified"
+    assert masked_sampling.failed_axes == (
+        "candidate_budget_not_qualified",
+        "sampling_mode_not_qualified",
+        "insufficient_memory",
+    )
+    assert masked_sampling.structural_rejection == "sampling_mode_not_qualified"
+
+    # The structural axes stay structural on their own too, and a plan that
+    # fails only screenable axes reports no structural rejection.
+    assert (
+        resolve_speculative_mtp_serving_plan(
+            (_evidence(),), key=_key(memory_fit=False)
+        ).structural_rejection
+        == "insufficient_memory"
+    )
+    assert (
+        resolve_speculative_mtp_serving_plan(
+            (_evidence(),), key=_key(candidate_budget=4)
+        ).structural_rejection
+        is None
+    )
 
 
 def test_screening_switch_does_not_widen_model_plugin_evidence(monkeypatch) -> None:

@@ -27,6 +27,19 @@ from typing import Mapping, Sequence
 
 _DEFAULT_STRICT_FALLBACK = "gguf_target_ar"
 
+# Failed axes that are correctness boundaries rather than unmeasured physical
+# cells: sampling semantics change what the verifier is allowed to do, an
+# unverified artifact identity means the evidence describes something else, and
+# a memory-fit failure means the cell does not fit at all.  Everything else is a
+# physical qualification axis that a screening run may measure explicitly.
+STRUCTURAL_REJECTION_AXES = frozenset(
+    {
+        "artifact_identity_unverified",
+        "sampling_mode_not_qualified",
+        "insufficient_memory",
+    }
+)
+
 
 def _required_text(value: object, name: str) -> str:
     text = str(value).strip()
@@ -377,6 +390,23 @@ class SpeculativeMTPServingDecision:
     static_max_realized_group_rows: int | None = None
     static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
     packed_c1_target: bool = False
+    failed_axes: tuple[str, ...] = ()
+
+    @property
+    def structural_rejection(self) -> str | None:
+        """Return the failed correctness axis, independent of the summary reason.
+
+        ``reason`` reports the first failed axis of the row that matched the
+        most key axes, which is useful for diagnostics but is not a statement
+        about the other axes. A caller deciding whether a rejection is an
+        unmeasured physical cell (overridable) or a correctness boundary
+        (never overridable) must read every failed axis, not the summary.
+        """
+
+        for axis in self.failed_axes:
+            if axis in STRUCTURAL_REJECTION_AXES:
+                return axis
+        return None
 
     @property
     def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
@@ -410,6 +440,9 @@ class SpeculativeMTPServingDecision:
 
     @property
     def plan_fingerprint(self) -> str:
+        # ``failed_axes`` is deliberately absent: it is a pure function of the
+        # key and the selected evidence row, and both are already covered here
+        # (the key directly, the row through its evidence fingerprint).
         return _canonical_sha256(
             {
                 "admitted": self.admitted,
@@ -441,6 +474,7 @@ class SpeculativeMTPServingDecision:
             "automatic_eligible": self.automatic_eligible,
             "static_max_realized_group_rows": self.static_max_realized_group_rows,
             "static_eligibility": self.static_eligibility.as_dict(),
+            "failed_axes": list(self.failed_axes),
         }
 
 
@@ -450,6 +484,7 @@ def _reject(
     evidence: SpeculativeMTPServingEvidence | None,
     *,
     static_eligibility: SpeculativeMTPStaticEligibility | None = None,
+    failed_axes: Sequence[str] = (),
 ) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
@@ -471,6 +506,7 @@ def _reject(
         ),
         automatic_eligible=False,
         static_eligibility_override=static_eligibility,
+        failed_axes=tuple(str(axis) for axis in failed_axes),
     )
 
 
@@ -606,7 +642,7 @@ def resolve_speculative_mtp_serving_plan(
             int,
             int,
             SpeculativeMTPServingEvidence,
-            str,
+            tuple[str, ...],
             SpeculativeMTPStaticEligibility | None,
         ]
     ] = []
@@ -636,12 +672,12 @@ def resolve_speculative_mtp_serving_plan(
                 sum(bool(passed) for passed, _reason in checks),
                 -index,
                 row,
-                failed_reasons[0],
+                failed_reasons,
                 static_eligibility,
             )
         )
 
-    _matched, _order, row, reason, static_eligibility = max(
+    _matched, _order, row, failed_axes, static_eligibility = max(
         rejected,
         key=lambda item: (
             item[0],
@@ -655,9 +691,13 @@ def resolve_speculative_mtp_serving_plan(
     )
     return _reject(
         key,
-        reason,
+        # The summary reason is the first failed axis in declaration order.
+        # Consumers deciding whether the rejection is overridable must read
+        # ``failed_axes`` instead, which carries every failed axis.
+        failed_axes[0],
         row,
         static_eligibility=static_eligibility,
+        failed_axes=failed_axes,
     )
 
 
@@ -669,4 +709,5 @@ __all__ = [
     "SpeculativeMTPStaticState",
     "resolve_max_qualified_candidate_budget",
     "resolve_speculative_mtp_serving_plan",
+    "STRUCTURAL_REJECTION_AXES",
 ]
