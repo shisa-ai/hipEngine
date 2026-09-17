@@ -1,0 +1,514 @@
+{
+ "device_names": {
+  "0": "AMD Radeon Pro W7900",
+  "1": "AMD Radeon RX 7900 XTX"
+ },
+ "devices": [
+  0,
+  1
+ ],
+ "generated_at": "2026-09-17T08:32:13Z",
+ "host": "epyc",
+ "kind": "tp2-layer-segment-attribution",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "note": "Eager schedule: each segment is an individually queued launch so HIP events can separate it; the graphed default runs the same kernels as one captured graph per layer. Spans are one rank's own device timeline (events recorded on that rank's stream), measured with the peer idle, so they exclude the cross-rank exchange entirely. Bandwidth denominators are index bytes per rank plus the full-attention KV read at the probed position. Two measurement limits: the eager segment split repeats one layer, so its weights are Infinity-Cache-resident and it pays a host submission gap per launch - use the DRAM-rotation halves (subgraph_*) for rates; and the whole-layer graphed replay launches both ranks back to back on an otherwise idle device, so its in-graph exchange spin pays a full round trip that the real pipeline hides - use the real loop's per-layer spans (scripts/tp2_stage_device_attribution.py) for the layer wall, not this replay.",
+ "position": 255,
+ "probes": [
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "fine_marks_ms": {
+    "decode_full_attn_core_gate": 0.0836,
+    "decode_full_attn_kv_write": 0.0102,
+    "decode_full_attn_norm": 0.0302,
+    "decode_full_attn_output": 0.0338,
+    "decode_full_attn_qkv_head_norm_rope": 0.1373
+   },
+   "graphed_layer_all_ranks_median_ms": {
+    "0": 0.5908,
+    "1": 0.7565
+   },
+   "graphed_layer_median_ms": 0.5908,
+   "graphed_layer_min_ms": 0.4106,
+   "index_bytes_by_segment_mb": {
+    "attention": 60.36,
+    "mlp": 86.69,
+    "post_norm": 0.02
+   },
+   "kv_read_mb": 1.05,
+   "layer_id": 3,
+   "layer_type": "full_attention",
+   "segment_sum_gb_per_s": 310.8,
+   "segment_sum_mb_per_rank": 148.12,
+   "segment_sum_ms": 0.4766,
+   "segment_sum_over_graphed_ratio": 0.807,
+   "segments": [
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0308,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0245,
+     "min_ms": 0.0233,
+     "segment": "prime",
+     "stdev_ms": 0.0023
+    },
+    {
+     "gb_per_s": 204.7,
+     "max_ms": 0.3072,
+     "mb_per_rank": 61.41,
+     "median_ms": 0.3,
+     "min_ms": 0.2983,
+     "segment": "attention",
+     "stdev_ms": 0.0027
+    },
+    {
+     "gb_per_s": 1.7,
+     "max_ms": 0.0124,
+     "mb_per_rank": 0.02,
+     "median_ms": 0.0121,
+     "min_ms": 0.0101,
+     "segment": "post_norm",
+     "stdev_ms": 0.0007
+    },
+    {
+     "gb_per_s": 562.9,
+     "max_ms": 0.1549,
+     "mb_per_rank": 86.69,
+     "median_ms": 0.154,
+     "min_ms": 0.1529,
+     "segment": "mlp",
+     "stdev_ms": 0.0007
+    },
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.011,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0106,
+     "min_ms": 0.0103,
+     "segment": "residual",
+     "stdev_ms": 0.0002
+    }
+   ],
+   "subgraph_bytes_mb": {
+    "attention": 61.41,
+    "rest": 86.71
+   },
+   "subgraph_gb_per_s": {
+    "attention": 260.4,
+    "rest": 504.3
+   },
+   "subgraph_median_ms": {
+    "attention": 0.2358,
+    "rest": 0.172
+   },
+   "subgraph_min_ms": {
+    "attention": 0.2353,
+    "rest": 0.171
+   },
+   "subgraph_sum_ms": 0.4078
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "fine_marks_ms": {
+    "decode_linear_attn_alpha_beta": 0.0184,
+    "decode_linear_attn_conv": 0.0099,
+    "decode_linear_attn_gdn": 0.0227,
+    "decode_linear_attn_norm": 0.0287,
+    "decode_linear_attn_qkv_gate": 0.1202,
+    "decode_linear_attn_ssm_out": 0.0411
+   },
+   "graphed_layer_all_ranks_median_ms": {
+    "0": 0.5811,
+    "1": 0.6491
+   },
+   "graphed_layer_median_ms": 0.5811,
+   "graphed_layer_min_ms": 0.3605,
+   "index_bytes_by_segment_mb": {
+    "attention": 84.48,
+    "mlp": 86.69,
+    "post_norm": 0.02
+   },
+   "kv_read_mb": 0.0,
+   "layer_id": 0,
+   "layer_type": "linear_attention",
+   "segment_sum_gb_per_s": 394.1,
+   "segment_sum_mb_per_rank": 171.19,
+   "segment_sum_ms": 0.4344,
+   "segment_sum_over_graphed_ratio": 0.747,
+   "segments": [
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0303,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0233,
+     "min_ms": 0.0226,
+     "segment": "prime",
+     "stdev_ms": 0.0026
+    },
+    {
+     "gb_per_s": 344.5,
+     "max_ms": 0.254,
+     "mb_per_rank": 84.48,
+     "median_ms": 0.2452,
+     "min_ms": 0.2438,
+     "segment": "attention",
+     "stdev_ms": 0.0031
+    },
+    {
+     "gb_per_s": 1.7,
+     "max_ms": 0.0123,
+     "mb_per_rank": 0.02,
+     "median_ms": 0.0121,
+     "min_ms": 0.0119,
+     "segment": "post_norm",
+     "stdev_ms": 0.0001
+    },
+    {
+     "gb_per_s": 523.6,
+     "max_ms": 0.1668,
+     "mb_per_rank": 86.69,
+     "median_ms": 0.1656,
+     "min_ms": 0.1648,
+     "segment": "mlp",
+     "stdev_ms": 0.0006
+    },
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.012,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0114,
+     "min_ms": 0.0113,
+     "segment": "residual",
+     "stdev_ms": 0.0002
+    }
+   ],
+   "subgraph_bytes_mb": {
+    "attention": 84.48,
+    "rest": 86.71
+   },
+   "subgraph_gb_per_s": {
+    "attention": 435.1,
+    "rest": 488.0
+   },
+   "subgraph_median_ms": {
+    "attention": 0.1942,
+    "rest": 0.1777
+   },
+   "subgraph_min_ms": {
+    "attention": 0.1937,
+    "rest": 0.1762
+   },
+   "subgraph_sum_ms": 0.3719
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "fine_marks_ms": {
+    "decode_full_attn_core_gate": 0.1268,
+    "decode_full_attn_kv_write": 0.0135,
+    "decode_full_attn_norm": 0.0317,
+    "decode_full_attn_output": 0.0434,
+    "decode_full_attn_qkv_head_norm_rope": 0.1643
+   },
+   "graphed_layer_all_ranks_median_ms": {
+    "0": 0.4744,
+    "1": 0.7546
+   },
+   "graphed_layer_median_ms": 0.7546,
+   "graphed_layer_min_ms": 0.5646,
+   "index_bytes_by_segment_mb": {
+    "attention": 60.36,
+    "mlp": 86.69,
+    "post_norm": 0.02
+   },
+   "kv_read_mb": 1.05,
+   "layer_id": 3,
+   "layer_type": "full_attention",
+   "segment_sum_gb_per_s": 239.6,
+   "segment_sum_mb_per_rank": 148.12,
+   "segment_sum_ms": 0.6183,
+   "segment_sum_over_graphed_ratio": 0.819,
+   "segments": [
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0278,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.026,
+     "min_ms": 0.0237,
+     "segment": "prime",
+     "stdev_ms": 0.0015
+    },
+    {
+     "gb_per_s": 159.2,
+     "max_ms": 0.4332,
+     "mb_per_rank": 61.41,
+     "median_ms": 0.3856,
+     "min_ms": 0.3531,
+     "segment": "attention",
+     "stdev_ms": 0.0294
+    },
+    {
+     "gb_per_s": 1.3,
+     "max_ms": 0.0186,
+     "mb_per_rank": 0.02,
+     "median_ms": 0.0159,
+     "min_ms": 0.014,
+     "segment": "post_norm",
+     "stdev_ms": 0.0015
+    },
+    {
+     "gb_per_s": 430.6,
+     "max_ms": 0.2324,
+     "mb_per_rank": 86.69,
+     "median_ms": 0.2013,
+     "min_ms": 0.1806,
+     "segment": "mlp",
+     "stdev_ms": 0.0191
+    },
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0171,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0154,
+     "min_ms": 0.0134,
+     "segment": "residual",
+     "stdev_ms": 0.0013
+    }
+   ],
+   "subgraph_bytes_mb": {
+    "attention": 61.41,
+    "rest": 86.71
+   },
+   "subgraph_gb_per_s": {
+    "attention": 285.5,
+    "rest": 561.0
+   },
+   "subgraph_median_ms": {
+    "attention": 0.2151,
+    "rest": 0.1546
+   },
+   "subgraph_min_ms": {
+    "attention": 0.2092,
+    "rest": 0.1432
+   },
+   "subgraph_sum_ms": 0.3696
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "fine_marks_ms": {
+    "decode_linear_attn_alpha_beta": 0.0273,
+    "decode_linear_attn_conv": 0.015,
+    "decode_linear_attn_gdn": 0.0365,
+    "decode_linear_attn_norm": 0.0288,
+    "decode_linear_attn_qkv_gate": 0.1706,
+    "decode_linear_attn_ssm_out": 0.059
+   },
+   "graphed_layer_all_ranks_median_ms": {
+    "0": 0.6981,
+    "1": 0.6411
+   },
+   "graphed_layer_median_ms": 0.6411,
+   "graphed_layer_min_ms": 0.5555,
+   "index_bytes_by_segment_mb": {
+    "attention": 84.48,
+    "mlp": 86.69,
+    "post_norm": 0.02
+   },
+   "kv_read_mb": 0.0,
+   "layer_id": 0,
+   "layer_type": "linear_attention",
+   "segment_sum_gb_per_s": 281.5,
+   "segment_sum_mb_per_rank": 171.19,
+   "segment_sum_ms": 0.6082,
+   "segment_sum_over_graphed_ratio": 0.949,
+   "segments": [
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0368,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0258,
+     "min_ms": 0.0234,
+     "segment": "prime",
+     "stdev_ms": 0.0039
+    },
+    {
+     "gb_per_s": 245.6,
+     "max_ms": 0.3458,
+     "mb_per_rank": 84.48,
+     "median_ms": 0.344,
+     "min_ms": 0.2981,
+     "segment": "attention",
+     "stdev_ms": 0.0164
+    },
+    {
+     "gb_per_s": 1.2,
+     "max_ms": 0.0181,
+     "mb_per_rank": 0.02,
+     "median_ms": 0.0172,
+     "min_ms": 0.0147,
+     "segment": "post_norm",
+     "stdev_ms": 0.001
+    },
+    {
+     "gb_per_s": 376.2,
+     "max_ms": 0.2321,
+     "mb_per_rank": 86.69,
+     "median_ms": 0.2304,
+     "min_ms": 0.1956,
+     "segment": "mlp",
+     "stdev_ms": 0.0134
+    },
+    {
+     "gb_per_s": 0.0,
+     "max_ms": 0.0175,
+     "mb_per_rank": 0.0,
+     "median_ms": 0.0165,
+     "min_ms": 0.015,
+     "segment": "residual",
+     "stdev_ms": 0.0009
+    }
+   ],
+   "subgraph_bytes_mb": {
+    "attention": 84.48,
+    "rest": 86.71
+   },
+   "subgraph_gb_per_s": {
+    "attention": 506.2,
+    "rest": 544.9
+   },
+   "subgraph_median_ms": {
+    "attention": 0.1669,
+    "rest": 0.1591
+   },
+   "subgraph_min_ms": {
+    "attention": 0.1621,
+    "rest": 0.1452
+   },
+   "subgraph_sum_ms": 0.326
+  }
+ ],
+ "reduce_mode": "device",
+ "replays": 8,
+ "rotations": {
+  "0": {
+   "0": {
+    "attention_mb_per_rank": 84.48,
+    "attention_ms": 0.1942,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1777
+   },
+   "16": {
+    "attention_mb_per_rank": 84.48,
+    "attention_ms": 0.1928,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1779
+   },
+   "19": {
+    "attention_mb_per_rank": 61.41,
+    "attention_ms": 0.2351,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1739
+   },
+   "3": {
+    "attention_mb_per_rank": 61.41,
+    "attention_ms": 0.2358,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.172
+   },
+   "32": {
+    "attention_mb_per_rank": 70.96,
+    "attention_ms": 0.1724,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1549
+   },
+   "35": {
+    "attention_mb_per_rank": 60.05,
+    "attention_ms": 0.2224,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1513
+   },
+   "48": {
+    "attention_mb_per_rank": 70.96,
+    "attention_ms": 0.1734,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1556
+   },
+   "51": {
+    "attention_mb_per_rank": 60.05,
+    "attention_ms": 0.223,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1544
+   }
+  },
+  "1": {
+   "0": {
+    "attention_mb_per_rank": 84.48,
+    "attention_ms": 0.1669,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1591
+   },
+   "16": {
+    "attention_mb_per_rank": 84.48,
+    "attention_ms": 0.1651,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1591
+   },
+   "19": {
+    "attention_mb_per_rank": 61.41,
+    "attention_ms": 0.2131,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1574
+   },
+   "3": {
+    "attention_mb_per_rank": 61.41,
+    "attention_ms": 0.2151,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 86.71,
+    "rest_ms": 0.1546
+   },
+   "32": {
+    "attention_mb_per_rank": 70.96,
+    "attention_ms": 0.146,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1265
+   },
+   "35": {
+    "attention_mb_per_rank": 60.05,
+    "attention_ms": 0.2003,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1333
+   },
+   "48": {
+    "attention_mb_per_rank": 70.96,
+    "attention_ms": 0.1458,
+    "layer_type": "linear_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1267
+   },
+   "51": {
+    "attention_mb_per_rank": 60.05,
+    "attention_ms": 0.1984,
+    "layer_type": "full_attention",
+    "rest_mb_per_rank": 75.22,
+    "rest_ms": 0.1273
+   }
+  }
+ },
+ "schedule": "graphed",
+ "schema": 1
+}

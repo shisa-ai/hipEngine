@@ -1218,6 +1218,66 @@ is the measured basis for the device-side default.
 Artifacts: `benchmarks/results/2026-09-17-w7900-tp2-stage-attribution-device-reduce.json`
 and `...-host-reduce.json`.
 
+#### The per-layer time is one streaming half plus one latency-bound half (2026-09-17)
+
+Splitting a layer into its two captured halves - the attention/GDN half and the
+rest (post-attention norm, D2D input copy, MLP shard chain, residual) - and
+replaying each from a **DRAM rotation** over eight probe layers (four of each
+type) gives the split the whole-layer number cannot:
+
+| layer type | attention half | rest half | sum | real-loop layer |
+| --- | ---: | ---: | ---: | ---: |
+| full attention (n=4) | 229 us / 61.4 MB = **260 GB/s** | 163 us / 86.7 MB = 504 GB/s | 392 us | 345 us |
+| GDN (n=4) | 183 us / 84.5 MB = **436 GB/s** | 167 us / 86.7 MB = 493 GB/s | 350 us | 350 us |
+
+(Rank 0, W7900. Rank 1, RX 7900 XTX: full attention 207 us at 286 GB/s and
+143 us at 559 GB/s; GDN 156 us at 506 GB/s and 143 us at 545 GB/s. The rotation
+matters: one layer's weights fit the 96 MB Infinity Cache, so a single-layer
+replay measures L2.)
+
+A second audit measures every projection alone, with the model's real weights
+through the production launch entry points, per launch, same rotation protocol:
+
+| projection | shape (out x in) | W7900 | RX 7900 XTX |
+| --- | --- | ---: | ---: |
+| `attn_q` | 12288 x 5120 | 35.4 MB, 59.9 us, **591 GB/s** | 66.6 us, 532 GB/s |
+| `attn_k` + `attn_v` pair | 1024 x 5120 each | 7.2 MB, 45.8 us, **158 GB/s** | 46.7 us, 155 GB/s |
+| `attn_output` | 5120 x 6144 | 17.7 MB, 34.3 us, 516 GB/s | 33.2 us, 534 GB/s |
+| `attn_qkv` + `attn_gate` pair | 10240/6144 x 5120 | 60.7 MB, 92.9 us, 654 GB/s | 78.4 us, 774 GB/s |
+| `ssm_out` | 5120 x 6144 | 21.6 MB, 40.0 us, 540 GB/s | 33.1 us, 653 GB/s |
+| `ffn_gate` / `ffn_up` (TP1 width) | 17408 x 5120 | 50.1 MB, 86.8 us, 577 GB/s | 68.7 us, 730 GB/s |
+| `ffn_down` (TP1 width) | 5120 x 17408 | 73.1 MB, 105.4 us, 694 GB/s | 90.0 us, 812 GB/s |
+
+Three conclusions, and they redirect the campaign:
+
+- **The GEMV kernels are not the deficit.** Every projection runs at 516-694
+  GB/s on the W7900 and 532-813 GB/s on the XTX, i.e. at or above the resident
+  route's own blended 529.3 / 637.7 GB/s. The shard shapes are not slower than
+  the full-width ones, and no projection is stuck in a bad variant.
+- **The attention half is latency-bound, not bandwidth-bound.** Subtracting the
+  measured projection times from the attention half leaves **89 us per
+  full-attention layer** and **50 us per GDN layer** of small-kernel time - the
+  input norm, head norm and RoPE, KV write, attention core and gate multiply,
+  alpha/beta, conv, and the GDN recurrence. Across 16 + 48 layers that is
+  **3.82 ms/token**, 15.8% of the 24.155 ms wall, and both ranks pay all of it
+  because the attention/GDN weights are replicated.
+- **The worst single projection is the smallest one.** The `attn_k`/`attn_v`
+  pair moves 7.2 MB in 45.8 us (158 GB/s) because a pair launch at
+  `out=1024` is fixed-cost-bound; 16 of those are 0.73 ms/token. A Q4_K
+  `q`+`k`+`v` triple fusion would recover ~30 us in each of the 16
+  full-attention layers (the Q8_0/T16 triple path exists but declines Q4_K).
+
+The consequence for the plan: the traffic-implied 19.629 ms floor assumes every
+byte moves at the resident route's *blended* rate, and the resident route only
+reaches that rate because 61.7% of its bytes are MLP. The TP2 route's byte mix
+is 49.9% MLP and 45.1% replicated attention/GDN, so its blended rate is lower by
+construction. Further weight sharding cuts bytes but leaves the 3.82 ms/token
+latency term untouched; reducing the per-layer launch count in the attention/GDN
+half is the larger remaining lever, and it helps the resident route too.
+
+Artifacts: `benchmarks/results/2026-09-17-w7900-tp2-layer-halves-dram-rotation.json`,
+`benchmarks/results/2026-09-17-w7900-decode-projection-bandwidth-audit.json`.
+
 ## Binding benchmark and correctness matrix
 
 Use `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all `code`,

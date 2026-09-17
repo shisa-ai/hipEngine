@@ -1,0 +1,652 @@
+{
+ "generated_at": "2026-09-17T08:23:08Z",
+ "host": "epyc",
+ "kind": "gguf-decode-projection-bandwidth-audit",
+ "layers_per_role": 8,
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "note": "Real weights through the production launch entry points, one rank at a time, one queue per rotation with a single sync, rotating over several layers per role so every timed launch streams from DRAM instead of the 96 MB Infinity Cache. Shapes are (out, in) from the GGUF index; sharded shapes are not audited here (the MLP shard chain is measured in scripts/tp2_layer_segment_attribution.py).",
+ "rotations": 12,
+ "rows": [
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 591.2,
+   "input_buffer": "norm",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0705,
+   "mb": 35.39,
+   "median_ms": 0.0599,
+   "min_ms": 0.0585,
+   "output_buffer": "full_q",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_q",
+   "shape": [
+    12288,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "attn_q.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 158.4,
+   "input_buffer": "norm",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.1421,
+   "mb": 7.25,
+   "median_ms": 0.0458,
+   "min_ms": 0.0294,
+   "output_buffer": "full_k",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_kv_pair",
+   "shape": [
+    1024,
+    5120
+   ],
+   "shape_b": [
+    1024,
+    5120
+   ],
+   "suffixes": [
+    "attn_k.weight",
+    "attn_v.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 516.2,
+   "input_buffer": "full_gated",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0476,
+   "mb": 17.69,
+   "median_ms": 0.0343,
+   "min_ms": 0.0332,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_output",
+   "shape": [
+    5120,
+    6144
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "attn_output.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 653.6,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.1262,
+   "mb": 60.7,
+   "median_ms": 0.0929,
+   "min_ms": 0.08,
+   "output_buffer": "linear_qkv",
+   "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k_t16_qmicro_planar_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "attn_qkv_gate_pair",
+   "shape": [
+    10240,
+    5120
+   ],
+   "shape_b": [
+    6144,
+    5120
+   ],
+   "suffixes": [
+    "attn_qkv.weight",
+    "attn_gate.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 540.1,
+   "input_buffer": "full_gated",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.0496,
+   "mb": 21.63,
+   "median_ms": 0.04,
+   "min_ms": 0.0388,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q5_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q5_k_t16_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "ssm_out",
+   "shape": [
+    5120,
+    6144
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ssm_out.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 577.3,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.1654,
+   "mb": 50.14,
+   "median_ms": 0.0868,
+   "min_ms": 0.0823,
+   "output_buffer": "ffn_gate_up",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "ffn_gate",
+   "shape": [
+    17408,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_gate.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 576.4,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.0925,
+   "mb": 50.14,
+   "median_ms": 0.087,
+   "min_ms": 0.0819,
+   "output_buffer": "ffn_gate_up",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "ffn_up",
+   "shape": [
+    17408,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_up.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": 693.5,
+   "input_buffer": "ffn_gate_up",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.1345,
+   "mb": 73.11,
+   "median_ms": 0.1054,
+   "min_ms": 0.0832,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k_t16_qmicro_planar_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "ffn_down",
+   "shape": [
+    5120,
+    17408
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_down.weight"
+   ]
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": null,
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0954,
+   "mb": 0.0,
+   "median_ms": 0.0239,
+   "min_ms": 0.0085,
+   "quant_key": "-",
+   "resolved_kernel": "-",
+   "role": "attn_norm",
+   "shape": [
+    1,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": []
+  },
+  {
+   "device": 0,
+   "device_name": "AMD Radeon Pro W7900",
+   "gb_per_s": null,
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0315,
+   "mb": 0.0,
+   "median_ms": 0.021,
+   "min_ms": 0.019,
+   "quant_key": "-",
+   "resolved_kernel": "-",
+   "role": "post_attn_norm",
+   "shape": [
+    1,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": []
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 531.7,
+   "input_buffer": "norm",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.3446,
+   "mb": 35.39,
+   "median_ms": 0.0666,
+   "min_ms": 0.0557,
+   "output_buffer": "full_q",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_q",
+   "shape": [
+    12288,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "attn_q.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 155.2,
+   "input_buffer": "norm",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0734,
+   "mb": 7.25,
+   "median_ms": 0.0467,
+   "min_ms": 0.0332,
+   "output_buffer": "full_k",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_kv_pair",
+   "shape": [
+    1024,
+    5120
+   ],
+   "shape_b": [
+    1024,
+    5120
+   ],
+   "suffixes": [
+    "attn_k.weight",
+    "attn_v.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 533.6,
+   "input_buffer": "full_gated",
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0421,
+   "mb": 17.69,
+   "median_ms": 0.0332,
+   "min_ms": 0.0311,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "attn_output",
+   "shape": [
+    5120,
+    6144
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "attn_output.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 774.1,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.1061,
+   "mb": 60.7,
+   "median_ms": 0.0784,
+   "min_ms": 0.0662,
+   "output_buffer": "linear_qkv",
+   "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k_t16_qmicro_planar_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "attn_qkv_gate_pair",
+   "shape": [
+    10240,
+    5120
+   ],
+   "shape_b": [
+    6144,
+    5120
+   ],
+   "suffixes": [
+    "attn_qkv.weight",
+    "attn_gate.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 653.4,
+   "input_buffer": "full_gated",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.0465,
+   "mb": 21.63,
+   "median_ms": 0.0331,
+   "min_ms": 0.0321,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q5_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q5_k_t16_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "ssm_out",
+   "shape": [
+    5120,
+    6144
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ssm_out.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 729.3,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.085,
+   "mb": 50.14,
+   "median_ms": 0.0687,
+   "min_ms": 0.0663,
+   "output_buffer": "ffn_gate_up",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "ffn_gate",
+   "shape": [
+    17408,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_gate.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 730.2,
+   "input_buffer": "norm",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.0783,
+   "mb": 50.14,
+   "median_ms": 0.0687,
+   "min_ms": 0.067,
+   "output_buffer": "ffn_gate_up",
+   "quant_key": "gguf_q4_k_t16_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q4_k_t16_v1', variant='dense_single_local32_bf16_bf16_out')",
+   "role": "ffn_up",
+   "shape": [
+    17408,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_up.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": 812.5,
+   "input_buffer": "ffn_gate_up",
+   "layers": [
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56
+   ],
+   "max_ms": 0.1325,
+   "mb": 73.11,
+   "median_ms": 0.09,
+   "min_ms": 0.0639,
+   "output_buffer": "attn_out",
+   "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+   "resolved_kernel": "KernelKey(backend='hip_gfx1100', layer='linear', quant='gguf_q6_k_t16_qmicro_planar_v1', variant='t16_gemv_decode_bf16_bf16_out')",
+   "role": "ffn_down",
+   "shape": [
+    5120,
+    17408
+   ],
+   "shape_b": null,
+   "suffixes": [
+    "ffn_down.weight"
+   ]
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": null,
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0307,
+   "mb": 0.0,
+   "median_ms": 0.0227,
+   "min_ms": 0.0204,
+   "quant_key": "-",
+   "resolved_kernel": "-",
+   "role": "attn_norm",
+   "shape": [
+    1,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": []
+  },
+  {
+   "device": 1,
+   "device_name": "AMD Radeon RX 7900 XTX",
+   "gb_per_s": null,
+   "layers": [
+    3,
+    11,
+    19,
+    27,
+    35,
+    43,
+    51,
+    59
+   ],
+   "max_ms": 0.0276,
+   "mb": 0.0,
+   "median_ms": 0.02,
+   "min_ms": 0.0084,
+   "quant_key": "-",
+   "resolved_kernel": "-",
+   "role": "post_attn_norm",
+   "shape": [
+    1,
+    5120
+   ],
+   "shape_b": null,
+   "suffixes": []
+  }
+ ],
+ "schema": 1
+}
