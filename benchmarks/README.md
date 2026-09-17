@@ -384,9 +384,11 @@ output projection stay batched across rows on both sides of the boundary. On the
 controlled B3 acceptance cases, three runs per arm on this host) the packet's own
 cycle wall measures **8.129 s -> 7.893 s median (-2.9%, mean -3.6%, 7 of 10 cases
 faster)** at unchanged 16/32 split-K calls per case and with every correctness
-flag identical against the serial-exact teacher. The same code under the captured
-target graph at cycle end 1032 passes with the same 32/48/64 split-K calls. This
-is a verifier-route change: the serving limits above are unchanged.
+flag identical against the serial-exact teacher. The same per-row leaves stay
+exact at 2K, 3.6K, and 8K spans, including 32 splits per row at 8K against a
+33-split workspace. The same code under the captured target graph at cycle end
+1032 passes with the same 32/48/64 split-K calls. This is a verifier-route
+change: the serving limits above are unchanged.
 [Eager long-context verifier staged chain](results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two

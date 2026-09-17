@@ -680,5 +680,297 @@
     "wall_seconds includes the serial-exact teacher's per-row decode, which is identical in both arms, so it dilutes the native-arm delta.",
     "This is a verifier-route change, not a serving admission change: long-context MTP serving limits are unchanged.",
     "The page-boundary (255/256/257) and 1032 packets take the captured target graph in this tree, whose drift against the serial teacher is pre-existing and identical at the baseline commit."
-  ]
+  ],
+  "longer_span_packets": {
+    "purpose": "The same per-row leaf resolution at spans far past the split boundary, where each row needs a much larger split count and the split workspace is the binding constraint. Every case is compared against the serial-exact teacher with the same gate as the retained packet.",
+    "command_template": "/home/lhl/miniforge3/envs/therock/bin/python /tmp/lc_path_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends <ends> --candidate-budgets 3 --acceptance-cycle-ends '' --generation-contexts '' --out <out>.json",
+    "packets": [
+      {
+        "cycle_ends": [
+          2048,
+          2049,
+          3584,
+          3585
+        ],
+        "candidate_budgets": [
+          2,
+          3
+        ],
+        "cases": [
+          {
+            "case_id": "end2048-b3",
+            "cycle_end": 2048,
+            "candidate_budget": 3,
+            "start_position": 2044,
+            "rows": 4,
+            "route": "target_graph",
+            "gate_passed": false,
+            "split_k_calls": 64,
+            "workspace_split_count": 15,
+            "required_split_count": 8,
+            "wall_seconds": 1.0871,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end2048-b2",
+            "cycle_end": 2048,
+            "candidate_budget": 2,
+            "start_position": 2045,
+            "rows": 3,
+            "route": "target_graph",
+            "gate_passed": false,
+            "split_k_calls": 48,
+            "workspace_split_count": 15,
+            "required_split_count": 8,
+            "wall_seconds": 0.6447,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end2049-b3",
+            "cycle_end": 2049,
+            "candidate_budget": 3,
+            "start_position": 2045,
+            "rows": 4,
+            "route": "eager",
+            "gate_passed": true,
+            "split_k_calls": 64,
+            "workspace_split_count": 15,
+            "required_split_count": 9,
+            "wall_seconds": 0.7625,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end2049-b2",
+            "cycle_end": 2049,
+            "candidate_budget": 2,
+            "start_position": 2046,
+            "rows": 3,
+            "route": "eager",
+            "gate_passed": true,
+            "split_k_calls": 48,
+            "workspace_split_count": 15,
+            "required_split_count": 9,
+            "wall_seconds": 0.6115,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end3584-b3",
+            "cycle_end": 3584,
+            "candidate_budget": 3,
+            "start_position": 3580,
+            "rows": 4,
+            "route": "target_graph",
+            "gate_passed": false,
+            "split_k_calls": 64,
+            "workspace_split_count": 15,
+            "required_split_count": 14,
+            "wall_seconds": 0.8523,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end3584-b2",
+            "cycle_end": 3584,
+            "candidate_budget": 2,
+            "start_position": 3581,
+            "rows": 3,
+            "route": "target_graph",
+            "gate_passed": false,
+            "split_k_calls": 48,
+            "workspace_split_count": 15,
+            "required_split_count": 14,
+            "wall_seconds": 1.1556,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end3585-b3",
+            "cycle_end": 3585,
+            "candidate_budget": 3,
+            "start_position": 3581,
+            "rows": 4,
+            "route": "eager",
+            "gate_passed": true,
+            "split_k_calls": 64,
+            "workspace_split_count": 15,
+            "required_split_count": 15,
+            "wall_seconds": 1.0952,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end3585-b2",
+            "cycle_end": 3585,
+            "candidate_budget": 2,
+            "start_position": 3582,
+            "rows": 3,
+            "route": "eager",
+            "gate_passed": true,
+            "split_k_calls": 48,
+            "workspace_split_count": 15,
+            "required_split_count": 15,
+            "wall_seconds": 0.943,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          }
+        ]
+      },
+      {
+        "cycle_ends": [
+          8192,
+          8193
+        ],
+        "candidate_budgets": [
+          3
+        ],
+        "cases": [
+          {
+            "case_id": "end8192-b3",
+            "cycle_end": 8192,
+            "candidate_budget": 3,
+            "start_position": 8188,
+            "rows": 4,
+            "route": "target_graph",
+            "gate_passed": false,
+            "split_k_calls": 64,
+            "workspace_split_count": 33,
+            "required_split_count": 32,
+            "wall_seconds": 2.0434,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          },
+          {
+            "case_id": "end8193-b3",
+            "cycle_end": 8193,
+            "candidate_budget": 3,
+            "start_position": 8189,
+            "rows": 4,
+            "route": "eager",
+            "gate_passed": true,
+            "split_k_calls": 64,
+            "workspace_split_count": 33,
+            "required_split_count": 33,
+            "wall_seconds": 1.2017,
+            "exact": {
+              "hidden_exact": true,
+              "kv_rows_exact": true,
+              "linear_state_exact": true,
+              "target_logits_exact": true,
+              "target_top1_exact": true,
+              "acceptance_exact": true,
+              "commit_exact": true,
+              "cursor_exact": true,
+              "rollback_exact": true
+            },
+            "first_kv_mismatch": null,
+            "state_mismatch_indices": []
+          }
+        ]
+      }
+    ],
+    "reading": "Every case on both routes is exact on hidden, touched BF16 K/V rows, Conv/GDN state, logits, top-1, accept summary, cursor, commit and rollback. Cases whose rows resolve the same split count take the captured target graph and fail only the gate's default eager-route expectation; the cases whose rows cross a split-count boundary (end2049, end3585, end8193) take the eager route and pass. At 8K a row needs 32 splits and the workspace holds 33, so the staged chain still owns the layer; a row whose split count exceeded the workspace would decline to the row-wise strict owner instead."
+  }
 }
