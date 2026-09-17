@@ -40,6 +40,17 @@
   delete it if no long-context route is ever qualified. Until then the adapter's
   prompt gate and advertised `max_context_tokens` must keep reading the same
   value so admission and per-cycle policy cannot disagree.
+- The same 1,023 boundary appears on the draft side:
+  `runtime/qwen35_gguf_nextn.py` `_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023`
+  skips the proposal graph past it (`eager_long_context`) and runs the eager
+  proposal chain instead. Both caps are knobs with working fallbacks, not
+  blockers. Assessed 2026-09-17
+  (`worklog/entries/20260917T170209.714945Z-lhl-mtp-long-context-assessment-8122b3.md`):
+  of the four boundaries on this path only the adapter window refuses a request;
+  the target graph bucket and the draft graph decline per cycle into their eager
+  paths, and the split-K boundary picks the exact per-row verifier route. That is
+  why raising the window alone makes long-context MTP slower (0.57x) and why the
+  batched split-K leaf below is the piece that matters.
 
 ## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17)
 
