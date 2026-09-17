@@ -53,5 +53,11 @@
   "nar_seconds": 30.790034924983047,
   "vae_seconds": 22.470349304028787,
   "e2e_seconds": 172.43035842699464
- }
+ },
+ "superseded_by": "results/yue2_ar_matched_timing_20260917.json (fixed-token, both sides timed in the same session)",
+ "known_issues": [
+  "The top-level audio_seconds and frames fields mixed sides: audio_seconds was the reference's 51.88 s while frames was ours (1451, i.e. 58.04 s of audio). The two sides produced different amounts of audio, so the elapsed ratio in the first reading of this artifact (172.45 s against 137.80 s = 1.25x) is not like for like; the real-time-factor ratio (1.12x) compares different outputs too and is reported only as context.",
+  "The bandwidth analysis published with this artifact counted the whole 7.26 GB checkpoint as the AR stage's per-step read. The checkpoint also carries the acoustic weights, and one AR branch reads ~3.57 GB per step (28 layers of q/k/v/o/gate/up/down plus the 756 MB output head), so two serial branch forwards read ~7.15 GB per token, not 13 GB. At 82.13 ms per token that is ~87 GB/s of weight traffic against the reference's ~114 GB/s, both far below this host's ~256 GB/s peak, so the stage is not at a bandwidth ceiling and branch batching is a candidate to measure rather than the only route.",
+  "The 154.1 s whole-path figure was a linear frame normalisation of our 172.45 s run to the reference's 1 297 frames, presented as a measured end-to-end. It is an estimate and is withdrawn; frame-normalising attention-heavy work is not valid."
+ ]
 }

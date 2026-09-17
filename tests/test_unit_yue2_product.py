@@ -16,7 +16,7 @@ import json
 import numpy as np
 import pytest
 
-from hipengine.generation.yue2 import GenerationConfig, SongRequest
+from hipengine.generation.yue2 import GenerationConfig, Sampling, SongRequest
 from hipengine.runtime.yue2_session import (
     SemanticResult,
     SongResult,
@@ -52,11 +52,14 @@ class FakeArSession:
         self.resets = 0
         self.closed = False
         self.plan_calls = 0
+        self.abc_sampling = None
+        self.semantic_sampling = None
 
-    def plan(self, request, **kwargs) -> SymbolicPlan:
+    def plan(self, request, *, sampling=None, **kwargs) -> SymbolicPlan:
         from hipengine.generation.yue2 import token_prefixes
 
         self.plan_calls += 1
+        self.abc_sampling = sampling
         return SymbolicPlan(
             request=request,
             abc=None,
@@ -66,10 +69,15 @@ class FakeArSession:
             truncated=False,
         )
 
-    def generate_semantic(self, plan, **kwargs) -> SemanticResult:
+    def generate_semantic(self, plan, *, sampling=None, **kwargs) -> SemanticResult:
+        # Apply the budget the way the real loop does, so a session whose config never
+        # reaches generation cannot pass a cap-shaped test.
+        self.semantic_sampling = sampling
+        budget = self.config.semantic.max_tokens if sampling is None else sampling.max_tokens
+        tokens = self._tokens[:budget]
         return SemanticResult(
-            plan=plan, tokens=self._tokens, timing={"seconds": 0.0, "output_tokens": 3},
-            truncated=False,
+            plan=plan, tokens=tokens,
+            timing={"seconds": 0.0, "output_tokens": len(tokens)}, truncated=False,
         )
 
     def reset(self) -> None:
@@ -242,6 +250,61 @@ def test_effective_config_records_resolved_settings(session):
         "temperature", "top_p", "top_k", "repetition_penalty", "penalty_window",
         "min_tokens", "max_tokens",
     }
+
+
+def test_a_session_config_is_what_runs_not_just_what_is_recorded():
+    """The recorded settings and the executed settings have to be the same object.
+
+    The session's own ``GenerationConfig`` is what ``effective_config`` reports, so a
+    request that never passes an override has to generate with it too. Resolving the
+    default in the AR session instead let a session record a budget it did not use: a
+    harness capped the semantic phase and generation ran to the AR session's own
+    default.
+    """
+
+    ar = FakeArSession(tokens=tuple(range(1000, 1040)))
+    config = GenerationConfig(
+        abc=Sampling(max_tokens=4, min_tokens=0),
+        semantic=Sampling(max_tokens=6, min_tokens=0),
+    )
+    instance = Yue2Session(ar, FakeNarRuntime(), FakeVaeRuntime(), config=config)
+    try:
+        result = instance.generate(_request())
+        assert len(result.semantic.tokens) == 6, "the session's semantic budget must cap generation"
+        assert ar.semantic_sampling is config.semantic
+        assert ar.abc_sampling is config.abc
+        recorded = instance.effective_config(_request())
+        assert recorded["semantic"]["max_tokens"] == 6
+        assert recorded["abc"]["max_tokens"] == 4
+    finally:
+        instance.close()
+
+
+def test_an_explicit_override_still_beats_the_session_config():
+    ar = FakeArSession(tokens=tuple(range(1000, 1040)))
+    instance = Yue2Session(ar, FakeNarRuntime(), FakeVaeRuntime(),
+                           config=GenerationConfig(semantic=Sampling(max_tokens=6, min_tokens=0)))
+    try:
+        result = instance.generate(_request(), semantic_sampling=Sampling(max_tokens=3, min_tokens=0))
+        assert len(result.semantic.tokens) == 3
+        assert instance.effective_config(
+            _request(), semantic_sampling=Sampling(max_tokens=3, min_tokens=0)
+        )["semantic"]["max_tokens"] == 3
+    finally:
+        instance.close()
+
+
+def test_staged_generation_applies_the_session_config_too():
+    ar = FakeArSession(tokens=tuple(range(1000, 1040)))
+    instance = Yue2Session(ar, FakeNarRuntime(), FakeVaeRuntime(),
+                           config=GenerationConfig(semantic=Sampling(max_tokens=5, min_tokens=0)))
+    try:
+        plan = instance.plan(_request())
+        semantic = instance.generate_semantic(plan)
+        assert len(semantic.tokens) == 5
+        assert ar.semantic_sampling is instance.config.semantic
+    finally:
+        instance.close()
 
 
 # -- end to end (stand-ins) ---------------------------------------------

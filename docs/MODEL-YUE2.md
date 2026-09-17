@@ -491,23 +491,28 @@ Milestone status:
 
   The solver is not the whole path, so the same case was then driven through all
   three stages at the product's 32 steps against the reference's own recorded timing
-  (`scripts/yue2_case_timing.py`). Per token or per frame, **AR semantic decode
-  82.1 ms against 31.3 ms (2.63x slower)**, **acoustic solver 21.2 ms against
-  21.1 ms (matched)**, **FP32 Oobleck decode 15.5 ms against 53.3 ms (3.44x
-  faster)**. Our run produced 1 451 semantic tokens where the reference produced
-  1 297, so the rows are compared per unit and the total is normalised to the
-  reference's frame count: **154.1 s against 137.8 s, 1.12x slower end to end**,
-  with the AR decode at **69%** of the whole path and the whole remaining gap. The
-  cause is measured rather than inferred: the reference's torch path batches both
-  CFG branches into one forward per step (`GraphAR(model, [prefix, negative], ...)`
-  in its `yue2/sampling.py`), while this path forwards each branch separately and so
-  reads the 3.63 B-parameter set twice per token — 13 GB per token against 6.5 GB,
-  which is 158 GB/s of weight traffic at 82.1 ms against the 208 GB/s the
-  reference's 31.3 ms implies, while 415 GB/s with the branches apart is above this
-  host's ~256 GB/s peak. Sharing one read across the branches at the current
-  per-forward efficiency puts the stage near 41 ms per token (whole path 1.37x faster
-  than torch); matching the reference's efficiency would make it **1.56x faster**
-  instead of 1.12x slower. Artifacts:
+  (`scripts/yue2_case_timing.py`). Per unit of work, **AR semantic decode 82.1 ms per
+  token against 31.3 ms (2.63x slower)**, **acoustic solver 21.2 ms per frame against
+  21.1 ms (matched)**, **FP32 Oobleck decode 15.5 ms per frame against 53.3 ms (3.44x
+  faster)**. The two sides produced different amounts of audio (1 451 semantic tokens
+  / 58.04 s against the reference's 1 297 / 51.88 s, because each samples its own
+  trajectory), so the wall clocks are not like for like: 172.45 s against 137.80 s is
+  1.25x raw and 1.12x by real-time factor, and no whole-path ratio is claimed from
+  this pair. The AR row is the entire remaining gap and the stage is 69% of our
+  elapsed time. Its cause is measured: the reference's torch path batches both CFG
+  branches into one forward per step (`GraphAR(model, [prefix, negative], ...)` in its
+  `yue2/sampling.py`), while this path forwards each branch separately and so makes one
+  extra pass over that branch's weights per token — a branch reads ~3.575 GB per step
+  (28 layers of projections plus the 756 MB output head, from the checkpoint's own
+  tensor sizes), so two serial forwards read ~7.15 GB per token against the reference's
+  3.575 GB, which is 87 GB/s of weight traffic at 82.1 ms against the reference's
+  114 GB/s. Both are far below this host's ~256 GB/s LPDDR5X peak, so the stage is not
+  at a bandwidth ceiling: branch batching is a candidate to measure rather than a
+  proven route, and the current GEMV launches one block per (output element, row), so
+  a two-row forward re-reads the weights unless the kernel loops over rows inside a
+  block. This host's single-row decode GEMVs are documented at 20-28% of peak
+  (`scripts/gguf_q8_0_dense_bw_microbench.py`), which is the family the AR decode
+  belongs to. Artifacts:
   `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
   `benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
   `benchmarks/results/yue2_m7_attention_20260917.json`,

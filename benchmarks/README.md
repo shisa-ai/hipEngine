@@ -1561,30 +1561,40 @@ The stage comparison above replays recorded conditioning, so it never times the 
 stage. `scripts/yue2_case_timing.py` drives one recorded case through the complete
 product path at the product's 32 ODE steps - plan, semantic decode, solve, decode -
 and prints each stage against the reference's own recorded timing for that request
-(`mandarin-off-s1234`, 51.9 s of audio):
+(`mandarin-off-s1234`). Per unit of work, which is the like-for-like reading:
 
-| Stage | hipEngine | Reference | Ratio | Matched unit |
-| --- | ---: | ---: | ---: | --- |
-| AR semantic decode | 119.16 s | 40.60 s | **2.63x slower** | 82.1 vs 31.3 ms per token |
-| Acoustic solver, 32 steps | 30.79 s | 27.32 s | 1.01x slower | 21.2 vs 21.1 ms per frame |
-| FP32 Oobleck decode | 22.47 s | 69.09 s | **3.44x faster** | 15.5 vs 53.3 ms per frame |
-| Whole path | 154.1 s | 137.8 s | 1.12x slower | normalised to 1 297 frames |
+| Stage | hipEngine | Reference | Ratio |
+| --- | ---: | ---: | ---: |
+| AR semantic decode | 82.1 ms per token | 31.3 ms per token | **2.63x slower** |
+| Acoustic solver, 32 steps | 21.2 ms per frame | 21.1 ms per frame | 1.01x slower |
+| FP32 Oobleck decode | 15.5 ms per frame | 53.3 ms per frame | **3.44x faster** |
 
-The run generates 1 451 semantic tokens where the reference generated 1 297, so
-every row is compared per token or per frame and the total is normalised to the
-reference's frame count. The two stages this campaign worked on are now matched
-(the solver) and 3.4x ahead (the decoder); the AR decode is 69% of the whole path
-and is the entire remaining gap. The reference's torch path batches both CFG
-branches into one forward per step (`GraphAR(model, [prefix, negative], ...)` in its
-`yue2/sampling.py`), while the torch-free path forwards each branch separately and
-therefore reads the 3.63 B-parameter weight set twice per token: 13 GB per token
-against 6.5 GB for the reference, which is 158 GB/s of weight traffic at our 82.1 ms
-against the 208 GB/s the reference's 31.3 ms implies. Reaching 415 GB/s by running
-the branches apart is above this host's ~256 GB/s peak, so sharing one read across
-them is the lever: at our current per-forward efficiency it puts the stage near
-41 ms per token, and matching the reference's efficiency would make the whole path
-**1.56x faster** than torch instead of 1.12x slower. Evidence:
-[`product case timing`](results/yue2_product_case_timing_20260917.json).
+The two sides produced different amounts of audio - our run generated 1 451 semantic
+tokens (58.04 s) where the reference's recorded run generated 1 297 (51.88 s), because
+each samples its own trajectory - so the wall clocks are not directly comparable:
+172.45 s against 137.80 s is a raw elapsed ratio of 1.25x, and the real-time factors
+(2.97 against 2.66) give 1.12x. Neither is a like-for-like claim, and a frame
+normalisation of one onto the other is not valid for attention-heavy work; the
+per-unit rows are the comparison, and the whole-path figure awaits a fixed-token run
+of both sides.
+
+The AR row is the entire remaining gap, and the stage is 69% of our elapsed time. The
+reference's torch path batches both CFG branches into one forward per step
+(`GraphAR(model, [prefix, negative], ...)` in its `yue2/sampling.py`), while this path
+forwards each branch separately, which costs one extra pass over that branch's weights
+per token. A branch reads ~3.575 GB per step - 28 layers of q/k/v/o/gate/up/down plus
+the 756 MB output head, from the checkpoint's own tensor sizes - so two serial forwards
+read ~7.15 GB per token against the reference's 3.575 GB. At 82.1 ms per token that is
+87 GB/s of weight traffic against the reference's 114 GB/s, and both are far below this
+host's ~256 GB/s LPDDR5X peak. The stage is therefore not at a bandwidth ceiling:
+branch batching is a candidate to measure, not a proven route, and the current GEMV
+launches one block per (output element, row), so a two-row forward would re-read the
+weights unless the kernel loops over rows inside a block. This host's single-row decode
+GEMVs are already documented at 20-28% of peak
+(`scripts/gguf_q8_0_dense_bw_microbench.py`), which is the efficiency family the AR
+decode belongs to. Evidence:
+[`product case timing`](results/yue2_product_case_timing_20260917.json), whose
+`known_issues` records the readings withdrawn from the first version of this section.
 
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 
