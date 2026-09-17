@@ -1690,6 +1690,31 @@ Each branch keeps its own KV spans and its own positions (this case's positive p
 [`step timing`](results/yue2_ar_matched_timing_20260917.json),
 gate `tests/test_unit_yue2_ar_gemv_rowtile2.py`.
 
+### Radeon 8060S: YuE2 3B phase-windowed output head
+
+`distribution` masks every row outside a phase's domain and the phase's end token to
+`-inf` before any other arithmetic, so a phase can only ever select inside its own
+window: 32 769 rows for `semantic` (the 32 768 codec tokens plus `MUSIC_END`, 17.7% of the
+vocabulary) and 151 849 for `abc`. The head projects just that slice and returns a
+full-vocabulary row that is `-inf` outside it, which is what the sampler would have
+masked anyway.
+
+| Phase | Head, full 184 704 rows | Head, windowed | Speedup | Rows | Weight read |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `semantic` | 3.830 ms | **0.795 ms** | **4.82x** | 32 769 | 722 MiB → 128 MiB |
+| `abc` | 3.829 ms | 3.635 ms | 1.05x | 151 849 | 722 MiB → 593 MiB |
+
+The production session loop, windowed against a control that forces the full projection,
+at temperature 1.0 on `mandarin-off-s1234`: **60.14 ms → 56.23 ms per token** (1.07x,
+3.91 ms per token saved) with **identical tokens and identical RNG state**. The saving is
+larger than the head call's own 3.0 ms because the device-to-host row shrinks from 739 KB
+to 131 KB as well. The windowed row is bit-identical to the full projection inside the
+window and `-inf` outside it, for both phases, and `distribution` over either row produces
+identical scores, masks, softmax probabilities and top-1. Evidence:
+[`window validation`](results/yue2_ar_head_window_20260917.json). The unwindowed call
+remains the route the replay matrix and the matched-timing harnesses use, so the AR replay
+gate above still scores full-vocabulary rows and is unchanged (pooled mean KL 1.1579e-3).
+
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 
 The NAR attention kernel walked the key/value cache once per (query row, query

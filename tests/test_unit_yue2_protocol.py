@@ -36,6 +36,9 @@ from hipengine.generation.yue2 import (
     midpoint_schedule,
     natural_output_length,
     negative_prefix,
+    phase_domain,
+    phase_end_token,
+    phase_window,
     resolve_sampling,
     softmax_f32,
     time_shift,
@@ -466,3 +469,67 @@ def test_rng_standard_normal_distribution_is_sane():
     assert abs(float(sample.mean())) < 0.05
     assert abs(float(sample.std()) - 1.0) < 0.05
     assert np.isfinite(sample).all()
+
+
+def test_phase_window_contains_exactly_the_selectable_rows():
+    """The head's projection window must cover every row a phase can select.
+
+    `distribution` is the only consumer of the head's row in the product path, and it
+    masks everything outside `phase_domain(phase)` and the phase's end token to -inf
+    (see `test_distribution_masks_phase_domain_and_min_length`). A windowed projection
+    is therefore equivalent exactly when the window holds both sets, which is what the
+    runtime's `logits(domain=...)` relies on.
+    """
+
+    wide = Sampling(top_k=VOCAB_SIZE, top_p=1.0, min_tokens=0)
+    for phase in ("semantic", "abc"):
+        low, high = phase_window(phase)
+        assert (low, high) == (min(phase_domain(phase)[0], phase_end_token(phase)),
+                               max(phase_domain(phase)[1], phase_end_token(phase) + 1))
+        # After min_tokens the end token is allowed too, so nothing outside the window
+        # may survive the mask.
+        logits = np.zeros(VOCAB_SIZE, dtype=np.float32)
+        scores = distribution(logits, wide, [], wide.min_tokens, phase)
+        finite = np.flatnonzero(np.isfinite(scores))
+        assert finite.size > 0
+        assert finite.min() >= low and finite.max() < high, phase
+        # Inside the window, only the masked filler between a domain's end and its end
+        # token is ever non-finite, and only for `abc`.
+        inside = np.flatnonzero(~np.isfinite(scores[low:high])) + low
+        if phase == "abc":
+            assert np.array_equal(inside, np.arange(phase_domain("abc")[1], ABC_END))
+        else:
+            assert inside.size == 0
+        # The semantic window is the codec range plus its end token, which is what makes
+        # it worth projecting separately.
+        if phase == "semantic":
+            assert (low, high) == (MUSIC_END, CODEC_OFFSET + CODEC_SIZE)
+            assert (high - low) < VOCAB_SIZE / 5
+
+
+def test_phase_window_rejects_unknown_phases():
+    with pytest.raises(ValueError):
+        phase_window("chorus")
+
+
+def test_combine_cfg_keeps_masked_rows_masked():
+    """A windowed row is -inf where a phase cannot select, so CFG must not make NaN.
+
+    `-inf - -inf` is NaN, and a NaN score disables the sampler's top-k stage
+    (`NaN < threshold` is False), so the combination has to leave non-finite rows
+    non-finite. On rows where both sides are finite the arithmetic is unchanged.
+    """
+
+    conditional = np.asarray([1.5, -2.25, 3.0], dtype=np.float32)
+    unconditional = np.asarray([0.5, -1.0, -np.inf], dtype=np.float32)
+    combined = combine_cfg(conditional, unconditional, 1.5)
+    assert combined[2] == -np.inf and not np.isnan(combined[2])
+    # The finite rows still follow `neg + scale * (pos - neg)` in BF16.
+    for index in (0, 1):
+        expected = bf16(
+            bf16(unconditional[index])
+            + bf16(np.float32(1.5) * bf16(bf16(conditional[index]) - bf16(unconditional[index])))
+        )
+        assert combined[index] == expected
+    # Scale 1.0 returns the conditional row untouched, as the reference does.
+    assert np.array_equal(combine_cfg(conditional, unconditional, 1.0), bf16(conditional))
