@@ -1241,7 +1241,7 @@ through the production launch entry points, per launch, same rotation protocol:
 | projection | shape (out x in) | W7900 | RX 7900 XTX |
 | --- | --- | ---: | ---: |
 | `attn_q` | 12288 x 5120 | 35.4 MB, 59.9 us, **591 GB/s** | 66.6 us, 532 GB/s |
-| `attn_k` + `attn_v` pair | 1024 x 5120 each | 7.2 MB, 45.8 us, **158 GB/s** | 46.7 us, 155 GB/s |
+| `attn_k` + `attn_v` pair | 1024 x 5120 each (Q4_K + planar-Q6) | 7.2 MB, 32.8 us, **221 GB/s** | 30.6 us, 237 GB/s |
 | `attn_output` | 5120 x 6144 | 17.7 MB, 34.3 us, 516 GB/s | 33.2 us, 534 GB/s |
 | `attn_qkv` + `attn_gate` pair | 10240/6144 x 5120 | 60.7 MB, 92.9 us, 654 GB/s | 78.4 us, 774 GB/s |
 | `ssm_out` | 5120 x 6144 | 21.6 MB, 40.0 us, 540 GB/s | 33.1 us, 653 GB/s |
@@ -1261,11 +1261,24 @@ Three conclusions, and they redirect the campaign:
   alpha/beta, conv, and the GDN recurrence. Across 16 + 48 layers that is
   **3.82 ms/token**, 15.8% of the 24.155 ms wall, and both ranks pay all of it
   because the attention/GDN weights are replicated.
-- **The worst single projection is the smallest one.** The `attn_k`/`attn_v`
-  pair moves 7.2 MB in 45.8 us (158 GB/s) because a pair launch at
-  `out=1024` is fixed-cost-bound; 16 of those are 0.73 ms/token. A Q4_K
-  `q`+`k`+`v` triple fusion would recover ~30 us in each of the 16
-  full-attention layers (the Q8_0/T16 triple path exists but declines Q4_K).
+- **The worst single projection was the smallest one, and it was a policy
+  miss, not a kernel miss.** The `attn_k`/`attn_v` pair moved 7.2 MB in 45.8 us
+  (158 GB/s) because a pair launch at `out=1024` is fixed-cost-bound; 16 of
+  those were 0.73 ms/token. The exact block-parallel narrow K/V pair kernel was
+  already registered on gfx1100 - only the two policy declarations were missing
+  (the c1 table entry routing the shape's Q4_K K singleton to the col4 sibling
+  the pair composes from, and the shape capability itself), so both ranks now run
+  one fused launch of `narrow_col4_planar_pair_bf16_bf16_out` (V is planar-Q6 in
+  this quantization): **32.8 us on the W7900 and 30.6 us on the RX 7900 XTX**,
+  saving 13.0 and 16.1 us in each of the 16 full-attention layers (**0.21 / 0.26
+  ms/token** isolated). The graphed schedule already hid part of the launch
+  cost, so the measured wall moves by less: **TP2 p50 24.155 -> 24.025 ms/token
+  (-0.54%)**, TP1 W7900 31.753 -> 31.713, TP1 XTX 26.329 -> 26.256, with every
+  repeat below the previous cell's range and bit-identical logits.
+  The remaining lever there is a Q4_K `q`+`k`+`v` triple, which is now worth
+  less than it looked: `attn_q` already runs at 594 GB/s and the fused pair's
+  marginal rate is close to it, so folding K/V into the Q launch mostly moves
+  the same fixed cost rather than removing it.
 
 The consequence for the plan: the traffic-implied 19.629 ms floor assumes every
 byte moves at the resident route's *blended* rate, and the resident route only

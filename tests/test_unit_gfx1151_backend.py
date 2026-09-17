@@ -1885,6 +1885,11 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
     ) == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+            # 3d7254090 admitted the TP2 MLP shard shape (17408/2 = 8704) under
+            # the same gate as the full-width row; the kernel's shape contract
+            # already covered it and the slice probe was bit-identical to the
+            # unfused chain on both ranks. This expectation lagged that commit.
+            (1, 5_120, 8_704): "dense_dual_local32_bf16_bf16_out",
         },
         # The Q5 decode dual admitted in the UD campaign (8r2 lane): same-
         # launch gate+up SiLU GEMV for the Q5 FFN role, keyed by the stamp.
@@ -2640,10 +2645,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
     # 2026-09-13: the Q5T16 single-wave verifier rowtile (43fdf9129) registered
     # its own c1 variant table on this backend, so the alias check is no longer
-    # an empty-table equality.
+    # an empty-table equality. 2026-09-17: the Qwen3.8-27B K/V shape joins it,
+    # routed to the col4 owner so the registered narrow K/V pair can compose
+    # from it (device gate: tests/test_gpu_qwen38_narrow_kv_pair.py).
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
     ) == {
+        "gguf_q4_k_t16_v1": {
+            (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
+        },
         "gguf_q5_k_t16_v1": {
             shape: "dense_single_local32_bf16_bf16_out"
             for shape in (
