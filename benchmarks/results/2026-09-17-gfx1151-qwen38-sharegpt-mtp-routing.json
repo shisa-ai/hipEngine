@@ -30,6 +30,76 @@
     "vllm_bench": "python -m vllm.entrypoints.cli.main bench serve --backend openai-chat --base-url http://127.0.0.1:<port> --endpoint /v1/chat/completions --model qwen3.8-27b-q4km --tokenizer Qwen/Qwen3.8-27B --dataset-name sharegpt --dataset-path <dataset> --sharegpt-output-len 128 --num-prompts <n> --max-concurrency <c> --percentile-metrics ttft,tpot,itl,e2el --metric-percentiles 50,95,99 --save-result --result-dir /tmp/sharegpt-pass2 --result-filename vllm-bench-c<c>.json",
     "vllm_version": "0.22.1rc1.dev499+g470229c37.d20260616"
   },
+  "concurrency_fix": {
+    "after": {
+      "driver_tracebacks": 0,
+      "harness_c4": {
+        "decode_tokens_per_second": 25.04,
+        "failed_requests": 0,
+        "median_first_token_ms": 3693,
+        "mtp_output_share": 0.1274,
+        "mtp_request_share": 0.2083,
+        "mtp_requests": 5,
+        "non_mtp_reasons": {
+          "no_provider": 13,
+          "prompt_activation_in_flight": 6
+        },
+        "reading": [
+          "19 of 24 requests never entered speculation (mtp=0, first_fallback_position=0, reason no_provider or prompt_activation_in_flight) and the rate-cliff detector found nothing to measure, because no request left speculation mid-stream.",
+          "5 requests did run MTP: three (prompts 264, 423, 645 tokens) covered 127 of 128 tokens at depth 3, and two (prompts 805, 841 tokens) emitted 123-125 autoregressive tokens first and then caught up to 2-3 speculative cycles at the end of the request. Those two report first_fallback_position=null, which is correct: the field locates the first non-speculative token after speculative output, and their speculative output came last.",
+          "So the null reading means 'no fallback after speculation' in both directions: MTP covered the tail, either from the prompt root or after a late catch-up."
+        ],
+        "requests": 24,
+        "wall_seconds": 121.9
+      },
+      "long_prompt_probe": "four concurrent ~330-token prompts (the crash reproducer): 4 of 4 completed, 0 driver tracebacks, two rows reported prompt_activation_in_flight",
+      "vllm_bench_c4": {
+        "benchmark_duration_s": 107.53,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 17803.13,
+        "mean_tpot_ms": 140.16,
+        "mean_ttft_ms": 118.71,
+        "median_tpot_ms": 142.52,
+        "median_ttft_ms": 55.42,
+        "output_token_throughput_per_second": 28.39,
+        "p99_ttft_ms": 429.6,
+        "total_token_throughput_per_second": 85.33
+      },
+      "vllm_bench_c8": {
+        "benchmark_duration_s": 147.29,
+        "completed": 32,
+        "failed": 0,
+        "mean_e2el_ms": 34700.94,
+        "mean_tpot_ms": 277.04,
+        "mean_ttft_ms": 552.73,
+        "median_tpot_ms": 299.88,
+        "median_ttft_ms": 125.96,
+        "output_token_throughput_per_second": 27.23,
+        "p99_ttft_ms": 2812.53,
+        "total_token_throughput_per_second": 82.13
+      }
+    },
+    "before": {
+      "driver_tracebacks": "one per server lifetime on three fresh servers",
+      "harness_c4": "4 requests completed, 20 failed",
+      "vllm_bench_c4": {
+        "completed": 8,
+        "failed": 16,
+        "mean_tpot_ms": 182.27,
+        "output_token_throughput_per_second": 8.7
+      },
+      "vllm_bench_c8": {
+        "completed": 11,
+        "failed": 21,
+        "mean_tpot_ms": 203.57,
+        "output_token_throughput_per_second": 8.71
+      }
+    },
+    "remaining_gap": "MTP still does not run for most concurrent requests, for reasons that are recorded rather than fatal: the serving evidence row for this cell matches only realized_group_rows == 1, so a request admitted while it is alone is later batched into a wider decode group and realizes effective_route=default; and a group mixing rows with and without a draft provider fails closed before provider mutation. 5 of 24 c=4 requests did run MTP, so the path is reachable under concurrency but not reliable.",
+    "source": "worklog/entries/20260917T165119.888504Z-lhl-mtp-prompt-activation-concurrency-1ff172.md",
+    "summary": "A prompt longer than max_prefill_chunk_tokens (256) holds the MTP prompt activation claim across ticks, so a second request starting its prefill hit a raise inside the driver thread, which closed the engine service. The guard now refuses only the rows that are not already streaming, records prompt_activation_in_flight on them, and keeps the engine alive."
+  },
   "dataset": {
     "loader": "vLLM ShareGPT pruning criteria (prompt 4..1024 tokens, total 4..2048), first turn as prompt, second turn as expected output length",
     "output_len_override": 128,
@@ -573,6 +643,49 @@
   "next": "Fix the prompt-activation guard (allow concurrent activations or scope the guard per group) and make a request-level failure unable to kill the service, then re-run this pass at c=4 and c=8.",
   "purpose": "Answer, on a real workload, how many requests run MTP and why the others do not, with the standard serving metrics from the same load.",
   "server": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port <port> --log-level info (no speculative flags; automatic MTP resolves to depth 3 from model evidence)",
+  "settings_classification": {
+    "capability_gaps": {
+      "ignore_eos=true": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "cycle termination and stop semantics are not wired for a request that must not stop on EOS"
+      },
+      "logit_bias, penalties other than identity": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "processors change the selected token, so the verifier would have to apply them at each verified position"
+      },
+      "logprobs / top_logprobs": {
+        "observed": "sampling_mode_not_qualified; 6.7 s against 2.9 s",
+        "why": "token selection is unchanged under greedy, but the verified positions must expose the top-k logits the response contract promises"
+      },
+      "min_tokens": {
+        "observed": "rejected with 'min_tokens requires eos_token_id' (a coherent validation chain, not a silent downgrade)",
+        "why": "min_tokens and eos_token_id are both on the incompatible list, so no route can be admitted"
+      },
+      "multi-token stop sequences": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "a cycle can cross a stop sequence inside the cycle, so the commit path would have to trim to the boundary"
+      },
+      "temperature > 0": {
+        "impact": "this is the setting real clients send most often, so it is the largest lost-opportunity item",
+        "observed": "route=default, decision_reason=sampling_mode_not_qualified, requested_route=speculative_mtp; 7.9 s for the probe against 2.9 s with MTP",
+        "why": "the verifier accepts a draft when it matches the target's greedy token, which is not the sampling distribution at temperature > 0; correct speculation needs a rejection test, which is not implemented"
+      }
+    },
+    "documentation_inconsistency": "stop_token_ids is listed in SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS but the API rejects the parameter outright with HTTP 400 unsupported_parameter, so the condition can never be reached through the OpenAI surface.",
+    "method": "One request per setting against a live default-configuration server (gfx1151, Qwen3.8-27B-Q4_K_M, greedy unless stated), same prompt and 64-token budget, reading hipengine.generation_shape.route / .route_decision and hipengine.speculative_mtp.effective_route/.used.",
+    "not_a_blocker": "The response contract already distinguishes selected from realized routing: a refused or downgraded request reports effective_route=default with used=false and a specific fallback_reason, alongside selected_route=speculative_mtp. The recorder did not capture effective_route, which is why the first pass read as a route that lied.",
+    "verified_non_blockers": {
+      "candidate budget": "auto resolved to depth 3 and nearly every cycle selected depth 3",
+      "max_tokens 2..8": "MTP ran with a smaller depth; max_tokens=1 emitted the single token autoregressively with no fallback reason",
+      "prompt length to 841 tokens": "MTP ran; the 1,023-token window did not limit the longest prompt",
+      "repetition_penalty=1.0, presence_penalty=0.0": "MTP ran (identity values)",
+      "seed=42": "MTP ran",
+      "streaming": "MTP ran with stream=true; a stream=false response carries no hipengine telemetry block at all, so the route is invisible to a blocking client even though it runs",
+      "temperature=0.0 explicit": "MTP ran (2.9 s for the probe)",
+      "thinking enabled or disabled": "MTP ran in both cases (24 of 24 ShareGPT requests streamed a thinking block and all ran MTP)",
+      "top_p=0.9, top_p=1e-8, top_k=50": "MTP ran; these cannot change an argmax"
+    }
+  },
   "source": "worklog/entries/20260917T163015.016458Z-lhl-sharegpt-mtp-routing-pass-281f2d.md",
   "status": "diagnostic serving measurement; not a retained benchmark row (the c>=4 arms are blocked, and the c=1 rate will be re-measured after the prompt-activation fix)",
   "superseded_reading": "worklog/entries/20260917T162126.651176Z-lhl-sharegpt-mtp-routing-pass-8d7978.md (c=1 first-token latency and token-level fallback attribution)",

@@ -3342,6 +3342,147 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     assert released_pool == []
 
 
+def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> None:
+    """A chunked prefill holds its claim across ticks; a second request is refused.
+
+    The refusal must be reported on the refused row instead of failing the
+    engine service, and it must not disturb the activation already streaming.
+    """
+
+    runtime = SimpleNamespace()
+    targets = {
+        rid: SimpleNamespace(
+            runtime=runtime,
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            runner=SimpleNamespace(
+                hidden_size=4,
+                weights=SimpleNamespace(
+                    root=lambda name: SimpleNamespace(
+                        allocation=lambda: SimpleNamespace(
+                            tensor=SimpleNamespace(ptr=0x6000)
+                        )
+                    ),
+                    config=SimpleNamespace(rms_norm_eps=1e-6),
+                ),
+            ),
+            _prefill_hidden_a=DeviceBuffer(0x5000 + rid * 0x100, 16),
+        )
+        for rid in (7, 8)
+    }
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prompt_ids=(11 + rid, 22 + rid),
+            lease=SimpleNamespace(session=targets[rid]),
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=3,
+            mtp2_prompt_streaming=False,
+            mtp2_prompt_fallback_reason=None,
+        )
+        for rid in (7, 8)
+    }
+    acquisitions: list[str] = []
+
+    class Executor:
+        hidden_size = 4
+        max_requests = 4
+        runtime = targets[7].runtime
+
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            pass
+
+    class Provider:
+        executor = Executor()
+
+        def reset_request(self, request_id) -> None:
+            pass
+
+        def release_request(self, request_id) -> None:
+            pass
+
+    provider = Provider()
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="strict",
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: (
+                acquisitions.append("provider"),
+                provider,
+                "pool",
+                False,
+            )[1:],
+            _release_mtp_draft_runner=lambda key, owned: None,
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: rows[int(request_id)],
+    )
+
+    class Sink:
+        hidden_size = 4
+
+        def __init__(self, *, request_id, prompt_tokens, **kwargs) -> None:
+            self.request_id = int(request_id)
+
+        def take_final_pending_buffer(self):
+            return DeviceBuffer(0x7000 + self.request_id * 0x100, 16)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", Sink, raising=False)
+    monkeypatch.setattr(
+        mtp2_module, "malloc", lambda *args, **kwargs: DeviceBuffer(0x9000, 16)
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda buffer, **kwargs: None)
+    monkeypatch.setattr(
+        mtp2_module, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    adapter.register_request(7, 3)
+    adapter.register_request(8, 3)
+    adapter.physical_prompt_streaming = True
+
+    # Request 7 opens the activation; its prompt is still being prefilled.
+    sinks = adapter.begin_prompt_streaming((7,), checkpoints={})
+    assert sinks is not None and sinks[0] is not None
+    claim = adapter._active_prompt_claims
+    assert claim is not None
+
+    # Request 8 arrives while 7's activation is open: refused, not fatal.
+    assert adapter.begin_prompt_streaming((8,), checkpoints={}) is None
+    assert rows[8].mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
+    assert rows[8].mtp2_candidate_budget == 0
+    assert rows[7].mtp2_prompt_fallback_reason is None
+    assert rows[7].mtp2_candidate_budget == 3
+    assert adapter._active_prompt_claims is claim
+    assert adapter._prompt_streaming_sinks[7] is sinks[0]
+    assert 8 not in adapter._prompt_streaming_sinks
+    assert acquisitions == ["provider"]
+
+    # A mixed call keeps the streaming row and refuses only the new one.
+    mixed = adapter.begin_prompt_streaming((7, 8), checkpoints={})
+    assert mixed is not None and mixed[0] is sinks[0] and mixed[1] is None
+    assert acquisitions == ["provider"]
+
+    # Releasing the activation lets a later request activate normally.
+    adapter.finish_prompt_streaming((7,), success=True, stream=0)
+    assert adapter._active_prompt_claims is None
+    rows[8].mtp2_candidate_budget = 3
+    rows[8].mtp2_prompt_fallback_reason = None
+    reopened = adapter.begin_prompt_streaming((8,), checkpoints={})
+    assert reopened is not None and reopened[0] is not None
+    # The released group's provider is reused rather than re-acquired.
+    assert acquisitions == ["provider"]
+    assert adapter._prompt_streaming_group_keys[8] == (7,)
+    adapter.finish_prompt_streaming((8,), success=True, stream=0)
+
+
 def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -> None:
     group = SimpleNamespace(
         key=(7,),
