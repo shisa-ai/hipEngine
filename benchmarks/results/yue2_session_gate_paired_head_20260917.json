@@ -1,0 +1,493 @@
+{
+  "cases": {
+    "english-full-s1234": {
+      "abc": {
+        "agreement": 0.24227642276422764,
+        "first_divergence": 128,
+        "length_delta": -40,
+        "matches": 149,
+        "produced_tokens": 615,
+        "reference_tokens": 655
+      },
+      "abc_aligned": true,
+      "abc_exact_head": true,
+      "abc_exact_window": 16,
+      "abc_forced": {
+        "agreement": 0.9908396946564886,
+        "first_mismatch": 128,
+        "matches": 649,
+        "mismatch_count": 6,
+        "mismatches": [
+          {
+            "gap": 0.035511016845703125,
+            "greedy_score": 21.14427947998047,
+            "greedy_token": 23,
+            "margin": 0.035511016845703125,
+            "reference_score": 21.108768463134766,
+            "reference_token": 19,
+            "step": 128
+          },
+          {
+            "gap": 0.03733062744140625,
+            "greedy_score": 20.5,
+            "greedy_token": 68,
+            "margin": 0.03733062744140625,
+            "reference_score": 20.462669372558594,
+            "reference_token": 38,
+            "step": 216
+          },
+          {
+            "gap": 0.098388671875,
+            "greedy_score": 19.776119232177734,
+            "greedy_token": 68,
+            "margin": 0.098388671875,
+            "reference_score": 19.677730560302734,
+            "reference_token": 66,
+            "step": 346
+          },
+          {
+            "gap": 0.12437820434570312,
+            "greedy_score": 21.890546798706055,
+            "greedy_token": 46316,
+            "margin": 0.12437820434570312,
+            "reference_score": 21.76616859436035,
+            "reference_token": 1,
+            "step": 368
+          },
+          {
+            "gap": 0.10457801818847656,
+            "greedy_score": 21.019901275634766,
+            "greedy_token": 36,
+            "margin": 0.10457801818847656,
+            "reference_score": 20.91532325744629,
+            "reference_token": 37,
+            "step": 489
+          },
+          {
+            "gap": 0.07486534118652344,
+            "greedy_score": 19.826120376586914,
+            "greedy_token": 37,
+            "margin": 0.07486534118652344,
+            "reference_score": 19.75125503540039,
+            "reference_token": 33,
+            "step": 515
+          }
+        ],
+        "steps": 655
+      },
+      "passed": true,
+      "plan_prefix_tokens": 726,
+      "prefill_fallback": null,
+      "prefix_exact": true,
+      "prefix_tokens": 766,
+      "request": {
+        "abc": null,
+        "cfg_scale": null,
+        "cot": "full",
+        "id": "english-full-s1234",
+        "lyrics": "[Verse]\nMorning light across the floor\nFootsteps finding something more\nOpen windows catch the rain\nEvery road comes home again\n[Chorus]\nCarry on into the blue\nThere is room for something new\nHold the rhythm, let it stay\nWe will sing another day",
+        "seed": 1234,
+        "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
+      },
+      "seconds": 36.52236213802826,
+      "semantic": {
+        "agreement": 0.01171875,
+        "first_divergence": 2,
+        "length_delta": 0,
+        "matches": 6,
+        "produced_tokens": 512,
+        "reference_tokens": 512
+      },
+      "semantic_aligned": true,
+      "semantic_context_aligned": false,
+      "semantic_exact_head": false,
+      "semantic_exact_window": 16,
+      "semantic_forced": {
+        "agreement": 0.982421875,
+        "first_mismatch": 12,
+        "matches": 503,
+        "mismatch_count": 9,
+        "mismatches": [
+          {
+            "gap": 0.125,
+            "greedy_score": 16.75,
+            "greedy_token": 162954,
+            "margin": 0.125,
+            "reference_score": 16.625,
+            "reference_token": 162931,
+            "step": 12
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 19.125,
+            "greedy_token": 177811,
+            "margin": 0.125,
+            "reference_score": 19.0,
+            "reference_token": 171400,
+            "step": 19
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 19.75,
+            "greedy_token": 161817,
+            "margin": 0.0,
+            "reference_score": 19.75,
+            "reference_token": 163897,
+            "step": 37
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 18.375,
+            "greedy_token": 170676,
+            "margin": 0.125,
+            "reference_score": 18.25,
+            "reference_token": 162106,
+            "step": 85
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 16.0,
+            "greedy_token": 162124,
+            "margin": 0.0,
+            "reference_score": 16.0,
+            "reference_token": 183211,
+            "step": 193
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 21.0,
+            "greedy_token": 174746,
+            "margin": 0.125,
+            "reference_score": 20.875,
+            "reference_token": 165832,
+            "step": 370
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 20.625,
+            "greedy_token": 164357,
+            "margin": 0.0,
+            "reference_score": 20.625,
+            "reference_token": 169832,
+            "step": 386
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 17.5,
+            "greedy_token": 168096,
+            "margin": 0.125,
+            "reference_score": 17.375,
+            "reference_token": 163221,
+            "step": 435
+          }
+        ],
+        "steps": 512
+      },
+      "truncated_abc": false,
+      "truncated_abc_expected": false,
+      "truncated_semantic": true,
+      "truncated_semantic_expected": true
+    },
+    "english-melody-s1234": {
+      "abc": {
+        "agreement": 0.3389830508474576,
+        "first_divergence": 159,
+        "length_delta": -50,
+        "matches": 180,
+        "produced_tokens": 531,
+        "reference_tokens": 581
+      },
+      "abc_aligned": true,
+      "abc_exact_head": true,
+      "abc_exact_window": 16,
+      "abc_forced": {
+        "agreement": 0.9965576592082617,
+        "first_mismatch": 159,
+        "matches": 579,
+        "mismatch_count": 2,
+        "mismatches": [
+          {
+            "gap": 0.03156280517578125,
+            "greedy_score": 21.78156280517578,
+            "greedy_token": 19,
+            "margin": 0.03156280517578125,
+            "reference_score": 21.75,
+            "reference_token": 21,
+            "step": 159
+          },
+          {
+            "gap": 0.008283615112304688,
+            "greedy_score": 22.127124786376953,
+            "greedy_token": 19,
+            "margin": 0.008283615112304688,
+            "reference_score": 22.11884117126465,
+            "reference_token": 21,
+            "step": 402
+          }
+        ],
+        "steps": 581
+      },
+      "passed": true,
+      "plan_prefix_tokens": 643,
+      "prefill_fallback": null,
+      "prefix_exact": true,
+      "prefix_tokens": 693,
+      "request": {
+        "abc": null,
+        "cfg_scale": null,
+        "cot": "melody",
+        "id": "english-melody-s1234",
+        "lyrics": "[Verse]\nMorning light across the floor\nFootsteps finding something more\nOpen windows catch the rain\nEvery road comes home again\n[Chorus]\nCarry on into the blue\nThere is room for something new\nHold the rhythm, let it stay\nWe will sing another day",
+        "seed": 1234,
+        "style": "Warm acoustic pop, clear lead vocal, fingerpicked guitar, soft bass and brushed drums, moderate tempo"
+      },
+      "seconds": 33.197679209988564,
+      "semantic": {
+        "agreement": 0.08984375,
+        "first_divergence": 27,
+        "length_delta": 0,
+        "matches": 46,
+        "produced_tokens": 512,
+        "reference_tokens": 512
+      },
+      "semantic_aligned": true,
+      "semantic_context_aligned": false,
+      "semantic_exact_head": true,
+      "semantic_exact_window": 16,
+      "semantic_forced": {
+        "agreement": 0.970703125,
+        "first_mismatch": 38,
+        "matches": 497,
+        "mismatch_count": 15,
+        "mismatches": [
+          {
+            "gap": 0.125,
+            "greedy_score": 20.0,
+            "greedy_token": 175500,
+            "margin": 0.125,
+            "reference_score": 19.875,
+            "reference_token": 155274,
+            "step": 38
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 16.75,
+            "greedy_token": 171063,
+            "margin": 0.125,
+            "reference_score": 16.625,
+            "reference_token": 154018,
+            "step": 67
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 18.125,
+            "greedy_token": 155594,
+            "margin": 0.0,
+            "reference_score": 18.125,
+            "reference_token": 176844,
+            "step": 74
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 17.875,
+            "greedy_token": 162643,
+            "margin": 0.125,
+            "reference_score": 17.75,
+            "reference_token": 154367,
+            "step": 93
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 17.375,
+            "greedy_token": 166024,
+            "margin": 0.125,
+            "reference_score": 17.25,
+            "reference_token": 155594,
+            "step": 137
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 20.375,
+            "greedy_token": 165615,
+            "margin": 0.125,
+            "reference_score": 20.25,
+            "reference_token": 164364,
+            "step": 210
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 19.625,
+            "greedy_token": 156215,
+            "margin": 0.0,
+            "reference_score": 19.625,
+            "reference_token": 160155,
+            "step": 226
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 14.4375,
+            "greedy_token": 172559,
+            "margin": 0.0,
+            "reference_score": 14.4375,
+            "reference_token": 175337,
+            "step": 259
+          }
+        ],
+        "steps": 512
+      },
+      "truncated_abc": false,
+      "truncated_abc_expected": false,
+      "truncated_semantic": true,
+      "truncated_semantic_expected": true
+    },
+    "mandarin-off-s1234": {
+      "abc": {
+        "agreement": 1.0,
+        "first_divergence": null,
+        "length_delta": 0,
+        "matches": 0,
+        "produced_tokens": 0,
+        "reference_tokens": 0
+      },
+      "abc_aligned": true,
+      "abc_exact_head": true,
+      "abc_exact_window": 0,
+      "abc_forced": {
+        "agreement": 1.0,
+        "first_mismatch": null,
+        "matches": 0,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "steps": 0
+      },
+      "passed": true,
+      "plan_prefix_tokens": 98,
+      "prefill_fallback": null,
+      "prefix_exact": true,
+      "prefix_tokens": 98,
+      "request": {
+        "abc": null,
+        "cfg_scale": null,
+        "cot": "off",
+        "id": "mandarin-off-s1234",
+        "lyrics": "[Verse]\n\u6e05\u6668\u7684\u5149\u843d\u5728\u7a97\u524d\n\u8fdc\u65b9\u7684\u98ce\u5439\u8fc7\u6628\u5929\n\u6cbf\u7740\u5c0f\u8def\u6162\u6162\u5411\u524d\n\u65b0\u7684\u6545\u4e8b\u5c31\u5728\u8eab\u8fb9\n[Chorus]\n\u8ba9\u6211\u4eec\u5531\u8fc7\u8fd9\u4e00\u5929\n\u628a\u5fae\u7b11\u7559\u5728\u4f60\u5fc3\u95f4\n\u4e0d\u7ba1\u8def\u9014\u8fd8\u6709\u591a\u8fdc\n\u660e\u5929\u4f9d\u7136\u548c\u4f60\u76f8\u89c1",
+        "seed": 1234,
+        "style": "Mandarin pop, warm expressive lead vocal, gentle piano, bass and light drums, moderate tempo"
+      },
+      "seconds": 27.826970443013124,
+      "semantic": {
+        "agreement": 0.044921875,
+        "first_divergence": 23,
+        "length_delta": 0,
+        "matches": 23,
+        "produced_tokens": 512,
+        "reference_tokens": 512
+      },
+      "semantic_aligned": true,
+      "semantic_context_aligned": true,
+      "semantic_exact_head": true,
+      "semantic_exact_window": 16,
+      "semantic_forced": {
+        "agreement": 0.966796875,
+        "first_mismatch": 23,
+        "matches": 495,
+        "mismatch_count": 17,
+        "mismatches": [
+          {
+            "gap": 0.0625,
+            "greedy_score": 11.375,
+            "greedy_token": 175341,
+            "margin": 0.0625,
+            "reference_score": 11.3125,
+            "reference_token": 162985,
+            "step": 23
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 13.8125,
+            "greedy_token": 164050,
+            "margin": 0.0,
+            "reference_score": 13.8125,
+            "reference_token": 181831,
+            "step": 50
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 16.75,
+            "greedy_token": 158105,
+            "margin": 0.0,
+            "reference_score": 16.75,
+            "reference_token": 177536,
+            "step": 80
+          },
+          {
+            "gap": 0.0625,
+            "greedy_score": 15.0625,
+            "greedy_token": 183799,
+            "margin": 0.0625,
+            "reference_score": 15.0,
+            "reference_token": 160300,
+            "step": 104
+          },
+          {
+            "gap": 0.125,
+            "greedy_score": 19.5,
+            "greedy_token": 176688,
+            "margin": 0.125,
+            "reference_score": 19.375,
+            "reference_token": 166988,
+            "step": 106
+          },
+          {
+            "gap": 0.0625,
+            "greedy_score": 11.375,
+            "greedy_token": 173636,
+            "margin": 0.0625,
+            "reference_score": 11.3125,
+            "reference_token": 160638,
+            "step": 123
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 15.8125,
+            "greedy_token": 159107,
+            "margin": 0.0,
+            "reference_score": 15.8125,
+            "reference_token": 165707,
+            "step": 152
+          },
+          {
+            "gap": 0.0,
+            "greedy_score": 14.9375,
+            "greedy_token": 161051,
+            "margin": 0.0,
+            "reference_score": 14.9375,
+            "reference_token": 182964,
+            "step": 153
+          }
+        ],
+        "steps": 512
+      },
+      "truncated_abc": false,
+      "truncated_abc_expected": false,
+      "truncated_semantic": true,
+      "truncated_semantic_expected": true
+    }
+  },
+  "exact_window": 16,
+  "min_agreement": 0.9,
+  "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+  "passed": true,
+  "provenance": {
+    "command_line": "scripts/yue2_session_gate.py --json /tmp/yue2_session_gate_paired.json",
+    "fixtures": "/home/lhl/hipEngine/tests/fixtures/yue2/greedy",
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "AMD Radeon 8060S Graphics",
+      "name": "zbook"
+    },
+    "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+    "protocol": "yue2-greedy-session-gate-v1",
+    "revision": "ef9fd84401edf3c20e9f0dedf429c9e40245cdbb"
+  }
+}
