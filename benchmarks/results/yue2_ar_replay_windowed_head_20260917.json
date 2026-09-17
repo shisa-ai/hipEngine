@@ -110,7 +110,7 @@
       "prefix_lengths": [
         128
       ],
-      "seconds": 1.0395584106445312,
+      "seconds": 1.0358352661132812,
       "steps": 32,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -198,7 +198,7 @@
       "prefix_lengths": [
         128
       ],
-      "seconds": 0.8627097606658936,
+      "seconds": 0.8664171695709229,
       "steps": 32,
       "top1_agreement": 0.9375,
       "top1_by_scope": {
@@ -269,7 +269,7 @@
       "prefix_lengths": [
         2048
       ],
-      "seconds": 8.400585174560547,
+      "seconds": 8.457979440689087,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -340,7 +340,7 @@
       "prefix_lengths": [
         2048
       ],
-      "seconds": 8.374171018600464,
+      "seconds": 8.516675472259521,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -411,7 +411,7 @@
       "prefix_lengths": [
         512
       ],
-      "seconds": 1.4358468055725098,
+      "seconds": 1.4572951793670654,
       "steps": 32,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -491,7 +491,7 @@
       "prefix_lengths": [
         512
       ],
-      "seconds": 1.4383864402770996,
+      "seconds": 1.4407968521118164,
       "steps": 32,
       "top1_agreement": 0.96875,
       "top1_by_scope": {
@@ -603,7 +603,7 @@
         128,
         128
       ],
-      "seconds": 1.7018370628356934,
+      "seconds": 1.6783671379089355,
       "steps": 32,
       "top1_agreement": 0.9375,
       "top1_by_scope": {
@@ -719,7 +719,7 @@
         128,
         101
       ],
-      "seconds": 1.6940290927886963,
+      "seconds": 1.6948726177215576,
       "steps": 32,
       "top1_agreement": 0.9375,
       "top1_by_scope": {
@@ -802,7 +802,7 @@
         2048,
         2048
       ],
-      "seconds": 16.905458688735962,
+      "seconds": 16.989123344421387,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -885,7 +885,7 @@
         2048,
         101
       ],
-      "seconds": 8.770018100738525,
+      "seconds": 8.732175588607788,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -993,7 +993,7 @@
         512,
         512
       ],
-      "seconds": 2.8813047409057617,
+      "seconds": 2.888228416442871,
       "steps": 32,
       "top1_agreement": 0.953125,
       "top1_by_scope": {
@@ -1117,7 +1117,7 @@
         512,
         101
       ],
-      "seconds": 2.2742135524749756,
+      "seconds": 2.276670217514038,
       "steps": 32,
       "top1_agreement": 0.921875,
       "top1_by_scope": {
@@ -1192,7 +1192,7 @@
       "prefix_lengths": [
         128
       ],
-      "seconds": 0.8606290817260742,
+      "seconds": 0.8646402359008789,
       "steps": 32,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -1280,7 +1280,7 @@
       "prefix_lengths": [
         128
       ],
-      "seconds": 0.8647873401641846,
+      "seconds": 0.8588862419128418,
       "steps": 32,
       "top1_agreement": 0.9375,
       "top1_by_scope": {
@@ -1351,7 +1351,7 @@
       "prefix_lengths": [
         2048
       ],
-      "seconds": 8.544613361358643,
+      "seconds": 8.395493030548096,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -1422,7 +1422,7 @@
       "prefix_lengths": [
         2048
       ],
-      "seconds": 8.460705995559692,
+      "seconds": 8.544092178344727,
       "steps": 8,
       "top1_agreement": 1.0,
       "top1_by_scope": {
@@ -1510,7 +1510,7 @@
       "prefix_lengths": [
         512
       ],
-      "seconds": 1.446214199066162,
+      "seconds": 1.4514143466949463,
       "steps": 32,
       "top1_agreement": 0.9375,
       "top1_by_scope": {
@@ -1606,7 +1606,7 @@
       "prefix_lengths": [
         512
       ],
-      "seconds": 1.4557068347930908,
+      "seconds": 1.4497182369232178,
       "steps": 32,
       "top1_agreement": 0.90625,
       "top1_by_scope": {
@@ -1640,7 +1640,7 @@
       ]
     }
   ],
-  "command": "python3 scripts/yue2_ar_replay.py --json /tmp/yue2_ar_replay_window.json",
+  "command": "python3 scripts/yue2_ar_replay.py --json /tmp/yue2_ar_replay_guard.json",
   "correctness_gate": {
     "broad_floor": {
       "mean_kl_max": 0.05,
@@ -1648,7 +1648,7 @@
     },
     "repeat": "not-requested"
   },
-  "date": "2026-09-17T05:14:19+00:00",
+  "date": "2026-09-17T08:27:22+00:00",
   "fixtures": "/home/lhl/hipEngine/tests/fixtures/yue2/ar_replay",
   "fixtures_integrity_sha256": "",
   "full_artifacts": null,

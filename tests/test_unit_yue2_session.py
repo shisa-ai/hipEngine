@@ -80,12 +80,22 @@ class FakeRuntime:
     def forward_layers(self, position: int, branch: int = 0) -> None:
         self.decoded.append((position, branch, self.lengths[branch]))
 
-    def logits(self, branch: int = 0, *, as_bf16: bool = True) -> np.ndarray:
+    def logits(self, branch: int = 0, *, as_bf16: bool = True, domain=None) -> np.ndarray:
         if self._script:
             index = min(self._calls[branch], len(self._script) - 1)
             self._calls[branch] += 1
-            return _bf16_bits(self._script[index])
-        return _bf16_bits(self._logits(branch, self.lengths[branch]))
+            row = np.asarray(self._script[index], dtype=np.float32)
+        else:
+            row = np.asarray(self._logits(branch, self.lengths[branch]), dtype=np.float32)
+        if domain is not None:
+            # The real runtime projects only the phase window and leaves every other row
+            # -inf; the fake keeps the same contract, so the session loop runs against a
+            # windowed row here too.
+            low, high = domain
+            windowed = np.full_like(row, -np.inf)
+            windowed[low:high] = row[low:high]
+            row = windowed
+        return _bf16_bits(row)
 
     def close(self) -> None:
         self.closed = True

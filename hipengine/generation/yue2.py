@@ -25,6 +25,8 @@ than by bit equality:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from dataclasses import dataclass, field, replace
@@ -332,10 +334,19 @@ def window_penalty(scores: np.ndarray, recent_ids, penalty: float, *, bf16_round
 def _distribution_legacy_off(logits, sampling: Sampling, history, step: int, phase: str) -> np.ndarray:
     """Historical ``off`` arithmetic: BF16 scores, BF16 softmax, three survivors."""
     scores = bf16(np.asarray(logits, dtype=np.float32).reshape(-1))
-    scores = np.where(np.isfinite(scores), scores, -np.inf)
     allowed = np.full_like(scores, -np.inf)
     allowed[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
     allowed[phase_end_token(phase)] = 0.0
+    selectable = np.isfinite(allowed)
+    broken = selectable & ~np.isfinite(scores)
+    if broken.any():
+        index = int(np.flatnonzero(broken)[0])
+        raise FloatingPointError(
+            f"{phase} score row is non-finite at a selectable token {index} "
+            f"(value {scores[index]}); the head or the CFG combination produced a "
+            "numerical failure"
+        )
+    scores = np.where(selectable, scores, -np.inf)
     scores = bf16(scores + allowed)
     if step < sampling.min_tokens:
         scores[phase_end_token(phase)] = -np.inf
@@ -385,18 +396,26 @@ def distribution(
     if legacy_off:
         return _distribution_legacy_off(logits, sampling, history, step, phase)
     scores = np.asarray(logits, dtype=np.float32).reshape(-1).copy()
-    # A windowed head row carries -inf outside its projection window, and the CFG
-    # combination turns `-inf - -inf` into NaN. Everything non-finite is masked below
-    # either way, but a NaN threshold silently disables the top-k stage (`NaN < t` is
-    # False), so fold every non-finite value to -inf first. This is the identity on
-    # every row the full projection produces.
-    scores = np.where(np.isfinite(scores), scores, -np.inf)
     allowed = np.full_like(scores, -np.inf)
     if phase == "abc":
         allowed[:EOD] = 0.0
     else:
         allowed[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
     allowed[phase_end_token(phase)] = 0.0
+    # A windowed head row carries -inf outside its projection window, and the CFG
+    # combination leaves those rows non-finite, so fold every non-finite value outside
+    # the allowed set to -inf. Inside the allowed set a NaN or +inf is a numerical
+    # failure, not a mask, and masking it here would hide the failure.
+    selectable = np.isfinite(allowed)
+    broken = selectable & ~np.isfinite(scores)
+    if broken.any():
+        index = int(np.flatnonzero(broken)[0])
+        raise FloatingPointError(
+            f"{phase} score row is non-finite at a selectable token {index} "
+            f"(value {scores[index]}); the head or the CFG combination produced a "
+            "numerical failure"
+        )
+    scores = np.where(selectable, scores, -np.inf)
     scores = scores + allowed
     if step < sampling.min_tokens:
         scores[phase_end_token(phase)] = -np.inf
@@ -538,6 +557,22 @@ class YuE2Random:
 
     def state(self) -> dict:
         return {"algorithm": self.ALGORITHM, "seed": self.seed}
+
+    def state_digest(self) -> str:
+        """Digest of the live PCG64 state, i.e. of how many draws have been consumed.
+
+        `state()` records the algorithm and seed, which is the identity a result carries
+        but says nothing about the stream position. Two runs that consumed the same number
+        of values from the same seed share this digest, and equal digests mean every
+        subsequent draw agrees, so it is the check to make when claiming identical RNG
+        behaviour.
+        """
+
+        live = self._generator.bit_generator.state
+        payload = json.dumps(
+            {key: str(live[key]) for key in sorted(live)}, separators=(",", ":")
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     def reset(self) -> None:
         self._generator = np.random.Generator(np.random.PCG64(self.seed))

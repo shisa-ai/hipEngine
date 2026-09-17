@@ -165,3 +165,73 @@ def test_domain_projects_only_the_window_and_masks_the_rest(monkeypatch):
     runtime.logits(0, as_bf16=False, domain=(0, 4))
     assert runtime.kernels.head_out_features == 4
     assert np.isneginf(runtime._logits_window_host[0][4:]).all()
+
+
+def test_switching_domain_without_a_step_reprojects(monkeypatch):
+    """A domain change is part of the cache key, not just a refill trigger.
+
+    The first version checked only whether the window was filled, so a caller that asked
+    for a second domain before moving a hidden row got the first domain's rows back. The
+    earlier test reset the cache first, which hid exactly that.
+    """
+
+    from hipengine.runtime import yue2_ar
+
+    runtime = _runtime()
+    runtime.spec = SimpleNamespace(hidden_size=_Spec.hidden_size, vocab_size=184704,
+                                   rms_norm_eps=_Spec.rms_norm_eps)
+    runtime._logits_window_domain = None
+    runtime._logits_window_filled = False
+    runtime._logits_window_host = np.zeros((2, runtime.spec.vocab_size), dtype=np.float32)
+    runtime._logits_window_f32 = _Buffer(0x5000)
+
+    def fake_copy(host_ptr, device, nbytes):
+        host = np.ctypeslib.as_array(
+            (np.ctypeslib.ctypes.c_float * (nbytes // 4)).from_address(host_ptr)
+        )
+        host[:] = np.arange(nbytes // 4, dtype=np.float32) + 1.0
+
+    monkeypatch.setattr(yue2_ar, "copy_device_to_host", fake_copy)
+    first = runtime.logits(0, as_bf16=False, domain=(100, 108))
+    calls = runtime.kernels.head_calls
+    # No `_reset_logits_cache()` here: that is the case that used to return stale rows.
+    second = runtime.logits(0, as_bf16=False, domain=(200, 204))
+    assert runtime.kernels.head_calls == calls + 1, "a new domain must reproject"
+    assert runtime.kernels.head_out_features == 4
+    assert runtime.kernels.head_weight_ptr == runtime.lm_head.ptr + 200 * _Spec.hidden_size * 2
+    assert np.isfinite(second[200:204]).all()
+    assert np.isneginf(second[100:108]).all(), "the previous window must be masked again"
+    assert np.isfinite(first[100:108]).all()
+    # Asking for the same domain again is still a cache hit.
+    calls = runtime.kernels.head_calls
+    runtime.logits(1, as_bf16=False, domain=(200, 204))
+    assert runtime.kernels.head_calls == calls
+
+
+@pytest.mark.parametrize(
+    "domain",
+    # `None` is not here: it means the full projection, which is a valid request.
+    [(-1, 4), (0, 0), (8, 4), (0, 184705), (2.5, 4), (0, "4"), "nope", (0,), (0, 1, 2)],
+)
+def test_invalid_domains_are_rejected_before_dispatch(domain):
+    """Nothing may offset a weight pointer ahead of its allocation."""
+
+    runtime = _runtime()
+    runtime.spec = SimpleNamespace(hidden_size=_Spec.hidden_size, vocab_size=184704,
+                                   rms_norm_eps=_Spec.rms_norm_eps)
+    runtime._logits_window_domain = None
+    runtime._logits_window_filled = False
+    runtime._logits_window_host = np.zeros((2, runtime.spec.vocab_size), dtype=np.float32)
+    runtime._logits_window_f32 = _Buffer(0x5000)
+    with pytest.raises(ValueError):
+        runtime.logits(0, as_bf16=False, domain=domain)
+    assert runtime.kernels.head_calls == 0, "no head call may happen for an invalid domain"
+    assert runtime._logits_window_filled is False
+
+
+def test_booleans_are_not_domains():
+    runtime = _runtime()
+    runtime.spec = SimpleNamespace(hidden_size=_Spec.hidden_size, vocab_size=184704,
+                                   rms_norm_eps=_Spec.rms_norm_eps)
+    with pytest.raises(ValueError):
+        runtime._validate_domain((True, 4))
