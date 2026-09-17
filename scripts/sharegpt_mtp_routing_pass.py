@@ -143,6 +143,11 @@ def _stream_request(
     timeline: list[list[float]] = []
     usage: Mapping[str, Any] | None = None
     terminal: Mapping[str, Any] | None = None
+    error_body: Mapping[str, Any] | None = None
+    # The realized-route and MTP extension can arrive on a choice (the terminal
+    # chunk) or on the top-level event (the usage chunk). Keep whichever channel
+    # carries it so a rejected or errored stream still reports its route.
+    stream_extension: dict[str, Any] = {}
     answer: list[str] = []
     thinking: list[str] = []
     started = time.perf_counter()
@@ -158,6 +163,14 @@ def _stream_request(
             if data == "[DONE]":
                 break
             event = json.loads(data)
+            if isinstance(event.get("error"), Mapping):
+                # A request rejected mid-stream (for example min_tokens without
+                # eos_token_id) arrives as a normal SSE chunk with
+                # finish_reason="error" and this body. Recording it is the
+                # difference between "stream ended without usage" and the cause.
+                error_body = event["error"]
+            if isinstance(event.get("hipengine"), Mapping):
+                stream_extension.update(event["hipengine"])
             for choice in event.get("choices") or []:
                 delta = choice.get("delta") or {}
                 # A Qwen-style thinking reply streams its reasoning on a
@@ -177,6 +190,8 @@ def _stream_request(
                     answer.append(delta["content"])
                 if choice.get("finish_reason") is not None:
                     terminal = choice
+                if isinstance(choice.get("hipengine"), Mapping):
+                    stream_extension.update(choice["hipengine"])
                 state = ((choice.get("hipengine") or {}).get("decode_state")) or {}
                 generated = state.get("generated_tokens")
                 if generated is not None:
@@ -189,7 +204,8 @@ def _stream_request(
             if event.get("usage"):
                 usage = event["usage"]
     e2e_ms = (time.perf_counter() - started) * 1000.0
-    extension = (terminal or {}).get("hipengine") or {}
+    terminal_extension = (terminal or {}).get("hipengine") or {}
+    extension = {**stream_extension, **terminal_extension}
     return {
         "ttft_ms": first_token_ms,
         "first_answer_ms": first_answer_ms,
@@ -198,29 +214,79 @@ def _stream_request(
         "e2e_ms": e2e_ms,
         "timeline": timeline,
         "usage": usage,
+        "error_body": None if error_body is None else dict(error_body),
         "answer_characters": len("".join(answer)),
         "thinking_characters": len("".join(thinking)),
         "speculative_mtp": extension.get("speculative_mtp"),
         "generation_shape": extension.get("generation_shape"),
+        "routing": extension.get("routing"),
     }
+
+def _error_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
+    """Describe one request that produced no usage, without hiding the cause."""
+
+    error = result.get("error_body") or {}
+    extension = error.get("hipengine") if isinstance(error.get("hipengine"), Mapping) else {}
+    message = error.get("message") or "stream ended without usage"
+    detail = [str(message)]
+    if error.get("code"):
+        detail.append(f"code={error['code']}")
+    if error.get("type"):
+        detail.append(f"type={error['type']}")
+    if extension.get("status_code") is not None:
+        detail.append(f"status={extension['status_code']}")
+    detail.append(
+        f"events={len(result.get('timeline') or [])},"
+        f" answer_characters={result.get('answer_characters')},"
+        f" thinking_characters={result.get('thinking_characters')},"
+        f" e2e_ms={result.get('e2e_ms')}"
+    )
+    return {
+        "source_id": sample.get("source_id"),
+        "prompt_tokens_local": sample.get("prompt_tokens"),
+        "expected_output_tokens": sample.get("expected_output_tokens"),
+        "e2e_ms": result.get("e2e_ms"),
+        "error": " ".join(detail),
+        "error_code": error.get("code"),
+        "error_type": error.get("type"),
+        "error_status_code": extension.get("status_code"),
+        "error_message": None if error.get("message") is None else str(error["message"]),
+        "error_body": None if not error else dict(error),
+        # Even a rejected request carries its realized route when the server
+        # reported it, which is what makes a route-level rejection legible.
+        **_route_fields(result),
+    }
+
+
+def _route_fields(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Realized route, planned route, and refusal reason for one request."""
+
+    shape = result.get("generation_shape") or {}
+    decision = shape.get("route_decision") or {}
+    return {
+        # ``effective_route`` is the route the request actually executed, which
+        # is what a reader needs to compare against ``selected_route``. Reporting
+        # only the latter made an earlier pass read as "route=speculative_mtp
+        # with mtp_used=false".
+        "effective_route": shape.get("route"),
+        "selected_route": decision.get("selected_route"),
+        "requested_route": decision.get("requested_route"),
+        "route_decision_reason": decision.get("reason"),
+        "k0_class": decision.get("k0_class"),
+        "policy_reason": decision.get("policy_reason"),
+        "static_intent_allowed": decision.get("static_intent_allowed"),
+        "realized_group_rows": decision.get("realized_group_rows"),
+        "output_horizon_tokens": decision.get("output_horizon_tokens"),
+        "selected_candidate_count": decision.get("selected_candidate_count"),
+    }
+
 
 def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
     usage = result.get("usage") or {}
     if usage.get("completion_tokens") is None:
         # A stream that ends without usage is a truncated or aborted response;
         # record it as a failure instead of an empty success row.
-        return {
-            "source_id": sample.get("source_id"),
-            "prompt_tokens_local": sample.get("prompt_tokens"),
-            "expected_output_tokens": sample.get("expected_output_tokens"),
-            "e2e_ms": result.get("e2e_ms"),
-            "error": (
-                "stream ended without usage"
-                f" (events={len(result.get('timeline') or [])},"
-                f" answer_characters={result.get('answer_characters')},"
-                f" e2e_ms={result.get('e2e_ms')})"
-            ),
-        }
+        return _error_row(sample, result)
     mtp = result.get("speculative_mtp") or {}
     shape = result.get("generation_shape") or {}
     decision = shape.get("route_decision") or {}
@@ -238,8 +304,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "answer_characters": result.get("answer_characters"),
         "thinking_characters": result.get("thinking_characters"),
         "route": shape.get("route"),
-        "route_decision_reason": decision.get("reason"),
-        "requested_route": decision.get("requested_route"),
+        **_route_fields(result),
         "mtp_used": mtp.get("used"),
         "mtp_output_tokens": mtp.get("mtp_output_tokens"),
         "ar_output_tokens": mtp.get("ar_output_tokens"),
@@ -300,14 +365,37 @@ def _rate_windows(timeline: Sequence[Sequence[float]], *, window: int = 16) -> l
     return windows
 
 
+def _speculation_case(row: Mapping[str, Any]) -> str:
+    """Classify how far one request's speculation ran.
+
+    ``first_fallback_position`` is ``0`` when speculation never covered a token,
+    ``None`` when it covered every token after the prompt root (so the request
+    ended inside speculation), and a middle value when the request left
+    speculation mid-stream. Collapsing the last two into one empty block hid the
+    difference between "never entered" and "stayed to the end".
+    """
+
+    if not row.get("mtp_used"):
+        return "never_entered_speculation"
+    position = row.get("first_fallback_position")
+    if position is None:
+        return "ended_inside_speculation"
+    if int(position) <= 0:
+        return "never_entered_speculation"
+    return "left_mid_stream"
+
+
 def _cliff(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[str, Any]:
     """Quantify the latency step a request takes when it leaves speculation."""
 
+    cases: Counter[str] = Counter(_speculation_case(row) for row in rows)
     measured: list[dict[str, Any]] = []
     for row in rows:
-        position = row.get("first_fallback_position")
+        if _speculation_case(row) != "left_mid_stream":
+            continue
+        position = int(row.get("first_fallback_position") or 0)
         timeline = row.get("timeline") or []
-        if not position or not timeline:
+        if not timeline:
             continue
         windows = _rate_windows(timeline, window=window)
         before = [
@@ -333,10 +421,28 @@ def _cliff(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[str, 
                 "rate_profile": windows,
             }
         )
+    base: dict[str, Any] = {
+        "case_counts": dict(sorted(cases.items())),
+        "left_mid_stream_requests": cases.get("left_mid_stream", 0),
+        "never_entered_speculation_requests": cases.get(
+            "never_entered_speculation", 0
+        ),
+        "ended_inside_speculation_requests": cases.get(
+            "ended_inside_speculation", 0
+        ),
+    }
     if not measured:
-        return {"requests": 0}
+        # Say why there is no rate step instead of reporting an empty block that
+        # reads like a measurement of zero.
+        base["requests"] = 0
+        base["note"] = (
+            "no request both left speculation mid-stream and had rate windows on "
+            "both sides of the crossing"
+        )
+        return base
     ratios = [entry["ratio"] for entry in measured]
     return {
+        **base,
         "requests": len(measured),
         "median_before_tokens_per_second": statistics.median(
             entry["before_tokens_per_second"] for entry in measured
@@ -385,6 +491,21 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         prompt_buckets[bucket]["completion_tokens"] += int(
             row.get("completion_tokens") or 0
         )
+        # Two refusals that a route-level share hides: a long prompt still
+        # priming its provider refuses with prompt_activation_in_flight, and a
+        # plan with no provider at all refuses with no_provider. Count both per
+        # bucket, because the first pass showed long prompts losing the route
+        # while mid-length ones kept it.
+        events = row.get("fallback_event_counts") or {}
+        if isinstance(events, Mapping):
+            for reason in ("prompt_activation_in_flight", "no_provider"):
+                count = int(events.get(reason) or 0)
+                if count:
+                    prompt_buckets[bucket][f"{reason}_requests"] += 1
+                    prompt_buckets[bucket][f"{reason}_events"] += count
+        reason = row.get("fallback_reason")
+        if reason in {"prompt_activation_in_flight", "no_provider"}:
+            prompt_buckets[bucket][f"primary_{reason}_requests"] += 1
     ttfts = [float(row["ttft_ms"]) for row in rows if row.get("ttft_ms")]
     answers = [
         float(row["first_answer_ms"])
@@ -409,6 +530,17 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         row for row in rows if isinstance(row.get("span_accounting"), Mapping)
     ]
     event_total = sum(int(row.get("fallback_event_total") or 0) for row in rows)
+    # Events are not tokens. A planning refusal that is retried on the next step
+    # costs one autoregressive step and no route, so an event count alone reads
+    # as a lost route when the request was in fact almost entirely speculative.
+    # The spanned token attribution is the quantity that answers "what did this
+    # refusal cost", so both are reported.
+    ar_tokens_by_reason: Counter[str] = Counter()
+    for row in rows:
+        attributed = row.get("ar_output_tokens_by_reason")
+        if isinstance(attributed, Mapping):
+            for reason, count in attributed.items():
+                ar_tokens_by_reason[str(reason)] += int(count or 0)
     return {
         "requests": len(rows),
         "mtp_requests": len(used),
@@ -443,6 +575,10 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         # ``ar_output_tokens`` and from ``mtp_output_tokens``.
         "fallback_event_total": event_total,
         "non_mtp_reasons": dict(sorted(reasons.items())),
+        # Token-level attribution of the same refusals, from the committed output
+        # spans (present when the server runs with HIPENGINE_MTP2_OUTPUT_SPANS=1).
+        "ar_tokens_by_reason": dict(sorted(ar_tokens_by_reason.items())),
+        "ar_tokens_attributed": sum(ar_tokens_by_reason.values()),
         "prompt_token_buckets": {
             bucket: dict(sorted(counts.items()))
             for bucket, counts in sorted(prompt_buckets.items())
@@ -462,6 +598,43 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             if rows
             else 0.0
         ),
+        # Character split, so a reader can see how much of the output was
+        # reasoning rather than answer text.
+        "answer_characters": sum(int(row.get("answer_characters") or 0) for row in rows),
+        "thinking_characters": sum(
+            int(row.get("thinking_characters") or 0) for row in rows
+        ),
+        "thinking_character_share": (
+            sum(int(row.get("thinking_characters") or 0) for row in rows)
+            / max(
+                1,
+                sum(int(row.get("thinking_characters") or 0) for row in rows)
+                + sum(int(row.get("answer_characters") or 0) for row in rows),
+            )
+        ),
+        # Realized vs planned route, per request. A pass where every request
+        # reports effective_route=ar while selected_route=speculative_mtp is a
+        # route-level refusal, not a lying route.
+        "effective_routes": dict(
+            sorted(Counter(str(row.get("effective_route")) for row in rows).items())
+        ),
+        "selected_routes": dict(
+            sorted(Counter(str(row.get("selected_route")) for row in rows).items())
+        ),
+        "route_disagreements": [
+            {
+                "source_id": row.get("source_id"),
+                "effective_route": row.get("effective_route"),
+                "selected_route": row.get("selected_route"),
+                "route_decision_reason": row.get("route_decision_reason"),
+                "k0_class": row.get("k0_class"),
+                "fallback_reason": row.get("fallback_reason"),
+            }
+            for row in rows
+            if row.get("selected_route")
+            and row.get("effective_route")
+            and row.get("selected_route") != row.get("effective_route")
+        ],
         "cliff": _cliff(rows, window=window),
     }
 
@@ -591,6 +764,12 @@ def main() -> int:
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
     print(
+        f"[{args.label}] refusal cost: events={summary['fallback_event_total']} "
+        f"spanned_ar_tokens={summary['ar_tokens_attributed']} "
+        f"by_reason={json.dumps(summary['ar_tokens_by_reason'])} "
+        f"(of {summary['ar_output_tokens']} autoregressive tokens)"
+    )
+    print(
         f"[{args.label}] attribution: "
         f"reconciled={summary['reconciled_requests']}/{summary['accounted_requests']} "
         f"span_proofs={summary['span_proof_requests']} "
@@ -620,7 +799,42 @@ def main() -> int:
         f"first_thinking={_fmt_ms(summary['median_first_thinking_ms'])} "
         f"over {summary['thinking_requests']}"
     )
+    print(
+        f"[{args.label}] output characters: answer={summary['answer_characters']} "
+        f"thinking={summary['thinking_characters']} "
+        f"({summary['thinking_character_share']:.1%} reasoning)"
+    )
+    print(
+        f"[{args.label}] routes: effective={json.dumps(summary['effective_routes'])} "
+        f"selected={json.dumps(summary['selected_routes'])}"
+    )
+    if summary["route_disagreements"]:
+        print(
+            f"[{args.label}] ROUTE DISAGREEMENTS "
+            f"({len(summary['route_disagreements'])}): "
+            f"{json.dumps(summary['route_disagreements'][:5])}"
+        )
+    buckets = summary["prompt_token_buckets"]
+    refused = {
+        bucket: counts
+        for bucket, counts in buckets.items()
+        if any(
+            key.endswith("_requests") and key.startswith(("prompt_activation", "no_provider"))
+            for key in counts
+        )
+    }
+    if refused:
+        print(
+            f"[{args.label}] route refusals by prompt bucket: "
+            f"{json.dumps(refused)}"
+        )
     cliff = summary["cliff"]
+    print(
+        f"[{args.label}] speculation coverage: "
+        f"never_entered={cliff['never_entered_speculation_requests']} "
+        f"left_mid_stream={cliff['left_mid_stream_requests']} "
+        f"ended_inside={cliff['ended_inside_speculation_requests']}"
+    )
     if cliff.get("requests"):
         print(
             f"[{args.label}] cliff over {cliff['requests']} requests: "
@@ -628,6 +842,13 @@ def main() -> int:
             f"after={cliff['median_after_tokens_per_second']:.2f} tok/s "
             f"median_ratio={cliff['median_ratio']:.2f} "
             f"slower_than_80pct={cliff['requests_slower_than_80pct_after_crossing']}"
+        )
+    elif cliff.get("note"):
+        print(f"[{args.label}] cliff: {cliff['note']}")
+    if failures:
+        print(
+            f"[{args.label}] failures: "
+            f"{json.dumps([{k: row.get(k) for k in ('source_id', 'error', 'error_code', 'error_status_code', 'effective_route', 'selected_route')} for row in failures[:5]])}"
         )
     print(f"[{args.label}] wrote {args.out}")
     return 1 if failures else 0
