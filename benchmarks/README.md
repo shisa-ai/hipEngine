@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-17**
+Last updated: **2026-09-18**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -374,6 +374,20 @@ unsupported contexts or horizons select AR. The old FP16 production C8
 measurement is historical evidence, not current-profile admission.
 [Current measurements](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json)
 and [serving gates](results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json).
+
+Long-context verification inside that cell now keeps full-attention rows in the
+staged chain across the 1,024-token split boundary instead of dropping to the
+per-row scalar owner. Each row attends on the leaf the scalar owner would use at
+its own position, so the batched projections, head norm/rotary, KV writes, and
+output projection stay batched across rows on both sides of the boundary. On the
+10-case eager long-context packet (cycle ends 1024/1025 x B1/B2/B3 plus four
+controlled B3 acceptance cases, three runs per arm on this host) the packet's own
+cycle wall measures **8.129 s -> 7.893 s median (-2.9%, mean -3.6%, 7 of 10 cases
+faster)** at unchanged 16/32 split-K calls per case and with every correctness
+flag identical against the serial-exact teacher. The same code under the captured
+target graph at cycle end 1032 passes with the same 32/48/64 split-K calls. This
+is a verifier-route change: the serving limits above are unchanged.
+[Eager long-context verifier staged chain](results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
