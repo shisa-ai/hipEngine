@@ -946,3 +946,62 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
     assert upgraded.kv_backing_kind == "pool_lease"
     assert upgraded.page_ids == (0, 1, 2, 3)
     assert upgraded.full_key_caches[1] is pool.backing.full_key_caches[1]
+
+
+# ---------------------------------------------------------------------------
+# Workspace lease sizing vs the union geometry (2026-09-17)
+#
+# The lease is taken once at pool creation, before any packed layout exists,
+# while the workspace is allocated for the union geometry - which unions the
+# realized layout slots with the serving capacity. A one-slot lease therefore
+# went short on the first packed prefill: 32 leased pages against a 4-slot x
+# 9-page workspace at an 8192-token session, and 4 against 16 at 1024, where
+# it failed during startup warmup.
+# ---------------------------------------------------------------------------
+
+
+def test_packed_verify_lease_slot_ceiling_mirrors_union_capacity() -> None:
+    """The lease slot term must match the union geometry's capacity term."""
+
+    ceiling = gguf_runner.packed_verify_lease_slot_ceiling
+
+    assert ceiling(None) == gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+    assert ceiling("not-a-number") == gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+    assert ceiling(0) == 1
+    assert ceiling(1) == 1
+    assert ceiling(9) == 9
+
+
+def test_union_geometry_never_exceeds_the_lease_slot_ceiling() -> None:
+    """A single-slot request still packs the full serving capacity."""
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.max_batch_size = 4
+    owner._packed_verify_state = None
+    owner._packed_verify_scratch = None
+    owner._packed_verify_prefill_row_cap = lambda: 8
+
+    union_slots, _rows, _max_seq, _segments = owner._packed_verify_union_geometry(
+        slot_count=1,
+        rows=8,
+        max_sequence_length=1024,
+    )
+
+    # A one-slot request opens the full capacity, so a lease sized for one
+    # slot cannot cover the workspace the allocation asks for.
+    assert union_slots == 4
+    assert union_slots == gguf_runner.packed_verify_lease_slot_ceiling(4)
+    assert union_slots > 1
+
+
+def test_lease_sized_from_ceiling_covers_the_realized_workspace() -> None:
+    """Observed failure geometry: 4 slots x 9 pages needed, 1 slot leased."""
+
+    session_pages = 8192 // 256
+    pages_per_slot = max(session_pages, gguf_runner._PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)
+    old_lease_pages = 1 * pages_per_slot
+    new_lease_pages = gguf_runner.packed_verify_lease_slot_ceiling(None) * pages_per_slot
+    workspace_need = 4 * 9
+
+    assert old_lease_pages < workspace_need  # the reported failure
+    assert new_lease_pages >= workspace_need

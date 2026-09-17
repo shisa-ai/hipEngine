@@ -105,6 +105,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _qualified_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
     estimate_qwen35_gguf_kv_capacity,
+    packed_verify_lease_slot_ceiling,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -6347,7 +6348,21 @@ class Qwen35GGUFResidentModelRunner:
             # KV reservation per admitted request.  Multi-row execution grows
             # or falls back to request-owned storage when this shared floor is
             # insufficient.
-            workspace_slots = 1
+            #
+            # The slot term must match the union geometry the allocation uses
+            # (`packed_verify_lease_slot_ceiling`): the workspace unions the
+            # realized layout slots with the serving capacity, so a one-slot
+            # lease is short as soon as the loop packs a verify group. At an
+            # 8192-token session that was 32 leased pages against a 4-slot x
+            # 9-page workspace (36), and at 1024 it was 4 against 16 - both
+            # failed closed at prefill time instead of serving.
+            workspace_slots = packed_verify_lease_slot_ceiling(
+                getattr(
+                    getattr(self, "_resident_model_runner", None),
+                    "max_batch_size",
+                    None,
+                )
+            )
             workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache

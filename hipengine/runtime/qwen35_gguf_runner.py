@@ -2066,6 +2066,23 @@ _PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
 _GGUF_PACKED_WORKSPACE_LEASE_KEY = "qwen35_gguf_packed_execution"
 
 
+def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:
+    """Slot count the packed workspace lease must cover.
+
+    ``_packed_verify_union_geometry`` unions the realized layout slots with the
+    serving capacity, so the workspace can pack more than one slot even for a
+    single request (the MTP verify width alone packs four). The pool lease is
+    taken once at pool creation, before any layout exists, so it has to be
+    sized from this ceiling; a one-slot lease is short as soon as the loop
+    packs a verify group and the allocation then fails closed at prefill time.
+    """
+
+    try:
+        return max(1, int(max_batch_size))
+    except (TypeError, ValueError):
+        return _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot recurrent state plus policy-shaped packed KV backing."""
@@ -2288,6 +2305,8 @@ class _GGUFPackedTargetState:
                     if len(lease_pages) < total_pages:
                         raise RuntimeError(
                             f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
+                            f" ({slot_count} slots x {blocks_per_slot} pages/slot,"
+                            f" max_sequence_length={max_sequence_length})"
                         )
                     kv_cache_fields = {
                         "full_key_caches": arena_backing.full_key_caches,
@@ -26742,16 +26761,14 @@ class Qwen35GGUFResidentSession:
 
         state = self._packed_verify_state
         scratch = self._packed_verify_scratch
-        capacity = getattr(self, "max_batch_size", None)
-        try:
-            # Capacity-honest workspace ceiling: the serving loop can never
-            # open more resident slots than max_active_requests (MTP serving
-            # widths and packed group layouts are both bounded by it), so the
-            # workspace follows the real cap instead of the historical 8-slot
-            # floor. Absent or invalid caps keep the historical fallback.
-            capacity = max(1, int(capacity))
-        except (TypeError, ValueError):
-            capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        # Capacity-honest workspace ceiling: the serving loop can never open
+        # more resident slots than max_active_requests (MTP serving widths and
+        # packed group layouts are both bounded by it), so the workspace
+        # follows the real cap instead of the historical 8-slot floor. Absent
+        # or invalid caps keep the historical fallback.
+        capacity = packed_verify_lease_slot_ceiling(
+            getattr(self, "max_batch_size", None)
+        )
         state_slots = capacity
         state_max_seq = _PACKED_VERIFY_MIN_MAX_SEQUENCE
         if state is not None:
