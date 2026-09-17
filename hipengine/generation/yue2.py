@@ -331,52 +331,205 @@ def window_penalty(scores: np.ndarray, recent_ids, penalty: float, *, bf16_round
     return np.where(scores < 0, scores * alpha, scores / alpha)
 
 
-def _distribution_legacy_off(logits, sampling: Sampling, history, step: int, phase: str) -> np.ndarray:
-    """Historical ``off`` arithmetic: BF16 scores, BF16 softmax, three survivors."""
-    scores = bf16(np.asarray(logits, dtype=np.float32).reshape(-1))
-    allowed = np.full_like(scores, -np.inf)
-    allowed[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
-    allowed[phase_end_token(phase)] = 0.0
+@dataclass(frozen=True)
+class PhaseScores:
+    """A score row restricted to the rows one phase can select.
+
+    ``values`` is window-relative and ``offset`` is the token id of ``values[0]``, so
+    ``offset + argmax(values)`` is the same token the full-vocabulary row would have
+    produced. The window is a contiguous range covering a phase's domain and its end token
+    (:func:`phase_window`), which is the whole set a phase can ever select.
+    """
+
+    values: np.ndarray
+    offset: int
+
+    def argmax_token(self) -> int:
+        return self.offset + int(np.argmax(self.values))
+
+
+def _allowed_mask(phase: str, low: int, high: int) -> np.ndarray:
+    """``0.0`` where the phase may select, ``-inf`` elsewhere, over ``[low, high)``.
+
+    The same rule as :func:`phase_domain` plus :func:`phase_end_token`, expressed in
+    window coordinates so a windowed row gets exactly the mask its full-row counterpart
+    would have applied to that range.
+    """
+
+    domain_low, domain_high = phase_domain(phase)
+    allowed = np.full(high - low, -np.inf, dtype=np.float32)
+    start = max(domain_low, low) - low
+    stop = min(domain_high, high) - low
+    if stop > start:
+        allowed[start:stop] = 0.0
+    end = phase_end_token(phase)
+    if low <= end < high:
+        allowed[end - low] = 0.0
+    return allowed
+
+
+def _distribution_slice(
+    row: np.ndarray,
+    sampling: Sampling,
+    history,
+    step: int,
+    phase: str,
+    low: int,
+    high: int,
+    vocab_size: int,
+    legacy_off: bool,
+) -> np.ndarray:
+    """Reference sampling arithmetic over an already-sliced window, in window coordinates.
+
+    `row` is the window slice itself, indexed from 0, and `(low, high)` says which token
+    ids it holds; `distribution` passes the whole row with `(0, len(row))` and the
+    windowed sampler passes `row[low:high]`. Every stage is identical in the two layouts,
+    which is why they share this body rather than two implementations:
+
+    * the mask is built from the same domain rule,
+    * history ids outside the window are dropped because their rows are ``-inf`` and stay
+      ``-inf`` under ``x * alpha`` for any ``alpha > 0``,
+    * top-k masks by *value*, not by index, so a window shift cannot change the survivor
+      set; ``top_k`` is compared against the full vocabulary so a ``top_k`` larger than
+      the window keeps everything, as it does in the full row,
+    * top-p sorts with ``kind="stable"``, so equal scores keep ascending token order in
+      both layouts and the trailing ``-inf`` entries contribute nothing to the cumulative
+      sum.
+    """
+
+    if row.shape[0] != high - low:
+        raise ValueError(
+            f"window ({low}, {high}) is {high - low} rows but the score row is "
+            f"{row.shape[0]}"
+        )
+    if legacy_off:
+        scores = bf16(np.asarray(row, dtype=np.float32))
+    else:
+        scores = np.asarray(row, dtype=np.float32).copy()
+    allowed = _allowed_mask(phase, low, high)
     selectable = np.isfinite(allowed)
     broken = selectable & ~np.isfinite(scores)
     if broken.any():
-        index = int(np.flatnonzero(broken)[0])
+        index = int(np.flatnonzero(broken)[0]) + low
         raise FloatingPointError(
             f"{phase} score row is non-finite at a selectable token {index} "
-            f"(value {scores[index]}); the head or the CFG combination produced a "
+            f"(value {scores[index - low]}); the head or the CFG combination produced a "
             "numerical failure"
         )
     scores = np.where(selectable, scores, -np.inf)
-    scores = bf16(scores + allowed)
-    if step < sampling.min_tokens:
-        scores[phase_end_token(phase)] = -np.inf
-    scores = window_penalty(
-        scores, list(history)[-sampling.penalty_window :], sampling.repetition_penalty, bf16_round=True
-    )
+    if legacy_off:
+        scores = bf16(scores + allowed)
+    else:
+        scores = scores + allowed
+    end = phase_end_token(phase)
+    if step < sampling.min_tokens and low <= end < high:
+        scores[end - low] = -np.inf
+    recent = [token for token in list(history)[-sampling.penalty_window :] if low <= token < high]
+    if legacy_off:
+        scores = window_penalty(
+            scores, [token - low for token in recent], sampling.repetition_penalty,
+            bf16_round=True,
+        )
+    else:
+        scores = window_penalty(
+            scores, [token - low for token in recent], sampling.repetition_penalty
+        )
     if sampling.temperature == 0:
         return scores
-    if sampling.temperature != 1:
-        scores = bf16(scores / bf16(np.asarray([sampling.temperature], dtype=np.float32))[0])
-    top_k = min(sampling.top_k, scores.shape[-1])
-    if top_k < scores.shape[-1]:
+    if legacy_off:
+        if sampling.temperature != 1:
+            scores = bf16(scores / bf16(np.asarray([sampling.temperature], dtype=np.float32))[0])
+    elif sampling.temperature != 1:
+        scores = scores / np.float32(sampling.temperature)
+    width = high - low
+    top_k = min(sampling.top_k, vocab_size)
+    if top_k < width:
         threshold = np.partition(scores, -top_k)[-top_k]
         scores = np.where(scores < threshold, -np.inf, scores)
     if sampling.top_p < 1:
         order = np.argsort(-scores, kind="stable")
         values = scores[order]
         finite = np.isfinite(values)
-        maximum = values[0] if finite[0] else -np.inf
-        probabilities = bf16(np.exp(bf16(values - maximum)))
-        total = bf16(probabilities.sum())
-        probabilities = bf16(probabilities / total) if total > 0 else probabilities
-        cumulative = bf16(np.cumsum(probabilities))
-        removed = bf16(cumulative - probabilities) > bf16(np.asarray([sampling.top_p], dtype=np.float32))[0]
-        removed[:3] = False
+        if legacy_off:
+            maximum = values[0] if finite[0] else -np.inf
+            probabilities = bf16(np.exp(bf16(values - maximum)))
+            total = bf16(probabilities.sum())
+            probabilities = bf16(probabilities / total) if total > 0 else probabilities
+            cumulative = bf16(np.cumsum(probabilities))
+            removed = bf16(cumulative - probabilities) > bf16(
+                np.asarray([sampling.top_p], dtype=np.float32)
+            )[0]
+        else:
+            shifted = np.where(finite, values, -np.inf)
+            maximum = shifted[0] if finite[0] else -np.inf
+            probabilities = np.exp(shifted - maximum)
+            total = probabilities.sum()
+            probabilities = probabilities / total if total > 0 else probabilities
+            cumulative = np.cumsum(probabilities) - probabilities
+            removed = cumulative > sampling.top_p
+        removed[: 3 if legacy_off else 1] = False
         removed |= ~finite
         values = np.where(removed, -np.inf, values)
         scores = np.empty_like(scores)
         scores[order] = values
     return scores
+
+
+def distribution(
+    logits: np.ndarray,
+    sampling: Sampling,
+    history,
+    step: int,
+    phase: str,
+    legacy_off: bool = False,
+) -> np.ndarray:
+    """Reference sampling order over the whole row. ``logits`` is 1-D BF16-valued.
+
+    ``legacy_off`` reproduces the historical ``off`` arithmetic (BF16 scores and at
+    least three surviving top-p candidates). The production path uses FP32 scores for
+    every mode and retains at least one candidate. ``logits`` may be a full-vocabulary
+    row whose rows outside the phase are ``-inf`` (a windowed head projection, see
+    :func:`hipengine.runtime.yue2_ar.Yue2ArRuntime.logits`).
+    """
+
+    row = np.asarray(logits, dtype=np.float32).reshape(-1)
+    return _distribution_slice(
+        row, sampling, history, step, phase, 0, row.shape[0], row.shape[0], legacy_off
+    )
+
+
+def distribution_windowed(
+    values: np.ndarray,
+    sampling: Sampling,
+    history,
+    step: int,
+    phase: str,
+    window: tuple[int, int],
+    legacy_off: bool = False,
+) -> PhaseScores:
+    """Reference sampling order over a window slice, in window coordinates.
+
+    ``values`` is ``row[low:high]`` -- the phase window itself, not the full row -- and
+    ``window`` says which token ids those are, so the slice length is checked against the
+    window rather than trusted. Byte-identical to :func:`distribution` on the rows the
+    phase can select, at a fraction of the host work: the mask, penalty, top-k, top-p and
+    softmax stages all run over the window instead of the full vocabulary. See
+    :func:`_distribution_slice` for why each stage survives the index shift.
+    """
+
+    low, high = window
+    if not 0 <= low < high:
+        raise ValueError(f"window ({low}, {high}) must satisfy 0 <= low < high")
+    row = np.asarray(values, dtype=np.float32).reshape(-1)
+    if row.shape[0] != high - low:
+        raise ValueError(
+            f"window ({low}, {high}) is {high - low} rows but the score row is "
+            f"{row.shape[0]}; pass the window slice, not the full row"
+        )
+    scores = _distribution_slice(
+        row, sampling, history, step, phase, low, high, VOCAB_SIZE, legacy_off
+    )
+    return PhaseScores(values=scores, offset=low)
 
 
 def distribution(
@@ -393,58 +546,10 @@ def distribution(
     at least three surviving top-p candidates). The production path uses FP32
     scores for every mode and retains at least one candidate.
     """
-    if legacy_off:
-        return _distribution_legacy_off(logits, sampling, history, step, phase)
-    scores = np.asarray(logits, dtype=np.float32).reshape(-1).copy()
-    allowed = np.full_like(scores, -np.inf)
-    if phase == "abc":
-        allowed[:EOD] = 0.0
-    else:
-        allowed[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
-    allowed[phase_end_token(phase)] = 0.0
-    # A windowed head row carries -inf outside its projection window, and the CFG
-    # combination leaves those rows non-finite, so fold every non-finite value outside
-    # the allowed set to -inf. Inside the allowed set a NaN or +inf is a numerical
-    # failure, not a mask, and masking it here would hide the failure.
-    selectable = np.isfinite(allowed)
-    broken = selectable & ~np.isfinite(scores)
-    if broken.any():
-        index = int(np.flatnonzero(broken)[0])
-        raise FloatingPointError(
-            f"{phase} score row is non-finite at a selectable token {index} "
-            f"(value {scores[index]}); the head or the CFG combination produced a "
-            "numerical failure"
-        )
-    scores = np.where(selectable, scores, -np.inf)
-    scores = scores + allowed
-    if step < sampling.min_tokens:
-        scores[phase_end_token(phase)] = -np.inf
-    scores = window_penalty(scores, list(history)[-sampling.penalty_window :], sampling.repetition_penalty)
-    if sampling.temperature == 0:
-        return scores
-    if sampling.temperature != 1:
-        scores = scores / np.float32(sampling.temperature)
-    top_k = min(sampling.top_k, scores.shape[-1])
-    if top_k < scores.shape[-1]:
-        threshold = np.partition(scores, -top_k)[-top_k]
-        scores = np.where(scores < threshold, -np.inf, scores)
-    if sampling.top_p < 1:
-        order = np.argsort(-scores, kind="stable")
-        values = scores[order]
-        finite = np.isfinite(values)
-        shifted = np.where(finite, values, -np.inf)
-        maximum = shifted[0] if finite[0] else -np.inf
-        probabilities = np.exp(shifted - maximum)
-        total = probabilities.sum()
-        probabilities = probabilities / total if total > 0 else probabilities
-        cumulative = np.cumsum(probabilities) - probabilities
-        removed = cumulative > sampling.top_p
-        removed[: 3 if legacy_off else 1] = False
-        removed |= ~finite
-        values = np.where(removed, -np.inf, values)
-        scores = np.empty_like(scores)
-        scores[order] = values
-    return scores
+    row = np.asarray(logits, dtype=np.float32).reshape(-1)
+    return _distribution_slice(
+        row, sampling, history, step, phase, 0, row.shape[0], row.shape[0], legacy_off
+    )
 
 
 def _round_bf16(values: np.ndarray) -> np.ndarray:
@@ -547,13 +652,20 @@ class YuE2Random:
 
     def sample_categorical(self, probabilities: np.ndarray) -> int:
         """Exact categorical draw by inverse CDF over the (already masked) scores."""
+
         cumulative = np.cumsum(np.asarray(probabilities, dtype=np.float64))
         total = cumulative[-1] if cumulative.size else 0.0
         if not math.isfinite(total) or total <= 0:
             raise ValueError("sampling distribution has no probability mass")
         draw = self.uniform() * total
-        index = int(np.searchsorted(cumulative, draw, side="right"))
-        return min(index, cumulative.size - 1)
+        # Entries past the last one carrying mass form a flat tail. `side="right"` would
+        # step over a draw that lands exactly on the total -- reachable when
+        # `uniform() * total` rounds up in fp64 -- and return a token with no mass, so the
+        # search stops at the last entry that carries any. `cumulative` is non-decreasing,
+        # so that index is the first one where it reaches the total.
+        last = int(np.searchsorted(cumulative, total, side="left"))
+        index = int(np.searchsorted(cumulative[: last + 1], draw, side="right"))
+        return min(index, last)
 
     def state(self) -> dict:
         return {"algorithm": self.ALGORITHM, "seed": self.seed}
@@ -579,14 +691,21 @@ class YuE2Random:
 
 
 def softmax_f32(scores: np.ndarray) -> np.ndarray:
-    """FP32 softmax over a masked score row; ``-inf`` entries contribute zero."""
+    """FP32 softmax over a masked score row; ``-inf`` entries contribute zero.
+
+    The sum runs over the finite entries only. Masked entries contribute ``0.0`` exactly,
+    but including them makes the reduction's grouping depend on the row length, so the
+    same distribution presented as a full row and as a window would disagree by an ulp
+    and a draw landing on a boundary could pick a different token.
+    """
+
     values = np.asarray(scores, dtype=np.float32)
     finite = np.isfinite(values)
     if not finite.any():
         raise ValueError("score row has no finite entry")
     maximum = values[finite].max()
     exponential = np.where(finite, np.exp(values - maximum), 0.0)
-    total = exponential.sum()
+    total = exponential[finite].sum()
     return (exponential / total).astype(np.float32)
 
 

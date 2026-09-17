@@ -33,6 +33,7 @@ from hipengine.generation.yue2 import (
     chunk_ranges,
     combine_cfg,
     distribution,
+    distribution_windowed,
     midpoint_schedule,
     natural_output_length,
     negative_prefix,
@@ -583,3 +584,185 @@ def test_random_state_digest_tracks_the_stream_position():
     assert first.state_digest() == second.state_digest()
     # Equal digests mean every later draw agrees, which is the point of comparing them.
     assert [first.uniform() for _ in range(4)] == [second.uniform() for _ in range(4)]
+
+
+def _replay_rows():
+    """Real full-vocabulary AR rows recorded from the pinned reference."""
+
+    for path in sorted((FIXTURES / "ar_replay").glob("*.npz")):
+        data = np.load(path)
+        for key in ("full_logits_0_0", "prefill_logits"):
+            if key in data:
+                yield path.name, key, bf16_bits_to_f32(data[key]).reshape(-1)
+
+
+def _window_settings():
+    return [
+        Sampling(temperature=0.0, top_p=1.0, top_k=VOCAB_SIZE, repetition_penalty=1.0,
+                 penalty_window=1, min_tokens=0, max_tokens=8),
+        Sampling(temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2,
+                 penalty_window=64, min_tokens=2, max_tokens=8),
+        Sampling(temperature=0.7, top_p=1.0, top_k=64, repetition_penalty=1.0,
+                 penalty_window=1, min_tokens=0, max_tokens=8),
+        Sampling(temperature=1.3, top_p=0.5, top_k=2048, repetition_penalty=1.05,
+                 penalty_window=100, min_tokens=4, max_tokens=8),
+        # top_k wider than the phase window, and wider than the vocabulary.
+        Sampling(temperature=1.0, top_p=0.9, top_k=200_000, repetition_penalty=1.0,
+                 penalty_window=1, min_tokens=0, max_tokens=8),
+        Sampling(temperature=1.0, top_p=1.0, top_k=1, repetition_penalty=1.0,
+                 penalty_window=1, min_tokens=0, max_tokens=8),
+    ]
+
+
+@pytest.mark.parametrize("legacy_off", [False, True])
+def test_windowed_sampling_is_identical_on_recorded_rows(legacy_off):
+    """The window is an index shift, not an approximation, on real AR rows.
+
+    Every stage runs over the window: mask, penalty, top-k, top-p, softmax and the
+    inverse-CDF draw. The test compares the windowed result against the full-row result
+    token for token, including the softmax probabilities and the draw, over rows recorded
+    from the pinned reference for both phases.
+    """
+
+    checked = 0
+    for name, key, row in _replay_rows():
+        for phase in ("abc", "semantic"):
+            low, high = phase_window(phase)
+            history = [int(token) for token in np.load(
+                FIXTURES / "ar_replay" / name)["tokens"]][:8]
+            for sampling in _window_settings():
+                full = distribution(row, sampling, history, 3, phase, legacy_off=legacy_off)
+                windowed = distribution_windowed(
+                    row[low:high], sampling, history, 3, phase, (low, high),
+                    legacy_off=legacy_off,
+                )
+                assert np.array_equal(full[low:high], windowed.values), (
+                    f"{name}/{key}/{phase} scores differ at "
+                    f"{sampling.temperature}/{sampling.top_p}/{sampling.top_k}"
+                )
+                assert np.isneginf(full[:low]).all() and np.isneginf(full[high:]).all()
+                assert windowed.argmax_token() == int(np.argmax(full))
+                if sampling.temperature == 0:
+                    continue
+                full_probs = softmax_f32(full)
+                window_probs = softmax_f32(windowed.values)
+                assert np.array_equal(full_probs[low:high], window_probs), (
+                    f"{name}/{key}/{phase} probabilities differ"
+                )
+                # Same draws in, same token out: the generator consumes one value either
+                # way, so replaying the same seed through both layouts must agree.
+                draws = []
+                for _ in range(2):
+                    full_generator = YuE2Random(99)
+                    window_generator = YuE2Random(99)
+                    draws.append((
+                        full_generator.sample_categorical(full_probs),
+                        window_generator.sample_categorical(window_probs) + low,
+                    ))
+                for full_token, windowed_token in draws:
+                    assert full_token == windowed_token, (
+                        f"{name}/{key}/{phase} token {full_token} != {windowed_token}"
+                    )
+                checked += 1
+    assert checked > 0, "no recorded AR rows found"
+
+
+def test_windowed_sampling_keeps_ties_in_token_order():
+    """Equal scores must resolve to the same token in both layouts.
+
+    top-k masks by value and top-p sorts stably, so a run of equal scores keeps ascending
+    token order after the index shift. A crafted row makes the whole window tie, which is
+    the case a naive windowed implementation gets wrong.
+    """
+
+    row = np.full(VOCAB_SIZE, -50.0, dtype=np.float32)
+    row[:] = -np.inf
+    row[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
+    row[MUSIC_END] = 0.0
+    sampling = Sampling(temperature=1.0, top_p=0.9, top_k=8, repetition_penalty=1.0,
+                        penalty_window=1, min_tokens=0, max_tokens=8)
+    low, high = phase_window("semantic")
+    full = distribution(row, sampling, [], 0, "semantic")
+    windowed = distribution_windowed(row[low:high], sampling, [], 0, "semantic", (low, high))
+    assert np.array_equal(full[low:high], windowed.values)
+    assert np.array_equal(np.isfinite(full), np.isfinite(
+        np.concatenate([np.full(low, -np.inf), windowed.values,
+                        np.full(VOCAB_SIZE - high, -np.inf)])))
+    # The first eight rows of the window are the survivors in both layouts.
+    assert int(np.argmax(full)) == windowed.argmax_token() == low
+    for seed in (1, 2, 3, 17):
+        full_generator = YuE2Random(seed)
+        window_generator = YuE2Random(seed)
+        assert full_generator.sample_categorical(softmax_f32(full)) == (
+            window_generator.sample_categorical(softmax_f32(windowed.values)) + low
+        )
+
+
+def test_windowed_sampling_keeps_abc_holes_masked():
+    """`abc` has holes between its domain and its end token; they stay unselectable."""
+
+    row = np.zeros(VOCAB_SIZE, dtype=np.float32)
+    sampling = Sampling(temperature=1.0, top_p=1.0, top_k=VOCAB_SIZE,
+                        repetition_penalty=1.0, penalty_window=1, min_tokens=0, max_tokens=8)
+    low, high = phase_window("abc")
+    full = distribution(row, sampling, [], 0, "abc")
+    windowed = distribution_windowed(row[low:high], sampling, [], 0, "abc", (low, high))
+    assert np.array_equal(full[low:high], windowed.values)
+    assert np.isfinite(full).sum() == EOD + 1  # the domain plus ABC_END
+    assert not np.isfinite(full[EOD:ABC_END]).any()
+    assert not np.isfinite(windowed.values[EOD - low : ABC_END - low]).any()
+    assert np.isfinite(windowed.values[ABC_END - low])
+
+
+def test_windowed_sampling_drops_out_of_window_history():
+    """History rows outside the window are -inf either way, so dropping them is free."""
+
+    row = np.full(VOCAB_SIZE, 1.0, dtype=np.float32)
+    sampling = Sampling(temperature=1.0, top_p=1.0, top_k=VOCAB_SIZE, repetition_penalty=4.0,
+                        penalty_window=64, min_tokens=0, max_tokens=8)
+    low, high = phase_window("semantic")
+    # 42 is far below the semantic window; a codec token and the end token are inside it.
+    history = [42, CODEC_OFFSET + 5, MUSIC_END, 42, CODEC_OFFSET + 5]
+    full = distribution(row, sampling, history, 0, "semantic")
+    windowed = distribution_windowed(
+        row[low:high], sampling, history, 0, "semantic", (low, high)
+    )
+    assert np.array_equal(full[low:high], windowed.values)
+    # The full row masks 42 to -inf as well, so penalising it there changes nothing the
+    # phase could ever select: dropping it is the identity, not an approximation.
+    assert np.isneginf(full[42])
+    # Two occurrences of the codec token: 1 / 4**2 = 0.0625, the same in both layouts.
+    assert full[CODEC_OFFSET + 5] == np.float32(0.0625)
+    assert full[CODEC_OFFSET + 6] == np.float32(1.0)
+    assert windowed.values[CODEC_OFFSET + 5 - low] == np.float32(0.0625)
+    assert windowed.values[CODEC_OFFSET + 6 - low] == np.float32(1.0)
+
+
+def test_sample_categorical_never_returns_a_massless_tail_entry():
+    """A draw landing on the exact total must not step into the flat -inf tail."""
+
+    probabilities = np.array([0.25, 0.75, 0.0, 0.0, 0.0], dtype=np.float64)
+
+    class _Certain(YuE2Random):
+        def uniform(self) -> float:  # pragma: no cover - exercised by construction
+            return 1.0
+
+    # uniform() is documented as [0, 1), so this is the boundary the guard exists for.
+    assert _Certain(1).sample_categorical(probabilities) == 1
+    generator = YuE2Random(7)
+    for _ in range(64):
+        assert generator.sample_categorical(probabilities) in (0, 1)
+    # A zero inside the support is still reachable only where mass exists.
+    assert YuE2Random(3).sample_categorical(np.array([0.5, 0.0, 0.5])) in (0, 2)
+
+
+def test_windowed_sampling_rejects_a_mismatched_slice():
+    """Passing the full row where a window slice belongs must not be silently accepted."""
+
+    row = np.zeros(VOCAB_SIZE, dtype=np.float32)
+    sampling = Sampling(temperature=1.0, top_p=1.0, top_k=8, repetition_penalty=1.0,
+                        penalty_window=1, min_tokens=0, max_tokens=8)
+    with pytest.raises(ValueError, match="pass the window slice"):
+        distribution_windowed(row, sampling, [], 0, "semantic", phase_window("semantic"))
+    with pytest.raises(ValueError, match="0 <= low < high"):
+        distribution_windowed(row[10:20], sampling, [], 0, "semantic", (20, 10))
