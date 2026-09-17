@@ -105,6 +105,37 @@ def test_prefill_schedule_provenance_is_recorded():
     assert route['prefill_schedule']=='token-serial'
 
 
+def test_adapter_reports_the_tp2_bulk_candidate_schedule():
+    from scripts.tp2_resident_control import NativeARAdapter, create_native_adapter
+    runtime=SimpleNamespace()
+    bulk=SimpleNamespace(runtime=runtime,vocab_size=7,bulk_prefill_enabled=True)
+    serial=SimpleNamespace(runtime=runtime,vocab_size=7,bulk_prefill_enabled=False)
+    assert NativeARAdapter(bulk,resident=False).prefill_schedule=='bulk-tp2'
+    assert NativeARAdapter(serial,resident=False).prefill_schedule=='token-serial'
+    # The resident arm is bulk by construction and must not be handed the TP2
+    # candidate, which the factory refuses before any session is created.
+    with pytest.raises(ValueError,match='TP1 arm is already bulk'):
+        create_native_adapter('unused.gguf','tp1-d0',bulk_prefill=True)
+
+
+def test_resident_prefill_schedule_switch_is_passed_through():
+    from scripts.tp2_resident_control import NativeARAdapter
+    calls=[]
+    class Session:
+        runtime=SimpleNamespace()
+        def reset(self): self.position=0
+        def prefill(self,tokens,**kw):
+            calls.append(kw)
+            return SimpleNamespace(token_id=1)
+    adapter=NativeARAdapter(SimpleNamespace(session=Session(),vocab_size=7),resident=True)
+    assert adapter.prefill_use_bulk is None
+    adapter.prefill([3,4])
+    assert calls[-1]['use_bulk'] is None
+    adapter.prefill_use_bulk=False
+    adapter.prefill([3,4])
+    assert calls[-1]['use_bulk'] is False
+
+
 class Adapter:
     vocab_size=16
     def __init__(self): self.inputs=[]; self.position=0; self.closed=False

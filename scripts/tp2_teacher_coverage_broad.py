@@ -725,6 +725,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--max-sequence-length', type=int, default=71)
     parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
     parser.add_argument('--sustained-arm', choices=('tp1-d0','tp1-d1','tp2'))
+    parser.add_argument('--tp2-bulk-prefill', action='store_true',
+        help='drive the tp2 sustained arm through the session rank-local bulk '
+             'prefill candidate instead of the committed token-serial route; '
+             'the artifact records the schedule it measured')
     parser.add_argument('--teacher-source', type=Path)
     parser.add_argument('--sustained-report', type=Path, nargs=3)
     args = parser.parse_args(argv)
@@ -1277,11 +1281,13 @@ def capture_sustained_arm(args):
         fixture=root/'first-numerical-failure.npz'; np.savez(fixture,teacher=teacher,candidate=candidate)
         record.artifact['numerical_failure']={**current,**detail,'fixture':str(fixture)}
     state={}; hashes=[]; first_arrays=[]
+    bulk=bool(getattr(args,'tp2_bulk_prefill',False))
+    if bulk and arm!='tp2': raise ValueError('bulk prefill is a tp2-arm candidate')
     def build():
-        a=create_native_adapter(MODEL,arm,capacity=200); state['adapter']=a; a.prepare()
+        a=create_native_adapter(MODEL,arm,capacity=200,bulk_prefill=bulk); state['adapter']=a; a.prepare()
         record.artifact.update(vocab_size=a.vocab_size,devices=_device_identities(a.owner),
             route=_resolved_route(a.owner),scope_manifest=resolved_scope_manifest(a.owner),
-            prefill_schedule=a.prefill_schedule)
+            prefill_schedule=a.prefill_schedule,tp2_bulk_prefill_requested=bulk)
         return {'vocab_size':a.vocab_size}
     def capture(i,save=False):
         forced=(None if reference_data is None and save else record.artifact['forced_inputs'][i])

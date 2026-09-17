@@ -852,7 +852,21 @@ transitions per prompt (2,304 positions), with reset/isolation checks.
 
 TP2 stops on `mixed_ja_en_translate`, decode index 82 / absolute input position
 146: **KL 0.108406 exceeds the 0.05 ceiling**, despite finite logits and identical
-top-1. This remains a genuine end-to-end quality failure. A per-layer boundary
+top-1. A four-arm measurement on one revision, one host and one recorded
+identity shows this ceiling is not a TP2-specific failure: **TP1's own
+token-serial prefill route — which contains no TP2 code — breaches it at the same
+decode index (0.299279) and reaches 0.6092 by index 93**, while TP2 token-serial
+reaches 0.1084 and TP2 bulk prefill 0.1671. TP2 is closer to the bulk-prefill
+teacher than that TP1 route on mean KL (1.429e-03 vs 7.241e-03), p99 (0.0398 vs
+0.2211), max (0.1084 vs 0.6092) and top-1 (both 1.000), and at the failing
+position TP2 sits 10.5x closer to a same-schedule TP1 control (0.028379) than
+that control sits to the teacher (0.299279). The mechanism is measured: the
+breaching positions are the flat ones — at index 82 the teacher's top-1 holds
+0.4866 of the mass with a 0.6233 top-2 logit gap and entropy 1.2390 against
+neighbours at top-1 probability >= 0.99, and every arm keeps the same top-1 token
+(248046) there. 2-3 of 128 positions exceed 0.01 KL and p95 stays inside
+5.66e-04..9.88e-04 for every arm, so over a 128-step forced horizon the absolute
+max-KL ceiling is a bit-exactness test in disguise. A per-layer boundary
 bisect on the same loaded model, prompt, and positions, changing only the prefill
 schedule, measures at prefill end: bulk vs token-serial logits KL 6.08e-05,
 per-layer hidden RMS growing monotonically from 5.5e-05 to 0.122, Conv state RMS
@@ -864,6 +878,9 @@ smooth growth is consistent with arithmetic amplification but does not rule out
 subtle state/layout errors and does not prove causality. The sustained report
 records per-arm prefill schedules and the comparison scope, still requires
 provenance and same input/position/profile, and enforces the unchanged envelopes.
+Neither the TP2 route nor the bulk prefill candidate is promoted on this
+evidence; which criterion replaces the absolute max ceiling at long horizons is
+an open normative decision.
 
 **No native-product timing runs or TP2 speed ratios were emitted.** The declared
 no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
@@ -871,7 +888,8 @@ no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
 position is not removed from the gate. Task/BF16-relative and public distributed
 qualification are not claimed.
 [Capacity, sustained failure, and localization evidence](results/2026-09-16-tp2-native-product-d128-blocked.json) ·
-[per-layer prefill-schedule bisect](results/2026-09-17-tp2-bulk-serial-prefill-bisect.json).
+[per-layer prefill-schedule bisect](results/2026-09-17-tp2-bulk-serial-prefill-bisect.json) ·
+[four-arm schedule-spread measurement](results/2026-09-17-tp2-prefill-schedule-failure-probe.json).
 
 ## Tensor-parallel screening (W7900 + RX 7900 XTX)
 

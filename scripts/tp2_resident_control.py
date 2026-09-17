@@ -231,10 +231,22 @@ class NativeARAdapter:
         self.session = owner.session if resident else owner
         self.runtime = self.session.runtime
         self.vocab_size = owner.vocab_size
-        self.prefill_schedule = 'bulk' if resident else 'token-serial'
+        # Report the schedule the session actually drives, not the schedule the
+        # adapter used to hardcode: the TP2 arm's prefill is switchable, and a
+        # comparison artifact that names the wrong schedule is not provenance.
+        self.bulk_prefill = (
+            True if resident else bool(getattr(self.session, 'bulk_prefill_enabled', False))
+        )
+        self.prefill_schedule = 'bulk' if resident else (
+            'bulk-tp2' if self.bulk_prefill else 'token-serial'
+        )
         self.position = 0
         self.graph = None
         self.traces = []
+        # Resident TP1 only: ``None`` keeps the session's own default, ``False``
+        # selects its token-serial prefill. The sustained probe uses this to
+        # measure the schedule-sensitivity reference without a second session.
+        self.prefill_use_bulk = None
 
     def prepare(self):
         if not self.resident:
@@ -244,8 +256,13 @@ class NativeARAdapter:
         self.session.reset()
         self.traces = []
         if self.resident:
-            result = self.session.prefill(tokens, use_bulk=None, bulk_attention_mode='bulk', return_logits=False)
+            result = self.session.prefill(tokens, use_bulk=self.prefill_use_bulk, bulk_attention_mode='bulk', return_logits=False)
             token = int(result.token_id)
+        elif self.bulk_prefill:
+            # The session's own rank-local bulk prefill, not an adapter-side
+            # re-implementation: this arm exists to measure that candidate.
+            rows = self.session.bulk_prefill(tokens)
+            token = int(np.argmax(np.asarray(rows)[-1]))
         else:
             for position, input_token in enumerate(tokens):
                 logits, trace = self.session._forward_token(int(input_token), position, kind='prefill')
@@ -334,9 +351,12 @@ class NativeARAdapter:
         self.owner.close()
 
 
-def create_native_adapter(model, arm, *, capacity=200):
+def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False):
     if arm != 'tp2':
+        if bulk_prefill:
+            raise ValueError('bulk_prefill selects the TP2 rank-local candidate; the TP1 arm is already bulk')
         return NativeARAdapter(create_resident_control(model, capacity=capacity, capture_rows=False), resident=True)
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
     return NativeARAdapter(MlpTP2GenerationSession(model, devices=(0, 1), mode='tp2',
-        max_sequence_length=capacity), resident=False)
+        max_sequence_length=capacity, bulk_prefill=bool(bulk_prefill),
+        bulk_prefill_rows=capacity if bulk_prefill else None), resident=False)
