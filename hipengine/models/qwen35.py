@@ -16,6 +16,7 @@ from hipengine.speculative.serving import (
     SpeculativeMTPServingDecision,
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
+    resolve_max_qualified_candidate_budget,
     resolve_speculative_mtp_serving_plan,
 )
 
@@ -633,6 +634,18 @@ class Qwen35GGUFModel:
             key=key,
         )
 
+    def max_qualified_candidate_budget(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+    ) -> int | None:
+        """Return the deepest speculative depth this artifact's evidence qualifies."""
+
+        return resolve_max_qualified_candidate_budget(
+            self.speculative_mtp_serving_evidence,
+            key=key,
+        )
+
     def resolve_kv_capability(
         self,
         *,
@@ -690,6 +703,18 @@ class Qwen35MoeGGUFModel:
         """Resolve the exact Qwen MoE serving scope before mutation."""
 
         return resolve_speculative_mtp_serving_plan(
+            self.speculative_mtp_serving_evidence,
+            key=key,
+        )
+
+    def max_qualified_candidate_budget(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+    ) -> int | None:
+        """Return the deepest speculative depth this artifact's evidence qualifies."""
+
+        return resolve_max_qualified_candidate_budget(
             self.speculative_mtp_serving_evidence,
             key=key,
         )

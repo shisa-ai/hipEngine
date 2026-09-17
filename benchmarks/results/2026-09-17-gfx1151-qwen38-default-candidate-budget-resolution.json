@@ -1,0 +1,100 @@
+{
+  "status": "route/configuration evidence; not a retained benchmark row",
+  "date": "2026-09-17",
+  "purpose": "Verify that an omitted --speculative-candidate-budget resolves from the loaded model's retained serving evidence, that a pinned unqualified depth never gains admission, and that an explicitly enabled MTP server which cannot admit says so at startup.",
+  "host": {
+    "machine": "gfx1151",
+    "gpu": "Radeon 8060S (gfx1151)",
+    "backend": "hip_gfx1151",
+    "model": "Qwen3.8-27B-Q4_K_M.gguf",
+    "model_size_bytes": 17106775008,
+    "kv_storage": "bf16",
+    "session_tokens": 16384,
+    "execution_profile": "default (no explicit profile flag)"
+  },
+  "protocol": "Three separate server processes on the same host in one session, each started with no speculative flags beyond the arm's own, then one /v1/hipengine/capabilities GET and one non-streaming chat request (945-token prompt, 64 greedy outputs, enable_thinking=false). Exact command: /tmp/run-budget-resolution-e2e.sh.",
+  "arms": {
+    "default_configuration": {
+      "server_flags": "(none)",
+      "env": {},
+      "capability_candidate_budget": {
+        "requested": null,
+        "resolved": 3,
+        "source": "model_plugin_evidence"
+      },
+      "automatic_route_promoted": true,
+      "default_enabled": true,
+      "route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "speculative_mtp_used": true,
+      "draft_cycles": 18,
+      "draft_tokens": 54,
+      "accepted_draft_tokens": 45,
+      "acceptance_rate": 0.8333333333333334,
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "output_characters": 316,
+      "request_wall_seconds": 8.991
+    },
+    "pinned_unqualified_depth": {
+      "server_flags": "--speculative-candidate-budget 4",
+      "env": {},
+      "capability_candidate_budget": {
+        "requested": 4,
+        "resolved": 4,
+        "source": "explicit"
+      },
+      "automatic_route_promoted": false,
+      "default_enabled": false,
+      "route": "default",
+      "effective_route": "default",
+      "speculative_mtp_used": false,
+      "draft_cycles": 0,
+      "draft_tokens": 0,
+      "accepted_draft_tokens": 0,
+      "acceptance_rate": null,
+      "decision_reason": "candidate_budget_not_qualified",
+      "output_characters": 316,
+      "request_wall_seconds": 7.808
+    },
+    "pinned_unqualified_depth_enabled_route": {
+      "server_flags": "--speculative-candidate-budget 4 --speculative-mtp-serving enabled",
+      "env": {},
+      "capability_candidate_budget": {
+        "requested": 4,
+        "resolved": 4,
+        "source": "explicit"
+      },
+      "automatic_route_promoted": false,
+      "default_enabled": false,
+      "route": "default",
+      "effective_route": "default",
+      "speculative_mtp_used": false,
+      "draft_cycles": 0,
+      "draft_tokens": 0,
+      "accepted_draft_tokens": 0,
+      "acceptance_rate": null,
+      "decision_reason": "candidate_budget_not_qualified",
+      "output_characters": 316,
+      "request_wall_seconds": 7.813
+    }
+  },
+  "startup_log": {
+    "default_configuration_pre_load": "EFFECTIVE_MTP: serving=off engine_supported=False default_enabled=False policy=auto thinking=hint candidate_budget=requested:None resolved:None source:pending",
+    "default_configuration_effective": "EFFECTIVE_MTP: serving=enabled engine_supported=True default_enabled=True policy=auto thinking=hint candidate_budget=requested:None resolved:3 source:model_plugin_evidence",
+    "pinned_unqualified_enabled_route_warning": "EFFECTIVE_MTP: speculative_mtp_serving=enabled but the retained evidence rejects this cell (candidate_budget_not_qualified); requests fall back to autoregressive decode (candidate_budget requested:4 resolved:4 source:explicit)"
+  },
+  "correctness": {
+    "generated_text_identical_across_arms": true,
+    "output_characters": 316,
+    "note": "All three arms emitted the same 316 characters, so the unqualified pinned depth falls back to normal decoding rather than to a different route, and no unsupported route gained admission."
+  },
+  "gates": {
+    "default_configuration_resolves_b3_from_evidence": true,
+    "default_configuration_promotes_automatic_route": true,
+    "default_configuration_executes_speculative_cycles": true,
+    "pinned_depth_reported_as_explicit": true,
+    "pinned_depth_never_admits": true,
+    "enabled_route_warns_when_it_cannot_admit": true
+  },
+  "source": "worklog/entries/20260917T113608.088508Z-lhl-mtp-candidate-budget-capability-f876c3.md"
+}

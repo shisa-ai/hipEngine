@@ -84,7 +84,7 @@ that hipEngine can obtain by removing a guard.
 
 ## Prioritized work
 
-### P0 — Make the normal server select a supported candidate budget
+### P0 — Make the normal server select a supported candidate budget — DONE 2026-09-17
 
 - Represent an omitted budget as automatic selection, resolved through
   model/provider capability data and physical identity. For this qualified
@@ -92,6 +92,16 @@ that hipEngine can obtain by removing a guard.
   CLI/environment overrides and explain unsupported values rather than silently
   rewriting them. Do not globally change 4 to 3 or add backend/model branches
   to the engine.
+- Implemented: `speculative/serving.py::resolve_max_qualified_candidate_budget`
+  answers the deepest depth the resident artifact's rows qualify (automatic rows
+  preferred, requested depth ignored); the model plugin, generator, and `LLM`
+  expose it; `LLM` resolves an omitted budget at load (evidence, then the
+  generator's declared dense-MTP default, then unresolved) and the server
+  reports requested/resolved/source at startup and in capabilities, warning when
+  an explicitly enabled route cannot admit. Default-config E2E: a Qwen3.8
+  `gfx1151` server with no speculative flags reports
+  `{requested: null, resolved: 3, source: model_plugin_evidence}` and a plain
+  greedy request executes speculative cycles.
 - Report requested/resolved budget, provider, admission and fallback reason at
   startup and through capabilities. Warn when an explicitly enabled MTP server
   cannot admit its configured provider.

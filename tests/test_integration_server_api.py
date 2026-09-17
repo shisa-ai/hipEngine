@@ -322,6 +322,18 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
+    # The loaded engine resolves an omitted budget from model-plugin evidence.
+    speculative_candidate_budget_requested: int | None = None
+    speculative_candidate_budget: int | None = 3
+    speculative_candidate_budget_source = "model_plugin_evidence"
+
+    @property
+    def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+        return {
+            "requested_candidate_budget": self.speculative_candidate_budget_requested,
+            "candidate_budget": self.speculative_candidate_budget,
+            "candidate_budget_source": self.speculative_candidate_budget_source,
+        }
 
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
@@ -1868,6 +1880,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         },
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": None,
+            "source": "unresolved",
+        },
     }
     assert body["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
@@ -1967,6 +1984,11 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": 3,
+            "source": "model_plugin_evidence",
+        },
         "policy": "opt_in",
         "request_field": "speculative_mtp",
         "default_enabled": False,
@@ -2017,6 +2039,119 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
         "compatibility_mtp_explicit_only": True,
         "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
     }
+
+
+def test_mtp_capability_reports_capability_resolved_candidate_budget() -> None:
+    """An omitted budget reports the depth capability data resolved."""
+
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+
+    payload = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    assert payload["sampling"]["speculative_mtp"]["candidate_budget"] == {
+        "requested": None,
+        "resolved": 3,
+        "source": "model_plugin_evidence",
+    }
+
+
+def test_mtp_capability_reports_an_explicit_candidate_budget() -> None:
+    """A pinned depth is reported as pinned, never rewritten."""
+
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+            speculative_candidate_budget=4,
+        ),
+        llm=fake,
+    )
+
+    payload = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    assert payload["sampling"]["speculative_mtp"]["candidate_budget"] == {
+        "requested": 4,
+        "resolved": 4,
+        "source": "explicit",
+    }
+
+
+def test_candidate_budget_reports_pending_before_the_engine_loads() -> None:
+    """An engine that has not loaded its artifact reports pending, not a depth."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+
+    class UnloadedEngine:
+        @property
+        def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+            return {
+                "requested_candidate_budget": None,
+                "candidate_budget": None,
+                "candidate_budget_source": "pending",
+            }
+
+    assert _candidate_budget_resolution(
+        ServerConfig(model="fake-path"), engine=UnloadedEngine()
+    ) == {"requested": None, "resolved": None, "source": "pending"}
+
+
+def test_server_config_accepts_an_omitted_candidate_budget() -> None:
+    """Omitting the budget is a supported configuration, not a default of 4."""
+
+    assert ServerConfig(model="fake-path").speculative_candidate_budget is None
+    assert (
+        ServerConfig(model="fake-path", speculative_candidate_budget=2)
+        .speculative_candidate_budget
+        == 2
+    )
+    with pytest.raises(ValueError, match="must be positive"):
+        ServerConfig(model="fake-path", speculative_candidate_budget=0)
+
+
+def test_startup_warns_when_enabled_mtp_cannot_serve_its_budget(caplog) -> None:
+    """An explicitly enabled route that cannot admit is reported, not silent."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    fake = SpeculativeMTPFakeLLM()
+    fake.speculative_mtp_serving_capability = {
+        "admitted": False,
+        "automatic_eligible": False,
+        "reason": "candidate_budget_not_qualified",
+    }
+    fake.speculative_candidate_budget_requested = 4
+    fake.speculative_candidate_budget = 4
+    fake.speculative_candidate_budget_source = "explicit"
+
+    with caplog.at_level(logging.WARNING):
+        _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="enabled",
+                speculative_candidate_budget=4,
+            ),
+            engine=fake,
+        )
+
+    assert any(
+        "candidate_budget_not_qualified" in record.message
+        and "candidate_budget requested:4 resolved:4 source:explicit" in record.message
+        for record in caplog.records
+    )
 
 
 def test_capabilities_endpoint_does_not_infer_default_mtp_from_dense_boolean() -> None:
@@ -3144,7 +3279,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
-        speculative_candidate_budget: int = 4,
+        speculative_candidate_budget: int | None = None,
         kv_storage: str = "auto",
         kv_scale_dtype: str = "fp16",
         kv_scale_granularity: str = "per_token_head",
@@ -3201,7 +3336,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "prefix_cache": "radix",
         "speculative_provider": None,
         "draft_model": None,
-        "speculative_candidate_budget": 4,
+        "speculative_candidate_budget": None,
         "kv_storage": "int8_per_token_head",
         "kv_scale_dtype": "fp32",
         "kv_scale_granularity": "per_token_head",
@@ -21110,6 +21245,11 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         },
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": None,
+            "source": "unresolved",
+        },
     }
     assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS

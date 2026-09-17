@@ -14,6 +14,7 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
@@ -271,7 +272,7 @@ class LLM:
         speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
-        speculative_candidate_budget: int = 4,
+        speculative_candidate_budget: int | None = None,
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
@@ -301,9 +302,12 @@ class LLM:
             raise ValueError("draft_model requires speculative_provider")
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
-        candidate_budget = int(speculative_candidate_budget)
-        if candidate_budget <= 0:
-            raise ValueError("speculative_candidate_budget must be positive")
+        if speculative_candidate_budget is None:
+            candidate_budget = None
+        else:
+            candidate_budget = int(speculative_candidate_budget)
+            if candidate_budget <= 0:
+                raise ValueError("speculative_candidate_budget must be positive")
         from hipengine.execution_profiles import resolve_requested_execution_profile
 
         requested_profile = resolve_requested_execution_profile(execution_profile)
@@ -335,6 +339,12 @@ class LLM:
         self.speculative_provider = provider
         self.draft_model = drafter
         self.speculative_candidate_budget = candidate_budget
+        # An omitted budget resolves from capability data when the resident
+        # generator loads; ``requested`` keeps the caller's intent for reporting.
+        self.speculative_candidate_budget_requested = candidate_budget
+        self.speculative_candidate_budget_source = (
+            "explicit" if candidate_budget is not None else "pending"
+        )
         self.kv_storage = None if kv_storage is None else str(kv_storage)
         self.kv_scale_dtype = None if kv_scale_dtype is None else str(kv_scale_dtype)
         self.kv_scale_granularity = (
@@ -603,6 +613,92 @@ class LLM:
             return False
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
 
+    def _resident_capacity(self, generator: Any) -> int:
+        """Return the capacity the resident serving cell is sized for."""
+
+        return int(
+            getattr(
+                generator,
+                "resident_capacity",
+                self.max_active_requests if self.max_active_requests is not None else 32,
+            )
+        )
+
+    def _resolve_candidate_budget(self, generator: Any) -> tuple[int | None, str]:
+        """Resolve an omitted candidate budget from capability data.
+
+        An explicit caller value is used unchanged. An omitted one comes from
+        the resident artifact's own serving evidence (the deepest depth it
+        qualifies for the default physical cell), from an attached speculative
+        provider's declared default, or from the generator's own dense-MTP
+        default. No backend or model name is consulted.
+        """
+
+        requested = self.speculative_candidate_budget_requested
+        if requested is not None:
+            return int(requested), "explicit"
+        if self.speculative_provider is not None:
+            return int(DEFAULT_PROVIDER_CANDIDATE_BUDGET), "provider_default"
+        evidence_resolver = getattr(
+            generator, "max_qualified_speculative_candidate_budget", None
+        )
+        if callable(evidence_resolver):
+            depth = evidence_resolver(
+                realized_group_rows=1,
+                resident_capacity=self._resident_capacity(generator),
+                sampling_mode="greedy_fast",
+                kv_storage=str(self.kv_storage or "auto"),
+                memory_fit=True,
+            )
+            if depth is not None:
+                return int(depth), "model_plugin_evidence"
+        default_resolver = getattr(
+            generator, "speculative_candidate_budget_default", None
+        )
+        if callable(default_resolver):
+            return int(default_resolver()), "generator_default"
+        return None, "unresolved"
+
+    def _publish_candidate_budget(self, generator: Any | None = None) -> None:
+        """Publish the resolved candidate depth on the loaded owner.
+
+        Evidence describes a physical cell, so an evidence lookup waits until
+        the owner declares the capacity it will actually serve: a generator that
+        is constructed but not yet prepared has no resident runner and only a
+        fallback capacity. A provider default and a generator's own declared
+        default do not depend on that, so they publish as soon as the owner is
+        constructed.
+        """
+
+        owner = generator if generator is not None else self._get_text_generator()
+        if self.speculative_candidate_budget_requested is not None:
+            owner.speculative_candidate_budget = int(
+                self.speculative_candidate_budget_requested
+            )
+            return
+        if self.speculative_candidate_budget is not None:
+            return
+        if self.speculative_provider is None and callable(
+            getattr(owner, "max_qualified_speculative_candidate_budget", None)
+        ):
+            if getattr(owner, "resident_capacity", None) is None:
+                return
+        budget, source = self._resolve_candidate_budget(owner)
+        self.speculative_candidate_budget = budget
+        self.speculative_candidate_budget_source = source
+        if budget is not None:
+            owner.speculative_candidate_budget = int(budget)
+
+    @property
+    def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+        """Report the requested and effective candidate depth for operators."""
+
+        return {
+            "requested_candidate_budget": self.speculative_candidate_budget_requested,
+            "candidate_budget": self.speculative_candidate_budget,
+            "candidate_budget_source": self.speculative_candidate_budget_source,
+        }
+
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
@@ -617,13 +713,14 @@ class LLM:
         resolver = getattr(generator, "resolve_speculative_mtp_serving_plan", None)
         if not callable(resolver):
             return None
-        resident_capacity = int(
-            getattr(
-                generator,
-                "resident_capacity",
-                self.max_active_requests if self.max_active_requests is not None else 32,
-            )
-        )
+        # The resident owner is prepared by now, so an omitted depth resolves
+        # against the real physical capacity rather than a pre-load fallback.
+        self._publish_candidate_budget(generator)
+        if self.speculative_candidate_budget is None:
+            # No evidence qualified a depth for this cell, so there is no typed
+            # plan to resolve; admission stays off rather than guessing one.
+            return None
+        resident_capacity = self._resident_capacity(generator)
         return resolver(
             realized_group_rows=int(realized_group_rows),
             resident_capacity=resident_capacity,
@@ -934,10 +1031,14 @@ class LLM:
         preparer = getattr(generator, "prepare", None)
         if not callable(preparer):
             return None
-        return preparer(
+        prepared = preparer(
             max_sequence_length=requested,
             sampling_params=sampling_params or SamplingParams(),
         )
+        # The resident runner now exists, so evidence can resolve an omitted
+        # candidate depth against the capacity admission will actually use.
+        self._publish_candidate_budget(generator)
+        return prepared
 
     def prepare_request_scratch(
         self,
@@ -1055,9 +1156,7 @@ class LLM:
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.
-        generator.speculative_candidate_budget = int(
-            self.speculative_candidate_budget
-        )
+        self._publish_candidate_budget(generator)
         if self.speculative_provider is not None:
             from hipengine.speculative.registry import (
                 SpeculativeProviderConfig,

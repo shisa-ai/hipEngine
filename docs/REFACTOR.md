@@ -69,19 +69,25 @@
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
-- `python -m hipengine.server` defaults `--speculative-candidate-budget` to 4
-  (`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`, documented in `docs/ENVS.md` for the
-  Laguna B4 provider). No retained Qwen3.8 evidence row uses 4: 11 rows pin 3 and
-  3 rows pin 2. The resolver therefore returns `candidate_budget_not_qualified`
-  with `permanent_ar` for a default Qwen3.8 server on `gfx1100` and `gfx1151`,
-  and MTP does not engage at any shape until the operator passes a qualified
-  depth. This is correct fail-closed behavior for an unqualified depth, but the
-  default silently disables a qualified path for every model except Laguna.
-- Wanted: a per-model or per-provider default depth taken from the model plugin's
-  own qualified rows, or an explicit startup warning when the configured depth
-  matches no row. Either way Laguna must keep admitting only B4, so this cannot
-  be a single global default change. Until then, the measured MTP recipes pass
-  `--speculative-candidate-budget 3` explicitly.
+- Resolved 2026-09-17: an omitted `--speculative-candidate-budget`
+  (`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`) no longer defaults to 4. The server
+  resolves the depth from the loaded model's retained serving evidence (deepest
+  qualified depth for the resident physical cell), or from the generic
+  provider's declared shape (Laguna keeps B4), and reports requested/resolved/
+  source at startup and in `/v1/hipengine/capabilities`. A pinned depth is used
+  unchanged and an unservable one is warned about instead of silently
+  rewritten. See `docs/ENVS.md` and
+  `worklog/entries/20260917T113608.088508Z-lhl-mtp-candidate-budget-capability-f876c3.md`.
+- Remaining debt: the two budget knobs stay separate. The server surface
+  (`--speculative-candidate-budget`) and the generator surface
+  (`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`, default 3) describe the same dense MTP
+  depth; the generator value is now only a fallback when no evidence row
+  describes the cell. Collapse them into one capability-owned setting once the
+  adapter budget is always published by the loaded owner.
+- Remaining debt: `_candidate_budget_resolution` keeps a three-source ladder
+  (explicit / engine-resolved / provider-declared). Once every generator
+  publishes a resolution, the provider branch is only needed for pre-load
+  capability reads and can be reduced to a declared provider field.
 
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 

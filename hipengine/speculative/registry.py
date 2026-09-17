@@ -114,13 +114,19 @@ class SpeculativeProviderCapabilities:
         )
 
 
+# Shape a generic speculative provider declares when the caller pins no depth.
+# The adapter validates the depth it was built for, so an omitted server budget
+# must resolve to this declared value instead of inventing one.
+DEFAULT_PROVIDER_CANDIDATE_BUDGET = 4
+
+
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderConfig:
     """User-selected sidecar and fixed provider shape."""
 
     provider: str
     draft_model: str | Path
-    candidate_budget: int = 4
+    candidate_budget: int = DEFAULT_PROVIDER_CANDIDATE_BUDGET
 
     def __post_init__(self) -> None:
         provider = str(self.provider).strip()
@@ -280,6 +286,7 @@ def register_builtin_speculative_providers() -> None:
 
 
 __all__ = [
+    "DEFAULT_PROVIDER_CANDIDATE_BUDGET",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",

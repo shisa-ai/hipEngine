@@ -364,6 +364,88 @@ def test_lazy_server_forwards_speculative_owner_to_llm(monkeypatch) -> None:
     assert captured["speculative_candidate_budget"] == 4
 
 
+def test_server_cli_omits_candidate_budget_without_flag_or_env(monkeypatch) -> None:
+    """An omitted budget reaches the engine as omitted, not as a constant."""
+
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+
+    args = build_parser().parse_args(["--model", "target"])
+
+    assert args.speculative_candidate_budget is None
+
+
+def test_server_cli_rejects_an_unusable_candidate_budget(monkeypatch) -> None:
+    """A zero depth is rejected loudly instead of silently rewritten."""
+
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["--model", "target", "--speculative-candidate-budget", "0"]
+        )
+
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "0")
+    with pytest.raises(Exception, match="value must be >= 1"):
+        build_parser()
+
+
+def test_capabilities_report_resolved_candidate_budget() -> None:
+    """Operators see the requested and resolved depth plus its source."""
+
+    fake = _SpeculativeFakeLLM()
+    fake.speculative_candidate_budget_resolution = {
+        "requested_candidate_budget": None,
+        "candidate_budget": 4,
+        "candidate_budget_source": "provider_default",
+    }
+    client = TestClient(create_app(_config(speculative_candidate_budget=None), llm=fake))
+
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative"]
+
+    assert capability["candidate_budget"] == 4
+    assert capability["candidate_budget_resolution"] == {
+        "requested": None,
+        "resolved": 4,
+        "source": "provider_default",
+    }
+
+
+def test_capabilities_report_an_unresolved_candidate_budget() -> None:
+    """Without capability data the server says so instead of inventing a depth."""
+
+    fake = _SpeculativeFakeLLM()
+    config = _config(
+        speculative_candidate_budget=None,
+        speculative_provider=None,
+        draft_model=None,
+    )
+    client = TestClient(create_app(config, llm=fake))
+
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative"]
+
+    assert capability["candidate_budget"] is None
+    assert capability["candidate_budget_resolution"] == {
+        "requested": None,
+        "resolved": None,
+        "source": "unresolved",
+    }
+
+
+def test_capabilities_report_an_explicit_candidate_budget() -> None:
+    """A pinned depth is reported as pinned, never rewritten."""
+
+    fake = _SpeculativeFakeLLM()
+    client = TestClient(create_app(_config(speculative_candidate_budget=7), llm=fake))
+
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative"]
+
+    assert capability["candidate_budget"] == 7
+    assert capability["candidate_budget_resolution"] == {
+        "requested": 7,
+        "resolved": 7,
+        "source": "explicit",
+    }
+
+
 def test_server_cli_accepts_speculative_provider_owner(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_PROVIDER", "dflash")
     monkeypatch.setenv("HIPENGINE_DRAFT_MODEL", "/models/env-drafter")
