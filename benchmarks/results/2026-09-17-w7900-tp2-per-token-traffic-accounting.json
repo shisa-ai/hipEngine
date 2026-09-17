@@ -1,0 +1,93 @@
+{
+ "ar_blocks": 64,
+ "current_route": {
+  "per_rank_per_token_gib": 9.6755,
+  "reduction_points": 64,
+  "reduction_points_note": "one cross-rank sum per row-split tensor per token: ffn_down is row-split at every AR block and needs one; ffn_gate/ffn_up are column-split and need none; the head's vocabulary split needs none (disjoint rows)",
+  "replicated_gib": 6.0024,
+  "sharded_gib": 9.6497,
+  "sharded_suffixes": [
+   "ffn_gate.weight",
+   "ffn_up.weight",
+   "ffn_down.weight"
+  ]
+ },
+ "derived_not_measured": true,
+ "full_plan": {
+  "degree": 2,
+  "per_rank_per_token_gib": [
+   8.646,
+   7.0086
+  ],
+  "reduction_points": 128,
+  "reduction_points_by_suffix": {
+   "attn_output.weight": 16,
+   "ffn_down.weight": 64,
+   "ssm_out.weight": 48
+  },
+  "reduction_points_derived_from_index": 128
+ },
+ "generated_at": "2026-09-17T06:37:50Z",
+ "host": "epyc",
+ "implied": {
+  "current_route_ms_at_slow_rank_bandwidth": 19.629,
+  "full_plan_ms_at_slow_rank_bandwidth": 17.54,
+  "measured_wall_minus_implied_ms": 4.526,
+  "note": "arithmetic on the measured resident bandwidth, not measurements; the wall is also set by the exchange, replicated non-bandwidth-bound GDN recurrence, and device-side gaps",
+  "traffic_ratio_current_over_full_plan": 1.3805
+ },
+ "kind": "tp2-per-token-traffic-accounting",
+ "layer_tensor_counts": {
+  "attn_gate.weight": 48,
+  "attn_k.weight": 16,
+  "attn_k_norm.weight": 16,
+  "attn_norm.weight": 64,
+  "attn_output.weight": 16,
+  "attn_q.weight": 16,
+  "attn_q_norm.weight": 16,
+  "attn_qkv.weight": 48,
+  "attn_v.weight": 16,
+  "ffn_down.weight": 64,
+  "ffn_gate.weight": 64,
+  "ffn_up.weight": 64,
+  "post_attention_norm.weight": 64,
+  "ssm_a": 48,
+  "ssm_alpha.weight": 48,
+  "ssm_beta.weight": 48,
+  "ssm_conv1d.weight": 48,
+  "ssm_dt.bias": 48,
+  "ssm_norm.weight": 48,
+  "ssm_out.weight": 48
+ },
+ "measured_inputs": {
+  "tp1_gib_source": "derived from the AR tensor set in the same index",
+  "tp1_resident_achieved_gb_s": 638.3,
+  "tp1_resident_decode_p50_ms": 26.329,
+  "tp1_resident_gib_per_token": 15.652,
+  "tp1_slow_rank_achieved_gb_s": 529.3,
+  "tp1_slow_rank_p50_ms": 31.753,
+  "tp2_current_achieved_gb_s": 430.1,
+  "tp2_default_decode_p50_ms": 24.155
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "model_bytes": 16806250496,
+ "model_gib": 15.652,
+ "mtp_bytes_excluded": 289527808,
+ "role_gib": {
+  "attention": 3.3005,
+  "embedding": 0.666,
+  "gdn_ssm": 1.0621,
+  "head": 0.9713,
+  "mlp": 9.6497,
+  "norms_other": 0.0025
+ },
+ "role_share": {
+  "attention": 0.2109,
+  "embedding": 0.0426,
+  "gdn_ssm": 0.0679,
+  "head": 0.0621,
+  "mlp": 0.6165,
+  "norms_other": 0.0002
+ },
+ "schema": 1
+}

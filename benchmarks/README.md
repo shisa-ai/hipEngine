@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-16**
+Last updated: **2026-09-17**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -1125,8 +1125,19 @@ together worth roughly 1.15x on this segment if the compiled rate holds.
 **The whole model generates tokens on both GPUs.** The MLP-only TP2 group
 drives the full Qwen3.8-27B `Q4_K_M` stack end to end: replicated attention and
 GDN on every rank, sharded MLP with one staged bf16-partial reduction per layer,
-single residual add per rank, and actual generated text out of the session.
-Each decode token makes 64 reductions. The exchange runs on the compiled host
+the output head's vocabulary rows split across the group, single residual add
+per rank, and actual generated text out of the session.
+Each decode token makes 64 reductions.
+
+Matched on one revision, one session and one host, the default TP2 route runs
+decode at p50 **24.155 ms/token** against the two optimized resident TP1 controls
+on the same run - **31.753 ms/token** (W7900) and **26.329 ms/token**
+(RX 7900 XTX) - so **1.315x** and **1.090x** on this 16-token cell. Three
+repeats span 24.155-24.167 ms/token, and all three arms keep the recorded
+teacher gates (mean KL 3.945e-04, max KL 2.365e-03, top-1 100%). This is a
+matched diagnostic cell, not a product speedup: the horizon is 16 decode
+transitions and the sustained numerical gate that would qualify a product claim
+is still the open blocker. The exchange runs on the compiled host
 driver (`hipengine/distributed/staged_exchange_host.cpp`): both ranks' D2H
 submits, one wait per stream, a compiled f32 sum, and no H2D return copy - both
 ranks' boundary-cast kernels read the mapped pinned payload zero-copy over the
@@ -1152,8 +1163,9 @@ row-independent. The head is the single largest per-token weight read
 also submits the token H2D and pinned position/context refresh. The historical
 TP2 optimization checkpoint measured decode p50 **50.65 -> 24.15 ms/token
 (-52.3%)**. Its TP1 timing denominators predate the device-ownership and resident
-upload repairs and do not establish an optimized-product TP2 speedup. The
-sustained numerical gate above blocks the new product comparison before timing.
+upload repairs, so that ratio is a schedule comparison rather than a product
+speedup; the same-revision cell above supplies current denominators, and the
+sustained numerical gate still blocks a product claim.
 Capture
 happens once at the session capacity bound (2047), which bakes the
 full-attention split-decode config for that context; the measured envelope

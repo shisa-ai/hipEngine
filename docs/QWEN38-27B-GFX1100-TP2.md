@@ -1132,6 +1132,53 @@ Keep K0 as the automatic fallback outside qualified winning scopes.
   README date/rows and changelog for every retained measurement, run the README
   export check, and record blockers and cleanup conditions durably.
 
+### Default-path decode cell and the traffic accounting (2026-09-17)
+
+Three matched repeats of `scripts/tp2_mlp_generate_e2e.py` (4 prompts x 16
+greedy decode transitions, all three arms in one session on one revision) put
+the default TP2 route at decode p50 **24.155 ms/token** against the same-run
+resident TP1 controls at **31.753** (W7900) and **26.329** (RX 7900 XTX)
+ms/token: **1.315x** and **1.090x**. The three repeats span 24.155-24.167
+ms/token, and every arm keeps the recorded teacher gates (mean KL 3.945e-04,
+max KL 2.365e-03, top-1 100%). The harness now records the route each arm
+actually resolved rather than the raw CLI argument, because the previous
+artifacts stored `None` for the TP1 arms' forced eager/host control schedule and
+for the head shard that the TP2 default enables. This is a matched diagnostic
+cell, not a product speedup: the horizon is 16 transitions and the sustained
+numerical gate is still the open blocker.
+
+`scripts/tp2_traffic_accounting.py` derives the per-token weight traffic from
+the same GGUF index and the degree-2 shard plan:
+
+| quantity | value |
+| --- | ---: |
+| resident TP1 control, per token | 15.652 GiB |
+| TP2 current route, per rank per token | 9.676 GiB |
+| of which MLP (sharded) | 9.650 GiB -> 4.825 GiB/rank |
+| of which attention (replicated) | 3.301 GiB |
+| of which GDN/SSM (replicated) | 1.062 GiB |
+| of which head (sharded) | 0.971 GiB -> 0.486 GiB/rank |
+| cross-rank reductions per token | 64 |
+| resident achieved bandwidth, slow rank (W7900) | 529.3 GB/s |
+| TP2 achieved, per rank | 430.1 GB/s |
+| implied wall at the slow rank's bandwidth | 19.629 ms |
+| measured wall | 24.155 ms |
+
+Two readings follow, and they re-order the remaining speed work:
+
+- **4.53 ms/token is not explained by weight traffic.** The TP2 route moves
+  61.8% of the resident control's bytes but takes 76.1% of the W7900 control's
+  wall, so its per-byte efficiency is 81% of the resident route's. That gap -
+  the in-graph exchange, rank imbalance, shard-shape kernel efficiency and any
+  exposed GDN latency - is larger than what finishing the sharding would buy,
+  and it is the first thing to attribute.
+- **Finishing Packet 3's attention/GDN sharding is a small speed lever, not a
+  large one.** It cuts per-rank traffic 1.38x (9.676 -> 8.646 GiB for the slow
+  rank, 17.54 ms implied at the same bandwidth) but adds 64 cross-rank
+  reductions per token to the 64 already paid, so the net gain is bounded by
+  roughly 2.1 ms minus the extra reduction cost. Its justification is capacity
+  and correctness, not throughput.
+
 ## Binding benchmark and correctness matrix
 
 Use `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all `code`,

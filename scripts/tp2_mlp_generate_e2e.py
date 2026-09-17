@@ -9,9 +9,12 @@ physical device and the teacher-forced full-logit production gate deciding
 whether the sharded arithmetic stays inside the envelope.
 
 No tensor-parallel speedup is claimed here. The measured walls are the
-integrated trace of a diagnostic schedule (eager unfused route, Python-driven
-staged exchange, sequential token prefill); they exist to attribute where the
-schedule spends a token and to qualify the arithmetic, not to promote TP2.
+integrated trace of one matched 16-token cell in which all three arms run in the
+same session on the same revision, with the TP2 arm on its resolved default
+route (graphed per-layer segments, device-side in-graph reduction, compiled
+exchange driver, sharded output head). They attribute where the route spends a
+token and qualify the arithmetic on this horizon; a sustained product comparison
+is a separate measurement and is not established here.
 
 Run:
 
@@ -226,13 +229,19 @@ def run_arm(
         head_shard=head_shard,
     )
     built_s = time.perf_counter() - started
+    # Record the route the session actually resolved, not only what the caller
+    # passed: ``head_shard=None`` and the tp1 arm's forced eager/host schedule
+    # are effective values, and an artifact that stores the raw argument cannot
+    # be read back as the route it measured. The session's own attributes are
+    # the authority for the effective values.
     record: dict[str, Any] = {
         "label": label,
         "mode": mode,
-        "driver": driver if mode == "tp2" else None,
-        "schedule": schedule if mode == "tp2" else None,
-        "reduce_mode": reduce_mode if mode == "tp2" else None,
-        "head_shard": head_shard if mode == "tp2" else None,
+        "driver": session.driver if mode == "tp2" else None,
+        "schedule": session.schedule,
+        "reduce_mode": session.reduce_mode,
+        "head_shard": session.head_shard,
+        "head_shard_requested": head_shard,
         "mlp_decode_variant": (
             session._shard_group.mlp_decode_variant
             if mode == "tp2" and session._shard_group is not None
@@ -444,13 +453,17 @@ def main(argv: list[str] | None = None) -> int:
         "sharding_scope": (
             "MLP-only TP2: replicated attention/GDN weights and compute on "
             "every rank (full replicated cost inside the walls), MLP gate/up "
-            "column-sharded and down row-sharded, one staged bf16-partial "
-            "reduction per layer per token, single residual add per rank"
+            "column-sharded and down row-sharded, the output head's vocabulary "
+            "rows split across the group, one staged bf16-partial reduction per "
+            "AR block per token, single residual add per rank"
         ),
         "no_speedup_claim": (
-            "diagnostic schedule (eager unfused route, Python-driven staged "
-            "exchange, sequential token prefill); walls attribute the "
-            "schedule, they do not promote TP2"
+            "matched 16-token diagnostic cell, not a sustained product "
+            "comparison: every arm runs in the same session on the same "
+            "revision, but the horizon is 16 decode transitions and the "
+            "sustained numerical gate that would qualify a product claim is a "
+            "separate measurement. The walls attribute the resolved route; they "
+            "do not promote TP2"
         ),
         "production_gate": PRODUCTION_GATE,
         "gates": gates,
