@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-16 JST (2026-09-16 UTC)**
+Last updated: **2026-09-17 JST (2026-09-17 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -720,6 +720,43 @@ default launches `dense_wide256` on the 264 layer-16-47 roles with zero
 `wmma_prefill` launches and keeps the exact coltile chain on layers 0-15. This
 single-category prefill protocol is not a topline rate row.
 [Route A/B evidence](results/2026-09-17-q8-dense-route-ab/README.md).
+
+The promoted default now has its own full-matrix rate and a current attribution.
+Twelve cases, four categories, three lengths, one warmup and three repetitions,
+36 samples, production profile with no profile named:
+
+| Shipped default, HEAD | 512 PP / TG | 1K PP / TG | 4K PP / TG |
+| --- | ---: | ---: | ---: |
+| Equal-weight mean over categories | 239.5 / 17.70 | 253.4 / 17.18 | 241.9 / 16.24 |
+
+The 4K decode figure is the mean of the per-case medians (16.20-16.29); the
+artifact's token-weighted 4K rollup is lower because five samples at the end of
+the run degrade, which the source documents. The 2026-09-13 journey row for this
+model (294.1/19.17 at 4K) came from a fifteen-recovery-flag composition that
+failed the numerical envelope and is not this row's denominator: it is 22% faster
+in prefill than the path that ships, on arithmetic that does not pass.
+[Baseline](results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) ·
+[attribution](results/2026-09-17-qwen4exp-shipped-default-attribution/README.md).
+
+Where that 17.0 s prefill goes, from a role-marked capture on the shipped
+default (16733.4 ms attributed, 0 ms unattributed, no unmapped symbol over the
+1 ms floor):
+
+| Family | ms | Share | vs halo-box PR #63 |
+| --- | ---: | ---: | ---: |
+| `dense_projection` | 5234.8 | 31.3% | 3.81x |
+| `expert_gate_up` | 3402.4 | 20.3% | 4.47x |
+| `hyper_connection` | 2525.4 | 15.1% | 7.52x |
+| `expert_down` | 2382.3 | 14.2% | 5.77x |
+| `qsa_attention` | 1402.5 | 8.4% | 9.01x |
+| `gdn` | 821.6 | 4.9% | 3.11x |
+| `moe_reduce` | 758.4 | 4.5% | 7.30x |
+| `elementwise_norm` | 178.5 | 1.1% | 0.54x |
+
+The wide-row promotion moved one family: `dense_projection` 10562.2 -> 5234.8
+ms, with every other family within 0.5% of the pre-promotion capture. The
+comparator's dense path is BF16 against this engine's F16, so the ratios locate
+work rather than predict recoverable time.
 
 September 14 numerical refresh of the previous production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
