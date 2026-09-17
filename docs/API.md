@@ -595,9 +595,10 @@ accepted and `rejected_prediction_tokens` is the number it rejected, summed
 from ownership-bearing backend `GenerationTelemetry.timing` payloads. Copied
 batch-timing payloads with `timing_owner=false` are ignored. The fields are
 present in non-streaming responses, including zero-draft MTP requests, and
-non-MTP requests omit both fields. Speculative MTP requests are currently
-non-streaming (`streaming_compatible=false`), so no MTP SSE usage contract is
-advertised yet.
+non-MTP requests omit both fields. The same counts appear in the usage event of
+an MTP SSE stream, taken from the terminal owner-bearing chunk; streaming MTP
+is advertised as `streaming_compatible=true` and serves the speculative route
+directly.
 
 The per-request effective MTP state is also reported in the top-level
 `hipengine.speculative_mtp` extension of non-streaming completion and chat
@@ -612,10 +613,43 @@ responses:
     "accepted_draft_tokens": 17,
     "rejected_draft_tokens": 3,
     "acceptance_rate": 0.85,
-    "draft_cycles": 5
+    "draft_cycles": 5,
+    "mtp_output_tokens": 20,
+    "ar_output_tokens": 5,
+    "output_accounting": {
+      "completion_tokens": 25,
+      "mtp_output_tokens": 20,
+      "ar_output_tokens": 5,
+      "ar_output_tokens_in_cycles": 0,
+      "mtp_coverage": 0.8,
+      "reconciled": true
+    },
+    "selected_depth_histogram": {"0": 1, "3": 4},
+    "fallback_reason_counts": {"target_graph_context_bucket_miss": 4},
+    "fallback_reason": "target_graph_context_bucket_miss",
+    "first_fallback_position": 21
   }
 }
 ```
+
+`used` reports that the request took the speculative route; it is **not** proof
+that every token came from a speculative cycle. `mtp_output_tokens` counts the
+visible tokens emitted by accepted speculative cycles and `ar_output_tokens`
+counts every other emitted token (including the target-prefill root token),
+with `ar_output_tokens = completion_tokens - mtp_output_tokens` always holding.
+`output_accounting.reconciled` is `false` only if a backend reported more
+speculative output than the request completed, which is a backend bug worth
+alerting on. `selected_depth_histogram` keys the number of admitted candidates
+per cycle, so a `"0"` bucket records a cycle that ran autoregressively inside an
+otherwise speculative request. `output_accounting.ar_output_tokens_in_cycles`
+counts the autoregressive tokens emitted while the request was still owned by
+the speculative plan (each one also appears in `fallback_reason_counts` under
+the planner reason that selected it); the rest of `ar_output_tokens` was emitted
+after the request left the plan. `fallback_reason_counts` counts the
+non-speculative steps by planner reason and `fallback_reason` names the most
+frequent one. `first_fallback_position` is `null` when speculation covered every
+token after the prompt root, `0` when it covered none, and the emitted-token
+index of the first non-speculative token after speculative output otherwise.
 
 `hipengine.generation_shape.route` records the selected scheduling route;
 `effective_route` and `used` are derived from ownership-bearing backend
@@ -623,8 +657,10 @@ telemetry. An MTP execution path remains `used=true` even when it proposes zero
 drafts, in which case `acceptance_rate` is `null`. If an MTP-selected request
 realizes backend K0 before mutation, the compact summary reports
 `effective_route="default"`, `selected_route="speculative_mtp"`, `used=false`,
-and `decision_reason="backend_k0_fallback"`; it does not claim MTP usage or
-increment MTP request metrics. Speculative Generation-2 streaming publishes
+and `decision_reason="backend_k0_fallback"`, with `fallback_reason` naming the
+specific refusal (for example `target_context_k0`) instead of collapsing every
+refusal into the compatibility label; it does not claim MTP usage or increment
+MTP request metrics. Speculative Generation-2 streaming publishes
 canonical token IDs and attaches model-tokenizer text to each committed event;
 blocking and stream text/IDs are byte-exact on the qualified C1 scope. Requests
 with `stream_options.include_hipengine` expose per-choice backend telemetry.

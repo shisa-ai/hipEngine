@@ -89,6 +89,28 @@
   publishes a resolution, the provider branch is only needed for pre-load
   capability reads and can be reduced to a declared provider field.
 
+## MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)
+
+- Resolved 2026-09-17: a request no longer reports `used: true` as if it were
+  full coverage. Every response with speculative intent carries an
+  `output_accounting` block splitting emitted tokens into MTP-committed and
+  autoregressive output, plus the selected-depth histogram, per-reason fallback
+  counts, and the first fallback position. See
+  `worklog/entries/20260917T121319.033073Z-lhl-mtp-output-accounting-e77e00.md`.
+- Remaining debt: autoregressive tokens emitted while the request is still
+  owned by the speculative plan arrive through two paths - a depth-zero cycle
+  commit (`record_speculative_outputs`) and a K0 step of an AR-only cycle
+  (`record_autoregressive_step` from `prepare_k0`) - and are summed into one
+  `ar_output_tokens_in_cycles` field. Collapse them once the resident owner
+  routes every row through a single commit path, which would also remove the
+  `emitted_tokens=0` call that exists only to avoid double attribution.
+- Remaining debt: the per-request execution counters are published twice, as
+  the `diagnostics.specdec2_mtp2` block and as `mtp_*` scalar entries in the
+  response `timing` map. The scalars exist because the server's draft-usage and
+  metrics paths read ownership-bearing `timing` fields; once those read the
+  diagnostics block directly, `accounting_timing_fields` and its streaming
+  mirror in `qwen35_gguf.py` can go.
+
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 
 - Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` §2.9).

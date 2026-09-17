@@ -48,6 +48,7 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBatch,
     TargetVerifyBuffers,
 )
+from hipengine.speculative.accounting import record_speculative_outputs
 from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.transaction import (
@@ -1170,11 +1171,16 @@ class Qwen35GGUFMoEMTP2Adapter:
             row.slot.seq_position = int(target.position)
             row.slot.native_decode_steps += 1
             row.slot.done = len(row.slot.generated_ids) >= int(row.request.max_tokens)
-            row.mtp2_cycles += 1
-            row.mtp2_candidate_counts.append(
-                int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            record_speculative_outputs(
+                row,
+                candidate_count=int(
+                    plan.candidate_counts[plan.request_ids.index(request_id)]
+                ),
+                accepted_count=int(accepted_count),
+                visible_count=len(visible),
+                output_position=len(row.slot.generated_ids) - len(visible),
+                plan_reason=plan.reasons[plan.request_ids.index(request_id)],
             )
-            row.mtp2_accepted_counts.append(int(accepted_count))
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
@@ -1245,7 +1251,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         self.owner._flush_row_owner(row)
         if int(target.position) != int(slot.seq_position):
             raise RuntimeError("MoE MTP2 complete-cycle target cursor is stale")
-        budget = int(plan.candidate_counts[0])
+        budget = int(plan.candidate_counts[plan.request_ids.index(rid)])
         remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
         if remaining < 1:
             raise RuntimeError("MoE MTP2 complete cycle has no output room")
@@ -1284,9 +1290,14 @@ class Qwen35GGUFMoEMTP2Adapter:
         slot.seq_position = int(target.position)
         slot.native_decode_steps += 1
         slot.done = len(slot.generated_ids) >= int(row.request.max_tokens)
-        row.mtp2_cycles += 1
-        row.mtp2_candidate_counts.append(budget)
-        row.mtp2_accepted_counts.append(accepted)
+        record_speculative_outputs(
+            row,
+            candidate_count=budget,
+            accepted_count=accepted,
+            visible_count=len(output_ids),
+            output_position=len(slot.generated_ids) - len(output_ids),
+            plan_reason=plan.reasons[plan.request_ids.index(rid)],
+        )
         row.mtp2_proposal_ms += float(native.proposal_wall_ms)
         row.mtp2_target_ms += float(native.target_wall_ms)
         row.mtp2_provider_update_ms += float(native.mtp_kv_commit_wall_ms)

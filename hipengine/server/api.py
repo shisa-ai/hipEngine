@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 import uuid
-from collections import deque
+from collections import Counter, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -15631,6 +15631,34 @@ def _mtp_telemetry_parts(detail: GenerationOutput) -> tuple[Mapping[str, Any] | 
     return (timing if isinstance(timing, Mapping) else None), decode_state, timing_owner is not False
 
 
+def _mtp_execution_accounting(detail: GenerationOutput) -> Mapping[str, Any] | None:
+    """Return one output's per-request MTP-versus-AR execution block.
+
+    The backend publishes it under ``diagnostics.specdec2_mtp2`` for every
+    request that carried speculative intent, including requests that were
+    refused before any speculative cycle ran.  Absence means the request never
+    had speculative intent, which is different from a refusal with zero
+    coverage.
+    """
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    block = diagnostics.get("specdec2_mtp2")
+    return block if isinstance(block, Mapping) else None
+
+
+def _mtp_counted_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _mtp_accepted_rejected_counts(
     details: Sequence[GenerationOutput] | None,
 ) -> tuple[int, int] | None:
@@ -15679,6 +15707,14 @@ def _mtp_response_summary(
     generated = 0
     cycles = 0
     used = False
+    accounting_seen = False
+    mtp_output_tokens = 0
+    ar_cycle_output_tokens = 0
+    completion_tokens = 0
+    depth_histogram: Counter[str] = Counter()
+    fallback_reason_counts: Counter[str] = Counter()
+    prompt_fallback_reason: str | None = None
+    first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
         timing, decode_state, timing_owner = _mtp_telemetry_parts(detail)
@@ -15688,6 +15724,44 @@ def _mtp_response_summary(
             execution_path = None if decode_state is None else getattr(decode_state, "execution_path", None)
         if execution_path and "mtp" in str(execution_path).lower():
             used = True
+        generated_tokens = _telemetry_generated_token_count(
+            getattr(detail, "telemetry", None)
+        )
+        if generated_tokens is not None:
+            completion_tokens += generated_tokens
+        block = _mtp_execution_accounting(detail)
+        if block is not None:
+            accounting_seen = True
+            block_cycles = _mtp_counted_int(block.get("cycles"))
+            block_mtp_outputs = _mtp_counted_int(block.get("mtp_output_tokens"))
+            if block_cycles > 0 or block_mtp_outputs > 0:
+                used = True
+            mtp_output_tokens += block_mtp_outputs
+            ar_cycle_output_tokens += _mtp_counted_int(
+                block.get("ar_output_tokens_in_cycles")
+            )
+            for depth, depth_cycles in (block.get("selected_depth_histogram") or {}).items():
+                depth_histogram[str(depth)] += _mtp_counted_int(depth_cycles)
+            prompt_reason = block.get("prompt_fallback_reason")
+            if prompt_reason:
+                fallback_reason_counts[str(prompt_reason)] += 1
+                if prompt_fallback_reason is None:
+                    prompt_fallback_reason = str(prompt_reason)
+            for reason, count in (block.get("ar_step_reason_counts") or {}).items():
+                fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
+            for reason, count in (block.get("failure_reason_counts") or {}).items():
+                fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
+            position = block.get("first_fallback_position")
+            if position is not None and first_fallback_position is None:
+                first_fallback_position = _mtp_counted_int(position)
+        if block is not None and _mtp_counted_int(block.get("cycles")) > 0:
+            # A per-row execution block is the authoritative cycle record and is
+            # available to streaming outputs too, where batch timing ownership
+            # would otherwise hide it.
+            accepted += _mtp_counted_int(block.get("accepted_draft_tokens"))
+            generated += _mtp_counted_int(block.get("generated_draft_tokens"))
+            cycles += _mtp_counted_int(block.get("cycles"))
+            continue
         if timing is None or not timing_owner:
             continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")
@@ -15726,6 +15800,53 @@ def _mtp_response_summary(
         "acceptance_rate": (float(accepted) / float(generated)) if generated else None,
         "draft_cycles": cycles,
     }
+    if accounting_seen:
+        # ``used`` only says some speculation ran. These counts say how much of
+        # the emitted text came from which execution mode, and they reconcile
+        # against the completion count by construction (autoregressive output is
+        # whatever speculation did not cover).
+        ar_output_tokens = completion_tokens - mtp_output_tokens
+        summary["mtp_output_tokens"] = mtp_output_tokens
+        summary["ar_output_tokens"] = max(0, ar_output_tokens)
+        summary["output_accounting"] = {
+            "completion_tokens": completion_tokens,
+            "mtp_output_tokens": mtp_output_tokens,
+            "ar_output_tokens": max(0, ar_output_tokens),
+            "ar_output_tokens_in_cycles": ar_cycle_output_tokens,
+            "mtp_coverage": (
+                float(mtp_output_tokens) / float(completion_tokens)
+                if completion_tokens > 0
+                else 0.0
+            ),
+            "reconciled": ar_output_tokens >= 0,
+        }
+        summary["selected_depth_histogram"] = {
+            depth: depth_histogram[depth]
+            for depth in sorted(depth_histogram, key=lambda value: int(value))
+        }
+        summary["fallback_reason_counts"] = {
+            reason: fallback_reason_counts[reason]
+            for reason in sorted(fallback_reason_counts)
+        }
+        primary_fallback_reason = prompt_fallback_reason
+        if primary_fallback_reason is None and fallback_reason_counts:
+            # No admission-level refusal: report the reason that accounted for
+            # the most non-speculative steps (ties broken by name).
+            primary_fallback_reason = sorted(
+                fallback_reason_counts.items(), key=lambda item: (-item[1], item[0])
+            )[0][0]
+        if primary_fallback_reason is not None:
+            summary["fallback_reason"] = primary_fallback_reason
+        # ``None`` means speculation covered every token after the prompt root;
+        # ``0`` means speculation never covered any token. Only the backend can
+        # report a position between those two, because it sees each cycle.
+        summary["first_fallback_position"] = (
+            first_fallback_position
+            if first_fallback_position is not None
+            else 0
+            if mtp_output_tokens == 0
+            else None
+        )
     if backend_k0_fallback:
         summary["selected_route"] = selected_route
         summary["decision_reason"] = "backend_k0_fallback"

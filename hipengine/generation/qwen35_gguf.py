@@ -91,6 +91,10 @@ from hipengine.kernels.backends import (
     resolve_backend,
 )
 from hipengine.quant.gguf import dequantize_gguf_data
+from hipengine.speculative.accounting import (
+    accounting_timing_fields,
+    speculative_output_accounting,
+)
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -5767,10 +5771,16 @@ class _GGUFResidentLoopRow:
     prefix_admission_fallback: bool = False
     prefix_fallback_reason: str | None = None
     mtp2_candidate_budget: int = 0
+    mtp2_requested_budget: int = 0
     mtp2_prompt_streaming: bool = False
     mtp2_prompt_prime_rows: int = 0
     mtp2_prompt_carried_bytes: int = 0
     mtp2_prompt_fallback_reason: str | None = None
+    mtp2_mtp_output_tokens: int = 0
+    mtp2_ar_output_tokens: int = 0
+    mtp2_ar_step_output_tokens: int = 0
+    mtp2_first_fallback_position: int | None = None
+    mtp2_ar_step_reasons: dict[str, int] = field(default_factory=dict)
     mtp2_cycles: int = 0
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
@@ -7033,6 +7043,9 @@ class Qwen35GGUFResidentModelRunner:
         diagnostics: dict[str, Any] = {
             "prefix_cache": self._prefix_request_telemetry(row)
         }
+        accounting = speculative_output_accounting(row)
+        if accounting is not None:
+            diagnostics["specdec2_mtp2"] = accounting
         slot = row.slot
         audit = (
             None
@@ -7286,6 +7299,12 @@ class Qwen35GGUFResidentModelRunner:
             max(1, evidence_budget),
         )
         row.mtp2_candidate_budget = effective_budget
+        # Admission intent is never zeroed: a later refusal (prompt activation,
+        # K0 planner decision, context miss) keeps the requested depth so the
+        # response can report intent separately from realized execution.
+        row.mtp2_requested_budget = max(
+            int(getattr(row, "mtp2_requested_budget", 0) or 0), effective_budget
+        )
         if adapter is not None:
             adapter.register_request(
                 request_id,
@@ -9894,13 +9913,22 @@ class Qwen35GGUFResidentModelRunner:
         generated_ids = tuple(int(token) for token in slot.generated_ids)
         request = row.sampling_request or row.request
         sample = row.samples[-1] if row.samples else None
+        timing = dict(slot.timing)
+        # Streaming keeps the same per-request MTP counters as the blocking
+        # output, so a live/done chunk reports realized speculation rather than
+        # only the admission intent.
+        timing.update(accounting_timing_fields(speculative_output_accounting(row)))
         execution_path = (
-            "gguf_packed_ar_native_sampler_decode"
-            if row.native_sampler
+            "gguf_specdec2_mtp2"
+            if row.mtp2_cycles > 0
             else (
-                "gguf_packed_ar_host_sampler_decode"
-                if row.native_sampled
-                else "gguf_packed_ar_server_decode"
+                "gguf_packed_ar_native_sampler_decode"
+                if row.native_sampler
+                else (
+                    "gguf_packed_ar_host_sampler_decode"
+                    if row.native_sampled
+                    else "gguf_packed_ar_server_decode"
+                )
             )
         )
         return GenerationStreamChunk(
@@ -9948,7 +9976,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
                 native_sampler_rows=row.native_sampler,
-                timing=dict(slot.timing),
+                timing=timing,
                 sampler_plan=row.sampler_plan,
                 diagnostics=self._request_diagnostics(
                     row,
@@ -10013,19 +10041,9 @@ class Qwen35GGUFResidentModelRunner:
                 }
             )
         if row.mtp2_cycles > 0:
-            mtp_generated_draft_tokens = sum(row.mtp2_candidate_counts)
-            mtp_accepted_draft_tokens = sum(row.mtp2_accepted_counts)
+            timing.update(accounting_timing_fields(speculative_output_accounting(row)))
             timing.update(
                 {
-                    "mtp_cycles_count": float(row.mtp2_cycles),
-                    "mtp_generated_draft_tokens": float(mtp_generated_draft_tokens),
-                    "mtp_accepted_draft_tokens": float(mtp_accepted_draft_tokens),
-                    "mtp_accept_per_draft": (
-                        float(mtp_accepted_draft_tokens)
-                        / float(mtp_generated_draft_tokens)
-                        if mtp_generated_draft_tokens
-                        else 0.0
-                    ),
                     "specdec2_mtp2_cycles": float(row.mtp2_cycles),
                     "specdec2_mtp2_proposal_ms": float(row.mtp2_proposal_ms),
                     "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),

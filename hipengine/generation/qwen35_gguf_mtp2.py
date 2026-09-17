@@ -35,6 +35,10 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.speculative.accounting import (
+    record_autoregressive_step,
+    record_speculative_outputs,
+)
 from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill,
     target_verifier_wide_q6_shared4_leaf_session,
@@ -331,6 +335,51 @@ class _C1ShadowAdapterState:
 
 class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
+
+
+def _commit_eager_cycle_row(
+    row: Any,
+    *,
+    visible: Sequence[int],
+    accepted: int,
+    candidate_count: int,
+    plan_reason: Any | None,
+    target_position: int,
+) -> bool:
+    """Commit one eager cycle's visible tokens and attribute their execution mode.
+
+    Returns whether the row finished on EOS. The pre-append token count is read
+    first so a non-speculative cycle can report where speculation stopped, and
+    the committed visible tokens are attributed exactly once (to the speculative
+    path or to autoregressive decoding) by the shared accounting helper.
+    """
+
+    tokens = tuple(int(token) for token in visible)
+    if not tokens:
+        raise RuntimeError("eager MTP2 cycle commit requires visible tokens")
+    committed_position = len(row.slot.generated_ids)
+    row.slot.generated_ids.extend(tokens)
+    row.slot.prev_token = int(tokens[-1])
+    row.slot.seq_position = int(target_position)
+    row.slot.native_decode_steps += 1
+    eos = getattr(row.request, "eos_token_id", None)
+    eos_finished = (
+        eos is not None
+        and not bool(getattr(row.request, "ignore_eos", False))
+        and int(tokens[-1]) == int(eos)
+    )
+    row.slot.done = eos_finished or len(row.slot.generated_ids) >= int(
+        row.request.max_tokens
+    )
+    record_speculative_outputs(
+        row,
+        candidate_count=int(candidate_count),
+        accepted_count=int(accepted),
+        visible_count=len(tokens),
+        output_position=committed_position,
+        plan_reason=plan_reason,
+    )
+    return eos_finished
 
 
 def _device_chain_oracle_trace_rows(
@@ -2090,13 +2139,26 @@ class Qwen35GGUFMTP2Adapter:
                 self.owner._flush_row_owner(self.owner._row(request_id))
             self._ensure_request_states(attach)
         for rid in ids:
+            row = self.owner._row(rid)
+            if row.lease is None or row.slot is None:
+                continue
+            # Every K0 row of an AR-only plan is one autoregressive decode step.
+            # Record why the planner selected AR before the provider catch-up
+            # guards, so a refused activation (no provider state yet) still
+            # reports its reason instead of looking like unaccounted AR output.
+            # The step's token lands at the row's current output length, which
+            # is what locates the first fallback after speculative output.
+            record_autoregressive_step(
+                row,
+                plan_reason=reason_by_id.get(rid),
+                output_position=len(row.slot.generated_ids),
+            )
             if k0_by_id[rid] is not SpecK0Class.TRANSITIONAL:
+                continue
+            if not row.first_token_emitted:
                 continue
             state = self._states.get(rid)
             if state is None:
-                continue
-            row = self.owner._row(rid)
-            if row.lease is None or row.slot is None or not row.first_token_emitted:
                 continue
             target = row.lease.session
             root_token = int(row.slot.generated_ids[-1])
@@ -2758,6 +2820,10 @@ class Qwen35GGUFMTP2Adapter:
         if len(plan.speculative_request_ids) != 1:
             raise NotImplementedError("GGUF MTP2 target has no speculative rows")
         rid = int(plan.speculative_request_ids[0])
+        # The singleton frontier commits only this row, so its cycle record and
+        # its output attribution both index the plan by that row rather than by
+        # plan position 0 (a mixed plan may list a K0 row first).
+        plan_index = plan.request_ids.index(rid)
         state = self._states[rid]
         if state.verifier is None:
             raise NotImplementedError(
@@ -2916,7 +2982,7 @@ class Qwen35GGUFMTP2Adapter:
                 self._repair_provider_state(
                     state,
                     accepted_count=accepted,
-                    candidate_count=int(plan.candidate_counts[0]),
+                    candidate_count=int(plan.candidate_counts[plan_index]),
                 )
             else:
                 self._repair_provider_state_device(
@@ -2956,14 +3022,20 @@ class Qwen35GGUFMTP2Adapter:
             )
             if not output_ids:
                 raise RuntimeError("GGUF MTP2 committed cycle produced no visible token")
+            committed_position = len(slot.generated_ids)
             slot.generated_ids.extend(output_ids)
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)
             slot.native_decode_steps += 1
             slot.done = len(slot.generated_ids) >= int(row.request.max_tokens)
-            row.mtp2_cycles += 1
-            row.mtp2_candidate_counts.append(int(plan.candidate_counts[0]))
-            row.mtp2_accepted_counts.append(accepted)
+            record_speculative_outputs(
+                row,
+                candidate_count=int(plan.candidate_counts[plan_index]),
+                accepted_count=accepted,
+                visible_count=len(output_ids),
+                output_position=committed_position,
+                plan_reason=plan.reasons[plan_index],
+            )
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
@@ -4265,20 +4337,17 @@ class Qwen35GGUFMTP2Adapter:
                     f"next={next_token} remaining={remaining[index]} "
                     f"summary={gpu_summary!r}"
                 )
-            row.slot.generated_ids.extend(visible)
-            row.slot.prev_token = int(visible[-1])
-            row.slot.seq_position = int(target.position)
-            row.slot.native_decode_steps += 1
-            eos = getattr(row.request, "eos_token_id", None)
-            eos_finished = (eos is not None and not row.request.ignore_eos
-                            and int(visible[-1]) == int(eos))
-            row.slot.done = eos_finished or len(row.slot.generated_ids) >= int(row.request.max_tokens)
-            finish_reasons.append("eos" if eos_finished else None)
-            row.mtp2_cycles += 1
-            row.mtp2_candidate_counts.append(
-                int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            eos_finished = _commit_eager_cycle_row(
+                row,
+                visible=visible,
+                accepted=int(accepted),
+                candidate_count=int(
+                    plan.candidate_counts[plan.request_ids.index(request_id)]
+                ),
+                plan_reason=plan.reasons[plan.request_ids.index(request_id)],
+                target_position=int(target.position),
             )
-            row.mtp2_accepted_counts.append(int(accepted))
+            finish_reasons.append("eos" if eos_finished else None)
             if (
                 self.post_reject_cooldown_enabled
                 and int(accepted) == 0
