@@ -18,39 +18,40 @@ records and are not edited to reflect new state.** Every number below carries a
 pointer to the artifact that owns it. Where a number is derived rather than
 measured, or is an interpolation rather than a measurement, it says so.
 
-The largest demonstrated improvement is the layer-16-47 dense-route change
-(§4). The next engineering priorities are the routed MoE pair (5.785 s, 4.610 s
-of gap, of which 1.421 s was repair and 0.181 s of that is now removed), the
-measured F16-activation path (0.591 s, bit-identical output, not yet wired), and
-hyper-connection work (§5). The dense scope below layer 16 is measured and closed
-rather than pending: 12-47 and 8-47 both fail the gate while 16-47 passes with
-2.6x headroom, so the ~2.5 s full extension is unreachable with the f16
-arithmetic the route inherits.
-The family ranking is now a measurement of the shipped route
-([attribution](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/README.md)),
-not a projection; comparator arithmetic still differs, and family boundaries do
-not account for fused work identically.
+The wide-route promotion and the repair-loop unroll are supported improvements.
+Next, integrate the real F16 activation composite, then optimize routed MoE,
+hyper-connection and QSA (§5). The activation packet estimates 0.591 s from
+standalone timings and assumed reuse; it has not measured an engine saving.
+Dense scopes 12-47 and 8-47 fail their local numerical gates. Further scope
+search is deferred, not proved impossible: those failures neither establish a
+monotone boundary nor exclude selective layers or roles.
+
+The main family table is measured at `42ce71156`, **before** the repair unroll
+in `7804517a2`. The later capture reduces repair from 1420.9 to 1239.8 ms (§1.4).
+Comparator arithmetic differs, and family boundaries do not account for fused
+work identically.
 
 ## 1. Our own progress
 
-Rates are tokens/s. Each block declares its own protocol. The two hipEngine rows
-are **not** comparable to each other even though they share a harness and a
-fixture: 1.1's row measures a different arithmetic composition, and 1.2 sets out
-how that was established.
+Rates are tokens/s. Each block declares its protocol, aggregation and source
+composition. Historical and refreshed rows share a fixture but are not
+controlled before/after comparisons.
 
 ### 1.1 Journey screen — PP/TG at 512/1024/4096
 
 Protocol: canonical exact-token fixture, 4 categories, one warmup and three
-repetitions, 128 AR transitions, token/time-weighted, matched cache/clock/
-thermal policy. Source:
+repetitions, 128 AR transitions. The historical journey row is token/time-weighted;
+the refreshed row averages per-case medians, so they have different aggregations.
+Historical source:
 [`benchmarks/results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json`](../benchmarks/results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json).
 
 | Arm | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
 | --- | ---: | ---: | ---: |
 | hipEngine production, **journey start** (2026-09-13, pre-`49ffa3cb5`: fifteen recovery flags bound on) | 297.1 / 20.40 | 316.9 / 19.71 | 294.1 / 19.17 |
-| hipEngine production, HEAD (wide route at 16-47) | 239.5 / 17.70 | 253.4 / 17.18 | 241.9 / 16.24 |
+| hipEngine production at `42ce71156` (wide route, before repair unroll), mean of case medians | 239.5 / 17.70 | 253.4 / 17.18 | 241.9 / 16.24 |
+| Same run, token/time-weighted rollup | 239.1 / 17.43 | 253.4 / 17.19 | 241.4 / 15.42 |
 
-The HEAD row is measured, not predicted: 12 cases, four categories, three
+The refreshed row is measured, not predicted: 12 cases, four categories, three
 lengths, one warmup and three repetitions, 36 samples, all deterministic, on the
 promoted default with no profile named and no environment overrides
 ([source](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-baseline/README.md)).
@@ -59,8 +60,12 @@ categories at each length, which is the aggregation §1.2 uses. Its `code-p4096`
 prefill (17.041 s) agrees with the route A/B's wide arm (17.217 s) to 1.0%. The
 4096 decode figure here is the equal-weight mean of the per-case medians
 (16.20-16.29); the artifact's token-weighted 4096 rollup is 15.42 because five
-samples at the end of the run degrade, which the source README documents. The
-512/1024 rows are unaffected.
+samples near the end degrade. The raw samples also show p512 degradation
+(17.70 → 15.83 and 17.68 → 16.57 tok/s in two cases); only p1024 is unaffected.
+Case medians damp these slow samples, while the weighted rates include their
+time. Preserve both statistics and the unexplained time trend; do not choose a
+statistic after the run to remove a slowdown. Post-run temperature/load readings
+do not rule out transient clock, contention or other effects during measurement.
 
 The journey row is the campaign's starting baseline and it is **not** a rate for
 the path we ship. Three things changed under it. The arithmetic: at `00602e556`,
@@ -81,10 +86,10 @@ anchor: the September 17 attribution run at `725794c3f` reproduced the productio
 profile's `logits_sha256` and `token_id` exactly (§1.3), but it predates both
 promotions, so its composition is the exact chain rather than HEAD's.
 
-**The journey row is 22% faster in prefill and 18% faster in decode than the
-path that ships**, on a composition that fails the numerical envelope. Recovering
-that speed with correct arithmetic is the campaign's open problem, not a
-regression to explain; the rows are not a before/after pair.
+The journey row and the refreshed row differ in arithmetic, source and
+aggregation. They are not a controlled before/after pair. Recovering speed
+without violating the production gates remains the objective; these rows alone
+do not causally assign the historical rate difference.
 
 ### 1.2 Cross-engine prefill — canonical fixture, equal-weight mean
 
@@ -98,16 +103,15 @@ measured prefill, which do not enter the prefill wall. Source:
 | Engine | 512 | 1K | 4K |
 | --- | ---: | ---: | ---: |
 | **hipEngine production** (`ddfc2a746`, pre-promotion) | **185.2** | **190.6** | **183.6** |
-| **hipEngine production** (HEAD, wide route at 16-47) | **239.5** | **253.4** | **241.9** |
+| **hipEngine production** (`42ce71156`, wide route before repair unroll) | **239.5** | **253.4** | **241.9** |
 | pwilkin `strix-halo` `40a9f4d01`, f16 | 339.2 | 858.9 | **1061.9** |
 | halo-box `strix-llama.cpp` `69946438a`, f16 | 451.6 | 620.7 | 660.6 |
 | upstream llama.cpp `6011c34ce`, f16 | 321.3 | 415.1 | 459.0 |
 
-The HEAD row is the same harness, fixture and protocol as 1.1, so it is
-comparable to the comparator rows above it: median per case, then equal-weight
-mean across the four categories at each length (the prefill wall excludes the
-128 decode transitions that follow). It is not comparable to the pre-promotion
-row, which is a different arithmetic composition.
+The refreshed row uses the same fixture and rate aggregation as the comparator
+summary (median per case, then equal-weight mean). Its prefill wall excludes
+128 subsequent decode transitions. These are cross-engine observations, not
+matched-quality rates or a controlled comparison with the pre-promotion row.
 
 The two runs share the recorded collection protocol:
 294.1 tok/s at p4096 in 1.1 and 183.6 in 1.2 use the same engine and
@@ -139,7 +143,7 @@ replaces is
 (2026-09-16 protocol re-run at `725794c3f`, same 9652 kernels, same
 `logits_sha256`, window −1.0%).
 
-| Measure | HEAD (wide route at 16-47) | Pre-promotion (`725794c3f`) |
+| Measure | Wide route at `42ce71156`, before repair unroll | Pre-promotion (`725794c3f`) |
 | --- | ---: | ---: |
 | Prefill window | 17196.5 ms | 22698.6 ms |
 | Attributed kernel time | 16733.4 ms, 9652 kernels, **0 ms unattributed** | 22083.6 ms, 0 ms unattributed |
@@ -148,17 +152,41 @@ replaces is
 | Census launches | 1595, of which 1056 wide | 1203 |
 | Unmapped over the 1 ms floor | none | none after the mapper fix |
 
-Every family except `dense_projection` is within 0.5% of the pre-promotion
-capture, so the promotion moved the dense route and nothing else. The window is
-0.9% above the unprofiled 17.041 s screen, which is profiler overhead.
+The large measured change is in `dense_projection`; most other family times
+are close across these separate captures. The window is 0.9% above the
+unprofiled 17.041 s screen. That difference is consistent with profiling
+cost and run variation, not an isolated measurement of profiler overhead.
 
 The dense family is now two different things: the wide route costs **1404.2 ms**
 over its 1056 launches, and 3262.5 ms more sits on the same Q8_0 GEMM role set at
 layers 0-15 on the exact coltile chain, where per-launch cost is 4-5x higher.
 The remaining 565 ms is dense roles that are not that shape class
 (`index_q`/`index_k`, `ssm_alpha`/`ssm_beta`, `ple_*`, `hc_*_inject`,
-`shared_expert_gate`). Extending the wide route below layer 16 is therefore the
-largest measured dense opportunity (§4, §5).
+`shared_expert_gate`). The early-layer dense cost is a substantial optimization
+target, but replacing it with the wide route is not numerically admitted (§4).
+
+### 1.4 Repair-loop unroll
+
+[`7804517a2`](../benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md)
+adds unroll hints to Q4_K, Q5_1 and Q8_0 repair loops. The before/after engine
+captures show **1420.9 → 1239.8 ms** repair time (−12.7%), and identical final
+prefill logits digests. Q4_K and Q5_1 packet speed changes agree with their
+engine sub-windows. Whole-prefill kernel time changes **16733.4 → 16673.2 ms**
+(−0.36%); no wall-time win is established.
+
+Unrolling, the grid experiment and the slower row-bitmap design support an
+instruction/load-scheduling hypothesis. They do not uniquely prove a
+memory-level-parallelism bottleneck or that incidence reduction is the only
+remaining lever: register pressure, instruction count, occupancy and measured
+traffic still matter. The byte reductions are logical traffic estimates, not
+hardware-counter measurements. The cited 58-test bundle covers Q4_K/Q5_1/Q5_K
+and the bitmap alternative; it does not establish dedicated coverage of the
+changed Q8_0 repair. Link or run that focused check before claiming complete
+repair-variant coverage.
+
+The post-unroll [role analysis](../benchmarks/results/2026-09-17-iu8-repair-unroll/role-analysis.json)
+re-buckets to 3377.1 ms gate/up and 2229.8 ms down (5.607 s total). These are
+later capture costs, not an interleaved measurement of an aggregate MoE gain.
 
 ## 2. Versus the competition
 
@@ -168,17 +196,16 @@ do not establish a matched qualification under
 
 ### 2.1 Kernel time, one 4096-token prefill
 
-Us: 22083.6 ms attributed (see 1.3) — and that capture is the **exact-chain
-composition** (`logits_sha256` `e717076f…`, the route A/B's `exact` arm). At HEAD
-the default is the wide route and this case's wall is **17.217 s**, measured in
-the route A/B; the kernel-sum attribution at HEAD is not re-captured, so the
-first row below is the pre-promotion composition and is labelled as such.
-Competitors, same host, same file:
+The table separates the pre-promotion capture, the promoted route A/B, and the
+subsequent role capture at `42ce71156`. The latter contains both a 17196.5 ms
+profiled window and a 16733.4 ms kernel sum; it predates the repair unroll.
+Competitors are on the same host and model file, with different arithmetic:
 
 | Engine | Prompt ms | Kernel sum ms | Source |
 | --- | ---: | ---: | --- |
 | **hipEngine, exact chain at `725794c3f`** (pre-promotion) | **22699** | **22083.6** | [`2026-09-17-qwen4exp-per-role-cost`](../benchmarks/results/2026-09-17-qwen4exp-per-role-cost/README.md) |
-| **hipEngine production at HEAD** (wide route at 16-47), same case | **17217** | not re-attributed | [`2026-09-17-q8-dense-route-ab`](../benchmarks/results/2026-09-17-q8-dense-route-ab/README.md) |
+| **hipEngine wide route at 16-47**, route A/B, same case | **17217** | not profiled in this A/B | [`2026-09-17-q8-dense-route-ab`](../benchmarks/results/2026-09-17-q8-dense-route-ab/README.md) |
+| hipEngine at `42ce71156`, before repair unroll | 17196.5 (profiled window) | 16733.4 | [`shipped-default attribution`](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/README.md) |
 | halo-box `69946438a`, bf16 | 5569.2 | 5411.0 | [`2026-09-16-flashnext-delimited-components`](../benchmarks/results/2026-09-16-flashnext-delimited-components/component-gap.json) |
 | halo-box PR #63 `c4aa30229`, bf16 | 3989.3 | 3760.4 | same |
 | pwilkin `40a9f4d01` | — | 3972.8 | [`2026-09-15-flashnext-engine-comparison`](../benchmarks/results/2026-09-15-flashnext-engine-comparison/README.md) |
@@ -226,13 +253,14 @@ Our 1420.9 ms of iu8 exact-repair is folded into the matmul family it corrects
 and also totalled separately; the comparator has no equivalent pass, so that
 1.42 s sits inside our `expert_gate_up` and `expert_down` rows.
 
-The promotion moved one family: `dense_projection` −5327.4 ms (−50.4%), with
-every other family within 0.5% of the pre-promotion capture.
+The promotion's main measured family change is `dense_projection`,
+10562.2 → 5234.8 ms (−50.4%) across the separate captures. This table predates
+the repair-loop unroll; §1.4 records the subsequent repair measurement.
 
-#### Same basis, current composition
+#### Same timing basis, pre-unroll composition
 
 §2.2 and §2.3 come from one 16733.4 ms kernel sum captured on the shipped
-default, so they are a family decomposition of the current path rather than a
+default at `42ce71156`, before the repair unroll, rather than a
 projection from an A/B wall delta. The taxonomy is still useful for locating
 work, not a like-for-like operation boundary: `map_mmb()` assigns `mmb_cvt_*` to
 `elementwise_norm`, while hipEngine's activation conversion is inside the dense
@@ -385,8 +413,9 @@ established by this evidence.
 
 ## 3. What makes the comparators fast, and our state
 
-Ordered by share of the **pre-promotion** 18323.2 ms gap (see §2.3), not by
-current recoverable time.
+This mechanism inventory retains **historical pre-promotion** costs and gap
+shares from the 18323.2 ms comparison. Use §2.2 for the measured wide-route
+composition, §1.4 for the repair update, and §5 for current priorities.
 
 **Read the "our state" column with care.** For `gguf_ud_q4_k_xl` the production
 binder zeroes fifteen `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` and then restores
@@ -398,7 +427,7 @@ several routes; the scopes below are read from the kernel trace instead
 
 | Mechanism | Their evidence | Gap share | Our state |
 | --- | --- | ---: | --- |
-| Dense projection: quantized weights dequantized to BF16 in LDS, activations converted to BF16 **once per graph and cached**, F32 accumulate on BF16 WMMA (`mmb.cu`, PR #63 `08de004`) | PR #63 dense_projection 1536.7 → 1374.3 ms | **50.1%** (pre-promotion) | **Partly built, and the ported half is now the default.** `dense_wide256` ports the tile (`mmb_dense_kernel<128,256,64,64,1>`) at 2.573 ms against the production dispatch's 17.319 ms on the packet (6.74x) and is the production default at layers 16-47 since 2026-09-17: 5.4% below the f16 WMMA route it replaced at 1K/4K, and **5.43 s (23.98%) below the exact chain at `code-p4096`**, both measured in the route A/B. The shipped default was verified to run it on 264 roles at layers 16-47 with no coltile role at or above 16 and a census byte-identical to the explicit production profile ([`2026-09-17-q8-dense-default-path-census`](../benchmarks/results/2026-09-17-q8-dense-default-path-census/README.md)). Two gaps remain: f16 rather than bf16 operands (deliberate), and repeated in-kernel activation conversion. The **1.303 ms** load-path probe used reinterpreted, invalid values, not a correctly pre-converted activation; it excludes conversion cost and is only a hypothesis for this packet, which is at layer 8 outside the promoted scope. The wide route is a retiling of the f16 WMMA arithmetic, not a reassociation: both routes emit the same `candidate_logits_sha256` at 16-47, so it inherits that route's numerical envelope and its failures as well as its certifications |
+| Dense projection: quantized weights dequantized to BF16 in LDS, activations converted to BF16 **once per graph and cached**, F32 accumulate on BF16 WMMA (`mmb.cu`, PR #63 `08de004`) | PR #63 dense_projection 1536.7 → 1374.3 ms | **50.1%** (pre-promotion) | **Partly built, and the ported half is now the default.** `dense_wide256` ports the tile (`mmb_dense_kernel<128,256,64,64,1>`) at 2.573 ms against the production dispatch's 17.319 ms on the packet (6.74x) and is the production default at layers 16-47 since 2026-09-17: 5.4% below the f16 WMMA route it replaced at 1K/4K, and **5.43 s (23.98%) below the exact chain at `code-p4096`**, both measured in the route A/B. The shipped default was verified to run it on 264 roles at layers 16-47 with no coltile role at or above 16 and a census byte-identical to the explicit production profile ([`2026-09-17-q8-dense-default-path-census`](../benchmarks/results/2026-09-17-q8-dense-default-path-census/README.md)). Two gaps remain: f16 rather than bf16 operands (deliberate), and repeated in-kernel activation conversion. The **1.303 ms** historical load-path probe used invalid values; the later [real F16-input packet](../benchmarks/results/2026-09-17-q8-dense-f16-activation/README.md) supplies correct-input measurements, with an estimated aggregate saving (§5). The two routes' matching digests establish measured equivalence at 16-47, not a universal equivalence theorem for untested scopes |
 | Routed MoE gate/up WMMA-iu8 selection | PR #63 expert_gate_up −7.0% | 14.5% | **On across the model, but still a major opportunity (3414.2 ms; 4.48x PR #63).** `gguf_q4_k_selected_dual_wmma_iu8_risk_prefill` ran on layers 0-1 and 3-47; the `selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out` selection is a production manifest entry keyed on `prefill_rows_ge64_exact_grouped_q4_gate_up`. This is **not** the `PRODUCTION_MOE_PREFILL` route (that flag is `0` for this quant) and **not** a 27-47 scope, which is what the profile's own comment claims |
 | Hyper-connection combine and mix (`hc_combine_norm_f32`, `hc_mix_reduce_f32`) | PR #63 hyper_connection −21.7% | 11.9% | **Open and diagnosed.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32` ran on all 48 layers for 2437.4 ms, plus `gr_write` at 86 ms: 2523.8 ms against their 335.7 ms for the fused combine-plus-norm. The same tensor is traversed twice, 2523.8 ms of reads against 1098 ms of matmuls consuming them. The `GR_IU8` variants are independently numerically **rejected**; their separate wall savings do not establish a combined recovery or a pure hyper-connection-family saving (§2.4) |
 | Routed MoE down MMB kernel (`mmb_routed_kernel`) | PR #63 expert_down **−64.1%** (1149.8 → 412.8 ms) | 10.8% | **Not built.** The largest per-family move the comparator made and we have no equivalent kernel. Our `expert_down` is 2389.0 ms, of which 721 ms is iu8 exact-repair. The down projection runs Q5_1 on 43 layers and Q8_0 on five (2, 4, 30, 46, 47) |
@@ -429,8 +458,8 @@ profile named explicitly; it has since been repeated through the shipped default
 **byte-identical** to the explicit run (`sha256 2b5dbcaf32b2e72b…`,
 [`2026-09-17-q8-dense-default-path-census`](../benchmarks/results/2026-09-17-q8-dense-default-path-census/README.md)).
 
-The table includes the promoted scope and unpromoted passing, failing, or
-inconclusive scopes. “Pass” below means the **candidate-local numerical gate**,
+The table includes promoted, passing and failing scopes. “Pass” below means
+the **candidate-local numerical gate**,
 not a complete production-profile certificate. Its harness constructs the
 production profile and clears the dense selectors for the teacher; the field
 `strict_logits_sha256` does not make that teacher the named strict profile.
@@ -453,8 +482,9 @@ Numerical verdicts use the thresholds in
 | layers 28-47 | pass, `measurement_valid: true`, no blockers | ~+3.6 s | byte-share prediction |
 | layers 20-47 | pass, `measurement_valid: true` | ~+4.15 s | byte-share prediction |
 | **layers 16-47** | **pass, deepest certified** — mean KL 3.80e-4 (2.6x), p95 1.76e-3, p99 5.42e-3, max 1.53e-2, top-1 1538/1548 = 0.99354, 3/3 deterministic, no scope failures | +4.44 s WMMA / +5.43 s wide | measured (route A/B, `code-p4096`); **promoted** |
-| layers 12-47, 8-47 | screens inconclusive, not excluded | ~+4.69 / +4.96 s | byte-share prediction |
-| layers 0-15 role set, wide route | **not gated** | **~2.5 s** | measured per-launch times applied to the current attribution |
+| layers 12-47, wide | **fail** — `general_en` mean 1.089e-3 and p95 6.06e-3; two rows exceed the 2e-2 review boundary | no timing in gate | full 1548-row local gate |
+| layers 8-47, wide | **fail** — max KL 7.30e-2 on `code-p4096`, top-1 1532/1548 | no timing in gate | full 1548-row local gate |
+| layers 0-15 role set, wide route | **not directly gated as a full extension** | **~2.5 s estimate** | per-launch timings applied to the attribution, not measured scope timing |
 
 Only the 0-47 and 32-47 rows are measured by the sweep; 16-47 is measured by the
 2026-09-17 route A/B
@@ -464,26 +494,37 @@ arm that replaced it). The WMMA arm's measurement lands within 0.4% of the
 +4.42 s byte-share prediction for the same scope, but the two protocols' exact
 arms differ by 5% (23.840 s with the sweep's `--risk-diagnostics` instrument
 against 22.648 s interleaved), so it confirms the interpolation's shape rather
-than reproducing its number. Every figure deeper than 16-47 is still
-`7.0409 s x owned byte share`, an interpolation from two measured points that
-the source README explicitly labels as a prediction. **We have therefore measured
-+2.436 s at 32-47 and +4.439 s at 16-47; the "captured" share of the +7.04 s
-maximum is still a prediction below 16-47.** The 16-47 quality gate itself
-records no timing (`timing_protocol: none_full_logits_only_v1`).
+than reproducing its number. The older +4.69/+4.96 s estimates for WMMA at 12-47/8-47 were byte-share
+predictions, not timings of the now-failed wide scopes. The 16-47 quality gate
+itself records no timing (`timing_protocol: none_full_logits_only_v1`).
 
-16-47 supersedes 20-47 as the deepest certified scope, and its screen
-overestimated the full arm by 1.8x, the second deep-scope control point to do so.
-12-47 and 8-47 remain screen-inconclusive. The byte-share interpolation put the
-contiguous upside below 16-47 at about +0.5 s; **the current attribution measures
-the same role set at 3262.5 ms of layers 0-15 against 1404.2 ms at layers 16-47,
-and the promoted route's own per-launch times put that role set at about 798 ms**
-([attribution](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/README.md),
-[per-launch packet](../benchmarks/results/2026-09-17-q8-dense-f16-activation/README.md)).
-That is a ~2.5 s opportunity on a 17.2 s prefill, five times the prediction, and
-it is a per-launch estimate rather than a measured scope arm. The `0-47` failure
-above was measured with the WMMA route and a different per-tile accumulation
-order, so it bounds the wide route's risk without deciding it: extending below
-16 needs its own gate at the chosen scope.
+The [12-47](../benchmarks/results/2026-09-17-q8-dense-wide-12-47-gate/README.md)
+and [8-47](../benchmarks/results/2026-09-17-q8-dense-wide-8-47-gate/README.md)
+artifacts establish rejection of those two configurations. All three wide
+scope gates use the same teacher digest. Their global means increase across
+16-47, 12-47 and 8-47, but `general_en` mean **decreases** from 1.089e-3 to
+9.79e-4 between the latter two. The 8-47 hard tail failure is in **code**, not
+`general_en`. Deterministic differences between configurations are not a
+run-to-run noise estimate or a monotonicity guarantee.
+
+At 16-47, `general_en` mean 5.235e-4 uses **52.4% of its 1e-3 limit**, leaving
+47.6%; its headroom ratio is 1.91x. The 2.63x ratio applies to the global mean.
+Neither ratio is an additive budget from which remaining layers can be counted.
+Scopes 13-47, 14-47, 15-47 and selective layer/role combinations are unmeasured.
+Defer them in favor of better-supported work; do not label their upside bounded
+by 0.4 s or require an arithmetic change as the only way to reopen them.
+
+The ~2.5 s full-extension estimate applies packet times to the 3262.5 ms
+0-15 role set; it is not a measured or admitted recovery. Matching wide/WMMA
+logits at 16-47 and packet-level retiling evidence make the older WMMA 0-47
+failure relevant, but the digest alone does not prove cross-route equivalence
+at 0-47. A split-F16-operand variant is another unmeasured option: three WMMA
+products are not a measured 3x whole-kernel cost or a 2x engine gain.
+
+Near-equal prefill-last logits also do not exonerate prefill state. The 8-47
+outlier is at the first decode transition; investigate recurrent state, KV and
+intermediate boundaries under the shared teacher chain. These kernels use
+F16 **operands with FP32 accumulation**, not F16 accumulation.
 
 `dense_wide256` is the larger prize and **passed its own gate at 16-47 on
 2026-09-17**
@@ -568,9 +609,10 @@ those fields:
   records a decode finding it does not waive; it says nothing about the dense
   route.
 
-Missing evidence here is a gap in the record, not a failed check, and the route
-stays promoted on the numerical and performance halves above. §5 item 2 is what
-would close the table.
+Missing evidence here is a qualification gap, not a failed check. The runtime
+route is already promoted, but the numerical/performance halves do not waive
+the missing applicable production gates. §5's qualification prerequisite records
+what must be closed before claiming full qualification or extending admission.
 
 ## 5. What is left
 
@@ -590,24 +632,41 @@ The baseline and attribution refresh this section previously owed is done
 Both are captured on the shipped default at `42ce71156`: 36 samples over the
 four categories and three lengths, and a 16733.4 ms kernel decomposition with
 0 ms unattributed and no unmapped symbol over the 1 ms floor. The screen's
-4096 decode aggregate carries a documented five-sample degradation; its per-case
-values for that length are 16.20-16.29.
+4096 and 512 decode aggregates carry a documented five-sample degradation;
+per-case medians conceal some of that time trend (§1.1).
 
 ### Engineering priorities
 
-This is a recommended experiment order, not a prediction of additive gains. The
-costs and gaps below are the **current** `code-p4096` attribution on the
-model/host declared above; comparator differences are opportunity indicators, not
+This is a recommended experiment order, not a prediction of additive gains.
+The main family table is the pre-unroll `42ce71156` capture; §1.4 records the
+post-unroll costs. Comparator differences remain opportunity indicators, not
 achievable speedups or quality-equivalent targets.
 
 | Priority | Opportunity | Evidence and limit | First bounded experiment |
 | --- | --- | --- | --- |
-| 1 | **Routed MoE gate/up and down, including repair** | Largest owner: gate/up 3402.4 ms, down 2382.3 ms, together **5.785 s** of a 16.733 s prefill, with 1.421 s of repair already inside them. Gap to the comparator 4.610 s at 4.47x and 5.77x. Gate/up being enabled does not make it optimized | Profile useful rows per expert, tile padding, map/scatter cost and repair cost. Test expert-row-aware tiling and a down-projection tiled WMMA implementation on Q5_1/Q8_0. Charge the complete operation; <1% repair incidence does not mean negligible repair time |
-| 2 | **Dense scope extension below layer 16** | **Measured boundary; effectively closed.** The same Q8_0 GEMM role set costs **3262.5 ms** at layers 0-15 on the exact coltile chain against 1404.2 ms at 16-47, so a full extension would be worth ~2.5 s. The wide route cannot reach it: `dense_wide256` is a retiling of the f16 WMMA arithmetic (both emit `candidate_logits_sha256 65370710c0b9c40f` at 16-47), and its drift grows monotonically with the number of f16 layers. Full gates: **16-47 passes** (mean 3.80e-4, 2.6x headroom), **12-47 fails** on category `general_en` (mean 1.089e-3, p95 6.06e-3), **8-47 fails** on max KL (7.30e-2) and top-1 (0.98966). `general_en` is the binding category at every scope and the promoted 16-47 scope already spends ~40% of its headroom | Do not bisect further: at most a few extension layers remain, worth at most ~0.4 s, at the numerical limit and with a real chance of failing their own gate ([12-47](../benchmarks/results/2026-09-17-q8-dense-wide-12-47-gate/README.md), [8-47](../benchmarks/results/2026-09-17-q8-dense-wide-8-47-gate/README.md)). Reopening this needs an arithmetic change, not a scope change: a split-operand (f16x2) wide variant would cut the operand rounding that binds here at roughly 3x the f16 matmul cost, still about 2x faster than the exact chain, and would need its own `0-47` gate |
-| 3 | **Materialize correct F16 activations for the wide route** | **Measured**: 1384.7 → 794.1 ms over the route's 1056 launches, a 590.6 ms saving (42.6%), bit-identical output, and the packet's per-shape times match the engine to 1.4%. Not wired into the runner | Wire the route: one conversion per distinct live activation, reused across its consumers, invalidated on producer writes, strict fallback registered; then an interleaved A/B on `code-p4096` |
-| 4 | **Hyper-connection read/combine and its projections** | 2.525 s current family cost, worst ratio after QSA (7.52x), 2.190 s of gap. GR-up alone saved 1.849 s and GR-down alone 0.645 s in a different diagnostic composition. Both fail mean and p95 KL; the pair is unmeasured | Localize drift at projection/sigmoid/mean/publication boundaries. Test new tiling or producer/consumer fusion as well as numerically corrected arithmetic; do not rerun the rejected P4/compensated variants unchanged |
-| 5 | **QSA prefill** | 1.403 s current cost versus 0.156 s comparator bucket, 9.01x. Smaller than MoE but not negligible, and much larger than PLE/indexer | Match selected-position work and complete-operation boundaries, then test D=256 tiling/occupancy on the current wave-row path with exact ownership and the applicable numerical gate |
-| 6 | **MoE map/reduction fusion** | 0.758 s current bucket, shared with the MoE work above | Attribute router/map/scatter/reduction separately and fuse exposed producer/consumer boundaries; do not add this bucket again to a complete-MoE result |
+| 1 | **Integrate the real F16 activation composite** | Real conversion and F16-input kernels exist. The packet's **590.6 ms is a census-weighted estimate** from standalone medians plus assumed sharing, not measured engine recovery. Summing the measured unshared composites gives **553.9 ms** estimated recovery instead | Start with per-call conversion into reusable, runner-owned scratch on the consumer stream. Verify lifetime, tails, real activations, reset/graph behavior and applicable quality gates; measure an interleaved end-to-end A/B. Add shared-input reuse only if it pays |
+| 2 | **Routed MoE main kernels and repair** | Pre-unroll gate/up + down: 5.785 s. Post-unroll capture: **5.607 s**, with 1.240 s repair included. Down is **2229.8 ms**, not the older 2382.3 ms. Gate/up remains larger at 3377.1 ms | Test expert-population-aware tiles and a routed Q5_1/Q8_0 down candidate on actual skew/tails. Include packing, maps, repair and reduction. Do not require exact parity for a distinct production-arithmetic candidate, but apply the complete profile gate. First close the changed Q8_0 repair's focused correctness coverage |
+| 3 | **Hyper-connection** | About 2.5 s in the captures; historical comparator difference about 2.19 s. Old GR-up/down overrides fail mean and p95 KL and do not measure today's combined saving | Locate the first numerical divergence at projection/sigmoid/mean/publication boundaries before another correction. Consider tiling and producer/consumer fusion; avoid repeating the rejected P4/compensated variants unchanged |
+| 4 | **QSA prefill** | About 1.4 s, versus 0.156 s in the comparator bucket; 9.01x is not itself a realizable speedup | Match selected-position work and complete boundaries, then screen D=256 tiling/occupancy with exact ownership and the applicable arithmetic gate |
+| 5 | **MoE map/reduction fusion** | About 0.76 s, overlapping the complete-MoE work above | Attribute maps, scatter/gather and reductions before fusing; do not count the same saving twice |
+| Deferred | **Dense scope selection or new arithmetic** | 12-47 and 8-47 fail; 16-47 passes its local gate. Untested selective scopes are not excluded, and ~2.5 s is an inadmissible full-extension estimate | Revisit only with cost-weighted layer/role sensitivity evidence or a promising arithmetic packet. No blind full-gate sweep, but no claim that scope work is mathematically closed |
+
+The activation harness's `aggregate()` uses `f16in_ms + cast_share * cast_ms`,
+not its measured `composite_ms`. From the committed 1024-row data:
+
+- F32 launches weighted by the census: **1384.689 ms**.
+- Measured cast-plus-F16 sequences weighted without sharing: **830.761 ms**.
+- Standalone cast + F16 medians weighted without sharing: **801.610 ms**.
+- Standalone medians with half-cast charges for two pairs: **794.133 ms**.
+
+Thus assumed sharing contributes only **7.478 ms** to that estimate. Avoid
+making a general activation cache and its invalidation machinery a prerequisite
+for the larger conversion win. A true one-cast/two-consumer timing can evaluate
+sharing later. Aggregate agreement with the old engine trace is 1.4%; individual
+shapes differ more, and synthetic normal activations with sampled real weights
+are not an all-layer correctness or cache-residency certificate. Use actual
+packet inputs, per-shape paired samples, finite checks and byte comparisons
+before describing the integrated path as bit-identical.
 
 Do not prioritize unchanged GDN switches on the 0.126–0.228 s noisy screens,
 standalone elementwise ratios, or warm-PLE/indexer work ahead of these measured
@@ -635,9 +694,11 @@ rather than transferring short-context rankings to 16K–256K.
 | Topic | Artifact |
 | --- | --- |
 | PP/TG journey baseline, three engines | [`2026-09-13-framework-qwen4exp-strix-journey-baselines.json`](../benchmarks/results/2026-09-13-framework-qwen4exp-strix-journey-baselines.json) |
-| Shipped default at HEAD: canonical PP/TG, four categories | [`2026-09-17-qwen4exp-shipped-default-baseline`](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) |
-| Shipped default at HEAD: role attribution and gap decomposition | [`2026-09-17-qwen4exp-shipped-default-attribution`](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/README.md) |
+| Default at `42ce71156`, before repair unroll: canonical PP/TG | [`2026-09-17-qwen4exp-shipped-default-baseline`](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) |
+| Default at `42ce71156`, before repair unroll: attribution | [`2026-09-17-qwen4exp-shipped-default-attribution`](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/README.md) |
 | F16-activation composite for the wide route, per admitted shape | [`2026-09-17-q8-dense-f16-activation`](../benchmarks/results/2026-09-17-q8-dense-f16-activation/README.md) |
+| Repair unroll and packet controls | [`repair-cost structure`](../benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md), [`post-unroll role analysis`](../benchmarks/results/2026-09-17-iu8-repair-unroll/role-analysis.json) |
+| Wide-route 12-47 and 8-47 local numerical failures | [`12-47`](../benchmarks/results/2026-09-17-q8-dense-wide-12-47-gate/artifact-layers12-47-4cat.json), [`8-47`](../benchmarks/results/2026-09-17-q8-dense-wide-8-47-gate/artifact-layers8-47-4cat.json) |
 | Cross-engine prefill rates and kernel totals | [`2026-09-15-flashnext-engine-comparison`](../benchmarks/results/2026-09-15-flashnext-engine-comparison/README.md) |
 | Per-role cost, one prefill, 100% attribution (pre-promotion) | [`2026-09-17-qwen4exp-per-role-cost`](../benchmarks/results/2026-09-17-qwen4exp-per-role-cost/README.md) |
 | Same measurement one day earlier, with the reproduction check | [`2026-09-16-flashnext-per-role-cost`](../benchmarks/results/2026-09-16-flashnext-per-role-cost/README.md) |
