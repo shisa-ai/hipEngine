@@ -7935,3 +7935,22 @@ Evidence: `worklog/entries/20260916T033657.511650Z-lhl-vibevoice-tts-device-solv
 and `worklog/entries/20260916T042339.511052Z-lhl-vibevoice-tts-diffusion-cache-measurement-90ed57.md`.
 Desktop gfx1151 measurements must establish a new physical-host baseline before
 claiming further gains over torch or the previous implementation.
+
+## Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)
+
+`hipengine/server/api.py` pulls each streamed chunk with a separate
+`await run_in_threadpool(_next_stream_item, iterator)` call, and
+`StreamingOutputCollector.drain()` is invoked with `max_chunks=1`. The engine
+producer therefore only has to be modestly faster than that round trip for the
+per-child mailbox to fill, which is what the mailbox-bound fix in
+`worklog/entries/20260917T150847.490398Z-lhl-mtp-stream-mailbox-budget-f63132.md`
+turned from a cancellation into buffering. Buffering is the correct immediate
+behavior, but it hides the real cost: a consumer that is slower than the producer
+now delays the request instead of losing it.
+
+Remove the debt by draining a batch per round trip (yield the first ready chunk
+immediately, then hand over whatever is already buffered without blocking) and by
+raising `max_chunks` in the `drain()` call sites. Re-measure decode throughput on
+a streaming MTP request with per-chunk telemetry enabled before and after; the
+current per-chunk telemetry doubles the consumer's per-chunk cost, which is what
+made the margin visible.

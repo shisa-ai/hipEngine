@@ -5952,6 +5952,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type=openai_exc.error_type,
                 finish_details=openai_exc.finish_details,
             )
+            if _stream_include_usage(request):
+                # A cancelled stream still reports what it delivered, so a client
+                # can detect the truncation and account for the tokens it saw.
+                yield _completion_stream_usage(
+                    response_id,
+                    created,
+                    config.model_id,
+                    _usage(
+                        getattr(app.state, "hipengine_llm", None),
+                        (prompt,),
+                        ("".join(full_text),),
+                    ),
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing_metadata,
+                )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -8555,6 +8571,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type=openai_exc.error_type,
                 finish_details=openai_exc.finish_details,
             )
+            if _stream_include_usage(request):
+                # A cancelled stream still reports what it delivered, so a client
+                # can detect the truncation and account for the tokens it saw.
+                yield _chat_stream_usage(
+                    response_id,
+                    created,
+                    config.model_id,
+                    _usage(
+                        getattr(app.state, "hipengine_llm", None),
+                        (generation_prompt,),
+                        ("".join(full_text),),
+                    ),
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing_metadata,
+                )
             yield _chat_stream_error(
                 response_id,
                 created,

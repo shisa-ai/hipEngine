@@ -1,0 +1,109 @@
+{
+  "status": "correctness/behavior evidence; not a retained benchmark row",
+  "date": "2026-09-17",
+  "purpose": "Record the streaming cancellation that made every real ShareGPT-shaped MTP request lose its answer, the request-shape experiment that isolated it, and the same-host before/after after the mailbox bound became the request's own output budget.",
+  "host": {
+    "name": "zbook",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD Radeon 890M iGPU (gfx1151)",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "kv_storage": "bf16",
+    "server_command": "/home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port <port> --log-level info",
+    "startup_mtp": "serving=enabled engine_supported=True default_enabled=True policy=auto thinking=hint candidate_budget=requested:None resolved:3 source:model_plugin_evidence"
+  },
+  "protocol": "One streaming chat completion per arm, curl -N, single request, no warmup, prompt and max_completion_tokens as stated. The client reads the stream as fast as it can, so the cancellation is not client-side slowness. `generated_tokens` is the last cumulative counter in the stream; `usage` counts usage blocks received.",
+  "isolating_experiment": {
+    "prompt": "Write a 300 word essay about the ocean.",
+    "max_completion_tokens": 200,
+    "arms": [
+      {
+        "request": "stream=true, include_usage=true, include_hipengine=true",
+        "result": "cancelled",
+        "generated_tokens": 96,
+        "elapsed_seconds": 3.92,
+        "bytes": 84614,
+        "usage_blocks": 0,
+        "finish": "finish_reason=error, finish_details.reason=cancelled, budget_pressure=client_backpressure, code=cancelled"
+      },
+      {
+        "request": "stream=true, include_usage=true (no per-chunk telemetry)",
+        "result": "completed",
+        "events": 203,
+        "elapsed_seconds": 10.06,
+        "bytes": 45072,
+        "usage_blocks": 1
+      },
+      {
+        "request": "stream=false",
+        "result": "completed",
+        "completion_tokens": 200,
+        "finish_reason": "length",
+        "usage": "present with accepted_prediction_tokens=117 rejected_prediction_tokens=125"
+      },
+      {
+        "request": "stream=true, speculative_mtp=false (autoregressive route)",
+        "result": "completed",
+        "generated_tokens": 200,
+        "elapsed_seconds": 16.77,
+        "usage_blocks": 1
+      },
+      {
+        "request": "stream=true, chat_template_kwargs.enable_thinking=false",
+        "result": "cancelled",
+        "generated_tokens": 110,
+        "usage_blocks": 0
+      }
+    ],
+    "threshold_sweep_same_prompt": {
+      "32": "completed, finish_reason=length, usage present",
+      "48": "completed, finish_reason=length, usage present",
+      "64": "completed, finish_reason=length, usage present",
+      "96": "completed, finish_reason=length, usage present",
+      "100": "completed, usage present",
+      "104": "completed, usage present",
+      "106": "completed, usage present",
+      "108": "cancelled at generated_tokens=107, no usage",
+      "112": "cancelled at generated_tokens=107, no usage",
+      "120": "cancelled at generated_tokens=107, no usage",
+      "128": "cancelled at generated_tokens=107, no usage"
+    },
+    "other_prompts": [
+      {"prompt": "Write a 300 word essay about the ocean.", "cancelled_at": 96},
+      {"prompt": "Hi", "max_completion_tokens": 200, "cancelled_at": 98},
+      {"prompt": "1200 characters of README + Summarize the above in detail.", "max_completion_tokens": 200, "cancelled_at": 100}
+    ]
+  },
+  "root_cause": {
+    "site": "hipengine/generation/engine_service.py _route_events -> StreamingOutputCollector.publish (CHUNK branch) -> _cancel_state(reason='client_backpressure')",
+    "instrumentation": "Temporary [DEBUG-QUEUE] prints on the three rejection sites, reverted before the commit. Only the collector CHUNK branch fired: `collector CHUNK overflow request=2 depth=64 max=64`, with the mailbox growing 29 -> 62 -> 64 while the consumer drained one entry per drain(max_chunks=1) call.",
+    "policy": "Both engine-to-consumer queues were fixed at 64 entries and treated 'full' as 'cancel this child', so a consumer slower than the producer lost the request instead of slowing it down. Per-chunk telemetry roughly doubles the consumer's per-chunk cost, which is what put the consumer below the producer's rate."
+  },
+  "after": {
+    "change": "The mailbox bound is the child's own output budget (floor = configured bound, hard cap 4096 entries), and a cancelled stream reports the usage it delivered.",
+    "same_host_same_prompt": [
+      {
+        "request": "essay, max_completion_tokens=200, stream=true, include_hipengine=true",
+        "result": "completed",
+        "generated_tokens": 200,
+        "completion_tokens": 200,
+        "elapsed_seconds": 13.98,
+        "usage_blocks": 1
+      },
+      {
+        "request": "Jeff Walker launch-formula prompt, max_completion_tokens=128, stream=true, include_hipengine=true",
+        "result": "completed",
+        "generated_tokens": 128,
+        "completion_tokens": 128,
+        "elapsed_seconds": 6.55,
+        "usage_blocks": 1,
+        "before": "cancelled at generated_tokens=107 after 5.3s, no usage"
+      }
+    ],
+    "unit_tests": [
+      "pytest tests/test_unit_generation_stream_mailbox_bound.py -q -> 8 passed",
+      "pytest tests/test_integration_generation_engine_service.py tests/test_unit_generation_stream_mailbox_bound.py -p no:randomly -> 37 passed"
+    ]
+  },
+  "follow_up": "The consumer still pays one threadpool round trip per chunk (run_in_threadpool(_next_stream_item, iterator) in hipengine/server/api.py), so a slow client now buffers instead of dying. Batched draining is the throughput fix and is recorded in docs/REFACTOR.md.",
+  "source": "worklog/entries/20260917T150847.490398Z-lhl-mtp-stream-mailbox-budget-f63132.md"
+}

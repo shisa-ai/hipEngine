@@ -15,6 +15,7 @@ from hipengine.generation.concurrency2 import (
     OutputCollector,
     OutputKind,
     StreamingOutputCollector,
+    stream_mailbox_bound,
 )
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.generation.engine_loop import (
@@ -604,10 +605,13 @@ class EngineService:
         if streaming:
             collector = StreamingOutputCollector(
                 max_output_tokens=request.max_tokens,
-                max_chunks=(
-                    self._stream_queue_max_chunks
-                    if stream_queue_max_chunks is None
-                    else int(stream_queue_max_chunks)
+                max_chunks=stream_mailbox_bound(
+                    (
+                        self._stream_queue_max_chunks
+                        if stream_queue_max_chunks is None
+                        else int(stream_queue_max_chunks)
+                    ),
+                    request.max_tokens,
                 ),
                 enqueue_token_events=False,
             )
