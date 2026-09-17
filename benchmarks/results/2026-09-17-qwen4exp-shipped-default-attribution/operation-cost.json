@@ -1,0 +1,625 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_operation_cost",
+ "performance_claim": false,
+ "case": {
+  "chunk_tokens": 1024,
+  "total_tokens": 4096
+ },
+ "peak_gflops": 29696.0,
+ "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+ "hardware": {
+  "name": "AMD Radeon 8060S (Strix Halo APU)",
+  "compute_units": 40,
+  "clock_ghz": 2.9,
+  "fp32_fma_peak_gflops": 29696.0,
+  "dram_bytes_per_second": 256000000000.0,
+  "mall_bytes": 33554432,
+  "l2_bytes": 2097152,
+  "arch": "gfx1151"
+ },
+ "peaks": {
+  "fp32_fma_gflops": 29696.0,
+  "bf16_wmma_spec_gflops": 123000.0,
+  "bf16_wmma_measured_gflops": 84800.0,
+  "dram_bytes_per_second": 256000000000.0
+ },
+ "total_ms": 16725.7,
+ "matmul_ms": 7653.3,
+ "by_operation_class": {
+  "non-matmul": 7710.7,
+  "matmul": 7653.3,
+  "risk_or_repair": 1361.7
+ },
+ "by_role_family": {
+  "moe": 6591.3,
+  "linear": 5237.6,
+  "gr_read": 2538.6,
+  "qsa_prefill": 1421.6,
+  "gdn": 820.9,
+  "prefill_boundary": 100.3,
+  "ple": 15.4
+ },
+ "notes": [
+  "Milliseconds from a role-marked rocprofv3 capture with 100% kernel attribution.",
+  "Shapes from the launch census where the matmul goes through the GGUF quant path, otherwise from the GGUF tensor geometry plus the expert routing count.",
+  "Achieved GFLOP/s excludes dequantization work.",
+  "Percent-of-peak uses the scalar FP32 FMA rate for the scalar kernels and the BF16 WMMA spec rate for matrix-core kernels; the basis is recorded per row.",
+  "Weight traffic counts per-chunk re-reads and can exceed DRAM bandwidth when a layer stays cache-resident."
+ ],
+ "rows": [
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 2708.9,
+   "operation": "matmul",
+   "kernel_family": "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q4_K",
+   "quant_mix": {
+    "Q4_K": 47,
+    "Q5_K": 1
+   },
+   "in_features": 2560,
+   "out_features": 640,
+   "rows_per_launch": 10240,
+   "launches": 188,
+   "gflop": 6308.23,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.17,
+   "achieved_gflops": 2328.7,
+   "arithmetic_intensity_flops_per_byte": 37107.2,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "BF16 WMMA spec (matrix-core kernel)",
+   "share_of_peak_pct": 1.9
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 1483.6,
+   "operation": "matmul",
+   "kernel_family": "q5_1_selected_wmma_iu8_risk_prefill",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q5_1",
+   "quant_mix": {
+    "Q5_1": 43,
+    "Q8_0": 5
+   },
+   "in_features": 640,
+   "out_features": 2560,
+   "rows_per_launch": 10240,
+   "launches": 172,
+   "gflop": 5771.36,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.22,
+   "achieved_gflops": 3890.1,
+   "arithmetic_intensity_flops_per_byte": 26233.5,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "BF16 WMMA spec (matrix-core kernel)",
+   "share_of_peak_pct": 3.2
+  },
+  {
+   "role": "qsa_prefill:layers.*.attn_q",
+   "ms": 1421.6,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "gr_read:layers.*.hc_attn_down",
+   "ms": 1269.7,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "gr_read:layers.*.hc_ffn_down",
+   "ms": 1268.9,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 932.2,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_qkv",
+   "ms": 836.6,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 10240,
+   "rows_per_launch": 1024,
+   "launches": 48,
+   "gflop": 2576.98,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 1.34,
+   "achieved_gflops": 3080.3,
+   "arithmetic_intensity_flops_per_byte": 1923.1,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 10.4
+  },
+  {
+   "role": "gdn:layers.*.attn_qkv",
+   "ms": 820.9,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 659.4,
+   "operation": "risk_or_repair",
+   "kernel_family": "q5_1_selected_sparse_exact_repair",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q5_1",
+   "quant_mix": {
+    "Q5_1": 43,
+    "Q8_0": 5
+   },
+   "in_features": 640,
+   "out_features": 2560,
+   "rows_per_launch": 10240,
+   "launches": 172,
+   "gflop": 5771.36,
+   "gflop_basis": "full-shape upper bound; actual rows are the flagged subset only",
+   "weight_traffic_gb": 0.22
+  },
+  {
+   "role": "linear:layers.*.ssm_out",
+   "ms": 653.6,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 6144,
+   "out_features": 2560,
+   "rows_per_launch": 1024,
+   "launches": 48,
+   "gflop": 1546.19,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.8,
+   "achieved_gflops": 2365.7,
+   "arithmetic_intensity_flops_per_byte": 1932.7,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 8.0
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 568.1,
+   "operation": "risk_or_repair",
+   "kernel_family": "gguf_q4_k_selected_dual_sparse_exact_repair",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q4_K",
+   "quant_mix": {
+    "Q4_K": 47,
+    "Q5_K": 1
+   },
+   "in_features": 2560,
+   "out_features": 640,
+   "rows_per_launch": 10240,
+   "launches": 188,
+   "gflop": 6308.23,
+   "gflop_basis": "full-shape upper bound; actual rows are the flagged subset only",
+   "weight_traffic_gb": 0.17
+  },
+  {
+   "role": "linear:layers.*.attn_gate",
+   "ms": 526.0,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 6144,
+   "rows_per_launch": 1024,
+   "launches": 48,
+   "gflop": 1546.19,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.8,
+   "achieved_gflops": 2939.5,
+   "arithmetic_intensity_flops_per_byte": 1932.7,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 9.9
+  },
+  {
+   "role": "linear:layers.*.attn_q",
+   "ms": 378.9,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 12288,
+   "rows_per_launch": 1024,
+   "launches": 16,
+   "gflop": 1030.79,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.53,
+   "achieved_gflops": 2720.5,
+   "arithmetic_intensity_flops_per_byte": 1944.9,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 9.2
+  },
+  {
+   "role": "linear:layers.*.hc_attn_down",
+   "ms": 256.2,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.hc_ffn_down",
+   "ms": 251.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_qkv",
+   "ms": 240.1,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.ssm_out",
+   "ms": 229.2,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.index_q",
+   "ms": 223.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_output",
+   "ms": 218.1,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 6144,
+   "out_features": 2560,
+   "rows_per_launch": 1024,
+   "launches": 16,
+   "gflop": 515.4,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.27,
+   "achieved_gflops": 2363.1,
+   "arithmetic_intensity_flops_per_byte": 1908.9,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 8.0
+  },
+  {
+   "role": "linear:layers.*.hc_ffn_down",
+   "ms": 183.6,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 10240,
+   "out_features": 320,
+   "rows_per_launch": 1024,
+   "launches": 64,
+   "gflop": 429.5,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.22,
+   "achieved_gflops": 2339.3,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 7.9
+  },
+  {
+   "role": "linear:layers.*.hc_attn_down",
+   "ms": 183.1,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 10240,
+   "out_features": 320,
+   "rows_per_launch": 1024,
+   "launches": 64,
+   "gflop": 429.5,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.22,
+   "achieved_gflops": 2345.7,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 7.9
+  },
+  {
+   "role": "linear:layers.*.attn_gate",
+   "ms": 148.3,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 134.2,
+   "operation": "risk_or_repair",
+   "kernel_family": "q8_0_selected_sparse_repair",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q5_1",
+   "quant_mix": {
+    "Q5_1": 43,
+    "Q8_0": 5
+   },
+   "in_features": 640,
+   "out_features": 2560,
+   "rows_per_launch": 10240,
+   "launches": 20,
+   "gflop": 671.09,
+   "gflop_basis": "full-shape upper bound; actual rows are the flagged subset only",
+   "weight_traffic_gb": 0.03
+  },
+  {
+   "role": "moe:layers.*.expert_gate",
+   "ms": 104.9,
+   "operation": "matmul",
+   "kernel_family": "q8_0_selected_grouped_wmma_prefill",
+   "shape_source": "model_shapes+routing",
+   "quant": "Q5_1",
+   "quant_mix": {
+    "Q5_1": 43,
+    "Q8_0": 5
+   },
+   "in_features": 640,
+   "out_features": 2560,
+   "rows_per_launch": 10240,
+   "launches": 20,
+   "gflop": 671.09,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.03,
+   "achieved_gflops": 6397.4,
+   "arithmetic_intensity_flops_per_byte": 22369.7,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "BF16 WMMA spec (matrix-core kernel)",
+   "share_of_peak_pct": 5.2
+  },
+  {
+   "role": "prefill_boundary",
+   "ms": 100.3,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.shared_down",
+   "ms": 99.2,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 640,
+   "out_features": 2560,
+   "rows_per_launch": 1024,
+   "launches": 64,
+   "gflop": 214.75,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.11,
+   "achieved_gflops": 2164.8,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 7.3
+  },
+  {
+   "role": "linear:layers.*.shared_gate",
+   "ms": 89.8,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 640,
+   "rows_per_launch": 1024,
+   "launches": 64,
+   "gflop": 214.75,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.11,
+   "achieved_gflops": 2391.4,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 8.1
+  },
+  {
+   "role": "linear:layers.*.attn_q",
+   "ms": 87.4,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_output",
+   "ms": 79.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.ple_key",
+   "ms": 70.0,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 10240,
+   "rows_per_launch": 1024,
+   "launches": 4,
+   "gflop": 214.75,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.11,
+   "achieved_gflops": 3067.9,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 10.3
+  },
+  {
+   "role": "linear:layers.*.ssm_alpha",
+   "ms": 63.5,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.shared_up",
+   "ms": 62.4,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 640,
+   "rows_per_launch": 1024,
+   "launches": 64,
+   "gflop": 214.75,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.11,
+   "achieved_gflops": 3441.5,
+   "arithmetic_intensity_flops_per_byte": 1952.3,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 11.6
+  },
+  {
+   "role": "linear:layers.*.ssm_beta",
+   "ms": 57.6,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.index_k",
+   "ms": 48.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.shared_gate",
+   "ms": 44.3,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.hc_ffn_inject",
+   "ms": 38.4,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.hc_attn_inject",
+   "ms": 38.4,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.shared_up",
+   "ms": 32.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.ple_value",
+   "ms": 23.4,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 2560,
+   "rows_per_launch": 1024,
+   "launches": 4,
+   "gflop": 53.69,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.03,
+   "achieved_gflops": 2294.4,
+   "arithmetic_intensity_flops_per_byte": 1789.7,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 7.7
+  },
+  {
+   "role": "linear:layers.*.shared_down",
+   "ms": 19.2,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_k",
+   "ms": 18.4,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 512,
+   "rows_per_launch": 1024,
+   "launches": 16,
+   "gflop": 42.95,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.02,
+   "achieved_gflops": 2334.2,
+   "arithmetic_intensity_flops_per_byte": 2147.5,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 7.9
+  },
+  {
+   "role": "ple:layers.*.ple_key",
+   "ms": 15.4,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_v",
+   "ms": 12.8,
+   "operation": "matmul",
+   "kernel_family": "gguf_k_prefill_out_coltile_rowbatch",
+   "shape_source": "launch_census",
+   "quant": "gguf_q8_0",
+   "quant_mix": null,
+   "in_features": 2560,
+   "out_features": 512,
+   "rows_per_launch": 1024,
+   "launches": 16,
+   "gflop": 42.95,
+   "gflop_basis": "full routed rows",
+   "weight_traffic_gb": 0.02,
+   "achieved_gflops": 3355.5,
+   "arithmetic_intensity_flops_per_byte": 2147.5,
+   "roofline_limit": "compute-bound",
+   "peak_basis": "scalar FP32 FMA on AMD Radeon 8060S (Strix Halo APU)",
+   "share_of_peak_pct": 11.3
+  },
+  {
+   "role": "linear:layers.*.attn_k",
+   "ms": 10.3,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.attn_v",
+   "ms": 8.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:layers.*.shared_expert_gate",
+   "ms": 4.8,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:root.lm_head",
+   "ms": 3.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:root.head_hc_down",
+   "ms": 0.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "linear:root.head_hc_up",
+   "ms": 0.0,
+   "operation": "non-matmul"
+  },
+  {
+   "role": "gr_read:root.head_hc_down",
+   "ms": 0.0,
+   "operation": "non-matmul"
+  }
+ ]
+}
