@@ -1,0 +1,684 @@
+{
+  "title": "Long-context eager MTP verification stages full-attention rows instead of falling back to the scalar row-wise owner",
+  "date": "2026-09-18",
+  "status": "retained",
+  "purpose": "The staged full-attention chain was refused whenever the span-wide attention limit crossed the split-K threshold, so at a 1024-token split boundary the eager verifier fell back to the scalar row-wise owner for every full-attention layer (measured: staged_chain_total 0, scalar_attn_total 1232 across the packet). The chain now resolves each row's own c1 leaf -- the same split-K gate leaf, chunk size, and split tiling the scalar owner runs at that position, and below the threshold the same non-split or short-context batch leaf -- so rows on both sides of the boundary stay in one batched projection/head-norm/rotary/KV-write/output-projection chain.",
+  "source": "scripts/gguf_mtp_long_context_gate.py (wrapped by a route probe that counts staged-chain and scalar-owner calls)",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf (qwen3.8-27b-q4km)",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo), ROCm SDK from /home/lhl/miniforge3/envs/therock",
+  "protocol": {
+    "harness": "scripts/gguf_mtp_long_context_gate.py",
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python /tmp/lc_path_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends 1024,1025 --candidate-budgets 1,2,3 --acceptance-cycle-ends 1024 --generation-contexts '' --max-sequence-length 1040 --out <out>.json",
+    "baseline_command": "same command with /tmp/lc_path_probe_base_wt.py from a clean git worktree at f607e3184",
+    "route": "eager_native (target graph rejected: start_position < 1024)",
+    "repetitions": 3,
+    "measured_quantity": "gate per-case wall_seconds (native verify plus the serial-exact teacher and the state/KV/hidden comparisons in one process)",
+    "comparison_basis": "same host, same session protocol, one run per repetition per arm, medians over three runs"
+  },
+  "result": {
+    "cases": [
+      {
+        "case_id": "end1024-b1",
+        "cycle_end": 1024,
+        "candidate_budget": 1,
+        "rows": 2,
+        "start_position": 1022,
+        "base_wall_seconds": [
+          0.4571,
+          0.4739,
+          0.4693
+        ],
+        "candidate_wall_seconds": [
+          0.476,
+          0.5229,
+          0.5442
+        ],
+        "base_median_seconds": 0.4693,
+        "candidate_median_seconds": 0.5229,
+        "delta_percent": 11.42,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b2",
+        "cycle_end": 1024,
+        "candidate_budget": 2,
+        "rows": 3,
+        "start_position": 1021,
+        "base_wall_seconds": [
+          0.6277,
+          0.6212,
+          0.6211
+        ],
+        "candidate_wall_seconds": [
+          0.6799,
+          0.6144,
+          0.6394
+        ],
+        "base_median_seconds": 0.6212,
+        "candidate_median_seconds": 0.6394,
+        "delta_percent": 2.94,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b3",
+        "cycle_end": 1024,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1020,
+        "base_wall_seconds": [
+          0.9655,
+          0.9293,
+          0.9358
+        ],
+        "candidate_wall_seconds": [
+          0.867,
+          0.8659,
+          0.871
+        ],
+        "base_median_seconds": 0.9358,
+        "candidate_median_seconds": 0.867,
+        "delta_percent": -7.36,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b3-a0",
+        "cycle_end": 1024,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1020,
+        "base_wall_seconds": [
+          1.6602,
+          1.6468,
+          1.6382
+        ],
+        "candidate_wall_seconds": [
+          1.594,
+          1.5867,
+          1.57
+        ],
+        "base_median_seconds": 1.6468,
+        "candidate_median_seconds": 1.5867,
+        "delta_percent": -3.65,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b3-a1",
+        "cycle_end": 1024,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1020,
+        "base_wall_seconds": [
+          0.8723,
+          0.8604,
+          0.8689
+        ],
+        "candidate_wall_seconds": [
+          0.8139,
+          0.8272,
+          0.8204
+        ],
+        "base_median_seconds": 0.8689,
+        "candidate_median_seconds": 0.8204,
+        "delta_percent": -5.58,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b3-a2",
+        "cycle_end": 1024,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1020,
+        "base_wall_seconds": [
+          0.8786,
+          0.8637,
+          0.8715
+        ],
+        "candidate_wall_seconds": [
+          0.8082,
+          0.8144,
+          0.7993
+        ],
+        "base_median_seconds": 0.8715,
+        "candidate_median_seconds": 0.8082,
+        "delta_percent": -7.26,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1024-b3-a3",
+        "cycle_end": 1024,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1020,
+        "base_wall_seconds": [
+          0.883,
+          0.8753,
+          0.8588
+        ],
+        "candidate_wall_seconds": [
+          0.8111,
+          0.8173,
+          0.8139
+        ],
+        "base_median_seconds": 0.8753,
+        "candidate_median_seconds": 0.8139,
+        "delta_percent": -7.01,
+        "split_k_calls": {
+          "base": 16,
+          "candidate": 16
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1025-b1",
+        "cycle_end": 1025,
+        "candidate_budget": 1,
+        "rows": 2,
+        "start_position": 1023,
+        "base_wall_seconds": [
+          0.4671,
+          0.4575,
+          0.4602
+        ],
+        "candidate_wall_seconds": [
+          0.4312,
+          0.4421,
+          0.4452
+        ],
+        "base_median_seconds": 0.4602,
+        "candidate_median_seconds": 0.4421,
+        "delta_percent": -3.94,
+        "split_k_calls": {
+          "base": 32,
+          "candidate": 32
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1025-b2",
+        "cycle_end": 1025,
+        "candidate_budget": 2,
+        "rows": 3,
+        "start_position": 1022,
+        "base_wall_seconds": [
+          0.6267,
+          0.617,
+          0.6171
+        ],
+        "candidate_wall_seconds": [
+          0.5779,
+          0.6816,
+          0.6661
+        ],
+        "base_median_seconds": 0.6171,
+        "candidate_median_seconds": 0.6661,
+        "delta_percent": 7.94,
+        "split_k_calls": {
+          "base": 32,
+          "candidate": 32
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      },
+      {
+        "case_id": "end1025-b3",
+        "cycle_end": 1025,
+        "candidate_budget": 3,
+        "rows": 4,
+        "start_position": 1021,
+        "base_wall_seconds": [
+          0.7789,
+          0.783,
+          0.7885
+        ],
+        "candidate_wall_seconds": [
+          0.7284,
+          0.7326,
+          0.7237
+        ],
+        "base_median_seconds": 0.783,
+        "candidate_median_seconds": 0.7284,
+        "delta_percent": -6.97,
+        "split_k_calls": {
+          "base": 32,
+          "candidate": 32
+        },
+        "exactness": {
+          "hidden_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "kv_rows_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "linear_state_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_logits_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "target_top1_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "acceptance_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "commit_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "cursor_exact": {
+            "base": true,
+            "candidate": true
+          },
+          "rollback_exact": {
+            "base": true,
+            "candidate": true
+          }
+        }
+      }
+    ],
+    "totals": {
+      "base_seconds": [
+        8.2172,
+        8.128,
+        8.1293
+      ],
+      "candidate_seconds": [
+        7.7876,
+        7.9052,
+        7.8932
+      ],
+      "base_median_seconds": 8.1293,
+      "candidate_median_seconds": 7.8932,
+      "delta_percent_median": -2.9,
+      "delta_percent_mean": -3.63
+    },
+    "cases_faster": 7,
+    "cases_total": 10,
+    "route_counters": {
+      "baseline": {
+        "staged_chain_calls": 0,
+        "scalar_owner_calls": 1232
+      },
+      "candidate": {
+        "staged_chain_calls": 16,
+        "scalar_owner_calls": 32,
+        "note": "per-case staged-chain calls are the 16 full-attention layers; the 32 scalar-owner calls are the serial-exact teacher's own per-row steps"
+      }
+    }
+  },
+  "correctness_gate": {
+    "gate": "scripts/gguf_mtp_long_context_gate.py direct cases: exact logits/top-1, accept summary, Conv/GDN state, touched BF16 K/V rows, selected hidden, cursor, commit, and rollback against the serial-exact teacher",
+    "baseline": "10/10 direct cases passed",
+    "candidate": "10/10 direct cases passed with identical flags on every case",
+    "split_k": "unchanged per case (16 calls at cycle end 1024, 32 at 1025)",
+    "graph_route": "unchanged: at cycle end 1032 the captured target graph passes --require-target-graph 3/3 with the same 32/48/64 split-K calls and exactness on both arms, and real host-proposal generation at context 1024 with --generation-require-target-graph passes 4 target-graph cycles with exact output IDs, GPU/CPU accept parity, all cycle logits recorded and 106 split-K launches. The graph captures verify_target_block, so it replays the same code."
+  },
+  "caveats": [
+    "The two slower cases are the smallest-row cases (end1024-b1 +11.4%, end1024-b2 +2.9% medians, 0.01-0.05 s absolute); the wins are the four-row cases (-7.0% to -7.4%).",
+    "wall_seconds includes the serial-exact teacher's per-row decode, which is identical in both arms, so it dilutes the native-arm delta.",
+    "This is a verifier-route change, not a serving admission change: long-context MTP serving limits are unchanged.",
+    "The page-boundary (255/256/257) and 1032 packets take the captured target graph in this tree, whose drift against the serial teacher is pre-existing and identical at the baseline commit."
+  ]
+}

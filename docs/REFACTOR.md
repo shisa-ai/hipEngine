@@ -60,31 +60,35 @@
   why raising the window alone makes long-context MTP slower (0.57x) and why the
   batched split-K leaf below is the piece that matters.
 
-## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17)
+## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
 
-- `qwen35_gguf_runner.py` derives `strict_long_rows` from
-  `_use_gguf_full_attention_split_decode(start_position + rows)`, i.e. from the
-  *normal decoding* split-attention threshold
-  (`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`). This is not a policy
-  choice that can be flipped: the batched route,
-  `_run_full_attention_attn_chain_rows_exact`, raises
-  `"staged full-attention chain currently requires non-split decode"` when that
-  predicate is true, because it attends every verifier row in one non-split
-  call. A multi-row verifier therefore cannot batch its rows while ordinary
-  decoding keeps split-K attention.
-- The only measured way to reach the batched long-row route today is to raise
-  the split threshold past the request's context (or disable it with `0`),
-  which costs normal decoding about 9% at 3,530 prompt tokens (10.96 to 10.01
-  tok/s). Raising the threshold to the session capacity is the better interim
-  setting: it keeps split-K for contexts beyond it while still letting the
-  verifier batch rows below it, and it is identical to `0` for the measured
-  shapes.
-- Wanted: a batched split-K attention leaf for the staged chain, or a
-  verifier-scoped row schedule that keeps split-K per row while batching the
-  remaining work, so the target keeps split-K attention and the verifier still
-  batches. The measured screen shows this is the difference between
-  long-context MTP being slower than normal decoding (per-row strict, 0.57x at
-  3,530 tokens) and faster than it (1.38x).
+- Resolved: `_run_full_attention_attn_chain_rows_exact` no longer raises
+  `"staged full-attention chain currently requires non-split decode"` when the
+  span-wide attention limit crosses the split threshold. Every verifier row now
+  resolves its own c1 attention leaf (`_staged_full_attention_row_leaf`) — the
+  split-K gate leaf with the scalar owner's own chunk size and split tiling at or
+  above the threshold, and the short-context batch leaf or the plain leaf below
+  it, whichever the scalar owner would pick from `position + 1` — so the batched
+  projections, head norm/rotary, KV writes, and output projection stay batched
+  across the boundary while ordinary decoding keeps split-K attention. Eager
+  verification builds the per-row views the graph owner already gets from device
+  metadata (`_eager_native_row_views`), and `_staged_full_attention_rows_ready`
+  keeps the row-wise strict route for any row whose leaf does not resolve.
+  Measured on the eager long-context packet: cycle wall 8.129 s -> 7.893 s median
+  (-2.9%, 7 of 10 cases faster), 10/10 direct cases exact against the
+  serial-exact teacher, 16/32 split-K calls per case unchanged
+  (`worklog/entries/20260917T195925.422701Z-lhl-gguf-long-context-eager-staged-attention-2c4ca3.md`,
+  `benchmarks/results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json`).
+- Remaining: the staged *linear*-attention chain still takes the row-wise strict
+  route at long context, because it diverges from scalar AR in BF16 at the
+  split-attention boundary. `strict_long_rows` still derives from
+  `_use_gguf_full_attention_split_decode(start_position + rows)` for that
+  decision; once linear rows are per-row exact it can read the same per-row
+  readiness check the full-attention chain uses.
+- Historical note: the only measured way to reach the batched long-row route
+  before this was to raise the split threshold past the request's context (or
+  disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
+  tokens. That workaround is no longer needed.
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 

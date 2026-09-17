@@ -6688,8 +6688,6 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("start_position must be non-negative")
         if attention_context_limit < start_position + rows:
             raise ValueError("full-attention context limit must cover every verifier row")
-        if _use_gguf_full_attention_split_decode(attention_context_limit):
-            raise ValueError("staged full-attention chain currently requires non-split decode")
         for row, row_scratch in enumerate(decode_row_scratches):
             if getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
                 raise ValueError("staged full-attention chain requires BF16 KV")
@@ -6706,6 +6704,36 @@ class Qwen35GGUFFullStackRunner:
         cast_library = self._cast_library()
         kv_write_library = self._paged_kv_write_library()
         paged_attn_library = self._paged_attn_decode_library()
+        row_split_leaves = []
+        for row_scratch in decode_row_scratches:
+            row_split_leaves.append(
+                _staged_full_attention_row_leaf(
+                    cfg,
+                    backend=self.backend,
+                    scratch=scratch,
+                    row_scratch=row_scratch,
+                    position=int(row_scratch.position_host[0]),
+                )
+            )
+        split_rows = tuple(leaf is not None for leaf in row_split_leaves)
+        if any(split_rows):
+            _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
+        for row_scratch, row_split_leaf in zip(
+            decode_row_scratches, row_split_leaves, strict=True
+        ):
+            position = int(row_scratch.position_host[0])
+            if row_split_leaf is not None:
+                continue
+            if not _use_gguf_full_attention_split_decode(position + 1):
+                continue
+            # The caller selects this chain only when every row resolves, so
+            # reaching here means a split-K attention leaf disappeared between
+            # that decision and this launch. Refuse instead of silently
+            # attending the row with the slower non-split leaf.
+            raise ValueError(
+                "staged full-attention chain requires a registered split-K "
+                "attention leaf for every long-context row"
+            )
 
         if input_norm_ptr is None:
             self._run_attention_norm_rows(
@@ -6860,7 +6888,7 @@ class Qwen35GGUFFullStackRunner:
             if batch_attn_fn is not None
             else None
         )
-        if shared_batch is not None:
+        if shared_batch is not None and not any(split_rows):
             for (
                 row_scratch,
                 _query_ptr,
@@ -6913,7 +6941,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         else:
-            for (
+            for row, (
                 row_scratch,
                 query_ptr,
                 key_ptr,
@@ -6923,7 +6951,7 @@ class Qwen35GGUFFullStackRunner:
                 gated_ptr,
                 key_cache,
                 value_cache,
-            ) in row_io:
+            ) in enumerate(row_io):
                 qwen35_write_paged_kv_mixed_value_bf16_spans(
                     key_ptr,
                     value_ptr,
@@ -6937,31 +6965,106 @@ class Qwen35GGUFFullStackRunner:
                     library=kv_write_library,
                     runtime=runtime,
                 )
-                qwen35_paged_full_attn_decode_context_bf16_spans(
-                    query_ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    context_ptr,
-                    row_scratch.decode_spans,
-                    attention_context_limit,
-                    row_scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-                qwen35_full_attn_gate_mul_bf16(
-                    context_ptr,
-                    gate_ptr,
-                    gated_ptr,
-                    self.q_width,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
+                row_split_leaf = row_split_leaves[row]
+                if row_split_leaf is not None:
+                    # The row runs the same split-K gate leaf, chunk size, and
+                    # split tiling the scalar owner runs at this position, so its
+                    # arithmetic is unchanged rather than merely close. The
+                    # batched projections, head norm/rotary, KV writes, and
+                    # output projection stay batched across rows.
+                    (
+                        row_chunk_size,
+                        row_num_splits,
+                        split_gate_fn,
+                    ) = row_split_leaf
+                    split_gate_fn(
+                        query_ptr,
+                        key_cache.ptr,
+                        value_cache.ptr,
+                        gate_ptr,
+                        gated_ptr,
+                        scratch.full_attn_split_partial.ptr,
+                        scratch.full_attn_split_m.ptr,
+                        scratch.full_attn_split_l.ptr,
+                        row_scratch.decode_spans,
+                        row_chunk_size,
+                        row_num_splits,
+                        row_scratch.block_size,
+                        cfg.head_count,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        cfg.key_length,
+                        1,
+                        cfg.key_length ** -0.5,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
+                else:
+                    # Below the split threshold the scalar owner still picks
+                    # between its short-context batch leaf and the plain leaf
+                    # from this row's own ``position + 1`` cap. The leaf is part
+                    # of that row's arithmetic, so reproduce the choice; both
+                    # leaves bound their loops by the row's live count, so the
+                    # span-wide limit the plain leaf is launched with stays
+                    # inert and keeps the staged chain's existing contract.
+                    row_active_context = int(row_scratch.position_host[0]) + 1
+                    row_short_batch_max_context = max(
+                        0,
+                        int(
+                            backend_package_capability(
+                                self.backend,
+                                "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+                                0,
+                            )
+                        ),
+                    )
+                    if 0 < row_active_context <= row_short_batch_max_context:
+                        self._full_attn_decode_short_batch_fn(
+                            row_scratch.decode_spans
+                        )(
+                            query_ptr,
+                            key_cache.ptr,
+                            value_cache.ptr,
+                            context_ptr,
+                            row_scratch.decode_spans,
+                            1,
+                            row_active_context,
+                            row_scratch.block_size,
+                            cfg.head_count,
+                            cfg.head_count_kv,
+                            cfg.key_length,
+                            cfg.key_length ** -0.5,
+                            stream=stream,
+                            library=paged_attn_library,
+                            runtime=runtime,
+                        )
+                    else:
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            query_ptr,
+                            key_cache.ptr,
+                            value_cache.ptr,
+                            context_ptr,
+                            row_scratch.decode_spans,
+                            attention_context_limit,
+                            row_scratch.block_size,
+                            cfg.head_count,
+                            cfg.head_count_kv,
+                            cfg.key_length,
+                            cfg.key_length ** -0.5,
+                            stream=stream,
+                            library=paged_attn_library,
+                            runtime=runtime,
+                        )
+                    qwen35_full_attn_gate_mul_bf16(
+                        context_ptr,
+                        gate_ptr,
+                        gated_ptr,
+                        self.q_width,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
 
         launch_gguf_linear(
             layer.weight("attn_output"),
@@ -7675,6 +7778,7 @@ class Qwen35GGUFFullStackRunner:
         next_norm_out_ptr: int | None = None,
         decode_row_scratches: tuple[object, ...] | None = None,
         attention_context_limit: int | None = None,
+        row_views_keep_scalar_caps: bool = False,
         stream: int = 0,
     ) -> None:
         """Run exact serial attention cores with row-bulk independent work.
@@ -7700,9 +7804,16 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
+        # The staged linear-attention chain diverges from scalar AR in BF16 at
+        # the split-attention boundary (layer-46 on the retained B3 fixture), so
+        # dense linear rows keep the row-wise strict route at long context. Dense
+        # full-attention rows do not: their staged chain resolves the same
+        # split-K leaf and tiling the row-wise route uses, so they keep batched
+        # projections and a staged FFN across the boundary.
         strict_long_rows = (
             rows > 1
             and not bool(self.weights.config.is_moe)
+            and layer_type == LINEAR_ATTENTION
             and _use_gguf_full_attention_split_decode(start_position + rows)
         )
         staged_dense_linear = (
@@ -7718,10 +7829,15 @@ class Qwen35GGUFFullStackRunner:
             and decode_row_scratches is not None
             and attention_context_limit is not None
             and 0 < int(attention_context_limit)
-            and not _use_gguf_full_attention_split_decode(int(attention_context_limit))
             and all(
                 getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
                 for row_scratch in decode_row_scratches
+            )
+            and _staged_full_attention_rows_ready(
+                self.weights.config,
+                backend=self.backend,
+                scratch=scratch,
+                decode_row_scratches=decode_row_scratches,
             )
         )
         if staged_dense_linear:
@@ -7833,7 +7949,15 @@ class Qwen35GGUFFullStackRunner:
                             position=position,
                             hidden_f32_ptr=hidden_f32_row,
                             stream=stream,
-                            attention_max_context_len=attention_context_limit,
+                            # Eager row views keep the scalar owner's own
+                            # ``position + 1`` cap so each row resolves the leaf
+                            # it resolved before views existed; the span end is
+                            # only the staged chain's coverage bound.
+                            attention_max_context_len=(
+                                None
+                                if row_views_keep_scalar_caps
+                                else attention_context_limit
+                            ),
                         )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -21140,6 +21264,71 @@ class Qwen35GGUFResidentSession:
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
 
+    def _eager_native_row_views(
+        self,
+        *,
+        rows: int,
+        start_position: int,
+        span_end: int,
+        runtime: HipRuntime,
+        stream: int,
+    ):
+        """Build per-row attention views for the eager native verifier.
+
+        The graph owner unpacks row metadata on device and hands its own views
+        in.  Eager verification stages the same metadata on the host through the
+        bulk scratch, so the views can be built directly: each row points at one
+        entry of the bulk scratch's per-row position/context arrays and at the
+        resident page table, which is what makes page indirection follow the
+        target slot instead of the bulk scratch's synthetic 0..N table.
+
+        Returns ``(views, context_limit)`` or ``(None, None)`` when the layout is
+        unavailable, in which case the caller keeps the scalar row-wise owner.
+        """
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            _dynamic_native_decode_row_scratches,
+        )
+
+        rows = int(rows)
+        if rows <= 1:
+            return None, None
+        if self._bulk_prefill_scratch is None or self.scratch is None:
+            return None, None
+        context_limit = int(span_end)
+        if context_limit <= int(start_position):
+            return None, None
+        if not _use_gguf_full_attention_split_decode(context_limit):
+            # Short context already batches rows through the shared-cache owner,
+            # which needs no per-row views.
+            return None, None
+        if int(self.scratch.max_positions) < context_limit:
+            return None, None
+        if int(self._bulk_prefill_scratch.rows) < rows:
+            return None, None
+        try:
+            # Stages this chunk's device metadata, exactly as the bulk owner
+            # would for the same bounds, and the views point at those buffers.
+            bulk = self._bulk_prefill_scratch.for_chunk(
+                int(start_position),
+                rows,
+                total_tokens=context_limit,
+                runtime=runtime,
+                stream=stream,
+            )
+            if int(getattr(bulk, "rows", 0)) < rows:
+                return None, None
+            views = _dynamic_native_decode_row_scratches(
+                self,
+                bulk,
+                rows=rows,
+                start_position=int(start_position),
+                context_limit=context_limit,
+            )
+        except (AttributeError, ValueError):
+            return None, None
+        return views, context_limit
+
     def verify_target_block(
         self,
         input_token_ids: list[int] | tuple[int, ...],
@@ -21281,10 +21470,23 @@ class Qwen35GGUFResidentSession:
             or _graph_hidden_f32_a is not None
             or _graph_hidden_f32_b is not None
             or _graph_pre_output_norm_hidden_buf is not None
-            or _native_decode_row_scratches is not None
-            or _native_attention_context_limit is not None
         ):
             raise ValueError("private target graph controls require enqueue-only mode")
+        if _native_decode_row_scratches is not None and (
+            bulk_attention_mode != "native"
+            or len(_native_decode_row_scratches) != rows
+            or _native_attention_context_limit is None
+        ):
+            raise ValueError(
+                "dynamic native attention requires native mode and one row view per row"
+            )
+        if _native_attention_context_limit is not None and (
+            bulk_attention_mode != "native"
+            or int(_native_attention_context_limit) <= 0
+        ):
+            raise ValueError(
+                "dynamic native attention requires native mode and a positive context"
+            )
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -21401,6 +21603,31 @@ class Qwen35GGUFResidentSession:
             f32_residual_layer_limit = _gguf_verify_f32_residual_layer_limit(
                 len(layer_types)
             )
+            row_views_keep_scalar_caps = False
+            if (
+                bulk_attention_mode == "native"
+                and _native_decode_row_scratches is None
+                and FULL_ATTENTION in layer_types
+                and rows > 1
+            ):
+                # Eager native verify: build the per-row attention views here so
+                # the staged chain can batch projections, head norm/rotary, and
+                # the FFN while attending each row with the registered c1 leaf.
+                # The graph owner passes its own device-driven views and is left
+                # untouched. ``end`` is the verified span end, so every row's
+                # split count covers its live count and the extra splits reduce
+                # to exact zeros.
+                eager_views, eager_context_limit = self._eager_native_row_views(
+                    rows=rows,
+                    start_position=start,
+                    span_end=end,
+                    runtime=runtime,
+                    stream=stream,
+                )
+                if eager_views is not None:
+                    _native_decode_row_scratches = eager_views
+                    _native_attention_context_limit = eager_context_limit
+                    row_views_keep_scalar_caps = True
             full_attention_prefused_ready = (
                 FULL_ATTENTION not in layer_types
                 or (
@@ -21522,6 +21749,7 @@ class Qwen35GGUFResidentSession:
                                 next_norm_out_ptr=next_norm_out_ptr,
                                 decode_row_scratches=_native_decode_row_scratches,
                                 attention_context_limit=_native_attention_context_limit,
+                                row_views_keep_scalar_caps=row_views_keep_scalar_caps,
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(
@@ -34977,6 +35205,10 @@ def _use_gguf_short_full_attention_split_decode(
         "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
         {},
     )
+    if not policies:
+        # No published policy can match, so do not read the model shape at all:
+        # callers may pass a partial config when the backend has no table.
+        return False
     shape = (
         int(config.hidden_size),
         int(config.block_count),
@@ -35096,6 +35328,100 @@ def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bo
     return int(num_splits) >= _gguf_paged_attn_gqa_grouped_min_splits() or int(
         active_context
     ) >= _gguf_paged_attn_gqa_grouped_min_context()
+
+
+def _staged_full_attention_row_leaf(
+    config,
+    *,
+    backend: str,
+    scratch,
+    row_scratch,
+    position: int,
+):
+    """Resolve one staged verifier row's own c1 attention leaf and tiling.
+
+    The staged multi-row chain keeps its batched projections, head norm/rotary,
+    KV writes, and output projection, so the only question per row is which
+    attention leaf attends it.  The scalar owner answers that from the row's own
+    ``active_context = position + 1``: below the split threshold it runs the
+    non-split leaf, at or above it runs the registered split-K gate leaf with
+    ``ceil(active_context / chunk_size)`` splits.  This helper reproduces that
+    answer exactly, so a staged row's arithmetic is unchanged rather than merely
+    close, and the extra splits a longer sibling row needs reduce to exact zeros.
+
+    Returns ``(chunk_size, num_splits, split_gate_fn)`` for a split row and
+    ``None`` for a row the non-split leaf owns.
+    """
+
+    active_context = int(position) + 1
+    chunk_size = int(row_scratch.block_size)
+    if chunk_size <= 0:
+        return None
+    # The scalar owner reaches the split leaf from either the long-context
+    # threshold or a backend short-context split policy; both must resolve here
+    # or the row would silently attend on the non-split leaf instead.
+    if not _use_gguf_full_attention_split_decode(
+        active_context
+    ) and not _use_gguf_short_full_attention_split_decode(
+        config,
+        backend=backend,
+        block_size=chunk_size,
+        active_context=active_context,
+    ):
+        return None
+    num_splits = max(1, (active_context + chunk_size - 1) // chunk_size)
+    if int(getattr(scratch, "full_attn_split_count", 0)) < num_splits:
+        # Fewer partials than the row's live count needs would drop the tail of
+        # its context, so decline the staged route instead of attending less.
+        return None
+    split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
+        config,
+        backend=backend,
+        block_size=chunk_size,
+        num_splits=num_splits,
+        active_context=active_context,
+    )
+    if split_gate_fn is None:
+        return None
+    return chunk_size, num_splits, split_gate_fn
+
+
+def _staged_full_attention_rows_ready(
+    config,
+    *,
+    backend: str,
+    scratch,
+    decode_row_scratches,
+) -> bool:
+    """Return whether every staged verifier row has its attention leaf.
+
+    Rows below the split threshold are owned by the non-split leaf and always
+    resolve; a row at or above it must resolve its split-K gate leaf and enough
+    split partials.  When any row cannot, the caller keeps the row-wise strict
+    route.
+    """
+
+    for row_scratch in decode_row_scratches:
+        position_host = getattr(row_scratch, "position_host", None)
+        if position_host is None or len(position_host) != 1:
+            # A row view without a scalar position cannot be resolved to the
+            # scalar owner's leaf, so the staged route is not safe to take.
+            return False
+        position = int(position_host[0])
+        if not _use_gguf_full_attention_split_decode(position + 1):
+            continue
+        if (
+            _staged_full_attention_row_leaf(
+                config,
+                backend=backend,
+                scratch=scratch,
+                row_scratch=row_scratch,
+                position=position,
+            )
+            is None
+        ):
+            return False
+    return True
 
 
 def _gguf_full_attention_split_gate_bf16_fn(

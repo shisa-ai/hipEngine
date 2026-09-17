@@ -1525,9 +1525,16 @@ def test_native_full_attention_chain_scheduler_stages_dynamic_dense_rows_once(
     )
     monkeypatch.setattr(runner, "_run_full_attention_attn_only", scalar)
     monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", ffn)
-    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x5000))
+    scratch = SimpleNamespace(
+        attn_out=SimpleNamespace(ptr=0x5000), full_attn_split_count=64
+    )
     decode_scratch = SimpleNamespace(set_full_attention_position=lambda *_: None)
-    row_scratches = tuple(SimpleNamespace() for _ in range(4))
+    row_scratches = tuple(
+        SimpleNamespace(
+            position_host=np.asarray([11 + row], dtype=np.int64), block_size=256
+        )
+        for row in range(4)
+    )
 
     runner._run_native_attention_bulk_ffn_layer_rows(
         7,
@@ -2028,6 +2035,546 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         call for call in calls if call[0] in {"write", "attn", "attn_batch", "gate"}
     ]
     assert [call[0] for call in fallback_calls] == ["write", "attn", "gate"] * 4
+
+
+def _staged_full_attention_fixture(
+    monkeypatch,
+    calls: list[tuple[object, ...]],
+    *,
+    rows: int = 4,
+    start_position: int = 1016,
+    shared_cache: bool = True,
+):
+    """Build a staged full-attention chain whose leaves only record calls.
+
+    Returns ``(runner, scratch, row_scratches)``.  Every leaf the chain can
+    reach is replaced, so a test can assert exactly which attention leaf runs at
+    which context without a device.
+    """
+
+    from hipengine.core.device import Device
+    from hipengine.core.dtype import DType
+    from hipengine.core.tensor import Tensor
+    from hipengine.kvcache import KVLiveSpans
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    class Weight:
+        def __init__(self, name: str, ptr: int):
+            self.name = name
+            self.ptr = ptr
+            self.allocations = {
+                "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x10)),
+                "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x20)),
+                "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x30)),
+            }
+
+        def allocation(self, name: str | None = None):
+            if name is None:
+                return SimpleNamespace(tensor=SimpleNamespace(ptr=self.ptr))
+            return self.allocations[name]
+
+        def has_allocation(self, name: str) -> bool:
+            return name in self.allocations
+
+    weights = {
+        name: Weight(name, 0xA000 + index * 0x100)
+        for index, name in enumerate(
+            ("attn_norm", "attn_q", "attn_k", "attn_v", "attn_q_norm", "attn_k_norm", "attn_output")
+        )
+    }
+    layer = SimpleNamespace(weight=lambda name: weights[name])
+    cfg = SimpleNamespace(
+        hidden_size=16,
+        head_count=2,
+        head_count_kv=1,
+        key_length=4,
+        value_length=4,
+        rope_dimension_count=4,
+        rms_norm_eps=1.0e-6,
+    )
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=cfg, layer=lambda _layer_id: layer)
+    runner.runtime = SimpleNamespace()
+    runner.backend = "hip_gfx1100"
+    runner._gguf_prefill_quant = "gguf_q4_k_m"
+
+    monkeypatch.setattr(qgr, "resolve", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        runner, "_run_attention_norm_rows", lambda **kwargs: calls.append(("norm", kwargs))
+    )
+    monkeypatch.setattr(runner, "_cast_library", lambda: "cast-lib")
+    monkeypatch.setattr(runner, "_paged_kv_write_library", lambda: "write-lib")
+    monkeypatch.setattr(runner, "_paged_attn_decode_library", lambda: "attn-lib")
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_linear",
+        lambda weight, x_ptr, out_ptr, **kwargs: calls.append(
+            ("linear", weight.name, x_ptr, out_ptr, kwargs["rows"])
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_q4_t16_sidecar_decode",
+        lambda *_args, **_kwargs: False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_split_qgate_bf16",
+        lambda q, query, gate, rows, *args, **kwargs: calls.append(
+            ("split", q, query, gate, rows)
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "bf16_to_f32",
+        lambda src, dst, count, **kwargs: calls.append(("cast", src, dst, count)),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
+        lambda *args, **kwargs: calls.append(
+            ("rotary", args[0], args[1], args[6], args[10], args[15])
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_write_paged_kv_mixed_value_bf16_spans",
+        lambda key, value, key_cache, value_cache, spans, *args, **kwargs: calls.append(
+            ("write", key, value, key_cache, value_cache, spans.span_role)
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_paged_full_attn_decode_context_bf16_spans",
+        lambda query, key_cache, value_cache, context, spans, limit, *args, **kwargs: calls.append(
+            ("attn", query, key_cache, value_cache, context, spans.span_role, limit)
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_full_attn_gate_mul_bf16",
+        lambda context, gate, gated, width, **kwargs: calls.append(
+            ("gate", context, gate, gated, width)
+        ),
+    )
+
+    scratch = SimpleNamespace(
+        norm=SimpleNamespace(ptr=0x1000),
+        full_q=SimpleNamespace(ptr=0x2000),
+        full_k=SimpleNamespace(ptr=0x3000),
+        full_v=SimpleNamespace(ptr=0x4000),
+        full_query_raw=SimpleNamespace(ptr=0x5000),
+        full_gate=SimpleNamespace(ptr=0x6000),
+        positions_tensor=SimpleNamespace(ptr=0x7000),
+        full_key_raw=SimpleNamespace(ptr=0x7800),
+        full_query=SimpleNamespace(ptr=0x8000),
+        full_key=SimpleNamespace(ptr=0x9000),
+        full_gated=SimpleNamespace(ptr=0xA000),
+        full_attn_split_partial=SimpleNamespace(ptr=0x13000),
+        full_attn_split_m=SimpleNamespace(ptr=0x14000),
+        full_attn_split_l=SimpleNamespace(ptr=0x15000),
+        full_attn_split_count=64,
+        block_size=256,
+    )
+    device = Device("hip", 0)
+    block_table = Tensor.from_handle(0xD000, (1,), DType.INT32, device)
+    row_scratches = []
+    for row in range(rows):
+        position = Tensor.from_handle(0xD100 + row * 8, (1,), DType.INT64, device)
+        context = Tensor.from_handle(0xD200 + row * 8, (1,), DType.INT64, device)
+        cache_row = 0 if shared_cache else row
+        row_scratches.append(
+            SimpleNamespace(
+                kv_storage_dtype=DType.BF16,
+                position_host=np.asarray([start_position + row], dtype=np.int64),
+                max_positions=8192,
+                append_spans=KVLiveSpans.paged_uniform(
+                    block_table=block_table,
+                    live_counts=position,
+                    max_live_count=8191,
+                    storage_dtype=DType.BF16,
+                    row_positions=position,
+                    span_role="verify_chain",
+                ),
+                decode_spans=KVLiveSpans.paged_uniform(
+                    block_table=block_table,
+                    live_counts=context,
+                    max_live_count=8192,
+                    storage_dtype=DType.BF16,
+                    row_positions=position,
+                    span_role="verify_chain",
+                ),
+                block_size=256,
+                cos_table=SimpleNamespace(ptr=0xB000),
+                sin_table=SimpleNamespace(ptr=0xC000),
+                full_cache=lambda _layer_id, row=cache_row: (
+                    SimpleNamespace(ptr=0xE000 + row * 0x1000),
+                    SimpleNamespace(ptr=0xF000 + row * 0x1000),
+                ),
+            )
+        )
+    return runner, scratch, tuple(row_scratches)
+
+
+def test_staged_full_attention_uses_split_k_rows_across_the_split_boundary(
+    monkeypatch,
+) -> None:
+    """Long-context verifier rows keep batched projections with split-K attention."""
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    calls: list[tuple[object, ...]] = []
+    runner, scratch, row_scratches = _staged_full_attention_fixture(
+        monkeypatch, calls, start_position=1022
+    )
+
+    def split_gate(
+        query,
+        key_cache,
+        value_cache,
+        gate,
+        gated,
+        partial_out,
+        partial_m,
+        partial_l,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        scale,
+        **kwargs,
+    ):
+        calls.append(
+            (
+                "split_gate",
+                query,
+                key_cache,
+                value_cache,
+                gate,
+                gated,
+                partial_out,
+                partial_m,
+                partial_l,
+                spans.span_role,
+                chunk_size,
+                num_splits,
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                gate_stride1,
+                gate_stride2,
+                scale,
+            )
+        )
+
+    resolved: list[dict[str, object]] = []
+
+    def resolve_split(config, **kwargs):
+        resolved.append(kwargs)
+        return split_gate
+
+    monkeypatch.setattr(qgr, "_gguf_full_attention_split_gate_bf16_fn", resolve_split)
+
+    runner._run_full_attention_attn_chain_rows_exact(
+        7,
+        0xF000,
+        0x11000,
+        scratch,
+        rows=4,
+        decode_row_scratches=row_scratches,
+        start_position=1022,
+        hidden_f32_ptr=0x12000,
+        attention_context_limit=1026,
+    )
+
+    # Projections, norms, and the output projection stay batched over all rows.
+    assert [call for call in calls if call[0] == "linear"] == [
+        ("linear", "attn_q", 0x1000, 0x2000, 4),
+        ("linear", "attn_k", 0x1000, 0x3000, 1),
+        ("linear", "attn_k", 0x1020, 0x3008, 1),
+        ("linear", "attn_k", 0x1040, 0x3010, 1),
+        ("linear", "attn_k", 0x1060, 0x3018, 1),
+        ("linear", "attn_v", 0x1000, 0x4000, 4),
+        ("linear", "attn_output", 0xA000, 0x11000, 4),
+    ]
+    assert [call for call in calls if call[0] == "split"] == [
+        ("split", 0x2000, 0x5000, 0x6000, 4)
+    ]
+    assert [call for call in calls if call[0] == "cast"] == [
+        ("cast", 0x3000, 0x7800, 16)
+    ]
+    assert [call for call in calls if call[0] == "rotary"] == [
+        ("rotary", 0x5000, 0x7800, 0x7000, 4, 8192)
+    ]
+    # Every row writes its own KV row, then attends with split-K and its own
+    # span table; the non-split leaf and the standalone gate multiply are unused.
+    cache_calls = [
+        call for call in calls if call[0] in {"write", "attn", "split_gate", "gate"}
+    ]
+    # Row 0 sits at position 1022, so its active context is 1023 and the scalar
+    # owner attends it with the non-split leaf. Rows 1-3 cross the split
+    # threshold and run the same split-K gate leaf the scalar owner runs, each
+    # with its own active-context tiling.
+    assert [call[0] for call in cache_calls] == [
+        "write",
+        "attn",
+        "gate",
+        "write",
+        "split_gate",
+        "write",
+        "split_gate",
+        "write",
+        "split_gate",
+    ]
+    assert [call[-1] for call in cache_calls if call[0] == "split_gate"] == [0.5] * 3
+    assert [call[9] for call in cache_calls if call[0] == "split_gate"] == ["verify_chain"] * 3
+    assert [call[10] for call in cache_calls if call[0] == "split_gate"] == [256] * 3
+    # ceil(1024/256)=4, ceil(1025/256)=5, ceil(1026/256)=5.
+    assert [call[11] for call in cache_calls if call[0] == "split_gate"] == [4, 5, 5]
+    assert resolved == [
+        {
+            "backend": "hip_gfx1100",
+            "block_size": 256,
+            "num_splits": 4,
+            "active_context": 1024,
+        },
+        {
+            "backend": "hip_gfx1100",
+            "block_size": 256,
+            "num_splits": 5,
+            "active_context": 1025,
+        },
+        {
+            "backend": "hip_gfx1100",
+            "block_size": 256,
+            "num_splits": 5,
+            "active_context": 1026,
+        },
+    ]
+    # Each row keeps its own slice of the batched stages: FP32 query rows are
+    # q_width*4 apart, BF16 gate and gated rows are q_width*2 apart.
+    assert [call[1] for call in cache_calls if call[0] == "split_gate"] == [
+        0x8020,
+        0x8040,
+        0x8060,
+    ]
+    assert [call[4] for call in cache_calls if call[0] == "split_gate"] == [
+        0x6010,
+        0x6020,
+        0x6030,
+    ]
+    assert [call[5] for call in cache_calls if call[0] == "split_gate"] == [
+        0xA010,
+        0xA020,
+        0xA030,
+    ]
+    assert [call[6] for call in cache_calls if call[0] == "split_gate"] == [0x13000] * 3
+    assert [call[7] for call in cache_calls if call[0] == "split_gate"] == [0x14000] * 3
+    assert [call[8] for call in cache_calls if call[0] == "split_gate"] == [0x15000] * 3
+
+
+def test_staged_full_attention_uses_split_k_rows_without_a_shared_cache(
+    monkeypatch,
+) -> None:
+    """Rows in separate caches still batch their projections and use split-K."""
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    calls: list[tuple[object, ...]] = []
+    runner, scratch, row_scratches = _staged_full_attention_fixture(
+        monkeypatch, calls, start_position=1022, shared_cache=False
+    )
+
+    def split_gate(query, key_cache, value_cache, *args, **kwargs):
+        calls.append(("split_gate", query, key_cache, value_cache))
+
+    monkeypatch.setattr(
+        qgr, "_gguf_full_attention_split_gate_bf16_fn", lambda *a, **k: split_gate
+    )
+
+    runner._run_full_attention_attn_chain_rows_exact(
+        7,
+        0xF000,
+        0x11000,
+        scratch,
+        rows=4,
+        decode_row_scratches=row_scratches,
+        start_position=1022,
+        hidden_f32_ptr=0x12000,
+        attention_context_limit=1026,
+    )
+
+    assert [call for call in calls if call[0] == "linear"] == [
+        ("linear", "attn_q", 0x1000, 0x2000, 4),
+        ("linear", "attn_k", 0x1000, 0x3000, 1),
+        ("linear", "attn_k", 0x1020, 0x3008, 1),
+        ("linear", "attn_k", 0x1040, 0x3010, 1),
+        ("linear", "attn_k", 0x1060, 0x3018, 1),
+        ("linear", "attn_v", 0x1000, 0x4000, 4),
+        ("linear", "attn_output", 0xA000, 0x11000, 4),
+    ]
+    assert [call for call in calls if call[0] == "split_gate"] == [
+        ("split_gate", 0x8020, 0xF000, 0x10000),
+        ("split_gate", 0x8040, 0x10000, 0x11000),
+        ("split_gate", 0x8060, 0x11000, 0x12000),
+    ]
+
+
+def test_staged_full_attention_refuses_long_context_without_a_split_leaf(
+    monkeypatch,
+) -> None:
+    """A missing split leaf is a refusal, not a silent slow non-split route."""
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    calls: list[tuple[object, ...]] = []
+    runner, scratch, row_scratches = _staged_full_attention_fixture(
+        monkeypatch, calls, start_position=1022
+    )
+    monkeypatch.setattr(
+        qgr, "_gguf_full_attention_split_gate_bf16_fn", lambda *a, **k: None
+    )
+
+    with pytest.raises(ValueError, match="split-K attention leaf"):
+        runner._run_full_attention_attn_chain_rows_exact(
+            7,
+            0xF000,
+            0x11000,
+            scratch,
+            rows=4,
+            decode_row_scratches=row_scratches,
+            start_position=1022,
+            hidden_f32_ptr=0x12000,
+            attention_context_limit=1026,
+        )
+
+
+def test_native_long_context_keeps_dense_full_attention_rows_staged(monkeypatch) -> None:
+    """Only the staged linear-attention chain keeps the row-wise strict route.
+
+    The documented BF16 divergence at the 1,024 boundary is in the staged
+    linear-attention output, so dense full-attention rows may keep their batched
+    projections and staged FFN while attention runs split-K per row.
+    """
+
+    from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=SimpleNamespace(hidden_size=16, is_moe=False))
+    runner.runtime = SimpleNamespace()
+    calls: list[tuple[object, ...]] = []
+    dispatch_states: list[bool] = []
+
+    def staged(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("staged", args, kwargs))
+
+    def linear_scalar(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("linear_scalar", args, kwargs))
+
+    def full_scalar(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("full_scalar", args, kwargs))
+
+    def ffn(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("ffn", args, kwargs))
+
+    monkeypatch.setattr(
+        runner, "_run_full_attention_attn_chain_rows_exact", staged, raising=False
+    )
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", linear_scalar)
+    monkeypatch.setattr(runner, "_run_full_attention_attn_only", full_scalar)
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", ffn)
+    monkeypatch.setattr(
+        qgr,
+        "_use_gguf_full_attention_split_decode",
+        lambda context: int(context) >= 1024,
+    )
+    monkeypatch.setattr(
+        qgr, "_gguf_full_attention_split_gate_bf16_fn", lambda *a, **k: object()
+    )
+    scratch = SimpleNamespace(
+        attn_out=SimpleNamespace(ptr=0x5000), full_attn_split_count=64
+    )
+    decode_scratch = SimpleNamespace(set_full_attention_position=lambda *_: None)
+    row_scratches = tuple(
+        SimpleNamespace(
+            kv_storage_dtype=qgr.DType.BF16,
+            block_size=256,
+            position_host=np.asarray([1016 + row], dtype=np.int64),
+            max_positions=8192,
+            append_spans=SimpleNamespace(scale_metadata=None),
+        )
+        for row in range(4)
+    )
+
+    with qgr.native_batch_decode_session(True):
+        runner._run_native_attention_bulk_ffn_layer_rows(
+            7,
+            FULL_ATTENTION,
+            0x1000,
+            0x2000,
+            scratch,
+            rows=4,
+            decode_scratch=decode_scratch,
+            start_position=1016,
+            hidden_f32_ptr=0x3000,
+            out_f32_ptr=0x4000,
+            decode_row_scratches=row_scratches,
+            attention_context_limit=3530,
+        )
+
+    assert [call[0] for call in calls] == ["staged", "ffn"]
+    assert calls[1][2]["rows"] == 4
+
+    calls.clear()
+    dispatch_states.clear()
+    with qgr.native_batch_decode_session(True):
+        runner._run_native_attention_bulk_ffn_layer_rows(
+            46,
+            LINEAR_ATTENTION,
+            0x1000,
+            0x2000,
+            scratch,
+            rows=4,
+            decode_scratch=SimpleNamespace(),
+            start_position=1020,
+            hidden_f32_ptr=0x3000,
+            out_f32_ptr=0x4000,
+        )
+
+    assert [call[0] for call in calls] == ["linear_scalar"] * 4 + ["ffn"] * 4
+    assert all(call[2]["rows"] == 1 for call in calls if call[0] == "ffn")
+    assert dispatch_states == [False] * 8
+
+    calls.clear()
+    with qgr.native_batch_decode_session(True):
+        runner._run_native_attention_bulk_ffn_layer_rows(
+            7,
+            FULL_ATTENTION,
+            0x1000,
+            0x2000,
+            scratch,
+            rows=4,
+            decode_scratch=decode_scratch,
+            start_position=1016,
+            hidden_f32_ptr=0x3000,
+            out_f32_ptr=0x4000,
+            decode_row_scratches=row_scratches,
+            attention_context_limit=3530,
+        )
+    assert [call[0] for call in calls] == ["staged", "ffn"]
 
 
 def test_native_b2_target_falls_back_before_capture_when_provider_key_is_missing(
