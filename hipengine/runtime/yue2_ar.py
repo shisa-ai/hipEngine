@@ -275,6 +275,7 @@ class Yue2ArRuntime:
         self._ctx_len_host = [np.zeros(1, dtype=np.int64) for _ in range(self.branches)]
         self._row_position = [_alloc(8) for _ in range(self.branches)]
         self._hidden = [keep(_alloc(hidden * 2)) for _ in range(self.branches)]
+        self._normed_pair = keep(_alloc(self.branches * hidden * 2))
 
         self._normed = _alloc(hidden * 2)
         self._q_f32 = _alloc(heads * head_dim * 4)
@@ -298,6 +299,11 @@ class Yue2ArRuntime:
         self._down_bf16 = _alloc(hidden * 2)
         self._logits_bf16 = _alloc(spec.vocab_size * 2)
         self._logits_f32 = _alloc(spec.vocab_size * 4)
+        # The lm head is 756 MB of weight per call, so one two-row call serves both
+        # CFG branches. The cached rows stay valid until a branch's hidden row moves.
+        self._logits_pair_f32 = keep(_alloc(2 * spec.vocab_size * 4))
+        self._logits_pair_cache: list[np.ndarray] | None = None
+        self._logits_pair_host = np.empty((2, spec.vocab_size), dtype=np.float32)
         self._scale = 1.0 / float(np.sqrt(head_dim))
         self._lt: HipblasLt | None = None
         self._lt_problems: dict[tuple[int, int, int], object] = {}
@@ -327,10 +333,12 @@ class Yue2ArRuntime:
         if row.shape[0] != self.spec.hidden_size:
             raise ValueError("token row must be hidden-sized fp32")
         copy_host_array_to_device(self._hidden[branch], f32_to_bf16_bits(row))
+        self._logits_pair_cache = None
         self._ctx_len_host[branch][0] = position + 1
         copy_host_to_device(self._ctx_len[branch], host_array_ptr(self._ctx_len_host[branch]))
 
     def reset(self, branch: int | None = None) -> None:
+        self._logits_pair_cache = None
         for index in range(self.branches):
             if branch is None or branch == index:
                 self._ctx_len_host[index][0] = 0
@@ -351,26 +359,45 @@ class Yue2ArRuntime:
         copy_device_to_host(host_array_ptr(bits), self._normed, hidden * 2)
         return bf16_bits_to_f32(bits)
 
+    def _normed_row(self, branch: int) -> DeviceBuffer:
+        """The branch's row inside the contiguous pair buffer the head reads."""
+
+        width = self.spec.hidden_size * 2
+        return DeviceBuffer(self._normed_pair.ptr + branch * width, width)
+
     def logits(self, branch: int = 0, *, as_bf16: bool = True) -> np.ndarray:
         """Final norm, lm head, and the vocabulary row as bf16 bits or fp32.
 
-        Scratch buffers are per runtime, not per branch: call this for a branch
-        before advancing another one.
+        The head runs once for every branch in a single two-row call and the rows are
+        cached until a branch's hidden row moves, so asking for each branch's logits
+        between two decode steps reads the 756 MB weight once instead of once per
+        branch. Per row the result is bit-identical to the single-row kernel.
         """
         hidden = self.spec.hidden_size
-        self.kernels.vv_rmsnorm_bf16(
-            self._hidden[branch].ptr, self.final_ln.ptr, self._normed.ptr, 1, hidden,
-            self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
-        )
-        self.kernels.dense_gemv_bf16_f32_out(
-            self._normed.ptr, self.lm_head.ptr, self._logits_f32.ptr, 1, hidden,
-            self.spec.vocab_size, stream=0, runtime=self.runtime,
-        )
-        host = np.empty(self.spec.vocab_size, dtype=np.float32)
-        copy_device_to_host(host_array_ptr(host), self._logits_f32, self.spec.vocab_size * 4)
+        if self._logits_pair_cache is None:
+            for index in range(self.branches):
+                self.kernels.vv_rmsnorm_bf16(
+                    self._hidden[index].ptr, self.final_ln.ptr,
+                    self._normed_row(index).ptr, 1, hidden,
+                    self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+                )
+            self.kernels.dense_gemv_bf16_f32_out_rowtile2(
+                self._normed_pair.ptr, self.lm_head.ptr, self._logits_pair_f32.ptr,
+                self.branches, hidden, self.spec.vocab_size,
+                stream=0, runtime=self.runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(self._logits_pair_host),
+                self._logits_pair_f32,
+                self.branches * self.spec.vocab_size * 4,
+            )
+            self._logits_pair_cache = [
+                self._logits_pair_host[index].copy() for index in range(self.branches)
+            ]
+        host = self._logits_pair_cache[branch]
         if as_bf16:
             return f32_to_bf16_bits(host)
-        return host
+        return host.copy()
 
     # ------------------------------------------------------------------
     # decode
@@ -379,6 +406,7 @@ class Yue2ArRuntime:
         """Run the staged hidden row through the AR layer stack at ``position``."""
         self._validate_position(position)
         self._validate_branch(branch)
+        self._logits_pair_cache = None
         spec = self.spec
         hidden = spec.hidden_size
         heads = spec.num_attention_heads
@@ -512,6 +540,7 @@ class Yue2ArRuntime:
                 hidden * 2,
                 MemcpyKind.DEVICE_TO_DEVICE,
             )
+            self._logits_pair_cache = None
         finally:
             free(buffer)
 
@@ -560,6 +589,7 @@ class Yue2ArRuntime:
             self.runtime.memcpy(
                 hidden_rows.ptr + row * width, self._hidden[branch].ptr, width, MemcpyKind.DEVICE_TO_DEVICE
             )
+        self._logits_pair_cache = None
 
     def _prefill_batched(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int, branch: int) -> None:
         spec = self.spec

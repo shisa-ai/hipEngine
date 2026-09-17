@@ -1,0 +1,84 @@
+{
+ "benchmark": "yue2_ar_rowtile_bench",
+ "date": "2026-09-17",
+ "host": "zbook",
+ "hidden_size": 2048,
+ "repeats": 30,
+ "warmup": 5,
+ "rows": [
+  {
+   "shape": "q",
+   "in_features": 2048,
+   "out_features": 2048,
+   "weight_mib": 8.0,
+   "serial_ms": 0.05962105933576822,
+   "serial_median_ms": 0.07804599590599537,
+   "two_row_ms": 0.03347196616232395,
+   "two_row_median_ms": 0.039508973713964224,
+   "speedup": 1.7812236976648743,
+   "serial_gbs": 140.69874124104092,
+   "two_row_gbs": 250.61593213016025
+  },
+  {
+   "shape": "k",
+   "in_features": 2048,
+   "out_features": 1024,
+   "weight_mib": 4.0,
+   "serial_ms": 0.028153066523373127,
+   "serial_median_ms": 0.028879556339234114,
+   "two_row_ms": 0.02172100357711315,
+   "two_row_median_ms": 0.02221198519691825,
+   "speedup": 1.2961218123934786,
+   "serial_gbs": 148.98213651141066,
+   "two_row_gbs": 193.0989967894222
+  },
+  {
+   "shape": "v",
+   "in_features": 2048,
+   "out_features": 1024,
+   "weight_mib": 4.0,
+   "serial_ms": 0.040857004933059216,
+   "serial_median_ms": 0.07035699672996998,
+   "two_row_ms": 0.02790195867419243,
+   "two_row_median_ms": 0.044408952817320824,
+   "speedup": 1.4643059797393148,
+   "serial_gbs": 102.65813675946184,
+   "two_row_gbs": 150.32292352577633
+  },
+  {
+   "shape": "o",
+   "in_features": 2048,
+   "out_features": 2048,
+   "weight_mib": 8.0,
+   "serial_ms": 0.054382020607590675,
+   "serial_median_ms": 0.07619301322847605,
+   "two_row_ms": 0.030756928026676178,
+   "two_row_median_ms": 0.03598746843636036,
+   "speedup": 1.768122634367903,
+   "serial_gbs": 154.2533342137183,
+   "two_row_gbs": 272.7388116499922
+  },
+  {
+   "shape": "lm_head",
+   "in_features": 2048,
+   "out_features": 184704,
+   "weight_mib": 721.5,
+   "serial_ms": 6.723284022882581,
+   "serial_median_ms": 6.9051950122229755,
+   "two_row_ms": 3.7976589519530535,
+   "two_row_median_ms": 3.832585527561605,
+   "speedup": 1.770375936318595,
+   "serial_gbs": 112.52649470483522,
+   "two_row_gbs": 199.21419842372208
+  }
+ ],
+ "per_step_ms": {
+  "serial": 165.75113218277693,
+  "two_row": 93.87625940144062
+ },
+ "notes": [
+  "Two rows per call: the two CFG branches, each with its own row of activations and its own output row. No KV span or position sharing.",
+  "Timed with a synchronize per call, so these are per-call latencies, not a pipeline rate.",
+  "rowtile2 is bit-identical per row to the single-row kernel (tests/test_unit_yue2_ar_gemv_rowtile2.py)."
+ ]
+}
