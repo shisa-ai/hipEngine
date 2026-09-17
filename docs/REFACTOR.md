@@ -7956,3 +7956,32 @@ raising `max_chunks` in the `drain()` call sites. Re-measure decode throughput o
 a streaming MTP request with per-chunk telemetry enabled before and after; the
 current per-chunk telemetry doubles the consumer's per-chunk cost, which is what
 made the margin visible.
+
+## Concurrent prompt activation is refused instead of overlapped (open 2026-09-17)
+
+`Qwen35GGUFMTP2Adapter.begin_prompt_streaming` allows one prompt activation at a
+time: the activation primes shared provider state (prompt rows, carried hidden
+rows, provider request slots), and the claim that guards it is released only at
+the request's final prefill chunk. A prompt longer than
+`max_prefill_chunk_tokens` (256 by default) therefore holds the claim across
+ticks, so a second request starting its prefill is refused with
+`prompt_activation_in_flight` and decodes without a draft provider. Before
+2026-09-17 that condition raised inside the driver thread and closed the whole
+engine service, which is what made the concurrency pass at c>=4 unmeasurable.
+
+The provider side looks ready for overlap: every priming structure is keyed by
+request (`_request_slots`, `_prompt_prime_rows`, `_prompt_priming_staging`) and
+hidden rows land in a per-slot region, and
+`GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` already admits prompt-streaming
+widths 1-4 on gfx1151. The refusal is therefore conservative, not a hardware
+limit. Replace it with real overlap (or with deferral of the second request's
+prefill) once an exactness gate proves two interleaved activations cannot corrupt
+carried rows: the gate is generated-token equality plus non-collapsed acceptance
+against independent c=1 runs, because a corrupted draft provider lowers
+acceptance rather than changing accepted tokens.
+
+Related, and separately owed: the serving evidence row for this cell is
+`cap4-realized-c1-b3`, which matches only `realized_group_rows == 1`, so a
+request admitted while it is alone is later batched into a wider decode group and
+silently realizes `effective_route="default"`. The wider realized widths need
+their own measured evidence rows before MTP can be admitted at c>1.

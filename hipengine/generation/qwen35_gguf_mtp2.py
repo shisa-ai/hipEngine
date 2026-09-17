@@ -1328,18 +1328,28 @@ class Qwen35GGUFMTP2Adapter:
         existing = tuple(self._prompt_streaming_sinks.get(request_id) for request_id in ids)
         if all(sink is not None for sink in existing):
             return tuple(sink for sink in existing if sink is not None)
-        if any(sink is not None for sink in existing) or any(
-            request_id in self._states for request_id in ids
-        ):
+        streaming = tuple(
+            request_id
+            for request_id, sink in zip(ids, existing, strict=True)
+            if sink is not None
+        )
+        pending = tuple(
+            request_id
+            for request_id, sink in zip(ids, existing, strict=True)
+            if sink is None
+        )
+        if any(request_id in self._states for request_id in pending):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
-        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        # Only the rows that are not streaming yet need a new activation; rows
+        # that already hold a sink keep it and are carried through the return.
+        rows = tuple(self.owner._row(request_id) for request_id in pending)
         automatic_singleton = bool(
-            len(ids) == 1 and self._singleton_only(ids[0])
+            len(pending) == 1 and self._singleton_only(pending[0])
         )
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             and not automatic_singleton
-            and not self._physical_prompt_streaming_admitted(len(ids))
+            and not self._physical_prompt_streaming_admitted(len(pending))
         ):
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
@@ -1369,9 +1379,25 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_prompt_fallback_reason = "target_context_k0"
             return None
         if self._active_prompt_claims is not None:
-            raise RuntimeError("GGUF MTP2 prompt activation claims are already reserved")
+            # One prompt activation runs at a time: it mutates provider state
+            # that a second activation would interleave with. A chunked prefill
+            # holds its claim across ticks (see the non-final chunk path), so a
+            # second request arriving while another is mid-prompt is a normal
+            # scheduling outcome, not a broken invariant. Refuse only the rows
+            # that are not already streaming; they decode without a draft
+            # provider, and the refusal is reported instead of failing the
+            # engine service.
+            for request_id in pending:
+                refused = self.owner._row(request_id)
+                refused.mtp2_candidate_budget = 0
+                refused.mtp2_prompt_fallback_reason = "prompt_activation_in_flight"
+            if not streaming:
+                return None
+            return tuple(
+                self._prompt_streaming_sinks.get(request_id) for request_id in ids
+            )
         self._active_prompt_claims = ResourceClaimSet.from_mapping(
-            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in ids),
+            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in pending),
             {
                 "gguf_mtp2.prompt_rows": sum(len(row.prompt_ids) for row in rows),
                 "gguf_mtp2.carried_hidden_rows": len(rows),
@@ -1379,7 +1405,7 @@ class Qwen35GGUFMTP2Adapter:
             },
             lifetime=ClaimLifetime.WORK_ITEM,
         )
-        missing = len(ids)
+        missing = len(pending)
         group = (
             None
             if automatic_singleton
@@ -1401,7 +1427,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_capacity = (
                 1
                 if automatic_singleton
-                else max(len(ids), self._max_physical_requests())
+                else max(len(pending), self._max_physical_requests())
             )
             provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
                 targets[0],
@@ -1416,7 +1442,7 @@ class Qwen35GGUFMTP2Adapter:
                     row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
                 return None
             group = _MTP2ProviderGroup(
-                key=tuple(sorted(ids)),
+                key=tuple(sorted(pending)),
                 provider=provider,
                 provider_pool_key=pool_key,
                 request_ids=set(),
@@ -1427,7 +1453,7 @@ class Qwen35GGUFMTP2Adapter:
             self._prompt_streaming_norm_buffers = {}
         checkpoint_by_id = {} if checkpoints is None else dict(checkpoints)
         try:
-            for request_id, row, target in zip(ids, rows, targets, strict=True):
+            for request_id, row, target in zip(pending, rows, targets, strict=True):
                 group.provider.reset_request(request_id)
                 checkpoint = checkpoint_by_id.get(request_id)
                 if checkpoint is None:
@@ -1493,13 +1519,15 @@ class Qwen35GGUFMTP2Adapter:
                 created.append(request_id)
         except Exception:
             self._abort_prompt_streaming(tuple(created), stream=0)
-            for request_id in ids:
+            for request_id in pending:
                 self._free_prompt_streaming_norm_buffer(request_id, target=None)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
             self._active_prompt_claims = None
             raise
-        return tuple(self._prompt_streaming_sinks[request_id] for request_id in ids)
+        return tuple(
+            self._prompt_streaming_sinks.get(request_id) for request_id in ids
+        )
 
     def finish_prompt_streaming(
         self,
