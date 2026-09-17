@@ -1,0 +1,149 @@
+{
+  "commands": {
+    "capture": "HIP_VISIBLE_DEVICES=0,1 HIP_PATH=/opt/rocm PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/tp2_bulk_vs_resident_layer0.py --prompt mixed_ja_en_translate --json /tmp/tp2_layer0_mlp.json --save-dir /tmp/tp2_layer0_mlp",
+    "reference_check": "HIP_PATH=/opt/rocm PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/tp2_layer0_mlp_reference_check.py --capture /tmp/tp2_layer0_mlp/mixed_ja_en_translate.layer0.npz --json /tmp/tp2_layer0_mlp_ref.json"
+  },
+  "date": "2026-09-17",
+  "finding": "The layer-0 dense-MLP half is not a control/ownership defect. The MLP input (post-attention norm and residual) and the concatenated rank activation are bit-identical to the teacher, and every schedule-internal step of the TP2 route is exact (staged f32 reduce, bf16 cast, bf16 residual add). The remaining difference is confined to the down projection and is at the bf16 rounding floor: each route's own output deviates from an independent numpy f32 reference by 1-2 bf16 ULPs, and the bf16 partial boundary contributes about half of the observed gap.",
+  "host": "epyc",
+  "kind": "tp2-layer0-mlp-boundary",
+  "layer0_attention": {
+    "all_15_producer_fields_bit_identical": true,
+    "input_sha256": [
+      "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+      "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f"
+    ],
+    "rank0_vs_rank1_bit_identical": true
+  },
+  "layer0_mlp": {
+    "activation_reconstruction": {
+      "cells": 1114112,
+      "concatenated_ranks_bit_equal_to_teacher_full_width": true,
+      "shape": [
+        64,
+        17408
+      ]
+    },
+    "down_boundary_observed": {
+      "candidate_0": {
+        "cast_vs_teacher_ffn_down": {
+          "cells": 327680,
+          "max_abs": 0.125,
+          "rel": 0.006896551724137931,
+          "rms": 0.00026785447880646365
+        },
+        "cast_vs_teacher_ffn_down_ulp": {
+          "cells": 327680,
+          "gt_one_ulp_cells": 17021,
+          "max_ulp": 47316,
+          "nonzero_cells": 110629
+        },
+        "out_vs_teacher": {
+          "max_abs": 0.125,
+          "rel": 0.0033783783783783786,
+          "rms": 0.00028841892686474026
+        }
+      },
+      "candidate_1": {
+        "cast_vs_teacher_ffn_down": {
+          "cells": 327680,
+          "max_abs": 0.125,
+          "rel": 0.006896551724137931,
+          "rms": 0.00026785447880646365
+        },
+        "cast_vs_teacher_ffn_down_ulp": {
+          "cells": 327680,
+          "gt_one_ulp_cells": 17021,
+          "max_ulp": 47316,
+          "nonzero_cells": 110629
+        },
+        "out_vs_teacher": {
+          "max_abs": 0.125,
+          "rel": 0.0033783783783783786,
+          "rms": 0.00028841892686474026
+        }
+      }
+    },
+    "inputs_bit_identical": {
+      "attn_out": true,
+      "norm": true
+    },
+    "post_attention_norm_and_residual_bit_identical": true,
+    "reference_decomposition": {
+      "bf16_partial_boundary_vs_f32_partials": {
+        "max_abs": 0.03092193603515625,
+        "rel": 0.0017001445101859755
+      },
+      "candidate_0_cast_vs_reference_bf16": {
+        "max_abs": 0.0625,
+        "rel": 0.003424657534246575
+      },
+      "candidate_1_cast_vs_reference_bf16": {
+        "max_abs": 0.0625,
+        "rel": 0.003424657534246575
+      },
+      "layer_output_candidate_vs_teacher": {
+        "max_abs": 0.125,
+        "rel": 0.0033783783783783786
+      },
+      "layer_output_reference_schedule_difference": {
+        "max_abs": 0.0625,
+        "rel": 0.0016891891891891893
+      },
+      "layer_output_teacher_vs_host_reference": {
+        "max_abs": 0.125,
+        "rel": 0.0033783783783783786
+      },
+      "partial_absmax": 11.544303894042969,
+      "partial_dtype_shipped": "bf16",
+      "reassociation_only_f32_partials_vs_full_f32": {
+        "max_abs": 1.9073486328125e-06,
+        "rel": 1.0486952186524288e-07
+      },
+      "reference": "scripts/tp2_layer0_mlp_reference_check.py (numpy sgemm, dequantized layer-0 weights)",
+      "teacher_ffn_down_vs_reference_bf16": {
+        "max_abs": 0.125,
+        "rel": 0.00684931506849315
+      }
+    },
+    "schedule_internal_exactness": {
+      "candidate_0": {
+        "cast_is_bf16_round_of_reduced": true,
+        "out_is_bf16_residual_plus_cast": true,
+        "reduced_is_f32_sum_of_staged_partials_rel": 5.1118906325377894e-11
+      },
+      "candidate_1": {
+        "cast_is_bf16_round_of_reduced": true,
+        "out_is_bf16_residual_plus_cast": true,
+        "reduced_is_f32_sum_of_staged_partials_rel": 5.1118906325377894e-11
+      }
+    }
+  },
+  "limitations": [
+    "One prompt (mixed_ja_en_translate, 64 prompt tokens), one layer (layer 0), one host, one model hash.",
+    "The reference is numpy sgemm in f32, not a bit-exact oracle for either kernel; the informative quantity is each route's error against the same reference plus the reference-level partial-rounding term.",
+    "Layer-0 agreement does not bound the end-to-end gap; later-layer accumulation is not measured here.",
+    "No throughput measurement; no performance claim."
+  ],
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "next_action": "Stop treating the layer-0 MLP chain as a defect source. Decide the arithmetic question with evidence: either remove the introduced rounding by staging f32 down partials where a registered f32 partial consumer exists, or accept the bf16 partial boundary and requalify the end-to-end envelope on the full mtp-bench category suite.",
+  "performance_claim": false,
+  "profile": {
+    "execution_profile": "production",
+    "fell_back_to_strict": false,
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "requested": "production"
+  },
+  "prompt": "mixed_ja_en_translate",
+  "prompt_tokens": 64,
+  "protocol": "resident TP1 bulk vs TP2 bulk, layer-0 GDN primitive chain, producer-derived descriptors captured immediately after each producer on its owning stream",
+  "raw_capture": {
+    "capture_json_sha256": "584fae2f973066a3033a3ae96c036cb518ef4927bbb143d9c687a326edbf9a0a",
+    "path": "/tmp/tp2_layer0_mlp/mixed_ja_en_translate.layer0.npz",
+    "reference_json_sha256": "3b80bdc484bc5359370f5b41230353d5ffe7d653508372a51bfebcc688d7fc5a",
+    "sha256": "7cfd38a56d92c7aeeba7c5966a2b065aa28ed207d3654cf00868ac00bfd2b7fb"
+  },
+  "schema": 1,
+  "status": "diagnostic-no-defect-demonstrated",
+  "title": "TP2 bulk vs resident TP1 teacher: layer-0 dense-MLP half differs at the bf16 rounding floor"
+}
