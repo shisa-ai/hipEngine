@@ -399,6 +399,31 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
     assert decision.strict_fallback_key == "gguf_target_ar"
 
 
+def test_screening_switch_does_not_widen_model_plugin_evidence(monkeypatch) -> None:
+    """Screening is a serving-layer decision, never an evidence widening.
+
+    The resolver keeps failing closed on every unqualified axis even with the
+    operator screening switch on; only the serving layer may turn that into an
+    explicit, marked screening admission.
+    """
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    for changes, reason in (
+        ({"candidate_budget": 4}, "candidate_budget_not_qualified"),
+        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
+        ({"memory_fit": False}, "insufficient_memory"),
+        ({"realized_group_rows": 2}, "physical_group_not_qualified"),
+    ):
+        decision = resolve_speculative_mtp_serving_plan(
+            (_evidence(),), key=_key(**changes)
+        )
+        assert decision.admitted is False, reason
+        assert decision.selected_route == "default", reason
+        assert decision.selected_candidate_count == 0, reason
+        assert decision.reason == reason
+        assert decision.static_eligibility.automatic_eligible is False
+
+
 def test_serving_resolver_selects_exact_physical_width_among_same_artifact_rows() -> None:
     c1 = _evidence()
     c2 = replace(
