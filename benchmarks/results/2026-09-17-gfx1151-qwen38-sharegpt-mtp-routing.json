@@ -641,6 +641,82 @@
   },
   "model": "Qwen3.8-27B-Q4_K_M.gguf (17,106,775,008 B), served as qwen3.8-27b-q4km",
   "next": "Fix the prompt-activation guard (allow concurrent activations or scope the guard per group) and make a request-level failure unable to kill the service, then re-run this pass at c=4 and c=8.",
+  "post_fix_pass": {
+    "harness": {
+      "c1": {
+        "decode_tokens_per_second": 20.64,
+        "failed_requests": 0,
+        "median_first_token_ms": 847,
+        "mtp_output_share": 0.9906,
+        "mtp_request_share": 1.0,
+        "mtp_requests": 24,
+        "non_mtp_reasons": {},
+        "requests": 24,
+        "wall_seconds": 148.9
+      },
+      "c4": {
+        "decode_tokens_per_second": 25.04,
+        "failed_requests": 0,
+        "median_first_token_ms": 3693,
+        "mtp_output_share": 0.1274,
+        "mtp_request_share": 0.2083,
+        "mtp_requests": 5,
+        "non_mtp_reasons": {
+          "no_provider": 13,
+          "prompt_activation_in_flight": 6
+        },
+        "requests": 24,
+        "wall_seconds": 121.9
+      },
+      "c8": {
+        "decode_tokens_per_second": 24.97,
+        "failed_requests": 0,
+        "median_first_token_ms": 22370,
+        "mtp_output_share": 0.1562,
+        "mtp_request_share": 0.4583,
+        "mtp_requests": 11,
+        "non_mtp_reasons": {
+          "no_provider": 10,
+          "prompt_activation_in_flight": 3
+        },
+        "requests": 24,
+        "wall_seconds": 122.3
+      }
+    },
+    "measurement_caveat": "The c=8 harness arm's per-window decode rates are consumer-limited: its timeline shows 16-token windows at 2,100-2,500 tok/s for two requests, which is chunk-delivery burst after stream backpressure, not decode. The harness's aggregate rate (24.97 tok/s) and the vllm bench rate (27.23 tok/s) agree within 10%, so the aggregate is the trustworthy figure and the rate-cliff detector should not be read from that arm.",
+    "protocol": "identical to the first pass: same dataset slice, seed, 128-output override, default server configuration, 24 prompts (32 at c=8 for the vllm bench arm only)",
+    "routing_change": "At c=1 nothing changed: 24 of 24 requests still run MTP and 99.1% of output tokens still come from speculative cycles. At c=4 the pass became measurable at all (4 of 24 completing before, 24 of 24 after) and 5 requests ran MTP; at c=8, 11 of 24 ran MTP with 15.6% of output tokens from cycles. The remaining non-MTP reasons are no_provider and prompt_activation_in_flight, both recorded per request.",
+    "serving_metric_change": "c=4 output throughput went from 8.70 tok/s with 16 of 24 requests failing to 28.39 tok/s with none failing; c=8 from 8.71 with 21 of 32 failing to 27.23 with none failing. c=1 is unchanged within run-to-run variance (20.68 before, 20.69 after).",
+    "vllm_bench": {
+      "c1": {
+        "benchmark_duration_s": 148.51,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 6187.82,
+        "mean_tpot_ms": 48.7,
+        "mean_ttft_ms": 2.96,
+        "output_token_throughput_per_second": 20.69
+      },
+      "c4": {
+        "benchmark_duration_s": 107.53,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 17803.13,
+        "mean_tpot_ms": 140.16,
+        "mean_ttft_ms": 118.71,
+        "output_token_throughput_per_second": 28.39
+      },
+      "c8": {
+        "benchmark_duration_s": 147.29,
+        "completed": 32,
+        "failed": 0,
+        "mean_e2el_ms": 34700.94,
+        "mean_tpot_ms": 277.04,
+        "mean_ttft_ms": 552.73,
+        "output_token_throughput_per_second": 27.23
+      }
+    }
+  },
   "purpose": "Answer, on a real workload, how many requests run MTP and why the others do not, with the standard serving metrics from the same load.",
   "server": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port <port> --log-level info (no speculative flags; automatic MTP resolves to depth 3 from model evidence)",
   "settings_classification": {
