@@ -114,6 +114,34 @@ _Q6_MIXED_TARGET_ROWTILES_ENV = (
 # model policy can widen. Remove with the campaign's screening harness
 # (docs/REFACTOR.md).
 _MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
+# Experimental MTP context window. The qualified window is 1,023 tokens: every
+# retained MTP measurement was taken inside it, the packed multi-row verifier
+# drops to the exact per-row strict route at `start_position + rows >= 1024`
+# (`qwen35_gguf_runner.strict_long_rows`), and the target graph declines spans
+# that cross the 1024 attention transition or a split-workspace boundary. Setting
+# this above 1023 is a long-context qualification experiment, not a promotion;
+# remove it once a measured long-context route lands or the work stops
+# (docs/REFACTOR.md).
+_MTP2_MAX_CONTEXT_ENV = "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS"
+_MTP2_QUALIFIED_CONTEXT_WINDOW = 1023
+
+
+def _mtp2_context_window(default: int = _MTP2_QUALIFIED_CONTEXT_WINDOW) -> int:
+    """Resolve the adapter's MTP context window (qualified 1,023 by default)."""
+
+    raw = os.environ.get(_MTP2_MAX_CONTEXT_ENV)
+    if raw is None:
+        return int(default)
+    text = str(raw).strip()
+    try:
+        value = int(text)
+    except ValueError:
+        raise RuntimeError(
+            f"{_MTP2_MAX_CONTEXT_ENV} must be an integer number of tokens"
+        ) from None
+    if value <= 0:
+        raise RuntimeError(f"{_MTP2_MAX_CONTEXT_ENV} must be positive")
+    return value
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -1266,7 +1294,10 @@ class Qwen35GGUFMTP2Adapter:
             (row, target)
             for row, target in zip(rows, targets, strict=True)
             if len(row.prompt_ids) + 1
-            >= min(1023, int(target.target_layout.max_sequence_length))
+            >= min(
+                _mtp2_context_window(),
+                int(target.target_layout.max_sequence_length),
+            )
         )
         if context_misses:
             for row, _target in context_misses:
@@ -1787,8 +1818,10 @@ class Qwen35GGUFMTP2Adapter:
         # Streaming activation is retained only through the already-qualified
         # short target context. Longer requests stay K0 until an exact shifted-
         # page eager target owner is qualified independently of graph capture.
+        # ``HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`` raises this window for the
+        # long-context qualification experiment; the default stays 1,023.
         max_context = min(
-            1023,
+            _mtp2_context_window(),
             *(int(target.target_layout.max_sequence_length) for target in targets),
         )
         realized_verify_modes = {

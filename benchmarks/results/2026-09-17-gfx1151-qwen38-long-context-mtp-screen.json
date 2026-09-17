@@ -1,0 +1,218 @@
+{
+  "status": "diagnostic screen; not a retained benchmark row",
+  "date": "2026-09-17",
+  "purpose": "Determine whether the dense Qwen3.8 MTP adapter can serve prompts and generations that cross the 1024-token attention transition, and which long-context verifier route makes that economical.",
+  "host": {
+    "machine": "zbook",
+    "gpu": "Radeon 8060S (gfx1151)",
+    "backend": "hip_gfx1151",
+    "rocm": "10.0.0",
+    "model": "Qwen3.8-27B-Q4_K_M.gguf",
+    "kv_storage": "bf16",
+    "session_tokens": 16384,
+    "active_requests": 1,
+    "execution_profile": "default (no explicit profile flag)"
+  },
+  "protocol": "scripts/bench-1to1.py streaming client: 3 measured runs after one warmup, 128 greedy outputs, decode window excludes prompt processing; plus a separate non-streaming probe per shape that records full text and speculative counters. Every arm ran in its own server process on the same host in the same session.",
+  "arms": {
+    "ar_default": {
+      "server_flags": "--speculative-mtp-serving off (default attention policy)",
+      "decode_tok_s": {
+        "512": 11.871570763572922,
+        "1024": 11.723103855717746,
+        "4096": 10.95870610135082
+      }
+    },
+    "mtp_shipping_window": {
+      "server_flags": "--speculative-mtp-serving enabled --speculative-candidate-budget 3",
+      "adapter_context_window": 1023,
+      "decode_tok_s": {
+        "512": 18.202568606088807,
+        "1024": 17.202325911333556,
+        "4096": 10.942057891167906
+      },
+      "note": "Shipping configuration. Prompts at or above 1022 tokens are refused and any generation that reaches position 1022 falls back to AR."
+    },
+    "mtp_raised_window_per_row_strict": {
+      "server_flags": "--speculative-mtp-serving enabled --speculative-candidate-budget 3",
+      "env": {
+        "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS": 16384
+      },
+      "adapter_context_window": 16384,
+      "decode_tok_s": {
+        "1024": 11.928508935015106,
+        "4096": 6.290831434666894
+      },
+      "note": "Full-request MTP coverage, but above the 1024 transition the verifier serializes attention and FFN per row (strict_long_rows)."
+    },
+    "mtp_raised_window_batched_rows": {
+      "server_flags": "--speculative-mtp-serving enabled --speculative-candidate-budget 3",
+      "env": {
+        "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS": 16384,
+        "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": 0
+      },
+      "decode_tok_s": {
+        "1024": 21.296210431831955,
+        "4096": 13.817940577376287
+      },
+      "note": "Split decode disabled, so strict_long_rows is False and the verifier uses the batched staged rows at every context."
+    },
+    "ar_control_split_decode_off": {
+      "server_flags": "--speculative-mtp-serving off",
+      "env": {
+        "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": 0
+      },
+      "decode_tok_s": {
+        "1024": 11.601111648738101,
+        "4096": 10.013324707386454
+      },
+      "note": "Matched control for the batched-row arm: same global attention policy."
+    }
+  },
+  "decode_throughput_cv_percent": {
+    "mtp_raised_window_batched_rows": {
+      "1024": 0.09101732937262413,
+      "4096": 0.06137203140481305
+    },
+    "ar_control_split_decode_off": {
+      "1024": 0.04681830939771227,
+      "4096": 0.04792916537922652
+    }
+  },
+  "ratios": {
+    "batched_rows_vs_shipping_window": {
+      "1024": 1.2379843598824731,
+      "4096": 1.2628283193904235
+    },
+    "batched_rows_vs_matched_ar_control": {
+      "1024": 1.8357042908166847,
+      "4096": 1.3799553076695206
+    },
+    "batched_rows_vs_default_ar": {
+      "1024": 1.8166017032635167,
+      "4096": 1.2609098601223574
+    },
+    "per_row_strict_vs_default_ar": {
+      "1024": 1.017521390395017,
+      "4096": 0.5740487404705066
+    }
+  },
+  "probes": {
+    "shipping_window_1024": {
+      "prompt_tokens": 945,
+      "wall_s": 9.864,
+      "completion_tokens": 128,
+      "used": true,
+      "effective_route": "speculative_mtp",
+      "draft_cycles": 21,
+      "draft_tokens": 63,
+      "accepted_draft_tokens": 56,
+      "text": "grated GPU over a unified memory pool, so weights and activations share the same physical DRAM as the host. Bandwidth, not capacity, sets the decode ceiling for a dense 27B model at four-bit weights. Kernel selection therefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. While standard INT4 quantization reduces the memory footprint significantly, the dequantization overhead during the matrix-vector multiplication phase can become a bottleneck if the kernel is not optimized for the specific hardware"
+    },
+    "shipping_window_4096": {
+      "prompt_tokens": 3530,
+      "wall_s": 21.789,
+      "completion_tokens": 128,
+      "used": false,
+      "effective_route": "default",
+      "draft_cycles": 0,
+      "draft_tokens": 0,
+      "accepted_draft_tokens": 0,
+      "text": "erefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. A naive four-bit quantization that requires frequent dequantization to higher precision for every matrix-vector multiplication will saturate the memory bus long before the compute units are fully utilized. The Strix Halo\u2019s unified memory architecture, while eliminating the PCIe bottleneck inherent in discrete GPU setups, does not eliminate the physical limits of DRAM bandwidth. The 8060S GPU, with its RDNA 3.5 architecture"
+    },
+    "batched_rows_1024": {
+      "prompt_tokens": 945,
+      "wall_s": 8.694,
+      "completion_tokens": 128,
+      "used": true,
+      "effective_route": "speculative_mtp",
+      "draft_cycles": 44,
+      "draft_tokens": 131,
+      "accepted_draft_tokens": 83,
+      "text": "grated GPU over a unified memory pool, so weights and activations share the same physical DRAM as the host. Bandwidth, not capacity, sets the decode ceiling for a dense 27B model at four-bit weights. Kernel selection therefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. While standard INT4 quantization reduces the memory footprint significantly, the dequantization overhead during the matrix-vector multiplication phase can become a bottleneck if the kernel is not optimized for the specific hardware"
+    },
+    "batched_rows_4096": {
+      "prompt_tokens": 3530,
+      "wall_s": 19.083,
+      "completion_tokens": 128,
+      "used": true,
+      "effective_route": "speculative_mtp",
+      "draft_cycles": 53,
+      "draft_tokens": 158,
+      "accepted_draft_tokens": 74,
+      "text": "erefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. A naive four-bit quantization that requires frequent dequantization to higher precision for every matrix-vector multiplication will saturate the memory bus long before the compute units are fully utilized. The Strix Halo\u2019s unified memory architecture, while eliminating the PCIe bottleneck inherent in discrete GPU setups, does not eliminate the physical limits of DRAM bandwidth. The 8060S GPU, with its RDNA 3.5 architecture"
+    },
+    "per_row_strict_1024": {
+      "prompt_tokens": 945,
+      "wall_s": 17.208,
+      "completion_tokens": 128,
+      "used": true,
+      "effective_route": "speculative_mtp",
+      "draft_cycles": 44,
+      "draft_tokens": 131,
+      "accepted_draft_tokens": 83,
+      "text": "grated GPU over a unified memory pool, so weights and activations share the same physical DRAM as the host. Bandwidth, not capacity, sets the decode ceiling for a dense 27B model at four-bit weights. Kernel selection therefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. While standard INT4 quantization reduces the memory footprint significantly, the dequantization overhead during the matrix-vector multiplication phase can become a bottleneck if the kernel is not optimized for the specific hardware"
+    },
+    "per_row_strict_4096": {
+      "prompt_tokens": 3530,
+      "wall_s": 31.689,
+      "completion_tokens": 128,
+      "used": true,
+      "effective_route": "speculative_mtp",
+      "draft_cycles": 54,
+      "draft_tokens": 161,
+      "accepted_draft_tokens": 73,
+      "text": "erefore matters more than arithmetic throughput: a fused recurrence or a better matrix shape buys more tokens per second than an extra compute unit would. In practice, this means that the efficiency of the quantization scheme is paramount. A naive four-bit quantization that requires frequent dequantization to higher precision for every matrix-vector multiplication will saturate the memory bus long before the compute units are fully utilized. The Strix Halo\u2019s unified memory architecture, while eliminating the PCIe bottleneck inherent in discrete GPU setups, does not eliminate the physical limits of DRAM bandwidth. The 8060S GPU, with its RDNA 3.5 architecture"
+    }
+  },
+  "output_identity": {
+    "batched_rows_1024_vs_default_ar": {
+      "identical": true,
+      "chars": 690,
+      "ar_chars": 690,
+      "lcp": 690
+    },
+    "batched_rows_4096_vs_default_ar": {
+      "identical": true,
+      "chars": 666,
+      "ar_chars": 666,
+      "lcp": 666
+    },
+    "per_row_strict_1024_vs_default_ar": {
+      "identical": true,
+      "chars": 690,
+      "ar_chars": 690,
+      "lcp": 690
+    },
+    "per_row_strict_4096_vs_default_ar": {
+      "identical": true,
+      "chars": 666,
+      "ar_chars": 666,
+      "lcp": 666
+    }
+  },
+  "coverage_accounting": {
+    "shipping_window_1024": "21 cycles + 56 accepted = 77 of 127 post-first-token outputs; 50 unaccounted (AR tail)",
+    "shipping_window_4096": "0 cycles; the 3,530-token prompt is refused by the adapter context gate",
+    "batched_rows_1024": "44 cycles + 83 accepted = 127 of 127 post-first-token outputs",
+    "batched_rows_4096": "54 cycles + 74 accepted = 128 post-first-token outputs"
+  },
+  "limits": [
+    "Two shapes on one host, one model, greedy sampling, 128 outputs; the full multi-prompt category suite and category heldouts were not run.",
+    "The production numerical gate (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task quality) was not run; byte-identical greedy text at these two shapes is an observation, not the gate.",
+    "The batched-row arm disables split decode globally, which costs normal decoding about 9% at 3,530 tokens (10.96 to 10.01 tok/s).",
+    "An earlier review recorded one BF16 rounding difference in the staged long-row verifier at a row ending exactly at position 1024; these two token streams did not reproduce it."
+  ],
+  "provenance": {
+    "server": "ee06de2ea485910db3bd2a654b732b50e7925330",
+    "raw_runs": [
+      "/tmp/longctx-mtp/bench-1024.json",
+      "/tmp/longctx-mtp/bench-4096.json",
+      "/tmp/longctx-mtp/probe-1024.json",
+      "/tmp/longctx-mtp/probe-4096.json",
+      "/tmp/longctx-staged/bench-mtp.json",
+      "/tmp/longctx-staged/bench-ar.json",
+      "/tmp/longctx-staged/probe-mtp.json"
+    ]
+  }
+}
