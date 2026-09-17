@@ -1179,6 +1179,45 @@ Two readings follow, and they re-order the remaining speed work:
   roughly 2.1 ms minus the extra reduction cost. Its justification is capacity
   and correctness, not throughput.
 
+### Where the unexplained milliseconds are (2026-09-17)
+
+`scripts/tp2_stage_device_attribution.py` now records per-`(layer, rank)`
+HIP-event spans (and takes the reduction owner as an argument), so the aggregate
+`layers` span splits by layer index and layer type. On the default device-side
+reduction, 16 hand-driven steps:
+
+| quantity | rank 0 (W7900) | rank 1 (RX 7900 XTX) |
+| --- | ---: | ---: |
+| per-layer median | 0.350 ms | 0.349 ms |
+| per-layer min / max | 0.327 / 0.386 | 0.307 / 0.386 |
+| full-attention blocks (n=16) | 0.345 ms | 0.357 ms |
+| GDN/linear-attention blocks (n=48) | 0.350 ms | 0.348 ms |
+| per-layer rank skew | median 0.008, max 0.056 ms | |
+| achieved bandwidth, 162.3 MB/rank/layer | 464 GB/s | 466 GB/s |
+| same rank's measured resident bandwidth | 529.3 GB/s | 637.7 GB/s |
+
+Two conclusions, and both close off a hypothesis:
+
+- **There is no layer-type structure.** Full-attention and GDN blocks cost the
+  same per layer to within noise (and the ordering flips between ranks), and the
+  per-layer spread is 18% with no layer-index pattern. So the deficit is not
+  "GDN is slow", not "full attention is slow", and not a specific layer.
+- **Both ranks run ~12% below their own resident per-byte efficiency, uniformly.**
+  The per-layer weight-traffic floor is 306.7 us at the slow rank's measured
+  529.3 GB/s; the measured median is 350 us, i.e. 464 GB/s achieved. The
+  host-reduction control isolates rank 1 (which does not wait on its peer in
+  host mode) at 287 us / 566 GB/s, 89% of its own 637.7 GB/s. That is **3.09
+  ms/token** of the 24.155 ms wall, and it is a registry/kernel-efficiency
+  target at the shard shapes, not a schedule target.
+
+The same runs also decompose the transport: the host-side reduction exposes
+**3.178 ms/token** between layers (the device reduction collapses that to
+**0.307 ms**) at a cost of **0.492 ms/token** inside the captured graphs, which
+is the measured basis for the device-side default.
+
+Artifacts: `benchmarks/results/2026-09-17-w7900-tp2-stage-attribution-device-reduce.json`
+and `...-host-reduce.json`.
+
 ## Binding benchmark and correctness matrix
 
 Use `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all `code`,
