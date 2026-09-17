@@ -1,0 +1,57 @@
+{
+ "protocol": "yue2-product-case-timing-v1",
+ "command_line": "scripts/yue2_case_timing.py --case mandarin-off-s1234 --steps 32 --json benchmarks/results/yue2_product_case_timing_20260917.json",
+ "revision": "3fa1279896015973499abd1d7f1f86cf17d03cb7",
+ "host": {
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "gpu": "",
+  "platform": "linux"
+ },
+ "case": "mandarin-off-s1234",
+ "steps": 32,
+ "audio_seconds": 51.87866666666667,
+ "semantic_tokens": 1451,
+ "frames": 1451,
+ "hipengine": {
+  "semantic_seconds": 119.16455764498096,
+  "nar_seconds": 30.790034924983047,
+  "vae_seconds": 22.470349304028787,
+  "total_seconds": 172.44990123505704
+ },
+ "reference": {
+  "semantic_seconds": 40.597172370995395,
+  "nar_seconds": 27.317111173062585,
+  "vae_seconds": 69.09195590298623,
+  "total_seconds": 137.79846624704078,
+  "semantic_tokens": 1297,
+  "execution": "cuda_graph",
+  "cfg_branches": 2
+ },
+ "timing": {
+  "abc": {
+   "seconds": 0.0,
+   "output_tokens": 0
+  },
+  "semantic": {
+   "seconds": 119.16455764498096,
+   "prefill_seconds": 0.323396926978603,
+   "ttft_seconds": 0.35674841795116663,
+   "output_tokens": 1452,
+   "content_tokens": 1451,
+   "output_tps": 12.184831032779453,
+   "prefix_tokens": 98,
+   "negative_prefix_tokens": 12,
+   "cfg_branches": 2,
+   "execution": "eager",
+   "attention": "spans",
+   "random": {
+    "algorithm": "numpy-pcg64-v1",
+    "seed": 1234
+   }
+  },
+  "nar_seconds": 30.790034924983047,
+  "vae_seconds": 22.470349304028787,
+  "e2e_seconds": 172.43035842699464
+ }
+}

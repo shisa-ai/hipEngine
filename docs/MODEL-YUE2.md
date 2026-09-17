@@ -487,13 +487,34 @@ Milestone status:
   runtime already selects the fastest zero-workspace algorithm, and a 4 096³ square
   GEMM also measures 21 TFLOP/s against a ~51 TFLOP/s fp16 peak for 40 CUs. Past that
   needs a hand-written GEMM. The replay's largest consumer is now the VAE decode at
-  20.08 s of 46.16 s, followed by the AR decode path's GEMVs. Artifacts:
+  20.08 s of 46.16 s, followed by the AR decode path's GEMVs.
+
+  The solver is not the whole path, so the same case was then driven through all
+  three stages at the product's 32 steps against the reference's own recorded timing
+  (`scripts/yue2_case_timing.py`). Per token or per frame, **AR semantic decode
+  82.1 ms against 31.3 ms (2.63x slower)**, **acoustic solver 21.2 ms against
+  21.1 ms (matched)**, **FP32 Oobleck decode 15.5 ms against 53.3 ms (3.44x
+  faster)**. Our run produced 1 451 semantic tokens where the reference produced
+  1 297, so the rows are compared per unit and the total is normalised to the
+  reference's frame count: **154.1 s against 137.8 s, 1.12x slower end to end**,
+  with the AR decode at **69%** of the whole path and the whole remaining gap. The
+  cause is measured rather than inferred: the reference's torch path batches both
+  CFG branches into one forward per step (`GraphAR(model, [prefix, negative], ...)`
+  in its `yue2/sampling.py`), while this path forwards each branch separately and so
+  reads the 3.63 B-parameter set twice per token — 13 GB per token against 6.5 GB,
+  which is 158 GB/s of weight traffic at 82.1 ms against the 208 GB/s the
+  reference's 31.3 ms implies, while 415 GB/s with the branches apart is above this
+  host's ~256 GB/s peak. Sharing one read across the branches at the current
+  per-forward efficiency puts the stage near 41 ms per token (whole path 1.37x faster
+  than torch); matching the reference's efficiency would make it **1.56x faster**
+  instead of 1.12x slower. Artifacts:
   `benchmarks/results/yue2_m7_attention_packed_20260917.json`,
   `benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
   `benchmarks/results/yue2_m7_attention_20260917.json`,
   `benchmarks/results/yue2_m7_attention_wmma_20260917.json`,
   `benchmarks/results/yue2_m7_attention_wmma_geometry_20260917.json`,
-  `benchmarks/results/yue2_solver_stage_profile_20260917.json`.
+  `benchmarks/results/yue2_solver_stage_profile_20260917.json`,
+  `benchmarks/results/yue2_product_case_timing_20260917.json`.
 - **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
   was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100
   correctness, capacity, task and performance gates are **unverified** rather than
