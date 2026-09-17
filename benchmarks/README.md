@@ -1533,15 +1533,16 @@ across all twelve cases at 2 ODE steps:
 | Acoustic solver, raw | 126.92 s | 537.52 s | 2.81x faster (fewer steps) |
 | Acoustic solver, per ODE step | 63.46 s | 16.80 s | **3.78x slower** |
 
-The decode row is fully matched: both sides decode the same latent frame counts and
-the stage does not depend on the step count, so 6.18x is like for like. The solver
-row is not, because the reference always solves at its own 32 steps, so its raw time
-is larger than a 2-step run's by construction; only the per-step row is matched. That
-row was **26.29x** before the attention and projection work described in the next
-section, **5.79x** after the scalar attention work, and **3.78x** now. At the
-product's 32 steps, where the per-evaluation work dominates, the same case is
-**1.05x faster** than the reference (26.07 s against 27.32 s) rather than 16.2x
-behind. `scripts/yue2_reference_comparison.py` produces both tables. Evidence:
+Both rows above compare against the reference's *recorded product* runs, and the
+decode row is not a decode comparison: on this host the reference's first decode in a
+process costs 8x its steady state (163.1 s against 19.6 s for the same 1 297 frames),
+and its recorded product decode carries that first-use cost plus a per-request decoder
+transfer. The matched comparison is in "YuE2 3B stage-by-stage matched timing" below.
+The solver row is not like for like either, because the reference always solves at its
+own 32 steps; only the per-step row is matched, and that row was **26.29x** before the
+attention and projection work described in the next section, **5.79x** after the scalar
+attention work, and **3.78x** now. `scripts/yue2_reference_comparison.py` produces both
+tables. Evidence:
 [`comparison`](results/yue2_reference_comparison_geometry_20260917.json),
 [`previous geometry`](results/yue2_reference_comparison_wmma_20260917.json),
 [`scalar attention`](results/yue2_reference_comparison_20260917.json),
@@ -1611,6 +1612,40 @@ family the AR decode belongs to. Evidence:
 [`AR sampling cost`](results/yue2_ar_sampling_cost_20260917.json),
 [`product case timing`](results/yue2_product_case_timing_20260917.json), whose
 `known_issues` records the readings withdrawn from the first version of this section.
+
+### Radeon 8060S: YuE2 3B stage-by-stage matched timing
+
+Every earlier stage comparison in this file put one side's warm measurement against the
+other side's recorded product run, which mixes in per-request overheads and, for the
+decoder, an 8x first-use cost. These three harnesses give both sides identical inputs
+and compare steady-state passes, timed alternately in one session on
+`mandarin-off-s1234` at the product's 32 ODE steps:
+
+| Stage | Inputs shared | hipEngine | torch reference | Reading |
+| --- | --- | ---: | ---: | --- |
+| AR decode, 1 296 steps | recorded token trajectory, both prefixes, 2 CFG branches | 58.30 ms/step | 30.87 ms/step | **reference 1.89x faster** |
+| Acoustic solver, 32 steps | prefix, codes, seed and the reference's own noise | 25.87 s | 20.12 s | **reference 1.29x faster** |
+| FP32 Oobleck decode, 1 297 frames | the case's recorded latents, tiled 1024/16 on both sides | 20.01 s | 19.60 s | reference 1.02x faster |
+
+Each harness refuses to report when the two sides did not run the same work: the AR
+harness compares prefix, negative-prefix and trajectory digests, and the solver harness
+compares the initial-noise digest after being handed the reference's own whole-song
+draw (the two implementations' seeded draws differ by design, and the first version of
+this comparison silently compared two different trajectories). The solver's latent norm
+is 287.400 against 287.113 on that shared noise, which is the arithmetic-parity
+cross-check the M4 gate makes on recorded fixtures. Our tiled decode is bit-identical to
+our own full decode (max abs 0.0) while the reference's differ by 1.4e-06, its own FP32
+noise floor.
+
+So on matched, steady-state work this runtime is behind on two stages and level on the
+third. What the product path does differently is overhead: the reference moves its
+decoder off the device after every request and back on for the next one, and its
+recorded product decode of these same latents is 69.09 s against its own warm 19.60 s,
+while this runtime pays about 8 ms per token of host sampling that the reference does
+with device ops. Evidence:
+[`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
+[`matched solver timing`](results/yue2_nar_matched_timing_20260917.json),
+[`matched decoder timing`](results/yue2_vae_matched_timing_20260917.json).
 
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 
