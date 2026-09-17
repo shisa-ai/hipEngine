@@ -14,7 +14,7 @@ their greedy continuations differ (see [Output agreement](#output-agreement)).
 
 | | hipEngine | Atlas |
 | --- | --- | --- |
-| Revision | `680b6a554ecbbc21f0a000a14f5ccba07c3f6ca2` (2026-09-16) | `95f674951d6ab8f491f7907804a462c170f9c048` plus local edits to `build-amd.sh`, `serve-amd.sh`, `crates/atlas-kernels/build.rs`, `crates/atlas-kernels/build_target.rs` |
+| Revision | `680b6a554ecbbc21f0a000a14f5ccba07c3f6ca2` (2026-09-16) for the original run; `1a0a40cedcae4910e49d190d62125159884c2059` (2026-09-17) for the rerun | `95f674951d6ab8f491f7907804a462c170f9c048` plus local edits to `build-amd.sh`, `serve-amd.sh`, `crates/atlas-kernels/build.rs`, `crates/atlas-kernels/build_target.rs` |
 | Checkout | `/home/lhl/hipEngine-main` | `/home/lhl/atlas` |
 | Server binary | `python -m hipengine.server` from that checkout | `target/release/spark`, sha256 `c2b457015de71d6fcad3bd86a7e8a1755b2c61b1e0e7312933f993bb200098c6` |
 | Weights | `Qwen3.8-27B-Q4_K_M.gguf`, 17,106,775,008 bytes, sha256 `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` | `nvidia/Qwen3.8-27B-NVFP4`, revision `dbb8f445b3145f8a4c18ddc769f032d57d32867c`, ~22 GB |
@@ -22,7 +22,7 @@ their greedy continuations differ (see [Output agreement](#output-agreement)).
 | Backend | `hip_gfx1151` | `strix-hip` |
 | KV cache | BF16, `--kv-storage bf16` | BF16, `--kv-cache-dtype bf16` |
 | Session | `--max-context-tokens 16384` | `--max-seq-len 16384` |
-| Speculative decode | off (`--speculative-mtp-serving off`) | off (`NUM_DRAFTS=0`) and MTP K=4 (`--num-drafts 3`) |
+| Speculative decode | off (`--speculative-mtp-serving off`) for the AR arm; `enabled` with `--speculative-candidate-budget 3` for the MTP arm | off (`NUM_DRAFTS=0`) and MTP K=4 (`--num-drafts 3`) |
 
 ## Host and hardware
 
@@ -77,24 +77,35 @@ Request JSON, identical for both engines:
 | Atlas MTP K=4 (NVFP4) | 494 | 1801 | 274.3 | **35.19** | 0.04% |
 | Atlas MTP K=4 (NVFP4) | 922 | 3287 | 280.5 | 28.70 | 0.02% |
 | Atlas MTP K=4 (NVFP4) | 3507 | 10770 | 325.6 | 21.01 | 0.01% |
-| hipEngine AR (Q4_K_M) | 517 | 1440 | 358.9 | 11.88 | 0.04% |
-| hipEngine AR (Q4_K_M) | 945 | 2395 | 394.5 | 11.72 | 0.08% |
-| hipEngine AR (Q4_K_M) | 3530 | 8667 | 407.3 | 10.96 | 0.03% |
+| hipEngine AR (Q4_K_M) | 517 | 1441 | 358.8 | 11.87 | 0.06% |
+| hipEngine AR (Q4_K_M) | 945 | 2397 | 394.2 | 11.72 | 0.05% |
+| hipEngine AR (Q4_K_M) | 3530 | 8660 | 407.6 | 10.96 | 0.03% |
+| hipEngine MTP K=3 (Q4_K_M) | 517 | 1639 | 315.4 | 18.20 | 0.01% |
+| hipEngine MTP K=3 (Q4_K_M) | 945 | 2751 | 343.5 | 17.20 | 0.16% |
+| hipEngine MTP K=3, AR fallback (Q4_K_M) | 3530 | 8670 | 407.2 | 10.94 | 0.03% |
 
 Rows are grouped by target prompt length (~512, ~1024, ~4096 tokens); the
 prompt-token column is what each engine reported after applying its own chat
-template to the same user text.
+template to the same user text. The hipEngine rows were measured on 2026-09-17
+in one session (AR arm first, MTP arm second); the Atlas rows are from the
+original run and were not rerun.
 
-- **Autoregressive decode**: Atlas is ahead by 3.6% / 6.1% / 8.4% at the three
-  shapes. Both engines land between 10.96 and 12.44 tok/s.
+- **Autoregressive decode**: Atlas is ahead by 3.7% / 6.1% / 8.4% at the three
+  shapes. Both engines' AR rows land between 10.96 and 12.44 tok/s.
 - **Prefill**: hipEngine is 1.2–1.4x faster by TTFT-derived rate, and the gap
-  widens with prompt length (334 vs 407 tok/s at ~3.5k tokens).
-- **Speculative decode**: Atlas MTP K=4 is 2.86x / 2.31x / 1.77x its own AR row
-  and 2.96x / 2.45x / 1.92x hipEngine's AR row. hipEngine's qualified MTP
-  result in this repository (20.985 tok/s complete wall) uses 1,024-token
-  sessions with 25 generated tokens and is not comparable to these 128-token
-  rows; see [Why hipEngine served AR](#why-hipengine-served-ar).
-- Every timing CV is at or below 0.08%, so the differences above are well
+  widens with prompt length (334 vs 408 tok/s at ~3.5k tokens). MTP raises
+  hipEngine's TTFT by 198 ms at ~512 and 354 ms at ~1024, because the request
+  pays a prompt-priming stage before the first speculative cycle.
+- **Speculative decode**: Atlas MTP K=4 is 2.86x / 2.31x / 1.77x its own AR row,
+  at 35.19 / 28.70 / 21.01 tok/s. hipEngine MTP K=3 is 1.53x / 1.47x its own AR
+  row at the two shapes where it engages, 18.20 / 17.20 tok/s, and does not
+  engage at ~4096 (see [MTP on this host](#mtp-on-this-host)). Atlas's MTP rows
+  are therefore 1.93x / 1.67x / 1.92x hipEngine's corresponding rows. The
+  hipEngine figures here are 128-output rows at a 16,384-token session; the
+  repository's topline MTP number for this model and host (21.0 tok/s, 1.88x its
+  matched 11.15 tok/s AR baseline) uses 24–25 outputs in a 1,024-token session
+  and is a different workload.
+- Every timing CV is at or below 0.16%, so the differences above are well
   outside run-to-run variation.
 
 ### Output agreement
@@ -104,17 +115,24 @@ each applies its own chat template (494 vs 517 prompt tokens at the same shape)
 and each serves a different quantization. Longest common prefix of the first
 600 generated characters:
 
-| Shape | Atlas AR vs hipEngine AR | Atlas AR vs Atlas MTP K=4 |
-| --- | ---: | ---: |
-| ~512 | 4 chars | 600 chars |
-| ~1024 | 536 chars | 377 chars |
-| ~4096 | 257 chars | 257 chars |
+| Shape | Atlas AR vs hipEngine AR | Atlas AR vs Atlas MTP K=4 | hipEngine AR vs hipEngine MTP K=3 |
+| --- | ---: | ---: | ---: |
+| ~512 | 4 chars | 600 chars | 600 chars |
+| ~1024 | 536 chars | 377 chars | 600 chars |
+| ~4096 | 257 chars | 257 chars | 600 chars |
 
 Atlas MTP reproduces the Atlas AR continuation exactly at ~512 tokens and
 diverges later at longer contexts, which is the expected behavior of a
 verify-path arithmetic change.
 
-## Why hipEngine served AR
+hipEngine MTP K=3 reproduces the hipEngine AR continuation exactly over the
+compared window at all three shapes, including the ~4096 shape where the two
+arms are the same execution anyway. The compared window is the first 600
+generated characters, which is the whole 128-token generation at these shapes.
+That is agreement on the generated token ids, not a bit-identity claim about the
+verify path's intermediate state.
+
+## Why the original run served AR
 
 `--speculative-mtp-serving` accepts `off`, `opt_in`, `auto` (the default), and
 `enabled`. None of those modes route a request through MTP unless the request
@@ -152,8 +170,8 @@ must match, and this host's server matches all of them:
 | `backend` / `target_arch` | `hip_gfx1151` / `gfx1151` | matches |
 | `weight_quant` | `gguf_q4_k_m` | matches |
 | `kv_storage` / `kv_layout` | `bf16` / `uniform` | matches |
-| `candidate_budget` | 3 | 3 (default) — matches |
-| `resident_capacity` | 1, 4, or 8 | 1 — matches |
+| `candidate_budget` | 3 | 4 (server default) — no match; the measured MTP arm passes 3 |
+| `resident_capacity` | 1, 4, or 8 | 4 — matches the capacity-4 row |
 | `realized_group_rows` | 1, 2, or 8 | 1 — matches |
 | `sampling_mode` | `greedy_fast` | `greedy_fast` at `temperature: 0` — matches |
 | `memory_fit` | true | true |
@@ -165,13 +183,48 @@ $ curl -s http://127.0.0.1:8000/v1/hipengine/capabilities | python3 -c 'import j
 {'requested': None, 'resolved': 'production', 'manifest_sha256': 'c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc', ...} 8192
 ```
 
-The gfx1151 one-row, three-draft cell at resident capacity 1 is
-automatic-eligible, so on this artifact `auto` and `enabled` route a greedy
-single request through MTP at any context, horizon, or session length, subject
-only to the physical axes above. The hipEngine MTP column is not measured here;
-filling it needs the same protocol as the AR rows, with the server started as
-in [Running the hipEngine side](#running-the-hipengine-side) plus
-`--speculative-mtp-serving enabled`.
+The gfx1151 one-row cell is automatic-eligible, so `auto` and `enabled` admit a
+greedy single request on this artifact at any context, horizon, or session
+length, subject only to the physical axes above. Candidate depth is one of those
+axes, so the depth has to be pinned to a qualified value first; the next section
+has the measured details.
+
+## MTP on this host
+
+Measured 2026-09-17 at revision `1a0a40cedcae4910e49d190d62125159884c2059`, one
+session, AR arm first and MTP arm second. The MTP arm passed
+`--speculative-mtp-serving enabled --speculative-candidate-budget 3`; everything
+else is the command in [Running the hipEngine side](#running-the-hipengine-side).
+
+Two limits decide whether a request actually speculates, and neither is visible
+in the response body:
+
+| Limit | Effect |
+| --- | --- |
+| Candidate depth | The server's default `--speculative-candidate-budget` is 4. Every retained Qwen3.8 evidence row pins 3 (11 rows) or 2 (3 rows), so the default fails admission with `candidate_budget_not_qualified` and `permanent_ar`. Passing 3 admits the cell above. |
+| Prompt-priming window | The MTP path refuses a prompt when `prompt_tokens + 1 >= min(1023, max_sequence_length)`, recording `target_context_k0`, and the whole request then runs AR. The ~4096 shape (3,530 tokens) is past it; ~512 and ~1024 are inside it. |
+
+The second limit is why the ~4096 MTP row above is an AR row: admission and
+routing both say `speculative_mtp`, and the backend still executes AR. The
+response reports this as `effective_route: default` with
+`decision_reason: backend_k0_fallback`, which is the only signal a client gets.
+
+Per-shape draft accounting from a non-streaming probe of the same three prompts
+(`usage.completion_tokens_details` carries the accepted and rejected counts):
+
+| Shape | Route selected | Effective | Cycles | Draft tokens | Accepted | Accept rate |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| ~512 | `speculative_mtp` | `speculative_mtp` | 55 | 163 | 72 | 0.442 |
+| ~1024 | `speculative_mtp` | `speculative_mtp` | 21 | 63 | 56 | 0.889 |
+| ~4096 | `speculative_mtp` | `default` | 0 | 0 | 0 | — |
+
+Acceptance is the whole story of the 1.53x/1.47x: at ~1024 nearly every draft is
+accepted and the cycle count is low, while at ~512 less than half are, so the
+same 128 outputs cost more than twice as many verify cycles for a smaller gain.
+Draft acceptance here is prompt-content dependent, not a fixed property of the
+model, which is why the repository's qualified rows pin an output horizon.
+
+Artifact: [`2026-09-17-gfx1151-qwen38-atlas-comparison-mtp-k3.json`](../benchmarks/results/2026-09-17-gfx1151-qwen38-atlas-comparison-mtp-k3.json).
 
 ## Running the hipEngine side
 
@@ -216,6 +269,13 @@ python -m hipengine.server \
   --kv-storage bf16 \
   --speculative-mtp-serving off \
   --host 127.0.0.1 --port 8000 --log-level info
+```
+
+For the MTP arm, change the serving flag and pin the qualified candidate depth:
+
+```bash
+  --speculative-mtp-serving enabled \
+  --speculative-candidate-budget 3 \
 ```
 
 `--max-context-tokens 16384` is deliberate. At `8192`, a prompt of ~3,500
@@ -317,10 +377,20 @@ be added with `BENCH_EXTRA_JSON`, for example
   client measured both, but it is not comparable to hipEngine's phase-timed
   internal prefill figures.
 - Atlas MTP rows were measured with the engine's default draft count (K=4) and
-  no per-shape K sweep; hipEngine MTP could not be measured on this host because
-  no request shape tried matched an evidence row. The four shape and profile
-  axes that caused that were removed on 2026-09-17, so the missing hipEngine MTP
-  column needs a rerun rather than a narrower request.
+  no per-shape K sweep, so they are not a tuned Atlas figure. hipEngine MTP was
+  measured at K=3 because that is the depth every retained evidence row pins;
+  its default depth of 4 admits nothing.
+- hipEngine MTP is bounded by its prompt-priming window on this host: prompts
+  above 1,022 tokens run AR even though admission and routing select
+  `speculative_mtp`. The ~4096 row is therefore an AR row, and no hipEngine MTP
+  figure here describes long-prompt speculation.
+- Both hipEngine arms generated 128 tokens at a 16,384-token session, which is
+  outside the envelope of the repository's qualified MTP rows (24–25 outputs,
+  1,024-token sessions). The numbers here measure the path at these shapes; they
+  are not a re-qualification of it.
+- The two hipEngine arms ran in one session with the AR arm first. The AR rates
+  reproduce the original run within 0.01 tok/s at all three shapes, so the
+  matched AR baselines are same-host and same-protocol.
 - Atlas's numbers were unchanged by session length: an earlier AR run at
   `MAX_SEQ_LEN=8192` measured 12.32 / 12.45 / 11.88 tok/s at 1808 / 3306 /
   10488 ms TTFT, against 12.31 / 12.44 / 11.88 tok/s at 1804 / 3307 / 10495 ms
