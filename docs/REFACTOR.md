@@ -1,5 +1,31 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Screening override now spans the plan layer (extended 2026-09-17)
+
+- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
+  owner's width/depth admission (`_physical_width_depth_admitted_for_group`).
+  The serving plan layer rejected an unqualified cell first, so an explicit
+  request never carried typed intent and the screening branch was unreachable
+  for every rejection except a physical width miss. The server now reads the
+  same switch through
+  `qwen35_gguf_mtp2.unqualified_mtp_screening_enabled()` and, for an explicit
+  request only, replaces the rejected plan's permanent-AR eligibility with a
+  non-automatic screening eligibility marked
+  `qualification: explicit_screening_unqualified_cell`. Response metadata carries
+  `unqualified: true` and the original rejection reason.
+- Removal scope is now larger than the 2026-09-06 entry below:
+  `MTP2_SCREEN_UNQUALIFIED_CELLS_ENV`, `unqualified_mtp_screening_enabled`, the
+  `_physical_width_depth_admitted_for_group` screening branch, the server's
+  `_MTP_SCREENING_REASONS` / `_MTP_SCREENING_QUALIFICATION` and the
+  `_mtp_screening_static_eligibility` helper, the screening branch in
+  `_resolve_realized_generation_route`, the `qualification`/`unqualified`
+  response fields, and their tests. Remove them when every measured cell either
+  has a qualified serving-evidence row or stays explicitly rejected, or when the
+  campaign is stopped.
+- Keep the invariant while it lives: screening never applies to automatic
+  intent, and sampling-mode, artifact-identity, and memory-fit rejections stay
+  fail-closed for every request.
+
 ## Long-context MTP window override (found 2026-09-17)
 
 - `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` (`hipengine/generation/qwen35_gguf_mtp2.py`)
