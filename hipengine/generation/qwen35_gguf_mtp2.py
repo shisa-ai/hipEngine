@@ -111,9 +111,12 @@ _Q6_MIXED_TARGET_ROWTILES_ENV = (
 # Screening-only admission for explicitly unqualified width/depth cells
 # (Qwen3.8 gfx1100 better-MTP campaign Packet 0). Default off; scoped to
 # static eligibility rows that are NOT automatic_eligible so no automatic
-# model policy can widen. Remove with the campaign's screening harness
-# (docs/REFACTOR.md).
-_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
+# model policy can widen. The serving layer reads the same switch through
+# ``unqualified_mtp_screening_enabled`` to keep typed intent for an explicit
+# request that no evidence row admits, so the resident owner can screen it
+# instead of the request falling to pre-mutation K0. Remove with the campaign's
+# screening harness (docs/REFACTOR.md).
+MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
 # Experimental MTP context window. The qualified window is 1,023 tokens: every
 # retained MTP measurement was taken inside it, the packed multi-row verifier
 # drops to the exact per-row strict route at `start_position + rows >= 1024`
@@ -154,6 +157,18 @@ def _env_enabled(name: str, default: bool = False) -> bool:
     if raw is None:
         return bool(default)
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def unqualified_mtp_screening_enabled() -> bool:
+    """Return whether explicit screening of unqualified MTP cells is enabled.
+
+    This is an operator override for tuning campaigns. It never widens
+    automatic model policy: every screening admission still requires a group
+    whose requests all carry non-automatic static eligibility, and the serving
+    layer marks the resulting response metadata as unqualified.
+    """
+
+    return _env_enabled(MTP2_SCREEN_UNQUALIFIED_CELLS_ENV)
 
 
 def _positive_env(name: str, default: int) -> int:
@@ -897,7 +912,7 @@ class Qwen35GGUFMTP2Adapter:
 
         if self._physical_width_depth_admitted(width, depth):
             return True
-        if not _env_enabled(_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV):
+        if not unqualified_mtp_screening_enabled():
             return False
         ids = tuple(int(value) for value in request_ids)
         if not ids:
@@ -5290,5 +5305,7 @@ class Qwen35GGUFMTP2Adapter:
 __all__ = [
     "C1ShadowOwnershipError",
     "C1ShadowSessionLifecycle",
+    "MTP2_SCREEN_UNQUALIFIED_CELLS_ENV",
     "Qwen35GGUFMTP2Adapter",
+    "unqualified_mtp_screening_enabled",
 ]

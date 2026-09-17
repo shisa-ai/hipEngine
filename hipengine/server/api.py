@@ -69,6 +69,9 @@ from hipengine.generation import (
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
+from hipengine.generation.qwen35_gguf_mtp2 import (
+    unqualified_mtp_screening_enabled as _mtp_unqualified_screening_enabled,
+)
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_prefix_cache_mode
@@ -273,6 +276,26 @@ class _SpeculativeMTPRouteReason(str, Enum):
 
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
+)
+# Explicit screening override: an operator-enabled path that keeps typed MTP
+# intent for a request no evidence row admits, so the resident owner can admit
+# the unqualified physical cell instead of the request falling to K0. It never
+# applies to automatic intent, and the qualification value below is what keeps a
+# screening run from being read as a qualified one in response metadata.
+_MTP_SCREENING_QUALIFICATION = "explicit_screening_unqualified_cell"
+_MTP_SCREENING_REASONS = frozenset(
+    {
+        "no_model_plugin_evidence",
+        "artifact_not_qualified",
+        "backend_not_qualified",
+        "target_arch_not_qualified",
+        "weight_quant_not_qualified",
+        "kv_storage_not_qualified",
+        "kv_layout_not_qualified",
+        "physical_group_not_qualified",
+        "resident_capacity_not_qualified",
+        "candidate_budget_not_qualified",
+    }
 )
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
     "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
@@ -2325,7 +2348,29 @@ def _realized_model_serving_plan(
     )
     if not isinstance(payload, Mapping):
         raise TypeError("realized speculative MTP serving plan must be a mapping")
-    return deepcopy(dict(payload))
+    realized = deepcopy(dict(payload))
+    if not bool(realized.get("admitted")) and bool(
+        precomputed_decision.get("screening")
+    ):
+        # The realized re-resolution runs the same evidence resolver against the
+        # realized group, so an unqualified cell can only be rejected again.
+        # Carry the request-time screening intent forward, otherwise the batch
+        # falls to K0 before the resident owner's screening admission runs.
+        screening_static = precomputed_decision.get("static_eligibility")
+        if isinstance(screening_static, Mapping):
+            realized["static_eligibility"] = deepcopy(dict(screening_static))
+            realized["screening"] = True
+            realized["qualification"] = str(
+                precomputed_decision.get("qualification")
+                or _MTP_SCREENING_QUALIFICATION
+            )
+            realized["unqualified_reason"] = str(
+                realized.get("reason")
+                or precomputed_decision.get("unqualified_reason")
+                or ""
+            )
+            realized["static_intent_allowed"] = True
+    return realized
 
 
 def _static_eligibility_from_route_decision(
@@ -2390,9 +2435,13 @@ def _resolve_realized_generation_route(
         if (
             route == _SPECULATIVE_MTP_BATCH_ROUTE
             and not bool(precomputed_decision.get("admitted"))
-            and str(precomputed_decision.get("reason"))
-            == "physical_group_not_qualified"
+            and (
+                str(precomputed_decision.get("reason"))
+                == "physical_group_not_qualified"
+                or bool(precomputed_decision.get("screening"))
+            )
         ):
+            screening = bool(precomputed_decision.get("screening"))
             key = (
                 precomputed_decision.get("key")
                 if isinstance(precomputed_decision.get("key"), Mapping)
@@ -2404,7 +2453,8 @@ def _resolve_realized_generation_route(
             # physical admission (listed cell or explicit-only screening) can
             # re-admit this request. Dropping it turns every deferred C1
             # explicit request into pre-mutation K0 and makes the screening
-            # path unreachable. Automatic routes never enter this branch.
+            # path unreachable. Automatic routes never enter this branch, and
+            # the screening variant marks the qualification it did not meet.
             static_payload = precomputed_decision.get("static_eligibility")
             static_mapping = (
                 static_payload if isinstance(static_payload, Mapping) else None
@@ -2430,7 +2480,22 @@ def _resolve_realized_generation_route(
             return route, {
                 "requested_route": route,
                 "selected_route": route,
-                "reason": "physical_group_deferred_to_resident_owner",
+                "reason": (
+                    "unqualified_cell_deferred_to_resident_owner"
+                    if screening
+                    else "physical_group_deferred_to_resident_owner"
+                ),
+                **({
+                    "screening": True,
+                    "qualification": str(
+                        precomputed_decision.get("qualification")
+                        or _MTP_SCREENING_QUALIFICATION
+                    ),
+                    "unqualified_reason": str(
+                        precomputed_decision.get("unqualified_reason")
+                        or precomputed_decision.get("reason")
+                    ),
+                } if screening else {}),
                 "policy_cell": precomputed_decision.get("evidence_key"),
                 "selected_candidate_count": 0,
                 "policy_reason": str(precomputed_decision.get("reason")),
@@ -13120,6 +13185,55 @@ def _engine_speculative_mtp_serving_plan(
     return deepcopy(dict(payload))
 
 
+def _mtp_screening_static_eligibility(
+    plan: Mapping[str, Any],
+    *,
+    physical_max_rows: int,
+) -> dict[str, Any] | None:
+    """Build screening intent for an explicit request no evidence row admits.
+
+    Returns ``None`` unless the plan was rejected on a physical qualification
+    axis. Sampling-semantics, artifact-identity, and memory rejections stay
+    fail-closed: they are correctness boundaries rather than unmeasured cells,
+    so no operator override may enter the speculative route through them. The
+    resulting eligibility is never automatic, and the qualification marker it
+    carries is what keeps a screening run out of qualified evidence.
+    """
+
+    reason = str(plan.get("reason") or "")
+    if reason not in _MTP_SCREENING_REASONS:
+        return None
+    key = plan.get("key") if isinstance(plan.get("key"), Mapping) else {}
+    budget = int(key.get("candidate_budget", 0) or 0)
+    if budget <= 0:
+        return None
+    rows = max(1, int(physical_max_rows))
+    marker = {
+        "qualification": _MTP_SCREENING_QUALIFICATION,
+        "unqualified_reason": reason,
+        "max_realized_group_rows": rows,
+        "candidate_budget": budget,
+        "plan_fingerprint": plan.get("plan_fingerprint"),
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(marker, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    return {
+        "state": "speculative_capable",
+        "eligible": True,
+        "reason": reason,
+        "max_candidate_count": budget,
+        "max_realized_group_rows": rows,
+        "automatic_eligible": False,
+        "strict_fallback_key": str(
+            plan.get("strict_fallback_key") or "gguf_target_ar"
+        ),
+        "evidence_key": _MTP_SCREENING_QUALIFICATION,
+        "evidence_fingerprint": fingerprint,
+        "evidence_artifacts": [],
+    }
+
+
 def _generation_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
@@ -13159,11 +13273,29 @@ def _generation_route_for_request(
     if plan is None:
         return route, None
     explicit_requested = _request_speculative_mtp_enabled(request) is True
+    plan_reason = str(plan.get("reason") or "")
     defer_physical_group = bool(
         explicit_requested
         and not bool(plan.get("admitted"))
-        and str(plan.get("reason")) == "physical_group_not_qualified"
+        and plan_reason == "physical_group_not_qualified"
     )
+    screening_payload = None
+    if (
+        explicit_requested
+        and not bool(plan.get("admitted"))
+        and _mtp_unqualified_screening_enabled()
+    ):
+        screening_payload = _mtp_screening_static_eligibility(
+            plan,
+            physical_max_rows=_gguf_mtp_batch_route_max_active_requests(
+                config, engine
+            ),
+        )
+    if screening_payload is not None:
+        plan["static_eligibility"] = screening_payload
+        plan["screening"] = True
+        plan["qualification"] = _MTP_SCREENING_QUALIFICATION
+        plan["unqualified_reason"] = plan_reason
     static_payload = plan.get("static_eligibility")
     static_eligible = bool(
         isinstance(static_payload, Mapping)
@@ -13187,7 +13319,11 @@ def _generation_route_for_request(
         )
     )
     if route == _SPECULATIVE_MTP_BATCH_ROUTE and (
-        (not bool(plan.get("admitted")) and not defer_physical_group)
+        (
+            not bool(plan.get("admitted"))
+            and not defer_physical_group
+            and screening_payload is None
+        )
         or (
             not explicit_requested
             and not bool(plan.get("automatic_eligible"))
@@ -15489,6 +15625,17 @@ def _mtp_response_summary(
                 if backend_k0_fallback or resident_dynamic_mtp
                 else "decision_reason"
             ] = str(decision_reason)
+        if bool(route_decision.get("screening")):
+            # An operator-enabled screening run measured a cell that no retained
+            # evidence row qualifies. Report it explicitly so its rate cannot be
+            # read as a qualified route.
+            summary["qualification"] = str(
+                route_decision.get("qualification") or "explicit_screening_unqualified_cell"
+            )
+            summary["unqualified"] = True
+            unqualified_reason = route_decision.get("unqualified_reason")
+            if unqualified_reason is not None:
+                summary["unqualified_reason"] = str(unqualified_reason)
     if used and thinking_policy is not None:
         policy = str(thinking_policy)
         summary["thinking_policy"] = policy

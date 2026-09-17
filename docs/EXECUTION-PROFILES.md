@@ -332,6 +332,29 @@ A retained row still records the shape envelope its artifact measured, and that
 envelope remains part of the benchmark evidence. What changed is that the
 envelope no longer decides admission.
 
+#### Explicit screening override (operator-only, never evidence)
+
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets an operator measure a physical
+cell that no retained row qualifies. It is not an admission axis and it does not
+weaken this contract:
+
+- It applies only to a request that explicitly asks for speculation
+  (`speculative_mtp: true`). Automatic intent, and `auto`/`enabled` without an
+explicit request, stay fail-closed exactly as before.
+- It covers qualification gaps only: a missing evidence row, or a mismatch on
+  artifact, backend, target architecture, weight quant, KV storage, KV layout,
+  physical group, resident capacity, or candidate depth. Sampling-mode,
+  artifact-identity, and memory-fit rejections remain fail-closed, because they
+  are correctness boundaries rather than unmeasured cells.
+- Every screening admission is non-automatic by construction, so it cannot
+  widen model policy, and the response reports
+  `qualification: explicit_screening_unqualified_cell`, `unqualified: true`, and
+the original rejection reason in `speculative_mtp`. A screening rate is
+  therefore never readable as a qualified route.
+- Screening measurements are diagnostics. Promoting one requires the ordinary
+  path: a retained evidence row with its numerical, determinism, isolation, and
+task gates.
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It
