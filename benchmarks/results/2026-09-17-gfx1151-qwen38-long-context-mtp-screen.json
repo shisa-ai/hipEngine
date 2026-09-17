@@ -67,6 +67,53 @@
         "4096": 10.013324707386454
       },
       "note": "Matched control for the batched-row arm: same global attention policy."
+    },
+    "mtp_long_context_staged_full_attention_split_decode_default": {
+      "measured": "2026-09-18",
+      "server_flags": "--speculative-mtp-serving enabled --speculative-candidate-budget 3",
+      "env": {
+        "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS": 8192
+      },
+      "attention_policy": "default (split-K decode at its 1024 threshold, so strict_long_rows stays true)",
+      "decode_tok_s": {
+        "1024": 10.484,
+        "4096": 7.355
+      },
+      "decode_tok_s_runs": {
+        "1024": [
+          10.556,
+          10.484,
+          10.481
+        ],
+        "4096": [
+          7.355,
+          7.354,
+          7.355
+        ]
+      },
+      "note": "Same server process as the AR arm below, same shapes and repeats, back to back. MTP engaged at both shapes (99.2% MTP output coverage, route qualified_automatic_realized_singleton_c1_b3) with the full-attention staged chain now batching its rows across the split boundary. This is the arm the batched full-attention leaf unlocks; it is still below AR because the 48 linear-attention layers keep the row-wise strict route at long context (staged_dense_linear is false whenever strict_long_rows is true)."
+    },
+    "ar_control_same_session_2026_09_18": {
+      "measured": "2026-09-18",
+      "server_flags": "--speculative-mtp-serving enabled, request field speculative_mtp=false",
+      "attention_policy": "default (split-K decode at its 1024 threshold)",
+      "decode_tok_s": {
+        "1024": 11.642,
+        "4096": 10.88
+      },
+      "decode_tok_s_runs": {
+        "1024": [
+          11.642,
+          11.637,
+          11.645
+        ],
+        "4096": [
+          10.873,
+          10.88,
+          10.882
+        ]
+      },
+      "note": "Same server process and same session as the staged arm above; only the request field differs."
     }
   },
   "decode_throughput_cv_percent": {
@@ -95,6 +142,10 @@
     "per_row_strict_vs_default_ar": {
       "1024": 1.017521390395017,
       "4096": 0.5740487404705066
+    },
+    "staged_full_attention_split_decode_default_vs_same_session_ar": {
+      "1024": 0.9005,
+      "4096": 0.676
     }
   },
   "probes": {
@@ -201,7 +252,8 @@
     "Two shapes on one host, one model, greedy sampling, 128 outputs; the full multi-prompt category suite and category heldouts were not run.",
     "The production numerical gate (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task quality) was not run; byte-identical greedy text at these two shapes is an observation, not the gate.",
     "The batched-row arm disables split decode globally, which costs normal decoding about 9% at 3,530 tokens (10.96 to 10.01 tok/s).",
-    "An earlier review recorded one BF16 rounding difference in the staged long-row verifier at a row ending exactly at position 1024; these two token streams did not reproduce it."
+    "An earlier review recorded one BF16 rounding difference in the staged long-row verifier at a row ending exactly at position 1024; these two token streams did not reproduce it.",
+    "The 2026-09-18 staged arm measures the batched full-attention chain with split-K decoding left on; it does not run the full multi-prompt category suite, so it is a diagnostic screen, not a retained ratio."
   ],
   "provenance": {
     "server": "ee06de2ea485910db3bd2a654b732b50e7925330",
