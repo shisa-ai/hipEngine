@@ -129,9 +129,11 @@ def test_resident_prefill_schedule_switch_is_passed_through():
             return SimpleNamespace(token_id=1)
     adapter=NativeARAdapter(SimpleNamespace(session=Session(),vocab_size=7),resident=True)
     assert adapter.prefill_use_bulk is None
+    assert adapter.prefill_schedule=='bulk'
     adapter.prefill([3,4])
     assert calls[-1]['use_bulk'] is None
     adapter.prefill_use_bulk=False
+    assert adapter.prefill_schedule=='token-serial'
     adapter.prefill([3,4])
     assert calls[-1]['use_bulk'] is False
 

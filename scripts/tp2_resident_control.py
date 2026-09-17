@@ -232,13 +232,10 @@ class NativeARAdapter:
         self.runtime = self.session.runtime
         self.vocab_size = owner.vocab_size
         # Report the schedule the session actually drives, not the schedule the
-        # adapter used to hardcode: the TP2 arm's prefill is switchable, and a
+        # adapter used to hardcode: both arms' prefill is switchable, and a
         # comparison artifact that names the wrong schedule is not provenance.
         self.bulk_prefill = (
             True if resident else bool(getattr(self.session, 'bulk_prefill_enabled', False))
-        )
-        self.prefill_schedule = 'bulk' if resident else (
-            'bulk-tp2' if self.bulk_prefill else 'token-serial'
         )
         self.position = 0
         self.graph = None
@@ -247,6 +244,13 @@ class NativeARAdapter:
         # selects its token-serial prefill. The sustained probe uses this to
         # measure the schedule-sensitivity reference without a second session.
         self.prefill_use_bulk = None
+
+    @property
+    def prefill_schedule(self):
+        """The prefill route this adapter will actually drive."""
+        if not self.resident:
+            return 'bulk-tp2' if self.bulk_prefill else 'token-serial'
+        return 'token-serial' if self.prefill_use_bulk is False else 'bulk'
 
     def prepare(self):
         if not self.resident:

@@ -866,7 +866,15 @@ breaching positions are the flat ones — at index 82 the teacher's top-1 holds
 neighbours at top-1 probability >= 0.99, and every arm keeps the same top-1 token
 (248046) there. 2-3 of 128 positions exceed 0.01 KL and p95 stays inside
 5.66e-04..9.88e-04 for every arm, so over a 128-step forced horizon the absolute
-max-KL ceiling is a bit-exactness test in disguise. A per-layer boundary
+max-KL ceiling is a bit-exactness test in disguise.
+
+Run over the whole 18-prompt suite (2,304 teacher-forced positions per arm), the
+same three routes satisfy the full numeric envelope on every prompt **up to D=42**
+(TP2 token-serial reaches **D=45**) and then breach on the **same four prompts at
+the same decode depths** — 43/46/43, 51/51/51, 80/80 and 83/83/83 — while the
+reference arm reproduces itself exactly on all 2,304 positions. The breach depth
+is therefore set by the reference trajectory's logit geometry, not by any
+candidate's arithmetic, and **D=128 is past every route's authorized horizon**. A per-layer boundary
 bisect on the same loaded model, prompt, and positions, changing only the prefill
 schedule, measures at prefill end: bulk vs token-serial logits KL 6.08e-05,
 per-layer hidden RMS growing monotonically from 5.5e-05 to 0.122, Conv state RMS
@@ -889,7 +897,8 @@ position is not removed from the gate. Task/BF16-relative and public distributed
 qualification are not claimed.
 [Capacity, sustained failure, and localization evidence](results/2026-09-16-tp2-native-product-d128-blocked.json) ·
 [per-layer prefill-schedule bisect](results/2026-09-17-tp2-bulk-serial-prefill-bisect.json) ·
-[four-arm schedule-spread measurement](results/2026-09-17-tp2-prefill-schedule-failure-probe.json).
+[four-arm schedule-spread measurement](results/2026-09-17-tp2-prefill-schedule-failure-probe.json) ·
+[suite horizon](results/2026-09-17-tp2-prefill-schedule-suite-spread.json).
 
 ## Tensor-parallel screening (W7900 + RX 7900 XTX)
 
