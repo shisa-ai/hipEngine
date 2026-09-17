@@ -82,3 +82,63 @@ def test_identity_diff_separates_host_process_fields_from_arithmetic_ones() -> N
 
     missing = probe._identity_diff(teacher, {"model_sha256": teacher["model_sha256"]})
     assert set(missing) == {"source_revision", "source_sha256", "host"}
+
+
+def _summary(**overrides):
+    base = {
+        "rows": 128,
+        "mean_kl": 1e-3,
+        "p95_kl": 5e-4,
+        "p99_kl": 2e-2,
+        "max_kl": 0.04,
+        "top1_agreement": 1.0,
+        "positions_over_0.01": 1,
+        "positions_over_max_kl": 0,
+    }
+    return {**base, **overrides}
+
+
+def test_aggregate_counts_prompts_breaching_the_ceiling() -> None:
+    rollup = probe._aggregate(
+        {
+            "inside": _summary(),
+            "breaching": _summary(
+                mean_kl=4e-3,
+                p95_kl=9e-4,
+                max_kl=0.6,
+                top1_agreement=0.99,
+                positions_over_max_kl=2,
+            ),
+        }
+    )
+    assert rollup["prompts"] == 2
+    assert rollup["prompts_breaching_ceiling"] == 1
+    assert rollup["positions_over_max_kl"] == 2
+    assert rollup["positions_total"] == 256
+    assert rollup["mean_kl_over_prompts"] == pytest.approx(2.5e-3)
+    assert rollup["worst_prompt_mean_kl"] == pytest.approx(4e-3)
+    assert rollup["worst_p95_kl"] == pytest.approx(9e-4)
+    assert rollup["worst_max_kl"] == pytest.approx(0.6)
+    assert rollup["worst_max_kl_prompt"] == "breaching"
+    assert rollup["min_top1_agreement"] == pytest.approx(0.99)
+
+
+def test_aggregate_is_empty_without_prompts() -> None:
+    assert probe._aggregate({}) == {}
+
+
+def test_compare_reports_curves_and_optional_logit_detail() -> None:
+    reference = np.zeros((3, 4), dtype=np.float32)
+    candidate = np.zeros((3, 4), dtype=np.float32)
+    candidate[1, 0] = 1.0
+
+    plain = probe._compare(reference, candidate, with_shape=False)
+    assert plain["rows"] == 3
+    assert plain["max_kl_index"] == 1
+    assert "max_abs_logit_diff_at_worst" not in plain
+    assert len(plain["kl_curve"]) == 3
+
+    detailed = probe._compare(reference, candidate, with_shape=True)
+    assert detailed["max_abs_logit_diff_at_worst"] == pytest.approx(1.0)
+    assert detailed["teacher_shape_at_worst"]["top2_logit_gap"] == pytest.approx(0.0)
+    assert detailed["arm_shape_at_worst"]["top1"] == 0

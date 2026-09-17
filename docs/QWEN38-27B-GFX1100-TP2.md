@@ -867,10 +867,37 @@ default-off and the token-serial route remains the committed prefill schedule.
   stays `bf16` and token-serial prefill stays the shipped prefill route. The bulk
   candidate's own arithmetic effect is bounded by
   `tp2-serial_vs_tp2-bulk` = 0.0258852 max KL with top-1 1.000 and no position
-  over the ceiling — inside the ceiling on the schedule-difference axis — but its
-  distance to the single bulk teacher grows 1.4-2.3x on mean/p95/p99/max relative
-  to the serial arm, so retaining it needs the gate decision above plus the full
-  mtp-bench category suite.
+  over the ceiling on that prompt — inside the ceiling on the schedule-difference
+  axis — but its distance to the single bulk teacher grows 1.4-2.3x on
+  mean/p95/p99/max relative to the serial arm, so retaining it needs the gate
+  decision above plus the full mtp-bench category suite.
+- **The sustained failure is suite-wide and has a measured horizon
+  (2026-09-17):** the same comparison was run over the whole 18-prompt teacher
+  suite (2,304 teacher-forced positions per arm, one revision, one host; arms one
+  session at a time, the two TP2 schedules compared across passes through
+  `--store-rows`/`--compare-rows`). **Every arm satisfies the full production
+  numeric envelope on every prompt up to D=42** — TP1 token-serial (no TP2 code),
+  TP2 token-serial and TP2 bulk — and TP2 token-serial reaches **D=45**. Beyond
+  that they breach on the *same four prompts at the same decode depths*:
+  43/46/43 on `heldout_mixed_review`, 51/51/51 on `mixed_ja_en_review`, 80/80 on
+  `heldout_mixed_summary` (TP2 arms), 83/83/83 on `mixed_ja_en_translate`. The
+  reference arm reproduced itself exactly (max KL 0.0 on all 2,304 positions,
+  18/18 prompts), so the depths are a property of the reference trajectory's
+  logit geometry, not of any candidate's arithmetic. Over the suite, TP1
+  token-serial scores mean KL 6.912e-04 / worst prompt mean 7.241e-03 / worst max
+  0.6092 / min top-1 0.9844 and TP2 token-serial **3.688e-04 / 2.334e-03 / 0.2686
+  / 0.9844**, i.e. the shipped TP2 route is the best of the three, and counting
+  every envelope statistic (including the 0.99 top-1 bar) TP1 token-serial fails
+  5 of 18 prompts, TP2 token-serial 4 and TP2 bulk 5. The large-KL positions are
+  the flat ones: the reference's top-1 probability has median 0.9951 across the
+  suite while the 27 rows over 0.01 KL have median 0.7988 (max 0.9421) and a
+  median top-2 gap of 1.66 against 5.73. So **D=128 is past every route's
+  authorized horizon** and its verdict at that depth is not a TP2 discriminator.
+  The decision is whether to declare the horizon (D<=42 any route, D<=45 shipped
+  TP2 — the framework `docs/EXECUTION-PROFILES.md` already uses), to read the
+  numeric envelope beyond it as diagnostic, or to leave the gate as it is and
+  record that no route qualifies at D=128 on this host. Evidence:
+  `benchmarks/results/2026-09-17-tp2-prefill-schedule-suite-spread.json`.
 - **The comparison basis is the open question (2026-09-17):** the TP2 gate scores
   against **hipEngine TP1's own logits** (`quality-tp1-d0.json`, arm `tp1-d0`),
   while hipEngine's production quality basis is the independent llama.cpp BF16

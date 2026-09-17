@@ -7,7 +7,7 @@ prefill *schedule* (two TP1 schedules differ by more than either does from TP2)
 but never ran the candidate that would remove the schedule difference: the TP2
 session's own rank-local bulk prefill.
 
-This probe runs four arms over the same teacher-forced prefix on the same
+This probe runs up to four arms over the same teacher-forced prefix on the same
 revision and reports the whole per-position KL curve for each:
 
 ``tp1-bulk``    the teacher arm, re-run to confirm it reproduces its own rows
@@ -16,8 +16,15 @@ revision and reports the whole per-position KL curve for each:
 ``tp2-serial``  the TP2 session's committed prefill route
 ``tp2-bulk``    the TP2 rank-local bulk prefill candidate
 
-Diagnostics only: this is one prompt at the failing horizon, not the suite gate,
-and it makes no performance or product claim.
+Suite mode (``--prompts all``) walks the whole teacher suite instead of one
+prompt and reports, per arm, how many prompts breach the ceiling and the
+suite-wide envelope. Arms are processed one at a time, so only one session is
+resident on the devices at once; ``--store-rows DIR`` writes each prompt's rows
+for a later pass to compare against with ``--compare-rows DIR`` (this is how the
+two TP2 schedules are compared across the suite without holding both sessions).
+
+Diagnostics only: this makes no performance or product claim and promotes
+nothing.
 
 Usage::
 
@@ -25,6 +32,11 @@ Usage::
         --teacher /path/to/quality-tp1-d0.json \\
         --prompt-id mixed_ja_en_translate --steps 128 \\
         --json benchmarks/results/<artifact>.json
+
+    PYTHONPATH=$PWD python3 scripts/tp2_prefill_schedule_failure_probe.py \\
+        --teacher /path/to/quality-tp1-d0.json --prompts all --steps 128 \\
+        --arms tp2-serial --store-rows /tmp/tp2-suite-rows \\
+        --json /tmp/tp2-suite-serial.json
 """
 
 from __future__ import annotations
@@ -61,6 +73,8 @@ from scripts.tp2_teacher_coverage_broad import (  # noqa: E402
 #: shells (``os.nice(0)`` is 16 for a process started immediately and -4 a few
 #: seconds later), which would otherwise block every cross-arm comparison.
 _HOST_PROCESS_FIELDS = ("host",)
+
+ARMS = ("tp1-bulk", "tp1-serial", "tp2-serial", "tp2-bulk")
 
 
 def _identity_diff(teacher: dict, current: dict) -> dict[str, dict[str, str]]:
@@ -112,17 +126,96 @@ def _envelope_summary(kl: np.ndarray, top1: np.ndarray) -> dict[str, float]:
     }
 
 
+def _compare(
+    teacher_row: np.ndarray, candidate_row: np.ndarray, *, with_shape: bool
+) -> dict[str, object]:
+    """Envelope, curves and (optionally) logit detail for one arm-vs-reference."""
+
+    kl, top1 = _kl_rows(np.asarray(teacher_row, dtype=np.float32), candidate_row)
+    breaches = np.nonzero(kl > PRODUCTION_GATE["max_kl"])[0]
+    worst = int(kl.argmax())
+    summary: dict[str, object] = {
+        **_envelope_summary(kl, top1),
+        "max_kl_index": worst,
+        "first_breach_index": int(breaches[0]) if breaches.size else None,
+        "kl_curve": [round(float(value), 8) for value in kl],
+    }
+    if with_shape:
+        delta = np.abs(
+            np.asarray(candidate_row[worst], dtype=np.float64)
+            - np.asarray(teacher_row[worst], dtype=np.float64)
+        )
+        summary["teacher_shape_at_worst"] = _distribution_shape(teacher_row[worst])
+        summary["arm_shape_at_worst"] = _distribution_shape(candidate_row[worst])
+        summary["max_abs_logit_diff_at_worst"] = float(delta.max())
+        summary["mean_abs_logit_diff_at_worst"] = float(delta.mean())
+    return summary
+
+
+def _aggregate(per_prompt: dict[str, dict[str, object]]) -> dict[str, object]:
+    """Suite-wide rollup of one arm's per-prompt comparisons."""
+
+    if not per_prompt:
+        return {}
+    worst_prompt = max(per_prompt, key=lambda name: per_prompt[name]["max_kl"])
+    return {
+        "prompts": len(per_prompt),
+        "prompts_breaching_ceiling": sum(
+            1 for summary in per_prompt.values() if summary["positions_over_max_kl"]
+        ),
+        "positions_over_max_kl": sum(
+            summary["positions_over_max_kl"] for summary in per_prompt.values()
+        ),
+        "positions_total": sum(summary["rows"] for summary in per_prompt.values()),
+        "mean_kl_over_prompts": float(
+            np.mean([summary["mean_kl"] for summary in per_prompt.values()])
+        ),
+        "worst_prompt_mean_kl": max(
+            summary["mean_kl"] for summary in per_prompt.values()
+        ),
+        "mean_p95_kl_over_prompts": float(
+            np.mean([summary["p95_kl"] for summary in per_prompt.values()])
+        ),
+        "worst_p95_kl": max(summary["p95_kl"] for summary in per_prompt.values()),
+        "worst_max_kl": per_prompt[worst_prompt]["max_kl"],
+        "worst_max_kl_prompt": worst_prompt,
+        "min_top1_agreement": min(
+            summary["top1_agreement"] for summary in per_prompt.values()
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
     parser.add_argument("--teacher", type=Path, required=True)
     parser.add_argument("--prompt-id", default="mixed_ja_en_translate")
+    parser.add_argument(
+        "--prompts",
+        default=None,
+        help="'all' for the whole teacher suite, or a comma-separated list of "
+        "prompt ids; defaults to --prompt-id",
+    )
     parser.add_argument("--steps", type=int, default=128)
     parser.add_argument("--json", type=Path, default=None)
     parser.add_argument(
         "--arms",
-        default="tp1-bulk,tp1-serial,tp2-serial,tp2-bulk",
-        help="comma-separated subset of tp1-bulk,tp1-serial,tp2-serial,tp2-bulk",
+        default=",".join(ARMS),
+        help="comma-separated subset of " + ",".join(ARMS),
+    )
+    parser.add_argument(
+        "--store-rows",
+        type=Path,
+        default=None,
+        help="directory to write each prompt's logit rows into, for a later "
+        "pass to compare against with --compare-rows",
+    )
+    parser.add_argument(
+        "--compare-rows",
+        type=Path,
+        default=None,
+        help="directory written by --store-rows; every arm found in it for a "
+        "prompt is compared against this pass's rows for the same prompt",
     )
     parser.add_argument(
         "--allow-host-process-drift",
@@ -149,22 +242,29 @@ def main(argv: list[str] | None = None) -> int:
             f"to proceed and record it: {sorted(diff)}"
         )
 
-    prompt_id = args.prompt_id
-    if prompt_id not in teacher["suite"]["ids"]:
-        raise ValueError(f"prompt {prompt_id!r} is not in the teacher suite")
-    index = teacher["suite"]["ids"].index(prompt_id)
-    tokens = teacher["suite"]["tokens"][index]
-    forced = teacher["forced_inputs"][index][: args.steps]
-    reference = np.load(teacher["arrays"][index]["path"], mmap_mode="r")[: args.steps]
+    suite_ids = list(teacher["suite"]["ids"])
+    if args.prompts in (None, ""):
+        prompt_ids = [args.prompt_id]
+    elif args.prompts == "all":
+        prompt_ids = suite_ids
+    else:
+        prompt_ids = [name.strip() for name in args.prompts.split(",") if name.strip()]
+    unknown = [name for name in prompt_ids if name not in suite_ids]
+    if unknown:
+        raise ValueError(f"prompts not in the teacher suite: {unknown}")
 
     arms = [arm.strip() for arm in args.arms.split(",") if arm.strip()]
-    unknown = set(arms) - {"tp1-bulk", "tp1-serial", "tp2-serial", "tp2-bulk"}
-    if unknown:
-        raise ValueError(f"unknown arms: {sorted(unknown)}")
+    unknown_arms = set(arms) - set(ARMS)
+    if unknown_arms:
+        raise ValueError(f"unknown arms: {sorted(unknown_arms)}")
+    if args.store_rows is not None:
+        args.store_rows.mkdir(parents=True, exist_ok=True)
 
+    single = len(prompt_ids) == 1
+    failure_index = 82 if args.steps > 82 else args.steps - 1
     result: dict[str, object] = {
         "kind": "tp2_prefill_schedule_failure_probe",
-        "schema": 1,
+        "schema": 2,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "status": "diagnostic_only",
         "performance_claim": False,
@@ -172,25 +272,31 @@ def main(argv: list[str] | None = None) -> int:
         "model": str(args.model),
         "model_sha256": identity["model_sha256"],
         "source_revision": identity["source_revision"],
+        "source_sha256": identity["source_sha256"],
         "profile": profile,
         "teacher": str(args.teacher),
         "teacher_sha256": hashlib.sha256(args.teacher.read_bytes()).hexdigest(),
         "teacher_identity_diff": diff,
         "host_process_drift_allowed": bool(args.allow_host_process_drift),
-        "prompt_id": prompt_id,
-        "tokens": list(tokens),
-        "positions": [len(tokens) + i for i in range(args.steps)],
+        "arms_requested": arms,
+        "prompt_ids": prompt_ids,
         "steps": args.steps,
+        "failure_index": failure_index,
         "thresholds": PRODUCTION_GATE,
         "host": {
             "node": platform.node(),
             "nice": os.nice(0),
             "argv": sys.argv[1:],
         },
-        "arms": {},
+        "prompts": {},
+        "suite_aggregate": {},
     }
 
-    rows: dict[str, np.ndarray] = {}
+    # Per arm: one session, then every prompt in order. The session is reset by
+    # each prefill, so one build covers the whole suite; holding two sessions of
+    # different arms at once would double the resident footprint per rank.
+    kept_rows: dict[str, np.ndarray] = {}
+    kept_reference: dict[str, np.ndarray] = {}
     for arm in arms:
         if arm.startswith("tp1"):
             adapter = create_native_adapter(args.model, "tp1-d0", capacity=200)
@@ -200,115 +306,124 @@ def main(argv: list[str] | None = None) -> int:
             adapter = create_native_adapter(
                 args.model, "tp2", capacity=200, bulk_prefill=arm == "tp2-bulk"
             )
+        arm_record: dict[str, object] = {
+            "prefill_schedule": adapter.prefill_schedule,
+            "prefill_use_bulk": adapter.prefill_use_bulk,
+            "seconds": 0.0,
+        }
+        result["arms"] = {**(result.get("arms") or {}), arm: arm_record}
         started = time.perf_counter()
         try:
             adapter.prepare()
-            logits, inputs, _controls = sustained_trajectory(
-                adapter, tokens, forced=forced, steps=args.steps
-            )
-            rows[arm] = logits
-            elapsed = time.perf_counter() - started
-            result["arms"][arm] = {
-                "mode": adapter.owner.mode if hasattr(adapter.owner, "mode") else "tp2",
-                "prefill_schedule": adapter.prefill_schedule,
-                "seconds": round(elapsed, 1),
-                "last_row_sha256": _row_hash(logits[-1:]),
-                "forced_inputs_match": list(inputs) == list(forced),
-                "finite": bool(np.isfinite(logits).all()),
-            }
+            for prompt_id in prompt_ids:
+                index = suite_ids.index(prompt_id)
+                tokens = teacher["suite"]["tokens"][index]
+                forced = teacher["forced_inputs"][index][: args.steps]
+                reference = np.asarray(
+                    np.load(teacher["arrays"][index]["path"], mmap_mode="r")[: args.steps],
+                    dtype=np.float32,
+                )
+                prompt = result["prompts"].setdefault(
+                    prompt_id,
+                    {
+                        "suite_index": index,
+                        "prompt_tokens": len(tokens),
+                        "positions": [len(tokens) + i for i in range(args.steps)],
+                        "arms": {},
+                        "comparisons": {},
+                    },
+                )
+                logits, inputs, _controls = sustained_trajectory(
+                    adapter, tokens, forced=forced, steps=args.steps
+                )
+                prompt["arms"][arm] = {
+                    "prefill_schedule": adapter.prefill_schedule,
+                    "prefill_use_bulk": adapter.prefill_use_bulk,
+                    "last_row_sha256": _row_hash(logits[-1:]),
+                    "forced_inputs_match": list(inputs) == list(forced),
+                    "finite": bool(np.isfinite(logits).all()),
+                }
+                prompt["comparisons"][f"teacher_vs_{arm}"] = _compare(
+                    reference, logits, with_shape=True
+                )
+                if single:
+                    # One prompt: keep the rows so the artifact can carry them.
+                    # Suite mode drops them per prompt to stay inside memory.
+                    kept_rows[arm] = logits
+                    kept_reference[prompt_id] = reference
+                if args.store_rows is not None:
+                    np.save(args.store_rows / f"{arm}-{prompt_id}.npy", logits)
+                if args.compare_rows is not None:
+                    for path in sorted(args.compare_rows.glob(f"*-{prompt_id}.npy")):
+                        other = path.name[: -len(f"-{prompt_id}.npy")]
+                        if other == arm or other not in ARMS:
+                            continue
+                        stored = np.load(path)
+                        if stored.shape != logits.shape:
+                            raise ValueError(
+                                f"stored {other} rows for {prompt_id} have shape "
+                                f"{stored.shape}, not {logits.shape}"
+                            )
+                        prompt["comparisons"][f"{other}_vs_{arm}"] = _compare(
+                            stored, logits, with_shape=False
+                        )
         except Exception as error:  # noqa: BLE001 - record the arm's own failure
-            result["arms"][arm] = {
-                "prefill_schedule": adapter.prefill_schedule,
-                "error": f"{type(error).__name__}: {error}",
-            }
+            arm_record["error"] = f"{type(error).__name__}: {error}"
         finally:
+            arm_record["seconds"] = round(time.perf_counter() - started, 1)
             try:
                 adapter.close()
             except Exception:  # noqa: BLE001 - teardown is best effort
                 pass
 
-    # Per-position KL against the teacher for every arm that produced rows, plus
-    # the schedule-sensitivity reference pairs among the arms themselves.
-    comparisons: dict[str, object] = {}
-    teacher_reference = np.asarray(reference, dtype=np.float32)
-    worst_rows: dict[str, np.ndarray] = {}
-    for arm, logits in rows.items():
-        kl, top1 = _kl_rows(teacher_reference, logits)
-        breaches = np.nonzero(kl > PRODUCTION_GATE["max_kl"])[0]
-        worst = int(kl.argmax())
-        delta = np.abs(
-            logits[worst].astype(np.float64) - teacher_reference[worst].astype(np.float64)
-        )
-        # One row per array, not the whole reference: a full horizon of logits is
-        # 127 MB, which is not a compact artifact.
-        worst_rows[f"teacher_at_{worst}"] = teacher_reference[worst]
-        worst_rows[f"{arm}_at_{worst}"] = logits[worst]
-        comparisons[f"teacher_vs_{arm}"] = {
-            **_envelope_summary(kl, top1),
-            "max_kl_index": worst,
-            "max_kl_position": int(result["positions"][worst]),
-            "first_breach_index": int(breaches[0]) if breaches.size else None,
-            "first_breach_position": (
-                int(result["positions"][int(breaches[0])]) if breaches.size else None
-            ),
-            "teacher_shape_at_worst": _distribution_shape(teacher_reference[worst]),
-            "arm_shape_at_worst": _distribution_shape(logits[worst]),
-            "max_abs_logit_diff_at_worst": float(delta.max()),
-            "mean_abs_logit_diff_at_worst": float(delta.mean()),
-            "kl_curve": [round(float(value), 8) for value in kl],
+    # Suite rollup per arm, over the prompts that produced comparisons.
+    for arm in arms:
+        per_prompt = {
+            prompt_id: prompt["comparisons"][f"teacher_vs_{arm}"]
+            for prompt_id, prompt in result["prompts"].items()
+            if f"teacher_vs_{arm}" in prompt["comparisons"]
         }
-    for left, right in (
-        ("tp1-bulk", "tp1-serial"),
-        ("tp1-serial", "tp2-serial"),
-        ("tp1-bulk", "tp2-serial"),
-        ("tp1-bulk", "tp2-bulk"),
-        ("tp2-serial", "tp2-bulk"),
-    ):
-        if left not in rows or right not in rows:
-            continue
-        kl, top1 = _kl_rows(rows[left], rows[right])
-        comparisons[f"{left}_vs_{right}"] = {
-            **_envelope_summary(kl, top1),
-            "max_kl_index": int(kl.argmax()),
-            "kl_curve": [round(float(value), 8) for value in kl],
+        if per_prompt:
+            result["suite_aggregate"][arm] = _aggregate(per_prompt)
+    for other, target in (("tp1-serial", "tp2-serial"), ("tp2-serial", "tp2-bulk")):
+        name = f"{other}_vs_{target}"
+        per_prompt = {
+            prompt_id: prompt["comparisons"][name]
+            for prompt_id, prompt in result["prompts"].items()
+            if name in prompt["comparisons"]
         }
-    result["comparisons"] = comparisons
+        if per_prompt:
+            result["suite_aggregate"][name] = _aggregate(per_prompt)
 
-    # The row this probe exists to explain: the original gate failure.
-    failure_index = 82 if args.steps > 82 else args.steps - 1
-    result["failure_index"] = failure_index
-    result["failure_position"] = int(result["positions"][failure_index])
-    result["at_failure_index"] = {
-        name: {
-            "max_kl": summary["max_kl"],
-            "mean_kl": summary["mean_kl"],
-            "p99_kl": summary["p99_kl"],
-            "kl_at_index": summary["kl_curve"][failure_index],
-            "first_breach_index": summary.get("first_breach_index"),
-            "positions_over_max_kl": summary["positions_over_max_kl"],
+    if single:
+        # Keep the one-prompt artifact shape the earlier evidence used: a flat
+        # comparisons map plus the original failure index.
+        prompt_id = prompt_ids[0]
+        prompt = result["prompts"][prompt_id]
+        result["prompt_id"] = prompt_id
+        result["tokens"] = list(teacher["suite"]["tokens"][suite_ids.index(prompt_id)])
+        result["positions"] = prompt["positions"]
+        result["comparisons"] = prompt["comparisons"]
+        reference = kept_reference[prompt_id]
+        result["failure_position"] = int(prompt["positions"][failure_index])
+        result["at_failure_index"] = {
+            name: {
+                "max_kl": summary["max_kl"],
+                "mean_kl": summary["mean_kl"],
+                "p99_kl": summary["p99_kl"],
+                "kl_at_index": summary["kl_curve"][failure_index],
+                "first_breach_index": summary.get("first_breach_index"),
+                "positions_over_max_kl": summary["positions_over_max_kl"],
+            }
+            for name, summary in prompt["comparisons"].items()
         }
-        for name, summary in comparisons.items()
-    }
-    result["teacher_shape_at_failure"] = _distribution_shape(
-        teacher_reference[failure_index]
-    )
-    # Full logit rows at each comparison's worst position, so a follow-up
-    # question about this failure does not need another GPU run. Keys are
-    # '<arm>_at_<index>'; 248320 x 4 bytes each.
-    if args.json is not None and worst_rows:
-        rows_path = args.json.with_suffix(".worst-rows.npz")
-        np.savez(rows_path, **worst_rows)
-        result["worst_rows_path"] = str(rows_path)
-        result["worst_rows_note"] = (
-            "full logit rows at each comparison's worst position; keys are "
-            "'<arm>_at_<index>' and 'teacher_at_<index>'"
-        )
+        result["teacher_shape_at_failure"] = _distribution_shape(reference[failure_index])
         result["teacher_top16_at_failure"] = [
             {"token": int(token), "logit": float(value)}
             for token, value in sorted(
                 (
-                    (int(token), float(teacher_reference[failure_index][token]))
-                    for token in np.argsort(teacher_reference[failure_index])[-16:]
+                    (int(token), float(reference[failure_index][token]))
+                    for token in np.argsort(reference[failure_index])[-16:]
                 ),
                 key=lambda item: -item[1],
             )
@@ -318,12 +433,34 @@ def main(argv: list[str] | None = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
         print(f"artifact: {args.json}")
+        if single:
+            # Full logit rows at each comparison's worst position, so a follow-up
+            # question about this failure does not need another GPU run. Keys are
+            # '<arm>_at_<index>'; 248320 x 4 bytes each.
+            prompt = result["prompts"][prompt_ids[0]]
+            reference = kept_reference[prompt_ids[0]]
+            worst_rows: dict[str, np.ndarray] = {}
+            for name, summary in prompt["comparisons"].items():
+                index = summary["max_kl_index"]
+                if name.startswith("teacher_vs_"):
+                    worst_rows[f"teacher_at_{index}"] = reference[index]
+                    arm_name = name.replace("teacher_vs_", "")
+                    if arm_name in kept_rows:
+                        worst_rows[f"{arm_name}_at_{index}"] = kept_rows[arm_name][index]
+            rows_path = args.json.with_suffix(".worst-rows.npz")
+            np.savez(rows_path, **worst_rows)
+            result["worst_rows_path"] = str(rows_path)
+            result["worst_rows_note"] = (
+                "full logit rows at each comparison's worst position; keys are "
+                "'<arm>_at_<index>' and 'teacher_at_<index>'"
+            )
+            args.json.write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
+
     print(
         json.dumps(
             {
-                "prompt_id": prompt_id,
-                "steps": args.steps,
-                "at_failure_index": result["at_failure_index"],
+                "suite_aggregate": result["suite_aggregate"],
+                "arms": result.get("arms"),
             },
             indent=1,
             sort_keys=True,
