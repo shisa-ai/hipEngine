@@ -65,10 +65,13 @@ BUCKETS: tuple[tuple[str, str], ...] = (
     # an activation quantizer is not counted as matrix arithmetic.
     ("quantize_pack",
      r"quantize|dequantize|im2col|\bpack|concat|transpose|permute|convert"),
-    # Dense quantized matmuls, whatever the kernel is called.
+    # Dense quantized matmuls, whatever the kernel is called. `dense_wide` is
+    # the promoted wide-row tile family (`q8_0_dense_wide_kernel`); it carries
+    # none of the other tokens here, so without it the route that the 2026-09-17
+    # promotion made the default lands in `unattributed`.
     ("dense_matmul",
      r"gguf_k_prefill_out|mul_mat|mmb_dense|mmb_f32split|gemm|mmq|wmma|cijk"
-     r"|rocblas|tensile|dense_gemv|grouped_wmma"),
+     r"|rocblas|tensile|dense_gemv|grouped_wmma|dense_wide"),
     # Normalisation and elementwise tails.
     ("elementwise_norm",
      r"norm|silu|gelu|sigmoid|\badd|mul_f32|scale|cpy|sqrt|tanh|clamp|rope"

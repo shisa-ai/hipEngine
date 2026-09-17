@@ -485,8 +485,14 @@ selector and env var remain registered for explicit opt-in and re-gating.
 
 1. **Refresh the shipped default's baseline and attribution.** Run the canonical
    four-category PP/TG protocol with raw per-case walls, then a cache-only
-   role-marked capture on `code-p4096`. Extend the family mapper for the wide
-   symbols first (§2.2), verify selector/manifest identity and launch coverage,
+   role-marked capture on `code-p4096`. The family mapper now covers the wide
+   symbols (§2.2): `DENSE_PROJECTION_STEMS` in
+   `scripts/qwen4exp_comparator_role_map.py` names every dense Q8_0 prefill
+   route, pinned from the kernel sources by
+   `tests/test_unit_qwen4exp_role_map_dense_routes.py`. Before that the promoted
+   route's kernel symbol was `other`, which the comparison's `--strict`
+   `--unmapped-floor-ms 1` gate turns into a failed run rather than a
+   mis-attributed table. Verify selector/manifest identity and launch coverage,
    and report unprofiled wall separately from profiled kernel time. The current
    dense-family cost is unknown; the old 50.1% gap share is not today's ranking.
    Use one aggregation rule for historical comparisons. Do not turn this review
