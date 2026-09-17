@@ -1383,6 +1383,15 @@ wall time to prefill all 18 prefixes, so it includes every case's 4-10 rows.
 | `strict` (row-by-row) | 1.43e-3 | 3.27e-2 | **95.83%** | 95.88% | 522.5 s | [`strict replay`](results/yue2_ar_replay_strict_20260916.json) |
 | `hipblaslt` (batched, default) | **1.16e-3** | **7.10e-3** | 95.49% | **95.88%** | **77.6 s** | [`batched replay`](results/yue2_m7_gemm_algorithm_20260917.json) |
 
+Re-running the batched route after the paired-branch lm head landed
+(`dense_gemv_bf16_f32_out_rowtile2` plus the runtime's paired `logits`) reproduces
+these numbers: pooled mean KL 1.1579e-3 over the same 576 rows and 18 cases, top-8
+recall 0.9588, status pass, and a `--repeat 1` run whose aggregate is byte-identical
+([`paired head`](results/yue2_ar_replay_paired_head_20260917.json),
+[`repeat`](results/yue2_ar_replay_paired_head_repeat_20260917.json)). That change is
+bit-identical per row to the single-row head, so the replay matrix is expected to be
+unchanged and is; the session-level validation is in the greedy session gate below.
+
 Both routes replay the first case bit-for-bit after all 18 cases have run on the
 same runtime, and both stay inside the broad floor (mean KL ≤ 0.05, top-1 ≥ 90%).
 The batched route selects its hipBLASLt algorithm by measured index rather than by
@@ -1409,11 +1418,15 @@ phase is budget-truncated in every case.
 
 | Case | Prefix | ABC forced | Semantic forced | Free first divergence | Truncation (ABC / semantic) | Evidence |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| `english-melody-s1234` | identical | 100.0% | 96.9% | 38 | natural / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
-| `english-full-s1234` | identical | 99.1% | 97.9% | 18 | natural / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
-| `mandarin-off-s1234` | identical | no ABC stage | 96.1% | 17 | no ABC stage / budget | [`session gate`](results/yue2_session_gate_20260916.json) |
+| `english-melody-s1234` | identical | 99.7% | 97.1% | 27 | natural / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
+| `english-full-s1234` | identical | 99.1% | 98.2% | 2 | natural / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
+| `mandarin-off-s1234` | identical | no ABC stage | 96.7% | 23 | no ABC stage / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
 
-Teacher-forced agreement is at least 96.1% on every phase of every case; the symbolic ABC phases agree on 100.0% and 99.1% of steps. Every recorded mismatch sits on a near-tie: the first semantic mismatch is 1.2e-01 / 1.2e-01 / 6.2e-02 below my own top-1 score for melody / full / off, inside the BF16 logit noise the replay matrix above already quantifies (mean KL 2.1e-3, top-1 96.7%). The unassisted trajectories track the reference until their first flip and are chaotic afterwards, so the forced columns, not the free agreement rates, carry the fidelity claim. Free comparison is context-aligned only where the ABC stage itself matched (`english-melody-s1234`) or is absent (`mandarin-off-s1234`); `english-full-s1234` diverged during ABC planning, so its free semantic row compares continuations of different prefixes and is diagnostic only. Unassisted wall clock: `melody` 34.8 s, `full` 36.7 s, `off` 29.0 s.
+Teacher-forced agreement is at least 96.7% on every phase of every case; the symbolic ABC phases agree on 99.7% and 99.1% of steps. Every recorded mismatch sits on a near-tie: the first semantic mismatch is 1.2e-01 / 1.2e-01 / 6.2e-02 below my own top-1 score for melody / full / off, inside the BF16 logit noise the replay matrix above already quantifies (mean KL 1.2e-3, top-1 95.5%). The unassisted trajectories track the reference until their first flip and are chaotic afterwards, so the forced columns, not the free agreement rates, carry the fidelity claim. Free comparison is context-aligned only where the ABC stage itself matched (`english-melody-s1234`) or is absent (`mandarin-off-s1234`); `english-full-s1234` diverged during ABC planning, so its free semantic row compares continuations of different prefixes and is diagnostic only. Unassisted wall clock: `melody` 34.8 s, `full` 36.7 s, `off` 29.0 s.
+
+These numbers are the post-M7 state. The `english-melody-s1234` ABC phase was 100.0% and `mandarin-off-s1234` semantic was 96.1% before the hipBLASLt algorithm-selection and attention changes landed; every case then moved to the values above, which is recorded as the `session_gate_after_change` block of [`the M7 artifact`](results/yue2_m7_gemm_algorithm_20260917.json). Re-running the gate after the paired-branch lm head landed reproduced those post-M7 values exactly (99.7% / 99.1% ABC, 98.2% / 97.1% / 96.7% semantic), so that change is invisible at the session level.
+
+The paired-branch head itself is validated on the session loop rather than on the gate alone: [`pairing validation`](results/yue2_ar_pairing_validation_20260917.json) drives `generate_tokens` at temperature 1.0 on two cases with a serial-head subclass as the control and compares the emitted tokens, the RNG state, the CFG score rows, the sampler's masked score row and the softmax distribution. All agree exactly (logit max abs 0.0, distribution KL 0.0, identical top-1, identical RNG state), and a lifecycle pass that runs case A, then case B, then case A again in one process with a `runtime.reset()` between reproduces each case's tokens exactly.
 
 ### Radeon 8060S: YuE2 3B acoustic flow-matching solver
 
