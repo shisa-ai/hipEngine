@@ -16,7 +16,10 @@ cannot complete, and the owed HEAD attribution is exactly that run.
 
 These tests pin both directions from the kernel sources: every non-routed
 ``__global__`` kernel in the dense Q8_0 linear sources is a dense projection,
-and every routed (``selected``) kernel in the same files is not.
+every routed (``selected``) kernel in the same files is not, and every dtype
+conversion in them is ``elementwise_norm`` -- the bucket the comparator's
+``mmb_cvt_*`` rule uses, so a converter that drifted back to ``other`` would
+show up as a smaller elementwise bucket rather than as a failure.
 """
 
 from __future__ import annotations
@@ -70,6 +73,10 @@ STEM_EXAMPLES = {
 
 GRID = ("1", "1", "1")
 
+# Dtype conversions share these sources but are neither dense linears nor routed
+# projections. They are asserted positively rather than skipped.
+CONVERSION_TOKENS = ("f32_to_f16", "f16_to_f32", "f32_to_bf16", "bf16_to_f32")
+
 CANDIDATE_ARTIFACT = (
     REPO_ROOT
     / "benchmarks/results/2026-09-16-dense-wide-q8-prefill-candidate/artifact.json"
@@ -111,14 +118,20 @@ def test_promoted_wide_route_is_a_dense_projection() -> None:
 
 @pytest.mark.parametrize("filename", DENSE_Q8_0_SOURCES)
 def test_dense_q8_0_sources_are_classified(filename: str) -> None:
-    """Every kernel in these files is either dense, or routed and not dense."""
+    """Every kernel in these files is dense, routed-not-dense, or a conversion."""
 
     names = _global_kernel_names(QUANT_SOURCE_DIR / filename)
     assert names, f"{filename}: no __global__ kernels found"
 
+    conversions = 0
     for name in names:
         family = map_hipengine(name, GRID)
-        if "selected" in name:
+        if any(tok in name for tok in CONVERSION_TOKENS):
+            conversions += 1
+            assert family == "elementwise_norm", (
+                f"{filename}: {name} converts a dtype but is classified {family}"
+            )
+        elif "selected" in name:
             assert family != "dense_projection", (
                 f"{filename}: {name} is routed but classified {family}"
             )
@@ -126,6 +139,11 @@ def test_dense_q8_0_sources_are_classified(filename: str) -> None:
             assert family == "dense_projection", (
                 f"{filename}: {name} is a dense Q8_0 linear but classified {family}"
             )
+
+    if filename == "gguf_q8_0_dense_wide.hip":
+        # The F16-activation route's converter. Pinned so that a rename or a
+        # dropped kernel cannot silently remove the conversion coverage.
+        assert conversions == 1, f"{filename}: expected 1 conversion, got {conversions}"
 
 
 def test_routed_kernels_are_not_dense_projections() -> None:

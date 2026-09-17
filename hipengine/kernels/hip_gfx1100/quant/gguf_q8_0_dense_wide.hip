@@ -20,7 +20,10 @@
 //   * The activation arrives as f32 and is converted to f16 during LDS
 //     staging, instead of a separate pre-pass materializing a bf16 activation
 //     tensor. This keeps the registered variant self-contained with an f32
-//     ABI and no hidden scratch state.
+//     ABI and no hidden scratch state. The ``*_f16in_*`` exports take the
+//     pre-converted activation instead, for a caller that hoists the
+//     conversion out of the K loop; the staging path above is unchanged and
+//     remains the registered default.
 //   * Operands are f16 (10-bit mantissa) rather than bf16 (7-bit). RDNA3 runs
 //     both at the same WMMA rate, so this is strictly better precision for
 //     free, and it matches the in-tree f16 WMMA lineage in
@@ -176,12 +179,44 @@ __device__ inline void wide_store_tile(const float8_t& acc,
   __syncwarp();
 }
 
-template <int BM, int BN, int WTM, int WTN, bool TAIL>
+// Eight activation values as f16. The f32 form is the ported load path: two
+// float4 reads plus eight conversions, staged in registers because eight f32
+// values cost 8 VGPRs where eight f16 cost 4. The f16 form is one 16-byte load
+// and no conversion, which is what hoisting the conversion out of this loop
+// buys; see the ``*_f16in_*`` exports.
+//
+// The f16 form requires 16-byte alignment. ``off`` is a multiple of 8 halves
+// and the row stride ``K`` is a multiple of WIDE_BK, so the address is 16-byte
+// aligned whenever the activation base is.
+__device__ __forceinline__ half8_t wide_load_act8(const float* p) {
+  const float4 lo = *reinterpret_cast<const float4*>(p);
+  const float4 hi = *reinterpret_cast<const float4*>(p + 4);
+  half8_t h;
+  h[0] = static_cast<half_t>(lo.x);
+  h[1] = static_cast<half_t>(lo.y);
+  h[2] = static_cast<half_t>(lo.z);
+  h[3] = static_cast<half_t>(lo.w);
+  h[4] = static_cast<half_t>(hi.x);
+  h[5] = static_cast<half_t>(hi.y);
+  h[6] = static_cast<half_t>(hi.z);
+  h[7] = static_cast<half_t>(hi.w);
+  return h;
+}
+
+__device__ __forceinline__ half8_t wide_load_act8(const half_t* p) {
+  return *reinterpret_cast<const half8_t*>(p);
+}
+
+// ``x_t`` is the activation element type: ``float`` converts during LDS
+// staging, ``half_t`` is an activation already converted by
+// ``hipengine_gguf_q8_0_f32_to_f16``. Both paths put the same f16 bytes in LDS
+// for the same values, so the matmul and its result are unchanged.
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
     const int a_rows,                    // valid weight rows remaining
-    const float* __restrict__ x,         // [rows, K] f32 activation
+    const x_t* __restrict__ x,           // [rows, K] activation
     const int K,
     float* __restrict__ out,             // [rows, M] f32
     const int M,
@@ -243,18 +278,9 @@ __device__ __forceinline__ void wide_tile_gemm(
       const int brow = (t0 + (c >> 3) < rows) ? (t0 + (c >> 3)) : -1;
       half8_t h;
       if (brow >= 0) {
-        const float* p = x + static_cast<size_t>(brow) * K +
-                         static_cast<size_t>(ks) * WIDE_BK + off;
-        const float4 lo = *reinterpret_cast<const float4*>(p);
-        const float4 hi = *reinterpret_cast<const float4*>(p + 4);
-        h[0] = static_cast<half_t>(lo.x);
-        h[1] = static_cast<half_t>(lo.y);
-        h[2] = static_cast<half_t>(lo.z);
-        h[3] = static_cast<half_t>(lo.w);
-        h[4] = static_cast<half_t>(hi.x);
-        h[5] = static_cast<half_t>(hi.y);
-        h[6] = static_cast<half_t>(hi.z);
-        h[7] = static_cast<half_t>(hi.w);
+        const x_t* p = x + static_cast<size_t>(brow) * K +
+                       static_cast<size_t>(ks) * WIDE_BK + off;
+        h = wide_load_act8(p);
       } else {
 #pragma unroll
         for (int e = 0; e < 8; ++e) h[e] = static_cast<half_t>(0.0f);
@@ -364,9 +390,9 @@ __device__ __forceinline__ void wide_tile_gemm(
   }
 }
 
-template <int BM, int BN, int WTM, int WTN, bool TAIL>
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
-q8_0_dense_wide_kernel(const float* __restrict__ x,
+q8_0_dense_wide_kernel(const x_t* __restrict__ x,
                        const uint8_t* __restrict__ qweight,
                        float* __restrict__ out,
                        const int rows,
@@ -380,14 +406,26 @@ q8_0_dense_wide_kernel(const float* __restrict__ x,
   const size_t wrow_bytes =
       static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
 
-  wide_tile_gemm<BM, BN, WTM, WTN, TAIL>(
+  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
 }
 
+// f32 -> f16 activation conversion: the hoisted form of the staging conversion
+// above. ``static_cast<half_t>`` rounds the same way in both places, so an
+// f16in route consumes exactly the bytes the f32 route would have produced.
+__global__ void q8_0_f32_to_f16_kernel(const float* __restrict__ x,
+                                       half_t* __restrict__ out,
+                                       int64_t n) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i < n) {
+    out[i] = static_cast<half_t>(x[i]);
+  }
+}
+
 }  // namespace
 
-template <int BM, int BN, int WTM, int WTN, bool TAIL>
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
 int wide_launch_tail(const void* x,
                      const void* qweight,
                      void* out,
@@ -397,9 +435,9 @@ int wide_launch_tail(const void* x,
                      hipStream_t stream) {
   const dim3 grid(static_cast<unsigned int>((out_features + BM - 1) / BM),
                   static_cast<unsigned int>((rows + BN - 1) / BN));
-  hipLaunchKernelGGL((q8_0_dense_wide_kernel<BM, BN, WTM, WTN, TAIL>),
+  hipLaunchKernelGGL((q8_0_dense_wide_kernel<x_t, BM, BN, WTM, WTN, TAIL>),
                      grid, dim3(WIDE_THREADS), 0, stream,
-                     static_cast<const float*>(x),
+                     static_cast<const x_t*>(x),
                      static_cast<const uint8_t*>(qweight),
                      static_cast<float*>(out),
                      static_cast<int>(rows),
@@ -411,7 +449,7 @@ int wide_launch_tail(const void* x,
 // The tail-free instantiation has no per-fragment predication at all; the tail
 // one bounds-checks every load and store. Picking between them at launch keeps
 // the common (exactly-divisible) case free of the checks.
-template <int BM, int BN, int WTM, int WTN>
+template <typename x_t, int BM, int BN, int WTM, int WTN>
 int wide_launch(const void* x,
                 const void* qweight,
                 void* out,
@@ -425,10 +463,28 @@ int wide_launch(const void* x,
     return static_cast<int>(hipErrorInvalidValue);
   }
   const bool tail = (rows % BN) != 0 || (out_features % BM) != 0;
-  return tail ? wide_launch_tail<BM, BN, WTM, WTN, true>(
+  return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true>(
                     x, qweight, out, rows, in_features, out_features, stream)
-              : wide_launch_tail<BM, BN, WTM, WTN, false>(
+              : wide_launch_tail<x_t, BM, BN, WTM, WTN, false>(
                     x, qweight, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
+                                              void* out,
+                                              int64_t n,
+                                              hipStream_t stream) {
+  if (x == nullptr || out == nullptr || n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (n + 255) / 256;
+  if (blocks > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(q8_0_f32_to_f16_kernel,
+                     dim3(static_cast<unsigned int>(blocks)), dim3(256), 0,
+                     stream, static_cast<const float*>(x),
+                     static_cast<half_t*>(out), n);
+  return static_cast<int>(hipGetLastError());
 }
 
 // The tile family. ``threads`` is accepted for ABI compatibility with the other
@@ -440,20 +496,29 @@ int wide_launch(const void* x,
 // ceiling and spills. The narrower layouts give up some weight reuse
 // (traffic is M * K * rows / BN) for headroom; which one wins is a measurement,
 // not an argument.
-#define HIPENGINE_DENSE_WIDE_EXPORT(name, BM, BN, WTM, WTN)                    \
+#define HIPENGINE_DENSE_WIDE_EXPORT(name, x_t, BM, BN, WTM, WTN)               \
   extern "C" int name(const void* x, const void* qweight, void* out,           \
                       int64_t rows, int64_t in_features, int64_t out_features, \
                       int64_t threads, hipStream_t stream) {                   \
     (void)threads;                                                             \
-    return wide_launch<BM, BN, WTM, WTN>(x, qweight, out, rows, in_features,   \
-                                         out_features, stream);                \
+    return wide_launch<x_t, BM, BN, WTM, WTN>(x, qweight, out, rows,           \
+                                              in_features, out_features,       \
+                                              stream);                         \
   }
 
+// ``x_t`` selects the activation ABI. The f32 exports convert during staging;
+// the f16in exports consume an activation already converted by
+// ``hipengine_gguf_q8_0_f32_to_f16``, which must hold ``rows * in_features``
+// f16 values in a 16-byte-aligned buffer.
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide256_f32_f32_out,
-                            128, 256, 64, 64)
+                            float, 128, 256, 64, 64)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide64x256_f32_f32_out,
-                            64, 256, 32, 64)
+                            float, 64, 256, 32, 64)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f32_f32_out,
-                            128, 128, 64, 32)
+                            float, 128, 128, 64, 32)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide64x128_f32_f32_out,
-                            64, 128, 32, 32)
+                            float, 64, 128, 32, 32)
+HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out,
+                            half_t, 128, 256, 64, 64)
+HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out,
+                            half_t, 128, 128, 64, 32)

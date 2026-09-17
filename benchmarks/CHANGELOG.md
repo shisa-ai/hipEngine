@@ -1,35 +1,23 @@
 # hipEngine Benchmark Changelog
 
-- **2026-09-17 UTC**: The shipped Qwen3.8-Flash-Next default got its first
-  full-matrix rate row and a current attribution, both at `42ce71156`. Twelve
-  cases, four categories, three lengths, 36 samples, equal-weight mean: **239.5 /
-  17.70** at 512, **253.4 / 17.18** at 1K, **241.9 / 16.24** at 4K. The
-  role-marked `code-p4096` capture attributes 16733.4 ms of a 17196.5 ms window
-  with 0 ms unattributed, and shows the wide-row promotion moved one family:
-  `dense_projection` **10562.2 → 5234.8 ms (−50.4%)**, every other family within
-  0.5%. The MoE pair (`expert_gate_up` 3402.4 + `expert_down` 2382.3) is now the
-  largest owner at 34.6% of the prefill.
-  [Baseline](results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) ·
-  [attribution](results/2026-09-17-qwen4exp-shipped-default-attribution/README.md).
-
-- **2026-09-17 UTC**: The shipped Qwen3.8-Flash-Next default got its first
-  full-matrix rate row and a current attribution, both at `42ce71156`. Twelve
-  cases, four categories, three lengths, 36 samples, equal-weight mean: **239.5 /
-  17.70** at 512, **253.4 / 17.18** at 1K, **241.9 / 16.24** at 4K. The
-  role-marked `code-p4096` capture attributes 16733.4 ms of a 17196.5 ms window
-  with 0 ms unattributed, and shows the wide-row promotion moved one family:
-  `dense_projection` **10562.2 → 5234.8 ms (−50.4%)**, every other family within
-  0.5%. The MoE pair (`expert_gate_up` 3402.4 + `expert_down` 2382.3) is now the
-  largest owner at 34.6% of the prefill.
-  [Baseline](results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) ·
-  [attribution](results/2026-09-17-qwen4exp-shipped-default-attribution/README.md).
-
 - **2026-09-17 UTC**: Hoisting the wide Q8_0 prefill route's activation
   conversion out of the K loop is worth **1384.7 → 794.1 ms over the route's 1056
   launches in a 4096-token prefill (−42.6%, 590.6 ms)** with bit-identical output.
   The packet's per-shape times match the shipped default's own capture to 1.4%
   (1404.2 ms), so the estimate is engine-representative; the route is not wired
   into the runner yet. [Packet](results/2026-09-17-q8-dense-f16-activation/README.md).
+
+- **2026-09-17 UTC**: The shipped Qwen3.8-Flash-Next default got its first
+  full-matrix rate row and a current attribution, both at `42ce71156`. Twelve
+  cases, four categories, three lengths, 36 samples, equal-weight mean: **239.5 /
+  17.70** at 512, **253.4 / 17.18** at 1K, **241.9 / 16.24** at 4K. The
+  role-marked `code-p4096` capture attributes 16733.4 ms of a 17196.5 ms window
+  with 0 ms unattributed, and shows the wide-row promotion moved one family:
+  `dense_projection` **10562.2 → 5234.8 ms (−50.4%)**, every other family within
+  0.5%. The MoE pair (`expert_gate_up` 3402.4 + `expert_down` 2382.3) is now the
+  largest owner at 34.6% of the prefill.
+  [Baseline](results/2026-09-17-qwen4exp-shipped-default-baseline/README.md) ·
+  [attribution](results/2026-09-17-qwen4exp-shipped-default-attribution/README.md).
 
 - **2026-09-16 UTC**: The wide-row Q8_0 dense prefill route became the production
   default at layers 16-47 for `gguf_ud_q4_k_xl`, replacing the certified f16 WMMA
