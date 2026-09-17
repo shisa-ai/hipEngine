@@ -5784,6 +5784,11 @@ class _GGUFResidentLoopRow:
     mtp2_cycles: int = 0
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
+    # Committed output spans (mode, reason, position, tokens), recorded only
+    # while HIPENGINE_MTP2_OUTPUT_SPANS is enabled. Declared here because the
+    # row is a slots dataclass: the shared accounting helper cannot attach a new
+    # attribute at runtime.
+    mtp2_output_spans: list[dict[str, Any]] = field(default_factory=list)
     mtp2_proposal_ms: float = 0.0
     mtp2_target_ms: float = 0.0
     mtp2_provider_update_ms: float = 0.0

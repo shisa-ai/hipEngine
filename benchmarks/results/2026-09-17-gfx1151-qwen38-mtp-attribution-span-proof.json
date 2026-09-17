@@ -1,0 +1,80 @@
+{
+  "title": "MTP/AR output attribution is now proved against committed output spans",
+  "date": "2026-09-17",
+  "status": "retained",
+  "purpose": "Replace arithmetic reconciliation with an attribution proof. ar_output_tokens is defined as completion - mtp, so the old reconciled flag accepted any split that added up; the response now also reports the committed cycle records that independently bound the speculative output, and with HIPENGINE_MTP2_OUTPUT_SPANS=1 the committed output spans (execution mode, reason, emitted-token position, token count) that must tile the committed output. This artifact is the same-protocol c=1 ShareGPT row with the diagnostic spans on.",
+  "source": "scripts/sharegpt_mtp_routing_pass.py",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf (qwen3.8-27b-q4km)",
+  "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo), ROCm SDK from /home/lhl/miniforge3/envs/vllm",
+  "protocol": {
+    "harness": "scripts/sharegpt_mtp_routing_pass.py",
+    "server": "/home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port 8058",
+    "server_env": {
+      "HIPENGINE_MTP2_OUTPUT_SPANS": "1",
+      "HIPENGINE_ENGINE_SERVICE_TRACEBACK": "1"
+    },
+    "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/sharegpt_mtp_routing_pass.py --server-url http://127.0.0.1:8058 --model qwen3.8-27b-q4km --dataset /home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json --gguf /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --num-prompts 24 --max-concurrency 1 --output-len 128 --label c1-spans-final --out /tmp/sharegpt-spans/c1-spans-final.json",
+    "prompts": 24,
+    "max_concurrency": 1,
+    "output_len_override": 128,
+    "temperature": "server default (greedy)"
+  },
+  "result": {
+    "requests": 24,
+    "failures": 0,
+    "mtp_requests": 24,
+    "mtp_output_share": 0.9905598958333334,
+    "decode_tokens_per_second": 20.05068827571551,
+    "wall_seconds": 153.2,
+    "completion_tokens": 3072,
+    "mtp_output_tokens": 3043,
+    "ar_output_tokens": 29,
+    "ar_output_tokens_in_cycles": 24,
+    "committed_spans": 1046,
+    "spanned_tokens": 3067,
+    "spanned_mtp_tokens": 3043,
+    "spanned_ar_tokens": 24,
+    "unspanned_tokens": 5,
+    "unspanned_tokens_per_request": {
+      "0": 19,
+      "1": 5
+    },
+    "unexplained_mtp_output_tokens": 0,
+    "ar_tokens_by_reason": {
+      "no_provider": 24
+    },
+    "fallback_event_total": 24,
+    "fallback_events_by_reason": {
+      "no_provider": 24
+    },
+    "first_fallback_position": {
+      "null": 24
+    },
+    "reconciled_requests": 24,
+    "span_proof_requests": 24,
+    "unreconciled_requests": [],
+    "span_proof_failures": [],
+    "driver_exceptions": 0,
+    "latency": {
+      "median_ttft_ms": 1156,
+      "median_first_answer_ms": 6012,
+      "answer_requests": 4,
+      "thinking_requests": 24
+    }
+  },
+  "attribution_reading": {
+    "identity": "spanned_tokens + unspanned_tokens == completion_tokens (3067 + 5 = 3072) and unspanned_tokens == ar_output_tokens - ar_output_tokens_in_cycles (5 == 29 - 24)",
+    "events_are_not_tokens": "fallback_event_total is 24 (one no_provider refusal per request) while ar_output_tokens is 29: 24 of those tokens were emitted by the depth-zero no_provider cycle that opens each request and 5 were emitted after the plan retired, which is why the field is named fallback_event_counts and why token-level attribution is reported separately as span_accounting.ar_tokens_by_reason",
+    "unspanned_tokens": "The 5 unspanned tokens are the final token of 5 requests, emitted by the autoregressive decode that retires the row; the accounting helper deliberately does not record a span for a step whose row is already released",
+    "all_speculative_output_is_spanned": "spanned_mtp_tokens == mtp_output_tokens exactly (3043), so no speculative token is hiding in the unspanned remainder"
+  },
+  "diagnostic_value": {
+    "first_spans_run": "The first run of the span proof (same protocol, same server settings) reported 19/24 reconciled with 5 rows failing spans_do_not_reach_the_completion_count. That was a real accounting gap in the check, not in the engine: spans legitimately need not reach the completion count because the prefill root token and the retiring decode token are autoregressive tokens emitted outside the plan. The check was corrected to the identity above and the same protocol then proved 24/24. Recorded here because it is the evidence that the check discriminates rather than always passing.",
+    "reproduce_without_spans": "Without HIPENGINE_MTP2_OUTPUT_SPANS the response reports the committed-cycle bounds and reconciled_reasons only, and the harness prints a note that no span proof was recorded."
+  },
+  "artifacts": {
+    "harness_output": "/tmp/sharegpt-spans/c1-spans-final.json",
+    "first_spans_run": "/tmp/sharegpt-spans/c1-spans.json",
+    "server_log": "/tmp/kendex-pi-bg/bg-53-1789666323154.log"
+  }
+}

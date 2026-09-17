@@ -38,6 +38,7 @@ dataclass, while seam tests drive them with attribute-only doubles.
 from __future__ import annotations
 
 from collections import Counter
+import os
 from typing import Any, Mapping, Sequence
 
 REQUESTED_BUDGET_ATTRIBUTE = "mtp2_requested_budget"
@@ -46,6 +47,61 @@ AR_OUTPUT_ATTRIBUTE = "mtp2_ar_output_tokens"
 AR_STEP_OUTPUT_ATTRIBUTE = "mtp2_ar_step_output_tokens"
 FIRST_FALLBACK_ATTRIBUTE = "mtp2_first_fallback_position"
 AR_STEP_REASON_ATTRIBUTE = "mtp2_ar_step_reasons"
+SPAN_ATTRIBUTE = "mtp2_output_spans"
+
+# Diagnostic switch for committed output spans. Off by default: the span list is
+# attribution evidence for an audit, not production telemetry, and it grows with
+# the cycle count.
+OUTPUT_SPANS_ENV = "HIPENGINE_MTP2_OUTPUT_SPANS"
+_ENV_TRUE = frozenset({"1", "true", "yes", "on"})
+
+
+def output_span_recording_enabled() -> bool:
+    """Return whether committed output spans are recorded for this process."""
+
+    value = os.environ.get(OUTPUT_SPANS_ENV)
+    if value is None:
+        return False
+    return str(value).strip().lower() in _ENV_TRUE
+
+
+def _record_span(
+    row: Any,
+    *,
+    mode: str,
+    reason: Any | None,
+    position: int,
+    tokens: int,
+) -> None:
+    """Append one committed output span when diagnostic recording is on.
+
+    A span is the unit of attribution: which execution mode emitted the tokens,
+    why that mode ran, and where in the emitted output they sit. The counters
+    above answer the same question in aggregate; the spans are what make the
+    aggregate checkable against the emitted token list instead of against a
+    subtraction.
+    """
+
+    if tokens <= 0 or not output_span_recording_enabled():
+        return
+    spans = getattr(row, SPAN_ATTRIBUTE, None)
+    if not isinstance(spans, list):
+        spans = []
+        try:
+            setattr(row, SPAN_ATTRIBUTE, spans)
+        except AttributeError:
+            # A slots row that does not declare the span field. Diagnostic
+            # recording must never break generation, so the span is dropped and
+            # the response reports that no proof was recorded.
+            return
+    spans.append(
+        {
+            "mode": str(mode),
+            "reason": None if reason is None else str(reason),
+            "position": max(0, int(position)),
+            "tokens": int(tokens),
+        }
+    )
 
 
 def _row_int(row: Any, name: str) -> int:
@@ -102,11 +158,25 @@ def record_speculative_outputs(
             MTP_OUTPUT_ATTRIBUTE,
             _row_int(row, MTP_OUTPUT_ATTRIBUTE) + visible,
         )
+        _record_span(
+            row,
+            mode="mtp",
+            reason=plan_reason,
+            position=output_position,
+            tokens=visible,
+        )
         return
     setattr(
         row,
         AR_OUTPUT_ATTRIBUTE,
         _row_int(row, AR_OUTPUT_ATTRIBUTE) + visible,
+    )
+    _record_span(
+        row,
+        mode="ar",
+        reason=plan_reason,
+        position=output_position,
+        tokens=visible,
     )
     if (
         _row_int(row, MTP_OUTPUT_ATTRIBUTE) > 0
@@ -145,6 +215,14 @@ def record_autoregressive_step(
             AR_STEP_OUTPUT_ATTRIBUTE,
             _row_int(row, AR_STEP_OUTPUT_ATTRIBUTE) + tokens,
         )
+        if output_position is not None:
+            _record_span(
+                row,
+                mode="ar",
+                reason=plan_reason,
+                position=output_position,
+                tokens=tokens,
+            )
         if (
             output_position is not None
             and _row_int(row, MTP_OUTPUT_ATTRIBUTE) > 0
@@ -169,6 +247,136 @@ def _counts(values: Sequence[Any] | None) -> list[int]:
     if not values:
         return []
     return [max(0, int(value)) for value in values]
+
+
+def _row_spans(row: Any) -> list[dict[str, Any]]:
+    """Return the row's committed output spans as normalized dictionaries."""
+
+    spans = getattr(row, SPAN_ATTRIBUTE, None)
+    if not isinstance(spans, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for span in spans:
+        if not isinstance(span, Mapping):
+            continue
+        mode = str(span.get("mode") or "")
+        if mode not in {"mtp", "ar"}:
+            continue
+        reason = span.get("reason")
+        normalized.append(
+            {
+                "mode": mode,
+                "reason": None if reason is None else str(reason),
+                "position": max(0, int(span.get("position") or 0)),
+                "tokens": max(0, int(span.get("tokens") or 0)),
+            }
+        )
+    return normalized
+
+
+def span_accounting(
+    spans: Sequence[Mapping[str, Any]],
+    *,
+    completion_tokens: int,
+    mtp_output_tokens: int,
+    ar_output_tokens: int,
+    ar_output_tokens_in_cycles: int,
+) -> dict[str, Any]:
+    """Check committed output spans against the reported MTP-versus-AR split.
+
+    The aggregate counters reconcile arithmetically by construction, because
+    autoregressive output is defined as whatever speculation did not cover. The
+    spans are independent evidence: each committed span records the execution
+    mode, the reason it ran, the emitted-token position it starts at, and how
+    many tokens it emitted, so together they must tile the committed output with
+    no gap and no overlap, every speculative token must be inside a span, and
+    the spanned autoregressive tokens must be exactly the in-plan ones.
+
+    Spans need not reach the completion count. A request can emit autoregressive
+    tokens outside the speculative plan — the prompt-prefill root token before
+    it, and the final token when the decode that produced it retires the row —
+    and those are deliberately not recorded as spans. The exact requirement is
+    the identity ``unspanned == ar_output_tokens - ar_output_tokens_in_cycles``:
+    every emitted token is either spanned or an autoregressive token produced
+    outside the plan, so a speculative token can never hide in the remainder.
+    """
+
+    normalized = [
+        {
+            "mode": str(span.get("mode") or ""),
+            "reason": (
+                None
+                if span.get("reason") is None
+                else str(span.get("reason"))
+            ),
+            "position": max(0, int(span.get("position") or 0)),
+            "tokens": max(0, int(span.get("tokens") or 0)),
+        }
+        for span in spans
+        if isinstance(span, Mapping)
+    ]
+    tokens_total = sum(span["tokens"] for span in normalized)
+    mtp_tokens = sum(
+        span["tokens"] for span in normalized if span["mode"] == "mtp"
+    )
+    ar_tokens = sum(span["tokens"] for span in normalized if span["mode"] == "ar")
+    ar_tokens_by_reason: Counter[str] = Counter()
+    for span in normalized:
+        if span["mode"] == "ar":
+            ar_tokens_by_reason[span["reason"] or ""] += span["tokens"]
+    first_position = normalized[0]["position"] if normalized else None
+    last_end = (
+        max(span["position"] + span["tokens"] for span in normalized)
+        if normalized
+        else None
+    )
+    contiguous = True
+    cursor: int | None = None
+    for span in normalized:
+        if cursor is not None and span["position"] != cursor:
+            contiguous = False
+            break
+        cursor = span["position"] + span["tokens"]
+    unspanned = int(completion_tokens) - tokens_total
+    expected_unspanned = max(0, int(ar_output_tokens)) - int(
+        ar_output_tokens_in_cycles
+    )
+    reasons: list[str] = []
+    if not normalized:
+        reasons.append("no_committed_spans")
+    else:
+        if not contiguous:
+            reasons.append("spans_not_contiguous")
+        if unspanned < 0:
+            reasons.append("spans_exceed_the_completion_count")
+    if mtp_tokens != int(mtp_output_tokens):
+        reasons.append("span_mtp_tokens_do_not_match_mtp_output")
+    if ar_tokens != int(ar_output_tokens_in_cycles):
+        reasons.append("span_ar_tokens_do_not_match_in_cycle_ar_output")
+    if unspanned != expected_unspanned:
+        # Some emitted token is neither spanned nor an autoregressive token from
+        # outside the plan, so the split cannot be traced to committed work.
+        reasons.append("unspanned_tokens_are_not_autoregressive")
+    return {
+        "spans": len(normalized),
+        "tokens": tokens_total,
+        "mtp_tokens": mtp_tokens,
+        "ar_tokens": ar_tokens,
+        "ar_tokens_by_reason": {
+            reason: int(count) for reason, count in sorted(ar_tokens_by_reason.items())
+        },
+        "unspanned_tokens": unspanned,
+        "expected_unspanned_ar_tokens": expected_unspanned,
+        "first_position": first_position,
+        "last_end": last_end,
+        "contiguous": contiguous,
+        "mtp_tokens_match": mtp_tokens == int(mtp_output_tokens),
+        "ar_in_cycle_tokens_match": ar_tokens
+        == int(ar_output_tokens_in_cycles),
+        "unspanned_tokens_match": unspanned == expected_unspanned,
+        "reconciled": not reasons,
+        "reconciled_reasons": reasons,
+    }
 
 
 def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
@@ -196,7 +404,7 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
     ]
     failure_counts = Counter(failure_reasons[0::2])
     first_fallback = getattr(row, FIRST_FALLBACK_ATTRIBUTE, None)
-    return {
+    block = {
         "requested_budget": requested_budget,
         "candidate_budget": _row_int(row, "mtp2_candidate_budget"),
         "prompt_streaming": bool(getattr(row, "mtp2_prompt_streaming", False)),
@@ -232,6 +440,11 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         },
         "k0_catchups": _row_int(row, "mtp2_k0_catchups"),
     }
+    if output_span_recording_enabled():
+        # Diagnostic only: the span list is added, never substituted for the
+        # counters above, so a response read without it is unchanged.
+        block["output_spans"] = _row_spans(row)
+    return block
 
 
 def accounting_timing_fields(accounting: Mapping[str, Any] | None) -> dict[str, float]:

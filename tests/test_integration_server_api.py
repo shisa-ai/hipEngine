@@ -8226,10 +8226,16 @@ def test_explicit_mtp_streaming_done_reports_output_accounting(endpoint: str) ->
         "ar_output_tokens": 3,
         "ar_output_tokens_in_cycles": 0,
         "mtp_coverage": 0.75,
+        # Three committed depth-3 cycles emit three verified tokens plus six
+        # accepted drafts, which is exactly the reported speculative output.
+        "mtp_output_tokens_explained_by_cycles": 9,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 3,
         "reconciled": True,
+        "reconciled_reasons": [],
     }
     assert summary["selected_depth_histogram"] == {"3": 3}
-    assert summary["fallback_reason_counts"] == {}
+    assert summary["fallback_event_counts"] == {}
     assert summary["first_fallback_position"] is None
     # The same stream also reports draft acceptance through OpenAI usage.
     usage_event = next(item for item in payloads if item.get("usage"))
@@ -8469,10 +8475,14 @@ def test_mtp_summary_reports_full_speculative_output_coverage() -> None:
         "ar_output_tokens": 1,
         "ar_output_tokens_in_cycles": 0,
         "mtp_coverage": 23 / 24,
+        "mtp_output_tokens_explained_by_cycles": 23,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 8,
         "reconciled": True,
+        "reconciled_reasons": [],
     }
     assert summary["selected_depth_histogram"] == {"3": 8}
-    assert summary["fallback_reason_counts"] == {}
+    assert summary["fallback_event_counts"] == {}
     assert "fallback_reason" not in summary
     # No mid-generation fallback: speculation covered everything after the root.
     assert summary["first_fallback_position"] is None
@@ -8483,8 +8493,11 @@ def test_mtp_summary_reports_mixed_speculation_with_the_fallback_position() -> N
         generated_tokens=24,
         accounting=_full_coverage_accounting(
             cycles=3,
-            generated_draft_tokens=6,
-            accepted_draft_tokens=3,
+            generated_draft_tokens=8,
+            # Two committed depth-3 cycles emit one verified token each plus
+            # four accepted drafts in total, which is the six speculative
+            # output tokens this summary reports.
+            accepted_draft_tokens=4,
             selected_depth_histogram={"0": 1, "3": 2},
             mtp_output_tokens=6,
             ar_output_tokens_in_cycles=1,
@@ -8499,9 +8512,12 @@ def test_mtp_summary_reports_mixed_speculation_with_the_fallback_position() -> N
     assert summary["mtp_output_tokens"] == 6
     assert summary["ar_output_tokens"] == 18
     assert summary["output_accounting"]["mtp_coverage"] == 0.25
+    assert summary["output_accounting"]["mtp_output_tokens_explained_by_cycles"] == 6
+    assert summary["output_accounting"]["unexplained_mtp_output_tokens"] == 0
     assert summary["output_accounting"]["reconciled"] is True
+    assert summary["output_accounting"]["reconciled_reasons"] == []
     assert summary["selected_depth_histogram"] == {"0": 1, "3": 2}
-    assert summary["fallback_reason_counts"] == {
+    assert summary["fallback_event_counts"] == {
         "target_graph_context_bucket_miss": 16
     }
     assert summary["fallback_reason"] == "target_graph_context_bucket_miss"
@@ -8534,7 +8550,7 @@ def test_mtp_summary_surfaces_the_prompt_fallback_reason() -> None:
     # The compatibility field is preserved and the specific reason is added.
     assert summary["decision_reason"] == "backend_k0_fallback"
     assert summary["fallback_reason"] == "target_context_k0"
-    assert summary["fallback_reason_counts"] == {
+    assert summary["fallback_event_counts"] == {
         "no_provider": 23,
         "target_context_k0": 1,
     }
@@ -8595,7 +8611,17 @@ def test_mtp_summary_reconciles_a_short_output_tail() -> None:
         "ar_output_tokens": 1,
         "ar_output_tokens_in_cycles": 0,
         "mtp_coverage": 0.75,
+        # The truncated tail emits fewer tokens than the cycles could explain,
+        # so the committed cycles bound the speculative output rather than
+        # matching it exactly.
+        "mtp_output_tokens_explained_by_cycles": 5,
+        # Negative: the committed cycles could have explained two more tokens
+        # than the truncated tail emitted. Only a positive value is
+        # over-attribution.
+        "unexplained_mtp_output_tokens": -2,
+        "speculative_cycles": 2,
         "reconciled": True,
+        "reconciled_reasons": [],
     }
 
 
@@ -23677,3 +23703,236 @@ def test_string_value_counts_escapes_label_values_that_would_break_the_format() 
     assert "\\n" in samples[0]
     assert '\\"' in samples[0]
     assert "\n" not in samples[0]
+
+
+def test_mtp_summary_refuses_a_split_that_only_reconciles_arithmetically() -> None:
+    """Arithmetic consistency is not attribution.
+
+    ``ar_output_tokens`` is defined as ``completion - mtp``, so a response
+    reporting five completion tokens, three speculative ones and ninety-nine
+    in-cycle autoregressive ones satisfies ``mtp + ar == completion``. It is
+    still impossible: the request emitted five tokens, so ninety-nine of them
+    cannot have come from inside its cycles.
+    """
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=5,
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=2,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=3,
+            ar_output_tokens_in_cycles=99,
+            ar_step_reason_counts={"no_provider": 99},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    # The arithmetic still holds, which is exactly why it proves nothing.
+    assert accounting["mtp_output_tokens"] + accounting["ar_output_tokens"] == 5
+    assert accounting["reconciled"] is False
+    assert accounting["reconciled_reasons"] == [
+        "in_cycle_ar_output_exceeds_ar_output"
+    ]
+
+
+def test_mtp_summary_refuses_speculative_output_its_cycles_cannot_explain() -> None:
+    """Over-attribution: more speculative output than the cycles emitted."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=9,
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=1,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=7,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    assert accounting["mtp_output_tokens_explained_by_cycles"] == 2
+    assert accounting["unexplained_mtp_output_tokens"] == 5
+    assert accounting["reconciled"] is False
+    assert accounting["reconciled_reasons"] == [
+        "mtp_output_exceeds_committed_cycles"
+    ]
+
+
+def test_mtp_summary_refuses_speculative_output_without_committed_cycles() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=6,
+        accounting=_full_coverage_accounting(
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=6,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["output_accounting"]["reconciled"] is False
+    # No cycle ran at all, so it also cannot explain any speculative output.
+    assert summary["output_accounting"]["reconciled_reasons"] == [
+        "mtp_output_without_committed_cycles",
+        "mtp_output_exceeds_committed_cycles",
+    ]
+
+
+def test_mtp_summary_proves_attribution_with_committed_output_spans(
+    monkeypatch,
+) -> None:
+    """Diagnostic spans must tile the emitted output and match both counters."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+    detail = _mtp_accounting_detail(
+        generated_tokens=7,
+        accounting=_full_coverage_accounting(
+            cycles=3,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"3": 2, "0": 1},
+            mtp_output_tokens=5,
+            ar_output_tokens_in_cycles=1,
+            output_spans=[
+                {"mode": "mtp", "reason": "speculative_qualified", "position": 1, "tokens": 3},
+                {"mode": "mtp", "reason": "speculative_qualified", "position": 4, "tokens": 2},
+                {"mode": "ar", "reason": "target_graph_context_bucket_miss", "position": 6, "tokens": 1},
+            ],
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    assert accounting["reconciled"] is True
+    assert accounting["reconciled_reasons"] == []
+    spans = accounting["span_accounting"]
+    assert spans == {
+        "spans": 3,
+        "tokens": 6,
+        "mtp_tokens": 5,
+        "ar_tokens": 1,
+        "ar_tokens_by_reason": {"target_graph_context_bucket_miss": 1},
+        "unspanned_tokens": 1,
+        "expected_unspanned_ar_tokens": 1,
+        "first_position": 1,
+        "last_end": 7,
+        "contiguous": True,
+        "mtp_tokens_match": True,
+        "ar_in_cycle_tokens_match": True,
+        "unspanned_tokens_match": True,
+        "reconciled": True,
+        "reconciled_reasons": [],
+    }
+
+
+def test_mtp_summary_refuses_spans_that_do_not_tile_the_output(monkeypatch) -> None:
+    """A gap, an overlap, or a short span list is a failed attribution proof."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+
+    def _summary(spans: list[dict[str, Any]]) -> dict[str, Any]:
+        detail = _mtp_accounting_detail(
+            generated_tokens=7,
+            accounting=_full_coverage_accounting(
+                cycles=3,
+                generated_draft_tokens=6,
+                accepted_draft_tokens=3,
+                selected_depth_histogram={"3": 2, "0": 1},
+                mtp_output_tokens=5,
+                ar_output_tokens_in_cycles=1,
+                output_spans=spans,
+            ),
+        )
+        return _mtp_response_summary("speculative_mtp", [detail])[
+            "output_accounting"
+        ]
+
+    # A gap between the second and third span leaves position 6 unaccounted.
+    gap = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 3},
+            {"mode": "mtp", "reason": "r", "position": 4, "tokens": 2},
+            {"mode": "ar", "reason": "r", "position": 7, "tokens": 1},
+        ]
+    )
+    assert gap["reconciled"] is False
+    # The spans cover every token the split accounts for, so the only failure is
+    # the gap itself.
+    assert gap["reconciled_reasons"] == ["span:spans_not_contiguous"]
+
+    # Spans that stop short: the remainder must be the autoregressive output
+    # emitted outside the plan, and here it is not.
+    short = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 3},
+            {"mode": "mtp", "reason": "r", "position": 4, "tokens": 2},
+        ]
+    )
+    assert short["reconciled"] is False
+    assert short["reconciled_reasons"] == [
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+    # Spans that exceed the emitted output entirely.
+    over = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 6},
+            {"mode": "ar", "reason": "r", "position": 7, "tokens": 2},
+        ]
+    )
+    assert over["reconciled"] is False
+    assert over["reconciled_reasons"] == [
+        "span:spans_exceed_the_completion_count",
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+    # A span list whose modes disagree with the reported split.
+    mismatched = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 4},
+            {"mode": "ar", "reason": "r", "position": 5, "tokens": 2},
+        ]
+    )
+    assert mismatched["reconciled"] is False
+    assert mismatched["reconciled_reasons"] == [
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+    ]
+
+    # Recording enabled but nothing committed: the proof cannot be made, and
+    # neither counter can be matched by an empty span list.
+    empty = _summary([])
+    assert empty["reconciled"] is False
+    assert empty["reconciled_reasons"] == [
+        "span:no_committed_spans",
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+
+def test_mtp_summary_omits_spans_unless_diagnostic_recording_is_on(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_MTP2_OUTPUT_SPANS", raising=False)
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert "span_accounting" not in summary["output_accounting"]
+    assert summary["output_accounting"]["reconciled"] is True

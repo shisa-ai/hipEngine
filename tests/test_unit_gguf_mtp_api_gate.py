@@ -3,8 +3,17 @@ from __future__ import annotations
 from scripts.gguf_mtp_api_gate import _mtp_contract, sse_payloads
 
 
-def _mtp_body(*, mtp_output_tokens: int = 2, ar_output_tokens: int = 1) -> dict:
+def _mtp_body(
+    *,
+    mtp_output_tokens: int = 2,
+    ar_output_tokens: int = 1,
+    draft_cycles: int = 1,
+    accepted_draft_tokens: int = 1,
+    selected_depth_histogram: dict | None = None,
+) -> dict:
     completion_tokens = mtp_output_tokens + ar_output_tokens
+    if selected_depth_histogram is None:
+        selected_depth_histogram = {"3": draft_cycles}
     return {
         "usage": {
             "completion_tokens": completion_tokens,
@@ -20,12 +29,16 @@ def _mtp_body(*, mtp_output_tokens: int = 2, ar_output_tokens: int = 1) -> dict:
                 "thinking_policy": "hint",
                 "mtp_output_tokens": mtp_output_tokens,
                 "ar_output_tokens": ar_output_tokens,
+                "draft_cycles": draft_cycles,
+                "accepted_draft_tokens": accepted_draft_tokens,
+                "selected_depth_histogram": selected_depth_histogram,
                 "output_accounting": {
                     "completion_tokens": completion_tokens,
                     "mtp_output_tokens": mtp_output_tokens,
                     "ar_output_tokens": ar_output_tokens,
                     "ar_output_tokens_in_cycles": ar_output_tokens,
                     "reconciled": True,
+                    "reconciled_reasons": [],
                 },
             }
         },
@@ -102,3 +115,133 @@ def test_mtp_contract_rejects_more_plan_attributed_steps_than_ar_output() -> Non
         "ar_output_tokens_in_cycles"
     ] = 1
     assert _mtp_contract(partial, used=True) is True
+
+
+def test_mtp_contract_requires_attribution_not_just_arithmetic() -> None:
+    """A split that only satisfies the subtraction must fail the gate.
+
+    ``ar_output_tokens`` is defined as ``completion - mtp``, so a response
+    reporting five completion tokens, three speculative ones and ninety-nine
+    in-cycle autoregressive ones still adds up. It is not attributable, and the
+    gate must say so.
+    """
+
+    body = _mtp_body(
+        mtp_output_tokens=3,
+        ar_output_tokens=2,
+        draft_cycles=1,
+        accepted_draft_tokens=2,
+        selected_depth_histogram={"3": 1},
+    )
+    assert _mtp_contract(body, used=True) is True
+
+    arithmetic_only = _mtp_body(
+        mtp_output_tokens=3,
+        ar_output_tokens=2,
+        draft_cycles=1,
+        accepted_draft_tokens=2,
+        selected_depth_histogram={"3": 1},
+    )
+    accounting = arithmetic_only["hipengine"]["speculative_mtp"]["output_accounting"]
+    accounting["ar_output_tokens_in_cycles"] = 99
+    assert _mtp_contract(arithmetic_only, used=True) is False
+
+    # More speculative output than the committed cycles emitted.
+    over_attributed = _mtp_body(
+        mtp_output_tokens=3,
+        ar_output_tokens=2,
+        draft_cycles=1,
+        accepted_draft_tokens=1,
+        selected_depth_histogram={"0": 1},
+    )
+    assert _mtp_contract(over_attributed, used=True) is False
+
+    # The same split is fine when a committed depth-3 cycle explains it.
+    explained = _mtp_body(
+        mtp_output_tokens=3,
+        ar_output_tokens=2,
+        draft_cycles=1,
+        accepted_draft_tokens=2,
+        selected_depth_histogram={"3": 1},
+    )
+    assert _mtp_contract(explained, used=True) is True
+
+
+def test_mtp_contract_requires_the_committed_cycle_counts() -> None:
+    """Without the cycle records the split cannot be attributed at all."""
+
+    for key in ("draft_cycles", "accepted_draft_tokens", "selected_depth_histogram"):
+        body = _mtp_body()
+        del body["hipengine"]["speculative_mtp"][key]
+        assert _mtp_contract(body, used=True) is False, key
+
+    zero_cycles = _mtp_body(draft_cycles=0, selected_depth_histogram={})
+    assert _mtp_contract(zero_cycles, used=True) is False
+
+
+def test_mtp_contract_requires_a_clean_reconciliation_reason_list() -> None:
+    body = _mtp_body()
+    accounting = body["hipengine"]["speculative_mtp"]["output_accounting"]
+    accounting["reconciled_reasons"] = ["mtp_output_exceeds_committed_cycles"]
+    assert _mtp_contract(body, used=True) is False
+
+    missing = _mtp_body()
+    del missing["hipengine"]["speculative_mtp"]["output_accounting"][
+        "reconciled_reasons"
+    ]
+    assert _mtp_contract(missing, used=True) is False
+
+
+def test_mtp_contract_checks_diagnostic_spans_when_they_are_present() -> None:
+    body = _mtp_body()
+    accounting = body["hipengine"]["speculative_mtp"]["output_accounting"]
+    accounting["span_accounting"] = {
+        "unspanned_tokens": 0,
+        "mtp_tokens_match": True,
+        "ar_in_cycle_tokens_match": True,
+        "unspanned_tokens_match": True,
+        "reconciled_reasons": [],
+    }
+    assert _mtp_contract(body, used=True) is True
+
+    for field in (
+        "mtp_tokens_match",
+        "ar_in_cycle_tokens_match",
+        "unspanned_tokens_match",
+    ):
+        broken = _mtp_body()
+        broken_accounting = broken["hipengine"]["speculative_mtp"]["output_accounting"]
+        broken_accounting["span_accounting"] = {
+            "unspanned_tokens": 0,
+            "mtp_tokens_match": True,
+            "ar_in_cycle_tokens_match": True,
+            "unspanned_tokens_match": True,
+            "reconciled_reasons": [],
+        }
+        broken_accounting["span_accounting"][field] = False
+        assert _mtp_contract(broken, used=True) is False, field
+
+    # More spanned tokens than the request emitted cannot be right either.
+    negative = _mtp_body()
+    negative["hipengine"]["speculative_mtp"]["output_accounting"][
+        "span_accounting"
+    ] = {
+        "unspanned_tokens": -1,
+        "mtp_tokens_match": True,
+        "ar_in_cycle_tokens_match": True,
+        "unspanned_tokens_match": True,
+        "reconciled_reasons": [],
+    }
+    assert _mtp_contract(negative, used=True) is False
+
+    with_reasons = _mtp_body()
+    with_reasons["hipengine"]["speculative_mtp"]["output_accounting"][
+        "span_accounting"
+    ] = {
+        "unspanned_tokens": 0,
+        "mtp_tokens_match": True,
+        "ar_in_cycle_tokens_match": True,
+        "unspanned_tokens_match": True,
+        "reconciled_reasons": ["spans_not_contiguous"],
+    }
+    assert _mtp_contract(with_reasons, used=True) is False

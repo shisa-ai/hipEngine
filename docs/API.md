@@ -622,10 +622,15 @@ responses:
       "ar_output_tokens": 5,
       "ar_output_tokens_in_cycles": 0,
       "mtp_coverage": 0.8,
-      "reconciled": true
+      "mtp_output_tokens_explained_by_cycles": 20,
+      "unexplained_mtp_output_tokens": 0,
+      "speculative_cycles": 4,
+      "reconciled": true,
+      "reconciled_reasons": []
     },
     "selected_depth_histogram": {"0": 1, "3": 4},
-    "fallback_reason_counts": {"target_graph_context_bucket_miss": 4},
+    "fallback_event_counts": {"target_graph_context_bucket_miss": 4},
+    "fallback_event_total": 4,
     "fallback_reason": "target_graph_context_bucket_miss",
     "first_fallback_position": 21
   }
@@ -637,19 +642,41 @@ that every token came from a speculative cycle. `mtp_output_tokens` counts the
 visible tokens emitted by accepted speculative cycles and `ar_output_tokens`
 counts every other emitted token (including the target-prefill root token),
 with `ar_output_tokens = completion_tokens - mtp_output_tokens` always holding.
-`output_accounting.reconciled` is `false` only if a backend reported more
-speculative output than the request completed, which is a backend bug worth
-alerting on. `selected_depth_histogram` keys the number of admitted candidates
-per cycle, so a `"0"` bucket records a cycle that ran autoregressively inside an
-otherwise speculative request. `output_accounting.ar_output_tokens_in_cycles`
-counts the autoregressive tokens emitted while the request was still owned by
-the speculative plan (each one also appears in `fallback_reason_counts` under
-the planner reason that selected it); the rest of `ar_output_tokens` was emitted
-after the request left the plan. `fallback_reason_counts` counts the
-non-speculative steps by planner reason and `fallback_reason` names the most
-frequent one. `first_fallback_position` is `null` when speculation covered every
-token after the prompt root, `0` when it covered none, and the emitted-token
-index of the first non-speculative token after speculative output otherwise.
+Because that identity holds by construction, `output_accounting.reconciled` is
+decided by independent checks rather than by it: `mtp_output_tokens` may not
+exceed `mtp_output_tokens_explained_by_cycles` (one verified token per committed
+speculative cycle plus its accepted drafts, which
+`unexplained_mtp_output_tokens` reports as a signed shortfall or excess),
+speculative output requires committed cycles, and `ar_output_tokens_in_cycles`
+may not exceed `ar_output_tokens`. `reconciled_reasons` names every failed check
+and is empty when the split is attributable. A response that reports five
+completion tokens, three speculative ones and ninety-nine in-cycle
+autoregressive ones satisfies the arithmetic and fails here.
+`selected_depth_histogram` keys the number of admitted candidates per cycle, so
+a `"0"` bucket records a cycle that ran autoregressively inside an otherwise
+speculative request. `output_accounting.ar_output_tokens_in_cycles` counts the
+autoregressive tokens emitted while the request was still owned by the
+speculative plan; the rest of `ar_output_tokens` was emitted after the request
+left the plan. `fallback_event_counts` counts non-speculative **steps and
+refusals** by planner reason (with `fallback_event_total` their sum) and
+`fallback_reason` names the most frequent one; these are event counts, not token
+counts, and are never comparable to `ar_output_tokens`. Per-reason *token*
+attribution comes from `output_accounting.span_accounting.ar_tokens_by_reason`,
+which is present only when the server runs with `HIPENGINE_MTP2_OUTPUT_SPANS=1`.
+`first_fallback_position` is `null` when speculation covered every token after
+the prompt root, `0` when it covered none, and the emitted-token index of the
+first non-speculative token after speculative output otherwise.
+
+With `HIPENGINE_MTP2_OUTPUT_SPANS=1` the backend also records one committed
+output span per non-speculative step and per speculative cycle — execution mode,
+the planner reason it ran under, the emitted-token position it starts at, and
+its token count — and reports them as `output_accounting.span_accounting`:
+`tokens`, `mtp_tokens`, `ar_tokens`, `ar_tokens_by_reason`, `contiguous`,
+`covers_completion`, and the two match flags. Those spans must tile the emitted
+output (allowing the prompt root token to precede the first span) and agree with
+both counters, so a failure means the split cannot be traced back to what the
+backend committed. The switch is off by default because the span list grows with
+the cycle count.
 
 `hipengine.generation_shape.route` records the selected scheduling route;
 `effective_route` and `used` are derived from ownership-bearing backend
