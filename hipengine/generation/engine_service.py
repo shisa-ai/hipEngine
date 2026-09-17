@@ -6,6 +6,7 @@ import queue
 import threading
 from collections import Counter
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Sequence
 
@@ -208,6 +209,7 @@ class EngineService:
         self._last_speculative_route: str | None = None
         self._closing = False
         self._closed = False
+        self._unhealthy: dict[str, Any] | None = None
         self._driver_thread_id: int | None = None
         self._driver_ready = threading.Event()
         self._thread = threading.Thread(
@@ -232,6 +234,76 @@ class EngineService:
     @property
     def closed(self) -> bool:
         return self._closed
+
+    def health(self) -> dict[str, Any]:
+        """Report whether the shared driver is still able to serve requests.
+
+        ``status`` is ``"ok"`` while the driver runs, ``"unhealthy"`` when a
+        fatal execution failure closed it, and ``"closed"`` after a clean
+        shutdown.  An unhealthy report names the failing phase and the deepest
+        frame, so a readiness probe or an operator can act without reading a
+        traceback.
+        """
+
+        if self._unhealthy is not None:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "unhealthy",
+                "serving": False,
+                "unhealthy": dict(self._unhealthy),
+            }
+        if self._closed or self._closing:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "closed",
+                "serving": False,
+                "unhealthy": None,
+            }
+        return {
+            "object": "hipengine.engine_service.health",
+            "status": "ok",
+            "serving": True,
+            "unhealthy": None,
+        }
+
+    def _record_unhealthy(self, error: BaseException) -> None:
+        """Remember why a fatal driver failure closed the service."""
+
+        if self._unhealthy is not None:
+            return
+        location: str | None = None
+        cause: BaseException | None = error
+        seen: set[int] = set()
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            frames = traceback.extract_tb(cause.__traceback__)
+            if frames:
+                last = frames[-1]
+                location = f"{last.filename}:{last.lineno} in {last.name}"
+            cause = cause.__cause__
+        phase = getattr(error, "phase", None)
+        request_ids = getattr(error, "request_ids", None)
+        self._unhealthy = {
+            "exception_type": type(error).__name__,
+            "message": str(error),
+            "location": location,
+            "phase": None if phase is None else str(phase),
+            "request_ids": None if request_ids is None else [int(v) for v in request_ids],
+        }
+
+    def _closed_service_error(self) -> RuntimeError:
+        """Name the reason a closed service cannot accept work."""
+
+        message = "engine service is closed"
+        unhealthy = self._unhealthy
+        if unhealthy is not None:
+            message += (
+                f" after a fatal execution failure "
+                f"({unhealthy['exception_type']}: {unhealthy['message']})"
+            )
+            if unhealthy.get("location"):
+                message += f" at {unhealthy['location']}"
+        return RuntimeError(message)
 
     @property
     def supports_controlled_streaming(self) -> bool:
@@ -642,7 +714,7 @@ class EngineService:
     def _enqueue(self, command: _ServiceCommand) -> None:
         with self._lifecycle_lock:
             if self._closing or self._closed:
-                raise RuntimeError("engine service is closed")
+                raise self._closed_service_error()
             self._put_command(command)
 
     def _put_command(self, command: _ServiceCommand) -> None:
@@ -712,6 +784,7 @@ class EngineService:
             if os.environ.get("HIPENGINE_ENGINE_SERVICE_TRACEBACK"):
                 print("=== engine service driver exception ===", file=sys.stderr, flush=True)
                 traceback.print_exc()
+            self._record_unhealthy(exc)
             self._fail_all(exc)
             if shutdown_response is not None:
                 shutdown_response.finish(error=exc)
@@ -878,16 +951,12 @@ class EngineService:
 
     def _route_events(self, events: Sequence[EngineLoopEvent]) -> None:
         for event in events:
-            if event.kind == "rejected" and event.request_id is not None:
+            if event.kind in {"rejected", "failed"} and event.request_id is not None:
                 state = self._states_by_backend_id.get(int(event.request_id))
                 if state is not None and not state.terminal:
                     error = event.error
                     if error is None:
-                        error = GenerationAdmissionRejected(
-                            "resident admission was rejected",
-                            resource="resident_admission",
-                            request_id=int(event.request_id),
-                        )
+                        error = self._default_event_error(event)
                     self._publish_terminal(
                         state,
                         generation_output=None,
@@ -947,6 +1016,21 @@ class EngineService:
                     self._cancel_state(state, reason="client_backpressure")
                     break
             self._notify_output()
+
+    def _default_event_error(self, event: EngineLoopEvent) -> BaseException:
+        """Name one terminal event that arrived without its own error object."""
+
+        request_id = None if event.request_id is None else int(event.request_id)
+        if event.kind == "rejected":
+            return GenerationAdmissionRejected(
+                "resident admission was rejected",
+                resource="resident_admission",
+                request_id=request_id,
+            )
+        return RuntimeError(
+            "engine execution failed without a reported failure "
+            f"(request_id={request_id})"
+        )
 
     def _finish_ready_children(self) -> None:
         for state in tuple(self._states_by_service_id.values()):

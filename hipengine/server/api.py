@@ -53,6 +53,7 @@ from hipengine.generation import (
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
+    GenerationExecutionFailed,
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
@@ -719,6 +720,18 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "emitted": True,
         "description": "The server admission queue or chat-session cap is full.",
+    },
+    "execution_failed": {
+        "status_code": 500,
+        "retryable": True,
+        "emitted": True,
+        "description": (
+            "The request's own execution step failed before its result could be "
+            "applied. The engine kept serving other requests; retrying the "
+            "request is safe. error.hipengine.execution names the phase, the "
+            "affected rows, and whether the failed step may have mutated device "
+            "state."
+        ),
     },
     "model_unavailable": {
         "status_code": 404,
@@ -3832,6 +3845,10 @@ async def _finish_stream_queued_generation(
     item.finished = True
     if item.cancelled:
         return
+    if isinstance(exception, GenerationExecutionFailed):
+        # Same request-scoped reporting as the blocking path: the engine kept
+        # serving, so a stream consumer gets the stable retryable code.
+        exception = _execution_failed_error(exception)
     if exception is not None:
         await queue.put(exception)
     await queue.put(_STREAM_DONE)
@@ -3847,6 +3864,12 @@ def _finish_queued_generation(
     if item.finished:
         return
     item.finished = True
+    if isinstance(exception, GenerationExecutionFailed):
+        # One request's contained step failure is that request's failure: the
+        # shared engine kept serving, so every consumer (blocking submit and
+        # streaming) reports a retryable, request-scoped error instead of a bare
+        # server fault.
+        exception = _execution_failed_error(exception)
     if item.future is not None and not item.future.done():
         if exception is not None:
             item.future.set_exception(exception)
@@ -5655,6 +5678,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:
             raise _request_cancelled_error(exc.finish_details) from exc
+        except GenerationExecutionFailed as exc:
+            raise _execution_failed_error(exc) from exc
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
@@ -6184,6 +6209,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
         pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
         prefix_cache = _prefix_cache_metric_values(live_snapshot)
+        service_health = _engine_service_health(engine)
         diagnostics: list[str] = []
         if not readiness.ready:
             diagnostics.append("server startup is not ready; check startup.error and server logs")
@@ -6191,11 +6217,34 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 diagnostics.append(
                     f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
                 )
+        runtime_status = readiness.status
+        runtime_ready = bool(readiness.ready)
+        if service_health is not None and not bool(service_health.get("serving", True)):
+            unhealthy = service_health.get("unhealthy")
+            if unhealthy:
+                runtime_status = "unhealthy"
+                diagnostics.append(
+                    "resident engine service stopped serving after a fatal execution "
+                    f"failure ({unhealthy.get('exception_type')}: {unhealthy.get('message')})"
+                    + (
+                        f" at {unhealthy.get('location')}"
+                        if unhealthy.get("location")
+                        else ""
+                    )
+                    + "; restart the server to restore serving"
+                )
+            else:
+                runtime_status = "closed"
+                diagnostics.append(
+                    "resident engine service is closed; restart the server to restore serving"
+                )
+            runtime_ready = False
         return {
             "object": "hipengine.readiness",
-            "status": readiness.status,
-            "ready": bool(readiness.ready),
+            "status": runtime_status,
+            "ready": runtime_ready,
             "diagnostics": diagnostics,
+            "engine_service": dict(service_health) if service_health is not None else None,
             "model": {
                 **model_identity,
                 "loaded": bool(readiness.model_loaded),
@@ -8915,6 +8964,19 @@ def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
     if engine is None:
         return None
     getter = getattr(engine, "live_loop_snapshot", None)
+    if not callable(getter):
+        return None
+    try:
+        payload = getter()
+    except Exception:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _engine_service_health(engine: Any | None) -> Mapping[str, Any] | None:
+    if engine is None:
+        return None
+    getter = getattr(engine, "engine_service_health", None)
     if not callable(getter):
         return None
     try:
@@ -11915,6 +11977,24 @@ def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] |
         code="deadline_exceeded",
         param="timeout_ms",
         finish_details=details,
+    )
+
+
+def _execution_failed_error(exc: GenerationExecutionFailed) -> OpenAIHTTPError:
+    """Report one contained execution failure without blaming the whole server.
+
+    The engine service contains a request's own pre-device step failure and keeps
+    serving, so this is a request-scoped failure the client can retry. A fatal
+    failure never reaches a client this way: it closes the service and every
+    request on it reports that separately.
+    """
+
+    return OpenAIHTTPError(
+        500,
+        str(exc),
+        error_type="server_error",
+        code="execution_failed",
+        extra={"hipengine": {"execution": exc.to_json_dict()}},
     )
 
 

@@ -25,6 +25,7 @@ from hipengine.generation import (
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
+    GenerationExecutionFailed,
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
@@ -884,6 +885,30 @@ class AdmissionRejectedFakeLLM(FakeLLM):
     def stream(self, prompt: str, sampling_params: SamplingParams):
         self.stream_calls.append((str(prompt), sampling_params))
         self._reject((prompt,), sampling_params)
+        yield  # pragma: no cover - keeps this method a generator
+
+
+class BackendExecutionFailedFakeLLM(FakeLLM):
+    """A contained execution failure: this request died, the engine did not."""
+
+    def _fail(self, prompts, sampling_params: SamplingParams) -> None:
+        self.calls.append((tuple(prompts), sampling_params))
+        raise GenerationExecutionFailed(
+            phase="decode",
+            request_ids=(7,),
+            work_kind="decode_batch",
+            mutation="none",
+            reason="sampler row 1 exceeds the packed capacity of 0",
+            error=ValueError("capacity"),
+        )
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        self._fail(prompts, sampling_params)
+        raise AssertionError("unreachable")
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self._fail((prompt,), sampling_params)
         yield  # pragma: no cover - keeps this method a generator
 
 
@@ -4982,6 +5007,45 @@ def test_ready_reports_lazy_server_ready_without_loaded_model() -> None:
     assert body["startup"]["last_timings_s"]["startup_total_s"] >= 0.0
     assert body["model"]["loaded"] is False
     assert body["model"]["loaded_model_count"] == 0
+
+
+def test_ready_reports_runtime_engine_service_failure_as_unhealthy() -> None:
+    """A fatal resident-execution failure must be visible to a readiness probe."""
+
+    class UnhealthyLLM(FakeLLM):
+        def engine_service_health(self) -> dict[str, Any]:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "unhealthy",
+                "serving": False,
+                "unhealthy": {
+                    "exception_type": "RuntimeError",
+                    "message": "packed sampler row 1 exceeds capacity 0",
+                    "location": "runner.py:29767 in sample_native_from_packed_logits",
+                    "phase": "decode",
+                    "request_ids": [3],
+                },
+            }
+
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False)
+    )
+    app.state.hipengine_llm = UnhealthyLLM()
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ready"] is False
+    assert body["status"] == "unhealthy"
+    assert body["engine_service"]["status"] == "unhealthy"
+    diagnostic = " ".join(body["diagnostics"])
+    assert "fatal execution failure" in diagnostic
+    assert "packed sampler row 1 exceeds capacity 0" in diagnostic
+    assert "runner.py:29767" in diagnostic
+    # The client is never told to shrink its memory budget for a runtime fault.
+    assert "--max-context-tokens" not in diagnostic
 
 
 def test_chat_default_max_tokens_is_dynamic_when_omitted() -> None:
@@ -12863,6 +12927,67 @@ def test_kv_admission_rejection_maps_to_retryable_completion_429() -> None:
         "current_units": 129,
         "capacity_units": 129,
     }
+
+
+def test_backend_execution_failed_maps_to_request_scoped_500() -> None:
+    """A contained failure is this request's failure, not the server's."""
+
+    fake = BackendExecutionFailedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "fail", "max_tokens": 4},
+    )
+
+    assert response.status_code == 500
+    error = response.json()["error"]
+    assert error["type"] == "server_error"
+    assert error["code"] == "execution_failed"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["execution"] == {
+        "phase": "decode",
+        "request_ids": [7],
+        "work_kind": "decode_batch",
+        "state_mutation": "none",
+        "cause_type": "ValueError",
+        "reason": "sampler row 1 exceeds the packed capacity of 0",
+    }
+    # The engine survived, so readiness must not report a dead service.
+    ready = client.get("/ready").json()
+    assert ready["engine_service"] is None
+    assert ready["status"] != "unhealthy"
+    assert not any("engine service" in item for item in ready["diagnostics"])
+
+
+def test_backend_execution_failed_streams_request_scoped_error_chunk() -> None:
+    fake = BackendExecutionFailedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "fail", "max_tokens": 4, "stream": True},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    payloads = [line[6:] for line in body.splitlines() if line.startswith("data: ")]
+    error_chunk = next(
+        json.loads(payload)
+        for payload in payloads
+        if payload != "[DONE]"
+        and json.loads(payload)["choices"][0]["finish_reason"] == "error"
+    )
+    error = error_chunk["error"]
+    assert error["code"] == "execution_failed"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["execution"]["phase"] == "decode"
+    assert error["hipengine"]["execution"]["request_ids"] == [7]
+    assert error["hipengine"]["execution"]["state_mutation"] == "none"
+    assert body.rstrip().endswith("data: [DONE]")
 
 
 def test_backend_cancelled_exception_maps_to_completion_499() -> None:
