@@ -278,8 +278,8 @@ For the MTP arm, change the serving flag and pin the qualified candidate depth:
   --speculative-candidate-budget 3 \
 ```
 
-`--max-context-tokens 16384` is deliberate. At `8192`, a prompt of ~3,500
-tokens failed with:
+`--max-context-tokens 16384` is deliberate. On the original 2026-09-16 run, at
+`8192`, a prompt of ~3,500 tokens failed with:
 
 ```text
 generation failed: packed workspace lease holds 32 pages but the workspace needs 36
