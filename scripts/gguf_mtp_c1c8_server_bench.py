@@ -413,7 +413,8 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     budget = int(kwargs.get("candidate_budget", 2))
     # The caller owns the diagnostic width. This supports the independently
     # qualified gfx1100/gfx1151 C8 protocols without turning the diagnostic
-    # resolver into production admission.
+    # resolver into production admission. Admission stays on the physical axes
+    # the engine's own resolver uses: width, depth, sampling mode, memory fit.
     max_realized_group_rows = max(
         1,
         int(kwargs.get("max_realized_group_rows", 8)),
@@ -422,14 +423,10 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
         1 <= rows <= max_realized_group_rows
         and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
-        and int(kwargs["context_tokens"]) <= 95
-        and int(kwargs["output_horizon_tokens"]) == 24
         and kwargs["memory_fit"]
     )
     key = {
         "realized_group_rows": rows,
-        "context_tokens": int(kwargs["context_tokens"]),
-        "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "candidate_budget": budget,
     }
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()
@@ -440,8 +437,6 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     static_key = {
         "candidate_budget": budget,
         "sampling_mode": str(kwargs["sampling_mode"]),
-        "context_tokens": int(kwargs["context_tokens"]),
-        "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "memory_fit": bool(kwargs["memory_fit"]),
         "max_realized_group_rows": max_realized_group_rows,
     }

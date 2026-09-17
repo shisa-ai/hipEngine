@@ -727,8 +727,20 @@ Automatic decisions add `route_decision` to the same object. It records
 `realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
 and the evidence artifact. The promoted exact scope reports
 `qualified_automatic_c1_b3` and selects `speculative_mtp`; unqualified scopes
-select `default` with a stable reason such as `context_bucket_not_qualified` or
-`sampling_mode_not_qualified`. Explicit MTP uses the same typed plan.
+select `default` with a stable reason such as `physical_group_not_qualified`,
+`resident_capacity_not_qualified`, or `sampling_mode_not_qualified`. Explicit
+MTP uses the same typed plan.
+
+Admission is a physical and ownership question: artifact content, backend,
+architecture, weight quant, KV storage and layout, realized group width,
+resident capacity, candidate depth, sampling mode, and memory fit. Prompt
+context, output horizon, session length, and the resolved execution-profile
+manifest are reported for provenance but do not gate serving, because they
+change with ordinary traffic and with any kernel or variant selection. When
+several evidence rows describe the same physical cell, the cell takes the
+strongest authorization: an automatic-eligible row wins over an explicit-only
+row. See
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped).
 
 ### Finish details
 

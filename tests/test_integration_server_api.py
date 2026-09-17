@@ -411,8 +411,6 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         admitted = bool(
             kwargs["realized_group_rows"] == 1
             and kwargs["sampling_mode"] == "greedy_fast"
-            and 1 <= kwargs["context_tokens"] <= 67
-            and kwargs["output_horizon_tokens"] == 25
             and kwargs["kv_storage"] in {"auto", "bf16"}
             and kwargs["memory_fit"]
         )
@@ -422,7 +420,7 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             else (
                 "sampling_mode_not_qualified"
                 if kwargs["sampling_mode"] != "greedy_fast"
-                else "context_bucket_not_qualified"
+                else "physical_group_not_qualified"
             )
         )
         return {
@@ -430,8 +428,6 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             "plan_fingerprint": "sha256:" + ("a" if admitted else "b") * 64,
             "key": {
                 "realized_group_rows": kwargs["realized_group_rows"],
-                "context_tokens": kwargs["context_tokens"],
-                "output_horizon_tokens": kwargs["output_horizon_tokens"],
             },
             "admitted": admitted,
             "selected_route": "speculative_mtp" if admitted else "default",
@@ -452,8 +448,6 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         return self._plan(
             realized_group_rows=1,
             sampling_mode="greedy_fast",
-            context_tokens=67,
-            output_horizon_tokens=25,
             kv_storage="bf16",
             memory_fit=True,
         )
@@ -480,8 +474,6 @@ class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
         admitted = bool(
             rows in {1, 2}
             and kwargs["sampling_mode"] == "greedy_fast"
-            and 1 <= kwargs["context_tokens"] <= 67
-            and kwargs["output_horizon_tokens"] == 25
             and kwargs["kv_storage"] in {"auto", "bf16"}
             and kwargs["memory_fit"]
         )
@@ -491,8 +483,6 @@ class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
             "plan_fingerprint": "sha256:" + ("e" if rows == 1 else "f") * 64,
             "key": {
                 "realized_group_rows": rows,
-                "context_tokens": kwargs["context_tokens"],
-                "output_horizon_tokens": kwargs["output_horizon_tokens"],
             },
             "admitted": admitted,
             "selected_route": "speculative_mtp" if admitted else "default",
@@ -5982,13 +5972,19 @@ def test_reresolved_width_deferred_plan_derives_static_intent() -> None:
     assert deferred["static_eligibility"]["eligible"] is True
 
 
-def test_explicit_c1_deferred_plan_drops_intent_outside_scope() -> None:
-    fake = C2OnlyArtifactScopedSpeculativeMTPFakeLLM()
+def test_explicit_c1_plan_drops_intent_when_rejection_is_not_a_width_miss() -> None:
+    """Only a physical width miss keeps typed intent for the resident owner.
+
+    A sampling-mode rejection is decided before mutation, so the request falls
+    out of the speculative route instead of being deferred.
+    """
+
+    fake = ArtifactScopedSpeculativeMTPFakeLLM()
     request = CompletionRequest(
         model="fake-model",
         prompt="one",
         max_tokens=25,
-        temperature=0.0,
+        temperature=0.4,
         speculative_mtp=True,
     )
     outside_route, outside_plan = _generation_route_for_request(
@@ -5999,13 +5995,13 @@ def test_explicit_c1_deferred_plan_drops_intent_outside_scope() -> None:
         ),
         request,
         engine=fake,
-        sampling=SamplingParams(max_tokens=25),
-        prompts=(" ".join(f"token{index}" for index in range(68)),),
+        sampling=SamplingParams(max_tokens=25, temperature=0.4),
+        prompts=("one",),
     )
     assert outside_route != _SPECULATIVE_MTP_BATCH_ROUTE
     assert outside_plan is not None
     assert outside_plan["admitted"] is False
-    assert outside_plan["reason"] == "scope_not_qualified"
+    assert outside_plan["reason"] == "sampling_mode_not_qualified"
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:
@@ -6038,8 +6034,6 @@ def test_generation_batcher_re_resolves_model_plan_at_realized_c2_before_mutatio
         c1_plan = fake.resolve_speculative_mtp_serving_plan(
             realized_group_rows=1,
             sampling_mode="greedy_fast",
-            context_tokens=1,
-            output_horizon_tokens=25,
             kv_storage="bf16",
             memory_fit=True,
         )
@@ -7034,6 +7028,9 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
         ),
         llm=fake,
     )
+    # A sampling-mode miss still fails closed before backend mutation. Shape
+    # (prompt context and output horizon) is deliberately not an admission
+    # axis, so a long prompt alone no longer selects K0.
     prompt = " ".join(f"token{index}" for index in range(68))
 
     response = TestClient(app).post(
@@ -7042,7 +7039,7 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
             "model": "fake-model",
             "prompt": prompt,
             "max_tokens": 25,
-            "temperature": 0.0,
+            "temperature": 0.4,
             "speculative_mtp": True,
         },
     )
@@ -7052,11 +7049,11 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
     shape = body["hipengine"]["generation_shape"]
     summary = body["hipengine"]["speculative_mtp"]
     assert shape["route"] == "default"
-    assert shape["route_decision"]["reason"] == "context_bucket_not_qualified"
+    assert shape["route_decision"]["reason"] == "sampling_mode_not_qualified"
     assert shape["route_decision"]["selected_candidate_count"] == 0
     assert summary["effective_route"] == "default"
     assert summary["used"] is False
-    assert summary["decision_reason"] == "context_bucket_not_qualified"
+    assert summary["decision_reason"] == "sampling_mode_not_qualified"
     assert fake.mtp_calls == []
     assert len(fake.calls) == 1
 
@@ -7102,7 +7099,9 @@ def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
     assert fingerprints[0] == fingerprints[1]
 
 
-def test_promoted_artifact_plan_routes_auto_only_inside_exact_scope() -> None:
+def test_promoted_artifact_plan_routes_auto_for_every_shape_in_the_cell() -> None:
+    """Shape is not an admission axis, so the promoted cell covers all shapes."""
+
     fake = PromotedArtifactScopedSpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -7163,8 +7162,8 @@ def test_promoted_artifact_plan_routes_auto_only_inside_exact_scope() -> None:
     assert capability["auto_route"]["policy_fingerprint"] == plan["plan_fingerprint"]
     assert auto["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert auto["hipengine"]["generation_shape"]["route_decision"]["policy_fingerprint"] == plan["plan_fingerprint"]
-    assert outside["hipengine"]["generation_shape"]["route"] == "default"
-    assert outside["hipengine"]["generation_shape"]["route_decision"]["reason"] == "context_bucket_not_qualified"
+    assert outside["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert outside["hipengine"]["generation_shape"]["route_decision"]["policy_fingerprint"] == plan["plan_fingerprint"]
     assert incompatible["hipengine"]["generation_shape"]["route"] == "default"
     assert incompatible["hipengine"]["generation_shape"]["route_decision"]["reason"] == "sampling_mode_not_qualified"
     assert disabled["hipengine"]["generation_shape"]["route"] == "default"

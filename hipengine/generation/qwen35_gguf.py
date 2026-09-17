@@ -2439,14 +2439,10 @@ class Qwen35GGUFBringupGenerator:
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
-        execution_profile_manifest_sha256: str,
         realized_group_rows: int,
         resident_capacity: int,
         candidate_budget: int,
         sampling_mode: str,
-        max_sequence_length: int,
-        context_tokens: int,
-        output_horizon_tokens: int,
         kv_storage: str,
         memory_fit: bool,
     ):
@@ -2492,21 +2488,12 @@ class Qwen35GGUFBringupGenerator:
             backend=str(self.backend),
             target_arch=str(self.target_arch),
             weight_quant=weight_quant,
-            execution_profile=str(
-                getattr(self, "execution_profile", None) or "legacy_exact"
-            ),
-            execution_profile_manifest_sha256=(
-                execution_profile_manifest_sha256
-            ),
             kv_storage=effective_kv,
             kv_layout="uniform",
             realized_group_rows=int(realized_group_rows),
             resident_capacity=int(resident_capacity),
             candidate_budget=int(candidate_budget),
             sampling_mode=str(sampling_mode),
-            max_sequence_length=int(max_sequence_length),
-            context_tokens=int(context_tokens),
-            output_horizon_tokens=int(output_horizon_tokens),
             memory_fit=bool(memory_fit),
         )
         resolver = getattr(
