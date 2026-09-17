@@ -41,13 +41,21 @@ def main() -> int:
     parser.add_argument("--repeats", type=int, default=50)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--json", default="")
+    parser.add_argument("--scaling", action="store_true",
+                        help="also fit the product loop's context scaling (loads the model)")
+    parser.add_argument("--case", default="mandarin-off-s1234")
+    parser.add_argument("--budgets", default="300,700,1100,1450",
+                        help="comma-separated token budgets for --scaling")
     args = parser.parse_args()
+    args.budgets = [int(v) for v in str(args.budgets).split(",") if v]
 
     from hipengine.generation.yue2 import (
         Sampling,
         YuE2Random,
         combine_cfg,
         distribution,
+        distribution_windowed,
+        phase_window,
         softmax_f32,
     )
     from hipengine.kernels.cpu_reference.yue2 import bf16_bits_to_f32, f32_to_bf16_bits
@@ -73,13 +81,18 @@ def main() -> int:
     conditional = bf16_bits_to_f32(bits0)
     unconditional = bf16_bits_to_f32(bits1)
     combined = combine_cfg(conditional, unconditional, 1.01)
-    scores = distribution(combined, sampling, history, args.history, "semantic", legacy_off=True)
+    window = phase_window("semantic")
+    low, high = window
+    scores = distribution(combined, sampling, history, args.history, "semantic")
+    windowed = distribution_windowed(
+        combined[low:high], sampling, history, args.history, "semantic", window
+    )
 
-    parts = {
+    full = {
         "bf16_bits_to_f32 (per branch)": timed(lambda: bf16_bits_to_f32(bits0), args.repeats),
         "combine_cfg": timed(lambda: combine_cfg(conditional, unconditional, 1.01), args.repeats),
         "distribution (penalty + top-k + top-p)": timed(
-            lambda: distribution(combined, sampling, history, args.history, "semantic", legacy_off=True),
+            lambda: distribution(combined, sampling, history, args.history, "semantic"),
             args.repeats,
         ),
         "softmax_f32": timed(lambda: softmax_f32(scores), args.repeats),
@@ -87,30 +100,61 @@ def main() -> int:
             lambda: generator.sample_categorical(softmax_f32(scores)), args.repeats
         ),
     }
-    parts["total"] = sum(parts.values())
+    full["total"] = sum(full.values())
+
+    # The product path converts the head row's window slice, combines CFG over the slice
+    # and samples in window coordinates, so this is the arm that describes it.
+    windowed_parts = {
+        "bf16_bits_to_f32 (per branch, window slice)": timed(
+            lambda: bf16_bits_to_f32(bits0[low:high]), args.repeats
+        ),
+        "combine_cfg (window slice)": timed(
+            lambda: combine_cfg(conditional[low:high], unconditional[low:high], 1.01),
+            args.repeats,
+        ),
+        "distribution_windowed (penalty + top-k + top-p)": timed(
+            lambda: distribution_windowed(
+                combined[low:high], sampling, history, args.history, "semantic", window
+            ),
+            args.repeats,
+        ),
+        "softmax_f32 (window slice)": timed(
+            lambda: softmax_f32(windowed.values), args.repeats
+        ),
+        "sample_categorical (window slice)": timed(
+            lambda: generator.sample_categorical(softmax_f32(windowed.values)), args.repeats
+        ),
+    }
+    windowed_parts["total"] = sum(windowed_parts.values())
 
     print(f"vocab {VOCAB}, history {args.history} tokens, "
-          f"median of {args.repeats} runs per call")
+          f"median of {args.repeats} runs per call, semantic window {window}")
     print()
-    print("| Call | ms per token |")
-    print("| --- | ---: |")
-    for name, value in parts.items():
-        print(f"| {name} | {value:.2f} |")
+    print("| Call | full row | window |")
+    print("| --- | ---: | ---: |")
+    for name, value in full.items():
+        match = next((v for k, v in windowed_parts.items() if k.split(" (")[0] == name.split(" (")[0]), None)
+        print(f"| {name} | {value:.3f} ms | "
+              f"{'%.3f ms' % match if match is not None else '-'} |")
     print()
-    print(f"measured model work per step (fixed-token harness): 58.30 ms")
-    print(f"product AR stage per token: 82.13 ms; "
-          f"host sampling here: {parts['total']:.2f} ms")
-    if args.json:
-        Path(args.json).write_text(json.dumps({
-            "protocol": "yue2-ar-sampling-cost-v1",
-            "vocab": VOCAB,
-            "history_tokens": args.history,
-            "repeats": args.repeats,
-            "ms_per_token": parts,
-            "note": "CPU only; medians of per-call wall clock on one host thread.",
-        }, indent=1))
-        print(f"wrote {args.json}")
-    return 0
+    print(f"host sampling per token: {full['total']:.2f} ms over the full row, "
+          f"{windowed_parts['total']:.2f} ms windowed")
+    report = {
+        "protocol": "yue2-ar-sampling-cost-v2",
+        "host": {"hostname": Path("/etc/hostname").read_text().strip(),
+                 "load_average": Path("/proc/loadavg").read_text().split()[:3]},
+        "vocab": VOCAB,
+        "history_tokens": args.history,
+        "repeats": args.repeats,
+        "window": list(window),
+        "ms_per_token_full_row": full,
+        "ms_per_token_windowed": windowed_parts,
+        "note": ("CPU only, single-threaded; medians of per-call wall clock. These are host "
+                 "numbers, so the load average above matters: a concurrent job inflates them. "
+                 "The windowed "
+                 "arm is what the product loop runs: it converts, combines and samples the "
+                 "head row's window slice."),
+    }
 
 
 if __name__ == "__main__":

@@ -1416,14 +1416,14 @@
    "gpu": "gfx1151"
   },
   "torch_imported": false,
-  "revision": "16a98bef6b7414614f66136873e229cf7ada6d00",
-  "solve_seconds": 26.128215646953322,
+  "revision": "99a115f75dd0ce0930f0001ae4eeb4bfa9a91933",
+  "solve_seconds": 27.399612479959615,
   "repeat_solve_seconds": [
-   25.869754557032138
+   27.352143426891416
   ],
-  "warm_solve_seconds": 25.869754557032138,
-  "noise_source": "/tmp/yue2_nar_ref2.json.noise.npy",
-  "ms_per_step": 816.5067389672913,
+  "warm_solve_seconds": 27.352143426891416,
+  "noise_source": "/tmp/def2_nar_ref.json.noise.npy",
+  "ms_per_step": 856.237889998738,
   "noise_digest": "7c3a6164aaa7bdd4",
   "latent_norm": 287.40009180042733
  },
@@ -2837,21 +2837,21 @@
   "latent_digest": "3d4fa7cb4875f860",
   "torch_version": "2.13.0+rocm10.0.0",
   "device": "AMD Radeon 8060S Graphics",
-  "solve_seconds": 20.457352894940414,
+  "solve_seconds": 22.49077757797204,
   "repeat_solve_seconds": [
-   20.12046312703751
+   21.807090561953373
   ],
-  "warm_solve_seconds": 20.12046312703751,
-  "ms_per_step": 639.2922779668879,
+  "warm_solve_seconds": 21.807090561953373,
+  "ms_per_step": 702.8367993116262,
   "noise_digest": "7c3a6164aaa7bdd4",
   "latent_norm": 287.1126707481134
  },
  "comparison": {
-  "hipengine_warm_solve_seconds": 25.869754557032138,
-  "reference_warm_solve_seconds": 20.12046312703751,
-  "reference_advantage": 1.285743493760282,
-  "hipengine_first_solve_seconds": 26.128215646953322,
-  "reference_first_solve_seconds": 20.457352894940414,
+  "hipengine_warm_solve_seconds": 27.352143426891416,
+  "reference_warm_solve_seconds": 21.807090561953373,
+  "reference_advantage": 1.2542775180936996,
+  "hipengine_first_solve_seconds": 27.399612479959615,
+  "reference_first_solve_seconds": 22.49077757797204,
   "noise_digests_match": true,
   "latent_norm": {
    "hipengine": 287.40009180042733,

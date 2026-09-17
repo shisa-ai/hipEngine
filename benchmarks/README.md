@@ -1579,52 +1579,84 @@ and prints each stage against the reference's own recorded timing for that reque
 
 | Stage | hipEngine | Reference | Ratio |
 | --- | ---: | ---: | ---: |
-| AR semantic decode | 82.1 ms per token | 31.3 ms per token | **2.63x slower** |
-| Acoustic solver, 32 steps | 21.2 ms per frame | 21.1 ms per frame | 1.01x slower |
-| FP32 Oobleck decode | 15.5 ms per frame | 53.3 ms per frame | **3.44x faster** |
+| AR semantic decode | 57.3 ms per token | 31.3 ms per token | **1.83x slower** |
+| Acoustic solver, 32 steps | 22.3 ms per frame | 21.1 ms per frame | 1.06x slower |
+| FP32 Oobleck decode | 16.3 ms per frame | 53.3 ms per frame | **3.27x faster** |
 
-The two sides produced different amounts of audio - our run generated 1 451 semantic
-tokens (58.04 s) where the reference's recorded run generated 1 297 (51.88 s), because
-each samples its own trajectory - so the wall clocks are not directly comparable:
-172.45 s against 137.80 s is a raw elapsed ratio of 1.25x, and the real-time factors
-(2.97 against 2.66) give 1.12x. Neither is a like-for-like claim, and a frame
-normalisation of one onto the other is not valid for attention-heavy work; the
-per-unit rows are the comparison, and the whole-path figure awaits a fixed-token run
-of both sides.
+Those are medians of three runs at current HEAD. The harness caps the semantic phase at
+the reference recording's own token count, so both sides now do the same work: 1 298
+frames against the reference's 1 297, and 51.92 s of audio against 51.88 s. The wall
+clocks are therefore comparable for the first time, and they say the product path is
+**ahead**:
 
-The AR row is the entire remaining gap, and the stage is 69% of our elapsed time. Two
-further measurements pin it down. First, a fixed-token comparison of the two AR decode
-paths, with both sides driving the same recorded trajectory for the same 1 296 steps
-over the same 98-token positive and 12-token negative prefixes and the same two CFG
-branches, timed alternately in one session (`scripts/yue2_ar_matched_timing.py`,
-`scripts/yue2_reference_ar_timing.py`): **58.30 ms per decode step against 30.87**, so
-the reference is **1.89x faster** on matched work, reproduced at 58.35 against 30.95.
-Sampling is excluded there by design, because the token is recorded. Second, the
-product loop's own context scaling, measured at four budgets: 67.62 ms per token at
-context 398, 72.57 at 798, 77.70 at 1 198 and 82.84 at 1 549, i.e. **13.17 us per
-context token plus a 62.20 ms intercept** (max residual 0.28 ms). The sampling path the
-harness excludes costs **7.61 ms per token** on its own (`scripts/yue2_ar_sampling_cost.py`,
-CPU-only: 5.32 ms of it is the repetition-penalty/top-k/top-p distribution, 1.03 ms the
-CFG combine). So the product's 82 ms per token at the reference's token count is about
-62 ms of step work, about 8 ms of host sampling and about 20 ms of context-dependent
-device work, and those are three separate levers rather than one. The reference's torch
-path batches both CFG branches into one forward per step
-(`GraphAR(model, [prefix, negative], ...)` in its `yue2/sampling.py`), while this path
-forwards each branch separately, which costs one extra pass over that branch's weights
-per token: a branch reads ~3.575 GB per step (28 layers of q/k/v/o/gate/up/down plus the
-756 MB output head, from the checkpoint's own tensor sizes), so two serial forwards read
-~7.15 GB per token against the reference's 3.575 GB, which is 87 GB/s of weight traffic
-at 58.3 ms of step work against the reference's 116 GB/s at 30.9 ms. Both are far below
-this host's ~256 GB/s LPDDR5X peak, so the stage is not at a bandwidth ceiling and
-batching is a candidate to measure rather than a proven route; the current GEMV launches
-one block per (output element, row), so a two-row forward re-reads the weights unless
-the kernel loops over rows inside a block, and this host's single-row decode GEMVs are
-documented at 20-28% of peak (`scripts/gguf_q8_0_dense_bw_microbench.py`), which is the
-family the AR decode belongs to. Evidence:
-[`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
+| Whole path, identical request and work | Elapsed | Audio | RTF |
+| --- | ---: | ---: | ---: |
+| hipEngine at current HEAD (median of 3) | 124.54 s | 51.92 s | **2.40** |
+| hipEngine with the pre-change AR paths (median of 3) | 155.22 s | 51.92 s | 2.99 |
+| torch reference, pinned product run | 137.80 s | 51.88 s | 2.66 |
+| torch reference, fresh product runs on this host | 235.60-260.19 s | 51.88 s | 4.54-5.02 |
+
+The two hipEngine arms differ only in the AR paths, and every run of both arms produced
+the same 1 298 tokens, the same 2 492 096 samples and the same PCG64 state digest. The
+paired elapsed ratio is 1.236 (range 1.213-1.246 over the three pairs), so the AR change
+is worth **19% of whole-path time**; the AR stage itself went from 79.2 to 57.3 ms per
+token, a paired ratio of 1.380. The NAR and VAE rows move together across the three
+repetitions in both arms (about +20% and +10% over the session), which is machine drift,
+not an arm effect - the arms track each other, so the paired ratios are the stable
+quantity and the absolute seconds are not.
+
+The reference's own product path is not reproducible here. Two fresh runs today take
+235.60 s and 260.19 s against its pinned 137.80 s, and the entire difference is its VAE
+stage: 170.09 s and 186.35 s against the pinned 69.09 s, while its AR (41.96 and 43.55 s
+against 40.60 s) and NAR (20.16 and 26.76 s against 27.32 s) agree within noise. Its warm
+tiled decode of these same latents is 20.15 s, measured in the same session as everything
+else above, so even its pinned product run pays 3.5x its own warm decoder and today's runs
+pay 8.5x. That is its per-request decoder handling rather than the machine. All three
+reference rows are reported as measured, and the pinned one is what the per-stage table
+compares against, because its stages are the ones its recorded timings describe.
+
+So the product path is ahead of the reference in both states - 124.54 s against 137.80 s
+pinned, and against 235.60-260.19 s today - for a reason that is worth stating precisely:
+this runtime's decoder stays warm and pays 16.3 ms per frame, while the reference's
+re-does per-request decoder setup. Its steady-state stages are still the faster ones, which
+is why the matched table above is the implementation comparison and this table is the
+product one.
+
+The AR row is the entire remaining gap, and the stage is 60% of our elapsed time. A
+fixed-token comparison of the two AR decode paths pins it down, with both sides driving
+the same recorded trajectory for the same 1 297 steps over the same 98-token positive and
+12-token negative prefixes and the same two CFG branches, timed alternately in one
+session (`scripts/yue2_ar_matched_timing.py`, `scripts/yue2_reference_ar_timing.py`):
+**54.94 ms per decode step against 30.88**, so the reference is **1.78x faster** on
+matched work. Sampling is excluded there by design, because the token is recorded.
+
+The cause is traffic, and it is now measured on both sides. A branch reads ~3.575 GB per
+step, of which 2.819 GB is the 28 layers of q/k/v/o/gate/up/down and 756 MB the output
+head, from the checkpoint's own tensor sizes. This path forwards the two CFG branches
+separately, so it reads the layers twice, and it now reads only the semantic phase's
+window of the head (134 MB rather than 756 MB): **5.77 GB per token at 57.3 ms, about
+101 GB/s**. The reference batches both branches into one forward per step
+(`GraphAR(model, [prefix, negative], ...)` in its `yue2/sampling.py`), so it reads the
+layers once: **3.58 GB per token at 30.9 ms, about 116 GB/s**. The two rates are within
+15% of each other, so the stage is not at a bandwidth ceiling - this host's LPDDR5X peak
+is ~256 GB/s - and what separates them is that we move 1.6x the bytes. Removing the
+duplicated branch traffic would put the same rate at ~2.95 GB per token, or about 29 ms
+- the reference's own step - but that is a projection from measured traffic, not a
+measurement. Two-row kernels are the route: the head already has one
+(`dense_gemv_bf16_f32_out_rowtile2`, 112 GB/s to 199 GB/s at the production shape), and
+the layer GEMVs are the same family, documented at 20-28% of peak on this host
+(`scripts/gguf_q8_0_dense_bw_microbench.py`).
+
+Host sampling is the smaller lever and it is now small: **7.67 ms per token over the
+full row against 0.71 ms windowed** (`scripts/yue2_ar_sampling_cost.py`, CPU-only,
+single-threaded, 30 medians per call; the window is `semantic`'s 32 769 rows of 184 704,
+and the windowed arm is what the loop runs). The full-row figure is 2.60 ms of CFG
+combine, 3.89 ms of repetition penalty plus top-k/top-p, 0.22 ms of softmax and 0.94 ms
+of the categorical draw. So the product's 57.3 ms per token is model work plus about a
+millisecond of sampling, and the step itself is the lever - not the sampler.
+Evidence: [`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
 [`AR sampling cost`](results/yue2_ar_sampling_cost_20260917.json),
-[`product case timing`](results/yue2_product_case_timing_20260917.json), whose
-`known_issues` records the readings withdrawn from the first version of this section.
+[`product case timing`](results/yue2_product_case_timing_20260917.json).
 
 ### Radeon 8060S: YuE2 3B stage-by-stage matched timing
 
@@ -1636,13 +1668,21 @@ and compare steady-state passes, timed alternately in one session on
 
 | Stage | Inputs shared | hipEngine | torch reference | Reading |
 | --- | --- | ---: | ---: | --- |
-| AR decode, 1 296 steps | recorded token trajectory, both prefixes, 2 CFG branches | 54.88 ms/step | 30.87 ms/step | **reference 1.78x faster** |
-| Acoustic solver, 32 steps | prefix, codes, seed and the reference's own noise | 25.87 s | 20.12 s | **reference 1.29x faster** |
-| FP32 Oobleck decode, 1 297 frames | the case's recorded latents, tiled 1024/16 on both sides | 20.01 s | 19.60 s | reference 1.02x faster |
+| AR decode, 1 297 steps | recorded token trajectory, both prefixes, 2 CFG branches | 54.94 ms/step | 30.88 ms/step | **reference 1.78x faster** |
+| Acoustic solver, 32 steps | prefix, codes, seed and the reference's own noise | 27.35 s | 21.81 s | **reference 1.25x faster** |
+| FP32 Oobleck decode, 1 297 frames | the case's recorded latents, tiled 1024/16 on both sides | 20.08 s | 20.15 s | reference 1.00x faster (level) |
 
-The AR row is after the paired-branch head (see the next section): the lm head runs once for both branches
-through a two-row F32-output GEMV, which is bit-identical per row, leaves the run's trajectory digest
-unchanged, and takes the step from 58.30 ms to 54.88 ms.
+Every row above is a same-session re-measurement of both sides at current HEAD, on
+`mandarin-off-s1234` at the product's 32 ODE steps. The AR row is the fixed-token replay:
+both sides drive the same recorded trajectory, so sampling is excluded by design (the
+token is recorded) and the number is model work only. The replay uses the full-vocabulary
+head, which is what the reference's own rows are, so the windowed head and the
+window-relative sampler do not appear in it; the product loop below is where they show up.
+
+The AR step was 58.30 ms/step before the paired-branch head (see the next section): the lm
+head runs once for both branches through a two-row F32-output GEMV, which is bit-identical
+per row, leaves the run's trajectory digest unchanged, and took the step to 54.88, against
+54.94 on the re-measurement above.
 
 Each harness refuses to report when the two sides did not run the same work: the AR
 harness compares prefix, negative-prefix and trajectory digests, and the solver harness

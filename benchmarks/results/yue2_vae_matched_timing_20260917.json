@@ -1416,15 +1416,15 @@
    "gpu": "gfx1151"
   },
   "torch_imported": false,
-  "revision": "16a98bef6b7414614f66136873e229cf7ada6d00",
+  "revision": "99a115f75dd0ce0930f0001ae4eeb4bfa9a91933",
   "frames": 1297,
-  "tiled_seconds": 20.107293365057558,
+  "tiled_seconds": 20.096545403939672,
   "repeat_tiled_seconds": [
-   20.01344038802199
+   20.082014365005307
   ],
-  "tiled_ms_per_frame": 15.502924722480769,
-  "full_seconds": 21.63210250705015,
-  "full_ms_per_frame": 16.67856785431777,
+  "tiled_ms_per_frame": 15.494637936730664,
+  "full_seconds": 21.657224648981355,
+  "full_ms_per_frame": 16.697937277549233,
   "full_note": "",
   "tiled_digest": "6a902eac3cdcea7a",
   "full_digest": "6a902eac3cdcea7a",
@@ -2844,13 +2844,13 @@
   "torch_version": "2.13.0+rocm10.0.0",
   "device": "AMD Radeon 8060S Graphics",
   "frames": 1297,
-  "tiled_seconds": 163.08748187904712,
+  "tiled_seconds": 164.5783141470747,
   "repeat_tiled_seconds": [
-   19.60218404501211
+   20.14818729297258
   ],
-  "tiled_ms_per_frame": 125.74208317582661,
-  "full_seconds": 170.57673407392576,
-  "full_ms_per_frame": 131.51637168382865,
+  "tiled_ms_per_frame": 126.89152979728196,
+  "full_seconds": 166.69750602799468,
+  "full_ms_per_frame": 128.5254479784076,
   "full_note": "",
   "tiled_digest": "6cb8735af2b9e08b",
   "full_digest": "eada7fa477627d0c",
@@ -2860,11 +2860,11 @@
   "peak": 0.8561524152755737
  },
  "comparison": {
-  "hipengine_warm_tiled_seconds": 20.01344038802199,
-  "reference_warm_tiled_seconds": 19.60218404501211,
-  "reference_advantage": 1.0209801286461508,
-  "hipengine_first_tiled_seconds": 20.107293365057558,
-  "reference_first_tiled_seconds": 163.08748187904712,
+  "hipengine_warm_tiled_seconds": 20.082014365005307,
+  "reference_warm_tiled_seconds": 20.14818729297258,
+  "reference_advantage": 0.9967156882649015,
+  "hipengine_first_tiled_seconds": 20.096545403939672,
+  "reference_first_tiled_seconds": 164.5783141470747,
   "frames": 1297,
   "samples": 2490176,
   "tiled_vs_full_max_abs": {

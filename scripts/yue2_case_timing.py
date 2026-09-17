@@ -84,6 +84,12 @@ def main() -> int:
     parser.add_argument("--oracle", default=str(REPO / "artifacts" / "yue2" / "oracle" / "cases"))
     parser.add_argument("--steps", type=int, default=32)
     parser.add_argument("--json", default="")
+    parser.add_argument(
+        "--full-ar-paths",
+        action="store_true",
+        help="pre-change AR arithmetic: full-vocabulary head and full-row sampler, "
+             "for a matched A/B on the same protocol",
+    )
     args = parser.parse_args()
 
     from hipengine.loading.yue2 import load_yue2_vae_decoder, load_yue2_weights
@@ -136,6 +142,28 @@ def main() -> int:
         cfg_scale=float(config["cfg_scale"]) if config.get("cfg_scale") is not None else None,
         id=request["id"],
     )
+
+    if args.full_ar_paths:
+        # Pre-change arithmetic for a matched A/B: project the whole vocabulary and sample
+        # from the full row, which is what the session did before the phase window and the
+        # window-relative sampler. The reconstructed row is -inf outside the window, which
+        # is what the head's full row carries there.
+        import numpy as _np
+
+        from hipengine.generation.yue2 import VOCAB_SIZE, PhaseScores
+        from hipengine.generation.yue2 import distribution as _distribution
+        from hipengine.runtime import yue2_session as _session
+
+        def _full_row_sampler(values, sampling, history, step, phase, window,
+                              legacy_off=False):
+            low, high = window
+            row = _np.full(VOCAB_SIZE, -_np.inf, dtype=_np.float32)
+            row[low:high] = values
+            scores = _distribution(row, sampling, history, step, phase, legacy_off=legacy_off)
+            return PhaseScores(values=scores[low:high], offset=low)
+
+        _session.phase_window = lambda phase: (0, VOCAB_SIZE)
+        _session.distribution_windowed = _full_row_sampler
 
     started = time.perf_counter()
     result = session.generate(song, steps=int(args.steps))
@@ -211,6 +239,7 @@ def main() -> int:
             "host": _host_identity(),
             "case": args.case,
             "steps": int(args.steps),
+            "full_ar_paths": bool(args.full_ar_paths),
             "sample_rate": sample_rate,
             "hipengine": {
                 "semantic_seconds": semantic_seconds,

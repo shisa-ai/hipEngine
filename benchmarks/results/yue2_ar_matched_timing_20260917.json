@@ -31,22 +31,22 @@
    "gpu": "gfx1151"
   },
   "torch_imported": false,
-  "revision": "a33dd6ca6354f9547ec773d107bc6eb5c2ef26a8",
-  "prefill_seconds": 0.1573855869937688,
-  "decode_seconds": 75.55881451605819,
+  "revision": "99a115f75dd0ce0930f0001ae4eeb4bfa9a91933",
+  "prefill_seconds": 0.16107618995010853,
+  "decode_seconds": 71.20209441194311,
   "repeat_prefill_seconds": [
-   0.15752861299552023
+   0.15549165604170412
   ],
   "repeat_decode_seconds": [
-   75.62065642699599
+   71.29394738399424
   ],
   "decode_seconds_per_pass": [
-   75.55881451605819,
-   75.62065642699599
+   71.20209441194311,
+   71.29394738399424
   ],
   "ms_per_decode_step_per_pass": [
-   58.30155441053873,
-   58.34927193441049
+   54.939887663536354,
+   55.010761870365926
   ]
  },
  "reference": {
@@ -60,44 +60,32 @@
   "negative_digest": "b6a630dd500c30e4",
   "trajectory_digest": "6a308700b3b949ac",
   "guidance": 1.01,
-  "prefill_seconds": 0.2396309240721166,
-  "decode_seconds": 40.00990564993117,
+  "prefill_seconds": 0.2260810190346092,
+  "decode_seconds": 40.18461981497239,
   "repeat_prefill_seconds": [
-   0.22430736990645528
+   0.22775316901970655
   ],
   "repeat_decode_seconds": [
-   40.104909115005285
+   40.02488172997255
   ],
   "execution": "cuda_graph",
   "torch_version": "2.13.0+rocm10.0.0",
   "device": "AMD Radeon 8060S Graphics",
   "decode_seconds_per_pass": [
-   40.00990564993117,
-   40.104909115005285
+   40.18461981497239,
+   40.02488172997255
   ],
   "ms_per_decode_step_per_pass": [
-   30.871840779267878,
-   30.94514592207198
+   31.006651091799686,
+   30.883396396583755
   ]
  },
  "comparison": {
   "ms_per_decode_step": {
-   "hipengine": 58.30155441053873,
-   "reference": 30.871840779267878,
-   "hipengine_paired_head": 54.883589603760086
+   "hipengine": 54.939887663536354,
+   "reference": 30.883396396583755
   },
-  "reference_advantage": 1.8885026917374943,
-  "note": "Both sides drove the same recorded token trajectory for the same number of steps with the same 98-token positive and 12-token negative prefixes and the same two CFG branches, so each step is the same work. Sampling is excluded by design (the token is recorded), so this is model work only; the product loop adds the host sampling path measured by scripts/yue2_ar_sampling_cost.py.",
-  "paired_head_speedup": 1.0622766264279564,
-  "reference_advantage_paired": 1.7777880495100702
- },
- "paired_head": {
-  "decode_seconds": 71.18401571607683,
-  "ms_per_decode_step": 54.883589603760086,
-  "trajectory_digest": "6a308700b3b949ac",
-  "trajectory_unchanged": true,
-  "prefill_seconds": 0.3249653740786016,
-  "kernel": "dense_gemv_bf16_f32_out_rowtile2 (two rows per block, bit-identical per row)",
-  "note": "Same protocol and same recorded trajectory as the row above; the only change is that the runtime runs the lm head once for both branches. The trajectory digest is unchanged, so the paired head reproduces the serial head exactly."
+  "reference_advantage": 1.7789457790858025,
+  "note": "Both sides drove the same recorded token trajectory for the same number of steps with the same 98-token positive and 12-token negative prefixes and the same two CFG branches, so each step is the same work. Sampling is excluded by design (the token is recorded), so this is model work only; the product loop adds the host sampling path measured by scripts/yue2_ar_sampling_cost.py."
  }
 }
