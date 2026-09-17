@@ -183,6 +183,14 @@ CASES: tuple[tuple[str, str], ...] = (
     # underscore and `\\battn` needs a word boundary, so neither matched and
     # this landed in "unattributed".
     ("void qsa3_attn_kernel(float const*, float const*, float*)", "attention"),
+    # The wide-row dense tile family, promoted to the Q8_0 dense prefill default
+    # at layers 16-47 on 2026-09-17. Regression: no `dense_gemv` / `gemm` /
+    # `wmma` substring, so it landed in "unattributed".
+    (
+        "void (anonymous namespace)::q8_0_dense_wide_kernel<128, 256, 64, 64, false>"
+        "(float const*, unsigned char const*, float*, int, int, int)",
+        "dense_matmul",
+    ),
 )
 
 

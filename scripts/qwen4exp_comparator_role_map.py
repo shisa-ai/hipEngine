@@ -80,6 +80,45 @@ GGML_Q4_K = 12
 # else in the Y slot means the dispatch is a dense projection.
 ROUTED_GRID_Y = {1704, 1708}
 
+# Dense (non-routed) quantized projections, keyed on the device-kernel symbol.
+# The registry's dispatch labels never reach the trace -- rocprofv3 records the
+# ``__global__`` name -- so these stems are kernel names, each with the route it
+# covers:
+#
+#   dense_gemv                            dense GEMV, the decode-shaped-row
+#                                         fallback
+#   gguf_k_prefill_out_coltile_rowbatch   the exact coltile chain; the Q8_0
+#                                         ``gemv_coltile8_rowbatch4_wave_scale``
+#                                         dispatch launches this same kernel
+#   gguf_k_pack8_prefill_out              pack8 prefill fallback
+#   gguf_q8_0_pack8                       dense Q8_0 pack8 GEMV, single and
+#                                         dual gate+up
+#   gguf_q8_0_rowvec8_dual_split_gemv     raw-row vector traversal leaf
+#   dense_wide_kernel                     the wide-row tile family, promoted
+#                                         2026-09-17 to the Q8_0 dense prefill
+#                                         default at layers 16-47
+#   gguf_q8_0_prefill_wmma                the f16 WMMA dense prefill scope that
+#   gguf_q8_0_prefill_dual_wmma           route replaced, retained for
+#   gguf_q8_0_t16_prefill_wmma            re-gating, and its t16 and dual
+#   gguf_q8_0_t16_dual_prefill_wmma       variants
+#
+# The routed and shared-expert kernels in the same source files carry
+# ``selected`` and are matched by the rules above, so no stem may be broad
+# enough to catch one. ``tests/test_unit_qwen4exp_role_map_dense_routes.py``
+# pins both directions from the kernel sources.
+DENSE_PROJECTION_STEMS: tuple[str, ...] = (
+    "dense_gemv",
+    "gguf_k_prefill_out_coltile_rowbatch",
+    "gguf_k_pack8_prefill_out",
+    "gguf_q8_0_pack8",
+    "gguf_q8_0_rowvec8_dual_split_gemv",
+    "dense_wide_kernel",
+    "gguf_q8_0_prefill_wmma",
+    "gguf_q8_0_prefill_dual_wmma",
+    "gguf_q8_0_t16_prefill_wmma",
+    "gguf_q8_0_t16_dual_prefill_wmma",
+)
+
 
 def _ggml_type(name: str) -> int | None:
     m = re.search(r"ggml_type\)(\d+)", name)
@@ -217,6 +256,12 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
       go to ``elementwise_norm``, matching the comparator rules, where
       ``unary_gated_op`` is elementwise and not part of the expert matmul.
 
+    Dense projections are matched on ``DENSE_PROJECTION_STEMS``, which names
+    every dense Q8_0 prefill route this tree can select. That list is coverage,
+    not a best effort: the promoted wide-row route (2026-09-17) was registered,
+    planned and counted before its kernel symbol was added here, and a
+    ``--strict`` comparison run fails rather than billing it to ``other``.
+
     ``grid`` is accepted for signature compatibility and is not used: no rule
     here needs it, unlike the llama.cpp rules where grid Y separates a routed
     dispatch from a dense one.
@@ -282,12 +327,8 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
     if "write_paged_kv" in bare:
         return "elementwise_norm"
 
-    for token in (
-        "dense_gemv", "gguf_k_prefill_out_coltile_rowbatch",
-        "gguf_k_pack8_prefill_out",
-    ):
-        if token in bare:
-            return "dense_projection"
+    if any(stem in bare for stem in DENSE_PROJECTION_STEMS):
+        return "dense_projection"
 
     return "other"
 
