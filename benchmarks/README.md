@@ -1210,6 +1210,39 @@ first generated token is 847 ms at one request and 1,150 ms on a cold server,
 against the 5,993 ms median time to the first *answer* token after the reasoning
 block. [Routing artifact](results/2026-09-17-gfx1151-qwen38-sharegpt-mtp-routing.json).
 
+##### Attributing the split, not just adding it up
+
+`ar_output_tokens` is defined as `completion_tokens - mtp_output_tokens`, so a
+response whose split adds up has proved nothing about which tokens came from
+which execution mode. The response therefore also reports the committed cycle
+records that bound the speculative output
+(`mtp_output_tokens_explained_by_cycles`, `unexplained_mtp_output_tokens`) and
+names every failed check in `reconciled_reasons`, and with
+`HIPENGINE_MTP2_OUTPUT_SPANS=1` the backend records one committed output span per
+speculative cycle and per autoregressive step - execution mode, planner reason,
+emitted-token position, token count - which must tile the committed output.
+
+The same c=1 protocol with spans on:
+
+| Quantity | Value |
+| --- | ---: |
+| Requests / failures | 24 / 0 |
+| MTP output share | 99.06% |
+| Committed spans | 1,046 |
+| Spanned tokens (all speculative output) | 3,067 (3,043 MTP + 24 AR) |
+| Unspanned tokens (AR emitted outside the plan) | 5 |
+| Completion tokens | 3,072 |
+| Refusal events (`no_provider`, one per request) | 24 |
+| Requests with a complete attribution proof | 24 of 24 |
+
+The unspanned tokens are exactly `ar_output_tokens - ar_output_tokens_in_cycles`
+(5 = 29 - 24) and no speculative token is unspanned, so the split is traceable to
+committed work. Note that the 24 refusal events are *events*: the same requests
+emitted 29 autoregressive tokens, 24 from the depth-zero `no_provider` cycle that
+opens each request and 5 from the decode that retires it. Event counts and token
+counts are reported under separate names for that reason.
+[Attribution artifact](results/2026-09-17-gfx1151-qwen38-mtp-attribution-span-proof.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a

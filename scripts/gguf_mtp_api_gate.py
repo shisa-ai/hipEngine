@@ -73,7 +73,17 @@ def _mtp_output_accounting_contract(
     body: dict[str, Any],
     extension: Mapping[str, Any],
 ) -> bool:
-    """Check the MTP-versus-AR output split against the reported usage."""
+    """Check the MTP-versus-AR output split against the reported usage.
+
+    The split reconciles arithmetically by construction (autoregressive output
+    is whatever speculation did not cover), so this also requires the split to
+    be *attributable*: the committed cycle records must be able to explain the
+    speculative output, the in-cycle autoregressive count must fit inside the
+    autoregressive output, and any diagnostic span list must tile the emitted
+    output. A response reporting five completion tokens, three speculative ones
+    and ninety-nine in-cycle autoregressive ones fails here even though
+    ``mtp + ar == completion`` holds.
+    """
 
     accounting = extension.get("output_accounting")
     if not isinstance(accounting, Mapping):
@@ -105,7 +115,45 @@ def _mtp_output_accounting_contract(
         return False
     if not 0 <= int(in_cycles) <= int(ar_outputs):
         return False
-    return accounting.get("reconciled") is True
+    # Independently committed counts: one verified token per committed
+    # speculative cycle plus its accepted drafts bounds the speculative output.
+    # ``draft_cycles`` and ``accepted_draft_tokens`` are reported from the same
+    # cycle records the backend used to emit the tokens, so a split that only
+    # satisfies the subtraction cannot satisfy this.
+    cycles = extension.get("draft_cycles")
+    accepted = extension.get("accepted_draft_tokens")
+    histogram = extension.get("selected_depth_histogram")
+    if cycles is None or accepted is None or not isinstance(histogram, Mapping):
+        return False
+    depth0_cycles = int(histogram.get("0", 0) or 0)
+    speculative_cycles = max(0, int(cycles) - depth0_cycles)
+    if int(cycles) <= 0:
+        return False
+    if int(mtp_outputs) > int(accepted) + speculative_cycles:
+        return False
+    if accounting.get("reconciled") is not True:
+        return False
+    reasons = accounting.get("reconciled_reasons")
+    if reasons is None or list(reasons):
+        return False
+    # Diagnostic spans, when recorded, are the strongest form of the check: they
+    # must tile the emitted output and agree with both counters.
+    spans = accounting.get("span_accounting")
+    if spans is not None:
+        if not isinstance(spans, Mapping):
+            return False
+        if spans.get("mtp_tokens_match") is not True:
+            return False
+        if spans.get("ar_in_cycle_tokens_match") is not True:
+            return False
+        if spans.get("unspanned_tokens_match") is not True:
+            return False
+        if int(spans.get("unspanned_tokens", -1)) < 0:
+            return False
+        span_reasons = spans.get("reconciled_reasons")
+        if span_reasons is None or list(span_reasons):
+            return False
+    return True
 
 
 def _post(client: TestClient, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:

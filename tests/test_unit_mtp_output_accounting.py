@@ -13,6 +13,7 @@ from hipengine.speculative.accounting import (
     accounting_timing_fields,
     record_autoregressive_step,
     record_speculative_outputs,
+    span_accounting,
     speculative_output_accounting,
 )
 
@@ -270,3 +271,264 @@ def test_accounting_records_a_speculative_cycle_without_visible_tokens() -> None
     assert accounting["ar_output_tokens_in_cycles"] == 0
     assert accounting["first_fallback_position"] is None
     assert accounting["ar_step_reason_counts"] == {}
+
+
+def test_accounting_records_committed_output_spans_only_when_enabled(
+    monkeypatch,
+) -> None:
+    """Spans are diagnostic evidence, and their absence must be distinguishable.
+
+    A response read without diagnostic recording must be unchanged, so the span
+    block is added only when the switch is on; an enabled-but-empty span list
+    still reports its (failed) proof rather than looking like production.
+    """
+
+    monkeypatch.delenv("HIPENGINE_MTP2_OUTPUT_SPANS", raising=False)
+    row = _intent_row()
+    record_speculative_outputs(
+        row,
+        candidate_count=3,
+        accepted_count=2,
+        visible_count=3,
+        output_position=1,
+        plan_reason="speculative_qualified",
+    )
+    record_autoregressive_step(
+        row,
+        plan_reason="target_graph_context_bucket_miss",
+        output_position=4,
+    )
+
+    assert "output_spans" not in speculative_output_accounting(row)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+    enabled = _intent_row()
+    record_speculative_outputs(
+        enabled,
+        candidate_count=3,
+        accepted_count=2,
+        visible_count=3,
+        output_position=1,
+        plan_reason="speculative_qualified",
+    )
+    record_speculative_outputs(
+        enabled,
+        candidate_count=0,
+        accepted_count=0,
+        visible_count=1,
+        output_position=4,
+        plan_reason="target_graph_context_bucket_miss",
+    )
+    record_autoregressive_step(
+        enabled,
+        plan_reason="no_provider",
+        output_position=5,
+    )
+    # A mixed-plan K0 row attributes its tokens through the cycle commit, so the
+    # step record must not add a second span for them.
+    record_autoregressive_step(
+        enabled,
+        plan_reason="target_graph_context_bucket_miss",
+        emitted_tokens=0,
+    )
+
+    accounting = speculative_output_accounting(enabled)
+
+    assert accounting is not None
+    assert accounting["output_spans"] == [
+        {
+            "mode": "mtp",
+            "reason": "speculative_qualified",
+            "position": 1,
+            "tokens": 3,
+        },
+        {
+            "mode": "ar",
+            "reason": "target_graph_context_bucket_miss",
+            "position": 4,
+            "tokens": 1,
+        },
+        {"mode": "ar", "reason": "no_provider", "position": 5, "tokens": 1},
+    ]
+    assert accounting["mtp_output_tokens"] == 3
+    assert accounting["ar_output_tokens_in_cycles"] == 2
+
+
+def test_span_accounting_tiles_the_output_and_matches_both_counters() -> None:
+    spans = [
+        {"mode": "mtp", "reason": "speculative_qualified", "position": 1, "tokens": 3},
+        {"mode": "mtp", "reason": "speculative_qualified", "position": 4, "tokens": 2},
+        {
+            "mode": "ar",
+            "reason": "target_graph_context_bucket_miss",
+            "position": 6,
+            "tokens": 1,
+        },
+    ]
+
+    proof = span_accounting(
+        spans,
+        completion_tokens=7,
+        mtp_output_tokens=5,
+        ar_output_tokens=2,
+        ar_output_tokens_in_cycles=1,
+    )
+
+    assert proof["spans"] == 3
+    assert proof["tokens"] == 6
+    assert proof["mtp_tokens"] == 5
+    assert proof["ar_tokens"] == 1
+    assert proof["ar_tokens_by_reason"] == {"target_graph_context_bucket_miss": 1}
+    assert proof["first_position"] == 1
+    assert proof["last_end"] == 7
+    assert proof["contiguous"] is True
+    # One token is unspanned and it is exactly the autoregressive token emitted
+    # outside the plan, which is what makes the split attributable.
+    assert proof["unspanned_tokens"] == 1
+    assert proof["expected_unspanned_ar_tokens"] == 1
+    assert proof["unspanned_tokens_match"] is True
+    assert proof["reconciled"] is True
+    assert proof["reconciled_reasons"] == []
+
+    # A span starting at 0 is allowed: the prefill root token is counted as
+    # autoregressive output but is not itself a committed span.
+    rooted = span_accounting(
+        [
+            {"mode": "ar", "reason": "root", "position": 0, "tokens": 1},
+            {"mode": "mtp", "reason": "speculative_qualified", "position": 1, "tokens": 2},
+        ],
+        completion_tokens=3,
+        mtp_output_tokens=2,
+        ar_output_tokens=1,
+        ar_output_tokens_in_cycles=1,
+    )
+    assert rooted["unspanned_tokens"] == 0
+    assert rooted["reconciled"] is True
+
+    # A gap fails, and so does an overlap.
+    gapped = span_accounting(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 2},
+            {"mode": "mtp", "reason": "r", "position": 4, "tokens": 2},
+        ],
+        completion_tokens=6,
+        mtp_output_tokens=4,
+        ar_output_tokens=2,
+        ar_output_tokens_in_cycles=0,
+    )
+    assert gapped["contiguous"] is False
+    assert "spans_not_contiguous" in gapped["reconciled_reasons"]
+
+    overlapped = span_accounting(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 3},
+            {"mode": "mtp", "reason": "r", "position": 3, "tokens": 2},
+        ],
+        completion_tokens=5,
+        mtp_output_tokens=5,
+        ar_output_tokens=0,
+        ar_output_tokens_in_cycles=0,
+    )
+    assert overlapped["contiguous"] is False
+    assert "spans_not_contiguous" in overlapped["reconciled_reasons"]
+
+    # Spans that tile the output but disagree with the reported split.
+    mislabelled = span_accounting(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 1},
+            {"mode": "ar", "reason": "r", "position": 2, "tokens": 2},
+        ],
+        completion_tokens=4,
+        mtp_output_tokens=2,
+        ar_output_tokens=2,
+        ar_output_tokens_in_cycles=1,
+    )
+    assert mislabelled["unspanned_tokens"] == 1
+    assert mislabelled["reconciled"] is False
+    assert mislabelled["reconciled_reasons"] == [
+        "span_mtp_tokens_do_not_match_mtp_output",
+        "span_ar_tokens_do_not_match_in_cycle_ar_output",
+    ]
+
+
+def test_span_recording_never_breaks_a_row_that_cannot_hold_spans(
+    monkeypatch,
+) -> None:
+    """A slots row without the span field must drop the span, not raise.
+
+    The diagnostic switch is operator-set, so a row type that does not declare
+    ``mtp2_output_spans`` must degrade to "no proof recorded" instead of failing
+    the generation that enabled the flag.
+    """
+
+    class SlotsRow:
+        __slots__ = (
+            "mtp2_requested_budget",
+            "mtp2_candidate_budget",
+            "mtp2_cycles",
+            "mtp2_candidate_counts",
+            "mtp2_accepted_counts",
+            "mtp2_mtp_output_tokens",
+            "mtp2_ar_output_tokens",
+            "mtp2_ar_step_output_tokens",
+            "mtp2_first_fallback_position",
+            "mtp2_ar_step_reasons",
+        )
+
+        def __init__(self) -> None:
+            self.mtp2_requested_budget = 3
+            self.mtp2_candidate_budget = 3
+            self.mtp2_cycles = 0
+            self.mtp2_candidate_counts = []
+            self.mtp2_accepted_counts = []
+            self.mtp2_mtp_output_tokens = 0
+            self.mtp2_ar_output_tokens = 0
+            self.mtp2_ar_step_output_tokens = 0
+            self.mtp2_first_fallback_position = None
+            self.mtp2_ar_step_reasons = {}
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+    row = SlotsRow()
+    record_speculative_outputs(
+        row,
+        candidate_count=3,
+        accepted_count=2,
+        visible_count=3,
+        output_position=0,
+        plan_reason="speculative_qualified",
+    )
+    record_autoregressive_step(row, plan_reason="no_provider", output_position=3)
+
+    # The counters are unaffected; only the diagnostic proof is missing.
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["mtp_output_tokens"] == 3
+    assert accounting["ar_output_tokens_in_cycles"] == 1
+    assert accounting["output_spans"] == []
+
+
+def test_resident_loop_row_declares_the_diagnostic_span_field() -> None:
+    """The shared accounting helper writes the span list onto the live row.
+
+    ``_GGUFResidentLoopRow`` is a slots dataclass, so the field has to be
+    declared there or the diagnostic switch raises mid-generation (which is
+    exactly how this was found).
+    """
+
+    from dataclasses import fields
+
+    from hipengine.generation.qwen35_gguf import _GGUFResidentLoopRow
+
+    names = {entry.name for entry in fields(_GGUFResidentLoopRow)}
+    assert "mtp2_output_spans" in names
+    for name in (
+        "mtp2_mtp_output_tokens",
+        "mtp2_ar_output_tokens",
+        "mtp2_ar_step_output_tokens",
+        "mtp2_first_fallback_position",
+        "mtp2_ar_step_reasons",
+        "mtp2_cycles",
+        "mtp2_candidate_counts",
+        "mtp2_accepted_counts",
+    ):
+        assert name in names

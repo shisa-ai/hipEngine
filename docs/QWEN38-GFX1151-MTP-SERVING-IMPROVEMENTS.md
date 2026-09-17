@@ -139,10 +139,16 @@ that hipEngine can obtain by removing a guard.
   `backend_k0_fallback` for successful MTP streams). The server derives
   `ar_output_tokens = completion_tokens - mtp_output_tokens`, reports
   `output_accounting` (`completion_tokens`, both counts,
-  `ar_output_tokens_in_cycles`, `mtp_coverage`, `reconciled`),
-  `selected_depth_histogram`, `fallback_reason_counts`, `fallback_reason` and
+  `ar_output_tokens_in_cycles`, `mtp_coverage`, the committed-cycle bounds, and
+  `reconciled` with its failed-check list), `selected_depth_histogram`,
+  `fallback_event_counts` (non-speculative steps and refusals by planner
+  reason; event counts, not token counts), `fallback_reason` and
   `first_fallback_position` in blocking responses, SSE final metadata and SSE
-  usage. `decision_reason: backend_k0_fallback` is preserved, with the specific
+  usage. `reconciled` is an attribution result rather than arithmetic
+  consistency: `ar_output_tokens = completion_tokens - mtp_output_tokens` holds
+  by construction, so the split is checked against the committed cycle counts
+  and, with `HIPENGINE_MTP2_OUTPUT_SPANS=1`, against committed output spans that
+  must tile the emitted output. `decision_reason: backend_k0_fallback` is preserved, with the specific
   refusal reason beside it. Zero-cycle refusals deliberately publish no timing
   mirrors, so `used` cannot be set by admission alone.
 - Semantics: `first_fallback_position` is `null` when speculation covered every

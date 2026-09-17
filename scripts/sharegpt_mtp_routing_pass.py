@@ -14,6 +14,17 @@ request, which execution mode produced its output:
 * a per-chunk decode timeline, so a request that leaves speculation mid-output
   shows the resulting latency step rather than only an aggregate rate.
 
+The per-request ``reconciled`` field is an attribution result, not arithmetic:
+``ar_output_tokens`` is ``completion - mtp`` by construction, so the row also
+carries the committed cycle counts that independently bound the speculative
+output, and the failed checks when it does not reconcile. Start the server with
+``HIPENGINE_MTP2_OUTPUT_SPANS=1`` to have the backend record committed output
+spans (execution mode, reason, emitted-token position, token count); the harness
+then records whether those spans tile the emitted output, which is the strongest
+form of the proof. ``fallback_event_counts`` counts non-speculative steps and
+refusals (events) and is never a token count; the token-level attribution for
+the same reasons is ``ar_output_tokens_by_reason`` from the spans.
+
 Usage:
     python3 scripts/sharegpt_mtp_routing_pass.py \
         --server-url http://127.0.0.1:8030 --model qwen3.8-27b-q4km \
@@ -235,11 +246,31 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "mtp_coverage": accounting.get("mtp_coverage"),
         "first_fallback_position": mtp.get("first_fallback_position"),
         "fallback_reason": mtp.get("fallback_reason"),
-        "fallback_reason_counts": mtp.get("fallback_reason_counts"),
+        # Events, not tokens: one entry per non-speculative step or refusal. The
+        # token-level attribution for the same reasons comes from
+        # ``ar_output_tokens_by_reason`` when diagnostic spans were recorded.
+        "fallback_event_counts": mtp.get("fallback_event_counts"),
+        "fallback_event_total": mtp.get("fallback_event_total"),
         "selected_depth_histogram": mtp.get("selected_depth_histogram"),
         "draft_cycles": mtp.get("draft_cycles"),
         "accepted_draft_tokens": mtp.get("accepted_draft_tokens"),
+        "ar_output_tokens_in_cycles": accounting.get(
+            "ar_output_tokens_in_cycles"
+        ),
+        "mtp_output_tokens_explained_by_cycles": accounting.get(
+            "mtp_output_tokens_explained_by_cycles"
+        ),
+        "unexplained_mtp_output_tokens": accounting.get(
+            "unexplained_mtp_output_tokens"
+        ),
         "reconciled": accounting.get("reconciled"),
+        "reconciled_reasons": accounting.get("reconciled_reasons"),
+        "span_accounting": accounting.get("span_accounting"),
+        "ar_output_tokens_by_reason": (
+            (accounting.get("span_accounting") or {}).get("ar_tokens_by_reason")
+            if isinstance(accounting.get("span_accounting"), Mapping)
+            else None
+        ),
         "timeline": result.get("timeline"),
     }
 
@@ -365,6 +396,19 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         for row in rows
         if row.get("first_thinking_ms")
     ]
+    accounted = [row for row in rows if row.get("reconciled") is not None]
+    unreconciled = [
+        {
+            "source_id": row.get("source_id"),
+            "reconciled_reasons": row.get("reconciled_reasons"),
+        }
+        for row in accounted
+        if row.get("reconciled") is not True
+    ]
+    span_proofs = [
+        row for row in rows if isinstance(row.get("span_accounting"), Mapping)
+    ]
+    event_total = sum(int(row.get("fallback_event_total") or 0) for row in rows)
     return {
         "requests": len(rows),
         "mtp_requests": len(used),
@@ -375,6 +419,29 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         "ar_output_tokens": sum(
             int(row.get("ar_output_tokens") or 0) for row in rows
         ),
+        # Attribution gate. ``reconciled`` is not arithmetic consistency: it is
+        # decided from the committed cycle counts and, in diagnostic mode, from
+        # the committed output spans tiling the emitted output.
+        "accounted_requests": len(accounted),
+        "reconciled_requests": sum(
+            1 for row in accounted if row.get("reconciled") is True
+        ),
+        "unreconciled_requests": unreconciled,
+        "span_proof_requests": len(span_proofs),
+        "span_proof_failures": [
+            {
+                "source_id": row.get("source_id"),
+                "reconciled_reasons": (row.get("span_accounting") or {}).get(
+                    "reconciled_reasons"
+                ),
+            }
+            for row in span_proofs
+            if (row.get("span_accounting") or {}).get("reconciled") is not True
+        ],
+        # Event counts stay separate from token counts: this is the number of
+        # non-speculative steps and refusals, which is a different quantity from
+        # ``ar_output_tokens`` and from ``mtp_output_tokens``.
+        "fallback_event_total": event_total,
         "non_mtp_reasons": dict(sorted(reasons.items())),
         "prompt_token_buckets": {
             bucket: dict(sorted(counts.items()))
@@ -523,6 +590,28 @@ def main() -> int:
         f"wall={wall:.1f}s"
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
+    print(
+        f"[{args.label}] attribution: "
+        f"reconciled={summary['reconciled_requests']}/{summary['accounted_requests']} "
+        f"span_proofs={summary['span_proof_requests']} "
+        f"fallback_events={summary['fallback_event_total']}"
+    )
+    if summary["unreconciled_requests"]:
+        print(
+            f"[{args.label}] UNRECONCILED: "
+            f"{json.dumps(summary['unreconciled_requests'])}"
+        )
+    if summary["span_proof_failures"]:
+        print(
+            f"[{args.label}] SPAN PROOF FAILURES: "
+            f"{json.dumps(summary['span_proof_failures'])}"
+        )
+    elif not summary["span_proof_requests"]:
+        print(
+            f"[{args.label}] note: no committed output spans were reported; "
+            "start the server with HIPENGINE_MTP2_OUTPUT_SPANS=1 to record "
+            "the per-span attribution proof"
+        )
     print(
         f"[{args.label}] latency: ttft(first token)={_fmt_ms(summary['median_ttft_ms'])} "
         f"over {summary['ttft_requests']} requests, "

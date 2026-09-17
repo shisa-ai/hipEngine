@@ -83,6 +83,7 @@ from hipengine.server.multimodal import (
     vision_max_side,
     vision_prompt_markers,
 )
+from hipengine.speculative.accounting import span_accounting
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
@@ -15761,6 +15762,60 @@ def _mtp_accepted_rejected_counts(
     return accepted, max(0, generated - accepted)
 
 
+def _mtp_output_reconciliation(
+    *,
+    completion_tokens: int,
+    mtp_output_tokens: int,
+    ar_output_tokens: int,
+    ar_cycle_output_tokens: int,
+    accepted_draft_tokens: int,
+    cycles: int,
+    depth_histogram: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Check the MTP-versus-AR split against independently committed counts.
+
+    ``ar_output_tokens = completion_tokens - mtp_output_tokens`` holds by
+    construction, so it can never be evidence that the split is right; a
+    response reporting five completion tokens, three speculative ones and
+    ninety-nine in-cycle autoregressive ones satisfies it. The checks here are
+    the independent ones:
+
+    * every committed speculative cycle emits one verified token plus its
+      accepted drafts, so the cycle records bound the speculative output,
+    * in-cycle autoregressive output is a subset of the autoregressive output,
+    * speculative output requires committed cycles to have produced it,
+    * when diagnostic spans were recorded, they must tile the emitted output.
+
+    Returns the derived accounting fields and the list of failed checks. An
+    empty list means the split is attributable, not merely arithmetical.
+    """
+
+    reasons: list[str] = []
+    depth0_cycles = _mtp_counted_int(depth_histogram.get("0"))
+    speculative_cycles = max(0, int(cycles) - depth0_cycles)
+    # One verified token per committed speculative cycle, plus its accepted
+    # drafts. A cycle truncated at the output horizon can emit fewer, never
+    # more.
+    explained = max(0, int(accepted_draft_tokens)) + speculative_cycles
+    unexplained = max(0, int(mtp_output_tokens)) - explained
+    if int(ar_output_tokens) < 0:
+        reasons.append("ar_output_negative")
+    if int(mtp_output_tokens) > 0 and int(cycles) <= 0:
+        reasons.append("mtp_output_without_committed_cycles")
+    if int(ar_cycle_output_tokens) > max(0, int(ar_output_tokens)):
+        reasons.append("in_cycle_ar_output_exceeds_ar_output")
+    if unexplained > 0:
+        reasons.append("mtp_output_exceeds_committed_cycles")
+    return (
+        {
+            "mtp_output_tokens_explained_by_cycles": explained,
+            "unexplained_mtp_output_tokens": unexplained,
+            "speculative_cycles": speculative_cycles,
+        },
+        reasons,
+    )
+
+
 def _mtp_response_summary(
     route: str | None,
     details: Sequence[GenerationOutput] | None,
@@ -15785,6 +15840,8 @@ def _mtp_response_summary(
     completion_tokens = 0
     depth_histogram: Counter[str] = Counter()
     fallback_reason_counts: Counter[str] = Counter()
+    output_spans: list[dict[str, Any]] = []
+    spans_recorded = False
     prompt_fallback_reason: str | None = None
     first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
@@ -15804,6 +15861,14 @@ def _mtp_response_summary(
         block = _mtp_execution_accounting(detail)
         if block is not None:
             accounting_seen = True
+            block_spans = block.get("output_spans")
+            if isinstance(block_spans, Sequence) and not isinstance(
+                block_spans, (str, bytes)
+            ):
+                spans_recorded = True
+                output_spans.extend(
+                    dict(span) for span in block_spans if isinstance(span, Mapping)
+                )
             block_cycles = _mtp_counted_int(block.get("cycles"))
             block_mtp_outputs = _mtp_counted_int(block.get("mtp_output_tokens"))
             if block_cycles > 0 or block_mtp_outputs > 0:
@@ -15874,13 +15939,23 @@ def _mtp_response_summary(
     }
     if accounting_seen:
         # ``used`` only says some speculation ran. These counts say how much of
-        # the emitted text came from which execution mode, and they reconcile
-        # against the completion count by construction (autoregressive output is
-        # whatever speculation did not cover).
+        # the emitted text came from which execution mode. The autoregressive
+        # count is whatever speculation did not cover, which reconciles
+        # arithmetically by construction, so ``reconciled`` is decided by the
+        # independent checks below rather than by that subtraction.
         ar_output_tokens = completion_tokens - mtp_output_tokens
+        derived, reconcile_reasons = _mtp_output_reconciliation(
+            completion_tokens=completion_tokens,
+            mtp_output_tokens=mtp_output_tokens,
+            ar_output_tokens=ar_output_tokens,
+            ar_cycle_output_tokens=ar_cycle_output_tokens,
+            accepted_draft_tokens=accepted,
+            cycles=cycles,
+            depth_histogram=depth_histogram,
+        )
         summary["mtp_output_tokens"] = mtp_output_tokens
         summary["ar_output_tokens"] = max(0, ar_output_tokens)
-        summary["output_accounting"] = {
+        output_accounting: dict[str, Any] = {
             "completion_tokens": completion_tokens,
             "mtp_output_tokens": mtp_output_tokens,
             "ar_output_tokens": max(0, ar_output_tokens),
@@ -15890,16 +15965,42 @@ def _mtp_response_summary(
                 if completion_tokens > 0
                 else 0.0
             ),
-            "reconciled": ar_output_tokens >= 0,
+            **derived,
         }
+        if spans_recorded:
+            # Diagnostic mode: the committed spans must tile the emitted output
+            # and agree with both counters, so attribution is checked against
+            # what was emitted rather than against the subtraction.
+            spans = span_accounting(
+                output_spans,
+                completion_tokens=completion_tokens,
+                mtp_output_tokens=mtp_output_tokens,
+                ar_output_tokens=ar_output_tokens,
+                ar_output_tokens_in_cycles=ar_cycle_output_tokens,
+            )
+            output_accounting["span_accounting"] = spans
+            reconcile_reasons = reconcile_reasons + [
+                f"span:{reason}" for reason in spans["reconciled_reasons"]
+            ]
+        output_accounting["reconciled"] = not reconcile_reasons
+        output_accounting["reconciled_reasons"] = reconcile_reasons
+        summary["output_accounting"] = output_accounting
         summary["selected_depth_histogram"] = {
             depth: depth_histogram[depth]
             for depth in sorted(depth_histogram, key=lambda value: int(value))
         }
-        summary["fallback_reason_counts"] = {
+        # These are event counts, not token counts: one entry per
+        # non-speculative step or refusal, which is a different quantity from
+        # ``ar_output_tokens`` (a token count) and from
+        # ``ar_output_tokens_in_cycles`` (the in-plan subset of those tokens).
+        # The field name carries the unit so the two can never be compared
+        # accidentally. Per-reason *token* attribution comes from
+        # ``output_accounting.span_accounting`` in diagnostic mode.
+        summary["fallback_event_counts"] = {
             reason: fallback_reason_counts[reason]
             for reason in sorted(fallback_reason_counts)
         }
+        summary["fallback_event_total"] = sum(fallback_reason_counts.values())
         primary_fallback_reason = prompt_fallback_reason
         if primary_fallback_reason is None and fallback_reason_counts:
             # No admission-level refusal: report the reason that accounted for
