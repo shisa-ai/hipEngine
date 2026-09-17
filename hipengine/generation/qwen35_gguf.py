@@ -43,7 +43,10 @@ from hipengine.generation.batch_scheduler import (
 )
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
-from hipengine.generation.engine_loop import GenerationAdmissionRejected
+from hipengine.generation.engine_loop import (
+    ExecutionFailure,
+    GenerationAdmissionRejected,
+)
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
@@ -5956,6 +5959,12 @@ class Qwen35GGUFResidentModelRunner:
         self._mtp2_adapter: Any | None = None
         self._mtp2_adapter_resolved = False
         self._closed = False
+        # How much of the step currently executing could already have reached
+        # device state.  ``"none"`` is set by a step's own pre-device
+        # validation and cleared at its first device call; the conservative
+        # default keeps a failure in any other phase fatal.
+        self._execution_mutation_window = "unknown"
+        self._execution_step_request_id: int | None = None
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
         self._graph_handle_replays: dict[int, int] = {}
@@ -7811,15 +7820,96 @@ class Qwen35GGUFResidentModelRunner:
             raise_if_generation_deadline_expired(row.request)
         return frozenset(int(row.request_id) for row in rows)
 
+    def contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Contain one GGUF step that failed before any device call.
+
+        Only a step's own pre-device validation is containable here: no kernel
+        was launched, so the failing row's scheduler bookkeeping is the whole
+        blast radius and failing exactly that row is provably safe.  A failure
+        at or after the first device call may have advanced rows the scheduler
+        has not recorded, and a packed step's scratch state is shared, so those
+        failures stay fatal until a device-state proof exists for them.
+        """
+
+        rows = tuple(int(request_id) for request_id in request_ids)
+        if not rows or str(phase) not in {"prefill", "decode"}:
+            return None
+        if isinstance(error, HipError):
+            return None
+        if self._execution_mutation_window != "none":
+            return None
+        if not self._quiesce_after_execution_failure(rows):
+            return None
+        step_request_id = self._execution_step_request_id
+        affected = (
+            (int(step_request_id),)
+            if step_request_id is not None and int(step_request_id) in rows
+            else rows
+        )
+        return ExecutionFailure(
+            request_ids=affected,
+            phase=str(phase),
+            work_kind=str(work_kind),
+            mutation="none",
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
+
+    def _quiesce_after_execution_failure(self, request_ids: tuple[int, ...]) -> bool:
+        """Establish device completion after a failed step, or report that it failed."""
+
+        runtimes: list[Any] = []
+        seen: set[int] = set()
+
+        def remember(candidate: Any) -> None:
+            if candidate is None or id(candidate) in seen:
+                return
+            seen.add(id(candidate))
+            runtimes.append(candidate)
+
+        for request_id in request_ids:
+            row = self._rows.get(int(request_id))
+            if row is None:
+                continue
+            slot = getattr(row, "slot", None)
+            session = getattr(slot, "session", None)
+            remember(getattr(session, "runtime", None))
+            lease = getattr(row, "lease", None)
+            remember(getattr(getattr(lease, "session", None), "runtime", None))
+        remember(getattr(self._shared_runner, "_runtime", None))
+        if not runtimes:
+            # No reachable device runtime means no proof that the device is idle.
+            return False
+        for runtime in runtimes:
+            synchronize = getattr(runtime, "device_synchronize", None)
+            if not callable(synchronize):
+                return False
+            try:
+                synchronize()
+            except BaseException:
+                return False
+        return True
+
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        self._execution_mutation_window = "none"
+        self._execution_step_request_id = None
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
             handled = self._try_prefill_native_work_batch(work)
+            self._execution_mutation_window = "unknown"
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
                 if int(request_id) in handled:
                     continue
                 row = self._row(request_id)
+                self._execution_step_request_id = int(request_id)
                 start = int(row.prefill_tokens_seen)
                 chunk = tuple(int(token) for token in token_row)
                 expected = row.prompt_ids[start:start + len(chunk)]
@@ -7885,13 +7975,21 @@ class Qwen35GGUFResidentModelRunner:
                     raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
+        self._execution_mutation_window = "none"
+        self._execution_step_request_id = None
         if not commit:
             raise ValueError("GGUF resident decode requires commit=True")
         request_ids = tuple(int(request_id) for request_id in work.request_ids)
         with hip_target_arch_environment(self.generator.target_arch):
-            rows = [self._row(request_id) for request_id in request_ids]
+            rows = []
+            for request_id in request_ids:
+                self._execution_step_request_id = int(request_id)
+                rows.append(self._row(request_id))
             for row in rows:
+                self._execution_step_request_id = int(row.request_id)
                 raise_if_generation_deadline_expired(row.request)
+            self._execution_step_request_id = None
+            self._execution_mutation_window = "unknown"
             step_rows = [
                 row
                 for row in rows

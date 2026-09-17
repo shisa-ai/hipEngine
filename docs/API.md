@@ -1463,6 +1463,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation; matched request routes include `error.hipengine.routing` with an `overload_source`. |
+| `execution_failed` | 500 | yes | The request's own execution step failed before its result could be applied, so the engine contained the failure and kept serving; `error.hipengine.execution` names the phase, the affected `request_ids`, the `work_kind`, and whether the failed step may have mutated device state (`state_mutation`). A fatal failure that closes the resident service is reported separately: `/ready` turns `unhealthy` and in-flight requests fail with their own engine-closed error. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`; `error.hipengine.routing` describes the failed single-model match. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 

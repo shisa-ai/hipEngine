@@ -26,7 +26,11 @@ from hipengine.generation.batch_scheduler import (
     ResidentBatchScheduler,
 )
 from hipengine.generation.concurrency2 import stream_mailbox_bound
-from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
+from hipengine.generation.deadline import (
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    generation_deadline_expired,
+)
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
     ResourceUnavailable,
@@ -73,6 +77,21 @@ def _resident_stream_queue_bound(state: _ResidentStreamState) -> int:
         DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS,
         getattr(state.submission.request, "max_tokens", None),
     )
+
+
+def _terminal_failure_request_ids(
+    events: Sequence[EngineLoopEvent],
+) -> tuple[int, ...]:
+    """Return the rows one poll ended with an error or refusal event."""
+
+    request_ids: list[int] = []
+    for event in events:
+        if event.kind not in {"failed", "rejected"} or event.request_id is None:
+            continue
+        request_id = int(event.request_id)
+        if request_id not in request_ids:
+            request_ids.append(request_id)
+    return tuple(request_ids)
 
 
 def _speculative_sampling_mode(runner, request_id, params):
@@ -180,6 +199,85 @@ class GenerationAdmissionRejected(MemoryError):
             "current_units": self.current_units,
             "capacity_units": self.capacity_units,
         }
+
+
+class GenerationExecutionFailed(RuntimeError):
+    """One contained execution failure: the request dies, the service lives.
+
+    Raised to the caller of the failed request only.  The message names the
+    execution phase, the affected rows, whether the failed step may have
+    mutated device state, and the underlying cause, so a client never has to
+    guess whether a shared-engine fault was its own request's problem.
+    """
+
+    def __init__(
+        self,
+        *,
+        phase: str,
+        request_ids: Sequence[int],
+        work_kind: str,
+        mutation: str,
+        reason: str,
+        error: BaseException | None = None,
+    ) -> None:
+        self.phase = str(phase)
+        self.request_ids = tuple(int(request_id) for request_id in request_ids)
+        self.work_kind = str(work_kind)
+        self.mutation = str(mutation)
+        self.reason = str(reason)
+        self.cause_type = None if error is None else type(error).__name__
+        super().__init__(
+            f"generation execution failed during {self.phase} "
+            f"(request_ids={list(self.request_ids)}, work_kind={self.work_kind}, "
+            f"state_mutation={self.mutation}, "
+            f"cause={self.cause_type}: {self.reason})"
+        )
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "phase": self.phase,
+            "request_ids": list(self.request_ids),
+            "work_kind": self.work_kind,
+            "state_mutation": self.mutation,
+            "cause_type": self.cause_type,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionFailure:
+    """Post-recovery containment scope returned by ``contain_execution_failure``.
+
+    Returning an instance asserts two things on behalf of the runner that owns
+    the device: the failed step is quiesced (device work launched before the
+    failure has completed or reported its own device error), and every row named
+    here can be reclaimed.  The loop then fails exactly these rows and keeps
+    serving everything else.  A runner that cannot prove both returns ``None``,
+    and the failure stays fatal for the whole service.
+
+    ``mutation`` records how much of the failed step could have reached device
+    state: ``"none"`` (proven: the step raised before any device call),
+    ``"partial"`` (device work started, no canonical commit claimed),
+    ``"committed"`` (a canonical commit happened and was restored), or
+    ``"unknown"`` (the runner could not narrow the window).  Naming a narrower
+    ``request_ids`` than the failed work item asserts that every unnamed row of
+    that item still holds canonical state.
+    """
+
+    request_ids: tuple[int, ...]
+    phase: str
+    work_kind: str
+    mutation: str
+    reason: str
+    error: BaseException | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("execution failure containment must name affected rows")
+        if self.mutation not in {"none", "partial", "committed", "unknown"}:
+            raise ValueError(
+                "execution failure mutation must be none, partial, committed, or unknown"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +400,22 @@ class EngineLoopRunner(Protocol):
         commit: bool,
     ) -> SpecCycleResult:
         """Execute exactly one bounded planned cycle."""
+
+    def contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Contain one failed execution step, or return None to fail the service.
+
+        Optional: a runner that does not implement it leaves every execution
+        failure fatal, which is the pre-containment behaviour.  Implementations
+        must not report containment for a failure that could have left shared
+        device or provider state inconsistent.
+        """
 
 
 class SubmitPollTextGenerator:
@@ -889,6 +1003,14 @@ class SubmitPollTextGenerator:
                         error=exc,
                     ),
                 )
+            for request_id in _terminal_failure_request_ids(events):
+                # A contained execution failure already reclaimed its rows in the
+                # loop; retire the submission here so the service never waits on
+                # a result that will not arrive.
+                submission = self._submissions_by_request.get(request_id)
+                if submission is not None:
+                    self._abort_submission_locked(submission, reason="cancel")
+                self._loop.release_completed(request_id)
             self._route_stream_events_locked(events)
             return events
 
@@ -2244,6 +2366,86 @@ class ResidentEngineLoop:
         events.extend(self._run_decode(decode))
         return tuple(events)
 
+    def _contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        work: WorkItem,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Fail exactly the rows one recoverable execution failure affected.
+
+        Returns the events for a contained failure, or None when the runner
+        cannot prove the failed step is safe to continue past.  A None result is
+        fatal: the caller re-raises, and the engine service closes rather than
+        keep serving on state nobody can vouch for.
+        """
+
+        contain = getattr(self.runner, "contain_execution_failure", None)
+        if not callable(contain):
+            return None
+        request_ids = tuple(int(request_id) for request_id in work.request_ids)
+        work_kind = work.kind.value if isinstance(work.kind, WorkKind) else str(work.kind)
+        try:
+            failure = contain(
+                error,
+                phase=phase,
+                request_ids=request_ids,
+                work_kind=work_kind,
+            )
+        except BaseException:
+            # A recovery that cannot report its own scope cannot be trusted.
+            return None
+        if failure is None:
+            return None
+        if not isinstance(failure, ExecutionFailure):
+            raise TypeError(
+                "runner contain_execution_failure must return ExecutionFailure or None"
+            )
+        affected = tuple(int(request_id) for request_id in failure.request_ids)
+        outside = tuple(
+            request_id for request_id in affected if request_id not in request_ids
+        )
+        if outside:
+            raise ValueError(
+                "contained execution failure named rows outside the failed work: "
+                f"{list(outside)}"
+            )
+        cause = failure.error if failure.error is not None else error
+        if isinstance(cause, (GenerationCancelled, GenerationDeadlineExceeded)):
+            # A cancellation the step observed before touching device state is a
+            # request outcome, not an engine fault: report it as the
+            # cancellation the caller already expects instead of counting it as
+            # an execution failure.
+            reported: BaseException = cause
+        else:
+            reported = GenerationExecutionFailed(
+                phase=failure.phase,
+                request_ids=affected,
+                work_kind=failure.work_kind,
+                mutation=failure.mutation,
+                reason=failure.reason,
+                error=cause,
+            )
+        events: list[EngineLoopEvent] = [
+            EngineLoopEvent(
+                kind="work",
+                request_ids=request_ids,
+                work_kind=work.kind,
+            )
+        ]
+        for request_id in affected:
+            self.scheduler.cancel(request_id, reason="cancel")
+            events.append(
+                EngineLoopEvent(
+                    kind="failed",
+                    request_id=request_id,
+                    request_ids=(request_id,),
+                    error=reported,
+                )
+            )
+        return tuple(events)
+
     def _run_token_budget_round(self) -> tuple[EngineLoopEvent, ...]:
         """Run fair prefill quanta and one decode step for every due row."""
 
@@ -2339,13 +2541,33 @@ class ResidentEngineLoop:
         )
         return self._consecutive_prefill_chunks >= burst_limit
 
+    def _record_contained_decode_step(self, work: WorkItem) -> None:
+        """Keep the loop's step bookkeeping consistent after a contained decode.
+
+        A contained failure ends the step like any other non-prefill step: the
+        policy that picks the next work item reads these fields, so a contained
+        step must not leave prefill-run or cold-cohort state behind.
+        """
+
+        self._last_work_kind = work.kind
+        self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
+
     def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         prefill_batch = getattr(self.runner, "prefill_batch", None)
-        if callable(prefill_batch):
-            prefill_batch(work, commit=True)
-        else:
-            self.runner.prefill(work)
+        try:
+            if callable(prefill_batch):
+                prefill_batch(work, commit=True)
+            else:
+                self.runner.prefill(work)
+        except BaseException as exc:
+            contained = self._contain_execution_failure(exc, phase="prefill", work=work)
+            if contained is None:
+                raise
+            self._last_work_kind = work.kind
+            self._consecutive_prefill_chunks += 1
+            return contained
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks += 1
@@ -2474,10 +2696,17 @@ class ResidentEngineLoop:
     def _run_ar_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         decode_batch = getattr(self.runner, "decode_batch", None)
-        if callable(decode_batch):
-            generated = tuple(decode_batch(work, commit=True))
-        else:
-            generated = tuple(self.runner.decode(work))
+        try:
+            if callable(decode_batch):
+                generated = tuple(decode_batch(work, commit=True))
+            else:
+                generated = tuple(self.runner.decode(work))
+        except BaseException as exc:
+            contained = self._contain_execution_failure(exc, phase="decode", work=work)
+            if contained is None:
+                raise
+            self._record_contained_decode_step(work)
+            return contained
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
         events = self._decode_events(work, generated_events)
@@ -2606,7 +2835,18 @@ class ResidentEngineLoop:
                 self._pending_ar_reasons[int(request_id)] = reason
             prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
             if callable(prepare_k0):
-                prepare_k0(plan, tuple(semantics), stream=None)
+                try:
+                    prepare_k0(plan, tuple(semantics), stream=None)
+                except BaseException as exc:
+                    contained = self._contain_execution_failure(
+                        exc,
+                        phase="speculative_prepare",
+                        work=work,
+                    )
+                    if contained is None:
+                        raise
+                    self._record_contained_decode_step(work)
+                    return contained
             return None
         start = time.perf_counter()
         try:
@@ -2626,9 +2866,17 @@ class ResidentEngineLoop:
                 "recover_speculative_cycle_failure",
                 None,
             )
-            if not callable(recover) or not bool(recover(plan, exc)):
+            if callable(recover) and bool(recover(plan, exc)):
+                return None
+            contained = self._contain_execution_failure(
+                exc,
+                phase="speculative_cycle",
+                work=work,
+            )
+            if contained is None:
                 raise
-            return None
+            self._record_contained_decode_step(work)
+            return contained
         elapsed = time.perf_counter() - start
         if not isinstance(result, SpecCycleResult):
             raise TypeError("execute_speculative_cycle must return SpecCycleResult")
@@ -2866,7 +3114,9 @@ __all__ = [
     "DEFAULT_KV_POOL_LOW_WATER_PAGES",
     "EngineLoopConfig",
     "EngineLoopEvent",
+    "ExecutionFailure",
     "GenerationAdmissionRejected",
+    "GenerationExecutionFailed",
     "GenerationSubmission",
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",

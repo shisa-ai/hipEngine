@@ -900,6 +900,26 @@ class LLM:
         payload = snapshot()
         return dict(payload) if isinstance(payload, dict) else None
 
+    def engine_service_health(self) -> dict[str, object] | None:
+        """Report resident engine service health without forcing model load.
+
+        Returns None when the configured generator is not served by a shared
+        engine service, so a readiness probe can distinguish "no resident
+        service" from "resident service stopped serving".
+        """
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        health = getattr(generator, "health", None)
+        if not callable(health):
+            return None
+        try:
+            payload = health()
+        except Exception:
+            return None
+        return dict(payload) if isinstance(payload, dict) else None
+
     def drain_generation_cancellations(self) -> int:
         """Acknowledge queued resident cancellations without forcing model load."""
 
