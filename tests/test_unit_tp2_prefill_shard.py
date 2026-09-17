@@ -235,11 +235,22 @@ def test_batched_route_preflight_accepts_a_registered_quant():
     rank._require_batched_route(4)  # dense_bf16 prefill_out is registered
 
 
+def test_batched_route_preflight_admits_the_f32_down_partial_route():
+    runtime = FakeRuntime()
+    # 0e4966906 declared the gguf_q4_k_t16_v1 bf16 -> f32 dispatch surface that
+    # the f32 down-partial route needs at multi-row prefill, so this is the
+    # admitted case, not a refusal: the preflight resolves rows=4 through
+    # t16_wmma_prefill_bf16_f32_out. Kept as the counterpart of the refusal
+    # below so the pair reads as one contract.
+    rank = _rank(runtime, rows=4, weights=_weights("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"))
+    rank._require_batched_route(4)
+
+
 def test_batched_route_preflight_blocks_an_unsupported_dtype_route():
     runtime = FakeRuntime()
-    # Q4_K t16 has no f32-output dispatch surface: the preflight must refuse
+    # Q5_K t16 has no f32-output dispatch surface: the preflight must refuse
     # before any launch rather than stage a multi-row buffer into a bad route.
-    rank = _rank(runtime, rows=4, weights=_weights("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"))
+    rank = _rank(runtime, rows=4, weights=_weights("gguf_q5_k_t16_v1", "gguf_q5_k_t16_v1"))
     with pytest.raises(MlpShardRankError, match="no batched"):
         rank._require_batched_route(4)
 
