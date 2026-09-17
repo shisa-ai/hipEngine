@@ -1623,9 +1623,13 @@ and compare steady-state passes, timed alternately in one session on
 
 | Stage | Inputs shared | hipEngine | torch reference | Reading |
 | --- | --- | ---: | ---: | --- |
-| AR decode, 1 296 steps | recorded token trajectory, both prefixes, 2 CFG branches | 58.30 ms/step | 30.87 ms/step | **reference 1.89x faster** |
+| AR decode, 1 296 steps | recorded token trajectory, both prefixes, 2 CFG branches | 54.88 ms/step | 30.87 ms/step | **reference 1.78x faster** |
 | Acoustic solver, 32 steps | prefix, codes, seed and the reference's own noise | 25.87 s | 20.12 s | **reference 1.29x faster** |
 | FP32 Oobleck decode, 1 297 frames | the case's recorded latents, tiled 1024/16 on both sides | 20.01 s | 19.60 s | reference 1.02x faster |
+
+The AR row is after the paired-branch head (see the next section): the lm head runs once for both branches
+through a two-row F32-output GEMV, which is bit-identical per row, leaves the run's trajectory digest
+unchanged, and takes the step from 58.30 ms to 54.88 ms.
 
 Each harness refuses to report when the two sides did not run the same work: the AR
 harness compares prefix, negative-prefix and trajectory digests, and the solver harness
@@ -1646,6 +1650,32 @@ with device ops. Evidence:
 [`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
 [`matched solver timing`](results/yue2_nar_matched_timing_20260917.json),
 [`matched decoder timing`](results/yue2_vae_matched_timing_20260917.json).
+
+### Radeon 8060S: YuE2 3B paired-branch projections
+
+The AR decode runs two CFG branches over one set of weights, and the profile of a step is
+79% projection GEMVs. The lm head alone streams 756 MB of BF16 weight per call, once per
+branch. `dense_gemv_bf16_f32_out_rowtile2` puts two rows in one block so the weight is
+issued once for both branches, keeping each row's K traversal and reduction order, which
+makes a row bit-identical to the single-row kernel.
+
+| Shape (in x out) | Serial, 2 calls | Two-row, 1 call | Speedup | Serial GB/s | Two-row GB/s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LM head 2048 x 184704 | 6.723 ms | **3.798 ms** | 1.77x | 112.5 | 199.2 |
+| q 2048 x 2048 | 0.060 ms | 0.033 ms | 1.78x | 140.7 | 250.6 |
+| o 2048 x 2048 | 0.054 ms | 0.031 ms | 1.77x | 154.3 | 272.7 |
+| v 2048 x 1024 | 0.041 ms | 0.028 ms | 1.46x | 102.7 | 150.3 |
+| k 2048 x 1024 | 0.028 ms | 0.022 ms | 1.30x | 149.0 | 193.1 |
+
+Per-call latency with a synchronize per call, best of 30, after 5 warmups. In the runtime
+only the head is paired so far, which is where the traffic is: the step goes from
+**58.30 ms to 54.88 ms** (1.06x) on `mandarin-off-s1234` with the trajectory digest
+unchanged at `6a308700b3b949ac`, so the paired head reproduces the serial head exactly.
+Each branch keeps its own KV spans and its own positions (this case's positive prefix is
+98 tokens against the negative branch's 12); only the weight read is shared. Evidence:
+[`kernel A/B`](results/yue2_ar_rowtile_bench_20260917.json),
+[`step timing`](results/yue2_ar_matched_timing_20260917.json),
+gate `tests/test_unit_yue2_ar_gemv_rowtile2.py`.
 
 ### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
 

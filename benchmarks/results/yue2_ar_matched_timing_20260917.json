@@ -83,9 +83,21 @@
  "comparison": {
   "ms_per_decode_step": {
    "hipengine": 58.30155441053873,
-   "reference": 30.871840779267878
+   "reference": 30.871840779267878,
+   "hipengine_paired_head": 54.883589603760086
   },
   "reference_advantage": 1.8885026917374943,
-  "note": "Both sides drove the same recorded token trajectory for the same number of steps with the same 98-token positive and 12-token negative prefixes and the same two CFG branches, so each step is the same work. Sampling is excluded by design (the token is recorded), so this is model work only; the product loop adds the host sampling path measured by scripts/yue2_ar_sampling_cost.py."
+  "note": "Both sides drove the same recorded token trajectory for the same number of steps with the same 98-token positive and 12-token negative prefixes and the same two CFG branches, so each step is the same work. Sampling is excluded by design (the token is recorded), so this is model work only; the product loop adds the host sampling path measured by scripts/yue2_ar_sampling_cost.py.",
+  "paired_head_speedup": 1.0622766264279564,
+  "reference_advantage_paired": 1.7777880495100702
+ },
+ "paired_head": {
+  "decode_seconds": 71.18401571607683,
+  "ms_per_decode_step": 54.883589603760086,
+  "trajectory_digest": "6a308700b3b949ac",
+  "trajectory_unchanged": true,
+  "prefill_seconds": 0.3249653740786016,
+  "kernel": "dense_gemv_bf16_f32_out_rowtile2 (two rows per block, bit-identical per row)",
+  "note": "Same protocol and same recorded trajectory as the row above; the only change is that the runtime runs the lm head once for both branches. The trajectory digest is unchanged, so the paired head reproduces the serial head exactly."
  }
 }
