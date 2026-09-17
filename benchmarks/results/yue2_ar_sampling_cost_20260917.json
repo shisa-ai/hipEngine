@@ -1,0 +1,51 @@
+{
+ "protocol": "yue2-ar-sampling-cost-v1",
+ "vocab": 184704,
+ "history_tokens": 1296,
+ "repeats": 30,
+ "ms_per_token": {
+  "bf16_bits_to_f32 (per branch)": 0.027631991542875767,
+  "combine_cfg": 1.004053046926856,
+  "distribution (penalty + top-k + top-p)": 5.707721575163305,
+  "softmax_f32": 0.20548998145386577,
+  "sample_categorical": 0.6636345642618835,
+  "total": 7.608531159348786
+ },
+ "note": "CPU only; medians of per-call wall clock on one host thread.",
+ "product_loop_context_scaling": {
+  "protocol": "yue2-ar-product-loop-v1",
+  "command": "generate_tokens at fixed budgets on artifacts/yue2/oracle/cases/mandarin-off-s1234 (prefix 98, negative 12, guidance 1.01)",
+  "points": [
+   {
+    "steps": 300,
+    "context": 398,
+    "wall_seconds": 20.29,
+    "ms_per_token": 67.62
+   },
+   {
+    "steps": 700,
+    "context": 798,
+    "wall_seconds": 50.8,
+    "ms_per_token": 72.57
+   },
+   {
+    "steps": 1100,
+    "context": 1198,
+    "wall_seconds": 85.47,
+    "ms_per_token": 77.7
+   },
+   {
+    "steps": 1451,
+    "context": 1549,
+    "wall_seconds": 120.2,
+    "ms_per_token": 82.84
+   }
+  ],
+  "fit": {
+   "intercept_ms_per_token": 62.2,
+   "slope_us_per_context_token": 13.17,
+   "max_residual_ms": 0.277
+  },
+  "note": "The product loop with sampling included; the fixed-token harness measures 58.30 ms/step of model work at an average context near 700, and this sampling path costs 7.24 ms/token, which accounts for the difference at short context. The slope is the context-dependent device work (attention over the live span plus the KV write); attributing it to a specific kernel needs a per-kernel diff, not this fit."
+ }
+}
