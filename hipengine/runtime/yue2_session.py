@@ -39,6 +39,7 @@ from hipengine.generation.yue2 import (
     YuE2Random,
     combine_cfg,
     distribution,
+    distribution_windowed,
     MUSIC_START,
     VOCAB_SIZE,
     negative_prefix,
@@ -221,24 +222,28 @@ def generate_tokens(
     history: list[int] = []
     first: float | None = None
     eos = False
-    # A phase can only select rows inside its own window, so the head projects that
-    # slice of the weight. The returned row is still full-vocabulary with -inf
-    # outside, which is what `distribution` masks anyway.
+    # A phase can only select rows inside its own window, so the head projects that slice
+    # of the weight and the sampler works in window coordinates. Every stage is the same
+    # arithmetic the full-row path runs over the rows the phase can select; see
+    # `distribution_windowed`.
     window = phase_window(phase)
+    low, high = window
     for step in range(sampling.max_tokens):
         if cancelled is not None and cancelled():
             raise InterruptedError(f"Cancelled during {phase}")
-        conditional = bf16_bits_to_f32(runtime.logits(0, domain=window))
+        conditional = bf16_bits_to_f32(runtime.logits(0, domain=window)[low:high])
         if negative is None:
             logits = conditional
         else:
-            unconditional = bf16_bits_to_f32(runtime.logits(1, domain=window))
+            unconditional = bf16_bits_to_f32(runtime.logits(1, domain=window)[low:high])
             logits = combine_cfg(conditional, unconditional, cfg_scale)
-        scores = distribution(logits, sampling, history, step, phase, legacy_off=legacy_off)
+        scores = distribution_windowed(
+            logits, sampling, history, step, phase, window, legacy_off=legacy_off
+        )
         if sampling.temperature == 0:
-            token = int(np.argmax(scores))
+            token = scores.argmax_token()
         else:
-            token = generator.sample_categorical(softmax_f32(scores))
+            token = scores.offset + generator.sample_categorical(softmax_f32(scores.values))
         if first is None:
             first = time.perf_counter() - start
         if on_token is not None:
