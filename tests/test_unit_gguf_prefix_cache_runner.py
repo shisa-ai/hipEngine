@@ -738,7 +738,11 @@ class _FakeGlobalPoolOwner:
 
 
 def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
-    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE,
+        packed_verify_lease_slot_ceiling,
+    )
 
     owner = _FakeGlobalPoolOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)
@@ -754,16 +758,29 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
 
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
-    # capacity=2 requests * 3 pages/request = 6 request pages; the packed
-    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages
-    # on top (the lease is capacity-honest: serving can never open more
-    # resident slots than max_active_requests, and the 1024-token per-slot
-    # union floor still applies to short request contexts).
-    assert pool.current_pages == 12
+    # The lease covers the packed union geometry: one page per 256 tokens of the
+    # 768-token session (max(3, 1024/256) = 4 pages per slot) times the union
+    # slot ceiling. That ceiling is read from the generator's resident runner's
+    # ``max_batch_size``, which the real model runner does not expose, so the
+    # shared helper's default slot capacity applies here; see the follow-up on
+    # the unreachable capacity signal.
+    lease_slots = packed_verify_lease_slot_ceiling(
+        getattr(
+            getattr(owner, "_resident_model_runner", None),
+            "max_batch_size",
+            None,
+        )
+    )
+    pages_per_slot = max(
+        (768 + 255) // 256,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+    )
+    expected_lease_pages = lease_slots * pages_per_slot
+    assert pool.current_pages == 8 + expected_lease_pages
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 4
+    assert lease is not None and len(lease) == expected_lease_pages
     assert pool.stats.free_pages == 8
-    assert pool.stats.pinned_pages == 4
+    assert pool.stats.pinned_pages == expected_lease_pages
     assert batch_owner.bound_workspace_pools == [pool]
     snapshot = runner.observability_snapshot()
     assert snapshot["model_runner"]["max_active_requests"] == 2
@@ -778,22 +795,32 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert new_pool is not pool
     assert batch_owner.workspace_release_calls == 1
     assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
-    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 4
+    assert (
+        len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY))
+        == expected_lease_pages
+    )
     assert batch_owner.bound_workspace_pools[-1] is new_pool
 
     runner.close()
     assert runner.kv_pool is None
 
 
-def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
-    """At capacity=1 the packed workspace leases one slot, not the 8-slot floor.
+def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:
+    """A C1 pool still leases the packed union slot ceiling, not one slot.
 
-    Only one resident slot can ever be opened at C1 (MTP serving widths and
-    packed group layouts are both bounded by max_active_requests), so leasing
-    eight slots pins 4x more arena pages than the serving loop can touch.
+    The packed union geometry can open more slots than the serving capacity
+    because the MTP verify width alone packs four, so the pool cannot take a
+    one-slot lease. The lease's slot term comes from the generator's resident
+    runner's ``max_batch_size``, which the real model runner does not expose;
+    the shared helper's default slot capacity therefore applies. See the
+    follow-up on that unreachable capacity signal.
     """
 
-    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE,
+        packed_verify_lease_slot_ceiling,
+    )
 
     owner = _FakeGlobalPoolOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
@@ -809,12 +836,14 @@ def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
 
     pool = runner.kv_pool
     assert pool is not None
-    # capacity=1 request * 3 pages/request = 3 request pages; the workspace
-    # lease is one slot * max(3, 4) = 4 pages.
-    assert pool.current_pages == 12
+    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(
+        (768 + 255) // 256,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+    )
+    assert pool.current_pages == 8 + expected_lease_pages
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 4
-    assert pool.stats.pinned_pages == 4
+    assert lease is not None and len(lease) == expected_lease_pages
+    assert pool.stats.pinned_pages == expected_lease_pages
     assert pool.stats.free_pages == 8
 
     runner.close()
