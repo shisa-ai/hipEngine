@@ -1,0 +1,158 @@
+{
+  "blocker": {
+    "consequences": [
+      "The driver thread exits, _fail_all cancels every in-flight child, and the service closes.",
+      "Every later request fails with 'hipEngine preparation failed to prepare resident session/KV cache: engine service is closed. Try a lower --max-context-tokens or --kv-storage int8_per...', which blames memory settings for a state bug.",
+      "Requests that survive a concurrent prefill report fallback_reason 'no_provider' with mtp_used false: the prompt activation never primed provider state, so the planner selects autoregressive decoding for the whole output."
+    ],
+    "evidence": {
+      "c4_harness": "4 completed (all mtp_used false, fallback_reason no_provider), 20 failed",
+      "c4_vllm_bench": "8 completed, 16 failed",
+      "c8_vllm_bench": "11 completed, 21 failed, 64 requests hit the closed-service message",
+      "driver_tracebacks": "one per server lifetime, reproduced on three fresh servers (ports 8053, 8054, 8055)"
+    },
+    "exception": "RuntimeError: GGUF MTP2 prompt activation claims are already reserved",
+    "source": "worklog/entries/20260917T162126.651176Z-lhl-sharegpt-mtp-routing-pass-8d7978.md",
+    "summary": "At concurrency >= 4 the engine service dies and every later request fails with HTTP 500. The crash is a single-slot prompt-activation guard in the MTP adapter: an incremental (multi-chunk) prefill opens prompt activation claims that stay open across ticks until the final chunk, so any other request's prompt activation raises.",
+    "traceback_chain": [
+      "engine_service._drive: events = tuple(self._driver.poll(max_ticks=1))",
+      "engine_loop.poll -> tick -> _tick_once -> _run_prefill",
+      "qwen35_gguf.prefill_batch: self._prefill_native_chunk(row, model_chunk, final_chunk=final_chunk)",
+      "qwen35_gguf._prefill_native_chunk (line 8876): streaming_sinks = self._begin_mtp2_prompt_streaming((row,))",
+      "qwen35_gguf._begin_mtp2_prompt_streaming (line 8366): adapter.begin_prompt_streaming(...)",
+      "qwen35_gguf_mtp2.begin_prompt_streaming (line 1372): raise RuntimeError('GGUF MTP2 prompt activation claims are already reserved')"
+    ]
+  },
+  "commands": {
+    "harness_c1": "python3 scripts/sharegpt_mtp_routing_pass.py --server-url http://127.0.0.1:8053 --model qwen3.8-27b-q4km --dataset <dataset> --gguf <gguf> --num-prompts 24 --max-concurrency 1 --output-len 128 --label c1-len128 --out /tmp/sharegpt-pass2/c1-len128.json",
+    "harness_c4": "same with --num-prompts 24 --max-concurrency 4 --label c4-len128",
+    "source_state": "commit 7c97e037f",
+    "vllm_bench": "python -m vllm.entrypoints.cli.main bench serve --backend openai-chat --base-url http://127.0.0.1:<port> --endpoint /v1/chat/completions --model qwen3.8-27b-q4km --tokenizer Qwen/Qwen3.8-27B --dataset-name sharegpt --dataset-path <dataset> --sharegpt-output-len 128 --num-prompts <n> --max-concurrency <c> --percentile-metrics ttft,tpot,itl,e2el --metric-percentiles 50,95,99 --save-result --result-dir /tmp/sharegpt-pass2 --result-filename vllm-bench-c<c>.json",
+    "vllm_version": "0.22.1rc1.dev499+g470229c37.d20260616"
+  },
+  "dataset": {
+    "loader": "vLLM ShareGPT pruning criteria (prompt 4..1024 tokens, total 4..2048), first turn as prompt, second turn as expected output length",
+    "output_len_override": 128,
+    "path": "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json"
+  },
+  "date": "2026-09-17",
+  "hardware": "zbook / gfx1151 (Radeon 890M class RDNA3.5 APU)",
+  "harness_c1": {
+    "completion_tokens": 3072,
+    "decode_tokens_per_second": 20.11,
+    "failed_requests": 0,
+    "max_concurrency": 1,
+    "median_ttft_ms": 5988.7,
+    "mtp_output_share": 0.9906,
+    "mtp_output_tokens": 3043,
+    "mtp_request_share": 1.0,
+    "mtp_requests": 24,
+    "non_mtp_reasons": {},
+    "num_prompts": 24,
+    "prompt_token_buckets": {
+      "0-511": {
+        "completion_tokens": 2560,
+        "mtp_output_tokens": 2535,
+        "mtp_requests": 20,
+        "requests": 20
+      },
+      "512-767": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "mtp_requests": 2,
+        "requests": 2
+      },
+      "768-1022": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "mtp_requests": 2,
+        "requests": 2
+      }
+    },
+    "requests": 24,
+    "wall_seconds": 152.8
+  },
+  "harness_c4": {
+    "completion_tokens": 512,
+    "decode_tokens_per_second": 10.24,
+    "failed_requests": 20,
+    "max_concurrency": 4,
+    "median_ttft_ms": 19199.5,
+    "mtp_output_share": 0.0,
+    "mtp_output_tokens": 0,
+    "mtp_request_share": 0.0,
+    "mtp_requests": 0,
+    "non_mtp_reasons": {
+      "no_provider": 4
+    },
+    "num_prompts": 24,
+    "prompt_token_buckets": {
+      "0-511": {
+        "completion_tokens": 512,
+        "mtp_output_tokens": 0,
+        "requests": 4
+      }
+    },
+    "requests": 4,
+    "wall_seconds": 50.0
+  },
+  "model": "Qwen3.8-27B-Q4_K_M.gguf (17,106,775,008 B), served as qwen3.8-27b-q4km",
+  "next": "Fix the prompt-activation guard (allow concurrent activations or scope the guard per group) and make a request-level failure unable to kill the service, then re-run this pass at c=4 and c=8.",
+  "purpose": "Answer, on a real workload, how many requests run MTP and why the others do not, with the standard serving metrics from the same load.",
+  "server": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port <port> --log-level info (no speculative flags; automatic MTP resolves to depth 3 from model evidence)",
+  "source": "worklog/entries/20260917T162126.651176Z-lhl-sharegpt-mtp-routing-pass-8d7978.md",
+  "status": "diagnostic serving measurement; not a retained benchmark row (the c>=4 arms are blocked, and the c=1 rate will be re-measured after the prompt-activation fix)",
+  "title": "ShareGPT routing through the speculative MTP path (c=1 valid; c>=4 blocked by a prompt-activation crash)",
+  "ttft_note": "vLLM bench reports time to the first SSE chunk, and the server opens the stream with a role-only chunk, so its TTFT (3.04 ms at c=1) is a first-byte figure rather than a first-token figure. The harness measures time to the first content chunk, which is the 5,988.7 ms median at c=1 and matches the 5.5-6.2 s E2EL minus 128 decode steps.",
+  "vllm_bench_c1": {
+    "benchmark_duration_s": 148.54,
+    "completed": 24,
+    "failed": 0,
+    "max_concurrency": 1,
+    "mean_e2el_ms": 6188.85,
+    "mean_tpot_ms": 48.71,
+    "mean_ttft_ms": 3.04,
+    "median_tpot_ms": 47.89,
+    "median_ttft_ms": 2.88,
+    "num_prompts": 24,
+    "output_token_throughput_per_second": 20.68,
+    "p99_tpot_ms": 66.32,
+    "p99_ttft_ms": 4.47,
+    "request_throughput_per_second": 0.1616,
+    "total_token_throughput_per_second": 61.9
+  },
+  "vllm_bench_c4": {
+    "benchmark_duration_s": 58.87,
+    "completed": 8,
+    "failed": 16,
+    "max_concurrency": 4,
+    "mean_e2el_ms": 25672.83,
+    "mean_tpot_ms": 182.27,
+    "mean_ttft_ms": 9.03,
+    "median_tpot_ms": 182.26,
+    "median_ttft_ms": 6.89,
+    "num_prompts": 24,
+    "output_token_throughput_per_second": 8.7,
+    "p99_tpot_ms": 182.32,
+    "p99_ttft_ms": 13.86,
+    "request_throughput_per_second": 0.1359,
+    "total_token_throughput_per_second": 29.32
+  },
+  "vllm_bench_c8": {
+    "benchmark_duration_s": 58.8,
+    "completed": 11,
+    "failed": 21,
+    "max_concurrency": 8,
+    "mean_e2el_ms": 40012.45,
+    "mean_tpot_ms": 203.57,
+    "mean_ttft_ms": 3763.46,
+    "median_tpot_ms": 203.56,
+    "median_ttft_ms": 16.3,
+    "num_prompts": 32,
+    "output_token_throughput_per_second": 8.71,
+    "p99_tpot_ms": 225.52,
+    "p99_ttft_ms": 27675.09,
+    "request_throughput_per_second": 0.1871,
+    "total_token_throughput_per_second": 49.66
+  }
+}
