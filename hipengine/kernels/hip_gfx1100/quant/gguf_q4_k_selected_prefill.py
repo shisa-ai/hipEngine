@@ -46,6 +46,10 @@ _SYMBOL_IU8_RISK_BF16 = (
 _SYMBOL_SPARSE_EXACT_REPAIR_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_sparse_exact_repair_bf16"
 )
+_SYMBOL_RISK_BITMAP = "hipengine_gguf_q4_k_selected_dual_risk_bitmap"
+_SYMBOL_ROW_BITMAP_REPAIR_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_row_bitmap_repair_bf16"
+)
 _SYMBOL_DUAL_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out"
 _SYMBOL_HOT_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out"
 _SYMBOL_HOT_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out"
@@ -1132,6 +1136,134 @@ def _launch_sparse_exact_repair(
         runtime.check(int(err))
 
 
+def risk_bitmap_words(out_features_total: int) -> int:
+    """32-bit words per compact row in the row-bitmap repair layout."""
+
+    if int(out_features_total) <= 0:
+        raise ValueError("out_features_total must be positive")
+    return (int(out_features_total) + 31) // 32
+
+
+def risk_bitmap_bytes(compact_rows: int, out_features_total: int) -> int:
+    """Bytes the row bitmap needs for one gate/up call."""
+
+    if int(compact_rows) <= 0:
+        raise ValueError("compact_rows must be positive")
+    return (
+        int(compact_rows)
+        * risk_bitmap_words(out_features_total)
+        * ctypes.sizeof(ctypes.c_uint32)
+    )
+
+
+def gguf_q4_k_selected_dual_risk_bitmap(
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    row_bits_ptr: int,
+    max_risks: int,
+    compact_rows: int,
+    out_features_total: int,
+    *,
+    grid_blocks: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fold the flat risk queue into a per-row column bitmap.
+
+    The bitmap must be zeroed before every call. Idempotent: a duplicated
+    queue entry sets one bit, so the row-bitmap repair recomputes it once.
+    """
+
+    if int(compact_rows) <= 0 or int(out_features_total) <= 0:
+        raise ValueError("compact_rows and out_features_total must be positive")
+    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0 or int(row_bits_ptr) <= 0:
+        raise ValueError("risk bitmap requires risk and bitmap buffers")
+    if int(max_risks) < 0 or int(grid_blocks) <= 0:
+        raise ValueError("max_risks must be non-negative and grid_blocks positive")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_RISK_BITMAP)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_void_p(row_bits_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(out_features_total),
+        ctypes.c_int64(grid_blocks),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_row_bitmap_repair_bf16(
+    input_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    row_bits_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Repair every bit set in the row bitmap, one block per compact row.
+
+    Bit-identical to :func:`gguf_q4_k_selected_dual_sparse_exact_repair_bf16`
+    for the same queue contents: the per-element reduction, shuffle tree and
+    wave publication are the same instructions, and the activation values are
+    the same bf16 bits, staged in LDS once per row instead of re-read per
+    element.
+    """
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (in_features, "in_features"),
+        (out_features_a, "out_features_a"),
+        (out_features_b, "out_features_b"),
+        (num_experts, "num_experts"),
+    ):
+        if int(value) <= 0:
+            raise ValueError(f"{name} must be positive")
+    if in_features % 256 != 0:
+        raise ValueError("row bitmap repair requires in_features % 256 == 0")
+    if int(row_bits_ptr) <= 0:
+        raise ValueError("row bitmap repair requires the bitmap buffer")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROW_BITMAP_REPAIR_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(row_bits_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_sidemeta(
     symbol: str,
     x_ptr: int,
@@ -1446,6 +1578,26 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k",
+            "selected_dual_row_bitmap_repair_bf16",
+        ),
+        gguf_q4_k_selected_dual_row_bitmap_repair_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_risk_bitmap",
+        ),
+        gguf_q4_k_selected_dual_risk_bitmap,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
             "selected_dual_wmma_prefill_compact_fp16_fp16_out",
         ),
         gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
@@ -1523,6 +1675,10 @@ __all__ = [
     "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
     "gguf_q4_k_selected_dual_sparse_exact_repair_bf16",
+    "gguf_q4_k_selected_dual_risk_bitmap",
+    "gguf_q4_k_selected_dual_row_bitmap_repair_bf16",
+    "risk_bitmap_bytes",
+    "risk_bitmap_words",
     "build_gguf_q4_k_selected_prefill",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",

@@ -1352,6 +1352,11 @@ __global__ void q5_1_selected_sparse_exact_repair_row_publish_kernel(
     const int thread = static_cast<int>(threadIdx.x);
     float acc_even = 0.0f;
     float acc_odd = 0.0f;
+    // Unrolled for the same reason as the Q4_K dual repair: a runtime trip
+    // count leaves the loads serialized behind one dependent round trip. The
+    // accumulation order is unchanged, so the repaired value is bit-identical
+    // (tests/test_gpu_qwen4exp_q51_iu8_exact.py).
+#pragma unroll 4
     for (int i = 0; i < lanes; ++i) {
       const int64_t column = thread + static_cast<int64_t>(i) * 128;
       const int64_t block = column / 32;

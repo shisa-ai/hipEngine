@@ -2187,6 +2187,12 @@ __global__ void gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(
     const int subblock = threadIdx.x >> 5;
     const int lane = threadIdx.x & 31;
     const int paired_subblock = subblock + 4;
+    // Unrolled so the block's 10 (K=2560) iterations can issue their weight
+    // and activation loads together instead of one dependent round trip at a
+    // time. The accumulation order is unchanged, so the repaired value is
+    // bit-identical; see the RED suite in
+    // tests/test_gpu_qwen4exp_q4_iu8_exact.py.
+#pragma unroll 4
     for (int block = 0; block < blocks_per_row; ++block) {
       const uint8_t* __restrict__ block_ptr =
           weight_row + static_cast<int64_t>(block) * Q4_K_BLOCK_BYTES;
@@ -2226,6 +2232,170 @@ __global__ void gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(
           float_to_bf16_bits(total);
     }
     __syncthreads();
+  }
+}
+
+// Row-bucketed form of the same exact repair.
+//
+// The per-slot kernel above reads one full activation row (in_features bf16)
+// and one weight row for every queued element, so its cost is
+// ``elements * (in_features * 2 + row_bytes)`` bytes of DRAM traffic. At the
+// measured 0.712% repair rate the activation row is 78% of that, and the same
+// row is re-read once per queued column of the row. Measured on the admitted
+// gate/up shape: 3.05 ms per launch at 201 GB/s, invariant in grid size from
+// 17920 to 262144 blocks, i.e. bandwidth-bound rather than latency-bound
+// (benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure).
+//
+// This pair of kernels keeps the arithmetic identical and changes only which
+// bytes are read: ``..._risk_bitmap_kernel`` folds the flat risk queue into a
+// per-row column bitmap, and ``..._row_bitmap_repair_bf16_kernel`` gives each
+// compact row one block, stages that row's activations in LDS once, and then
+// runs the same per-element reduction for each set bit. Traffic becomes
+// ``rows * in_features * 2 + elements * row_bytes``.
+//
+// The bitmap is idempotent: a duplicated queue entry sets one bit and is
+// repaired once, which the per-slot kernel cannot do.
+__global__ void gguf_q4_k_selected_dual_risk_bitmap_kernel(
+    const int* __restrict__ risk_count,
+    const int* __restrict__ risk_indices,
+    unsigned int* __restrict__ row_bits,
+    int64_t max_risks,
+    int64_t out_features_total) {
+  const int count = static_cast<int>(
+      max(static_cast<int64_t>(*risk_count), static_cast<int64_t>(0)));
+  const int bounded = static_cast<int>(
+      min(static_cast<int64_t>(count), max_risks));
+  const int words_per_row =
+      static_cast<int>((out_features_total + 31) >> 5);
+  for (int slot = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+       slot < bounded;
+       slot += static_cast<int>(gridDim.x) * blockDim.x) {
+    const int64_t idx = risk_indices[slot];
+    if (idx < 0) continue;
+    const int64_t compact_row = idx / out_features_total;
+    const int64_t global_col = idx - compact_row * out_features_total;
+    if (global_col >= out_features_total) continue;
+    const int64_t word =
+        compact_row * words_per_row + (global_col >> 5);
+    atomicOr(&row_bits[word],
+             1u << static_cast<unsigned int>(global_col & 31));
+  }
+}
+
+__launch_bounds__(128)
+__global__ void gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    const unsigned int* __restrict__ row_bits,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts) {
+  extern __shared__ float x_s[];
+  __shared__ float wave_sums[4];
+  const int64_t compact_row = blockIdx.x;
+  if (compact_row >= compact_rows) return;
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int words_per_row =
+      static_cast<int>((out_features_total + 31) >> 5);
+  const unsigned int* row_words =
+      row_bits + compact_row * words_per_row;
+
+  // One expert lookup per row instead of one per element.
+  int64_t lo = 0;
+  int64_t hi = num_experts;
+  while (lo < hi) {
+    const int64_t mid = (lo + hi) >> 1;
+    if (expert_start[mid] <= compact_row) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  const int64_t expert = lo - 1;
+  if (expert < 0 || expert >= num_experts) return;
+  if (compact_row < expert_start[expert] ||
+      compact_row >= expert_start[expert + 1]) {
+    return;
+  }
+
+  const uint16_t* x_row = input + compact_row * in_features;
+  for (int64_t i = threadIdx.x; i < in_features; i += blockDim.x) {
+    x_s[i] = bf16_bits_to_float(x_row[i]);
+  }
+  __syncthreads();
+
+  const int blocks_per_row = static_cast<int>(in_features / QK_K);
+  const int64_t row_bytes =
+      static_cast<int64_t>(blocks_per_row) * Q4_K_BLOCK_BYTES;
+  const int subblock = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int paired_subblock = subblock + 4;
+
+  for (int word = 0; word < words_per_row; ++word) {
+    unsigned int bits = row_words[word];
+    while (bits != 0u) {
+      const int bit = __builtin_ctz(bits);
+      bits &= bits - 1u;
+      const int64_t global_col =
+          static_cast<int64_t>(word) * 32 + bit;
+      if (global_col >= out_features_total) continue;
+      const bool use_b = global_col >= out_features_a;
+      const int64_t local_col =
+          use_b ? (global_col - out_features_a) : global_col;
+      const int64_t local_out_features =
+          use_b ? out_features_b : out_features_a;
+      if (local_col >= local_out_features) continue;
+      const uint8_t* __restrict__ weight_row =
+          (use_b ? qweight_b : qweight_a) +
+          expert * (local_out_features * row_bytes) + local_col * row_bytes;
+
+      float acc = 0.0f;
+#pragma unroll 4
+      for (int block = 0; block < blocks_per_row; ++block) {
+        const uint8_t* __restrict__ block_ptr =
+            weight_row + static_cast<int64_t>(block) * Q4_K_BLOCK_BYTES;
+        const float ds = fp16_bytes_to_float(block_ptr) *
+            static_cast<float>(gguf_q4_k_scale(block_ptr + 4, subblock));
+        const float dm = fp16_bytes_to_float(block_ptr + 2) *
+            static_cast<float>(gguf_q4_k_min(block_ptr + 4, subblock));
+        const float dsp = fp16_bytes_to_float(block_ptr) *
+            static_cast<float>(gguf_q4_k_scale(block_ptr + 4, paired_subblock));
+        const float dmp = fp16_bytes_to_float(block_ptr + 2) *
+            static_cast<float>(gguf_q4_k_min(block_ptr + 4, paired_subblock));
+        const uint8_t* __restrict__ qs = block_ptr + Q4_K_QS_OFFSET;
+        const uint8_t q0 = gguf_q4_k_quant(qs, subblock, lane);
+        const uint8_t q1 = gguf_q4_k_quant(qs, paired_subblock, lane);
+        const float x0 =
+            x_s[static_cast<int64_t>(block) * QK_K + threadIdx.x];
+        const float x1 =
+            x_s[static_cast<int64_t>(block) * QK_K + 128 + threadIdx.x];
+        acc += x0 * (ds * static_cast<float>(q0) - dm);
+        acc += x1 * (dsp * static_cast<float>(q1) - dmp);
+      }
+#pragma unroll
+      for (int delta = 16; delta > 0; delta >>= 1) {
+        acc += __shfl_down(acc, delta);
+      }
+      if ((threadIdx.x & 31) == 0) {
+        wave_sums[threadIdx.x >> 5] = acc;
+      }
+      __syncthreads();
+      if (threadIdx.x == 0) {
+        float total = 0.0f;
+#pragma unroll
+        for (int wave = 0; wave < 4; ++wave) {
+          total += wave_sums[wave];
+        }
+        out[compact_row * out_features_total + global_col] =
+            float_to_bf16_bits(total);
+      }
+      __syncthreads();
+    }
   }
 }
 
@@ -2812,4 +2982,60 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_sparse_exact_repair_bf16(
       input, expert_start, qweight_a, qweight_b, out, risk_count,
       risk_indices, max_risks, compact_rows, in_features, out_features_a,
       out_features_b, num_experts, grid_blocks, stream);
+}
+
+// Row-bucketed exact repair: fold the flat risk queue into a per-row column
+// bitmap, then repair each row with one LDS-staged activation row. Same
+// arithmetic as ``..._sparse_exact_repair_bf16``, less DRAM traffic.
+extern "C" int hipengine_gguf_q4_k_selected_dual_risk_bitmap(
+    const int* risk_count,
+    const int* risk_indices,
+    unsigned int* row_bits,
+    int64_t max_risks,
+    int64_t compact_rows,
+    int64_t out_features_total,
+    int64_t grid_blocks,
+    hipStream_t stream) {
+  if (risk_count == nullptr || risk_indices == nullptr || row_bits == nullptr ||
+      max_risks < 0 || compact_rows <= 0 || out_features_total <= 0 ||
+      grid_blocks <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const dim3 block(threads);
+  const dim3 grid(static_cast<unsigned int>(grid_blocks));
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_dual_risk_bitmap_kernel),
+      grid, block, 0, stream,
+      risk_count, risk_indices, row_bits, max_risks, out_features_total);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_row_bitmap_repair_bf16(
+    const uint16_t* input,
+    const int64_t* expert_start,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    const unsigned int* row_bits,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (input == nullptr || expert_start == nullptr || qweight_a == nullptr ||
+      qweight_b == nullptr || out == nullptr || row_bits == nullptr ||
+      compact_rows <= 0 || in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features_a <= 0 || out_features_b <= 0 || num_experts <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t shared_bytes =
+      static_cast<size_t>(in_features) * sizeof(float);
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernel),
+      dim3(static_cast<unsigned int>(compact_rows)), dim3(128), shared_bytes,
+      stream, input, expert_start, qweight_a, qweight_b, out, row_bits,
+      compact_rows, in_features, out_features_a, out_features_b, num_experts);
+  return static_cast<int>(hipGetLastError());
 }

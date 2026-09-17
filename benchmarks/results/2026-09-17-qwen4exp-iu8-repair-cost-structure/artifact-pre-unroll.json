@@ -1,0 +1,259 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_repair_cost_structure",
+ "question": "Is the iu8 exact repair a fixed launch cost, a per-element cost, or a bandwidth cost, and does grid size move it?",
+ "protocol": {
+  "rows": 10240,
+  "experts": 512,
+  "in_features": {
+   "gate_up": 2560,
+   "down": 640
+  },
+  "out_features": {
+   "gate_up": 1280,
+   "down": 2560
+  },
+  "incidence": 0.007121483417267495,
+  "repetitions": 15,
+  "timing": "median of per-launch HIP event pairs, 2 primed launches",
+  "weights": "synthesized at the real shapes and byte layout; the access pattern and byte counts are representative, the values are not",
+  "shipped_grid": {
+   "gate_up": 17920,
+   "down": 17920,
+   "note": "static_tiles * 16, the runner's value for a 1024-token chunk"
+  }
+ },
+ "shapes": {
+  "gate_up": {
+   "in_features": 2560,
+   "out_features": 1280,
+   "out_features_total": 1280,
+   "row_bytes": 1440,
+   "weight_bytes_per_tensor": 471859200,
+   "weight_bytes_per_element": 1440,
+   "activation_bytes_per_element": 5120
+  },
+  "down": {
+   "in_features": 640,
+   "out_features": 2560,
+   "out_features_total": 2560,
+   "row_bytes": 480,
+   "weight_bytes_per_tensor": 629145600,
+   "weight_bytes_per_element": 480,
+   "activation_bytes_per_element": 1280
+  }
+ },
+ "grids": {
+  "gate_up": [
+   {
+    "risks": 0,
+    "grid": 17920,
+    "ms": 0.024826999753713608,
+    "ms_per_1k_risks": 0.0,
+    "bytes_moved": 0,
+    "gb_per_s": 0.0
+   },
+   {
+    "risks": 1000,
+    "grid": 17920,
+    "ms": 0.04692799970507622,
+    "ms_per_1k_risks": 0.04692799970507622,
+    "bytes_moved": 6560000,
+    "gb_per_s": 139.78861322082736
+   },
+   {
+    "risks": 10000,
+    "grid": 17920,
+    "ms": 0.3419620096683502,
+    "ms_per_1k_risks": 0.034196200966835025,
+    "bytes_moved": 65600000,
+    "gb_per_s": 191.83417498224952
+   },
+   {
+    "risks": 93342,
+    "grid": 17920,
+    "ms": 3.0464589595794678,
+    "ms_per_1k_risks": 0.03263760107539444,
+    "bytes_moved": 612323520,
+    "gb_per_s": 200.99516459086811
+   },
+   {
+    "risks": 0,
+    "grid": 65536,
+    "ms": 0.057266999036073685,
+    "ms_per_1k_risks": 0.0,
+    "bytes_moved": 0,
+    "gb_per_s": 0.0
+   },
+   {
+    "risks": 1000,
+    "grid": 65536,
+    "ms": 0.08276499807834625,
+    "ms_per_1k_risks": 0.08276499807834625,
+    "bytes_moved": 6560000,
+    "gb_per_s": 79.2605588390183
+   },
+   {
+    "risks": 10000,
+    "grid": 65536,
+    "ms": 0.37276899814605713,
+    "ms_per_1k_risks": 0.03727689981460571,
+    "bytes_moved": 65600000,
+    "gb_per_s": 175.98029966616704
+   },
+   {
+    "risks": 93342,
+    "grid": 65536,
+    "ms": 3.0499589443206787,
+    "ms_per_1k_risks": 0.03267509743010305,
+    "bytes_moved": 612323520,
+    "gb_per_s": 200.76451230276598
+   }
+  ],
+  "down": [
+   {
+    "risks": 0,
+    "grid": 17920,
+    "ms": 0.022391999140381813,
+    "ms_per_1k_risks": 0.0,
+    "bytes_moved": 0,
+    "gb_per_s": 0.0
+   },
+   {
+    "risks": 1000,
+    "grid": 17920,
+    "ms": 0.030647000297904015,
+    "ms_per_1k_risks": 0.030647000297904015,
+    "bytes_moved": 1760000,
+    "gb_per_s": 57.42813270114297
+   },
+   {
+    "risks": 10000,
+    "grid": 17920,
+    "ms": 0.09805399924516678,
+    "ms_per_1k_risks": 0.009805399924516678,
+    "bytes_moved": 17600000,
+    "gb_per_s": 179.49293384754554
+   },
+   {
+    "risks": 186685,
+    "grid": 17920,
+    "ms": 1.6403969526290894,
+    "ms_per_1k_risks": 0.00878697781090655,
+    "bytes_moved": 328565600,
+    "gb_per_s": 200.29639745026523
+   },
+   {
+    "risks": 0,
+    "grid": 65536,
+    "ms": 0.05682599917054176,
+    "ms_per_1k_risks": 0.0,
+    "bytes_moved": 0,
+    "gb_per_s": 0.0
+   },
+   {
+    "risks": 1000,
+    "grid": 65536,
+    "ms": 0.0640299990773201,
+    "ms_per_1k_risks": 0.0640299990773201,
+    "bytes_moved": 1760000,
+    "gb_per_s": 27.487115810741987
+   },
+   {
+    "risks": 10000,
+    "grid": 65536,
+    "ms": 0.13110600411891937,
+    "ms_per_1k_risks": 0.013110600411891937,
+    "bytes_moved": 17600000,
+    "gb_per_s": 134.24251710116926
+   },
+   {
+    "risks": 186685,
+    "grid": 65536,
+    "ms": 1.6742299795150757,
+    "ms_per_1k_risks": 0.008968208369794443,
+    "bytes_moved": 328565600,
+    "gb_per_s": 196.24878542383155
+   }
+  ]
+ },
+ "bitwise_identity": {
+  "1000": {
+   "grid_17920_vs_65536": 12807
+  },
+  "10000": {
+   "grid_17920_vs_65536": 11563
+  },
+  "93342": {
+   "grid_17920_vs_65536": 0
+  }
+ },
+ "down_bitwise_identity": {
+  "1000": {
+   "grid_17920_vs_65536": 18808
+  },
+  "10000": {
+   "grid_17920_vs_65536": 17799
+  },
+  "186685": {
+   "grid_17920_vs_65536": 0
+  }
+ },
+ "row_bitmap_gate_up": [
+  {
+   "risks": 0,
+   "ms": 0.4699609875679016,
+   "ms_per_1k_risks": 0.0,
+   "bytes_moved": 52428800,
+   "gb_per_s": 111.55989834672161,
+   "note": "bitmap pass + row repair, composite"
+  },
+  {
+   "risks": 1000,
+   "ms": 0.5074920058250427,
+   "ms_per_1k_risks": 0.5074920058250427,
+   "bytes_moved": 53868800,
+   "gb_per_s": 106.14709075549696,
+   "note": "bitmap pass + row repair, composite"
+  },
+  {
+   "risks": 10000,
+   "ms": 0.868690013885498,
+   "ms_per_1k_risks": 0.0868690013885498,
+   "bytes_moved": 66828800,
+   "gb_per_s": 76.93054936948855,
+   "note": "bitmap pass + row repair, composite"
+  },
+  {
+   "risks": 93342,
+   "ms": 3.8701729774475098,
+   "ms_per_1k_risks": 0.041462288974389985,
+   "bytes_moved": 186841280,
+   "gb_per_s": 48.277242668162906,
+   "note": "bitmap pass + row repair, composite"
+  }
+ ],
+ "row_bitmap_identity": {
+  "1000": {
+   "targets": 1000,
+   "value_mismatches": 0,
+   "per_slot_wrote_unqueued": 0,
+   "bitmap_wrote_unqueued": 0,
+   "bitmap_words": 40
+  },
+  "10000": {
+   "targets": 9995,
+   "value_mismatches": 0,
+   "per_slot_wrote_unqueued": 0,
+   "bitmap_wrote_unqueued": 0,
+   "bitmap_words": 40
+  },
+  "93342": {
+   "targets": 93027,
+   "value_mismatches": 0,
+   "per_slot_wrote_unqueued": 0,
+   "bitmap_wrote_unqueued": 0,
+   "bitmap_words": 40
+  }
+ }
+}
