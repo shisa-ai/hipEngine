@@ -1,5 +1,21 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
+
+- `python -m hipengine.server` defaults `--speculative-candidate-budget` to 4
+  (`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`, documented in `docs/ENVS.md` for the
+  Laguna B4 provider). No retained Qwen3.8 evidence row uses 4: 11 rows pin 3 and
+  3 rows pin 2. The resolver therefore returns `candidate_budget_not_qualified`
+  with `permanent_ar` for a default Qwen3.8 server on `gfx1100` and `gfx1151`,
+  and MTP does not engage at any shape until the operator passes a qualified
+  depth. This is correct fail-closed behavior for an unqualified depth, but the
+  default silently disables a qualified path for every model except Laguna.
+- Wanted: a per-model or per-provider default depth taken from the model plugin's
+  own qualified rows, or an explicit startup warning when the configured depth
+  matches no row. Either way Laguna must keep admitting only B4, so this cannot
+  be a single global default change. Until then, the measured MTP recipes pass
+  `--speculative-candidate-budget 3` explicitly.
+
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 
 - Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` §2.9).

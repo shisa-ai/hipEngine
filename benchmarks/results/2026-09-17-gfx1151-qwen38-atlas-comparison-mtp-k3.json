@@ -1,0 +1,196 @@
+{
+  "schema": "hipengine.benchmark.artifact/1",
+  "date": "2026-09-17",
+  "kind": "external-engine comparison, hipEngine side rerun",
+  "comparison_document": "docs/COMPARISON-vs-atlas.md",
+  "host": {
+    "name": "zbook",
+    "apu": "AMD Ryzen AI MAX+ PRO 395 with Radeon 8060S (gfx1151, RDNA3.5)",
+    "memory_gib": 125,
+    "rocm": "10.0.0 (TheRock, via python -m rocm_sdk path --root)",
+    "notes": "single node, no containers, GPU otherwise idle"
+  },
+  "engine": {
+    "revision": "1a0a40cedcae4910e49d190d62125159884c2059",
+    "entrypoint": "python -m hipengine.server"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true
+  },
+  "protocol": {
+    "client": "atlas scripts/strix/bench_1to1.py (copy at /tmp/bench_1to1.py)",
+    "request": "streaming /v1/chat/completions, greedy (temperature 0), thinking pinned off, max_tokens 128, stream_options.include_usage",
+    "sampling": "one discarded warmup then three measured runs per shape",
+    "decode_tok_s": "(completion_tokens - 1) / (last_chunk - first_chunk)",
+    "prefill_tok_s": "prompt_tokens / TTFT",
+    "kv_storage": "bf16",
+    "max_context_tokens": 16384
+  },
+  "commands": {
+    "ar_arm": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --speculative-mtp-serving off --host 127.0.0.1 --port 8000 --log-level info",
+    "mtp_arm": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --speculative-mtp-serving enabled --speculative-candidate-budget 3 --host 127.0.0.1 --port 8000 --log-level info",
+    "client": "python3 /tmp/bench_1to1.py --url http://127.0.0.1:8000 --model qwen3.8-27b-q4km --tag <tag> --shapes 512,1024,4096 --decode 128 --repeats 3 --out <json>",
+    "telemetry_probe": "python3 /tmp/mtp_probe_nonstream.py http://127.0.0.1:8000 qwen3.8-27b-q4km /tmp/atlas-rerun/mtp3-telemetry.json 512,1024,4096"
+  },
+  "admission": {
+    "serving_route": true,
+    "configured_policy": "enabled",
+    "default_enabled": true,
+    "automatic_route_promoted": true,
+    "admitted": true,
+    "reason": "qualified_automatic_realized_singleton_c1_b3",
+    "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3",
+    "automatic_eligible": true,
+    "selected_candidate_count": 3,
+    "plan_fingerprint": "sha256:4f49f71155326381603f7ef522a0fa97d8886a8514552b5b9d1ddc2fc3af689e",
+    "key": {
+      "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+      "artifact_size_bytes": 17106775008,
+      "content_verified": true,
+      "backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "weight_quant": "gguf_q4_k_m",
+      "kv_storage": "bf16",
+      "kv_layout": "uniform",
+      "realized_group_rows": 1,
+      "resident_capacity": 4,
+      "candidate_budget": 3,
+      "sampling_mode": "greedy_fast",
+      "memory_fit": true
+    }
+  },
+  "shapes": [
+    {
+      "target_prompt_tokens": 512,
+      "ar": {
+        "prompt_tokens": 517,
+        "completion_tokens": 128,
+        "ttft_ms_median": 1440.7,
+        "prefill_tok_s_median": 358.8,
+        "decode_tok_s_median": 11.873,
+        "decode_tok_s_cv": 0.00063,
+        "repeats": 3
+      },
+      "mtp_k3": {
+        "prompt_tokens": 517,
+        "completion_tokens": 128,
+        "ttft_ms_median": 1639.3,
+        "prefill_tok_s_median": 315.4,
+        "decode_tok_s_median": 18.203,
+        "decode_tok_s_cv": 0.000117,
+        "repeats": 3
+      },
+      "mtp_speedup_over_matched_ar": 1.533,
+      "route": "speculative_mtp",
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 163,
+        "accepted_draft_tokens": 72,
+        "rejected_draft_tokens": 91,
+        "acceptance_rate": 0.44171779141104295,
+        "draft_cycles": 55,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "greedy_sample_lcp_chars_ar_vs_mtp": 600,
+      "greedy_sample_chars_compared": 600,
+      "greedy_sample_identical": true
+    },
+    {
+      "target_prompt_tokens": 1024,
+      "ar": {
+        "prompt_tokens": 945,
+        "completion_tokens": 128,
+        "ttft_ms_median": 2397.2,
+        "prefill_tok_s_median": 394.2,
+        "decode_tok_s_median": 11.722,
+        "decode_tok_s_cv": 0.000542,
+        "repeats": 3
+      },
+      "mtp_k3": {
+        "prompt_tokens": 945,
+        "completion_tokens": 128,
+        "ttft_ms_median": 2751.1,
+        "prefill_tok_s_median": 343.5,
+        "decode_tok_s_median": 17.201,
+        "decode_tok_s_cv": 0.001578,
+        "repeats": 3
+      },
+      "mtp_speedup_over_matched_ar": 1.467,
+      "route": "speculative_mtp",
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 63,
+        "accepted_draft_tokens": 56,
+        "rejected_draft_tokens": 7,
+        "acceptance_rate": 0.8888888888888888,
+        "draft_cycles": 21,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "greedy_sample_lcp_chars_ar_vs_mtp": 600,
+      "greedy_sample_chars_compared": 600,
+      "greedy_sample_identical": true
+    },
+    {
+      "target_prompt_tokens": 4096,
+      "ar": {
+        "prompt_tokens": 3530,
+        "completion_tokens": 128,
+        "ttft_ms_median": 8659.6,
+        "prefill_tok_s_median": 407.6,
+        "decode_tok_s_median": 10.959,
+        "decode_tok_s_cv": 0.000291,
+        "repeats": 3
+      },
+      "mtp_k3": {
+        "prompt_tokens": 3530,
+        "completion_tokens": 128,
+        "ttft_ms_median": 8669.5,
+        "prefill_tok_s_median": 407.2,
+        "decode_tok_s_median": 10.942,
+        "decode_tok_s_cv": 0.000253,
+        "repeats": 3
+      },
+      "mtp_speedup_over_matched_ar": 0.998,
+      "route": "speculative_mtp",
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0,
+        "selected_route": "speculative_mtp",
+        "decision_reason": "backend_k0_fallback",
+        "requested_route": "speculative_mtp",
+        "selection_reason": "qualified_automatic_realized_singleton_c1_b3"
+      },
+      "greedy_sample_lcp_chars_ar_vs_mtp": 600,
+      "greedy_sample_chars_compared": 600,
+      "greedy_sample_identical": true
+    }
+  ],
+  "findings": {
+    "candidate_budget_default": "The server default --speculative-candidate-budget is 4, and no retained Qwen3.8 evidence row uses 4 (11 rows use 3, 3 rows use 2). With the default the resolver returns candidate_budget_not_qualified and permanent_ar, so MTP does not engage even though admission is otherwise physical. The measured arm passes --speculative-candidate-budget 3, the depth every retained gfx1151 row pins.",
+    "long_prompt_k0_fallback": "At 3,530 prompt tokens the request is admitted and routed to speculative_mtp, but the backend declines the MTP path and runs AR (decision_reason backend_k0_fallback, used false, effective_route default). The prompt-priming stage refuses when prompt_tokens + 1 >= min(1023, max_sequence_length) (qwen35_gguf_mtp2.py: mtp2_prompt_fallback_reason target_context_k0), so the MTP path is limited to prompts of at most 1,022 tokens on this host regardless of the 16,384-token session.",
+    "prefill_cost": "MTP raises TTFT at the two shapes where it engages (517: 1441 -> 1639 ms; 945: 2397 -> 2751 ms) because the request pays the prompt-priming stage. At 3,530 the two arms are equal (8660 vs 8670 ms) since MTP does not engage.",
+    "output_agreement": "The first 600 generated characters are identical between the AR arm and the MTP K=3 arm at all three shapes, which is the comparison document's own output-agreement basis."
+  },
+  "not_measured": [
+    "Atlas rows are unchanged and were not rerun; see docs/COMPARISON-vs-atlas.md.",
+    "MTP above a 1,022-token prompt: not reachable on this host.",
+    "MTP at candidate budgets other than 3: no retained evidence row qualifies them."
+  ]
+}
