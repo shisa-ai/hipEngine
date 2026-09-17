@@ -41,6 +41,7 @@ from hipengine.speculative import (
     TargetVerifyBuffers,
 )
 from hipengine.speculative.ngram_mod import NgramModConfig, RequestLocalNgramMod
+from hipengine.speculative.accounting import speculative_output_accounting
 
 
 class _AdapterDouble:
@@ -2699,6 +2700,249 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
 
     assert calls == [(7, 90, 15, "pre-root-hidden")]
     assert row.mtp2_k0_catchups == 1
+
+
+def _prepare_k0_adapter(row: SimpleNamespace) -> Qwen35GGUFMTP2Adapter:
+    """Adapter wired to one resident row, with request 7 owning an intent."""
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {
+        7: _MTP2RequestState(
+            request_id=7,
+            provider=SimpleNamespace(executor=SimpleNamespace()),
+            provider_pool_key=None,
+            provider_group_key=(7,),
+            verifier=SimpleNamespace(),
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+    }
+    adapter._intents = {7: 3}
+    adapter._prompt_hidden_rows = {}
+    adapter._disabled_requests = set()
+    adapter._post_reject_pending = set()
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned_row: None,
+    )
+    return adapter
+
+
+def _ar_only_k0_plan() -> SimpleNamespace:
+    return SimpleNamespace(
+        request_ids=(7,),
+        reasons=(mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS,),
+        k0_classes=(mtp2_module.SpecK0Class.PURE,),
+    )
+
+
+def test_prepare_k0_records_the_plan_reason_for_every_autoregressive_step() -> None:
+    row = SimpleNamespace(
+        first_token_emitted=False,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=1022, last_target_hidden=None)
+        ),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_k0_catchups=0,
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+
+    # A refused activation still reports why every AR step was not speculative,
+    # even before the row publishes its first token; PURE K0 rows never touch
+    # provider state.
+    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 2}
+    assert row.mtp2_k0_catchups == 0
+    # No speculative output yet, so these steps are not a fallback.
+    assert getattr(row, "mtp2_first_fallback_position", None) is None
+
+
+def test_prepare_k0_locates_the_first_fallback_after_speculative_output() -> None:
+    """An AR-only cycle after MTP cycles reports where speculation stopped."""
+
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=1022, last_target_hidden=None)
+        ),
+        slot=SimpleNamespace(generated_ids=[90, 91, 92]),
+        mtp2_k0_catchups=0,
+        mtp2_ar_step_reasons={},
+        mtp2_requested_budget=3,
+        mtp2_cycles=1,
+        mtp2_candidate_counts=[3],
+        mtp2_accepted_counts=[2],
+        mtp2_mtp_output_tokens=2,
+    )
+    adapter = _prepare_k0_adapter(row)
+
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+
+    # Both steps emitted one token each, and the first one lands at index 3 of
+    # the row's output: the token right after the speculative block.
+    assert row.mtp2_ar_step_output_tokens == 2
+    assert row.mtp2_first_fallback_position == 3
+    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 2}
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["mtp_output_tokens"] == 2
+    assert accounting["ar_output_tokens_in_cycles"] == 2
+    assert accounting["first_fallback_position"] == 3
+
+
+def test_eager_cycle_commit_attributes_visible_tokens_to_their_execution_mode() -> None:
+    row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=None, ignore_eos=False, max_tokens=32),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+    # Two depth-3 speculative cycles commit their accepted drafts plus the
+    # target bonus token; the K0 row of the same plan then emits one AR token.
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(101, 102, 103),
+            accepted=2,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=6,
+        )
+        is False
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(104, 105),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=8,
+        )
+        is False
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(106,),
+            accepted=0,
+            candidate_count=0,
+            plan_reason=mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS,
+            target_position=9,
+        )
+        is False
+    )
+
+    assert row.slot.generated_ids == [90, 101, 102, 103, 104, 105, 106]
+    assert row.slot.prev_token == 106
+    assert row.slot.seq_position == 9
+    assert row.mtp2_candidate_counts == [3, 3, 0]
+    assert row.mtp2_accepted_counts == [2, 1, 0]
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["cycles"] == 3
+    assert accounting["generated_draft_tokens"] == 6
+    assert accounting["accepted_draft_tokens"] == 3
+    assert accounting["selected_depth_histogram"] == {"0": 1, "3": 2}
+    # The prompt root token at index 0 is not part of this cycle record: only
+    # the cycles' own visible tokens are attributed here.
+    assert accounting["mtp_output_tokens"] == 5
+    assert accounting["ar_output_tokens_in_cycles"] == 1
+    assert accounting["first_fallback_position"] == 6
+    assert accounting["ar_step_reason_counts"] == {
+        "target_graph_context_bucket_miss": 1
+    }
+
+
+def test_eager_cycle_commit_reports_eos_and_max_tokens_completion() -> None:
+    row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=2, ignore_eos=False, max_tokens=3),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(101,),
+            accepted=0,
+            candidate_count=2,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=6,
+        )
+        is False
+    )
+    # A short tail: the last speculative cycle has no bonus token to append.
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(102,),
+            accepted=0,
+            candidate_count=2,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is False
+    )
+    assert row.slot.done is True
+    assert row.slot.generated_ids == [90, 101, 102]
+
+    eos_row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=2, ignore_eos=False, max_tokens=64),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            eos_row,
+            visible=(101, 2),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is True
+    )
+    assert eos_row.slot.done is True
 
 
 def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:

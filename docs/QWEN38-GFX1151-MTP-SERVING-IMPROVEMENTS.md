@@ -115,7 +115,7 @@ that hipEngine can obtain by removing a guard.
 - Expected benefit: fixes out-of-box AR-only behavior. **No speed improvement to
   the reported K3 arm**, which already overrides the bad default.
 
-### P0 — Make partial fallback visible and establish a matched baseline
+### P0 — Make partial fallback visible and establish a matched baseline — DONE 2026-09-17
 
 - Extend request summaries and final streaming usage with MTP-output count,
   AR-output count, selected-depth histogram, fallback reason counts and first
@@ -127,16 +127,45 @@ that hipEngine can obtain by removing a guard.
 - Reuse existing timing fields in `qwen35_gguf.py`: proposal, target, provider
   update, accept, readback, upload and commit. Verify counter ownership so
   streaming events and batch timing owners cannot double-count work.
-- Acceptance: extend `test_unit_specdec2_policy.py`,
-  `test_unit_qwen35_gguf_mtp2_seam.py`, `test_unit_gguf_mtp_api_gate.py` and
-  `test_integration_server_api.py`; cover no MTP, full MTP and mixed MTP/AR,
-  short output tails, cancellation and final SSE metadata. Real 945/128
-  execution must reconcile every emitted ID with one execution mode.
-- Reproduce the headline protocol and comparison protocol on the same host,
-  commit, model hash, profile, capacity and toolchain. Record both profiles
-  when testing strict versus production; do not mix their denominators.
-  Use alternating AR/MTP arm order and the original repeat counts.
+- Implemented: `speculative/accounting.py` owns the per-row counters
+  (`mtp2_mtp_output_tokens`, `mtp2_ar_output_tokens`,
+  `mtp2_first_fallback_position`, `mtp2_ar_step_reasons`, plus the committed
+  cycle record) and one helper records a committed cycle exactly once for the
+  dense, graph, eager and MoE adapters. Rows publish an execution block under
+  `diagnostics.specdec2_mtp2` for every request that carried speculative
+  intent, and `qwen35_gguf.py` mirrors the scalar counters into the response
+  `timing` map for the blocking *and* streaming chunk paths (streaming
+  previously reported no MTP telemetry at all, so its SSE summary claimed
+  `backend_k0_fallback` for successful MTP streams). The server derives
+  `ar_output_tokens = completion_tokens - mtp_output_tokens`, reports
+  `output_accounting` (`completion_tokens`, both counts,
+  `ar_output_tokens_in_cycles`, `mtp_coverage`, `reconciled`),
+  `selected_depth_histogram`, `fallback_reason_counts`, `fallback_reason` and
+  `first_fallback_position` in blocking responses, SSE final metadata and SSE
+  usage. `decision_reason: backend_k0_fallback` is preserved, with the specific
+  refusal reason beside it. Zero-cycle refusals deliberately publish no timing
+  mirrors, so `used` cannot be set by admission alone.
+- Semantics: `first_fallback_position` is `null` when speculation covered every
+  token after the prompt root, `0` when speculation covered none, and the
+  emitted-token index of the first non-speculative token after speculative
+  output otherwise. `ar_output_tokens` includes the target-prefill root token,
+  which is never produced by a speculative cycle.
+- Scope: `speculative/accounting.py`, `generation/qwen35_gguf.py`,
+  `generation/qwen35_gguf_mtp2.py`, `generation/qwen35_gguf_moe_mtp2.py`,
+  `server/api.py`, `scripts/gguf_mtp_api_gate.py`. The singleton target paths now
+  index the plan by their own request instead of plan position 0, so a mixed
+  plan cannot attribute one row's cycle to another.
+- Acceptance: `test_unit_mtp_output_accounting.py` (new),
+  `test_unit_specdec2_policy.py`, `test_unit_qwen35_gguf_mtp2_seam.py`,
+  `test_unit_gguf_mtp_api_gate.py` and `test_integration_server_api.py` cover no
+  MTP, full MTP, mixed MTP/AR, short output tails, cancellation and final SSE
+  metadata. `scripts/gguf_mtp_api_gate.py` now fails a `used=true` row whose
+  output split does not reconcile with `usage.completion_tokens`. Real 945/128
+  execution reconciles every emitted ID with one execution mode.
 - Expected benefit: reliable diagnosis and regression tests, not intrinsic speed.
+- Still open: the matched headline/comparison baseline rerun on one host,
+  commit, model hash, profile, capacity and toolchain (alternating AR/MTP arm
+  order, original repeat counts).
 
 ### P1 — Extend MTP through the whole request, then beyond short prompts
 

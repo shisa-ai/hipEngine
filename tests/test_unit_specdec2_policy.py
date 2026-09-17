@@ -331,3 +331,61 @@ def test_suppress_speculation_must_align_with_semantics() -> None:
     semantics = (_semantics(1), _semantics(2))
     with pytest.raises(ValueError, match="suppress_speculation"):
         _plan(_capability(), semantics, (2, 2), suppress_speculation=(True,))
+
+
+@pytest.mark.parametrize(
+    ("capability", "semantics", "desired", "extra"),
+    (
+        (_capability(), (_semantics(1),), (3,), {}),
+        (
+            _capability(max_context_tokens=132),
+            (_semantics(1, context_tokens=131),),
+            (3,),
+            {},
+        ),
+        (
+            _capability(),
+            (_semantics(1, remaining_decode=1),),
+            (3,),
+            {},
+        ),
+        (_capability(), (_semantics(1),), (2,), {"claims_fit": False}),
+        (_capability(), (_semantics(1),), (2,), {"circuit_breaker_open": True}),
+        (
+            _capability(eager_supported=False),
+            (_semantics(1),),
+            (2,),
+            {"graph_available": False},
+        ),
+        (_capability(), (_semantics(1),), (0,), {}),
+        (
+            _capability(),
+            (_semantics(1), _semantics(2)),
+            (2, 2),
+            {"suppress_speculation": (True, False)},
+        ),
+    ),
+)
+def test_every_row_reports_a_reason_matching_its_execution_mode(
+    capability,
+    semantics,
+    desired,
+    extra,
+) -> None:
+    """Per-row output accounting needs one stable reason per execution mode.
+
+    A speculative row is always ``speculative_qualified`` and a K0 row always
+    carries a specific non-qualified reason, so a response can name the reason
+    for every autoregressive step instead of reducing it to a single fallback
+    label.
+    """
+
+    plan = _plan(capability, semantics, desired, **extra)
+
+    assert len(plan.reasons) == len(plan.request_ids)
+    for count, reason in zip(plan.candidate_counts, plan.reasons, strict=True):
+        if count > 0:
+            assert reason is SpecPlanReason.SPECULATIVE_QUALIFIED
+        else:
+            assert reason is not SpecPlanReason.SPECULATIVE_QUALIFIED
+            assert str(reason).strip() != ""

@@ -16,7 +16,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -53,16 +53,49 @@ def _mtp_contract(body: dict[str, Any], *, used: bool) -> bool:
     if bool(extension.get("used")) is not bool(used):
         return False
     if used:
-        return (
+        if not (
             extension.get("effective_route") == "speculative_mtp"
             and "accepted_prediction_tokens" in details
             and "rejected_prediction_tokens" in details
             and extension.get("thinking_policy") in {"hint", "hard"}
-        )
+        ):
+            return False
+        # ``used`` is not proof of coverage: every emitted token must reconcile
+        # with exactly one execution mode against the reported completion count.
+        return _mtp_output_accounting_contract(body, extension)
     return (
         "accepted_prediction_tokens" not in details
         and "rejected_prediction_tokens" not in details
     )
+
+
+def _mtp_output_accounting_contract(
+    body: dict[str, Any],
+    extension: Mapping[str, Any],
+) -> bool:
+    """Check the MTP-versus-AR output split against the reported usage."""
+
+    accounting = extension.get("output_accounting")
+    if not isinstance(accounting, Mapping):
+        return False
+    completion_tokens = body.get("usage", {}).get("completion_tokens")
+    if completion_tokens is None:
+        return False
+    mtp_outputs = extension.get("mtp_output_tokens")
+    ar_outputs = extension.get("ar_output_tokens")
+    if mtp_outputs is None or ar_outputs is None:
+        return False
+    if int(accounting.get("completion_tokens", -1)) != int(completion_tokens):
+        return False
+    if int(accounting.get("mtp_output_tokens", -1)) != int(mtp_outputs):
+        return False
+    if int(accounting.get("ar_output_tokens", -1)) != int(ar_outputs):
+        return False
+    if int(mtp_outputs) + int(ar_outputs) != int(completion_tokens):
+        return False
+    if int(mtp_outputs) <= 0:
+        return False
+    return accounting.get("reconciled") is True
 
 
 def _post(client: TestClient, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:

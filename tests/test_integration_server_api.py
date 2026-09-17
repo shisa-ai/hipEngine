@@ -417,6 +417,65 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         ]
 
 
+class AccountingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """Streaming MTP fake that reports per-request execution accounting.
+
+    Mirrors the resident GGUF MTP2 path: three depth-3 cycles emit nine tokens
+    (six accepted drafts plus three target bonus tokens) out of twelve, and the
+    response carries the same accounting in its streamed final metadata.
+    """
+
+    def stream_speculative_mtp_detailed(self, prompts, sampling_params):
+        prompt_tuple = (
+            (str(prompts),)
+            if isinstance(prompts, str)
+            else tuple(str(prompt) for prompt in prompts)
+        )
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        yield GenerationStreamChunk(
+            text=f"mtp:{prompt_tuple[0]}",
+            generated_token_ids=tuple(range(901, 913)),
+            finish_details={"reason": "length"},
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=1,
+                generated_tokens=12,
+                row_index=0,
+                request_id="0",
+                phase="answer",
+                sampler_mode="greedy_fast",
+                execution_path="gguf_specdec2_mtp2",
+                timing={
+                    "mtp_cycles_count": 3.0,
+                    "mtp_generated_draft_tokens": 9.0,
+                    "mtp_accepted_draft_tokens": 6.0,
+                    "mtp_visible_output_tokens": 9.0,
+                    "mtp_accept_per_draft": 2 / 3,
+                },
+                timing_scope="choice",
+                timing_owner=True,
+                diagnostics={
+                    "specdec2_mtp2": {
+                        "requested_budget": 3,
+                        "candidate_budget": 3,
+                        "prompt_streaming": True,
+                        "prompt_fallback_reason": None,
+                        "cycles": 3,
+                        "generated_draft_tokens": 9,
+                        "accepted_draft_tokens": 6,
+                        "selected_depth_histogram": {"3": 3},
+                        "mtp_output_tokens": 9,
+                        "ar_output_tokens_in_cycles": 0,
+                        "first_fallback_position": None,
+                        "ar_step_reason_counts": {},
+                        "recoverable_failures": 0,
+                        "failure_reason_counts": {},
+                        "k0_catchups": 0,
+                    }
+                },
+            ),
+        )
+
+
 class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
     def __init__(self) -> None:
         super().__init__()
@@ -7979,6 +8038,70 @@ def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str)
     }
 
 
+@pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
+def test_explicit_mtp_streaming_done_reports_output_accounting(endpoint: str) -> None:
+    """A streamed MTP request reports the same split as the blocking response."""
+
+    fake = AccountingSpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    payload: dict[str, Any] = {
+        "model": "fake-model",
+        "max_tokens": 12,
+        "temperature": 0.0,
+        "stream": True,
+        "stream_options": {"include_usage": True, "include_hipengine": True},
+        "speculative_mtp": True,
+    }
+    if endpoint.endswith("chat/completions"):
+        payload["messages"] = [{"role": "user", "content": "hello"}]
+    else:
+        payload["prompt"] = "hello"
+
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(item.get("error") for item in payloads)
+    done = next(
+        item["choices"][0]
+        for item in payloads
+        if item.get("choices")
+        and item["choices"][0].get("finish_reason") is not None
+    )
+    summary = done["hipengine"]["speculative_mtp"]
+    assert summary["used"] is True
+    assert summary["effective_route"] == "speculative_mtp"
+    assert summary["draft_cycles"] == 3
+    assert summary["accepted_draft_tokens"] == 6
+    assert summary["mtp_output_tokens"] == 9
+    assert summary["ar_output_tokens"] == 3
+    assert summary["output_accounting"] == {
+        "completion_tokens": 12,
+        "mtp_output_tokens": 9,
+        "ar_output_tokens": 3,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 0.75,
+        "reconciled": True,
+    }
+    assert summary["selected_depth_histogram"] == {"3": 3}
+    assert summary["fallback_reason_counts"] == {}
+    assert summary["first_fallback_position"] is None
+    # The same stream also reports draft acceptance through OpenAI usage.
+    usage_event = next(item for item in payloads if item.get("usage"))
+    assert usage_event["usage"]["completion_tokens"] == 12
+    assert usage_event["usage"]["completion_tokens_details"] == {
+        "accepted_prediction_tokens": 6,
+        "rejected_prediction_tokens": 3,
+    }
+
+
 def test_mtp_summary_honors_batch_timing_ownership() -> None:
     details = []
     for row_index, timing_owner in enumerate((True, False)):
@@ -8124,6 +8247,258 @@ def test_mtp_summary_reports_selected_mtp_backend_k0_fallback_truthfully() -> No
         "draft_cycles": 0,
         "decision_reason": "backend_k0_fallback",
     }
+
+
+def _mtp_accounting_detail(
+    *,
+    generated_tokens: int,
+    accounting: dict[str, Any],
+    execution_path: str = "gguf_specdec2_mtp2",
+    timing: Mapping[str, float] | None = None,
+    finish_details: Any | None = None,
+) -> GenerationOutput:
+    """One backend output that carries a per-request execution block."""
+
+    cycles = int(accounting.get("cycles") or 0)
+    if timing is None and cycles > 0:
+        timing = {
+            "mtp_cycles_count": float(cycles),
+            "mtp_generated_draft_tokens": float(
+                accounting.get("generated_draft_tokens") or 0
+            ),
+            "mtp_accepted_draft_tokens": float(
+                accounting.get("accepted_draft_tokens") or 0
+            ),
+        }
+    return GenerationOutput(
+        text="done",
+        finish_details=finish_details,
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=8,
+            generated_tokens=generated_tokens,
+            row_index=0,
+            execution_path=execution_path,
+            timing=timing,
+            timing_scope="choice" if timing is not None else None,
+            timing_owner=True if timing is not None else None,
+            diagnostics={"specdec2_mtp2": accounting},
+        ),
+    )
+
+
+def _full_coverage_accounting(**overrides: Any) -> dict[str, Any]:
+    accounting: dict[str, Any] = {
+        "requested_budget": 3,
+        "candidate_budget": 3,
+        "prompt_streaming": False,
+        "prompt_fallback_reason": None,
+        "cycles": 8,
+        "generated_draft_tokens": 24,
+        "accepted_draft_tokens": 15,
+        "selected_depth_histogram": {"3": 8},
+        "mtp_output_tokens": 23,
+        "ar_output_tokens_in_cycles": 0,
+        "first_fallback_position": None,
+        "ar_step_reason_counts": {},
+        "recoverable_failures": 0,
+        "failure_reason_counts": {},
+        "k0_catchups": 0,
+    }
+    accounting.update(overrides)
+    return accounting
+
+
+def test_mtp_summary_reports_full_speculative_output_coverage() -> None:
+    """``used`` alone must not read as full coverage: report the output split."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 24
+    assert summary["accepted_draft_tokens"] == 15
+    assert summary["draft_cycles"] == 8
+    assert summary["mtp_output_tokens"] == 23
+    # The prompt root token is produced by the target prefill, not a cycle.
+    assert summary["ar_output_tokens"] == 1
+    assert summary["output_accounting"] == {
+        "completion_tokens": 24,
+        "mtp_output_tokens": 23,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 23 / 24,
+        "reconciled": True,
+    }
+    assert summary["selected_depth_histogram"] == {"3": 8}
+    assert summary["fallback_reason_counts"] == {}
+    assert "fallback_reason" not in summary
+    # No mid-generation fallback: speculation covered everything after the root.
+    assert summary["first_fallback_position"] is None
+
+
+def test_mtp_summary_reports_mixed_speculation_with_the_fallback_position() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(
+            cycles=3,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"0": 1, "3": 2},
+            mtp_output_tokens=6,
+            ar_output_tokens_in_cycles=1,
+            first_fallback_position=7,
+            ar_step_reason_counts={"target_graph_context_bucket_miss": 16},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["mtp_output_tokens"] == 6
+    assert summary["ar_output_tokens"] == 18
+    assert summary["output_accounting"]["mtp_coverage"] == 0.25
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["selected_depth_histogram"] == {"0": 1, "3": 2}
+    assert summary["fallback_reason_counts"] == {
+        "target_graph_context_bucket_miss": 16
+    }
+    assert summary["fallback_reason"] == "target_graph_context_bucket_miss"
+    assert summary["first_fallback_position"] == 7
+
+
+def test_mtp_summary_surfaces_the_prompt_fallback_reason() -> None:
+    """A refused activation reports why, not just ``backend_k0_fallback``."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        execution_path="gguf_packed_ar_server_decode",
+        accounting=_full_coverage_accounting(
+            candidate_budget=0,
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=0,
+            prompt_fallback_reason="target_context_k0",
+            ar_step_reason_counts={"no_provider": 23},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is False
+    assert summary["effective_route"] == "default"
+    assert summary["selected_route"] == "speculative_mtp"
+    # The compatibility field is preserved and the specific reason is added.
+    assert summary["decision_reason"] == "backend_k0_fallback"
+    assert summary["fallback_reason"] == "target_context_k0"
+    assert summary["fallback_reason_counts"] == {
+        "no_provider": 23,
+        "target_context_k0": 1,
+    }
+    assert summary["mtp_output_tokens"] == 0
+    assert summary["ar_output_tokens"] == 24
+    assert summary["output_accounting"]["mtp_coverage"] == 0.0
+    assert summary["first_fallback_position"] == 0
+
+
+def test_mtp_summary_leaves_a_request_without_intent_unchanged() -> None:
+    detail = GenerationOutput(
+        text="done",
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=4,
+            generated_tokens=3,
+            row_index=0,
+            execution_path="gguf_packed_ar_server_decode",
+            timing={"request_total_ms": 1.0},
+            timing_scope="choice",
+            timing_owner=True,
+            diagnostics={"prefix_cache": {}},
+        ),
+    )
+
+    assert _mtp_response_summary("default", [detail]) == {
+        "effective_route": "default",
+        "used": False,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+    }
+
+
+def test_mtp_summary_reconciles_a_short_output_tail() -> None:
+    """The final cycle of a truncated run emits fewer tokens than its depth."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=4,
+        accounting=_full_coverage_accounting(
+            cycles=2,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"3": 2},
+            mtp_output_tokens=3,
+            first_fallback_position=None,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["mtp_output_tokens"] == 3
+    assert summary["ar_output_tokens"] == 1
+    assert summary["output_accounting"] == {
+        "completion_tokens": 4,
+        "mtp_output_tokens": 3,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 0.75,
+        "reconciled": True,
+    }
+
+
+def test_mtp_summary_reports_partial_accounting_for_a_cancelled_request() -> None:
+    """A cancelled request reports what it emitted, without a false fallback."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=5,
+        finish_details={"reason": "cancel", "cancelled": True},
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=2,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=3,
+            first_fallback_position=None,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["mtp_output_tokens"] == 3
+    assert summary["ar_output_tokens"] == 2
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["first_fallback_position"] is None
+    assert "decision_reason" not in summary
+
+
+def test_mtp_summary_flags_an_unreconciled_accounting_block() -> None:
+    """More speculative output than completion tokens is a backend bug."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=4,
+        accounting=_full_coverage_accounting(mtp_output_tokens=9),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["output_accounting"]["reconciled"] is False
+    assert summary["ar_output_tokens"] == 0
 
 
 def test_mtp_metrics_count_owned_zero_draft_request() -> None:
