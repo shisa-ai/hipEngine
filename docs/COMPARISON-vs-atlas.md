@@ -102,9 +102,10 @@ original run and were not rerun.
   engage at ~4096 (see [MTP on this host](#mtp-on-this-host)). Atlas's MTP rows
   are therefore 1.93x / 1.67x / 1.92x hipEngine's corresponding rows. The
   hipEngine figures here are 128-output rows at a 16,384-token session; the
-  repository's topline MTP number for this model and host (21.0 tok/s, 1.88x its
-  matched 11.15 tok/s AR baseline) uses 24–25 outputs in a 1,024-token session
-  and is a different workload.
+  repository's gfx1151 topline MTP number for this model (21.0 tok/s, 1.88x its
+  matched 11.15 tok/s AR baseline) uses 24–25 outputs in a 1,024-token session.
+  It is a different workload, and the artifacts do not establish physical-host
+  identity with this comparison.
 - Every timing CV is at or below 0.16%, so the differences above are well
   outside run-to-run variation.
 
@@ -129,8 +130,8 @@ hipEngine MTP K=3 reproduces the hipEngine AR continuation exactly over the
 compared window at all three shapes, including the ~4096 shape where the two
 arms are the same execution anyway. The compared window is the first 600
 generated characters, which is the whole 128-token generation at these shapes.
-That is agreement on the generated token ids, not a bit-identity claim about the
-verify path's intermediate state.
+That is decoded-text agreement, not an independently recorded token-ID or
+intermediate-state equality check.
 
 ## Why the original run served AR
 
@@ -218,11 +219,21 @@ Per-shape draft accounting from a non-streaming probe of the same three prompts
 | ~1024 | `speculative_mtp` | `speculative_mtp` | 21 | 63 | 56 | 0.889 |
 | ~4096 | `speculative_mtp` | `default` | 0 | 0 | 0 | — |
 
-Acceptance is the whole story of the 1.53x/1.47x: at ~1024 nearly every draft is
-accepted and the cycle count is low, while at ~512 less than half are, so the
-same 128 outputs cost more than twice as many verify cycles for a smaller gain.
-Draft acceptance here is prompt-content dependent, not a fixed property of the
-model, which is why the repository's qualified rows pin an output horizon.
+Acceptance is not the whole explanation of the 1.53x/1.47x rates. The shorter
+shape has the larger measured gain despite lower draft acceptance. The backend
+also caps speculative execution during decode at context 1023, so a request
+that starts inside the prompt-priming window can switch to AR before finishing.
+The ~512 probe accounts for all 127 post-first-token outputs through 55 cycles
+plus 72 accepted drafts. The ~1024 probe accounts for only 77 through 21 cycles
+plus 56 accepted drafts, leaving 50 outputs consistent with an AR tail at the
+context boundary. This is an inference from the separate non-streaming probe
+and runtime policy, not a per-cycle trace of the timed streaming requests.
+
+The prompt predicate above admits at most **1,021** prompt tokens with a large
+enough session: 1,022 + 1 already reaches the rejected boundary. The response's
+`used: true` means MTP occurred, not that it covered the entire request.
+See the [serving improvement review](QWEN38-GFX1151-MTP-SERVING-IMPROVEMENTS.md)
+for the source trace, matched-baseline requirements and prioritized fixes.
 
 Artifact: [`2026-09-17-gfx1151-qwen38-atlas-comparison-mtp-k3.json`](../benchmarks/results/2026-09-17-gfx1151-qwen38-atlas-comparison-mtp-k3.json).
 
@@ -380,10 +391,11 @@ be added with `BENCH_EXTRA_JSON`, for example
   no per-shape K sweep, so they are not a tuned Atlas figure. hipEngine MTP was
   measured at K=3 because that is the depth every retained evidence row pins;
   its default depth of 4 admits nothing.
-- hipEngine MTP is bounded by its prompt-priming window on this host: prompts
-  above 1,022 tokens run AR even though admission and routing select
-  `speculative_mtp`. The ~4096 row is therefore an AR row, and no hipEngine MTP
-  figure here describes long-prompt speculation.
+- hipEngine MTP is bounded by both prompt activation and per-cycle context on
+  this host: prompts above 1,021 tokens run AR even though admission and routing
+  select `speculative_mtp`. Admitted shorter prompts can switch to AR during
+  decode. The ~4096 row is therefore an AR row, and no hipEngine MTP figure
+  here describes long-prompt speculation.
 - Both hipEngine arms generated 128 tokens at a 16,384-token session, which is
   outside the envelope of the repository's qualified MTP rows (24–25 outputs,
   1,024-token sessions). The numbers here measure the path at these shapes; they

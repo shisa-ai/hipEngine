@@ -184,13 +184,13 @@
   ],
   "findings": {
     "candidate_budget_default": "The server default --speculative-candidate-budget is 4, and no retained Qwen3.8 evidence row uses 4 (11 rows use 3, 3 rows use 2). With the default the resolver returns candidate_budget_not_qualified and permanent_ar, so MTP does not engage even though admission is otherwise physical. The measured arm passes --speculative-candidate-budget 3, the depth every retained gfx1151 row pins.",
-    "long_prompt_k0_fallback": "At 3,530 prompt tokens the request is admitted and routed to speculative_mtp, but the backend declines the MTP path and runs AR (decision_reason backend_k0_fallback, used false, effective_route default). The prompt-priming stage refuses when prompt_tokens + 1 >= min(1023, max_sequence_length) (qwen35_gguf_mtp2.py: mtp2_prompt_fallback_reason target_context_k0), so the MTP path is limited to prompts of at most 1,022 tokens on this host regardless of the 16,384-token session.",
+    "long_prompt_k0_fallback": "At 3,530 prompt tokens the request is admitted and routed to speculative_mtp, but the backend declines the MTP path and runs AR (decision_reason backend_k0_fallback, used false, effective_route default). The prompt-priming stage refuses when prompt_tokens + 1 >= min(1023, max_sequence_length) (qwen35_gguf_mtp2.py: mtp2_prompt_fallback_reason target_context_k0), so the MTP path is limited to prompts of at most 1,021 tokens on this host regardless of the 16,384-token session.",
     "prefill_cost": "MTP raises TTFT at the two shapes where it engages (517: 1441 -> 1639 ms; 945: 2397 -> 2751 ms) because the request pays the prompt-priming stage. At 3,530 the two arms are equal (8660 vs 8670 ms) since MTP does not engage.",
     "output_agreement": "The first 600 generated characters are identical between the AR arm and the MTP K=3 arm at all three shapes, which is the comparison document's own output-agreement basis."
   },
   "not_measured": [
     "Atlas rows are unchanged and were not rerun; see docs/COMPARISON-vs-atlas.md.",
-    "MTP above a 1,022-token prompt: not reachable on this host.",
+    "MTP above a 1,021-token prompt: not reachable through this serving adapter in the measured configuration.",
     "MTP at candidate budgets other than 3: no retained evidence row qualifies them."
   ]
 }
