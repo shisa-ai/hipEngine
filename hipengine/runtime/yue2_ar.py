@@ -303,7 +303,15 @@ class Yue2ArRuntime:
         # CFG branches. The cached rows stay valid until a branch's hidden row moves.
         self._logits_pair_f32 = keep(_alloc(2 * spec.vocab_size * 4))
         self._logits_pair_cache: list[np.ndarray] | None = None
+        self._logits_pair_window: tuple[int, int] | None = None
         self._logits_pair_host = np.empty((2, spec.vocab_size), dtype=np.float32)
+        # A phase can only select inside its own window (see phase_window), so a
+        # windowed head projects that slice of the weight and scatters it into a
+        # row that is -inf outside, which is exactly what `distribution` masks.
+        self._logits_window_f32 = keep(_alloc(2 * spec.vocab_size * 4))
+        self._logits_window_host = np.empty((2, spec.vocab_size), dtype=np.float32)
+        self._logits_window_domain: tuple[int, int] | None = None
+        self._logits_window_filled = False
         self._scale = 1.0 / float(np.sqrt(head_dim))
         self._lt: HipblasLt | None = None
         self._lt_problems: dict[tuple[int, int, int], object] = {}
@@ -333,12 +341,12 @@ class Yue2ArRuntime:
         if row.shape[0] != self.spec.hidden_size:
             raise ValueError("token row must be hidden-sized fp32")
         copy_host_array_to_device(self._hidden[branch], f32_to_bf16_bits(row))
-        self._logits_pair_cache = None
+        self._reset_logits_cache()
         self._ctx_len_host[branch][0] = position + 1
         copy_host_to_device(self._ctx_len[branch], host_array_ptr(self._ctx_len_host[branch]))
 
     def reset(self, branch: int | None = None) -> None:
-        self._logits_pair_cache = None
+        self._reset_logits_cache()
         for index in range(self.branches):
             if branch is None or branch == index:
                 self._ctx_len_host[index][0] = 0
@@ -365,36 +373,94 @@ class Yue2ArRuntime:
         width = self.spec.hidden_size * 2
         return DeviceBuffer(self._normed_pair.ptr + branch * width, width)
 
-    def logits(self, branch: int = 0, *, as_bf16: bool = True) -> np.ndarray:
+    def _reset_logits_cache(self) -> None:
+        self._logits_pair_cache = None
+        self._logits_window_filled = False
+
+    def _fill_window_rows(self, domain: tuple[int, int]) -> None:
+        """Project only `domain` and scatter it into a row that is -inf outside.
+
+        `distribution` adds `-inf` to every row outside the phase's domain and its end
+        token before any other arithmetic, so a row that already carries `-inf` there
+        scores identically. Inside the window the head computes the same columns it
+        would have computed for the full projection, in the same reduction order.
+        """
+
+        low, high = domain
+        width = high - low
+        if width <= 0 or high > self.spec.vocab_size:
+            raise ValueError(f"output window {domain} is not inside the vocabulary")
+        hidden = self.spec.hidden_size
+        if self._logits_window_domain != domain:
+            self._logits_window_domain = domain
+            self._logits_window_filled = False
+            self._logits_window_host.fill(-np.inf)
+        for index in range(self.branches):
+            self.kernels.vv_rmsnorm_bf16(
+                self._hidden[index].ptr, self.final_ln.ptr,
+                self._normed_row(index).ptr, 1, hidden,
+                self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+            )
+        self.kernels.dense_gemv_bf16_f32_out_rowtile2(
+            self._normed_pair.ptr,
+            self.lm_head.ptr + low * hidden * 2,
+            self._logits_window_f32.ptr,
+            self.branches, hidden, width,
+            stream=0, runtime=self.runtime,
+        )
+        window = np.empty((self.branches, width), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(window), self._logits_window_f32,
+                            self.branches * width * 4)
+        self._logits_window_host[:, low:high] = window
+        self._logits_window_filled = True
+
+    def logits(
+        self,
+        branch: int = 0,
+        *,
+        as_bf16: bool = True,
+        domain: tuple[int, int] | None = None,
+    ) -> np.ndarray:
         """Final norm, lm head, and the vocabulary row as bf16 bits or fp32.
 
         The head runs once for every branch in a single two-row call and the rows are
         cached until a branch's hidden row moves, so asking for each branch's logits
-        between two decode steps reads the 756 MB weight once instead of once per
-        branch. Per row the result is bit-identical to the single-row kernel.
+        between two decode steps reads the weight once instead of once per branch. Per
+        row the result is bit-identical to the single-row kernel.
+
+        ``domain`` restricts the projection to a row range (see
+        :func:`hipengine.generation.yue2.phase_window`). The returned row is still the
+        full vocabulary, with ``-inf`` outside the domain, which is exactly what
+        :func:`distribution` would have masked; inside the domain the values are the
+        same ones the full projection produces.
         """
         hidden = self.spec.hidden_size
-        if self._logits_pair_cache is None:
-            for index in range(self.branches):
-                self.kernels.vv_rmsnorm_bf16(
-                    self._hidden[index].ptr, self.final_ln.ptr,
-                    self._normed_row(index).ptr, 1, hidden,
-                    self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+        if domain is not None:
+            if not self._logits_window_filled:
+                self._fill_window_rows(domain)
+            host = self._logits_window_host[branch]
+        else:
+            if self._logits_pair_cache is None:
+                for index in range(self.branches):
+                    self.kernels.vv_rmsnorm_bf16(
+                        self._hidden[index].ptr, self.final_ln.ptr,
+                        self._normed_row(index).ptr, 1, hidden,
+                        self.spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+                    )
+                self.kernels.dense_gemv_bf16_f32_out_rowtile2(
+                    self._normed_pair.ptr, self.lm_head.ptr, self._logits_pair_f32.ptr,
+                    self.branches, hidden, self.spec.vocab_size,
+                    stream=0, runtime=self.runtime,
                 )
-            self.kernels.dense_gemv_bf16_f32_out_rowtile2(
-                self._normed_pair.ptr, self.lm_head.ptr, self._logits_pair_f32.ptr,
-                self.branches, hidden, self.spec.vocab_size,
-                stream=0, runtime=self.runtime,
-            )
-            copy_device_to_host(
-                host_array_ptr(self._logits_pair_host),
-                self._logits_pair_f32,
-                self.branches * self.spec.vocab_size * 4,
-            )
-            self._logits_pair_cache = [
-                self._logits_pair_host[index].copy() for index in range(self.branches)
-            ]
-        host = self._logits_pair_cache[branch]
+                copy_device_to_host(
+                    host_array_ptr(self._logits_pair_host),
+                    self._logits_pair_f32,
+                    self.branches * self.spec.vocab_size * 4,
+                )
+                self._logits_pair_cache = [
+                    self._logits_pair_host[index].copy() for index in range(self.branches)
+                ]
+            host = self._logits_pair_cache[branch]
         if as_bf16:
             return f32_to_bf16_bits(host)
         return host.copy()
@@ -406,7 +472,7 @@ class Yue2ArRuntime:
         """Run the staged hidden row through the AR layer stack at ``position``."""
         self._validate_position(position)
         self._validate_branch(branch)
-        self._logits_pair_cache = None
+        self._reset_logits_cache()
         spec = self.spec
         hidden = spec.hidden_size
         heads = spec.num_attention_heads
@@ -540,7 +606,7 @@ class Yue2ArRuntime:
                 hidden * 2,
                 MemcpyKind.DEVICE_TO_DEVICE,
             )
-            self._logits_pair_cache = None
+            self._reset_logits_cache()
         finally:
             free(buffer)
 
@@ -589,7 +655,7 @@ class Yue2ArRuntime:
             self.runtime.memcpy(
                 hidden_rows.ptr + row * width, self._hidden[branch].ptr, width, MemcpyKind.DEVICE_TO_DEVICE
             )
-        self._logits_pair_cache = None
+        self._reset_logits_cache()
 
     def _prefill_batched(self, hidden_rows: DeviceBuffer, rows: int, start_pos: int, branch: int) -> None:
         spec = self.spec

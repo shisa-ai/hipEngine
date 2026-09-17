@@ -46,6 +46,8 @@ class _Kernels:
         self.head_calls += 1
         self.pair_out = out_ptr
         self.pair_rows = rows
+        self.head_weight_ptr = weight_ptr
+        self.head_out_features = out_features
 
 
 def _runtime(branches: int = 2):
@@ -112,12 +114,9 @@ def test_push_token_and_reset_invalidate_the_pair():
     # by checking the attribute after the calls it makes.
     import inspect
 
-    source = inspect.getsource(type(runtime).push_token)
-    assert "_logits_pair_cache = None" in source
-    source = inspect.getsource(type(runtime).reset)
-    assert "_logits_pair_cache = None" in source
-    source = inspect.getsource(type(runtime).forward_layers)
-    assert "_logits_pair_cache = None" in source
+    # `prefill_rows` drives `forward_layers` per row, so it is covered through that.
+    for method in ("push_token", "reset", "forward_layers", "prefill_host_rows"):
+        assert "_reset_logits_cache()" in inspect.getsource(getattr(type(runtime), method)), method
 
 
 def test_logits_rejects_an_unknown_branch_without_a_gpu():
@@ -125,3 +124,44 @@ def test_logits_rejects_an_unknown_branch_without_a_gpu():
     runtime._logits_pair_cache = [np.zeros(4, dtype=np.float32) for _ in range(2)]
     with pytest.raises(IndexError):
         runtime.logits(2)
+
+
+def test_domain_projects_only_the_window_and_masks_the_rest(monkeypatch):
+    """`domain` must narrow the projection, offset the weight, and -inf the rest."""
+
+    from hipengine.generation.yue2 import phase_window
+    from hipengine.runtime import yue2_ar
+
+    runtime = _runtime()
+    low, high = phase_window("semantic")
+    runtime.spec = SimpleNamespace(hidden_size=_Spec.hidden_size, vocab_size=184704,
+                                   rms_norm_eps=_Spec.rms_norm_eps)
+    runtime._logits_window_domain = None
+    runtime._logits_window_filled = False
+    runtime._logits_window_host = np.zeros((2, runtime.spec.vocab_size), dtype=np.float32)
+    runtime._logits_window_f32 = _Buffer(0x5000)
+
+    def fake_copy(host_ptr, device, nbytes):
+        width = nbytes // 4 // 2
+        host = np.ctypeslib.as_array(
+            (np.ctypeslib.ctypes.c_float * (nbytes // 4)).from_address(host_ptr)
+        )
+        host[:] = np.arange(nbytes // 4, dtype=np.float32)
+
+    monkeypatch.setattr(yue2_ar, "copy_device_to_host", fake_copy)
+    row = runtime.logits(0, as_bf16=False, domain=(low, high))
+
+    assert runtime.kernels.head_out_features == high - low, "projection must be the window"
+    hidden = _Spec.hidden_size
+    assert runtime.kernels.head_weight_ptr == runtime.lm_head.ptr + low * hidden * 2
+    assert np.isneginf(row[:low]).all() and np.isneginf(row[high:]).all()
+    assert np.isfinite(row[low:high]).all()
+    # A second call at the same hidden state reuses the fill.
+    calls = runtime.kernels.head_calls
+    runtime.logits(1, as_bf16=False, domain=(low, high))
+    assert runtime.kernels.head_calls == calls, "both branches share one windowed fill"
+    # A moved hidden row refills, and a different domain refills with fresh -inf.
+    runtime._reset_logits_cache()
+    runtime.logits(0, as_bf16=False, domain=(0, 4))
+    assert runtime.kernels.head_out_features == 4
+    assert np.isneginf(runtime._logits_window_host[0][4:]).all()

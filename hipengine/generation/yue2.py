@@ -288,6 +288,21 @@ def phase_end_token(phase: str) -> int:
     raise ValueError("phase must be abc or semantic")
 
 
+def phase_window(phase: str) -> tuple[int, int]:
+    """Projection window covering a phase's domain and its end token.
+
+    :func:`distribution` masks every row outside :func:`phase_domain` and the phase's
+    end token to ``-inf``, so those are the only rows a phase can ever select. The
+    window is the smallest contiguous range holding them, which costs at most the few
+    hundred masked rows between a domain's end and its end token: 32 769 rows for
+    ``semantic`` (the codec range plus ``MUSIC_END``) and 151 849 for ``abc``.
+    """
+
+    low, high = phase_domain(phase)
+    end = phase_end_token(phase)
+    return min(low, end), max(high, end + 1)
+
+
 # ---------------------------------------------------------------------------
 # sampling
 # ---------------------------------------------------------------------------
@@ -317,6 +332,7 @@ def window_penalty(scores: np.ndarray, recent_ids, penalty: float, *, bf16_round
 def _distribution_legacy_off(logits, sampling: Sampling, history, step: int, phase: str) -> np.ndarray:
     """Historical ``off`` arithmetic: BF16 scores, BF16 softmax, three survivors."""
     scores = bf16(np.asarray(logits, dtype=np.float32).reshape(-1))
+    scores = np.where(np.isfinite(scores), scores, -np.inf)
     allowed = np.full_like(scores, -np.inf)
     allowed[CODEC_OFFSET : CODEC_OFFSET + CODEC_SIZE] = 0.0
     allowed[phase_end_token(phase)] = 0.0
@@ -369,6 +385,12 @@ def distribution(
     if legacy_off:
         return _distribution_legacy_off(logits, sampling, history, step, phase)
     scores = np.asarray(logits, dtype=np.float32).reshape(-1).copy()
+    # A windowed head row carries -inf outside its projection window, and the CFG
+    # combination turns `-inf - -inf` into NaN. Everything non-finite is masked below
+    # either way, but a NaN threshold silently disables the top-k stage (`NaN < t` is
+    # False), so fold every non-finite value to -inf first. This is the identity on
+    # every row the full projection produces.
+    scores = np.where(np.isfinite(scores), scores, -np.inf)
     allowed = np.full_like(scores, -np.inf)
     if phase == "abc":
         allowed[:EOD] = 0.0
@@ -421,14 +443,26 @@ def bf16(values) -> np.ndarray:
 
 
 def combine_cfg(conditional: np.ndarray, unconditional: np.ndarray, scale: float) -> np.ndarray:
-    """Reference BF16 CFG combination: ``neg + scale * (pos - neg)``."""
+    """Reference BF16 CFG combination: ``neg + scale * (pos - neg)``.
+
+    Rows that a phase cannot select may be ``-inf`` (a windowed head projection is, see
+    :func:`hipengine.runtime.yue2_ar.Yue2ArRuntime.logits`), and ``-inf - -inf`` is NaN,
+    so the difference is taken only where both sides are finite. That is the identity on
+    every row the full projection produces.
+    """
+
     conditional = _round_bf16(np.asarray(conditional, dtype=np.float32))
     unconditional = _round_bf16(np.asarray(unconditional, dtype=np.float32))
     if scale == 1.0:
         return conditional
-    delta = _round_bf16(conditional - unconditional)
-    scaled = _round_bf16(np.float32(scale) * delta)
-    return _round_bf16(unconditional + scaled)
+    both = np.isfinite(conditional) & np.isfinite(unconditional)
+    # Mask the operands before subtracting so the masked rows never evaluate
+    # `-inf - -inf` (which would raise a warning as well as produce NaN).
+    safe_conditional = np.where(both, conditional, 0.0)
+    safe_unconditional = np.where(both, unconditional, 0.0)
+    delta = np.where(both, _round_bf16(safe_conditional - safe_unconditional), -np.inf)
+    scaled = np.where(both, _round_bf16(np.float32(scale) * delta), -np.inf)
+    return np.where(both, _round_bf16(safe_unconditional + scaled), -np.inf)
 
 
 # ---------------------------------------------------------------------------

@@ -43,6 +43,7 @@ from hipengine.generation.yue2 import (
     VOCAB_SIZE,
     negative_prefix,
     phase_end_token,
+    phase_window,
     resolve_sampling,
     softmax_f32,
     token_prefixes,
@@ -220,14 +221,18 @@ def generate_tokens(
     history: list[int] = []
     first: float | None = None
     eos = False
+    # A phase can only select rows inside its own window, so the head projects that
+    # slice of the weight. The returned row is still full-vocabulary with -inf
+    # outside, which is what `distribution` masks anyway.
+    window = phase_window(phase)
     for step in range(sampling.max_tokens):
         if cancelled is not None and cancelled():
             raise InterruptedError(f"Cancelled during {phase}")
-        conditional = bf16_bits_to_f32(runtime.logits(0))
+        conditional = bf16_bits_to_f32(runtime.logits(0, domain=window))
         if negative is None:
             logits = conditional
         else:
-            unconditional = bf16_bits_to_f32(runtime.logits(1))
+            unconditional = bf16_bits_to_f32(runtime.logits(1, domain=window))
             logits = combine_cfg(conditional, unconditional, cfg_scale)
         scores = distribution(logits, sampling, history, step, phase, legacy_off=legacy_off)
         if sampling.temperature == 0:
