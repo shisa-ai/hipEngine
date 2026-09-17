@@ -17,6 +17,7 @@ import pytest
 
 import hipengine.distributed.tp2_generate as tg
 import hipengine.runtime.gguf_linear as gguf_linear
+from hipengine.runtime.gguf_linear import resident_session_wmma_prefill_default
 from hipengine.distributed.tp2_generate import (
     LINEAR_ATTENTION,
     MlpTP2GenerationSession,
@@ -119,6 +120,9 @@ class RunnerSpy:
         self.rt = rt
         self.calls: list[tuple[int, str, int]] = []
         self.weights = FakeWeights(layer_types)
+        # ``resident_prefill_dispatch_session`` resolves the shape-gated owners
+        # from ``runner.backend`` + the weight geometry identity.
+        self.backend = "hip_gfx1100"
         self.hidden_size = HIDDEN
         self.vocab_size = VOCAB
         self.ffn_size = FFN
@@ -136,6 +140,9 @@ class RunnerSpy:
         # helper outside the context resolves different kernels for the same
         # weight and rows.
         self.prefill_dispatch_context: list[dict] = []
+        self.prefill_norm_dispatch_context: list[dict] = []
+        self.head_dispatch_context: list[dict] = []
+        self.head_launches: list[tuple[str, int]] = []
 
     def _run_linear_attention_attn_only(self, layer_id, hidden_ptr, attn_out, scratch, **kwargs):
         self._attn(layer_id)
@@ -176,6 +183,9 @@ class RunnerSpy:
     def _run_post_attention_norm_residual_rows(
         self, layer_id, hidden_ptr, attn_out_ptr, scratch, *, rows, stream=0, **kwargs
     ):
+        self.prefill_norm_dispatch_context.append(
+            dict(gguf_linear.gguf_prefill_dispatch_context())
+        )
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
             raise RuntimeError("simulated prefill norm failure")
         self.calls.append((self.rt.get_device(), "prefill_norm", int(layer_id)))
@@ -204,10 +214,16 @@ class FakeShardGroup:
         self.fail_on_layer: int | None = None
         self.chains: list[tuple[int, int]] = []
         self.reduces: list[tuple[tuple[int, ...], int | None]] = []
+        # Session-scoped GGUF linear dispatch context active at each group
+        # forward: the shard chain's own GGUF linears resolve from it.
+        self.forward_dispatch_context: list[dict] = []
 
     def forward(self, layer_id: int, inputs, *, rows=None):
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:
             raise RuntimeError("simulated shard failure")
+        self.forward_dispatch_context.append(
+            dict(gguf_linear.gguf_prefill_dispatch_context())
+        )
         self.forwards.append(int(layer_id))
         self.forward_inputs.append(dict(inputs))
         self.exchange_walls_s.append(0.0)
@@ -315,6 +331,11 @@ def env(monkeypatch):
     logit_rows: list[np.ndarray] = []
     injected_rows: list[np.ndarray] = []
     launch_log: list[tuple[int, str, str]] = []
+    # The session-scoped GGUF linear dispatch context observed at every bulk
+    # launch site, in launch order: the head projection goes through
+    # ``launch_gguf_linear`` directly, so it is the only one the fake launch
+    # helper can see.
+    linear_dispatch_context: list[dict] = []
 
     def fake_runtime():
         return rt
@@ -342,6 +363,12 @@ def env(monkeypatch):
         def launch(*args, **kwargs):
             launch_log.append((rt.get_device(), name, "launch"))
         return launch
+
+    def fake_linear_launch(*args, **kwargs):
+        launch_log.append((rt.get_device(), "linear", "launch"))
+        linear_dispatch_context.append(
+            dict(gguf_linear.gguf_prefill_dispatch_context())
+        )
 
     def fake_add(a_ptr, b_ptr, out_ptr, n, **kwargs):
         launch_log.append((rt.get_device(), "bf16_add", "add"))
@@ -431,7 +458,7 @@ def env(monkeypatch):
     monkeypatch.setattr(tg, "_FullStackScratch", FakeScratchFactory)
     monkeypatch.setattr(tg, "_gguf_norm_residual_decode_kernel", fake_norm_kernel)
     monkeypatch.setattr(tg, "launch_gguf_embedding", fake_launch("embedding"))
-    monkeypatch.setattr(tg, "launch_gguf_linear", fake_launch("linear"))
+    monkeypatch.setattr(tg, "launch_gguf_linear", fake_linear_launch)
     monkeypatch.setattr(tg, "gguf_bf16_add", fake_add)
     monkeypatch.setattr(tg, "gguf_rmsnorm_bf16_f32_weight", fake_launch("rmsnorm"))
     monkeypatch.setattr(tg, "f32_to_bf16", fake_f32_to_bf16)
@@ -511,6 +538,7 @@ def env(monkeypatch):
         "runners": runner_spies,
         "groups": groups,
         "launch_log": launch_log,
+        "linear_dispatch_context": linear_dispatch_context,
         "queue_logits": queue_logits,
         "created_streams": created_streams,
         "destroyed_streams": destroyed_streams,
@@ -1305,41 +1333,176 @@ def test_bulk_full_attention_uses_the_active_prompt_rows(env) -> None:
 
 
 # --------------------------------------------------------------------------
-# dispatch-context contract (known defect, recorded as xfail)
+# dispatch-context contract
 # --------------------------------------------------------------------------
 
+#: The session-scoped GGUF linear dispatch owners the resident bulk prefill
+#: establishes for this model and request shape. ``wmma_prefill`` is the one
+#: that changes the layer-0 Q6_K ``attn_qkv`` leaf (measured: the Q4_K
+#: ``attn_gate`` projection from the same launch group is already on its WMMA
+#: variant and stays bit-identical). ``q8_t16_two_wave_prefill`` and
+#: ``q4_t16_unequal_pair_prefill`` are admitted for this geometry by the
+#: backend package; the two dual-WMMA policies have no admitted rows.
+RESIDENT_BULK_DISPATCH_CONTEXT = {
+    "wmma_prefill": True,
+    "gemv_decode": True,
+    "q8_t16_two_wave_prefill": True,
+    "q8_t16_dual_wmma_prefill": False,
+    "q4_pack8_dual_wmma_silu_prefill": False,
+    "q4_t16_unequal_pair_prefill": False,
+    "t16_f16_rocblas_prefill": False,
+}
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "TP2 bulk prefill runs the resident attention helper outside the "
-        "session-scoped GGUF linear dispatch context that the resident TP1 "
-        "bulk prefill establishes (wmma/gemv/q8_t16/q4/q6 f16-rocBLAS), so a "
-        "Q6_K projection resolves a different kernel for the same weight and "
-        "rows; see docs/REFACTOR.md"
-    ),
-)
+
 def test_bulk_prefill_establishes_the_resident_dispatch_context(env) -> None:
     """The bulk prefill must select the same kernels as the resident teacher.
 
     ``Qwen35GGUFResidentSession`` wraps its whole bulk prefill in the
     session-scoped dispatch owners (``wmma_prefill_session``,
-    ``gemv_decode_session``, the q8_t16/q4 pair sessions and
-    ``_q6_f16_rocblas_prefill_context``). The shared layer helper reads those
-    context variables when it resolves a GGUF linear kernel, so a route that
-    calls the helper outside them runs different arithmetic on the same
-    weights. The GPU layer-0 comparison shows exactly that: with identical
-    inputs, weights and initial state, the Q6_K ``attn_qkv`` projection
-    differs (rel 3.7e-03) while the Q4_K ``attn_gate`` projection from the
-    same launch group is bit-identical.
+    ``gemv_decode_session``, the q8_t16/q4 pair sessions). The shared layer
+    helper reads those process-global toggles when it resolves a GGUF linear
+    kernel, so a route that calls the helper outside them runs different
+    arithmetic on the same weights. The GPU layer-0 comparison shows exactly
+    that: with identical inputs, weights and initial state, the Q6_K
+    ``attn_qkv`` projection differs (rel 3.7e-03) while the Q4_K ``attn_gate``
+    projection from the same launch group is bit-identical.
+
+    The owners are process-global, so every rank must set them around its own
+    work - and restore them - rather than relying on one entry around the whole
+    layer loop.
     """
 
     session = _bulk_session(env, rows=4)
     env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
     session.bulk_prefill([1, 2, 3, 4])
+    _group, bulk_group = _bulk_group(env)
     for runner in env["runners"]:
         assert runner.prefill_dispatch_context, "helper never ran"
-        assert all(
-            any(context.values()) for context in runner.prefill_dispatch_context
-        ), runner.prefill_dispatch_context
+        for context in runner.prefill_dispatch_context:
+            assert context == RESIDENT_BULK_DISPATCH_CONTEXT, context
+        assert runner.prefill_norm_dispatch_context
+        for context in runner.prefill_norm_dispatch_context:
+            assert context == RESIDENT_BULK_DISPATCH_CONTEXT, context
+    # The shard chain launches its own GGUF linears; it must run under the same
+    # owners even though the group forwards once for both ranks.
+    assert bulk_group.forward_dispatch_context
+    for context in bulk_group.forward_dispatch_context:
+        assert context == RESIDENT_BULK_DISPATCH_CONTEXT, context
+    # The head projection is the one bulk launch that is NOT a resident layer
+    # helper: the resident samples through its dedicated lm_head kernel, and
+    # the f32-out WMMA variant is not registered. It must keep its registered
+    # ambient route.
+    assert env["linear_dispatch_context"]
+    for context in env["linear_dispatch_context"]:
+        assert context["wmma_prefill"] is False, context
+    session.close()
+
+
+def test_bulk_prefill_restores_the_dispatch_context_after_each_rank(env) -> None:
+    """The process-global owners must be back to their prior state after bulk."""
+
+    before = dict(gguf_linear.gguf_prefill_dispatch_context())
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    assert dict(gguf_linear.gguf_prefill_dispatch_context()) == before
+    session.close()
+    assert dict(gguf_linear.gguf_prefill_dispatch_context()) == before
+
+
+def test_bulk_prefill_restores_the_dispatch_context_after_a_failure(env) -> None:
+    """A mid-layer failure must not leave the owners set for the next caller."""
+
+    before = dict(gguf_linear.gguf_prefill_dispatch_context())
+    session = _bulk_session(env, rows=4)
+    env["runners"][1].fail_on_layer = 0
+    with pytest.raises(tg.TP2GroupError):
+        session.bulk_prefill([1, 2, 3, 4])
+    assert dict(gguf_linear.gguf_prefill_dispatch_context()) == before
+    session.close()
+
+
+def test_bulk_prefill_context_is_per_rank_not_per_layer_loop(env) -> None:
+    """Every rank's helper must see the context on that rank's own device.
+
+    The owners are process-global, so establishing them once around the whole
+    multi-rank layer loop would set one rank's context while the other rank
+    ran. Each spy records the logical device of every call it served, so this
+    pins that each rank both ran and observed the resident policy.
+    """
+
+    session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    assert len(env["runners"]) == 2
+    all_devices: set[int] = set()
+    for runner in env["runners"]:
+        devices = {device for device, _name, _layer in runner.calls}
+        assert len(devices) == 1, runner.calls
+        all_devices |= devices
+        assert runner.prefill_dispatch_context
+        for context in runner.prefill_dispatch_context:
+            assert context == RESIDENT_BULK_DISPATCH_CONTEXT, context
+    assert all_devices == {0, 1}
+    session.close()
+
+
+def test_bulk_prefill_wmma_override_changes_only_the_bulk_context(env) -> None:
+    """The route A/B override is read only while bulk prefill runs."""
+
+    before = dict(gguf_linear.gguf_prefill_dispatch_context())
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="eager",
+        head_shard=False,
+        bulk_prefill=True,
+        bulk_prefill_rows=4,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
+    assert session.use_wmma_prefill is False
+    assert session.use_gemv_decode is False
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    expected = dict(RESIDENT_BULK_DISPATCH_CONTEXT)
+    expected["wmma_prefill"] = False
+    expected["gemv_decode"] = False
+    for runner in env["runners"]:
+        assert runner.prefill_dispatch_context
+        for context in runner.prefill_dispatch_context:
+            assert context == expected, context
+    # ... and the override never leaks out of the bulk call.
+    assert dict(gguf_linear.gguf_prefill_dispatch_context()) == before
+    session.close()
+
+
+def test_bulk_prefill_defaults_to_the_shipped_resident_prefill_policy() -> None:
+    """A bulk session with no override uses the resident session's policy."""
+
+    assert (
+        resident_session_wmma_prefill_default()
+        is True
+    ), "the shipped resident prefill route changed"
+
+
+def test_single_row_decode_does_not_enter_the_bulk_dispatch_context(env) -> None:
+    """The single-row route keeps its own per-launch arguments."""
+
+    session = _session(env)
+    for _ in range(8):
+        env["injected_rows"].append(np.zeros(VOCAB, dtype="<f4"))
+    session.generate([1, 2], max_new_tokens=1)
+    # Decode passes ``use_gemv_decode`` explicitly per launch and never enters
+    # the bulk owners: every launch it makes sees the ambient context, not the
+    # resident bulk policy.
+    assert env["linear_dispatch_context"]
+    for context in env["linear_dispatch_context"]:
+        assert context["wmma_prefill"] is False, context
+        assert context != RESIDENT_BULK_DISPATCH_CONTEXT, context
+    assert not any(
+        runner.prefill_dispatch_context for runner in env["runners"]
+    )
     session.close()

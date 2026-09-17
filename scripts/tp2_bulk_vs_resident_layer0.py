@@ -349,8 +349,37 @@ def _wrap_out_logger(fn, label, out_index):
 
 _ACTIVE: dict = {"log": None}
 
+# Route-scoped GGUF linear dispatch resolution log. ``main`` sets this to a
+# list around one route's prefill; ``_install_hooks`` wraps
+# ``gguf_linear.resolve`` so every cache-miss resolution records the kernel it
+# selected together with the session-scoped context that keyed it. Comparing
+# two routes' logs is what shows *which* owner changed *which* leaf, instead
+# of inferring it from a shared environment.
+_RESOLVE_LOG: list | None = None
+
+
+def _install_resolve_logger(module) -> None:
+    original = getattr(module, "resolve", None)
+    if original is None or getattr(original, "__wrapped__", None) is not None:
+        return
+
+    def logged_resolve(*args, **kwargs):
+        log = _RESOLVE_LOG
+        if log is not None:
+            entry = dict(kwargs)
+            entry["context"] = dict(module.gguf_prefill_dispatch_context())
+            log.append(entry)
+        return original(*args, **kwargs)
+
+    logged_resolve.__wrapped__ = original
+    module.resolve = logged_resolve
+
 
 def _install_hooks(module, tags: dict, recorders: dict, armed: set) -> None:
+    # ``module`` is the runner module; the dispatch resolver lives next door.
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    _install_resolve_logger(gguf_linear)
     """Wrap every layer-0 producer so its output is read on its own stream."""
 
     runner_cls = module.Qwen35GGUFFullStackRunner
@@ -674,6 +703,47 @@ def _install_hooks(module, tags: dict, recorders: dict, armed: set) -> None:
     runner_cls._run_linear_attention_prefill_attn_rows = hooked_helper
 
 
+def _summarize_resolve_log(entries: list) -> dict:
+    """Group one route's dispatch resolutions by the owner that keyed them."""
+
+    out: dict = {"resolutions": len(entries), "variants": {}, "contexts": []}
+    seen_contexts: list[dict] = []
+    for entry in entries:
+        key = f"{entry.get('layer')}:{entry.get('quant')}:{entry.get('variant')}"
+        out["variants"][key] = out["variants"].get(key, 0) + 1
+        context = entry.get("context")
+        if context is not None and context not in seen_contexts:
+            seen_contexts.append(context)
+    out["contexts"] = seen_contexts
+    return out
+
+
+def _diff_resolve_logs(lhs: list, rhs: list) -> dict:
+    """Which leaf variants the two routes selected for the same weight shape."""
+
+    def index(entries: list) -> dict:
+        out: dict[str, set] = {}
+        for entry in entries:
+            key = f"{entry.get('layer')}:{entry.get('quant')}"
+            out.setdefault(key, set()).add(str(entry.get("variant")))
+        return out
+
+    left = index(lhs)
+    right = index(rhs)
+    only_left = {k: sorted(v) for k, v in left.items() if k not in right}
+    only_right = {k: sorted(v) for k, v in right.items() if k not in left}
+    differing = {
+        k: {"teacher": sorted(left[k]), "candidate": sorted(right[k])}
+        for k in sorted(set(left) & set(right))
+        if left[k] != right[k]
+    }
+    return {
+        "only_teacher": only_left,
+        "only_candidate": only_right,
+        "differing_variants": differing,
+    }
+
+
 def _install_gdn_mode_reporter(module, runner_cls) -> None:
     if hasattr(runner_cls, "_gdn_prefill_mode_for_report"):
         return
@@ -708,6 +778,7 @@ def _initial_state_hashes(runtime, device: int, decode_scratch) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _RESOLVE_LOG
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt", default="mixed_ja_en_translate")
     parser.add_argument("--capacity", type=int, default=200)
@@ -735,6 +806,7 @@ def main(argv: list[str] | None = None) -> int:
         create_resident_control,
     )
     import hipengine.runtime.qwen35_gguf_runner as qr
+    import hipengine.runtime.gguf_linear as gguf_linear
 
     if not hasattr(qr, "Qwen35GGUFFullStackRunner"):
         raise RuntimeError(
@@ -759,6 +831,13 @@ def main(argv: list[str] | None = None) -> int:
     ):
         if not hasattr(qr, attribute):
             raise RuntimeError(f"qwen35_gguf_runner is missing module-level {attribute}")
+    for attribute in (
+        "resolve",
+        "clear_gguf_linear_dispatch_cache",
+        "gguf_prefill_dispatch_context",
+    ):
+        if not hasattr(gguf_linear, attribute):
+            raise RuntimeError(f"gguf_linear is missing module-level {attribute}")
 
     result["profile"] = bind_resident_profile("production")
     result["env"] = {k: v for k, v in os.environ.items() if k.startswith("HIPENGINE_")}
@@ -770,6 +849,7 @@ def main(argv: list[str] | None = None) -> int:
     captured: dict[str, _Layer0Recorder] = {}
     initial_states: dict[str, dict] = {}
     weight_hashes: dict[str, dict] = {}
+    resolve_logs: dict[str, list] = {}
     started = time.perf_counter()
     try:
         resident = create_resident_control(MODEL, capacity=args.capacity, capture_rows=False)
@@ -790,9 +870,15 @@ def main(argv: list[str] | None = None) -> int:
             resident.session.scratch,
         )
         weight_hashes["teacher"] = _weight_hashes(resident.session.runner, 0)
-        resident.session.prefill(
-            prompt, use_bulk=None, bulk_attention_mode="bulk", return_logits=False
-        )
+        gguf_linear.clear_gguf_linear_dispatch_cache()
+        _RESOLVE_LOG = []
+        try:
+            resident.session.prefill(
+                prompt, use_bulk=None, bulk_attention_mode="bulk", return_logits=False
+            )
+        finally:
+            resolve_logs["teacher"] = _RESOLVE_LOG
+            _RESOLVE_LOG = None
         captured["teacher"] = recorders[id(resident.session.runner)]
 
         # Candidate: opt-in rank-local bulk TP2 prefill on the same prompt.
@@ -802,11 +888,23 @@ def main(argv: list[str] | None = None) -> int:
                 runner.runtime, int(runner.runtime.get_device()), tp2._scratches[device]
             )
             weight_hashes[f"candidate_{device}"] = _weight_hashes(runner, 0)
-        tp2.bulk_prefill(prompt)
+        gguf_linear.clear_gguf_linear_dispatch_cache()
+        _RESOLVE_LOG = []
+        try:
+            tp2.bulk_prefill(prompt)
+        finally:
+            resolve_logs["candidate_0"] = _RESOLVE_LOG
+            _RESOLVE_LOG = None
         for device, runner in tp2._runners.items():
             captured[f"candidate_{device}"] = recorders[id(runner)]
 
         result["routes"] = {tag: rec.to_json() for tag, rec in captured.items()}
+        result["resolve_log"] = {
+            tag: _summarize_resolve_log(entries) for tag, entries in resolve_logs.items()
+        }
+        result["resolve_log_diff"] = _diff_resolve_logs(
+            resolve_logs.get("teacher", []), resolve_logs.get("candidate_0", [])
+        )
         result["initial_state_hashes"] = initial_states
         result["weight_hashes"] = weight_hashes
 

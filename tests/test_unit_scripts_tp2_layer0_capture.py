@@ -423,3 +423,132 @@ def test_install_hooks_wraps_the_real_producer_surface():
             setattr(qr, name, original)
         for name, original in originals_methods.items():
             setattr(runner_cls, name, original)
+
+
+# ---------------------------------------------------------------------------
+# route-scoped dispatch resolution log
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_resolve_log_groups_variants_and_contexts() -> None:
+    from scripts.tp2_bulk_vs_resident_layer0 import _summarize_resolve_log
+
+    entries = [
+        {
+            "layer": "linear",
+            "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "variant": "t16_gemv_decode_bf16_bf16_out",
+            "context": {"wmma_prefill": False},
+        },
+        {
+            "layer": "linear",
+            "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "variant": "t16_gemv_decode_bf16_bf16_out",
+            "context": {"wmma_prefill": False},
+        },
+        {
+            "layer": "linear",
+            "quant": "gguf_q4_k_t16_v1",
+            "variant": "t16_wmma_prefill_bf16_bf16_out",
+            "context": {"wmma_prefill": True},
+        },
+    ]
+    summary = _summarize_resolve_log(entries)
+    assert summary["resolutions"] == 3
+    assert summary["variants"] == {
+        "linear:gguf_q6_k_t16_qmicro_planar_v1:t16_gemv_decode_bf16_bf16_out": 2,
+        "linear:gguf_q4_k_t16_v1:t16_wmma_prefill_bf16_bf16_out": 1,
+    }
+    assert summary["contexts"] == [{"wmma_prefill": False}, {"wmma_prefill": True}]
+
+
+def test_summarize_resolve_log_tolerates_a_missing_context() -> None:
+    from scripts.tp2_bulk_vs_resident_layer0 import _summarize_resolve_log
+
+    summary = _summarize_resolve_log([{"layer": "linear", "quant": "q", "variant": "v"}])
+    assert summary["resolutions"] == 1
+    assert summary["contexts"] == []
+
+
+def test_diff_resolve_logs_names_the_leaf_that_changed() -> None:
+    from scripts.tp2_bulk_vs_resident_layer0 import _diff_resolve_logs
+
+    teacher = [
+        {
+            "layer": "linear",
+            "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "variant": "t16_wmma_prefill_bf16_bf16_out",
+        },
+        {"layer": "linear", "quant": "gguf_q4_k_t16_v1", "variant": "t16_wmma_prefill_bf16_bf16_out"},
+    ]
+    candidate = [
+        {
+            "layer": "linear",
+            "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+            "variant": "t16_gemv_decode_bf16_bf16_out",
+        },
+        {"layer": "linear", "quant": "gguf_q4_k_t16_v1", "variant": "t16_wmma_prefill_bf16_bf16_out"},
+    ]
+    diff = _diff_resolve_logs(teacher, candidate)
+    assert diff["only_teacher"] == {}
+    assert diff["only_candidate"] == {}
+    assert diff["differing_variants"] == {
+        "linear:gguf_q6_k_t16_qmicro_planar_v1": {
+            "teacher": ["t16_wmma_prefill_bf16_bf16_out"],
+            "candidate": ["t16_gemv_decode_bf16_bf16_out"],
+        }
+    }
+
+
+def test_diff_resolve_logs_reports_a_leaf_only_one_route_resolved() -> None:
+    from scripts.tp2_bulk_vs_resident_layer0 import _diff_resolve_logs
+
+    diff = _diff_resolve_logs(
+        [{"layer": "linear", "quant": "a", "variant": "v1"}],
+        [{"layer": "linear", "quant": "b", "variant": "v2"}],
+    )
+    assert diff["only_teacher"] == {"linear:a": ["v1"]}
+    assert diff["only_candidate"] == {"linear:b": ["v2"]}
+    assert diff["differing_variants"] == {}
+
+
+def test_install_resolve_logger_records_and_restores() -> None:
+    from scripts import tp2_bulk_vs_resident_layer0 as script
+
+    seen: list[dict] = []
+
+    class FakeModule:
+        @staticmethod
+        def gguf_prefill_dispatch_context() -> dict:
+            return {"wmma_prefill": True}
+
+        @staticmethod
+        def resolve(**key):
+            seen.append(key)
+            return ("kernel", key["variant"])
+
+    module = FakeModule()
+    original = module.resolve
+    script._install_resolve_logger(module)
+    assert module.resolve is not original
+    try:
+        assert script._RESOLVE_LOG is None
+        assert module.resolve(backend="hip_gfx1100", variant="v") == ("kernel", "v")
+        assert seen == [{"backend": "hip_gfx1100", "variant": "v"}]
+
+        log: list[dict] = []
+        script._RESOLVE_LOG = log
+        module.resolve(backend="hip_gfx1100", variant="w")
+        assert log == [
+            {
+                "backend": "hip_gfx1100",
+                "variant": "w",
+                "context": {"wmma_prefill": True},
+            }
+        ]
+    finally:
+        script._RESOLVE_LOG = None
+    # idempotent: a second install must not double-wrap
+    wrapper = module.resolve
+    script._install_resolve_logger(module)
+    assert module.resolve is wrapper

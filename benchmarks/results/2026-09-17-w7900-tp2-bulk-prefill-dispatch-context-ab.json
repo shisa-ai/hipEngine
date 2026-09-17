@@ -1,0 +1,201 @@
+{
+  "arms": {
+    "post_fix": {
+      "command": "scripts/tp2_bulk_prefill_diagnostic.py --schedule graphed --compare-serial --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_fixed --json /tmp/tp2_fixed.json",
+      "prompts": {
+        "heldout_mixed_summary": {
+          "bulk_logits_sha256": "af4b3ce0095a82eac3e9c2f9c7a4a23f1b1d40e57a8940f8b1ef5185c18405f6",
+          "bulk_vs_serial": {
+            "flipped_rows": 0,
+            "max_kl": 0.1817952964863775,
+            "mean_kl": 0.002675943045630386,
+            "p95_kl": 0.0012178253184977573,
+            "p99_kl": 0.08568247424898096,
+            "top1_agreement": 1.0
+          },
+          "bulk_vs_teacher": {
+            "flipped_rows": 2,
+            "max_kl": 0.26077550858777865,
+            "mean_kl": 0.0024068130614897268,
+            "p95_kl": 0.0006870128237073894,
+            "p99_kl": 0.01873827367731936,
+            "top1_agreement": 0.984375
+          },
+          "bulk_vs_teacher_gate": {
+            "failures": [
+              "mean_kl 0.00240681 > 0.001",
+              "max_kl 0.260776 > 0.05"
+            ],
+            "passed": false,
+            "top1_bar": 0.97
+          },
+          "decode_steps": 128,
+          "prompt_tokens": 52,
+          "serial_logits_sha256": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+          "status": "fail"
+        },
+        "mixed_ja_en_translate": {
+          "bulk_logits_sha256": "b4c14c35c66e7a8469b3f8a0ee0865cdc91da8cfb509112bcb4edb5559fc48b5",
+          "bulk_vs_serial": {
+            "flipped_rows": 0,
+            "max_kl": 0.025885229754924813,
+            "mean_kl": 0.00046725351231835055,
+            "p95_kl": 0.0008869884812261145,
+            "p99_kl": 0.01636154151454562,
+            "top1_agreement": 1.0
+          },
+          "bulk_vs_teacher": {
+            "flipped_rows": 0,
+            "max_kl": 0.16705312926134894,
+            "mean_kl": 0.002557612045921964,
+            "p95_kl": 0.0009884388612576842,
+            "p99_kl": 0.09134977608861948,
+            "top1_agreement": 1.0
+          },
+          "bulk_vs_teacher_gate": {
+            "failures": [
+              "mean_kl 0.00255761 > 0.001",
+              "p99_kl 0.0913498 > 0.02",
+              "max_kl 0.167053 > 0.05"
+            ],
+            "passed": false,
+            "top1_bar": 0.97
+          },
+          "decode_steps": 128,
+          "prompt_tokens": 64,
+          "serial_logits_sha256": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0",
+          "status": "fail"
+        }
+      },
+      "source": "working tree with the dispatch-context fix"
+    },
+    "pre_fix": {
+      "command": "scripts/tp2_bulk_prefill_diagnostic.py --schedule graphed --compare-serial --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_prefix --json /tmp/tp2_prefix.json",
+      "prompts": {
+        "heldout_mixed_summary": {
+          "bulk_logits_sha256": "e97b1b79252004cd6461bac561e7f0cc0aeef46162445c44a5ab539f78c41090",
+          "bulk_vs_serial": {
+            "flipped_rows": 2,
+            "max_kl": 0.033201602378270884,
+            "mean_kl": 0.0008252822482162792,
+            "p95_kl": 0.0013799055774642705,
+            "p99_kl": 0.02156582378613884,
+            "top1_agreement": 0.984375
+          },
+          "bulk_vs_teacher": {
+            "flipped_rows": 4,
+            "max_kl": 0.05572865934177028,
+            "mean_kl": 0.0010013891001168225,
+            "p95_kl": 0.0011782098548821366,
+            "p99_kl": 0.03740664572493447,
+            "top1_agreement": 0.96875
+          },
+          "bulk_vs_teacher_gate": {
+            "failures": [
+              "mean_kl 0.00100139 > 0.001",
+              "p99_kl 0.0374066 > 0.02",
+              "max_kl 0.0557287 > 0.05",
+              "top1_agreement 0.968750 < 0.97"
+            ],
+            "passed": false,
+            "top1_bar": 0.97
+          },
+          "decode_steps": 128,
+          "prompt_tokens": 52,
+          "serial_logits_sha256": "aff76c7958c2f6cc7c2d2c66efcf06546ae4de21980cbd34708f4fb9177811bf",
+          "status": "fail"
+        },
+        "mixed_ja_en_translate": {
+          "bulk_logits_sha256": "7b5fc4e643ef9759c115b03e39c8933e2ff51da1274a47810814f2aef075e3e9",
+          "bulk_vs_serial": {
+            "flipped_rows": 1,
+            "max_kl": 0.5511789409327529,
+            "mean_kl": 0.005168148618772429,
+            "p95_kl": 0.0004199849456640913,
+            "p99_kl": 0.05667906876815292,
+            "top1_agreement": 0.9921875
+          },
+          "bulk_vs_teacher": {
+            "flipped_rows": 1,
+            "max_kl": 0.48714017933332243,
+            "mean_kl": 0.0068260727113982015,
+            "p95_kl": 0.00047978011389421553,
+            "p99_kl": 0.20779012206152672,
+            "top1_agreement": 0.9921875
+          },
+          "bulk_vs_teacher_gate": {
+            "failures": [
+              "mean_kl 0.00682607 > 0.001",
+              "p99_kl 0.20779 > 0.02",
+              "max_kl 0.48714 > 0.05"
+            ],
+            "passed": false,
+            "top1_bar": 0.97
+          },
+          "decode_steps": 128,
+          "prompt_tokens": 64,
+          "serial_logits_sha256": "8bb9ed33df8bbf4c72b409b5125ed8fe8a3919ab1259fc3a7f1faa9109357dd0",
+          "status": "fail"
+        }
+      },
+      "source": "git 92e9d5b98 (before the dispatch-context fix)",
+      "worktree": "/tmp/he-prefix (clean HEAD checkout)"
+    }
+  },
+  "artifacts": {
+    "raw_logits": "not committed",
+    "worklog": null
+  },
+  "candidate": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True)",
+  "command": "scripts/tp2_bulk_prefill_diagnostic.py --schedule graphed --compare-serial --prompt mixed_ja_en_translate --heldout heldout_mixed_summary --save-logits-dir /tmp/tp2_fixed --json /tmp/tp2_fixed.json",
+  "date": "2026-09-17",
+  "finding": "The dispatch-context fix removes the layer-0 arithmetic divergence and sharply improves the saved failing prompt: on mixed_ja_en_translate (64 prompt tokens) bulk-vs-teacher max KL falls 0.487140 -> 0.167053 (-65.7%), mean KL 0.00682607 -> 0.00255761 (-62.5%), p99 KL 0.20779 -> 0.0913498 (-56.0%), and top-1 agreement 0.992188 -> 1.0 with no flipped rows; bulk-vs-serial max KL falls 0.551179 -> 0.0258852 (-95.3%). On the heldout prompt heldout_mixed_summary (52 prompt tokens) the same change improves p95 KL 0.00117821 -> 0.000687013, p99 KL 0.0374066 -> 0.0187383 and top-1 0.96875 -> 0.984375, but worsens max KL 0.0557287 -> 0.260776 and mean KL 0.00100139 -> 0.00240681. The token-serial route is bit-identical before and after on both prompts, so the change is confined to the bulk route. Both prompts still fail the production envelope, so the bulk route is not promoted and remains default-off.",
+  "host": "epyc",
+  "kind": "correctness-diagnostic",
+  "limitations": [
+    "Correctness diagnostic only: no performance claim, no speedup claim.",
+    "Two prompts (the saved failing prompt and one heldout), not the full mtp-bench category suite; the envelope decision needs the full suite.",
+    "The heldout max/mean regression is measured but not localized; it is downstream of layer 0 (layer-0 intermediates are now bit-identical to the teacher)."
+  ],
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "next_action": "Localize the remaining heldout bulk-vs-teacher gap downstream of layer 0 - the sharded MLP chain route and later-layer accumulation are the remaining candidates - before any envelope or promotion claim.",
+  "performance_claim": false,
+  "production_gate": {
+    "max_kl": 0.05,
+    "mean_kl": 0.001,
+    "p95_kl": 0.005,
+    "p99_kl": 0.02,
+    "top1_agreement": 0.99
+  },
+  "protocol": "Same script, same command, same reference and same host for both arms; the only difference is the committed dispatch-context change. A/B is the controlled intervention that separates the dispatch-context defect from the remaining end-to-end gap.",
+  "repeatability": {
+    "bulk_logits_sha256_identical": {
+      "heldout_mixed_summary": true,
+      "mixed_ja_en_translate": true
+    },
+    "metrics_identical": {
+      "heldout_mixed_summary": true,
+      "mixed_ja_en_translate": true
+    },
+    "protocol": "post-fix command re-run end to end on the same host",
+    "serial_logits_sha256_identical": {
+      "heldout_mixed_summary": true,
+      "mixed_ja_en_translate": true
+    }
+  },
+  "route": {
+    "bulk_prefill": true,
+    "bulk_prefill_rows": 200,
+    "head_shard": true,
+    "mode": "tp2",
+    "schedule": "graphed"
+  },
+  "schema": "hipengine-benchmark-result/1",
+  "status": "bulk-still-fails-envelope",
+  "teacher": "saved TP1 teacher logits (quality-tp1-d0.json), prefill(prompt) + forced decode",
+  "title": "TP2 bulk prefill dispatch-context A/B: end-to-end quality on the saved failing prompt and one heldout",
+  "token_serial_untouched": {
+    "heldout_mixed_summary": true,
+    "mixed_ja_en_translate": true
+  }
+}

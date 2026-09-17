@@ -142,6 +142,13 @@ GGUF_OUTPUT_F32 = "f32"
 # docs/GGUF.md "P8: real batched prefill GEMM" for the wider plan.
 _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 
+# Diagnostic escape hatch for the resident sessions' prefill route. The
+# resolver below is read at session-acquire time (once per session, not per
+# token) and is a *diagnostic* only: unset means the production route.
+_DIAGNOSTIC_WMMA_PREFILL_ENV = "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL"
+_WMMA_PREFILL_FALSY = frozenset({"0", "false", "no", "off"})
+_WMMA_PREFILL_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
 # Session-scoped override; runners can flip this on entry to their bulk
 # prefill paths (e.g. from ``PrefillConfig.use_wmma_prefill``). Stays
 # ``None`` until set, so the env var still controls the default for plain
@@ -1839,6 +1846,45 @@ def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
     return _env_wmma_prefill_enabled()
 
 
+def resident_session_wmma_prefill_default() -> bool:
+    """Return the shipped prefill route for the resident bulk prefill sessions.
+
+    The resident AR / MTP-target sessions and any route that replaces their
+    bulk prefill (the rank-local TP2 bulk prefill) must select the same GGUF
+    linear kernels for the same weight and rows. Keeping the policy here - next
+    to the session toggles it feeds - gives those routes one source of truth
+    instead of a literal repeated per caller.
+
+    ``HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`` is a diagnostic escape hatch for
+    the route A/B (docs/REFACTOR.md, "All-GEMV small-row prefill A/B"); unset
+    means the production route. An unrecognised value raises rather than
+    falling back: a typo silently reading as "route unchanged" is how a route
+    A/B becomes a null result with no clue why.
+    """
+
+    raw = (os.environ.get(_DIAGNOSTIC_WMMA_PREFILL_ENV) or "").strip().lower()
+    if not raw:
+        return True
+    if raw in _WMMA_PREFILL_TRUTHY:
+        return True
+    if raw in _WMMA_PREFILL_FALSY:
+        return False
+    raise ValueError(
+        f"invalid {_DIAGNOSTIC_WMMA_PREFILL_ENV}={raw!r}; expected a boolean in "
+        f"{sorted(_WMMA_PREFILL_TRUTHY)} or {sorted(_WMMA_PREFILL_FALSY)}"
+    )
+
+
+def _q8_t16_two_wave_prefill_session_override() -> bool | None:
+    """Raw session-scoped wide-wave override, imported lazily to avoid a cycle."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (  # noqa: PLC0415
+        q8_t16_two_wave_prefill_enabled,
+    )
+
+    return q8_t16_two_wave_prefill_enabled()
+
+
 def gguf_prefill_dispatch_context() -> Mapping[str, bool]:
     """Report the session-scoped GGUF linear dispatch toggles.
 
@@ -1855,6 +1901,8 @@ def gguf_prefill_dispatch_context() -> Mapping[str, bool]:
         {
             "wmma_prefill": bool(_resolve_use_wmma_prefill(None)),
             "gemv_decode": bool(_resolve_use_gemv_decode(None)),
+            "q8_t16_two_wave_prefill": _q8_t16_two_wave_prefill_session_override()
+            is True,
             "q8_t16_dual_wmma_prefill": bool(_q8_t16_dual_wmma_prefill_enabled.get()),
             "q4_pack8_dual_wmma_silu_prefill": bool(
                 _q4_pack8_dual_wmma_silu_prefill_enabled.get()
@@ -8734,6 +8782,7 @@ __all__ = [
     "Q6T16F16RocblasPrefillSession",
     "T16F16RocblasPrefillSession",
     "gguf_prefill_dispatch_context",
+    "resident_session_wmma_prefill_default",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_q8_1",
