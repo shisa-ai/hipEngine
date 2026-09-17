@@ -95,6 +95,16 @@ def _mtp_output_accounting_contract(
         return False
     if int(mtp_outputs) <= 0:
         return False
+    # Attribution is per emitted token. A count of autoregressive steps that
+    # were still inside the speculative plan can never exceed the
+    # autoregressive output of the request, so a backend that counts one
+    # emitted token twice (or counts a plan whose decode never emitted) fails
+    # here instead of inflating the fallback histogram.
+    in_cycles = accounting.get("ar_output_tokens_in_cycles")
+    if in_cycles is None:
+        return False
+    if not 0 <= int(in_cycles) <= int(ar_outputs):
+        return False
     return accounting.get("reconciled") is True
 
 

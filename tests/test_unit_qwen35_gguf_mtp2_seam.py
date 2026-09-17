@@ -2735,7 +2735,14 @@ def _ar_only_k0_plan() -> SimpleNamespace:
     )
 
 
-def test_prepare_k0_records_the_plan_reason_for_every_autoregressive_step() -> None:
+def test_prepare_k0_records_no_output_before_the_decode_emits() -> None:
+    """Preparation is not output: only the decode that emits may count a token.
+
+    A mixed group is retried as its speculative subset, so the same row can be
+    prepared twice while one AR decode emits one token. Counting at preparation
+    would report two autoregressive outputs for it.
+    """
+
     row = SimpleNamespace(
         first_token_emitted=False,
         lease=SimpleNamespace(
@@ -2750,16 +2757,23 @@ def test_prepare_k0_records_the_plan_reason_for_every_autoregressive_step() -> N
     adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
     adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
 
-    # A refused activation still reports why every AR step was not speculative,
-    # even before the row publishes its first token; PURE K0 rows never touch
-    # provider state.
-    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 2}
+    # PURE K0 rows never touch provider state, and preparation alone attributes
+    # nothing.
     assert row.mtp2_k0_catchups == 0
-    # No speculative output yet, so these steps are not a fallback.
+    assert row.mtp2_ar_step_reasons == {}
+    assert getattr(row, "mtp2_ar_step_output_tokens", None) is None
+    assert getattr(row, "mtp2_first_fallback_position", None) is None
+
+    # The decode that emits the token attributes it, with the plan's reason.
+    adapter.note_speculative_ar_commit(7, mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS)
+
+    assert row.mtp2_ar_step_output_tokens == 1
+    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 1}
+    # No speculative output yet, so this step is not a fallback.
     assert getattr(row, "mtp2_first_fallback_position", None) is None
 
 
-def test_prepare_k0_locates_the_first_fallback_after_speculative_output() -> None:
+def test_ar_commits_locate_the_first_fallback_after_speculative_output() -> None:
     """An AR-only cycle after MTP cycles reports where speculation stopped."""
 
     row = SimpleNamespace(
@@ -2777,12 +2791,18 @@ def test_prepare_k0_locates_the_first_fallback_after_speculative_output() -> Non
         mtp2_mtp_output_tokens=2,
     )
     adapter = _prepare_k0_adapter(row)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS
 
     adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
-    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    # The decode appends the token before the loop attributes it, and the
+    # row's output grows by one for each emitted token.
+    row.slot.generated_ids.append(93)
+    adapter.note_speculative_ar_commit(7, reason)
+    row.slot.generated_ids.append(94)
+    adapter.note_speculative_ar_commit(7, reason)
 
-    # Both steps emitted one token each, and the first one lands at index 3 of
-    # the row's output: the token right after the speculative block.
+    # The first AR token after the speculative block lands at index 3 of the
+    # row's output, and each emitted token is counted exactly once.
     assert row.mtp2_ar_step_output_tokens == 2
     assert row.mtp2_first_fallback_position == 3
     assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 2}
@@ -4729,3 +4749,59 @@ def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
         assert adapter.physical_accept_max_rows == 66
     finally:
         module.backend_package_capability = real
+
+
+def test_ar_commit_survives_the_decode_that_retires_the_request() -> None:
+    """The token that reaches max_new_tokens is still an attributed AR step."""
+
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        slot=SimpleNamespace(generated_ids=[90, 91]),
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_OUTPUT_ROOM_MISS
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    row.slot.generated_ids.append(92)
+    # The decode that emitted the last token already retired the request from
+    # speculation before the loop observed the commit.
+    adapter._disabled_requests.add(7)
+    adapter._intents.pop(7, None)
+
+    adapter.note_speculative_ar_commit(7, reason)
+
+    assert row.mtp2_ar_step_output_tokens == 1
+    assert row.mtp2_ar_step_reasons == {"target_graph_output_room_miss": 1}
+
+
+def test_ar_commit_is_ignored_for_a_released_or_unknown_row() -> None:
+    """A decode that emitted nothing must not attribute an autoregressive token."""
+
+    released = SimpleNamespace(
+        first_token_emitted=True,
+        lease=None,
+        slot=None,
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(released)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS
+
+    adapter.note_speculative_ar_commit(7, reason)
+
+    assert released.mtp2_ar_step_reasons == {}
+    assert getattr(released, "mtp2_ar_step_output_tokens", None) is None
+
+    # A row the owner does not know about is a caller/owner disagreement.
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+    adapter.owner._rows = {7: row}
+
+    adapter.note_speculative_ar_commit(99, reason)
+
+    assert row.mtp2_ar_step_reasons == {}

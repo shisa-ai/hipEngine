@@ -100,10 +100,12 @@
 - Remaining debt: autoregressive tokens emitted while the request is still
   owned by the speculative plan arrive through two paths - a depth-zero cycle
   commit (`record_speculative_outputs`) and a K0 step of an AR-only cycle
-  (`record_autoregressive_step` from `prepare_k0`) - and are summed into one
-  `ar_output_tokens_in_cycles` field. Collapse them once the resident owner
-  routes every row through a single commit path, which would also remove the
-  `emitted_tokens=0` call that exists only to avoid double attribution.
+  (`record_autoregressive_step`, recorded at the decode that emits the token
+  since `worklog/entries/20260917T155308.311295Z-lhl-mtp-ar-commit-attribution-3efe2f.md`)
+  - and are summed into one `ar_output_tokens_in_cycles` field. Collapse them
+  once the resident owner routes every row through a single commit path, which
+  would also remove the `emitted_tokens=0` call that exists only to avoid double
+  attribution.
 - Remaining debt: the per-request execution counters are published twice, as
   the `diagnostics.specdec2_mtp2` block and as `mtp_*` scalar entries in the
   response `timing` map. The scalars exist because the server's draft-usage and
