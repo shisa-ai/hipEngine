@@ -122,7 +122,29 @@ matches a qualified evidence row, so the mode alone cannot enable MTP outside a
 certified scope. The rows live in `hipengine/models/qwen35.py` and are resolved
 by `resolve_speculative_mtp_serving_plan` in `hipengine/speculative/serving.py`.
 
-Every gfx1151 row pins these axes, and all of them must match exactly:
+The comparison ran against hipEngine revision `680b6a554ecbbc21f0a000a14f5ccba07c3f6ca2`,
+whose resolver also required four axes that describe the envelope a benchmark
+measured rather than the verified path:
+
+| Removed axis | Qualified value | This host's server |
+| --- | --- | --- |
+| `execution_profile` + manifest | `strict` `393155123c5e0970…` or `production` `534a8bac3ca74428…` / `af20ee3b22921dc9…` | `production`, manifest `c4a4a342e2243c2d…` — no match |
+| `max_sequence_length` | 1024 | 16384 (8192 in the first attempt) — no match |
+| `context_tokens` | 1–67 or 1–128 | 517 / 945 / 3530 — no match |
+| `output_horizon_tokens` | exactly 24 or 25 | 128 — no match |
+
+A 128-token horizon at a 16,384-token session failed all four at once, so every
+request fell back to AR, which is why the two hipEngine rows in the results
+table are AR rows. Those axes were removed on 2026-09-17 (commit `25121713c`,
+`docs/EXECUTION-PROFILES.md` §2.9): session length, prompt context, output
+horizon, and the resolved variant-manifest hash change with ordinary serving
+traffic and with any kernel or variant selection, so gating on them silently
+disabled an already-qualified path.
+
+Admission is now decided only by artifact content, backend, architecture,
+weight quant, KV storage and layout, realized group rows, resident capacity,
+candidate depth, sampling mode, and memory fit. Every one of those axes still
+must match, and this host's server matches all of them:
 
 | Axis | Qualified value | This host's server |
 | --- | --- | --- |
@@ -130,14 +152,10 @@ Every gfx1151 row pins these axes, and all of them must match exactly:
 | `backend` / `target_arch` | `hip_gfx1151` / `gfx1151` | matches |
 | `weight_quant` | `gguf_q4_k_m` | matches |
 | `kv_storage` / `kv_layout` | `bf16` / `uniform` | matches |
-| `execution_profile` + manifest | `strict` `393155123c5e0970…` or `production` `534a8bac3ca74428…` / `af20ee3b22921dc9…` | `production`, manifest `c4a4a342e2243c2d…` — no match |
-| `max_sequence_length` | 1024 | 16384 (8192 in the first attempt) — no match |
 | `candidate_budget` | 3 | 3 (default) — matches |
 | `resident_capacity` | 1, 4, or 8 | 1 — matches |
 | `realized_group_rows` | 1, 2, or 8 | 1 — matches |
 | `sampling_mode` | `greedy_fast` | `greedy_fast` at `temperature: 0` — matches |
-| `context_tokens` | 1–67 or 1–128 | 517 / 945 / 3530 — no match |
-| `output_horizon_tokens` | exactly 24 or 25 | 128 — no match |
 | `memory_fit` | true | true |
 
 `/v1/hipengine/capabilities` reports the server-side values:
@@ -147,40 +165,13 @@ $ curl -s http://127.0.0.1:8000/v1/hipengine/capabilities | python3 -c 'import j
 {'requested': None, 'resolved': 'production', 'manifest_sha256': 'c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc', ...} 8192
 ```
 
-So a production request fails several axes at once: the execution-profile
-manifest, the session length, the context bucket, and the output horizon. The
-resolver fails closed to AR, which is why the AR row above is the only hipEngine
-row this comparison could measure, and why a request carrying
-`"speculative_mtp": true` returned 11.92 tok/s against 11.88 tok/s for plain AR.
-
-The policy modes do not provide a bypass. `off`, `opt_in`, `auto`, and
-`enabled` decide whether an *admitted* request routes through MTP by default;
-none of them admits a request the evidence table rejects. On this host a request
-inside the certified shape (11 prompt tokens, 25 output tokens, 1024-token
-session, `--execution-profile strict` with manifest `393155123c5e0970…`, default
-candidate budget 3, resident capacity 1, `temperature: 0`) still served AR and
-emitted no MTP metadata, so at least one further axis is unmet. The engine
-reports `EFFECTIVE_MTP: serving=enabled engine_supported=True
-default_enabled=False` and exposes no rejection reason in
-`/v1/hipengine/capabilities` or in the stream metadata, so identifying that axis
-needs either a debug log in `resolve_speculative_mtp_serving_plan` or the
-`serving_plan` payload returned by `POST /v1/hipengine/speculative_mtp/rollback`.
-
-To measure hipEngine MTP on this host, the server must be started inside a
-certified scope, for example the strict gfx1151 row
-`qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0` (context 1–67, horizon 25,
-session 1024, candidate budget 3, resident capacity 1):
-
-```bash
-HIPENGINE_EXECUTION_PROFILE=strict python -m hipengine.server \
-  --model /path/to/Qwen3.8-27B-Q4_K_M.gguf \
-  --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km \
-  --max-context-tokens 1024 --kv-storage bf16 \
-  --speculative-mtp-serving enabled \
-  --host 127.0.0.1 --port 8000
-```
-
-with a request of at most 67 prompt tokens and `max_tokens: 25`.
+The gfx1151 one-row, three-draft cell at resident capacity 1 is
+automatic-eligible, so on this artifact `auto` and `enabled` route a greedy
+single request through MTP at any context, horizon, or session length, subject
+only to the physical axes above. The hipEngine MTP column is not measured here;
+filling it needs the same protocol as the AR rows, with the server started as
+in [Running the hipEngine side](#running-the-hipengine-side) plus
+`--speculative-mtp-serving enabled`.
 
 ## Running the hipEngine side
 
@@ -327,7 +318,9 @@ be added with `BENCH_EXTRA_JSON`, for example
   internal prefill figures.
 - Atlas MTP rows were measured with the engine's default draft count (K=4) and
   no per-shape K sweep; hipEngine MTP could not be measured on this host because
-  no request shape tried matched an evidence row.
+  no request shape tried matched an evidence row. The four shape and profile
+  axes that caused that were removed on 2026-09-17, so the missing hipEngine MTP
+  column needs a rerun rather than a narrower request.
 - Atlas's numbers were unchanged by session length: an earlier AR run at
   `MAX_SEQ_LEN=8192` measured 12.32 / 12.45 / 11.88 tok/s at 1808 / 3306 /
   10488 ms TTFT, against 12.31 / 12.44 / 11.88 tok/s at 1804 / 3307 / 10495 ms
