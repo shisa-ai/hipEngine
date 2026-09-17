@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-16**
+Last updated: **2026-09-17**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -1177,6 +1177,38 @@ and **1.007-1.011x** per call over 21 counterbalanced pairs per cell). They are
 reachable only at rows 2-4, and together they cover about 0.15% of decode, so no
 number in the tables above moves.
 [`dense rowtile qualification`](results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json).
+
+#### ShareGPT serving at one, four and eight concurrent requests
+
+A real workload through the OpenAI server: vLLM's ShareGPT loader and pruning
+criteria, the second turn as the expected length, capped at 128 output tokens,
+greedy decoding, default server configuration (BF16 K/V, 16,384-token context,
+automatic speculative MTP). `vllm bench serve --backend openai-chat` drove the
+load and a recorder read each response's `hipengine` block, so the routing
+column is measured per request rather than inferred from the rate.
+
+| Concurrent requests | Output tok/s | Mean TPOT | Mean TTFT | Requests that ran MTP |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 20.69 | 48.7 ms | 3.0 ms | 24 of 24 (99.1% of tokens) |
+| 4 | **28.39** | 140.2 ms | 118.7 ms | 5 of 24 |
+| 8 | 27.23 | 277.0 ms | 552.7 ms | 11 of 24 |
+
+Speculation carries the whole single-request workload and about a fifth to a
+half of the concurrent ones. The rest run autoregressive decoding for a reason
+recorded per request: the serving evidence for this cell covers a one-request
+realized group, so a request admitted while it is alone can be batched into a
+wider decode group where the route is not yet qualified, and a group mixing rows
+with and without a draft provider fails closed. Concurrent requests therefore add
+throughput without adding speculation, and the aggregate rate is the number to
+read - a per-window rate from a client that cannot keep up with the stream is a
+delivery burst, not decode.
+
+At this 128-token budget most replies are still inside a thinking block when the
+budget ends (20 of 24 requests emitted no answer text), so the table measures
+decode throughput on a real prompt distribution, not answer quality. Time to the
+first generated token is 847 ms at one request and 1,150 ms on a cold server,
+against the 5,993 ms median time to the first *answer* token after the reasoning
+block. [Routing artifact](results/2026-09-17-gfx1151-qwen38-sharegpt-mtp-routing.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
