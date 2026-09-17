@@ -1,0 +1,94 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_repair_cost_structure",
+ "question": "Is the iu8 exact repair a fixed launch cost, a per-element cost, or a bandwidth cost, and does grid size move it?",
+ "protocol": {
+  "rows": 10240,
+  "experts": 512,
+  "in_features": {
+   "gate_up": 2560,
+   "down": 640
+  },
+  "out_features": {
+   "gate_up": 1280,
+   "down": 2560
+  },
+  "incidence": 0.007121483417267495,
+  "repetitions": 15,
+  "timing": "median of per-launch HIP event pairs, 2 primed launches",
+  "weights": "synthesized at the real shapes and byte layout; the access pattern and byte counts are representative, the values are not",
+  "shipped_grid": {
+   "gate_up": 17920,
+   "down": 17920,
+   "note": "static_tiles * 16, the runner's value for a 1024-token chunk"
+  }
+ },
+ "shapes": {
+  "gate_up": {
+   "in_features": 2560,
+   "out_features": 1280,
+   "out_features_total": 1280,
+   "row_bytes": 1440,
+   "weight_bytes_per_tensor": 471859200,
+   "weight_bytes_per_element": 1440,
+   "activation_bytes_per_element": 5120
+  },
+  "down": {
+   "in_features": 640,
+   "out_features": 2560,
+   "out_features_total": 2560,
+   "row_bytes": 480,
+   "weight_bytes_per_tensor": 629145600,
+   "weight_bytes_per_element": 480,
+   "activation_bytes_per_element": 1280
+  }
+ },
+ "grids": {
+  "gate_up": [
+   {
+    "risks": 93342,
+    "grid": 17920,
+    "ms": 2.4719150066375732,
+    "ms_per_1k_risks": 0.026482344567692714,
+    "bytes_moved": 612323520,
+    "gb_per_s": 247.71220626752623
+   }
+  ],
+  "down": [
+   {
+    "risks": 93342,
+    "grid": 17920,
+    "ms": 0.6653180122375488,
+    "ms_per_1k_risks": 0.007127745411899775,
+    "bytes_moved": 164281920,
+    "gb_per_s": 246.92239948156382
+   }
+  ]
+ },
+ "risk_set": "clustered",
+ "bitwise_identity": {
+  "93342": {}
+ },
+ "down_bitwise_identity": {
+  "93342": {}
+ },
+ "row_bitmap_gate_up": [
+  {
+   "risks": 93342,
+   "ms": 3.5012359619140625,
+   "ms_per_1k_risks": 0.0375097593999921,
+   "bytes_moved": 186841280,
+   "gb_per_s": 53.36437818885456,
+   "note": "bitmap pass + row repair, composite"
+  }
+ ],
+ "row_bitmap_identity": {
+  "93342": {
+   "targets": 93027,
+   "value_mismatches": 0,
+   "per_slot_wrote_unqueued": 0,
+   "bitmap_wrote_unqueued": 0,
+   "bitmap_words": 40
+  }
+ }
+}

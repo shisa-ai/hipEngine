@@ -758,6 +758,13 @@ ms, with every other family within 0.5% of the pre-promotion capture. The
 comparator's dense path is BF16 against this engine's F16, so the ratios locate
 work rather than predict recoverable time.
 
+The `iu8` exact-repair passes inside the MoE families are bound by memory-level
+parallelism, not by bytes or grid size. Unrolling their runtime-bound inner loops
+takes them **1420.9 -> 1239.8 ms (-12.7%)** in the same protocol, with the main
+MoE kernels unchanged to 0.1%; a bit-identical row-bucketed redesign that moves
+3.3x fewer bytes is 22% slower. [Packet](results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md)
+· [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
+
 September 14 numerical refresh of the previous production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
 gate (max KL0.054642; prefill-last mean/p95 also fail), while deterministic

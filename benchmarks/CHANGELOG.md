@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-17 UTC**: The iu8 exact-repair passes were bound by memory-level
+  parallelism, not by bytes or grid size. Unrolling the three repair kernels'
+  runtime-bound inner loops takes them **1420.9 -> 1239.8 ms (-12.7%)** in a
+  role-marked `code-p4096` capture, with the main MoE kernels unchanged to 0.1%.
+  A bit-identical row-bucketed redesign that moves 3.3x fewer bytes is 22%
+  *slower*, and making the re-read activation rows L2-resident gains only 13.8%.
+  [Packet](results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md) ·
+  [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
+
 - **2026-09-17 UTC**: Hoisting the wide Q8_0 prefill route's activation
   conversion out of the K loop is worth **1384.7 → 794.1 ms over the route's 1056
   launches in a 4096-token prefill (−42.6%, 590.6 ms)** with bit-identical output.

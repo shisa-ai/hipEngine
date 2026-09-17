@@ -7187,3 +7187,47 @@ the registry launch boundary so coverage is a property of the registry rather
 than of which module remembered to call it, and keep the coverage list in the
 census docstring until then. Never read an empty census row as "did not run"
 while coverage is per-module.
+
+### `host_array_ptr(np.<factory>(...))` can pass a freed pointer
+
+`copy_host_to_device(buf, host_array_ptr(np.full(n, v, dtype=np.uint16)), nbytes)`
+segfaults: the temporary array's owner can be released before the memcpy reads
+it, and numpy's allocator unmaps blocks above its mmap threshold, so the crash
+appears only for large arrays. Measured 2026-09-17 on gfx1151, same call site:
+
+| Argument | Allocates? | Result |
+| --- | --- | --- |
+| named local array | n/a | ok |
+| `np.full(n, ...)`, n = 1.31M uint16 (2.6 MB) | yes | **segfault** |
+| `np.ascontiguousarray(named_contiguous)` | no, returns the same object | ok |
+| `np.ascontiguousarray(named_strided_view)` | yes | **segfault** |
+| `np.asarray([0], dtype=np.int32)` | yes, 4 bytes | ok by luck |
+
+So the pattern is unsafe exactly when the factory actually allocates. Call sites
+that allocate unconditionally today: `runtime/timesfm_decode.py` and
+`runtime/timesfm3_decode.py` (`.astype(np.int32)`),
+`speculative/mtp_resident_draft.py` (`ascontiguousarray` of `cos_strided` /
+`sin_strided`), `runtime/qwen35_paro_runner.py` (`ascontiguousarray(host)`),
+`runtime/qwen35_gguf_runner.py` (4-byte `np.asarray`). The rest are safe by
+accident: their argument is already contiguous, so the factory returns the
+caller's own object.
+
+Fix direction: add one helper that takes the *array object* and does the
+contiguity conversion and the copy in one call, so the reference outlives the
+memcpy, then migrate every call site. Removal trigger for this entry: the helper
+exists and no `host_array_ptr(np.` call site remains.
+
+### The row-bucketed iu8 repair pair is measurement surface, not a route
+
+`gguf_q4_k_selected_dual_risk_bitmap_kernel` and
+`gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernel` (with
+`risk_bitmap_words` / `risk_bitmap_bytes` and their registry entries) are
+bit-identical to the shipped per-slot repair and **22% slower** on the admitted
+gate/up shape: 3.5054 ms against 2.8685 ms at the measured 93,342-risk queue,
+despite moving 186 MB instead of 612 MB. The repair is bound by memory-level
+parallelism, so traffic reduction does not buy time
+(`benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure/`). They stay
+because the packet that records the dead end uses them, and because the bitmap
+pass is the natural input to a pipelined repair. Removal trigger: no packet or
+test refers to them, or a pipelined/async-copy repair lands that supersedes the
+whole family.

@@ -673,6 +673,11 @@ __global__ void q8_0_selected_sparse_repair_kernel(
     const uint8_t* weight_row = weights +
         (static_cast<int64_t>(lo) * outputs + col) * (hidden / 32) * 34;
     float partial = 0.0f;
+    // Unrolled for the same reason as the Q4_K dual and Q5_1 repairs: a
+    // runtime trip count serializes the loads behind one dependent round trip.
+    // The accumulation order is unchanged, so the repaired value is
+    // bit-identical.
+#pragma unroll 4
     for (int k = threadIdx.x; k < hidden; k += 128) {
       const uint8_t* block = weight_row + (k / 32) * 34;
       const float weight = fp16_bytes_to_float(block) *
