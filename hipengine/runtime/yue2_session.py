@@ -582,11 +582,24 @@ class Yue2Session:
         self.close()
 
     # -- stages ---------------------------------------------------------
+    def _phase_sampling(self, phase: str, override: Sampling | dict | None) -> Sampling:
+        """The sampling a phase runs with: the caller's override, else this config.
+
+        ``effective_config`` reports this session's ``GenerationConfig``, so generation
+        has to resolve against the same object; leaving the default to the AR session
+        instead would let a session run with the settings the AR session was built with
+        while recording the ones this session was built with.
+        """
+
+        return resolve_sampling(override, getattr(self.config, phase))
+
     def plan(self, request: SongRequest, **kwargs) -> SymbolicPlan:
+        kwargs["sampling"] = self._phase_sampling("abc", kwargs.get("sampling"))
         with self._serialized():
             return self.ar.plan(request, **kwargs)
 
     def generate_semantic(self, plan: SymbolicPlan, **kwargs) -> SemanticResult:
+        kwargs["sampling"] = self._phase_sampling("semantic", kwargs.get("sampling"))
         with self._serialized():
             return self.ar.generate_semantic(plan, **kwargs)
 
@@ -693,8 +706,8 @@ class Yue2Session:
         """The settings a request actually ran with, recorded in its result."""
 
         return {
-            "abc": resolve_sampling(abc_sampling, self.config.abc).to_dict(),
-            "semantic": resolve_sampling(semantic_sampling, self.config.semantic).to_dict(),
+            "abc": self._phase_sampling("abc", abc_sampling).to_dict(),
+            "semantic": self._phase_sampling("semantic", semantic_sampling).to_dict(),
             "ode_steps": int(self.config.ode_steps if steps is None else steps),
             "ode_method": self.config.ode_method,
             "context": int(self.config.context if context is None else context),
@@ -754,9 +767,17 @@ class Yue2Session:
             {"request": request.to_dict(), "config": config, "weights": weights}
         )
         started = time.perf_counter()
-        plan = self.ar.plan(request, sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
+        plan = self.ar.plan(
+            request,
+            sampling=self._phase_sampling("abc", abc_sampling),
+            cancelled=cancelled,
+            on_token=on_token,
+        )
         semantic = self.ar.generate_semantic(
-            plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token
+            plan,
+            sampling=self._phase_sampling("semantic", semantic_sampling),
+            cancelled=cancelled,
+            on_token=on_token,
         )
         self._check_cancelled(cancelled, "Cancelled before acoustic prefill")
         nar_started = time.perf_counter()

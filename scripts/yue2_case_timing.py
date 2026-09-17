@@ -59,9 +59,8 @@ def _host_identity() -> dict:
         out = subprocess.run(["rocminfo"], capture_output=True, text=True, timeout=60,
                              check=False).stdout
         for line in out.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("gfx"):
-                gpu = stripped
+            if line.strip().startswith("Name:") and "gfx" in line:
+                gpu = line.split(":", 1)[1].strip()
                 break
     except (OSError, subprocess.SubprocessError):
         pass
@@ -147,52 +146,111 @@ def main() -> int:
     nar_seconds = float(timing.get("nar_seconds", 0.0))
     vae_seconds = float(timing.get("vae_seconds", 0.0))
 
-    def row(label: str, ours: float, theirs: float) -> str:
-        ratio = (theirs / ours) if ours > 0 else float("nan")
-        return f"| {label} | {ours:8.2f} s | {theirs:8.2f} s | {ratio:5.2f}x |"
+    sample_rate = int(getattr(vae, "sample_rate", 48000))
+    our_frames = int(result.frames)
+    our_samples = int(result.audio.shape[-1])
+    our_audio_seconds = our_samples / sample_rate
+    our_tokens = len(result.semantic.tokens)
+    ref_tokens = int(reference_timing["semantic"]["content_tokens"])
+    ref_frames = ref_tokens
+    latent_path = case_dir / "latent.npy"
+    if latent_path.exists():
+        import numpy as _np
 
-    print(f"case {args.case}: {reference['audio_seconds']:.1f} s of audio, "
-          f"{int(reference_timing['semantic']['content_tokens'])} semantic tokens, "
+        ref_frames = int(_np.load(latent_path, mmap_mode="r").shape[0])
+    ref_audio_seconds = float(reference["audio_seconds"])
+    ref_samples = int(round(ref_audio_seconds * sample_rate))
+    ref_total = float(reference_timing["e2e_seconds"])
+
+    # The harness caps the semantic phase at the reference's own token count so both
+    # sides solve the same number of frames. That only holds if the cap reached
+    # generation, which is a contract this harness checks rather than assumes.
+    if our_tokens > int(session_config.semantic.max_tokens):
+        raise SystemExit(
+            f"semantic budget not applied: {our_tokens} tokens for a cap of "
+            f"{session_config.semantic.max_tokens}"
+        )
+
+    def per_unit(seconds: float, units: int) -> float:
+        return (seconds / units * 1000.0) if units else float("nan")
+
+    def row(label: str, ours: float, theirs: float, unit: str) -> str:
+        ratio = (theirs / ours) if ours > 0 else float("nan")
+        return (f"| {label} | {ours:8.2f} ms | {theirs:8.2f} ms | {ratio:5.2f}x | {unit} |")
+
+    elapsed_ratio = total_seconds / ref_total
+    rtf_ratio = (total_seconds / our_audio_seconds) / (ref_total / ref_audio_seconds)
+    print(f"case {args.case}: reference {ref_audio_seconds:.2f} s of audio / {ref_tokens} "
+          f"semantic tokens, ours {our_audio_seconds:.2f} s / {our_tokens} tokens, "
           f"{int(args.steps)} ODE steps")
-    print(f"semantic tokens produced: {len(result.semantic.tokens)}")
     print()
-    print("| Stage | hipEngine | torch reference | ratio |")
-    print("| --- | ---: | ---: | ---: |")
-    print(row("AR semantic", semantic_seconds, float(reference_timing["semantic"]["seconds"])))
-    print(row("NAR solve", nar_seconds, float(reference_timing["nar_seconds"])))
-    print(row("VAE decode", vae_seconds, float(reference_timing["vae_seconds"])))
-    print(row("total", total_seconds, float(reference_timing["e2e_seconds"])))
+    print("| Stage | hipEngine | torch reference | ratio | per unit |")
+    print("| --- | ---: | ---: | ---: | --- |")
+    print(row("AR semantic", per_unit(semantic_seconds, our_tokens),
+              per_unit(float(reference_timing["semantic"]["seconds"]), ref_tokens), "per token"))
+    print(row("NAR solve", per_unit(nar_seconds, our_frames),
+              per_unit(float(reference_timing["nar_seconds"]), ref_frames), "per frame"))
+    print(row("VAE decode", per_unit(vae_seconds, our_frames),
+              per_unit(float(reference_timing["vae_seconds"]), ref_frames), "per frame"))
     print()
+    print(f"elapsed: ours {total_seconds:.2f} s for {our_audio_seconds:.2f} s of audio "
+          f"({total_seconds / our_audio_seconds:.2f}x real time) against the reference's "
+          f"{ref_total:.2f} s for {ref_audio_seconds:.2f} s "
+          f"({ref_total / ref_audio_seconds:.2f}x real time)")
+    print(f"raw elapsed ratio: {elapsed_ratio:.3f}x slower; "
+          f"real-time-factor ratio: {rtf_ratio:.3f}x slower "
+          f"(different outputs: {our_frames} frames against {ref_frames})")
     print(f"torch imported: {'torch' in sys.modules}")
-    print(f"audio: {result.frames} frames, {result.audio.shape[-1]} samples, "
-          f"peak {abs(result.audio).max():.4f}")
+    print(f"audio: {our_frames} frames, {our_samples} samples, peak {abs(result.audio).max():.4f}")
 
     if args.json:
         Path(args.json).write_text(json.dumps({
-            "protocol": "yue2-product-case-timing-v1",
+            "protocol": "yue2-product-case-timing-v2",
             "command_line": " ".join(["scripts/yue2_case_timing.py", *sys.argv[1:]]),
             "revision": _revision(),
             "host": _host_identity(),
             "case": args.case,
             "steps": int(args.steps),
-            "audio_seconds": reference["audio_seconds"],
-            "semantic_tokens": len(result.semantic.tokens),
-            "frames": int(result.frames),
+            "sample_rate": sample_rate,
             "hipengine": {
                 "semantic_seconds": semantic_seconds,
                 "nar_seconds": nar_seconds,
                 "vae_seconds": vae_seconds,
                 "total_seconds": total_seconds,
+                "semantic_tokens": our_tokens,
+                "frames": our_frames,
+                "samples": our_samples,
+                "audio_seconds": our_audio_seconds,
+                "semantic_ms_per_token": per_unit(semantic_seconds, our_tokens),
+                "nar_ms_per_frame": per_unit(nar_seconds, our_frames),
+                "vae_ms_per_frame": per_unit(vae_seconds, our_frames),
             },
             "reference": {
                 "semantic_seconds": reference_timing["semantic"]["seconds"],
                 "nar_seconds": reference_timing["nar_seconds"],
                 "vae_seconds": reference_timing["vae_seconds"],
-                "total_seconds": reference_timing["e2e_seconds"],
-                "semantic_tokens": int(reference_timing["semantic"]["content_tokens"]),
+                "total_seconds": ref_total,
+                "semantic_tokens": ref_tokens,
+                "frames": ref_frames,
+                "samples": ref_samples,
+                "audio_seconds": ref_audio_seconds,
+                "semantic_ms_per_token": per_unit(float(reference_timing["semantic"]["seconds"]), ref_tokens),
+                "nar_ms_per_frame": per_unit(float(reference_timing["nar_seconds"]), ref_frames),
+                "vae_ms_per_frame": per_unit(float(reference_timing["vae_seconds"]), ref_frames),
                 "execution": reference_timing["semantic"].get("execution"),
                 "cfg_branches": reference_timing["semantic"].get("cfg_branches"),
             },
+            "comparison": {
+                "raw_elapsed_ratio": elapsed_ratio,
+                "real_time_factor_ratio": rtf_ratio,
+                "outputs_matched": our_frames == ref_frames and our_tokens == ref_tokens,
+                "note": (
+                    "The two sides produced different amounts of audio, so the elapsed "
+                    "ratio is not a like-for-like comparison; the per-unit rows are. "
+                    "Neither total is an estimate: both are measured wall clock."
+                ),
+            },
+            "executed_config": session.effective_config(song, steps=int(args.steps)),
             "timing": timing,
         }, indent=1))
         print(f"wrote {args.json}")
