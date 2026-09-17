@@ -16921,32 +16921,34 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert burst_adapter._loop.active_count == 0
     assert burst_adapter._loop.completed == {}
 
-    overflow_adapter = SubmitPollTextGenerator(
+    # A slow consumer must slow its own child down, not lose it: the mailbox
+    # bound is the child's own output budget (the configured value is a floor),
+    # so an 8-token stream drains completely even with stream_queue_max_chunks=1.
+    small_mailbox_adapter = SubmitPollTextGenerator(
         ConcurrentInner(),
         capacity=2,
         prefill_chunk_size=2,
         stream_queue_max_chunks=1,
     )
-    slow = overflow_adapter.stream_detailed(replace(first_request, max_tokens=8))
-    neighbor = overflow_adapter.stream_detailed(replace(second_request, max_tokens=3))
+    slow = small_mailbox_adapter.stream_detailed(
+        replace(first_request, max_tokens=8)
+    )
+    neighbor = small_mailbox_adapter.stream_detailed(
+        replace(second_request, max_tokens=3)
+    )
     assert next(slow).text == "request0:1"
     assert [chunk.text for chunk in neighbor] == [
         "request1:1",
         "request1:2",
         "request1:3",
     ]
-    assert next(slow).text == "request0:2"
-    with pytest.raises(GenerationCancelled) as overflow:
-        next(slow)
-    assert overflow.value.finish_details.to_json_dict() == {
-        "reason": "cancelled",
-        "cancelled": True,
-        "budget_pressure": "client_backpressure",
-    }
-    assert overflow_adapter._runner.reclaims == [(0, "cancel"), (1, "length")]
-    assert overflow_adapter._loop.pending_count == 0
-    assert overflow_adapter._loop.active_count == 0
-    assert overflow_adapter._loop.completed == {}
+    assert [chunk.text for chunk in slow] == [
+        f"request0:{index}" for index in range(2, 9)
+    ]
+    assert small_mailbox_adapter._runner.reclaims == [(1, "length"), (0, "length")]
+    assert small_mailbox_adapter._loop.pending_count == 0
+    assert small_mailbox_adapter._loop.active_count == 0
+    assert small_mailbox_adapter._loop.completed == {}
 
     cancel_adapter = SubmitPollTextGenerator(
         ConcurrentInner(),
