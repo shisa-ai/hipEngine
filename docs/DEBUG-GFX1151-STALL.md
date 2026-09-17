@@ -234,6 +234,8 @@ git clone https://github.com/shisa-ai/hipEngine.git
 cd hipEngine
 git switch --detach rocm-6437-reproducer-v1
 test "$(git rev-parse HEAD)" = a7b4fe4b213c5afcbe1be2b13cb33464f251a06e
+git lfs install --local   # the vendored AOTriton runtime is LFS-tracked
+git lfs pull
 ```
 
 Prebuild every JIT `.so` and the compiler-version cache file outside the bounded
