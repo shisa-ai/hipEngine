@@ -487,6 +487,7 @@ def run_rank_chain_fused(
     hidden: int,
     per_rank_ffn: int,
     decode_variant: str,
+    down_output_dtype: str = "f32",
 ) -> dict[str, np.ndarray]:
     """The fused gate/up+SiLU candidate at the shard shape.
 
@@ -500,11 +501,12 @@ def run_rank_chain_fused(
 
     from hipengine.runtime.gguf_linear import launch_gguf_linear_pair_silu  # noqa: PLC0415
 
-    # The candidate's down GEMV writes f32 partials, matching the baseline
+    # The candidate's down GEMV writes the same partial dtype as the baseline
     # chain's reduction contract; the buffer must be sized for that output.
+    down_itemsize = 4 if down_output_dtype == "f32" else 2
     x_ptr = _alloc(runtime, device, hidden * 2)
     act_ptr = _alloc(runtime, device, per_rank_ffn * 2)
-    down_ptr = _alloc(runtime, device, hidden * 4)
+    down_ptr = _alloc(runtime, device, hidden * down_itemsize)
     try:
         _upload(runtime, device, x_ptr, x_bf16_bytes)
         with scoped_current_device(runtime, device):
@@ -534,14 +536,16 @@ def run_rank_chain_fused(
                 per_rank_ffn,
                 hidden,
                 use_gemv_decode=True,
-                output_dtype="f32",
+                output_dtype=down_output_dtype,
                 stream=stream,
                 runtime=runtime,
             )
             runtime.stream_synchronize(stream)
         return {
             "activated": _download(runtime, device, act_ptr, per_rank_ffn * 2),
-            "down_partial": _download(runtime, device, down_ptr, hidden * 4),
+            "down_partial": _download(
+                runtime, device, down_ptr, hidden * down_itemsize
+            ),
         }
     finally:
         for ptr in (x_ptr, act_ptr, down_ptr):
@@ -588,6 +592,7 @@ def staged_exchange_reduce(
     staging: PinnedStaging,
     hidden: int,
     devices: list[int],
+    partial_dtype: str = "f32",
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Both ranks' partials -> pinned host -> f32 sum -> H2D to every rank.
 
@@ -599,9 +604,16 @@ def staged_exchange_reduce(
 
     Returns the reduced f32 vector and the bytes each stage moved, including a
     read-back of every rank's reduced buffer so the H2D is verified, not assumed.
+
+    ``partial_dtype`` is the dtype each rank's down projection wrote: ``f32``
+    stages the unrounded accumulator, ``bf16`` stages the rounded partial and
+    widens it on the host before the f32 sum. The reduced vector handed back is
+    f32 either way - that is what the next consumer's residual add reads.
     """
 
-    slot_nbytes = hidden * 4
+    if partial_dtype not in {"f32", "bf16"}:
+        raise ValueError(f"unsupported partial dtype {partial_dtype!r}")
+    slot_nbytes = hidden * (2 if partial_dtype == "bf16" else 4)
     reduced = np.zeros(hidden, dtype=np.float32)
     record: dict[str, Any] = {
         "d2h_bytes": 0,
@@ -628,10 +640,15 @@ def staged_exchange_reduce(
             runtime.stream_synchronize(streams[device])
     # One pass over both staging slots instead of a frombuffer per rank: the
     # slots are contiguous, so the sum is a single reduction over a (ranks,
-    # hidden) view. The buffer is already f32; no astype needed.
-    both = np.frombuffer(
-        staging_view[: len(devices) * slot_nbytes].tobytes(), dtype="<f4"
-    ).reshape(len(devices), hidden)
+    # hidden) view. bf16 partials widen on the host first; the buffer is
+    # already f32 in the f32 case, so no astype is needed there.
+    raw = staging_view[: len(devices) * slot_nbytes].tobytes()
+    if partial_dtype == "bf16":
+        both = bf16_to_float32(
+            np.frombuffer(raw, dtype="<u2")
+        ).reshape(len(devices), hidden)
+    else:
+        both = np.frombuffer(raw, dtype="<f4").reshape(len(devices), hidden)
     reduced = both.sum(axis=0, dtype=np.float32)
 
     payload = np.ascontiguousarray(reduced, dtype="<f4")
@@ -747,6 +764,7 @@ def measure_tp2_segment(
     decode_variant: str | None,
     iterations: int,
     warmup: int,
+    partial_dtype: str = "f32",
 ) -> dict[str, Any]:
     """Wall of the complete TP2 MLP step on both cards.
 
@@ -768,7 +786,7 @@ def measure_tp2_segment(
     chain_walls: list[float] = []
     exchange_walls: list[float] = []
     step_walls: list[float] = []
-    slot = hidden * 4
+    slot = hidden * (2 if partial_dtype == "bf16" else 4)
     try:
         for i in range(warmup + iterations):
             t0 = time.perf_counter()
@@ -829,7 +847,7 @@ def measure_tp2_segment(
                         per_rank_ffn,
                         hidden,
                         use_gemv_decode=True,
-                        output_dtype="f32",
+                        output_dtype=partial_dtype,
                         stream=stream,
                         runtime=runtime,
                     )
@@ -851,9 +869,11 @@ def measure_tp2_segment(
                         streams[rank],
                     )
                     runtime.stream_synchronize(streams[rank])
-                reduced += np.frombuffer(
-                    view[rank * slot : (rank + 1) * slot].tobytes(), dtype="<f4"
-                ).astype(np.float32)
+                raw = view[rank * slot : (rank + 1) * slot].tobytes()
+                if partial_dtype == "bf16":
+                    reduced += bf16_to_float32(np.frombuffer(raw, dtype="<u2"))
+                else:
+                    reduced += np.frombuffer(raw, dtype="<f4").astype(np.float32)
             payload = np.ascontiguousarray(reduced.astype("<f4"))
             for rank in streams:
                 with scoped_current_device(runtime, rank):
@@ -896,6 +916,7 @@ def profile_exchange_parts(
     devices: list[int],
     iterations: int = 300,
     warmup: int = 20,
+    partial_dtype: str = "f32",
 ) -> dict[str, Any]:
     """Where the exchange wall goes, measured part by part.
 
@@ -906,8 +927,19 @@ def profile_exchange_parts(
     the exchange wall changes which protocols are worth driving.
     """
 
-    slot = hidden * 4
-    seed = np.ascontiguousarray(np.random.default_rng(7).standard_normal(hidden, dtype="<f4"))
+    slot = hidden * (2 if partial_dtype == "bf16" else 4)
+    # The seed only has to be a valid partial-shaped pattern for the timing
+    # loop, so build it in the staging dtype: f32 normals, or their upper 16
+    # bits (a truncation to bf16) for the bf16 arm.
+    seed_f32 = np.ascontiguousarray(
+        np.random.default_rng(7).standard_normal(hidden, dtype="<f4")
+    )
+    if partial_dtype == "bf16":
+        seed = np.ascontiguousarray(
+            np.frombuffer(seed_f32.tobytes(), dtype="<u2")[1::2].astype("<u2")
+        )
+    else:
+        seed = seed_f32
     for rank in devices:
         with scoped_current_device(runtime, rank):
             runtime.memcpy(
@@ -931,9 +963,13 @@ def profile_exchange_parts(
         for rank in devices:
             with scoped_current_device(runtime, rank):
                 runtime.stream_synchronize(streams[rank])
-        both = np.frombuffer(
-            staging.view()[: len(devices) * slot].tobytes(), dtype="<f4"
-        ).reshape(len(devices), hidden)
+        raw = staging.view()[: len(devices) * slot].tobytes()
+        if partial_dtype == "bf16":
+            both = bf16_to_float32(np.frombuffer(raw, dtype="<u2")).reshape(
+                len(devices), hidden
+            )
+        else:
+            both = np.frombuffer(raw, dtype="<f4").reshape(len(devices), hidden)
         return both.sum(axis=0, dtype=np.float32)
 
     def full() -> None:
@@ -1055,6 +1091,7 @@ def run(
     seed: int = 20260915,
     iterations: int = 200,
     warmup: int = 20,
+    down_output_dtype: str = "f32",
 ) -> dict[str, Any]:
     import hashlib  # noqa: PLC0415
 
@@ -1107,7 +1144,7 @@ def run(
             x_bf16,
             rank,
             world_size,
-            down_output_dtype="f32",
+            down_output_dtype=down_output_dtype,
         )
         for rank in range(int(world_size))
     ]
@@ -1154,11 +1191,14 @@ def run(
                 weights[role] = _ShardWeight(layout, quant_key, allocation)
             rank_weights.append(weights)
 
-        # The down projection writes f32 partials: the kernel's f32 accumulator
-        # leaves the rank unrounded, so the reduction is a plain f32 sum with no
-        # per-rank bf16 step in front of it. Gate/up and the activation stay
+        # The down projection writes f32 partials by default: the kernel's f32
+        # accumulator leaves the rank unrounded, so the reduction is a plain f32
+        # sum with no per-rank bf16 step in front of it. ``--down-output-dtype
+        # bf16`` is the shipped TP2 schedule's rounded partial (one bf16 rounding
+        # per rank before the sum) and exists so the two arithmetic options are
+        # compared against the same f64 oracle. Gate/up and the activation stay
         # bf16, which is the incumbent activation contract.
-        down_dtype = "f32"
+        down_dtype = str(down_output_dtype)
         rank_outputs = []
         for rank in range(int(world_size)):
             rank_outputs.append(
@@ -1187,6 +1227,7 @@ def run(
             staging=staging,
             hidden=hidden,
             devices=list(range(int(world_size))),
+            partial_dtype=down_dtype,
         )
         # Verify each rank's on-device reduced vector once, outside any timed
         # path: sync both streams and read the buffers back.
@@ -1222,6 +1263,7 @@ def run(
                         hidden=hidden,
                         per_rank_ffn=per_rank,
                         decode_variant=str(tp1_variant),
+                        down_output_dtype=down_dtype,
                     )
                     for rank in range(int(world_size))
                 ]
@@ -1276,6 +1318,7 @@ def run(
                 decode_variant=None,
                 iterations=iterations,
                 warmup=warmup,
+                partial_dtype=down_dtype,
             )
             tp2_fused = (
                 measure_tp2_segment(
@@ -1292,6 +1335,7 @@ def run(
                     decode_variant=str(tp1_variant),
                     iterations=iterations,
                     warmup=warmup,
+                    partial_dtype=down_dtype,
                 )
                 if tp1_variant
                 else None
@@ -1316,6 +1360,7 @@ def run(
                 staging=staging,
                 hidden=hidden,
                 devices=list(range(int(world_size))),
+                partial_dtype=down_dtype,
             )
         finally:
             for rank, ptr in x_ptrs.items():
@@ -1385,14 +1430,21 @@ def run(
         fused_rank_rows = []
         for rank, output in enumerate(fused_candidate):
             act_dev = as_f32(output["activated"], per_rank, "bf16")
-            partial_dev = as_f32(output["down_partial"], hidden, "f32")
+            partial_dev = as_f32(
+                output["down_partial"], hidden, str(down_dtype)
+            )
             fused_sum += partial_dev
             c = contract[rank]
+            unfused_partial = as_f32(
+                rank_outputs[rank]["down_partial"],
+                hidden,
+                rank_outputs[rank]["down_output_dtype"],
+            )
             fused_rank_rows.append(
                 {
                     "rank": rank,
                     "activated_vs_unfused": _relative_errors(act_dev, as_f32(rank_outputs[rank]["activated"], per_rank, "bf16")),
-                    "down_partial_vs_unfused": _relative_errors(partial_dev, as_f32(rank_outputs[rank]["down_partial"], hidden, "f32")),
+                    "down_partial_vs_unfused": _relative_errors(partial_dev, unfused_partial),
                     "activated_vs_contract": _relative_errors(act_dev, c["activated"]),
                 }
             )
@@ -1427,7 +1479,7 @@ def run(
         "devices": device_names,
         "fused_path_admission": admission,
         "reduction": {
-            "down_output_dtype": "f32",
+            "down_output_dtype": str(down_output_dtype),
             "sum_dtype": "f32",
             "transport": "staged exchange: per-rank D2H into pinned host, host f32 sum, H2D to every rank",
             "decision": (
@@ -1435,6 +1487,9 @@ def run(
                 "unrounded, so no per-rank bf16 rounding precedes the sum, and the "
                 "f32 reduced vector feeds the incumbent f32-residual decode path "
                 "without a conversion"
+            ) if str(down_output_dtype) == "f32" else (
+                "bf16 partials (shipped TP2 schedule): each rank's down output is "
+                "rounded to bf16 once before the f32 staged sum"
             ),
             "exchange": exchange_record,
             "exchange_profile": exchange_profile,
@@ -1492,6 +1547,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=20260915)
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument(
+        "--down-output-dtype",
+        default="f32",
+        choices=("f32", "bf16"),
+        help=(
+            "dtype the rank's down projection writes: f32 is the unrounded "
+            "accumulator (no per-rank rounding before the staged sum), bf16 "
+            "rounds each rank's partial once"
+        ),
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
     report = run(
@@ -1501,6 +1566,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         iterations=args.iterations,
         warmup=args.warmup,
+        down_output_dtype=args.down_output_dtype,
     )
     text = json.dumps(report, indent=2)
     if args.json is not None:

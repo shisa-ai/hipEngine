@@ -2226,6 +2226,86 @@ def test_q6_t16_routes_decode_native_rowtile_and_dense_wmma(
     ]
 
 
+def test_q4_t16_f32_output_never_acquires_a_bf16_rowtile_leaf() -> None:
+    """The small-row T16 rewrites must preserve the requested output dtype.
+
+    ``_q4_t16_dense_native_dispatch`` and ``_t16_c1_variant_dispatch`` return
+    BF16 leaves from shape/row policy alone. Without the dtype guard the rows=2
+    f32 dispatch silently became ``dense_rowtile_bf16_bf16_out``, which stores
+    bf16 bit patterns into the f32 partial buffer the TP2 row-parallel down
+    projection stages. The guard makes the f32 request keep its own (rows==1,
+    otherwise unregistered) variant so a multirow f32 launch fails at
+    resolution instead of computing the wrong dtype.
+    """
+
+    quant_key = "gguf_q4_k_t16_v1"
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q4_K_T16, quant_key=quant_key)
+    sidecar_key = KernelKey("hip_gfx1100", "linear", quant_key, "dense_rowtile_bf16_bf16_out")
+    original = resolve(
+        backend=sidecar_key.backend,
+        layer=sidecar_key.layer,
+        quant=sidecar_key.quant,
+        variant=sidecar_key.variant,
+        missing="none",
+    )
+    register(sidecar_key, lambda *args, **kwargs: None, replace=True)
+    try:
+        f32_rows2 = resolve_gguf_linear_dispatch(weight, output_dtype="f32", rows=2)
+        assert f32_rows2.key.variant == "t16_wmma_prefill_bf16_f32_out"
+
+        # The pre-guard behaviour, reproduced by handing the same rewrite the
+        # bf16 dtype inside the same session: this is the downgrade the guard
+        # prevents.
+        with native_batch_decode_session(True):
+            downgraded = gguf_linear_module._q4_t16_dense_native_dispatch(
+                f32_rows2,
+                rows=2,
+                in_features=8704,
+                out_features=5120,
+                output_dtype=GGUF_OUTPUT_BF16,
+            )
+            assert downgraded.key.variant == "dense_rowtile_bf16_bf16_out"
+
+            kept = gguf_linear_module._q4_t16_dense_native_dispatch(
+                f32_rows2,
+                rows=2,
+                in_features=8704,
+                out_features=5120,
+                output_dtype=GGUF_OUTPUT_F32,
+            )
+            assert kept.key.variant == "t16_wmma_prefill_bf16_f32_out"
+
+            # The bf16 request keeps the measured native leaf.
+            bf16_rows2 = resolve_gguf_linear_dispatch(weight, output_dtype="bf16", rows=2)
+            native_bf16 = gguf_linear_module._q4_t16_dense_native_dispatch(
+                bf16_rows2,
+                rows=2,
+                in_features=8704,
+                out_features=5120,
+                output_dtype=GGUF_OUTPUT_BF16,
+            )
+            assert native_bf16.key.variant == "dense_rowtile_bf16_bf16_out"
+
+        # The rows==1 c1 shape rewrite is guarded the same way; a q5_k shape
+        # policy row must not capture an f32 request either.
+        f32_rows1 = resolve_gguf_linear_dispatch(weight, output_dtype="f32", rows=1)
+        assert f32_rows1.key.variant == "dense_single_local32_bf16_f32_out"
+        c1_kept = gguf_linear_module._t16_c1_variant_dispatch(
+            f32_rows1,
+            rows=1,
+            in_features=8704,
+            out_features=5120,
+            output_dtype=GGUF_OUTPUT_F32,
+        )
+        assert c1_kept.key.variant == "dense_single_local32_bf16_f32_out"
+    finally:
+        if original is None:
+            unregister(sidecar_key)
+        else:
+            register(sidecar_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
 def test_q5_t16_routes_decode_bounded_native_rowtile_and_dense_wmma() -> None:
     quant_key = "gguf_q5_k_t16_v1"
     weight = _fake_weight(

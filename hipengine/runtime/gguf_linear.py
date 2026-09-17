@@ -3463,12 +3463,14 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            output_dtype=output_dtype,
         )
         dispatch = _t16_c1_variant_dispatch(
             dispatch,
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            output_dtype=output_dtype,
         )
         dispatch = _native_batch_decode_dispatch(
             dispatch,
@@ -3947,9 +3949,17 @@ def _q4_t16_dense_native_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    output_dtype: str = GGUF_OUTPUT_BF16,
 ) -> GGUFLinearDispatch:
-    """Select the quant-qualified small-row leaf for a Q4T16 owner."""
+    """Select the quant-qualified small-row leaf for a Q4T16 owner.
 
+    The sidecar/native leaves are BF16 stores, so a non-BF16 output keeps its
+    own dispatch: silently acquiring a bf16 store would write bf16 bit
+    patterns into (for example) an f32 partial buffer.
+    """
+
+    if output_dtype != GGUF_OUTPUT_BF16:
+        return dispatch
     max_rows = int(
         _Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT.get(
             dispatch.key.quant,
@@ -7942,9 +7952,16 @@ def _t16_c1_variant_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    output_dtype: str = GGUF_OUTPUT_BF16,
 ) -> GGUFLinearDispatch:
-    """Select an architecture-qualified exact serial-c1 sibling by shape."""
+    """Select an architecture-qualified exact serial-c1 sibling by shape.
 
+    Every variant in the policy map is a BF16 store, so a non-BF16 output
+    keeps its own dispatch (see ``_q4_t16_dense_native_dispatch``).
+    """
+
+    if output_dtype != GGUF_OUTPUT_BF16:
+        return dispatch
     if (
         rows != 1
         or dispatch.abi != "t16"

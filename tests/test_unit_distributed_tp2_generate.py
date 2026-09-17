@@ -399,6 +399,7 @@ def env(monkeypatch):
                 devices=kwargs.get("devices", (0, 1)), rows=kwargs.get("rows", 1)
             )
             self.owns_weights = bool(kwargs.get("owns_weights", True))
+            self.staging_dtype = kwargs.get("staging_dtype")
             groups.append(self)
 
     def fake_resolve(model_path, *, world_size, backend="hip_gfx1100"):
@@ -1104,6 +1105,81 @@ def _bulk_group(env):
     # The decode group is built first, then the bulk (weight-sharing) group.
     assert len(env["groups"]) == 2
     return env["groups"][0], env["groups"][1]
+
+
+def test_decode_partial_dtype_selects_the_decode_group_only(env) -> None:
+    """The f32 down partial is a decode/serial-prefill choice.
+
+    The bulk prefill group's rows>1 f32-out leaves are not registered, so it
+    must keep its own dtype; a single knob must not silently move both routes.
+    """
+
+    default = _session(env)
+    assert env["groups"][0].staging_dtype == "bf16"
+    assert default.decode_partial_dtype == "bf16"
+
+    env["groups"].clear()
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="eager",
+        bulk_prefill=True,
+        bulk_prefill_rows=8,
+        decode_partial_dtype="f32",
+    )
+    decode_group, bulk_group = _bulk_group(env)
+    assert session.decode_partial_dtype == "f32"
+    assert decode_group.staging_dtype == "f32"
+    assert bulk_group.staging_dtype == "bf16"
+
+
+@pytest.mark.parametrize("value", ["fp16", "", "F32"])
+def test_decode_partial_dtype_rejects_unknown_values(env, value) -> None:
+    with pytest.raises(ValueError, match="decode_partial_dtype"):
+        MlpTP2GenerationSession(
+            "fake.gguf",
+            devices=(0, 1),
+            mode="tp2",
+            max_sequence_length=64,
+            schedule="eager",
+            decode_partial_dtype=value,
+        )
+    assert env["groups"] == []
+
+
+def test_f32_partial_dtype_requires_the_host_reduction(env) -> None:
+    """The device exchange stages bf16 rows; f32 must not reach it.
+
+    Silent corruption, not a slowdown: the driver's ``row_bytes = hidden * 2``
+    would read half of each f32 row and spin-sum the halves as bf16 values.
+    """
+
+    with pytest.raises(ValueError, match="reduce_mode='host'"):
+        MlpTP2GenerationSession(
+            "fake.gguf",
+            devices=(0, 1),
+            mode="tp2",
+            max_sequence_length=64,
+            schedule="graphed",
+            decode_partial_dtype="f32",
+        )
+    assert env["groups"] == []
+
+    # The graphed schedule with the host reduction is the supported f32 route.
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="graphed",
+        reduce_mode="host",
+        decode_partial_dtype="f32",
+    )
+    assert session.reduce_mode == "host"
+    assert session.decode_partial_dtype == "f32"
+    assert env["groups"][0].staging_dtype == "f32"
 
 
 def test_bulk_prefill_is_off_by_default(env) -> None:

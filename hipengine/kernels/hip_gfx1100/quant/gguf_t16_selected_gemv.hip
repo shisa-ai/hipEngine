@@ -2391,13 +2391,16 @@ void q4_k_t16_dense_dual_local32_silu_gemv_kernel(
 // Decode-only dense/shared Q4T16 single-output owner. Match the retained
 // pack8 local32 owner exactly: each lane owns eight contiguous K values per
 // 256-wide superblock, every output uses the same FMA sequence and wave32
-// reduction tree, and the final scalar is rounded directly to BF16.
-template <typename scalar_t>
+// reduction tree, and the final scalar is rounded directly to the output
+// dtype (``out_t`` defaults to the activation dtype; the f32 partial schedule
+// instantiates it with ``float`` so the sharded down projection can be staged
+// without an intermediate bf16 rounding).
+template <typename scalar_t, typename out_t = scalar_t>
 __global__ __launch_bounds__(32, 8)
 void q4_k_t16_dense_single_local32_gemv_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
-    scalar_t* __restrict__ out,
+    out_t* __restrict__ out,
     int64_t in_features,
     int64_t out_features) {
   constexpr int kTileCols = 8;
@@ -2506,7 +2509,7 @@ void q4_k_t16_dense_single_local32_gemv_kernel(
 #pragma unroll
     for (int local_col = 0; local_col < kTileCols; ++local_col) {
       out[out_base + local_col] =
-          float_to_scalar<scalar_t>(0.0f + acc[local_col]);
+          float_to_scalar<out_t>(0.0f + acc[local_col]);
     }
   }
 }
@@ -6984,7 +6987,7 @@ int launch_q5_dense_dual_silu(
   return hipGetLastError();
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename out_t = scalar_t>
 int launch_q4_dense_single_local32(
     const void* x,
     const void* tiles,
@@ -7001,14 +7004,14 @@ int launch_q4_dense_single_local32(
   const dim3 block(32);
   const dim3 grid(static_cast<unsigned int>(out_features / 8));
   hipLaunchKernelGGL(
-      (q4_k_t16_dense_single_local32_gemv_kernel<scalar_t>),
+      (q4_k_t16_dense_single_local32_gemv_kernel<scalar_t, out_t>),
       grid,
       block,
       0,
       stream,
       reinterpret_cast<const scalar_t*>(x),
       reinterpret_cast<const uint8_t*>(tiles),
-      reinterpret_cast<scalar_t*>(out),
+      reinterpret_cast<out_t*>(out),
       in_features,
       out_features);
   return hipGetLastError();
@@ -8340,6 +8343,20 @@ hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_single_local32<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// f32-output sibling: identical FMA sequence, wave32 reduction tree and
+// geometry as the bf16 owner; only the final store dtype differs. Used as the
+// row-parallel down-projection partial in the TP2 sharded MLP so the staged f32
+// reduction does not have to round each rank's partial first (that rounding
+// costs up to 0.0309 max_abs at the layer-0 down output).
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_f32_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_single_local32<uint16_t, float>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

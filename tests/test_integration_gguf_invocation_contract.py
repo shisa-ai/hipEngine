@@ -353,7 +353,7 @@ def test_all_dispatch_rows_resolve_and_marshal_production_operands():
     import hipengine.runtime.gguf_linear as runtime
     from hipengine.loading.qwen35_gguf_consumer_surface import GGUF_LINEAR_DISPATCH_SURFACE, linear_consumer_contract
     addresses = {"raw": 101, "tiles": 102, "qweight": 103, "scales": 104, "mins": 105}
-    assert len(GGUF_LINEAR_DISPATCH_SURFACE) == 22
+    assert len(GGUF_LINEAR_DISPATCH_SURFACE) == 23
     for row in GGUF_LINEAR_DISPATCH_SURFACE:
         weight = SimpleNamespace(backend="hip_gfx1151", spec=SimpleNamespace(layout=row.layout, quant_key="gguf_q8_0"),
             allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=addresses[name])))

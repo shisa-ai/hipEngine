@@ -789,6 +789,61 @@ default-off and the token-serial route remains the committed prefill schedule.
   rounding by staging f32 down partials where a registered f32 partial consumer
   exists, or accept the bf16 partial boundary and requalify the envelope on the
   full mtp-bench category suite. Do not relax the envelope.
+- **f32 down partial measured and rejected (2026-09-17):** the arithmetic
+  question above was answered by building the missing half of it. The
+  rank-parallel down projection can now write its unrounded f32 accumulator for
+  **both** down quant families — `q4_k_t16`
+  `dense_single_local32_bf16_f32_out` (a wider store on the existing local32
+  owner; 32 of the model's 64 `ffn_down` tensors are Q4_K, which is why the
+  group's single staging dtype had to be bf16) and the pre-existing `q6_k_t16`
+  `t16_gemv_decode_bf16_f32_out` — selected per session by
+  `decode_partial_dtype="f32"`. The route is arithmetically exact: on layer 0
+  each rank's f32 partial matches an independent f64 oracle to max_abs **5.0e-08**
+  / **7.7e-08** and the two-rank f32 sum matches the resident TP1 f32 down output
+  to **1.9e-09**; the transport control is exact too (bf16 partials with the
+  device spin-sum and with the host staged sum give **byte-identical** logits in
+  separate processes, and the f32 arm reproduces byte-identically across
+  processes). End to end on the same 2 prompts x 128 forced-decode rows it makes
+  agreement with the resident TP1 teacher **worse**, not better: max KL
+  **0.108406 -> 0.732890** and **0.046893 -> 0.242473**, mean KL **0.0014286 ->
+  0.0084696** and **0.0010041 -> 0.0028254**, top-1 **1.000 -> 0.9766** and
+  **0.9844 -> 0.9766** with 3 flipped rows each. `decode_partial_dtype="bf16"`
+  therefore stays the shipped schedule; the f32 option remains implemented,
+  registered, documented and fail-closed (`f32` requires `reduce_mode="host"`,
+  and no `hip_gfx1100` kernel is registered for the rows>1 f32 variant, so a
+  multirow f32 request cannot acquire a bf16 GPU store) as a qualified
+  alternative and bisection control.
+- **Why the boundary fix did not move the end-to-end number (2026-09-17):**
+  widening the measurement to a 2x2 of prefill route x partial dtype shows the
+  metric is not ordered by distance from the teacher. Serial prefill with the
+  bf16 partial is best on every reported metric and sits at the envelope edge
+  rather than far outside it (heldout mean KL 0.0010041 against the 0.001 bar,
+  p99 0.0288 against 0.02, max 0.0469 inside the 0.05 ceiling, top-1 0.9844;
+  `mixed_ja_en_translate` mean 0.0014286, p99 0.0398, max 0.1084). Bulk prefill
+  makes it worse (mean KL 0.0024068 / 0.0025576); serial with the f32 partial has
+  the worst max KL on `mixed_ja_en_translate` (0.7329) while bulk with f32 is the
+  better of the two f32 arms there. p95 stays within 5.7e-04..1.02e-03 across all
+  four arms while mean/p99/max move by 2-6x. With the layer-0 boundary
+  reproducing the teacher to 1.9e-09 and each route's own repeat reproducing
+  bit-identically (the bulk arm also reproduces an earlier session's recorded
+  numbers and logits sha256 exactly), the TP2-vs-teacher tail is bf16-ULP-level
+  chaos amplified over 64 layers: every route perturbation moves it by more than
+  the envelope width, so no single arithmetic term decides the comparison.
+- **The comparison basis is the open question (2026-09-17):** the TP2 gate scores
+  against **hipEngine TP1's own logits** (`quality-tp1-d0.json`, arm `tp1-d0`),
+  while hipEngine's production quality basis is the independent llama.cpp BF16
+  teacher protocol (`scripts/qwen38_llama_teacher.py`, `TEACHER_STEPS=9`). A
+  route-parity metric between two legitimately different arithmetic routes cannot
+  separate a TP2 defect from legitimate route difference — which is exactly what
+  the 1.9e-09 layer-0 boundary result demonstrates. The next decision is the
+  qualification basis: score TP2 against the independent teacher capture on the
+  mtp-bench protocol and gate its own oracle-KL against the same envelope, or
+  declare a TP2-specific envelope from its own repeat/isolation distribution, or
+  close the route difference by moving the sharded leaves into the resident leaf
+  family. Evidence:
+  `benchmarks/results/2026-09-17-w7900-tp2-f32-down-partial-ab.json`,
+  mechanism check `scripts/tp2_mlp_slice_e2e.py --down-output-dtype`,
+  `docs/REFACTOR.md` (the knob and the dtype-blind rewrite gap).
 
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing

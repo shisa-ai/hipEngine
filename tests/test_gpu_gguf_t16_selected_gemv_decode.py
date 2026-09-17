@@ -48,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+    gguf_q4_k_t16_dense_single_local32_bf16_f32_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
@@ -102,7 +103,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     plan_gguf_t16_selected_gemv_build,
     register_gguf_t16_selected_gemv_kernels,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import _KERNELS, KernelKey, resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import (
     interleave_gguf_q4_k_tile16_dual,
@@ -794,6 +795,59 @@ def test_q4_t16_dense_single_matches_pack8_production_bits(
         expected,
         **_TOL,
     )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_t16_dense_single_f32_out_is_the_same_kernel_with_a_wider_store(
+    t16_selected_library,
+) -> None:
+    """The f32-output sibling is the unrounded accumulator of the bf16 owner.
+
+    Contract for the TP2 f32 down partial: identical geometry, FMA sequence and
+    wave32 reduction tree, so ``bf16_round(f32_out) == bf16_out`` bit-for-bit,
+    and the f32 store is at least as close to the float32 reference as the bf16
+    store. A kernel that reordered the accumulation (or wrote a differently
+    scaled value) breaks the first assertion.
+    """
+
+    rng = np.random.default_rng(20260917)
+    in_features = 1024
+    out_features = 512
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(1, in_features)).astype(np.float32)
+    )
+
+    control = _run_dense_single(
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    actual = _run_dense_single(
+        gguf_q4_k_t16_dense_single_local32_bf16_f32_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.float32,
+        t16_selected_library,
+    )
+
+    # Same accumulation: the bf16 owner's output is exactly the rounded f32 one.
+    np.testing.assert_array_equal(_f32_to_bf16_u16(actual), control)
+
+    expected = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16),
+        raw,
+        GGMLQuantizationType.Q4_K,
+    )
+    f32_error = float(np.abs(actual - expected).max())
+    bf16_error = float(np.abs(_bf16_u16_to_f32(control) - expected).max())
+    assert f32_error <= bf16_error
+    np.testing.assert_allclose(actual, expected, **_TOL)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -2125,6 +2179,44 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q4_k_t16_v1",
         variant="dense_rowtile_bf16_bf16_out",
     ) is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    # The TP2 f32 down partial: the rows=1 dense leaf is registered, and the
+    # rows>1 WMMA prefill leaf it would rewrite to is deliberately NOT - a
+    # multirow f32 request must fail at resolution instead of silently
+    # acquiring a bf16 store (the dtype-preserving rewrite names it, so a
+    # missing key is a loud launch-time error, not a downgrade).
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_single_local32_bf16_f32_out",
+    ) is gguf_q4_k_t16_dense_single_local32_bf16_f32_out
+    # The rows>1 f32 leaf must have no hip_gfx1100 registration: the resolver's
+    # last-resort candidate is the generic CPU reference, so "unregistered" is
+    # asserted against the exact key and against the resolved kernel's backend,
+    # not against resolution failing.
+    assert KernelKey(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_f32_out",
+    ) not in _KERNELS
+    resolved = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_f32_out",
+        missing="none",
+    )
+    if resolved is not None:
+        # The only candidate left is the generic CPU reference; a GPU leaf must
+        # never answer this request.
+        assert resolved is resolve(
+            backend="cpu_reference",
+            layer="linear",
+            quant="fp16",
+            variant="",
+            missing="none",
+        )
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",

@@ -165,7 +165,10 @@ def test_dispatch_surface_mirror_equals_production_table():
         for rows in (1, 2, 8):
             expected = _variant_for_rows(dispatch.key.variant, rows=rows)
             if key[0] in {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"} and rows > 1:
-                expected = "t16_wmma_prefill_bf16_bf16_out"
+                # The Q4 T16 multirow rewrite selects the WMMA prefill leaf for
+                # the row's own activation/output dtype; it must not silently
+                # swap an f32 output request onto the bf16 leaf.
+                expected = f"t16_wmma_prefill_{key[1]}_{key[2]}_out"
             assert row.variant_for_rows(rows) == expected, (key, rows)
 
 
