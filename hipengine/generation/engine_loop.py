@@ -1944,6 +1944,7 @@ class ResidentEngineLoop:
         self._speculative_cycle_sequence = 0
         self._last_speculative_plan = None
         self._recent_speculative_plans = deque(maxlen=32)
+        self._pending_ar_reasons: dict[int, Any] = {}
 
     def reconfigure(self, config: EngineLoopConfig) -> None:
         """Apply an idle resource/policy generation without replacing the loop."""
@@ -1992,6 +1993,7 @@ class ResidentEngineLoop:
         self._round_decode_rows = 0
         self._last_speculative_plan = None
         self._recent_speculative_plans.clear()
+        self._pending_ar_reasons.clear()
 
     @property
     def last_speculative_plan(self):
@@ -2478,7 +2480,35 @@ class ResidentEngineLoop:
             generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
-        return self._decode_events(work, generated_events)
+        events = self._decode_events(work, generated_events)
+        self._attribute_autoregressive_commits(events)
+        return events
+
+    def _attribute_autoregressive_commits(
+        self,
+        events: Sequence[EngineLoopEvent],
+    ) -> None:
+        """Attribute AR output at the decode that emitted it, once per token.
+
+        A speculative plan that selects autoregressive decoding can be prepared
+        more than once for the same row within a tick (a mixed group is retried
+        as its speculative subset), so counting at preparation double-counts a
+        single emitted token. The plan's reason is carried here instead, to the
+        decode that actually produced the output.
+        """
+
+        if not self._pending_ar_reasons:
+            return
+        observe = getattr(self.runner, "note_speculative_ar_commit", None)
+        for event in events:
+            if event.kind != "token" or event.request_id is None:
+                continue
+            request_id = int(event.request_id)
+            if request_id not in self._pending_ar_reasons:
+                continue
+            reason = self._pending_ar_reasons.pop(request_id)
+            if callable(observe):
+                observe(request_id, reason)
 
     def _maybe_run_speculative_cycle(
         self,
@@ -2568,6 +2598,12 @@ class ResidentEngineLoop:
         self._last_speculative_plan = plan
         self._recent_speculative_plans.append(plan)
         if plan.is_ar_only:
+            # The AR decode that follows emits these rows' tokens; the reason is
+            # carried to that emission instead of counting at preparation.
+            for request_id, reason in zip(
+                plan.request_ids, plan.reasons, strict=True
+            ):
+                self._pending_ar_reasons[int(request_id)] = reason
             prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
             if callable(prepare_k0):
                 prepare_k0(plan, tuple(semantics), stream=None)
@@ -2814,6 +2850,10 @@ class ResidentEngineLoop:
     def _reclaim_runner_state(self, completed: CompletedRequest) -> None:
         self._speculative_candidate_counts.pop(int(completed.request_id), None)
         self._speculative_cancel_probes.pop(int(completed.request_id), None)
+        # A reason recorded for a plan whose decode never emitted (the request
+        # was cancelled between planning and decoding) must not attribute a
+        # token to a later request that reuses the id.
+        self._pending_ar_reasons.pop(int(completed.request_id), None)
         reclaim = getattr(self.runner, "reclaim", None)
         if callable(reclaim):
             reclaim(completed)

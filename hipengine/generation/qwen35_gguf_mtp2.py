@@ -2142,17 +2142,6 @@ class Qwen35GGUFMTP2Adapter:
             row = self.owner._row(rid)
             if row.lease is None or row.slot is None:
                 continue
-            # Every K0 row of an AR-only plan is one autoregressive decode step.
-            # Record why the planner selected AR before the provider catch-up
-            # guards, so a refused activation (no provider state yet) still
-            # reports its reason instead of looking like unaccounted AR output.
-            # The step's token lands at the row's current output length, which
-            # is what locates the first fallback after speculative output.
-            record_autoregressive_step(
-                row,
-                plan_reason=reason_by_id.get(rid),
-                output_position=len(row.slot.generated_ids),
-            )
             if k0_by_id[rid] is not SpecK0Class.TRANSITIONAL:
                 continue
             if not row.first_token_emitted:
@@ -2171,6 +2160,46 @@ class Qwen35GGUFMTP2Adapter:
             )
             row.mtp2_k0_catchups += 1
             self._post_reject_pending.discard(int(rid))
+
+    def note_speculative_ar_commit(
+        self,
+        request_id: int,
+        reason: Any | None = None,
+    ) -> None:
+        """Attribute one autoregressive token to the decode that emitted it.
+
+        The resident loop calls this after the AR decode that produced the
+        token, carrying the reason its plan selected autoregressive decoding.
+        Counting here rather than in :meth:`prepare_k0` is what keeps a plan
+        that is prepared more than once for the same row (a mixed group retried
+        as its speculative subset) from counting one emitted token twice.
+
+        The request may already have left speculation when the decode returns:
+        the token that reaches ``max_new_tokens`` retires it inside the decode.
+        That is why this does not require live intent, only a row that still
+        owns a lease and a slot. The loop calls it only for a row whose decode
+        just emitted output, so an unknown or released row means the caller and
+        this owner disagree and nothing should be recorded.
+
+        ``output_position`` is the index the token just occupied, which is what
+        locates the first fallback after speculative output.
+        """
+
+        rid = int(request_id)
+        rows = getattr(self.owner, "_rows", None)
+        if isinstance(rows, Mapping) and rid not in rows:
+            return
+        row = self.owner._row(rid)
+        if row.lease is None or row.slot is None:
+            return
+        generated = getattr(row.slot, "generated_ids", None)
+        record_autoregressive_step(
+            row,
+            plan_reason=reason,
+            output_position=(
+                None if generated is None else max(0, len(generated) - 1)
+            ),
+        )
 
     def _cycle_hidden_tensors(
         self,

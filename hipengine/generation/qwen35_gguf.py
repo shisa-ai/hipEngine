@@ -7390,6 +7390,19 @@ class Qwen35GGUFResidentModelRunner:
             with hip_target_arch_environment(self.generator.target_arch):
                 adapter.prepare_k0(plan, request_semantics, stream=stream)
 
+    def note_speculative_ar_commit(self, request_id, reason=None) -> None:
+        """Forward one emitted autoregressive token to the resolved adapter."""
+
+        adapter = self._resolved_mtp2_adapter()
+        observe = (
+            None
+            if adapter is None
+            else getattr(adapter, "note_speculative_ar_commit", None)
+        )
+        if callable(observe):
+            with hip_target_arch_environment(self.generator.target_arch):
+                observe(request_id, reason)
+
     def speculative_component_claims(self, plan):
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:

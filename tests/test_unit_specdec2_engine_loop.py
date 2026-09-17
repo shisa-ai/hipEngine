@@ -5,8 +5,11 @@ from dataclasses import replace
 import pytest
 
 from hipengine.dispatch import WorkKind
+from types import SimpleNamespace
+
 from hipengine.generation.batch_scheduler import GeneratedToken
-from hipengine.generation.engine_loop import ResidentEngineLoop
+from hipengine.generation.engine_loop import EngineLoopEvent, ResidentEngineLoop
+from hipengine.generation.registry import GenerationStreamChunk
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.speculative import (
     AcceptResult,
@@ -764,3 +767,83 @@ def test_two_speculative_requests_stagger_retire_and_refill_with_k3() -> None:
     assert loop.completed[refill].generated_tokens == (201, 202, 8002)
     assert len(loop.completed[survivor].generated_tokens) == 8
     assert loop.active_count == 0
+
+
+class _ArCommitRunner(_NoSpecRunner):
+    """AR-only plans through the speculative owner, with commit accounting."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.k0_prepares = []
+        self.ar_commits = []
+
+    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None):
+        self.k0_prepares.append(
+            (
+                plan,
+                tuple(item.request_id for item in request_semantics),
+                stream,
+            )
+        )
+
+    def note_speculative_ar_commit(self, request_id, reason=None):
+        self.ar_commits.append((int(request_id), reason))
+
+
+def test_pending_ar_reasons_attribute_one_commit_per_emitted_token() -> None:
+    """A plan retried for the same row must not count its output twice."""
+
+    runner = _ArCommitRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    loop._pending_ar_reasons[7] = "first_plan_reason"
+    # The retry of the same row replaces the pending reason instead of adding
+    # a second attribution for a token that has not been emitted yet.
+    loop._pending_ar_reasons[7] = "retry_plan_reason"
+    events = (
+        EngineLoopEvent(
+            kind="token",
+            request_id=7,
+            token_id=1,
+            stream_chunk=GenerationStreamChunk(text="x"),
+        ),
+    )
+
+    loop._attribute_autoregressive_commits(events)
+    # The same emitted token cannot be attributed a second time.
+    loop._attribute_autoregressive_commits(events)
+
+    assert runner.ar_commits == [(7, "retry_plan_reason")]
+
+
+def test_ar_only_plan_counts_one_output_per_emitted_token() -> None:
+    runner = _ArCommitRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=3,
+        desired_candidate_count=1,
+    )
+
+    loop.poll(max_ticks=6)
+
+    assert runner.cycle_plans == []
+    assert len(runner.k0_prepares) >= 1
+    # Attribution follows emissions: never more commits than decodes that
+    # emitted a token, and never more than the AR-only plans that ran.
+    assert len(runner.ar_commits) <= len(runner.decodes)
+    assert len(runner.ar_commits) <= len(runner.k0_prepares)
+    assert len(runner.ar_commits) >= 1
+    assert all(request == request_id for request, _reason in runner.ar_commits)
+
+
+def test_reclaim_drops_a_pending_reason_that_never_emitted() -> None:
+    """A plan whose decode never ran must not attribute a later token."""
+
+    runner = _ArCommitRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    loop._pending_ar_reasons[7] = "target_graph_output_room_miss"
+
+    loop._reclaim_runner_state(SimpleNamespace(request_id=7))
+
+    assert loop._pending_ar_reasons == {}
+    assert runner.ar_commits == []

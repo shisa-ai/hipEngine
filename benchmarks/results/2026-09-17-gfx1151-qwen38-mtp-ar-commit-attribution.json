@@ -1,0 +1,308 @@
+{
+  "ab_same_prompt": {
+    "head_0a184f55d": {
+      "accepted_draft_tokens": 54,
+      "ar_output_tokens": 51,
+      "ar_output_tokens_in_cycles": 51,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "all_output_is_autoregressive": false,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "fallback_position_is_zero": false,
+        "no_speculative_output": false,
+        "not_used": false,
+        "prompt_refusal_reason": false,
+        "reconciled": true,
+        "split_sums_to_completion": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": 128,
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49,
+        "target_graph_output_room_miss": 1
+      },
+      "first_fallback_position": 78,
+      "label": "ab-8051",
+      "max_tokens": 128,
+      "mtp_output_tokens": 77,
+      "output_characters": 690,
+      "rejected_draft_tokens": 12,
+      "request_wall_seconds": 15.31,
+      "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 21
+      },
+      "shape_tokens": 1024,
+      "used": true
+    },
+    "max_tokens": 128,
+    "prompt_tokens": 945,
+    "reading": "Identical emitted sequence (690 characters, 128 exact ids), identical MTP output (77), identical autoregressive total (51), identical first fallback position (78). The plan-attributed count drops by one because the old code counted the final autoregressive step when its plan was prepared, while that step's token was emitted by the request finalization path rather than by a decode of that plan. The token is still counted, as the post-plan remainder of ar_output_tokens.",
+    "shape_tokens": 1024,
+    "this_unit": {
+      "accepted_draft_tokens": 54,
+      "ar_output_tokens": 51,
+      "ar_output_tokens_in_cycles": 50,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "all_output_is_autoregressive": false,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "fallback_position_is_zero": false,
+        "no_speculative_output": false,
+        "not_used": false,
+        "prompt_refusal_reason": false,
+        "reconciled": true,
+        "split_sums_to_completion": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": 128,
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49
+      },
+      "first_fallback_position": 78,
+      "label": "ab-8050",
+      "max_tokens": 128,
+      "mtp_output_tokens": 77,
+      "output_characters": 690,
+      "rejected_draft_tokens": 12,
+      "request_wall_seconds": 10.16,
+      "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 21
+      },
+      "shape_tokens": 1024,
+      "used": true
+    }
+  },
+  "arms_this_unit": {
+    "A-1024-blocking": {
+      "accepted_draft_tokens": 54,
+      "ar_output_tokens": 51,
+      "ar_output_tokens_in_cycles": 50,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "fallback_position_follows_the_speculative_block": true,
+        "fallback_position_is_inside_the_output": true,
+        "fallback_reason_named": true,
+        "mixed_output": true,
+        "plan_attributed_steps_have_a_reason": true,
+        "plan_attributed_steps_never_exceed_ar_output": true,
+        "reconciled": true,
+        "split_sums_to_completion": true,
+        "used": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": 128,
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49
+      },
+      "first_fallback_position": 78,
+      "label": "A-1024-blocking",
+      "max_tokens": 128,
+      "mtp_output_tokens": 77,
+      "output_characters": 690,
+      "rejected_draft_tokens": 12,
+      "request_wall_seconds": 10.13,
+      "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 21
+      },
+      "shape_tokens": 1024,
+      "used": true
+    },
+    "B-1024-streaming": {
+      "accepted_draft_tokens": 54,
+      "ar_output_tokens": 51,
+      "ar_output_tokens_in_cycles": 50,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "fallback_reason_named": true,
+        "mixed_output": true,
+        "reconciled": true,
+        "split_sums_to_completion": true,
+        "usage_details_reported": true,
+        "used": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": null,
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49
+      },
+      "first_fallback_position": 78,
+      "label": "B-1024-streaming",
+      "max_tokens": 128,
+      "mtp_output_tokens": 77,
+      "output_characters": 690,
+      "rejected_draft_tokens": 12,
+      "request_wall_seconds": 10.17,
+      "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 21
+      },
+      "shape_tokens": 1024,
+      "used": true
+    },
+    "C-4096-blocking": {
+      "accepted_draft_tokens": 0,
+      "ar_output_tokens": 128,
+      "ar_output_tokens_in_cycles": 127,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "all_output_is_autoregressive": true,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "fallback_position_is_zero": true,
+        "no_speculative_output": true,
+        "not_used": true,
+        "prompt_refusal_reason": true,
+        "reconciled": true,
+        "split_sums_to_completion": true
+      },
+      "decision_reason": "backend_k0_fallback",
+      "draft_cycles": 0,
+      "draft_tokens": 0,
+      "effective_route": "default",
+      "exact_generated_token_ids": 128,
+      "fallback_reason": "target_context_k0",
+      "fallback_reason_counts": {
+        "no_provider": 127,
+        "target_context_k0": 1
+      },
+      "first_fallback_position": 0,
+      "label": "C-4096-blocking",
+      "max_tokens": 128,
+      "mtp_output_tokens": 0,
+      "output_characters": 666,
+      "rejected_draft_tokens": 0,
+      "request_wall_seconds": 20.32,
+      "selected_depth_histogram": {},
+      "shape_tokens": 4096,
+      "used": false
+    },
+    "D-long-945": {
+      "accepted_draft_tokens": 54,
+      "ar_output_tokens": 51,
+      "ar_output_tokens_in_cycles": 50,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "plan_attributed_steps_have_a_reason": true,
+        "plan_attributed_steps_never_exceed_ar_output": true,
+        "reconciled": true,
+        "split_sums_to_completion": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": null,
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49
+      },
+      "first_fallback_position": 78,
+      "label": "D-long-945",
+      "max_tokens": 128,
+      "mtp_output_tokens": 77,
+      "output_characters": null,
+      "rejected_draft_tokens": 12,
+      "request_wall_seconds": 10.14,
+      "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 21
+      },
+      "shape_tokens": 0,
+      "used": true
+    },
+    "D-short-64": {
+      "accepted_draft_tokens": 62,
+      "ar_output_tokens": 2,
+      "ar_output_tokens_in_cycles": 1,
+      "checks": {
+        "accounting_matches_summary": true,
+        "accounting_present": true,
+        "cycle_math_consistent": true,
+        "exact_ids_match_completion": true,
+        "plan_attributed_steps_have_a_reason": true,
+        "plan_attributed_steps_never_exceed_ar_output": true,
+        "reconciled": true,
+        "split_sums_to_completion": true
+      },
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 64,
+      "draft_tokens": 190,
+      "effective_route": "speculative_mtp",
+      "exact_generated_token_ids": null,
+      "fallback_reason": "no_provider",
+      "fallback_reason_counts": {
+        "no_provider": 1
+      },
+      "first_fallback_position": null,
+      "label": "D-short-64",
+      "max_tokens": 128,
+      "mtp_output_tokens": 126,
+      "output_characters": null,
+      "rejected_draft_tokens": 128,
+      "request_wall_seconds": 18.58,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 63
+      },
+      "shape_tokens": 0,
+      "used": true
+    }
+  },
+  "contract": {
+    "gated_by": "scripts/gguf_mtp_api_gate.py rejects a used row whose ar_output_tokens_in_cycles exceeds its ar_output_tokens or is missing",
+    "plan_attribution": "ar_output_tokens_in_cycles <= ar_output_tokens, and the fallback reason counts sum to ar_output_tokens_in_cycles",
+    "reconciliation": "mtp_output_tokens + ar_output_tokens == usage.completion_tokens (by construction)"
+  },
+  "date": "2026-09-17",
+  "hardware": "zbook / gfx1151 (Radeon 890M class RDNA3.5 APU)",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": "One server per code state, greedy requests (temperature 0, enable_thinking=false, 128 outputs) from /tmp/accounting_probe.py and /tmp/accounting_concurrent_arm.py. Same-host A/B: HEAD 0a184f55d and the working tree with this unit's diff, one server each, the same 945-token prompt. Exact commands: /tmp/accounting_probe.py for a single arm, /tmp/accounting_concurrent_arm.py for the concurrent pair.",
+  "purpose": "Show that autoregressive output is attributed to the decode that emits it, not to the plan that selected it, and that the MTP-versus-AR split, the fallback histogram, and the emitted token list still reconcile after the change.",
+  "server": "python -m hipengine.server --backend hip_gfx1151 --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus (no speculative flags)",
+  "source": "worklog/entries/20260917T155308.311295Z-lhl-mtp-ar-commit-attribution-3efe2f.md",
+  "status": "serving-observability evidence; not a retained benchmark row",
+  "title": "MTP autoregressive attribution follows the emitting decode"
+}
