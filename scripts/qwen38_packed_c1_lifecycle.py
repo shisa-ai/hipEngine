@@ -83,20 +83,14 @@ def validate_response(expected: dict, actual: dict) -> None:
 
 
 def install_lifecycle_evidence(capacity: int, widths=(1, 2), *, budget=3) -> None:
-    """Extend only runtime diagnostic clones to cover the short retirement child."""
-    from dataclasses import replace
-    from hipengine.models import qwen35
+    """Inject the runtime diagnostic rows this lifecycle exercises.
+
+    One row covers both the short and long retirement children: output horizon
+    is not an admission axis, so the D8 child needs no separate row.
+    """
     from scripts.qwen38_packet5_k4_watchdog_probe import _inject_k4_evidence_row
     for width in widths:
         _inject_k4_evidence_row(width, budget, capacity=capacity)
-        plugin = qwen35.QWEN35_GGUF
-        rows = plugin.speculative_mtp_serving_evidence
-        diagnostic = replace(rows[-1], min_output_horizon_tokens=8,
-                             evidence_key=f'lifecycle-d8-d24-n{capacity}-c{width}-k{budget}-diagnostic',
-                             reason='unqualified engine lifecycle D8-D24 diagnostic',
-                             evidence_artifacts=('scripts/qwen38_packed_c1_lifecycle.py',),
-                             automatic_eligible=False)
-        object.__setattr__(plugin, 'speculative_mtp_serving_evidence', rows[:-1] + (diagnostic,))
 
 
 def combine_engine_intent(c1, c2, *, budget=3):
@@ -123,8 +117,7 @@ def resolve_engine_intents(llm, prompt: str, horizons=(8, 24), *, budget=3):
     intents, sources = [], []
     for horizon in horizons:
         decisions = [llm.resolve_speculative_mtp_serving_plan(
-            realized_group_rows=width, sampling_mode='greedy_fast',
-            context_tokens=llm.count_tokens(prompt), output_horizon_tokens=horizon)
+            realized_group_rows=width, sampling_mode='greedy_fast')
             for width in (1, 2)]
         if any(d is None or not d.admitted for d in decisions):
             raise ValueError('engine diagnostic scope lacks C1 or C2 admission: ' +

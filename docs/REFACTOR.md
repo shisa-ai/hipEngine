@@ -1,5 +1,28 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
+
+- Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` §2.9).
+  Three retained rows now describe a physical cell that an earlier-declared row
+  already owns and are therefore unreachable:
+  `qwen38-q4km-gfx1151-production-bf16-c1-b3-context128`,
+  `qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24`, and
+  `qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24`. Their benchmark artifacts
+  and reason strings are still valid provenance, so prune them only after
+  confirming no rollup or external reference depends on the evidence keys;
+  do not re-add a shape or profile check to make them reachable again.
+- `scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan` and
+  `scripts/qwen38_packet5_k4_watchdog_probe.py::_inject_k4_evidence_row` keep
+  their own diagnostic scopes. The watchdog probe injects a row for the width
+  it screens; if a future probe needs a *distinct* authorization on a cell that
+  a registered row already covers, it must say which row wins rather than rely
+  on declaration order.
+- Campaign documents written before 2026-09-17 (`docs/CONCURRENCY2-*.md`,
+  `docs/QWEN36-27B-GGUF-CAMPAIGN.md`, `docs/MTP-*.md`) describe the admission
+  scope in shape/horizon/manifest terms. They are historical records and were
+  left intact; only `docs/API.md`, `docs/EXECUTION-PROFILES.md`, and
+  `docs/COMPARISON-vs-atlas.md` state the current contract.
+
 ## VibeVoice ASR prefill and legacy dense attention
 
 - The Q4_K_M batched prefill in `kernels/hip_gfx1100/vibevoice/q4.py`

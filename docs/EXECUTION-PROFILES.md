@@ -149,7 +149,9 @@ retain their own manifest identity; they are not certificates for this
 replacement. The final public C2/C4/C8 D128 packet passes 8,716 rows at
 KL0/top1 100%, and the declared greedy blocking/SSE/cancellation/refill gates
 pass. Production remains AR-only for automatic and explicit MTP requests;
-strict C1/K3 uses its original qualified natural25 scope.
+strict C1/K3 uses its original qualified natural25 scope. (The scope axes in
+this paragraph are historical: since [2.9](#29-serving-admission-is-physical-not-shape-scoped),
+context, horizon, session length, and the manifest hash no longer gate serving.)
 See [serving closure](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
 and [headline evidence](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 Evidence: [FP16 default rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-named-fp16-default-d128-rejected.json),
@@ -172,8 +174,9 @@ from this result.
 The automatic context1-128/D24 C2/K3 cell measures **17.031 vs 14.887 tok/s
 (1.1441x AR)** with every category non-regressive. Static eligibility carries
 an evidence bound of max group2 before independent requests form the resident
-group; the realized C2 row remains the sole K3 owner. C3-C8, D25+, longer
-contexts, and all identity/profile/backend/quant/KV misses select K0. Evidence:
+group; the realized C2 row remains the sole K3 owner. C3-C8, group-row and
+resident-capacity misses, non-greedy sampling, and all identity/backend/quant/KV
+misses select K0. Evidence:
 [`production C2 result`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
 
 ### 2.5 Qwen3.8 Q4_K_M production C3 rowtile decision
@@ -248,10 +251,12 @@ post-promotion automatic route measures **98.643 vs 88.250 AR tok/s
 (1.1178x)** with 10/10 exact, engaged, and budget-conformed cells.
 
 Automatic serving is narrower than kernel admission: production/BF16
-`Q4_K_M`, resident capacity 8, realized C8, K3, context 4-95, D24, and greedy
-sampling. Every miss remains K0. The production/strict manifest hashes are
-`2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960` and
-`52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`.
+`Q4_K_M`, resident capacity 8, realized C8, K3, and greedy sampling. Every
+physical miss remains K0. The production/strict manifest hashes recorded with
+this promotion are `2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960`
+and `52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`; since
+[2.9](#29-serving-admission-is-physical-not-shape-scoped) they identify the
+measured build rather than gate admission.
 Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
 ### 2.8 Qwen3.8 gfx1151 production planar-Q6 integer-MMQ decision
@@ -286,6 +291,46 @@ category positive. C8 reaches `1.0057x` its same-arm AR rate. This changes an
 implementation association inside production; it does not widen automatic MTP
 admission. Evidence:
 [`B5 retention packet`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
+
+### 2.9 Serving admission is physical, not shape-scoped
+
+Speculative-MTP serving admission is decided by one exact model-plugin
+evidence row over physical and ownership identity only:
+
+| Axis | Why it binds |
+| --- | --- |
+| artifact SHA-256 and size, `content_verified` | The row certifies one artifact's content. |
+| backend, target architecture | Kernels are architecture-scoped. |
+| weight quant, KV storage, KV layout | Both change the verified arithmetic. |
+| realized group rows, resident capacity | Ownership and physical width are exact contracts. |
+| candidate depth (requested <= qualified) | A shallower chain is less speculative work on the same verified path. |
+| sampling mode | The verifier's acceptance path is greedy-specific. |
+| memory fit | Admission must precede allocation failure. |
+
+Prompt context, output horizon, session length, and the resolved
+execution-profile manifest are **not** admission axes. They describe the
+envelope a benchmark measured, they change with ordinary serving traffic, and
+the manifest changes with any kernel or variant selection. Gating on them
+silently disables an already-qualified path: the 2026-08-29 E0 review had to
+refresh manifest hashes to stop real requests from selecting K0 with
+`execution_profile_manifest_not_qualified`
+([`E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)).
+The removed rejection reasons were `execution_profile_not_qualified`,
+`execution_profile_manifest_not_qualified`, `max_sequence_length_not_qualified`,
+`context_bucket_not_qualified`, and `output_horizon_not_qualified`.
+
+Two rules replace the removed axes:
+
+- When several rows match one physical cell, the cell takes the strongest
+  retained authorization: an automatic-eligible row wins over an explicit-only
+  row, and remaining ties keep declaration order.
+- Profile safety stays with the provider, not the admission table. FP16
+  recurrent-state spec-dec2 still requires a complete non-fallback production
+  manifest before mutation.
+
+A retained row still records the shape envelope its artifact measured, and that
+envelope remains part of the benchmark evidence. What changed is that the
+envelope no longer decides admission.
 
 ## 3. Profile is orthogonal to model representation
 

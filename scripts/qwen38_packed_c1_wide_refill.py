@@ -10,8 +10,7 @@ def resolve_wide_intents(llm, prompt):
     intents, sources = [], []
     for horizon in (8, 24):
         decisions = [llm.resolve_speculative_mtp_serving_plan(
-            realized_group_rows=w, sampling_mode='greedy_fast',
-            context_tokens=llm.count_tokens(prompt), output_horizon_tokens=horizon)
+            realized_group_rows=w, sampling_mode='greedy_fast')
             for w in range(1, 9)]
         if any(d is None or not d.admitted for d in decisions):
             raise ValueError('wide refill lacks admission: ' + json.dumps([

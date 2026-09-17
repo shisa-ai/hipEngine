@@ -411,8 +411,6 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
         "realized_group_rows": 4,
         "candidate_budget": 2,
         "sampling_mode": "greedy_fast",
-        "context_tokens": 64,
-        "output_horizon_tokens": 24,
         "memory_fit": True,
     }
     first = _diagnostic_plan(**base)
@@ -438,8 +436,6 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     installed = owner.resolve_speculative_mtp_serving_plan(
         realized_group_rows=1,
         sampling_mode="greedy_fast",
-        context_tokens=64,
-        output_horizon_tokens=24,
         memory_fit=True,
     )
     assert installed["selected_candidate_count"] == 1
@@ -451,7 +447,10 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert _diagnostic_plan(**{**base, "realized_group_rows": 5})["admitted"] is True
     assert _diagnostic_plan(**{**base, "realized_group_rows": 8})["admitted"] is True
     assert _diagnostic_plan(**{**base, "realized_group_rows": 9})["admitted"] is False
-    assert _diagnostic_plan(**{**base, "context_tokens": 96})["admitted"] is False
+    # Output horizon and prompt context are not admission axes, so neither a
+    # short horizon nor a long context changes the diagnostic decision.
+    assert _diagnostic_plan(**{**base, "sampling_mode": "sampled"})["admitted"] is False
+    assert _diagnostic_plan(**{**base, "memory_fit": False})["admitted"] is False
 
     wide = _diagnostic_plan(
         **{

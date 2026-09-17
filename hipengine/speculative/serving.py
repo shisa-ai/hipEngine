@@ -4,6 +4,16 @@ This module owns only immutable pre-mutation decisions.  Model plugins supply
 retained evidence; server/model code supplies mechanical request identity.  The
 key deliberately has no prompt text, token IDs, benchmark category, heldout, or
 oracle fields.
+
+Admission is a physical and ownership question: artifact content, backend, arch,
+quant, KV storage, realized group width, resident capacity, candidate depth,
+sampling mode, and memory fit.  Request shape and runtime profile are not
+admission axes.  Session length, prompt context, output horizon, and the
+resolved variant-manifest hash describe the envelope a benchmark measured; they
+change with normal serving traffic and with any kernel or variant selection, so
+gating on them silently disables an already-qualified path.  The provider keeps
+its own profile authorization (for example FP16 recurrent-state spec-dec2 needs
+a complete production manifest).
 """
 
 from __future__ import annotations
@@ -41,7 +51,7 @@ def _canonical_sha256(payload: object) -> str:
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeMTPServingKey:
-    """Complete content, runtime, and request-shape identity for one plan."""
+    """Complete content and physical-runtime identity for one plan."""
 
     artifact_sha256: str | None
     artifact_size_bytes: int | None
@@ -49,17 +59,12 @@ class SpeculativeMTPServingKey:
     backend: str
     target_arch: str
     weight_quant: str
-    execution_profile: str
-    execution_profile_manifest_sha256: str
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
     resident_capacity: int
     candidate_budget: int
     sampling_mode: str
-    max_sequence_length: int
-    context_tokens: int
-    output_horizon_tokens: int
     memory_fit: bool
 
     def __post_init__(self) -> None:
@@ -68,19 +73,10 @@ class SpeculativeMTPServingKey:
             "artifact_sha256",
             _sha256(self.artifact_sha256, "artifact_sha256", optional=True),
         )
-        object.__setattr__(
-            self,
-            "execution_profile_manifest_sha256",
-            _sha256(
-                self.execution_profile_manifest_sha256,
-                "execution_profile_manifest_sha256",
-            ),
-        )
         for name in (
             "backend",
             "target_arch",
             "weight_quant",
-            "execution_profile",
             "kv_storage",
             "kv_layout",
             "sampling_mode",
@@ -90,9 +86,6 @@ class SpeculativeMTPServingKey:
             "realized_group_rows",
             "resident_capacity",
             "candidate_budget",
-            "max_sequence_length",
-            "context_tokens",
-            "output_horizon_tokens",
         ):
             value = int(getattr(self, name))
             if value <= 0:
@@ -114,17 +107,12 @@ class SpeculativeMTPServingKey:
             "backend": self.backend,
             "target_arch": self.target_arch,
             "weight_quant": self.weight_quant,
-            "execution_profile": self.execution_profile,
-            "execution_profile_manifest_sha256": self.execution_profile_manifest_sha256,
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
             "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_mode": self.sampling_mode,
-            "max_sequence_length": self.max_sequence_length,
-            "context_tokens": self.context_tokens,
-            "output_horizon_tokens": self.output_horizon_tokens,
             "memory_fit": self.memory_fit,
         }
 
@@ -139,8 +127,6 @@ class SpeculativeMTPServingEvidence:
     backend: str
     target_arch: str
     weight_quant: str
-    execution_profile: str
-    execution_profile_manifest_sha256: str
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
@@ -151,11 +137,6 @@ class SpeculativeMTPServingEvidence:
     # a shallower chain is strictly less speculative work on the same path.
     candidate_budget: int
     sampling_modes: tuple[str, ...]
-    max_sequence_length: int
-    min_context_tokens: int
-    max_context_tokens: int
-    min_output_horizon_tokens: int
-    max_output_horizon_tokens: int
     reason: str
     evidence_artifacts: tuple[str, ...]
     max_realized_group_rows: int | None = None
@@ -170,7 +151,6 @@ class SpeculativeMTPServingEvidence:
             "backend",
             "target_arch",
             "weight_quant",
-            "execution_profile",
             "kv_storage",
             "kv_layout",
             "reason",
@@ -182,24 +162,11 @@ class SpeculativeMTPServingEvidence:
             "artifact_sha256",
             _sha256(self.artifact_sha256, "artifact_sha256"),
         )
-        object.__setattr__(
-            self,
-            "execution_profile_manifest_sha256",
-            _sha256(
-                self.execution_profile_manifest_sha256,
-                "execution_profile_manifest_sha256",
-            ),
-        )
         for name in (
             "artifact_size_bytes",
             "realized_group_rows",
             "resident_capacity",
             "candidate_budget",
-            "max_sequence_length",
-            "min_context_tokens",
-            "max_context_tokens",
-            "min_output_horizon_tokens",
-            "max_output_horizon_tokens",
         ):
             value = int(getattr(self, name))
             if value <= 0:
@@ -217,10 +184,6 @@ class SpeculativeMTPServingEvidence:
         object.__setattr__(self, "max_realized_group_rows", max_group_rows)
         if self.packed_c1_target and max_group_rows != 1:
             raise ValueError("packed_c1_target requires a one-row evidence scope")
-        if self.max_context_tokens < self.min_context_tokens:
-            raise ValueError("context-token bounds are invalid")
-        if self.max_output_horizon_tokens < self.min_output_horizon_tokens:
-            raise ValueError("output-horizon bounds are invalid")
         modes = tuple(_required_text(value, "sampling_mode") for value in self.sampling_modes)
         if not modes or len(set(modes)) != len(modes):
             raise ValueError("sampling_modes must be non-empty and unique")
@@ -242,8 +205,6 @@ class SpeculativeMTPServingEvidence:
             "backend": self.backend,
             "target_arch": self.target_arch,
             "weight_quant": self.weight_quant,
-            "execution_profile": self.execution_profile,
-            "execution_profile_manifest_sha256": self.execution_profile_manifest_sha256,
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
@@ -251,11 +212,6 @@ class SpeculativeMTPServingEvidence:
             "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_modes": list(self.sampling_modes),
-            "max_sequence_length": self.max_sequence_length,
-            "min_context_tokens": self.min_context_tokens,
-            "max_context_tokens": self.max_context_tokens,
-            "min_output_horizon_tokens": self.min_output_horizon_tokens,
-            "max_output_horizon_tokens": self.max_output_horizon_tokens,
             "reason": self.reason,
             "evidence_artifacts": list(self.evidence_artifacts),
             "strict_fallback_key": self.strict_fallback_key,
@@ -531,15 +487,6 @@ def _evidence_checks(
         (key.backend == row.backend, "backend_not_qualified"),
         (key.target_arch == row.target_arch, "target_arch_not_qualified"),
         (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
-        (
-            key.execution_profile == row.execution_profile,
-            "execution_profile_not_qualified",
-        ),
-        (
-            key.execution_profile_manifest_sha256
-            == row.execution_profile_manifest_sha256,
-            "execution_profile_manifest_not_qualified",
-        ),
         (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
         (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
         (
@@ -555,20 +502,6 @@ def _evidence_checks(
             "candidate_budget_not_qualified",
         ),
         (key.sampling_mode in row.sampling_modes, "sampling_mode_not_qualified"),
-        (
-            key.max_sequence_length == row.max_sequence_length,
-            "max_sequence_length_not_qualified",
-        ),
-        (
-            row.min_context_tokens <= key.context_tokens <= row.max_context_tokens,
-            "context_bucket_not_qualified",
-        ),
-        (
-            row.min_output_horizon_tokens
-            <= key.output_horizon_tokens
-            <= row.max_output_horizon_tokens,
-            "output_horizon_not_qualified",
-        ),
         (key.memory_fit, "insufficient_memory"),
     )
 
@@ -604,10 +537,14 @@ def resolve_speculative_mtp_serving_plan(
 ) -> SpeculativeMTPServingDecision:
     """Resolve one exact model-plugin evidence row or fail closed to K0.
 
-    A model artifact may carry independently qualified profile/shape scopes.
-    The first exact row wins. When no row admits, rejection is attributed to the
-    row matching the most key axes (ties preserve declaration order), keeping a
-    stable and useful pre-mutation failure reason without merging scopes.
+    A model artifact may carry independently qualified physical scopes.  Every
+    axis is physical or ownership identity, so several rows can describe the
+    same cell; the cell then takes the strongest retained authorization.  An
+    automatic-eligible row wins over an explicit-only row for the same cell,
+    and ties preserve declaration order.  When no row admits, rejection is
+    attributed to the row matching the most key axes (ties preserve declaration
+    order), keeping a stable and useful pre-mutation failure reason without
+    merging scopes.
     """
 
     evidence = tuple(evidence_rows)
@@ -615,6 +552,18 @@ def resolve_speculative_mtp_serving_plan(
         return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
     if not evidence:
         return _reject(key, "no_model_plugin_evidence", None)
+
+    admitted: SpeculativeMTPServingEvidence | None = None
+    for row in evidence:
+        if all(passed for passed, _reason in _evidence_checks(key, row)):
+            if admitted is None or (
+                row.automatic_eligible and not admitted.automatic_eligible
+            ):
+                admitted = row
+            if admitted.automatic_eligible:
+                break
+    if admitted is not None:
+        return _admit(key, admitted)
 
     rejected: list[
         tuple[
@@ -630,8 +579,6 @@ def resolve_speculative_mtp_serving_plan(
         failed_reasons = tuple(
             reason for passed, reason in checks if not passed
         )
-        if not failed_reasons:
-            return _admit(key, row)
         static_eligibility = None
         if (
             failed_reasons == ("physical_group_not_qualified",)
@@ -663,6 +610,10 @@ def resolve_speculative_mtp_serving_plan(
         key=lambda item: (
             item[0],
             item[4] is not None,
+            # Same rule as admission: when several rows describe one physical
+            # cell, the strongest retained authorization wins over declaration
+            # order.
+            bool(item[4].automatic_eligible) if item[4] is not None else False,
             item[1],
         ),
     )

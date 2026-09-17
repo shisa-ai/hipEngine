@@ -137,10 +137,13 @@ The forced legacy route instead retains the full prompt-hidden slab and calls
 `Qwen35GGUFResidentMTPDraftRunner.write_kv_rows()` once per prompt row after
 target prefill. That serial NextN catch-up is the missing activation wall. The
 staged MTP2 owner already uses retained exact OI-3 streaming prompt priming
-(p512 TTFT 13.079 -> 10.356 s, -20.82%; slab -> one 10,240-byte row). Current
-public requests are blocked before MTP with typed reason
+(p512 TTFT 13.079 -> 10.356 s, -20.82%; slab -> one 10,240-byte row). Public
+requests were blocked before MTP with typed reason
 `execution_profile_not_qualified`; T0.4 must exercise/qualify staged MTP2 rather
-than tune the legacy fallback. Evidence:
+than tune the legacy fallback. (As of 2026-09-17 the execution-profile manifest
+no longer gates serving; see
+[`EXECUTION-PROFILES.md` §2.9](EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped).)
+Evidence:
 [`T1.0 attribution`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json).
 
 ### G2 mechanism: forced legacy scheduler; staged owner not yet qualified
@@ -152,9 +155,11 @@ than tune the legacy fallback. Evidence:
   target-owner ranking requires T0.4 route engagement followed by T0.2 rocprof.
 - Tokens/step ≈ 2.9-3.2 and accept-per-draft 0.64-0.74 on the forced legacy
   route — drafter quality was not its flat-line owner.
-- Current public explicit MTP routes to AR (`execution_profile_not_qualified`),
-  so it has no MTP economics until the staged execution profile passes its
-  production correctness/task gate.
+- Public explicit MTP routed to AR (`execution_profile_not_qualified`) during
+  this campaign, so it had no MTP economics until the staged execution profile
+  passed its production correctness/task gate. The manifest hash stopped gating
+  admission on 2026-09-17 (see
+  [`EXECUTION-PROFILES.md` §2.9](EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped)).
 
 ### Correctness observation (diagnostic)
 

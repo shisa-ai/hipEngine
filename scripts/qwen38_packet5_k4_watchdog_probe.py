@@ -76,7 +76,6 @@ def _inject_k4_evidence_row(width: int, budget: int, *, capacity: int | None = N
         if (
             row.backend == "hip_gfx1100"
             and row.realized_group_rows == int(width)
-            and row.execution_profile == "production"
         ):
             base = row
             break
@@ -90,7 +89,6 @@ def _inject_k4_evidence_row(width: int, budget: int, *, capacity: int | None = N
             if (
                 row.backend == "hip_gfx1100"
                 and row.realized_group_rows == 8
-                and row.execution_profile == "production"
             ):
                 base = row
                 break

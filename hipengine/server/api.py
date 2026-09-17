@@ -2313,10 +2313,6 @@ def _realized_model_serving_plan(
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,
-        context_tokens=max(
-            _prompt_token_count(engine, prompt) for prompt in prompts
-        ),
-        output_horizon_tokens=int(sampling.max_tokens),
         kv_storage=str(precomputed_key.get("kv_storage") or sampling.kv_storage),
         memory_fit=bool(precomputed_key.get("memory_fit", True)),
     )
@@ -13113,8 +13109,6 @@ def _engine_speculative_mtp_serving_plan(
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,
-        context_tokens=max(_prompt_token_count(engine, prompt) for prompt in prompts),
-        output_horizon_tokens=int(effective_sampling.max_tokens),
         kv_storage=str(effective_sampling.kv_storage),
         memory_fit=True,
     )
