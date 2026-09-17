@@ -1,16 +1,546 @@
 {
-  "artifact_limits": "linear_qkv/conv_out/recurrent_out contain unwritten columns in both routes, so their byte comparison is inconclusive and is not used to claim a primitive.",
-  "candidate": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True)",
-  "command": "scripts/tp2_bulk_vs_resident_layer0.py --prompt mixed_ja_en_translate --json /tmp/tp2_layer0d.json",
-  "date": "2026-09-17",
-  "finding": "The TP2 bulk prefill matches the resident TP1 bulk teacher on the layer-0 attention to bf16 precision: the layer-0 input is bit-identical, the attention norm and gate projection are bit-identical, and attn_out differs by 1-2 bf16 ULPs (rel 6.98e-05). The earliest reliably-measured divergence is the layer-0 GDN output recurrent_bf16 (rel 1.5e-03), which propagates through post_norm (rel 3.09e-03) and the layer-0 MLP (layer-1 input rel 3.38e-03) and grows to ~4e-02 by layer 62. No missing helper argument or state operation was found: linear_state_rows/commit_final_linear_state/f32 pointers match, both scratches expose post_norm_f32, and the resident does not chunk the 64-token linear prefill (for_chunk(0,64,64)). The earlier bulk-vs-serial attn_out difference (5.2e-03) is therefore not why TP2 bulk differs from its teacher. No defect was demonstrated, so no production code was changed; the path stays opt-in/default-off and no threshold is relaxed.",
-  "first_layer_input_rel_gt_1e-3": 1,
-  "helper_args_equal_in_effect": {
-    "commit_final_linear_state": "True both",
-    "hidden_f32_ptr": "None both",
-    "linear_state_rows": "None both",
-    "out_f32_ptr": "None both"
+  "artifacts": {
+    "npz": "not committed (raw capture)",
+    "worklog": null
   },
+  "candidate": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True)",
+  "capture_method": {
+    "allocator_alias_source": "scratch.allocation_mode/allocation_groups/allocation_inplace_aliases/allocation_lifetimes",
+    "descriptors": "producer-derived (live DeviceBuffer ptr/nbytes + config width/dtype + helper rows)",
+    "read_point": "immediately after each producer, on the producer's stream, before any aliasing writer",
+    "rejected": "reading all fields once after the helper returns, and identifying valid columns by rank0==rank1 agreement"
+  },
+  "command": "scripts/tp2_bulk_vs_resident_layer0.py --prompt mixed_ja_en_translate --json /tmp/tp2_layer0_e.json --save-dir /tmp/tp2_layer0_e",
+  "comparison": {
+    "candidate_0_vs_candidate_1": {
+      "fields": {
+        "attn_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            5120
+          ]
+        },
+        "conv_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_alpha": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "linear_beta": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "linear_qkv": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_qkv_f32": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_z": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "norm": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            5120
+          ]
+        },
+        "prefill_beta": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "prefill_decay": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "prefill_key": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            2048
+          ]
+        },
+        "prefill_query": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            2048
+          ]
+        },
+        "prefill_value": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "recurrent_bf16": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "recurrent_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            6144
+          ]
+        }
+      },
+      "input": {
+        "all_finite": [
+          true,
+          true
+        ],
+        "argmax_equal": true,
+        "bit_equal": true,
+        "candidate_absmax": 0.58203125,
+        "cells": 327680,
+        "finite_cells": 327680,
+        "max_abs": 0.0,
+        "rel": 0.0,
+        "rms": 0.0,
+        "shape": [
+          64,
+          5120
+        ],
+        "teacher_absmax": 0.58203125
+      },
+      "input_sha256": [
+        "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+        "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f"
+      ]
+    },
+    "teacher_vs_candidate_0": {
+      "fields": {
+        "attn_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.001953125,
+          "rel": 6.975446428571428e-05,
+          "rms": 5.415879138965629e-05,
+          "shape": [
+            64,
+            5120
+          ]
+        },
+        "conv_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.068359375,
+          "rel": 0.0016892911010558068,
+          "rms": 0.0002688963591724285,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_alpha": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "linear_beta": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "linear_qkv": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.25,
+          "rel": 0.0037313432835820895,
+          "rms": 0.0016061001065499805,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_qkv_f32": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.25,
+          "rel": 0.0037313432835820895,
+          "rms": 0.0016061001065499805,
+          "shape": [
+            64,
+            10240
+          ]
+        },
+        "linear_z": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "norm": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            5120
+          ]
+        },
+        "prefill_beta": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "prefill_decay": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
+          "rms": 0.0,
+          "shape": [
+            64,
+            48
+          ]
+        },
+        "prefill_key": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.0031742751598358154,
+          "rel": 0.0033110108246127,
+          "rms": 5.601009017676058e-05,
+          "shape": [
+            64,
+            2048
+          ]
+        },
+        "prefill_query": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.006967633962631226,
+          "rel": 0.006989524219069887,
+          "rms": 4.765522444129567e-05,
+          "shape": [
+            64,
+            2048
+          ]
+        },
+        "prefill_value": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.068359375,
+          "rel": 0.0016892911010558068,
+          "rms": 0.0003264649548609292,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "recurrent_bf16": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.00390625,
+          "rel": 0.0015060240963855422,
+          "rms": 2.3848937956616062e-05,
+          "shape": [
+            64,
+            6144
+          ]
+        },
+        "recurrent_out": {
+          "all_finite": [
+            true,
+            true
+          ],
+          "argmax_equal": true,
+          "bit_equal": false,
+          "max_abs": 0.0032019615173339844,
+          "rel": 0.0009607158083890591,
+          "rms": 2.4537309983296782e-05,
+          "shape": [
+            64,
+            6144
+          ]
+        }
+      },
+      "input": {
+        "all_finite": [
+          true,
+          true
+        ],
+        "argmax_equal": true,
+        "bit_equal": true,
+        "candidate_absmax": 0.58203125,
+        "cells": 327680,
+        "finite_cells": 327680,
+        "max_abs": 0.0,
+        "rel": 0.0,
+        "rms": 0.0,
+        "shape": [
+          64,
+          5120
+        ],
+        "teacher_absmax": 0.58203125
+      },
+      "input_sha256": [
+        "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+        "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f"
+      ]
+    }
+  },
+  "date": "2026-09-17",
+  "earliest_divergence": {
+    "candidate_absmax": 67.0,
+    "dtype": "bf16",
+    "field": "linear_qkv",
+    "max_abs": 0.25,
+    "note": "linear_z (attn_gate projection, Q4_K) is bit-identical from the same launch group, so the difference is specific to the Q6_K attn_qkv route, not to the shared input.",
+    "producer": "qkv_gate (attn_qkv projection, Q6_K)",
+    "rel": 0.0037313432835820895,
+    "shape": [
+      64,
+      10240
+    ],
+    "teacher_absmax": 67.0
+  },
+  "env": {
+    "HIPENGINE_C8_Q6_DP4A_GROUPED": "1",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+    "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28": "1",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "0",
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "0"
+  },
+  "finding": "With identical layer input (sha256 306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f), identical layer-0 weights, identical all-zero initial conv/recurrent state and the same chain_compact_peer_wave32 GDN mode, the earliest differing operation between the resident TP1 bulk teacher and the TP2 bulk candidate is the Q6_K attn_qkv projection: linear_qkv (bf16 [64,10240]) differs by rel 3.73e-03 / max_abs 0.25 on a 67.0 peak, while the Q4_K attn_gate projection (linear_z, bf16 [64,6144]) from the same launch group is bit-identical. Both routes resolve the same GDN mode and the same launch sequence. Verified cause: MlpTP2GenerationSession.bulk_prefill calls the shared resident layer helpers directly, while Qwen35GGUFResidentSession wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners (q8_t16_two_wave_prefill_session, wmma_prefill_session, gemv_decode_session, q8_t16_dual_wmma_prefill_session, q4_pack8_dual_wmma_silu_prefill_session, q4_t16_unequal_pair_prefill_session, _prefill_f16_staging_context, _q6_integer_mmq_context, _iq_dense_mmq_context, _q8_mmq_prefill_context, _q6_f16_rocblas_prefill_context). Those context variables participate in launch_gguf_linear dispatch resolution and in its dispatch cache key, so the Q6_K projection resolves a different kernel on each route. Every downstream difference (conv_out 1.69e-03, prefill_query 6.99e-03, recurrent_bf16 1.51e-03, attn_out 6.98e-05) is consistent with this upstream difference. No production arithmetic was changed; the bulk route stays opt-in/default-off and no numerical threshold was relaxed.",
   "host": {
     "cpu": "AMD Ryzen 9 5950X",
     "gpus": [
@@ -26,109 +556,2180 @@
       }
     ]
   },
-  "kind": "correctness-diagnostic",
-  "layer0": {
-    "attn_out": {
-      "max_abs": 0.001953125,
-      "rel": 6.975e-05
+  "initial_state_hashes": {
+    "candidate_0": {
+      "conv": {
+        "absmax": 0.0,
+        "nbytes": 163840,
+        "sha256": "6cdd259c8ecbe61fbc369f3293c1961541386954a223b17a37899d7fd9ad42da"
+      },
+      "recurrent": {
+        "absmax": 0.0,
+        "nbytes": 3145728,
+        "sha256": "bbd05cf6097ac9b1f89ea29d2542c1b7b67ee46848393895f5a9e43fa1f621e5"
+      }
     },
-    "input": {
-      "max_abs": 0.0,
-      "rel": 0.0
+    "candidate_1": {
+      "conv": {
+        "absmax": 0.0,
+        "nbytes": 163840,
+        "sha256": "6cdd259c8ecbe61fbc369f3293c1961541386954a223b17a37899d7fd9ad42da"
+      },
+      "recurrent": {
+        "absmax": 0.0,
+        "nbytes": 3145728,
+        "sha256": "bbd05cf6097ac9b1f89ea29d2542c1b7b67ee46848393895f5a9e43fa1f621e5"
+      }
     },
-    "linear_z_bit_equal": true,
-    "norm_bit_equal": true,
-    "post_norm": {
-      "bit_equal": false,
-      "max_abs": 0.0078125,
-      "rel": 0.0030864197530864196
-    },
-    "recurrent_bf16": {
-      "max_abs": 0.00390625,
-      "rel": 0.001506
-    },
-    "residual": {
-      "bit_equal": false,
-      "max_abs": 0.001953125,
-      "rel": 6.975446428571428e-05
+    "teacher": {
+      "conv": {
+        "absmax": 0.0,
+        "nbytes": 163840,
+        "sha256": "6cdd259c8ecbe61fbc369f3293c1961541386954a223b17a37899d7fd9ad42da"
+      },
+      "recurrent": {
+        "absmax": 0.0,
+        "nbytes": 3145728,
+        "sha256": "bbd05cf6097ac9b1f89ea29d2542c1b7b67ee46848393895f5a9e43fa1f621e5"
+      }
     }
   },
-  "layer_input_rel": {
-    "0": 0.0,
-    "1": 0.0033783783783783786,
-    "10": 0.004201680672268907,
-    "12": 0.0033783783783783786,
-    "13": 0.09210526315789473,
-    "14": 0.006369426751592357,
-    "16": 0.005494505494505495,
-    "17": 0.0056179775280898875,
-    "18": 0.005649717514124294,
-    "2": 0.002336448598130841,
-    "20": 0.008108108108108109,
-    "21": 0.006711409395973154,
-    "22": 0.0020161290322580645,
-    "24": 0.001968503937007874,
-    "25": 0.001968503937007874,
-    "26": 0.0017985611510791368,
-    "28": 0.0035460992907801418,
-    "29": 0.0035460992907801418,
-    "30": 0.0035460992907801418,
-    "32": 0.0035460992907801418,
-    "33": 0.0035460992907801418,
-    "34": 0.0035460992907801418,
-    "36": 0.005319148936170213,
-    "37": 0.0035460992907801418,
-    "38": 0.004432624113475178,
-    "4": 0.003067484662576687,
-    "40": 0.00539568345323741,
-    "41": 0.004528985507246377,
-    "42": 0.0036231884057971015,
-    "44": 0.0037313432835820895,
-    "45": 0.04963235294117647,
-    "46": 0.003787878787878788,
-    "48": 0.004310344827586207,
-    "49": 0.21519607843137256,
-    "5": 0.0029940119760479044,
-    "50": 0.005076142131979695,
-    "52": 0.011111111111111112,
-    "53": 0.021834061135371178,
-    "54": 0.024691358024691357,
-    "56": 0.020569620253164556,
-    "57": 0.021052631578947368,
-    "58": 0.023195876288659795,
-    "6": 0.005813953488372093,
-    "60": 0.035416666666666666,
-    "61": 0.043478260869565216,
-    "62": 0.04205607476635514,
-    "8": 0.0049504950495049506,
-    "9": 0.004761904761904762
-  },
+  "kind": "correctness-diagnostic",
+  "limitations": [
+    "Correctness diagnostic only: no performance claim.",
+    "attn_qkv/attn_gate weight bytes could not be hashed through layer.weight(name).allocation() (KeyError 'raw': those weights expose packed allocations under other names); the dispatch-context evidence does not depend on that hash.",
+    "One paired capture; no repeat run and no envelope run for the bulk route."
+  ],
   "model": {
+    "layer0_quant": {
+      "attn_gate": "Q4_K",
+      "attn_qkv": "Q6_K",
+      "ffn_down": "Q6_K",
+      "ffn_gate": "Q4_K",
+      "ssm_out": "Q5_K"
+    },
     "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
     "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
   },
+  "next_action": "Give the TP2 bulk path the same session-scoped dispatch context per rank, then re-run this paired capture and confirm linear_qkv becomes bit-identical before any envelope claim.",
   "performance_claim": false,
-  "resident_chunk_calls": [
-    [
-      0,
-      64,
-      64
-    ],
-    [
-      0,
-      64,
-      64
-    ],
-    [
-      0,
-      64,
-      64
-    ]
-  ],
+  "protocol": "resident TP1 bulk vs TP2 bulk, layer-0 GDN primitive chain, producer-derived descriptors captured immediately after each producer on its owning stream",
+  "routes": {
+    "candidate_0": {
+      "allocation": {
+        "aliasing_pairs": [
+          [
+            "norm",
+            "linear_qkv_f32"
+          ],
+          [
+            "norm",
+            "conv_out"
+          ],
+          [
+            "norm",
+            "prefill_query"
+          ],
+          [
+            "norm",
+            "prefill_key"
+          ],
+          [
+            "norm",
+            "prefill_value"
+          ],
+          [
+            "norm",
+            "prefill_beta"
+          ],
+          [
+            "norm",
+            "prefill_decay"
+          ],
+          [
+            "norm",
+            "recurrent_out"
+          ],
+          [
+            "norm",
+            "recurrent_bf16"
+          ],
+          [
+            "norm",
+            "attn_out"
+          ],
+          [
+            "linear_qkv",
+            "conv_out"
+          ],
+          [
+            "linear_qkv",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv",
+            "attn_out"
+          ],
+          [
+            "linear_z",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_z",
+            "attn_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_alpha",
+            "attn_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_beta",
+            "attn_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv_f32",
+            "attn_out"
+          ],
+          [
+            "conv_out",
+            "recurrent_bf16"
+          ],
+          [
+            "conv_out",
+            "attn_out"
+          ],
+          [
+            "prefill_query",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_query",
+            "attn_out"
+          ],
+          [
+            "prefill_key",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_key",
+            "attn_out"
+          ],
+          [
+            "prefill_value",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_value",
+            "attn_out"
+          ],
+          [
+            "prefill_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_beta",
+            "attn_out"
+          ],
+          [
+            "prefill_decay",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_decay",
+            "attn_out"
+          ],
+          [
+            "recurrent_out",
+            "recurrent_bf16"
+          ],
+          [
+            "recurrent_out",
+            "attn_out"
+          ]
+        ],
+        "allocation_mode": "dedicated",
+        "fields": {
+          "attn_out": {
+            "allocated_nbytes": 2048000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                7
+              ],
+              [
+                "full",
+                5,
+                7
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fb09f200000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "conv_out": {
+            "allocated_nbytes": 8192000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                2,
+                5
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fb0f7400000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_alpha": {
+            "allocated_nbytes": 19200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fb16c5f4000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_beta": {
+            "allocated_nbytes": 19200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fb16c5f9000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_qkv": {
+            "allocated_nbytes": 4096000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                2
+              ]
+            ],
+            "nbytes": 1310720,
+            "ptr": "0x7fb15c200000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_qkv_f32": {
+            "allocated_nbytes": 8192000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                1,
+                3
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fb127200000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_z": {
+            "allocated_nbytes": 2457600,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                5
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fb15bc00000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "norm": {
+            "allocated_nbytes": 2048000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                1
+              ],
+              [
+                "full",
+                0,
+                1
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fb16c400000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "prefill_beta": {
+            "allocated_nbytes": 38400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fb104ff4000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_decay": {
+            "allocated_nbytes": 38400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fb17d3b8000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_key": {
+            "allocated_nbytes": 1638400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fb12b400000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_query": {
+            "allocated_nbytes": 1638400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fb138200000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_value": {
+            "allocated_nbytes": 4915200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fb0fb600000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_bf16": {
+            "allocated_nbytes": 2457600,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                6
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fb0e6200000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_out": {
+            "allocated_nbytes": 4915200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                4,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fb0ea000000",
+            "shape": [
+              64,
+              6144
+            ]
+          }
+        },
+        "gdn_effective_mode": "chain_compact_peer_wave32",
+        "scratch_rows": 64
+      },
+      "args": {
+        "gdn_mode": "chain_compact_peer_wave32",
+        "hidden_f32_ptr": null,
+        "norm_f32_ptr": null,
+        "out_f32_ptr": 140395694522368
+      },
+      "device": 0,
+      "events": [
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "producer": "attn_norm"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "qkv_gate"
+        },
+        {
+          "kernel": "fallback",
+          "producer": "alpha_beta"
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "producer": "qkv_bf16_to_f32"
+        },
+        {
+          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "producer": "conv_prefill"
+        },
+        {
+          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "producer": "gdn_prepare"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "gdn_recurrent"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "producer": "gdn_rmsnorm_gate"
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "producer": "ssm_out"
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "producer": "ssm_out"
+        }
+      ],
+      "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+      "launch_log": [
+        {
+          "kernel": "_try_launch_dense_q8_pair_dp4a",
+          "out3_ptr": "0x7fb15c200000",
+          "out4_ptr": "0x7fb15bc00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fb15c200000",
+          "out4_ptr": "0x7fb15bc00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb15c200000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb15bc00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fb16c5f4000",
+          "out4_ptr": "0x7fb16c5f9000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb16c5f4000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb16c5f9000",
+          "rows": 64
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "out_ptr": "0x7fb127200000"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
+          "out_ptr": "0x7fb0ea000000",
+          "rows": 64
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "out_ptr": "0x7fb09f200000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb09f200000",
+          "rows": 64
+        }
+      ],
+      "rows": 64
+    },
+    "candidate_1": {
+      "allocation": {
+        "aliasing_pairs": [
+          [
+            "norm",
+            "linear_qkv_f32"
+          ],
+          [
+            "norm",
+            "conv_out"
+          ],
+          [
+            "norm",
+            "prefill_query"
+          ],
+          [
+            "norm",
+            "prefill_key"
+          ],
+          [
+            "norm",
+            "prefill_value"
+          ],
+          [
+            "norm",
+            "prefill_beta"
+          ],
+          [
+            "norm",
+            "prefill_decay"
+          ],
+          [
+            "norm",
+            "recurrent_out"
+          ],
+          [
+            "norm",
+            "recurrent_bf16"
+          ],
+          [
+            "norm",
+            "attn_out"
+          ],
+          [
+            "linear_qkv",
+            "conv_out"
+          ],
+          [
+            "linear_qkv",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv",
+            "attn_out"
+          ],
+          [
+            "linear_z",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_z",
+            "attn_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_alpha",
+            "attn_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_beta",
+            "attn_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv_f32",
+            "attn_out"
+          ],
+          [
+            "conv_out",
+            "recurrent_bf16"
+          ],
+          [
+            "conv_out",
+            "attn_out"
+          ],
+          [
+            "prefill_query",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_query",
+            "attn_out"
+          ],
+          [
+            "prefill_key",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_key",
+            "attn_out"
+          ],
+          [
+            "prefill_value",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_value",
+            "attn_out"
+          ],
+          [
+            "prefill_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_beta",
+            "attn_out"
+          ],
+          [
+            "prefill_decay",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_decay",
+            "attn_out"
+          ],
+          [
+            "recurrent_out",
+            "recurrent_bf16"
+          ],
+          [
+            "recurrent_out",
+            "attn_out"
+          ]
+        ],
+        "allocation_mode": "dedicated",
+        "fields": {
+          "attn_out": {
+            "allocated_nbytes": 2048000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                7
+              ],
+              [
+                "full",
+                5,
+                7
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fac92c00000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "conv_out": {
+            "allocated_nbytes": 8192000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                2,
+                5
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fac9ac00000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_alpha": {
+            "allocated_nbytes": 19200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fac9ddf4000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_beta": {
+            "allocated_nbytes": 19200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fac9ddf9000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_qkv": {
+            "allocated_nbytes": 4096000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                2
+              ]
+            ],
+            "nbytes": 1310720,
+            "ptr": "0x7fac9ce00000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_qkv_f32": {
+            "allocated_nbytes": 8192000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                1,
+                3
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fac9c400000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_z": {
+            "allocated_nbytes": 2457600,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                5
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fac9be00000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "norm": {
+            "allocated_nbytes": 2048000,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                1
+              ],
+              [
+                "full",
+                0,
+                1
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fac9dc00000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "prefill_beta": {
+            "allocated_nbytes": 38400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fac999f4000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_decay": {
+            "allocated_nbytes": 38400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fac9a990000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_key": {
+            "allocated_nbytes": 1638400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fac9a400000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_query": {
+            "allocated_nbytes": 1638400,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fac9a800000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_value": {
+            "allocated_nbytes": 4915200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fac99c00000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_bf16": {
+            "allocated_nbytes": 2457600,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                6
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fac96200000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_out": {
+            "allocated_nbytes": 4915200,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                4,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fac96800000",
+            "shape": [
+              64,
+              6144
+            ]
+          }
+        },
+        "gdn_effective_mode": "chain_compact_peer_wave32",
+        "scratch_rows": 64
+      },
+      "args": {
+        "gdn_mode": "chain_compact_peer_wave32",
+        "hidden_f32_ptr": null,
+        "norm_f32_ptr": null,
+        "out_f32_ptr": 140379162673152
+      },
+      "device": 1,
+      "events": [
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "producer": "attn_norm"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "qkv_gate"
+        },
+        {
+          "kernel": "fallback",
+          "producer": "alpha_beta"
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "producer": "qkv_bf16_to_f32"
+        },
+        {
+          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "producer": "conv_prefill"
+        },
+        {
+          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "producer": "gdn_prepare"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "gdn_recurrent"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "producer": "gdn_rmsnorm_gate"
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "producer": "ssm_out"
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "producer": "ssm_out"
+        }
+      ],
+      "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+      "launch_log": [
+        {
+          "kernel": "_try_launch_dense_q8_pair_dp4a",
+          "out3_ptr": "0x7fac9ce00000",
+          "out4_ptr": "0x7fac9be00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fac9ce00000",
+          "out4_ptr": "0x7fac9be00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fac9ce00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fac9be00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fac9ddf4000",
+          "out4_ptr": "0x7fac9ddf9000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fac9ddf4000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fac9ddf9000",
+          "rows": 64
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "out_ptr": "0x7fac9c400000"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
+          "out_ptr": "0x7fac96800000",
+          "rows": 64
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "out_ptr": "0x7fac92c00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fac92c00000",
+          "rows": 64
+        }
+      ],
+      "rows": 64
+    },
+    "teacher": {
+      "allocation": {
+        "aliasing_pairs": [
+          [
+            "norm",
+            "linear_qkv_f32"
+          ],
+          [
+            "norm",
+            "conv_out"
+          ],
+          [
+            "norm",
+            "prefill_query"
+          ],
+          [
+            "norm",
+            "prefill_key"
+          ],
+          [
+            "norm",
+            "prefill_value"
+          ],
+          [
+            "norm",
+            "prefill_beta"
+          ],
+          [
+            "norm",
+            "prefill_decay"
+          ],
+          [
+            "norm",
+            "recurrent_out"
+          ],
+          [
+            "norm",
+            "recurrent_bf16"
+          ],
+          [
+            "norm",
+            "attn_out"
+          ],
+          [
+            "linear_qkv",
+            "conv_out"
+          ],
+          [
+            "linear_qkv",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv",
+            "attn_out"
+          ],
+          [
+            "linear_z",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_z",
+            "attn_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_out"
+          ],
+          [
+            "linear_alpha",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_alpha",
+            "attn_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_out"
+          ],
+          [
+            "linear_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_beta",
+            "attn_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_query"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_key"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_value"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_beta"
+          ],
+          [
+            "linear_qkv_f32",
+            "prefill_decay"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_out"
+          ],
+          [
+            "linear_qkv_f32",
+            "recurrent_bf16"
+          ],
+          [
+            "linear_qkv_f32",
+            "attn_out"
+          ],
+          [
+            "conv_out",
+            "recurrent_bf16"
+          ],
+          [
+            "conv_out",
+            "attn_out"
+          ],
+          [
+            "prefill_query",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_query",
+            "attn_out"
+          ],
+          [
+            "prefill_key",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_key",
+            "attn_out"
+          ],
+          [
+            "prefill_value",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_value",
+            "attn_out"
+          ],
+          [
+            "prefill_beta",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_beta",
+            "attn_out"
+          ],
+          [
+            "prefill_decay",
+            "recurrent_bf16"
+          ],
+          [
+            "prefill_decay",
+            "attn_out"
+          ],
+          [
+            "recurrent_out",
+            "recurrent_bf16"
+          ],
+          [
+            "recurrent_out",
+            "attn_out"
+          ]
+        ],
+        "allocation_mode": "dedicated",
+        "fields": {
+          "attn_out": {
+            "allocated_nbytes": 2621440,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                7
+              ],
+              [
+                "full",
+                5,
+                7
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fb93fe00000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "conv_out": {
+            "allocated_nbytes": 10485760,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                2,
+                5
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fb986400000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_alpha": {
+            "allocated_nbytes": 24576,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fbfa4581000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_beta": {
+            "allocated_nbytes": 24576,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                4
+              ]
+            ],
+            "nbytes": 6144,
+            "ptr": "0x7fbfa4593000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "linear_qkv": {
+            "allocated_nbytes": 5242880,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                2
+              ]
+            ],
+            "nbytes": 1310720,
+            "ptr": "0x7fb988a00000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_qkv_f32": {
+            "allocated_nbytes": 10485760,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                1,
+                3
+              ]
+            ],
+            "nbytes": 2621440,
+            "ptr": "0x7fb987e00000",
+            "shape": [
+              64,
+              10240
+            ]
+          },
+          "linear_z": {
+            "allocated_nbytes": 3145728,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                5
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fb987800000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "norm": {
+            "allocated_nbytes": 2621440,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                0,
+                1
+              ],
+              [
+                "full",
+                0,
+                1
+              ]
+            ],
+            "nbytes": 655360,
+            "ptr": "0x7fb989e00000",
+            "shape": [
+              64,
+              5120
+            ]
+          },
+          "prefill_beta": {
+            "allocated_nbytes": 49152,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fbfa45a5000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_decay": {
+            "allocated_nbytes": 49152,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 12288,
+            "ptr": "0x7fbfa45b1000",
+            "shape": [
+              64,
+              48
+            ]
+          },
+          "prefill_key": {
+            "allocated_nbytes": 2097152,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fb985c00000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_query": {
+            "allocated_nbytes": 2097152,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 524288,
+            "ptr": "0x7fb986000000",
+            "shape": [
+              64,
+              2048
+            ]
+          },
+          "prefill_value": {
+            "allocated_nbytes": 6291456,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                3,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fb985400000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_bf16": {
+            "allocated_nbytes": 3145728,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "bf16",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                5,
+                6
+              ]
+            ],
+            "nbytes": 786432,
+            "ptr": "0x7fb943200000",
+            "shape": [
+              64,
+              6144
+            ]
+          },
+          "recurrent_out": {
+            "allocated_nbytes": 6291456,
+            "arena_group": null,
+            "arena_offset": null,
+            "dtype": "f32",
+            "inplace_alias": null,
+            "lifetimes": [
+              [
+                "linear",
+                4,
+                5
+              ]
+            ],
+            "nbytes": 1572864,
+            "ptr": "0x7fb943800000",
+            "shape": [
+              64,
+              6144
+            ]
+          }
+        },
+        "gdn_effective_mode": "chain_compact_peer_wave32",
+        "scratch_rows": 64
+      },
+      "args": {
+        "gdn_mode": "chain_compact_peer_wave32",
+        "hidden_f32_ptr": null,
+        "norm_f32_ptr": null,
+        "out_f32_ptr": 140433602641920
+      },
+      "device": 0,
+      "events": [
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "producer": "attn_norm"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "qkv_gate"
+        },
+        {
+          "kernel": "fallback",
+          "producer": "alpha_beta"
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "producer": "qkv_bf16_to_f32"
+        },
+        {
+          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "producer": "conv_prefill"
+        },
+        {
+          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "producer": "gdn_prepare"
+        },
+        {
+          "kernel": "see launch_log",
+          "producer": "gdn_recurrent"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "producer": "gdn_rmsnorm_gate"
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "producer": "ssm_out"
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "producer": "ssm_out"
+        }
+      ],
+      "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
+      "launch_log": [
+        {
+          "kernel": "_try_launch_dense_q8_pair_dp4a",
+          "out3_ptr": "0x7fb988a00000",
+          "out4_ptr": "0x7fb987800000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fb988a00000",
+          "out4_ptr": "0x7fb987800000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb988a00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb987800000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear_pair",
+          "out3_ptr": "0x7fbfa4581000",
+          "out4_ptr": "0x7fbfa4593000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fbfa4581000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fbfa4593000",
+          "rows": 64
+        },
+        {
+          "kernel": "bf16_to_f32",
+          "out_ptr": "0x7fb987e00000"
+        },
+        {
+          "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
+          "out_ptr": "0x7fb943800000",
+          "rows": 64
+        },
+        {
+          "kernel": "_try_launch_dense_q8_single_dp4a",
+          "out_ptr": "0x7fb93fe00000",
+          "rows": 64
+        },
+        {
+          "kernel": "launch_gguf_linear",
+          "out_ptr": "0x7fb93fe00000",
+          "rows": 64
+        }
+      ],
+      "rows": 64
+    }
+  },
   "schema": "hipengine-benchmark-result/1",
-  "status": "no-defect-demonstrated",
-  "teacher": "resident TP1 bulk (arm tp1-d0, quality-tp1-d0.json), production profile bound in-process",
-  "title": "Layer-0 TP2 bulk vs the resident TP1 bulk teacher (identical inputs)",
-  "workload": "mixed_ja_en_translate, 64 prompt tokens",
-  "worklog": "worklog/entries/20260917T001245.318337Z-deepseek-v4-flash-coder-tp2-bulk-vs-resident-tp1-layer0-e42044.md"
+  "status": "root-cause-identified-not-fixed",
+  "teacher": "resident TP1 bulk (arm tp1-d0), production profile bound in-process",
+  "title": "Layer-0 earliest divergent operation: the TP2 bulk QKV projection",
+  "weight_hashes": {
+    "candidate_0": {
+      "attn_gate": {
+        "error": "KeyError: 'raw'"
+      },
+      "attn_norm": {
+        "nbytes": 20480,
+        "sha256": "ba6e15470f040f5b46b0533ee632b3db609cee947fe1f2b59a8b3f8d3ca9488c",
+        "source_dtype": "F32",
+        "source_shape": [
+          5120
+        ]
+      },
+      "attn_qkv": {
+        "error": "KeyError: 'raw'"
+      },
+      "ssm_a": {
+        "nbytes": 192,
+        "sha256": "3a2021005faf918bf3bac95ee0345ede1279b2a96f00e57bf8f90260158816c7",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_alpha": {
+        "nbytes": 983040,
+        "sha256": "fd6327ac03c3c1a875993a17da6043f4c6d823d7c14114878fcf1ddb6388eebb",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_beta": {
+        "nbytes": 983040,
+        "sha256": "f6790337e9991e1013d84cd6b330450e59495a64743b9a2b266d3ae4a5dcf5d6",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_conv1d": {
+        "nbytes": 163840,
+        "sha256": "afc30d66532c417e1e766cc823881f1f8ca41b77b453f2bc1f8b9c6ca95b734c",
+        "source_dtype": "F32",
+        "source_shape": [
+          10240,
+          4
+        ]
+      },
+      "ssm_dt_bias": {
+        "nbytes": 192,
+        "sha256": "bf313b166f0b8c1253b041d381699f2b55921ac5dc32aed460db0fae70d4de83",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_norm": {
+        "nbytes": 512,
+        "sha256": "9b99b9e43d21529320cfb320ad2ffc630b0d0d373369011261b623fe9de66891",
+        "source_dtype": "F32",
+        "source_shape": [
+          128
+        ]
+      },
+      "ssm_out": {
+        "nbytes": 21626880,
+        "sha256": "79114a548adf95441d61ec42d19dbedd5cf5505c31644d6ba1b329db526884ef",
+        "source_dtype": "I8",
+        "source_shape": [
+          5120,
+          4224
+        ]
+      }
+    },
+    "candidate_1": {
+      "attn_gate": {
+        "error": "KeyError: 'raw'"
+      },
+      "attn_norm": {
+        "nbytes": 20480,
+        "sha256": "ba6e15470f040f5b46b0533ee632b3db609cee947fe1f2b59a8b3f8d3ca9488c",
+        "source_dtype": "F32",
+        "source_shape": [
+          5120
+        ]
+      },
+      "attn_qkv": {
+        "error": "KeyError: 'raw'"
+      },
+      "ssm_a": {
+        "nbytes": 192,
+        "sha256": "3a2021005faf918bf3bac95ee0345ede1279b2a96f00e57bf8f90260158816c7",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_alpha": {
+        "nbytes": 983040,
+        "sha256": "fd6327ac03c3c1a875993a17da6043f4c6d823d7c14114878fcf1ddb6388eebb",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_beta": {
+        "nbytes": 983040,
+        "sha256": "f6790337e9991e1013d84cd6b330450e59495a64743b9a2b266d3ae4a5dcf5d6",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_conv1d": {
+        "nbytes": 163840,
+        "sha256": "afc30d66532c417e1e766cc823881f1f8ca41b77b453f2bc1f8b9c6ca95b734c",
+        "source_dtype": "F32",
+        "source_shape": [
+          10240,
+          4
+        ]
+      },
+      "ssm_dt_bias": {
+        "nbytes": 192,
+        "sha256": "bf313b166f0b8c1253b041d381699f2b55921ac5dc32aed460db0fae70d4de83",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_norm": {
+        "nbytes": 512,
+        "sha256": "9b99b9e43d21529320cfb320ad2ffc630b0d0d373369011261b623fe9de66891",
+        "source_dtype": "F32",
+        "source_shape": [
+          128
+        ]
+      },
+      "ssm_out": {
+        "nbytes": 21626880,
+        "sha256": "79114a548adf95441d61ec42d19dbedd5cf5505c31644d6ba1b329db526884ef",
+        "source_dtype": "I8",
+        "source_shape": [
+          5120,
+          4224
+        ]
+      }
+    },
+    "teacher": {
+      "attn_gate": {
+        "error": "KeyError: 'raw'"
+      },
+      "attn_norm": {
+        "nbytes": 20480,
+        "sha256": "ba6e15470f040f5b46b0533ee632b3db609cee947fe1f2b59a8b3f8d3ca9488c",
+        "source_dtype": "F32",
+        "source_shape": [
+          5120
+        ]
+      },
+      "attn_qkv": {
+        "error": "KeyError: 'raw'"
+      },
+      "ssm_a": {
+        "nbytes": 192,
+        "sha256": "3a2021005faf918bf3bac95ee0345ede1279b2a96f00e57bf8f90260158816c7",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_alpha": {
+        "nbytes": 983040,
+        "sha256": "fd6327ac03c3c1a875993a17da6043f4c6d823d7c14114878fcf1ddb6388eebb",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_beta": {
+        "nbytes": 983040,
+        "sha256": "f6790337e9991e1013d84cd6b330450e59495a64743b9a2b266d3ae4a5dcf5d6",
+        "source_dtype": "F32",
+        "source_shape": [
+          48,
+          5120
+        ]
+      },
+      "ssm_conv1d": {
+        "nbytes": 163840,
+        "sha256": "afc30d66532c417e1e766cc823881f1f8ca41b77b453f2bc1f8b9c6ca95b734c",
+        "source_dtype": "F32",
+        "source_shape": [
+          10240,
+          4
+        ]
+      },
+      "ssm_dt_bias": {
+        "nbytes": 192,
+        "sha256": "bf313b166f0b8c1253b041d381699f2b55921ac5dc32aed460db0fae70d4de83",
+        "source_dtype": "F32",
+        "source_shape": [
+          48
+        ]
+      },
+      "ssm_norm": {
+        "nbytes": 512,
+        "sha256": "9b99b9e43d21529320cfb320ad2ffc630b0d0d373369011261b623fe9de66891",
+        "source_dtype": "F32",
+        "source_shape": [
+          128
+        ]
+      },
+      "ssm_out": {
+        "nbytes": 21626880,
+        "sha256": "79114a548adf95441d61ec42d19dbedd5cf5505c31644d6ba1b329db526884ef",
+        "source_dtype": "I8",
+        "source_shape": [
+          5120,
+          4224
+        ]
+      }
+    }
+  },
+  "workload": "mixed_ja_en_translate, 64 prompt tokens"
 }

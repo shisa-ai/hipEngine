@@ -7710,3 +7710,38 @@ route clears the calibrated mean/p95/p99/max KL and top-1 gates on the full
 mtp-bench category suite. Until then it is a candidate, not a default: the
 capacity-64 MLP relative-error finding is still open, chunked bulk prefill is
 not implemented, and no end-to-end quality run exists for the bulk route.
+
+## 2026-09-17 TP2 bulk prefill omits the resident dispatch context — open
+
+`MlpTP2GenerationSession.bulk_prefill` calls the shared resident layer helpers
+(`_run_linear_attention_prefill_attn_rows`, `_run_linear_attention_prefill_attn_rows`,
+`_run_post_attention_norm_residual_rows`) directly from
+`hipengine/distributed/tp2_generate.py`. `Qwen35GGUFResidentSession` instead
+wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners
+(`q8_t16_two_wave_prefill_session`, `wmma_prefill_session`,
+`gemv_decode_session`, `q8_t16_dual_wmma_prefill_session`,
+`q4_pack8_dual_wmma_silu_prefill_session`,
+`q4_t16_unequal_pair_prefill_session`, `_prefill_f16_staging_context`,
+`_q6_integer_mmq_context`, `_iq_dense_mmq_context`,
+`_q8_mmq_prefill_context`, `_q6_f16_rocblas_prefill_context`). Those context
+variables participate in `launch_gguf_linear`'s dispatch resolution and in its
+dispatch cache key, so the TP2 bulk route resolves **different kernels for the
+same weight and rows**.
+
+Measured on the W7900 layer-0 comparison
+(`benchmarks/results/2026-09-17-w7900-tp2-bulk-vs-resident-tp1-layer0.json`):
+with identical layer input (sha256 `306c076e…`), identical layer-0 weights,
+identical all-zero initial conv/recurrent state and the same
+`chain_compact_peer_wave32` GDN mode, the Q6_K `attn_qkv` projection
+(`linear_qkv`, bf16 `[64, 10240]`) differs by rel 3.73e-03 / max_abs 0.25 while
+the Q4_K `attn_gate` projection (`linear_z`, bf16 `[64, 6144]`) from the same
+launch group is bit-identical.
+
+Fix by giving the TP2 bulk path the same dispatch context per rank (the
+contexts are process-global, so the context must be re-established around each
+rank's layer call, not once around the whole loop), then re-run the paired
+layer-0 capture to confirm `linear_qkv` becomes bit-identical before any
+envelope claim. A regression test
+(`tests/test_unit_distributed_tp2_generate.py::test_bulk_prefill_establishes_the_resident_dispatch_context`)
+currently `xfail`s on this contract; it must flip to `xpass`/pass when the
+context is wired in.

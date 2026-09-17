@@ -692,15 +692,45 @@ default-off and the token-serial route remains the committed prefill schedule.
   ran the full-attention layers at 200 rows and wrote KV for 200 positions;
   `bulk_prefill` now narrows the scratch with `for_chunk(0, rows, rows)` exactly
   like the resident bulk caller. That fix does not change the failing-prompt
-  logits (byte-identical sha256), so the GDN output difference is the open
-  first cause
+  logits (byte-identical sha256)
   (`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-diagnostic.json`).
+- **Direct teacher comparison and root cause (2026-09-17):** the failing quality
+  gate compares TP2 bulk against the **resident TP1 bulk teacher**, so
+  `scripts/tp2_bulk_vs_resident_layer0.py` compares those two directly on the
+  same 64-token prompt in one process under the production profile, reading each
+  layer-0 field immediately after its own producer and on its own stream, with
+  layouts derived from the producer (`scripts/tp2_layer0_capture.py`; the bulk
+  prefill scratch reports `allocation_mode=dedicated`, and the earlier
+  `conv_out`/`linear_qkv` captures had been dtype-misread as bf16). With
+  identical layer input (sha256 `306c076e…`), identical layer-0 weights,
+  identical all-zero initial conv/recurrent state and the same
+  `chain_compact_peer_wave32` GDN mode, the earliest differing operation is the
+  **Q6_K `attn_qkv` projection**: `linear_qkv` (bf16 `[64, 10240]`) differs by
+  rel **3.73e-03** / max_abs 0.25 on a 67.0 peak, while `linear_z` (the Q4_K
+  `attn_gate` projection, bf16 `[64, 6144]`) from the **same launch group** is
+  **bit-identical**. Both routes resolve the same GDN mode and the same launch
+  sequence. Verified cause: `MlpTP2GenerationSession.bulk_prefill` calls the
+  shared resident layer helpers directly, while `Qwen35GGUFResidentSession`
+  wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners
+  (`q8_t16_two_wave_prefill_session`, `wmma_prefill_session`,
+  `gemv_decode_session`, `q8_t16_dual_wmma_prefill_session`,
+  `q4_pack8_dual_wmma_silu_prefill_session`,
+  `q4_t16_unequal_pair_prefill_session`, `_prefill_f16_staging_context`,
+  `_q6_integer_mmq_context`, `_iq_dense_mmq_context`,
+  `_q8_mmq_prefill_context`, `_q6_f16_rocblas_prefill_context`). Those context
+  variables participate in `launch_gguf_linear`'s dispatch resolution and in its
+  dispatch cache key, so the Q6_K projection resolves a different kernel per
+  route; every downstream difference (`conv_out` 1.69e-03, `prefill_query`
+  6.99e-03, `recurrent_bf16` 1.51e-03, `attn_out` 6.98e-05) follows from it
+  (`benchmarks/results/2026-09-17-w7900-tp2-bulk-vs-resident-tp1-layer0.json`).
 - **Blocker:** the bulk route cannot be promoted while it exceeds the max-KL
   ceiling on a heldout prompt where token-serial passes. The next experiment is
-  to compare the resident TP1 bulk's layer-0 `attn_out` against the resident TP1
-  serial `attn_out` on the same prompt: if the resident shows the same ~0.5%
-  GDN output difference the divergence is inherent to the prefill-vs-decode GDN
-  output kernels, otherwise the ~0.5% is a TP2 bulk kernel-argument defect.
+  to give the TP2 bulk path the same session-scoped dispatch context per rank
+  (the contexts are process-global, so they must be re-established around each
+  rank's layer call), then re-run the paired layer-0 capture and confirm
+  `linear_qkv` becomes bit-identical before any envelope claim. The contract is
+  recorded in `docs/REFACTOR.md` and pinned by an `xfail` regression test
+  (`tests/test_unit_distributed_tp2_generate.py::test_bulk_prefill_establishes_the_resident_dispatch_context`).
   Do not relax the envelope.
 
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
