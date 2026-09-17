@@ -132,9 +132,12 @@ def _stream_request(
     timeline: list[list[float]] = []
     usage: Mapping[str, Any] | None = None
     terminal: Mapping[str, Any] | None = None
-    text: list[str] = []
+    answer: list[str] = []
+    thinking: list[str] = []
     started = time.perf_counter()
-    ttft_ms: float | None = None
+    first_token_ms: float | None = None
+    first_answer_ms: float | None = None
+    first_thinking_ms: float | None = None
     with urllib.request.urlopen(request, timeout=timeout) as response:
         for raw in response:
             line = raw.decode("utf-8", "replace").strip()
@@ -146,10 +149,21 @@ def _stream_request(
             event = json.loads(data)
             for choice in event.get("choices") or []:
                 delta = choice.get("delta") or {}
+                # A Qwen-style thinking reply streams its reasoning on a
+                # separate channel, so the first generated token is usually a
+                # reasoning token. Both channels are timed and counted.
+                if delta.get("reasoning_content"):
+                    if first_thinking_ms is None:
+                        first_thinking_ms = (time.perf_counter() - started) * 1000.0
+                    if first_token_ms is None:
+                        first_token_ms = first_thinking_ms
+                    thinking.append(delta["reasoning_content"])
                 if delta.get("content"):
-                    if ttft_ms is None:
-                        ttft_ms = (time.perf_counter() - started) * 1000.0
-                    text.append(delta["content"])
+                    if first_answer_ms is None:
+                        first_answer_ms = (time.perf_counter() - started) * 1000.0
+                    if first_token_ms is None:
+                        first_token_ms = first_answer_ms
+                    answer.append(delta["content"])
                 if choice.get("finish_reason") is not None:
                     terminal = choice
                 state = ((choice.get("hipengine") or {}).get("decode_state")) or {}
@@ -166,11 +180,15 @@ def _stream_request(
     e2e_ms = (time.perf_counter() - started) * 1000.0
     extension = (terminal or {}).get("hipengine") or {}
     return {
-        "ttft_ms": ttft_ms,
+        "ttft_ms": first_token_ms,
+        "first_answer_ms": first_answer_ms,
+        "first_thinking_ms": first_thinking_ms,
+        "first_decode_state_ms": timeline[0][0] if timeline else None,
         "e2e_ms": e2e_ms,
         "timeline": timeline,
         "usage": usage,
-        "text_characters": len("".join(text)),
+        "answer_characters": len("".join(answer)),
+        "thinking_characters": len("".join(thinking)),
         "speculative_mtp": extension.get("speculative_mtp"),
         "generation_shape": extension.get("generation_shape"),
     }
@@ -188,7 +206,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
             "error": (
                 "stream ended without usage"
                 f" (events={len(result.get('timeline') or [])},"
-                f" text_characters={result.get('text_characters')},"
+                f" answer_characters={result.get('answer_characters')},"
                 f" e2e_ms={result.get('e2e_ms')})"
             ),
         }
@@ -203,8 +221,11 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "expected_output_tokens": sample.get("expected_output_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
         "ttft_ms": result.get("ttft_ms"),
+        "first_answer_ms": result.get("first_answer_ms"),
+        "first_thinking_ms": result.get("first_thinking_ms"),
         "e2e_ms": result.get("e2e_ms"),
-        "text_characters": result.get("text_characters"),
+        "answer_characters": result.get("answer_characters"),
+        "thinking_characters": result.get("thinking_characters"),
         "route": shape.get("route"),
         "route_decision_reason": decision.get("reason"),
         "requested_route": decision.get("requested_route"),
@@ -334,6 +355,16 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             row.get("completion_tokens") or 0
         )
     ttfts = [float(row["ttft_ms"]) for row in rows if row.get("ttft_ms")]
+    answers = [
+        float(row["first_answer_ms"])
+        for row in rows
+        if row.get("first_answer_ms")
+    ]
+    thinking = [
+        float(row["first_thinking_ms"])
+        for row in rows
+        if row.get("first_thinking_ms")
+    ]
     return {
         "requests": len(rows),
         "mtp_requests": len(used),
@@ -341,14 +372,35 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         "completion_tokens": completion,
         "mtp_output_tokens": mtp_outputs,
         "mtp_output_share": (mtp_outputs / completion) if completion else 0.0,
+        "ar_output_tokens": sum(
+            int(row.get("ar_output_tokens") or 0) for row in rows
+        ),
         "non_mtp_reasons": dict(sorted(reasons.items())),
         "prompt_token_buckets": {
             bucket: dict(sorted(counts.items()))
             for bucket, counts in sorted(prompt_buckets.items())
         },
+        # ttft_ms is time to the first generated token of either channel, which
+        # for a thinking reply is a reasoning token.
         "median_ttft_ms": statistics.median(ttfts) if ttfts else None,
+        "ttft_requests": len(ttfts),
+        "median_first_answer_ms": statistics.median(answers) if answers else None,
+        "answer_requests": len(answers),
+        "median_first_thinking_ms": (
+            statistics.median(thinking) if thinking else None
+        ),
+        "thinking_requests": len(thinking),
+        "thinking_output_share": (
+            sum(1 for row in rows if row.get("first_thinking_ms")) / len(rows)
+            if rows
+            else 0.0
+        ),
         "cliff": _cliff(rows, window=window),
     }
+
+
+def _fmt_ms(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.0f} ms"
 
 
 def main() -> int:
@@ -471,6 +523,14 @@ def main() -> int:
         f"wall={wall:.1f}s"
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
+    print(
+        f"[{args.label}] latency: ttft(first token)={_fmt_ms(summary['median_ttft_ms'])} "
+        f"over {summary['ttft_requests']} requests, "
+        f"first_answer={_fmt_ms(summary['median_first_answer_ms'])} "
+        f"over {summary['answer_requests']}, "
+        f"first_thinking={_fmt_ms(summary['median_first_thinking_ms'])} "
+        f"over {summary['thinking_requests']}"
+    )
     cliff = summary["cliff"]
     if cliff.get("requests"):
         print(
