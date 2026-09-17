@@ -829,6 +829,48 @@ default-off and the token-serial route remains the committed prefill schedule.
   numbers and logits sha256 exactly), the TP2-vs-teacher tail is bf16-ULP-level
   chaos amplified over 64 layers: every route perturbation moves it by more than
   the envelope width, so no single arithmetic term decides the comparison.
+- **The sustained failure is implementation spread, not a TP2 defect
+  (2026-09-17):** the 128-step failure on `mixed_ja_en_translate` at decode index
+  82 was measured against the product's own alternative route. Four arms ran over
+  the same teacher-forced prefix on one revision, one host, one identity
+  (`scripts/tp2_prefill_schedule_failure_probe.py`; the recorded identity diff is
+  empty, and the `tp1-bulk` self-check arm reproduced the teacher's rows exactly,
+  max KL 0.0). The teacher is hipEngine TP1 with bulk prefill; **TP1 with
+  token-serial prefill — no TP2 code involved — breaches the same 0.05 max-KL
+  ceiling at the same decode index 82 (0.2993) and reaches 0.6092 by index 93**,
+  while TP2 token-serial reaches 0.1084 and TP2 bulk prefill 0.1671. TP2 is
+  closer to the teacher than that TP1 route on mean (1.429e-03 vs 7.241e-03),
+  p99 (0.0398 vs 0.2211), max (0.1084 vs 0.6092) and top-1 (1.000 vs 1.000),
+  and at the failing position TP2 sits 10.5x closer to a *same-schedule* TP1
+  control (0.028379) than that control sits to the teacher (0.299279 — the same
+  number the earlier TP1-only localization recorded, to six decimals).
+  The mechanism is measured, not inferred: the breaching positions are the flat
+  ones. At index 82 the teacher's top-1 holds 0.4866 of the mass with a 0.6233
+  top-2 logit gap and entropy 1.2390, against neighbours at top-1 probability
+  >= 0.99 and gaps of 5-21, and **every arm keeps the same top-1 token** (248046)
+  there. 2-3 of 128 positions exceed 0.01 KL and p95 stays inside
+  5.66e-04..9.88e-04 for every arm. A ~0.1-1.0 max-abs logit difference between
+  two legitimate implementations therefore moves a lot of probability mass
+  exactly where the model is undecided: over a 128-step forced horizon the
+  absolute max-KL ceiling is a bit-exactness test in disguise, and the shipped
+  TP1 product path fails it too. Evidence:
+  `benchmarks/results/2026-09-17-tp2-prefill-schedule-failure-probe.json` (+ its
+  `.worst-rows.npz`, the full logit rows at each comparison's worst position).
+- **Consequence for the sustained gate (2026-09-17, open):** the discriminating
+  sustained measurements are mean/p95 KL, top-1 agreement, and a
+  **same-schedule** implementation-spread comparison, not the raw max against a
+  single bulk-prefill reference. Which criterion replaces the absolute max
+  ceiling is a normative decision in `docs/EXECUTION-PROFILES.md` and is not
+  settled here; this is not a request to relax the envelope for a candidate, and
+  the stable statistics (mean/p95, top-1) stay binding either way. Nothing is
+  promoted on this evidence: `decode_partial_dtype`
+  stays `bf16` and token-serial prefill stays the shipped prefill route. The bulk
+  candidate's own arithmetic effect is bounded by
+  `tp2-serial_vs_tp2-bulk` = 0.0258852 max KL with top-1 1.000 and no position
+  over the ceiling — inside the ceiling on the schedule-difference axis — but its
+  distance to the single bulk teacher grows 1.4-2.3x on mean/p95/p99/max relative
+  to the serial arm, so retaining it needs the gate decision above plus the full
+  mtp-bench category suite.
 - **The comparison basis is the open question (2026-09-17):** the TP2 gate scores
   against **hipEngine TP1's own logits** (`quality-tp1-d0.json`, arm `tp1-d0`),
   while hipEngine's production quality basis is the independent llama.cpp BF16
