@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Callable, Iterator, Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -11844,6 +11844,56 @@ def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
     return bool(identity is not None and policies.get(identity, False))
 
 
+@contextmanager
+def resident_prefill_dispatch_session(
+    runner: object,
+    *,
+    prompt_tokens: int,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+) -> Iterator[None]:
+    """Enter the device-free session-scoped GGUF linear dispatch owners.
+
+    ``Qwen35GGUFResidentSession`` wraps its whole bulk prefill in eleven
+    session-scoped owners; six of them are plain process-global toggles that
+    change which kernel ``launch_gguf_linear`` resolves for the same weight and
+    rows. A route that replaces the resident bulk prefill - the rank-local TP2
+    bulk prefill - must establish exactly those six, or it silently selects
+    different arithmetic for the same inputs. This helper is the single source
+    of that set, so the two routes cannot drift apart.
+
+    The owners are process-global, not ``ContextVar``s, and hold no device
+    pointers. A multi-rank caller therefore has to enter this once per rank,
+    never once around a loop over ranks: a device-free toggle set by one rank
+    would otherwise stay set while the other rank runs.
+
+    The five remaining resident owners (f16 staging, Q6 integer MMQ, IQ dense
+    MMQ, Q8 MMQ workspace, Q6 f16 rocBLAS) bind scratch the resident session
+    owns; they stay with the session that owns it.
+    """
+
+    tokens = int(prompt_tokens)
+    with (
+        q8_t16_two_wave_prefill_session(
+            _gguf_q8_t16_two_wave_prefill_applies(
+                getattr(runner, "backend", "hip_gfx1100"), tokens
+            )
+        ),
+        wmma_prefill_session(use_wmma_prefill),
+        gemv_decode_session(use_gemv_decode),
+        q8_t16_dual_wmma_prefill_session(
+            _gguf_q8_t16_dual_wmma_prefill_applies(runner, tokens)
+        ),
+        q4_pack8_dual_wmma_silu_prefill_session(
+            _gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, tokens)
+        ),
+        q4_t16_unequal_pair_prefill_session(
+            _gguf_q4_t16_unequal_pair_prefill_applies(runner)
+        ),
+    ):
+        yield
+
+
 def _gguf_dense_pair_silu_decode_variant(
     runner: object,
     *,
@@ -20024,28 +20074,11 @@ class Qwen35GGUFResidentSession:
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
             with (
-                q8_t16_two_wave_prefill_session(
-                    _gguf_q8_t16_two_wave_prefill_applies(
-                        getattr(self.runner, "backend", "hip_gfx1100"),
-                        len(token_ids),
-                    )
-                ),
-                wmma_prefill_session(self.use_wmma_prefill),
-                gemv_decode_session(self.use_gemv_decode),
-                q8_t16_dual_wmma_prefill_session(
-                    _gguf_q8_t16_dual_wmma_prefill_applies(
-                        self.runner,
-                        len(token_ids),
-                    )
-                ),
-                q4_pack8_dual_wmma_silu_prefill_session(
-                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
-                        self.runner,
-                        len(token_ids),
-                    )
-                ),
-                q4_t16_unequal_pair_prefill_session(
-                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+                resident_prefill_dispatch_session(
+                    self.runner,
+                    prompt_tokens=len(token_ids),
+                    use_wmma_prefill=self.use_wmma_prefill,
+                    use_gemv_decode=self.use_gemv_decode,
                 ),
                 self._prefill_f16_staging_context(),
                 self._q6_integer_mmq_context(),
@@ -37590,4 +37623,5 @@ __all__ = [
     "qwen35_gguf_fp32_hidden_seed_contract",
     "qwen35_gguf_fp32_verify_hidden_seed_contract",
     "resolve_qwen35moe_fastpath_safety",
+    "resident_prefill_dispatch_session",
 ]

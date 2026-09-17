@@ -72,7 +72,11 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
-from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+from hipengine.runtime.gguf_linear import (
+    GGUF_OUTPUT_F32,
+    launch_gguf_linear,
+    resident_session_wmma_prefill_default,
+)
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -80,6 +84,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFFullAttentionPrefillScratch,
     _gguf_dense_pair_silu_decode_variant,
     _gguf_norm_residual_decode_kernel,
+    resident_prefill_dispatch_session,
 )
 
 
@@ -135,6 +140,8 @@ class MlpTP2GenerationSession:
         head_shard: bool | None = None,
         bulk_prefill: bool = False,
         bulk_prefill_rows: int | None = None,
+        use_wmma_prefill: bool | None = None,
+        use_gemv_decode: bool | None = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
@@ -221,6 +228,19 @@ class MlpTP2GenerationSession:
                     f"bulk_prefill_rows {self.bulk_prefill_rows} exceeds the "
                     f"session capacity {self.max_sequence_length}"
                 )
+        # The rank-local bulk prefill replaces the resident session's bulk
+        # prefill, so it has to resolve the same GGUF linear kernels for the
+        # same weight and rows. ``None`` means "the shipped resident policy"
+        # (the same resolution ``hipengine.generation.qwen35_gguf`` uses for
+        # its resident sessions); an explicit value is a route A/B override.
+        # These are read only inside :meth:`bulk_prefill`; the single-row
+        # decode route keeps its own explicit per-launch arguments.
+        self.use_wmma_prefill = (
+            resident_session_wmma_prefill_default()
+            if use_wmma_prefill is None
+            else bool(use_wmma_prefill)
+        )
+        self.use_gemv_decode = True if use_gemv_decode is None else bool(use_gemv_decode)
 
         self.runtime = get_hip_runtime()
         if self.runtime.device_count() < len(self.devices):
@@ -566,7 +586,15 @@ class MlpTP2GenerationSession:
             )
             decode_scratch = self._scratches[device]
             stream = self._rank_stream(device)
-            with scoped_current_device(self.runtime, device):
+            with (
+                scoped_current_device(self.runtime, device),
+                resident_prefill_dispatch_session(
+                    runner,
+                    prompt_tokens=rows,
+                    use_wmma_prefill=self.use_wmma_prefill,
+                    use_gemv_decode=self.use_gemv_decode,
+                ),
+            ):
                 if layer_type == LINEAR_ATTENTION:
                     runner._run_linear_attention_prefill_attn_rows(
                         layer_id,
@@ -612,7 +640,15 @@ class MlpTP2GenerationSession:
             scratch = self._bulk_chunk_scratch.get(
                 device, self._bulk_scratch[device]
             )
-            with scoped_current_device(self.runtime, device):
+            with (
+                scoped_current_device(self.runtime, device),
+                resident_prefill_dispatch_session(
+                    runner,
+                    prompt_tokens=rows,
+                    use_wmma_prefill=self.use_wmma_prefill,
+                    use_gemv_decode=self.use_gemv_decode,
+                ),
+            ):
                 runner._run_post_attention_norm_residual_rows(
                     layer_id,
                     int(src[device]),
@@ -650,25 +686,39 @@ class MlpTP2GenerationSession:
                     runtime=self.runtime,
                 )
 
-        run_sharded_mlp_with_residual(
-            group,
-            layer_id=layer_id,
-            rows=rows,
-            post_norm_ptrs={
-                device: self._bulk_chunk_scratch.get(
-                    device, self._bulk_scratch[device]
-                ).post_norm.ptr
-                for device in self.devices
-            },
-            residual_ptrs={
-                device: self._bulk_chunk_scratch.get(
-                    device, self._bulk_scratch[device]
-                ).residual.ptr
-                for device in self.devices
-            },
-            out_ptrs={device: int(dst[device]) for device in self.devices},
-            add_residual=add_residual,
-        )
+        # The shard chain launches its own GGUF linears through
+        # ``MlpShardRank.forward_partial``, so it needs the same session-scoped
+        # owners. Those six owners are device-free and resolve from
+        # ``(backend, geometry, rows)``, which are identical on every rank of
+        # this group, so one entry around the group forward sets exactly the
+        # same context the per-rank loops above set. They hold no device
+        # pointers, so there is nothing to leak into the other rank's device
+        # scope; the group's own ``scoped_current_device`` stays per rank.
+        with resident_prefill_dispatch_session(
+            self._runners[self.control_device],
+            prompt_tokens=rows,
+            use_wmma_prefill=self.use_wmma_prefill,
+            use_gemv_decode=self.use_gemv_decode,
+        ):
+            run_sharded_mlp_with_residual(
+                group,
+                layer_id=layer_id,
+                rows=rows,
+                post_norm_ptrs={
+                    device: self._bulk_chunk_scratch.get(
+                        device, self._bulk_scratch[device]
+                    ).post_norm.ptr
+                    for device in self.devices
+                },
+                residual_ptrs={
+                    device: self._bulk_chunk_scratch.get(
+                        device, self._bulk_scratch[device]
+                    ).residual.ptr
+                    for device in self.devices
+                },
+                out_ptrs={device: int(dst[device]) for device in self.devices},
+                add_residual=add_residual,
+            )
 
     def _finish_bulk_prefill(self, rows: int) -> np.ndarray:
         src = self._bulk_final_hidden
@@ -679,6 +729,13 @@ class MlpTP2GenerationSession:
                 runner = self._runners[device]
                 scratch = self._bulk_scratch[device]
                 stream = self._rank_stream(device)
+                # Deliberately NOT inside ``resident_prefill_dispatch_session``:
+                # the head projection is not a resident layer helper. The
+                # resident session samples through its dedicated ``lm_head``
+                # kernel (``_sample_from_hidden``), and the Q6_K planar
+                # ``t16_wmma_prefill_bf16_f32_out`` variant this route would
+                # select is not registered - it silently falls back to the CPU
+                # reference. See docs/REFACTOR.md.
                 with scoped_current_device(self.runtime, device):
                     gguf_rmsnorm_bf16_f32_weight(
                         int(src[device]),
@@ -723,6 +780,8 @@ class MlpTP2GenerationSession:
         runner = self._runners[device]
         scratch = self._bulk_scratch[device]
         stream = self._rank_stream(device)
+        # See the head_shard branch above: the head is not a resident layer
+        # helper and must keep its registered f32-out route.
         with scoped_current_device(self.runtime, device):
             gguf_rmsnorm_bf16_f32_weight(
                 int(src[device]),

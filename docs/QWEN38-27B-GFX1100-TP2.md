@@ -671,25 +671,18 @@ default-off and the token-serial route remains the committed prefill schedule.
   poison-on-failure.
 - **GPU evidence:** `scripts/tp2_bulk_prefill_diagnostic.py` runs the saved
   teacher protocol (prefill the prompt, then feed the saved forced-decode
-  tokens) on both a bulk and a token-serial arm of the same session. The
-  token-serial arm reproduces the recorded TP2 failure exactly (max KL
-  **0.108406** at decode index 82 of `mixed_ja_en_translate`, position 146),
-  validating the harness. The bulk arm is worse: max KL **0.48714** on
-  `mixed_ja_en_translate` and **0.05573** on the heldout `heldout_mixed_summary`
-  (token-serial 0.04689 there, which passes the 0.05 ceiling; that is one of
-  five envelope metrics, not proof the heldout gate passes - the bulk arm fails
-  mean_kl 0.00100139, p99_kl 0.0374066, max_kl 0.0557287 and top1 0.968750).
-  A bounded first-divergence investigation localized the bulk prefill's first
-  numerical difference to the **layer-0 linear-attention output**: bulk vs
-  token-serial `attn_out` rel **5.21e-03** (max_abs 0.25, same argmax 3994)
-  while the layer-0 GDN conv state is bit-identical and the recurrent state
-  matches to **3.2e-07**; the post-attention norm (1.47e-03) and the sharded MLP
-  (6.29e-03) only amplify it, and forcing the bulk MLP through the same group
-  one row at a time does not change the layer-1 divergence. The same
-  investigation fixed a separate control/metadata defect: the capacity-sized
-  bulk scratch was passed to the full-attention prefill helper, which derives
-  its row count from `scratch.rows`, so a 64-token prompt on a 200-row capacity
-  ran the full-attention layers at 200 rows and wrote KV for 200 positions;
+  tokens) on both a bulk and a token-serial arm of the same session. Measured
+  pre-fix on `92e9d5b98` in a clean checkout, bulk-vs-teacher max KL was
+  **0.48714** on `mixed_ja_en_translate` and **0.05573** on the heldout
+  `heldout_mixed_summary`; the token-serial arm of the same session scored
+  **0.551179** and **0.033202** against the same teacher, so the bulk route was
+  far outside the token-serial route's own envelope. The bounded
+  first-divergence investigation localized the bulk prefill's first numerical
+  difference to the **layer-0 linear-attention output**, and a separate
+  control/metadata defect was fixed on the way: the capacity-sized bulk scratch
+  was passed to the full-attention prefill helper, which derives its row count
+  from `scratch.rows`, so a 64-token prompt on a 200-row capacity ran the
+  full-attention layers at 200 rows and wrote KV for 200 positions;
   `bulk_prefill` now narrows the scratch with `for_chunk(0, rows, rows)` exactly
   like the resident bulk caller. That fix does not change the failing-prompt
   logits (byte-identical sha256)
@@ -704,34 +697,68 @@ default-off and the token-serial route remains the committed prefill schedule.
   `conv_out`/`linear_qkv` captures had been dtype-misread as bf16). With
   identical layer input (sha256 `306c076e…`), identical layer-0 weights,
   identical all-zero initial conv/recurrent state and the same
-  `chain_compact_peer_wave32` GDN mode, the earliest differing operation is the
-  **Q6_K `attn_qkv` projection**: `linear_qkv` (bf16 `[64, 10240]`) differs by
+  `chain_compact_peer_wave32` GDN mode, the earliest differing operation was the
+  **Q6_K `attn_qkv` projection**: `linear_qkv` (bf16 `[64, 10240]`) differed by
   rel **3.73e-03** / max_abs 0.25 on a 67.0 peak, while `linear_z` (the Q4_K
-  `attn_gate` projection, bf16 `[64, 6144]`) from the **same launch group** is
-  **bit-identical**. Both routes resolve the same GDN mode and the same launch
-  sequence. Verified cause: `MlpTP2GenerationSession.bulk_prefill` calls the
-  shared resident layer helpers directly, while `Qwen35GGUFResidentSession`
-  wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners
-  (`q8_t16_two_wave_prefill_session`, `wmma_prefill_session`,
-  `gemv_decode_session`, `q8_t16_dual_wmma_prefill_session`,
-  `q4_pack8_dual_wmma_silu_prefill_session`,
-  `q4_t16_unequal_pair_prefill_session`, `_prefill_f16_staging_context`,
-  `_q6_integer_mmq_context`, `_iq_dense_mmq_context`,
-  `_q8_mmq_prefill_context`, `_q6_f16_rocblas_prefill_context`). Those context
-  variables participate in `launch_gguf_linear`'s dispatch resolution and in its
-  dispatch cache key, so the Q6_K projection resolves a different kernel per
-  route; every downstream difference (`conv_out` 1.69e-03, `prefill_query`
-  6.99e-03, `recurrent_bf16` 1.51e-03, `attn_out` 6.98e-05) follows from it
+  `attn_gate` projection, bf16 `[64, 6144]`) from the **same launch group** was
+  **bit-identical**. Verified cause: `MlpTP2GenerationSession.bulk_prefill`
+  called the shared resident layer helpers directly, while
+  `Qwen35GGUFResidentSession` wraps its whole bulk prefill in eleven
+  session-scoped GGUF linear dispatch owners. Six of those are plain
+  process-global toggles that participate in `launch_gguf_linear`'s dispatch
+  resolution **and its dispatch cache key**, so the same Q6_K weight at
+  `rows=64` resolved `t16_wmma_prefill_bf16_bf16_out` on the teacher and
+  `t16_gemv_decode_bf16_bf16_out` on the candidate. The Q4_K `attn_gate` shape
+  already resolved its WMMA variant without the context, which is why it stayed
+  bit-identical.
+- **Dispatch-context fix (2026-09-17):**
+  `resident_prefill_dispatch_session` in
+  `hipengine/runtime/qwen35_gguf_runner.py` is now the single source of those
+  six device-free owners (`q8_t16_two_wave_prefill`, `wmma_prefill`,
+  `gemv_decode`, `q8_t16_dual_wmma_prefill`,
+  `q4_pack8_dual_wmma_silu_prefill`, `q4_t16_unequal_pair_prefill`). The
+  resident session enters it once for its whole bulk prefill; the TP2 bulk path
+  enters it **per rank** around each rank's attention/GDN helper and
+  post-attention norm+residual helper, and once around the shard-group forward
+  (whose owners are rank-invariant and hold no device pointers). The five
+  remaining resident owners (f16 staging, Q6 integer MMQ, IQ dense MMQ, Q8 MMQ
+  workspace, Q6 f16 rocBLAS) bind session-owned scratch and stay with the
+  resident session. The shipped `wmma_prefill` policy moved next to the toggles
+  it feeds (`resident_session_wmma_prefill_default`), so the resident sessions
+  and the route that replaces their bulk prefill read one policy. The single-row
+  decode route is untouched: it passes `use_gemv_decode` explicitly per launch
+  and never enters the bulk owners.
+- **Post-fix layer-0 result (2026-09-17):** all **15** layer-0 producer fields
+  are now **bit-identical** between the resident TP1 bulk teacher and the TP2
+  bulk candidate on identical input, weights and initial state; the candidate's
+  dispatch resolve log shows exactly one bulk context, equal to the teacher's
   (`benchmarks/results/2026-09-17-w7900-tp2-bulk-vs-resident-tp1-layer0.json`).
-- **Blocker:** the bulk route cannot be promoted while it exceeds the max-KL
-  ceiling on a heldout prompt where token-serial passes. The next experiment is
-  to give the TP2 bulk path the same session-scoped dispatch context per rank
-  (the contexts are process-global, so they must be re-established around each
-  rank's layer call), then re-run the paired layer-0 capture and confirm
-  `linear_qkv` becomes bit-identical before any envelope claim. The contract is
-  recorded in `docs/REFACTOR.md` and pinned by an `xfail` regression test
-  (`tests/test_unit_distributed_tp2_generate.py::test_bulk_prefill_establishes_the_resident_dispatch_context`).
-  Do not relax the envelope.
+- **Post-fix end-to-end result (2026-09-17):** the same-script, same-command A/B
+  shows the saved failing prompt improving sharply — `mixed_ja_en_translate`
+  bulk-vs-teacher max KL 0.487140 → **0.167053** (−65.7%), mean KL 0.00682607 →
+  **0.00255761** (−62.5%), p99 KL 0.20779 → **0.0913498** (−56.0%), top-1
+  0.992188 → **1.0** with no flipped rows, and bulk-vs-serial max KL 0.551179 →
+  **0.0258852** (−95.3%). On the heldout `heldout_mixed_summary` the same change
+  improves p95 KL 0.00117821 → **0.000687013**, p99 KL 0.0374066 → **0.0187383**
+  and top-1 0.96875 → **0.984375**, but worsens max KL 0.0557287 → **0.260776**
+  and mean KL 0.00100139 → **0.00240681**. The token-serial route is
+  bit-identical before and after on both prompts, and two independent post-fix
+  runs produced identical bulk and serial logits SHA-256s.
+  (`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-dispatch-context-ab.json`)
+- **Blocker:** both prompts still exceed the production envelope (max KL ≤ 0.05,
+  mean KL ≤ 0.001, p99 KL ≤ 0.02), so the bulk route stays opt-in and
+  default-off and is not promoted. Bit-identical layer-0 intermediates do **not**
+  by themselves prove that every end-to-end difference came from the dispatch
+  context; the A/B above is the controlled intervention, and it shows the
+  remaining gap is no longer a single monotone defect — the heldout's max/mean
+  regressed while its p95/p99/top-1 improved. The next experiment is to localize
+  the remaining gap **downstream of layer 0** (the sharded MLP chain route,
+  whose Q6_K down projection changed to `t16_wmma_prefill` when the context was
+  wired in, and later-layer accumulation) before any envelope or promotion
+  claim. The bulk head projection is deliberately left outside the dispatch
+  context (it is not a resident layer helper, and the Q6_K planar
+  `t16_wmma_prefill_bf16_f32_out` leaf is unregistered); both are recorded in
+  `docs/REFACTOR.md`. Do not relax the envelope.
 
 Before any kernel port: run `scripts/check_lineage.py`, check `docs/KERNELS.md`,
 and register a strict fallback. No new kernel unless a concrete missing

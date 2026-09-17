@@ -514,6 +514,7 @@ from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
     prefill_f16_staging_for as _prefill_f16_staging_for_profile,
     q6_integer_mmq_for as _q6_integer_mmq_for_profile,
+    resident_session_wmma_prefill_default,
 )
 
 
@@ -554,10 +555,9 @@ def _mtp_serving_target_wmma_for(generator: object) -> bool:
 # and `HIPENGINE_GGUF_WMMA_PREFILL` is opt-in-only, so no bench or diagnostic could take the WMMA
 # prefill route away - `setattr` misses it too because the constant is bound as a default argument.
 # This resolver is read at session-acquire time (once per session, not per token) and is a
-# *diagnostic* only: unset means the production route, unchanged.
-_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV = "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL"
-_WMMA_PREFILL_FALSY = frozenset({"0", "false", "no", "off"})
-_WMMA_PREFILL_TRUTHY = frozenset({"1", "true", "yes", "on"})
+# *diagnostic* only: unset means the production route, unchanged. It lives next to the session
+# toggles it feeds (`hipengine.runtime.gguf_linear`) so every route that replaces the resident bulk
+# prefill - including the rank-local TP2 bulk prefill - reads the same policy.
 
 
 def _resident_session_wmma_prefill_default() -> bool:
@@ -567,17 +567,7 @@ def _resident_session_wmma_prefill_default() -> bool:
     unchanged" is how a route A/B becomes a null result with no clue why (measured the hard way on
     2026-08-30 with HIPENGINE_GGUF_Q4K_ROWTILE, whose value the server session overrode).
     """
-    raw = (os.environ.get(_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV) or "").strip().lower()
-    if not raw:
-        return True
-    if raw in _WMMA_PREFILL_TRUTHY:
-        return True
-    if raw in _WMMA_PREFILL_FALSY:
-        return False
-    raise ValueError(
-        f"invalid {_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV}={raw!r}; expected a boolean in "
-        f"{sorted(_WMMA_PREFILL_TRUTHY)} or {sorted(_WMMA_PREFILL_FALSY)}"
-    )
+    return resident_session_wmma_prefill_default()
 
 
 def _target_arch_scoped(method):

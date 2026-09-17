@@ -144,6 +144,18 @@ def q8_t16_two_wave_prefill_session(enabled: bool | None) -> Iterator[None]:
         _wide_wave_session_enabled = previous
 
 
+def q8_t16_two_wave_prefill_enabled() -> bool | None:
+    """Report the session-scoped wide-wave override, ``None`` when unset.
+
+    ``None`` means "no session override": the resolver falls back to the env
+    rollback and then to the caller's default. A diagnostic that reports the
+    session-scoped GGUF prefill dispatch context needs the raw override, not
+    the per-shape resolution.
+    """
+
+    return _wide_wave_session_enabled
+
+
 def _wide_wave_prefill_enabled(*, default: bool) -> bool:
     """Resolve the shared GPF-5A/LCP-3 request ceiling and rollback control."""
 
@@ -562,6 +574,7 @@ __all__ = [
     "gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out",
     "plan_gguf_q8_0_t16_prefill_build",
     "register_gguf_q8_0_t16_prefill_kernels",
+    "q8_t16_two_wave_prefill_enabled",
     "q8_t16_two_wave_prefill_session",
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out",

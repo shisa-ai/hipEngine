@@ -7711,37 +7711,74 @@ mtp-bench category suite. Until then it is a candidate, not a default: the
 capacity-64 MLP relative-error finding is still open, chunked bulk prefill is
 not implemented, and no end-to-end quality run exists for the bulk route.
 
-## 2026-09-17 TP2 bulk prefill omits the resident dispatch context — open
+## 2026-09-17 TP2 bulk prefill omits the resident dispatch context — fixed
 
-`MlpTP2GenerationSession.bulk_prefill` calls the shared resident layer helpers
-(`_run_linear_attention_prefill_attn_rows`, `_run_linear_attention_prefill_attn_rows`,
-`_run_post_attention_norm_residual_rows`) directly from
-`hipengine/distributed/tp2_generate.py`. `Qwen35GGUFResidentSession` instead
-wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners
-(`q8_t16_two_wave_prefill_session`, `wmma_prefill_session`,
-`gemv_decode_session`, `q8_t16_dual_wmma_prefill_session`,
-`q4_pack8_dual_wmma_silu_prefill_session`,
-`q4_t16_unequal_pair_prefill_session`, `_prefill_f16_staging_context`,
-`_q6_integer_mmq_context`, `_iq_dense_mmq_context`,
-`_q8_mmq_prefill_context`, `_q6_f16_rocblas_prefill_context`). Those context
-variables participate in `launch_gguf_linear`'s dispatch resolution and in its
-dispatch cache key, so the TP2 bulk route resolves **different kernels for the
-same weight and rows**.
+`MlpTP2GenerationSession.bulk_prefill` called the shared resident layer helpers
+(`_run_linear_attention_prefill_attn_rows`, `_run_post_attention_norm_residual_rows`)
+directly from `hipengine/distributed/tp2_generate.py`, while
+`Qwen35GGUFResidentSession` wraps its whole bulk prefill in eleven session-scoped
+GGUF linear dispatch owners. Six of those owners are plain process-global toggles
+that participate in `launch_gguf_linear`'s dispatch resolution **and its dispatch
+cache key**, so the TP2 bulk route resolved different kernels for the same weight
+and rows.
 
 Measured on the W7900 layer-0 comparison
 (`benchmarks/results/2026-09-17-w7900-tp2-bulk-vs-resident-tp1-layer0.json`):
 with identical layer input (sha256 `306c076e…`), identical layer-0 weights,
 identical all-zero initial conv/recurrent state and the same
 `chain_compact_peer_wave32` GDN mode, the Q6_K `attn_qkv` projection
-(`linear_qkv`, bf16 `[64, 10240]`) differs by rel 3.73e-03 / max_abs 0.25 while
+(`linear_qkv`, bf16 `[64, 10240]`) differed by rel 3.73e-03 / max_abs 0.25 while
 the Q4_K `attn_gate` projection (`linear_z`, bf16 `[64, 6144]`) from the same
-launch group is bit-identical.
+launch group was bit-identical. The Q4_K shape already resolved its WMMA variant
+without the context; the Q6_K shape did not.
 
-Fix by giving the TP2 bulk path the same dispatch context per rank (the
-contexts are process-global, so the context must be re-established around each
-rank's layer call, not once around the whole loop), then re-run the paired
-layer-0 capture to confirm `linear_qkv` becomes bit-identical before any
-envelope claim. A regression test
-(`tests/test_unit_distributed_tp2_generate.py::test_bulk_prefill_establishes_the_resident_dispatch_context`)
-currently `xfail`s on this contract; it must flip to `xpass`/pass when the
-context is wired in.
+Fixed by `resident_prefill_dispatch_session` in
+`hipengine/runtime/qwen35_gguf_runner.py`, the single source of the six
+device-free owners, now shared by the resident session and entered per rank (and
+once around the shard-group forward, whose owners are rank-invariant and hold no
+device pointers) in `tp2_generate.py`. After the fix all 15 layer-0 producer
+fields are bit-identical between the teacher and the candidate.
+
+The five remaining resident owners (f16 staging, Q6 integer MMQ, IQ dense MMQ,
+Q8 MMQ workspace, Q6 f16 rocBLAS) bind session-owned scratch and stay with the
+resident session.
+
+## 2026-09-17 Q6_K planar `t16_wmma_prefill_bf16_f32_out` is unregistered — open
+
+`launch_gguf_linear` with `output_dtype=GGUF_OUTPUT_F32` on a Q6_K planar weight
+at `rows > 1` resolves `t16_wmma_prefill_bf16_f32_out` once the resident
+`wmma_prefill` owner is active, and that leaf has **no registered kernel**:
+`resolve` silently returns `hipengine.kernels.cpu_reference.ops.linear`, so the
+launch fails with `TypeError: linear() got an unexpected keyword argument
+'stream'` instead of running. The TP2 bulk head projection is therefore
+deliberately left outside `resident_prefill_dispatch_session` (it is not a
+resident layer helper; the resident samples through its dedicated `lm_head`
+kernel). Remove this exclusion once the f32-out WMMA prefill leaf is registered
+and gated, or once the TP2 bulk head moves onto the resident sampling path.
+Pinned by
+`tests/test_unit_qwen35_gguf_resident_prefill_context.py::test_f32_out_wmma_prefill_variant_is_unregistered`.
+
+## 2026-09-17 TP2 bulk head projection uses a different kernel than the resident — open
+
+The resident bulk prefill samples through `_sample_from_hidden` (dedicated
+`lm_head` kernel); the TP2 bulk prefill projects the head through
+`launch_gguf_linear(..., output_dtype=GGUF_OUTPUT_F32)`. Both are Q6_K f32-out
+GEMMs but they are different kernels, so the head is a known, pre-existing
+residual difference between the two routes that is independent of the
+dispatch-context fix. Revisit together with the unregistered f32-out WMMA leaf
+above.
+
+## 2026-09-17 TP2 bulk prefill still fails the production envelope — open
+
+After the dispatch-context fix
+(`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-dispatch-context-ab.json`),
+layer-0 intermediates are bit-identical to the teacher and the saved failing
+prompt improves sharply, but `mixed_ja_en_translate` (bulk-vs-teacher max KL
+0.167, mean 0.00256, p99 0.0913) and `heldout_mixed_summary` (max KL 0.261,
+mean 0.00241, p99 0.0187) both still exceed the production envelope. The
+heldout max/mean got worse while its p95/p99/top-1 got better, so the remaining
+gap is not a single monotone defect. Localize it downstream of layer 0 — the
+sharded MLP chain route (whose Q6_K down projection changed to
+`t16_wmma_prefill` when the context was wired in) and later-layer accumulation
+are the remaining candidates. The bulk route stays opt-in and default-off until
+the full mtp-bench category suite clears the envelope.

@@ -3,14 +3,19 @@
     "npz": "not committed (raw capture)",
     "worklog": null
   },
-  "candidate": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True)",
+  "candidate": "MlpTP2GenerationSession(bulk_prefill=True, bulk_prefill_rows=200, schedule=graphed, head_shard=True, use_wmma_prefill=<shipped resident policy>)",
   "capture_method": {
     "allocator_alias_source": "scratch.allocation_mode/allocation_groups/allocation_inplace_aliases/allocation_lifetimes",
     "descriptors": "producer-derived (live DeviceBuffer ptr/nbytes + config width/dtype + helper rows)",
+    "dispatch_provenance": "gguf_linear.resolve wrapped for the duration of each route's prefill; every cache-miss resolution records the selected (layer, quant, variant) together with the session-scoped dispatch context that keyed it",
     "read_point": "immediately after each producer, on the producer's stream, before any aliasing writer",
-    "rejected": "reading all fields once after the helper returns, and identifying valid columns by rank0==rank1 agreement"
+    "rejected": [
+      "reading all fields once after the helper returns",
+      "identifying valid columns by rank0==rank1 agreement",
+      "inferring a shared route from a shared environment"
+    ]
   },
-  "command": "scripts/tp2_bulk_vs_resident_layer0.py --prompt mixed_ja_en_translate --json /tmp/tp2_layer0_e.json --save-dir /tmp/tp2_layer0_e",
+  "command": "scripts/tp2_bulk_vs_resident_layer0.py --prompt mixed_ja_en_translate --json /tmp/tp2_layer0_fix.json --save-dir /tmp/tp2_layer0_fix",
   "comparison": {
     "candidate_0_vs_candidate_1": {
       "fields": {
@@ -23,11 +28,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             5120
-          ]
+          ],
+          "teacher_absmax": 28.0
         },
         "conv_out": {
           "all_finite": [
@@ -38,11 +43,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 40.46630859375
         },
         "linear_alpha": {
           "all_finite": [
@@ -53,11 +58,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 20.0
         },
         "linear_beta": {
           "all_finite": [
@@ -68,11 +73,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 8.5
         },
         "linear_qkv": {
           "all_finite": [
@@ -83,11 +88,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 67.0
         },
         "linear_qkv_f32": {
           "all_finite": [
@@ -98,11 +103,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 67.0
         },
         "linear_z": {
           "all_finite": [
@@ -113,11 +118,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 33.25
         },
         "norm": {
           "all_finite": [
@@ -128,11 +133,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             5120
-          ]
+          ],
+          "teacher_absmax": 50.25
         },
         "prefill_beta": {
           "all_finite": [
@@ -143,11 +148,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 0.9997965693473816
         },
         "prefill_decay": {
           "all_finite": [
@@ -158,11 +163,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 0.9999995827674866
         },
         "prefill_key": {
           "all_finite": [
@@ -173,11 +178,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             2048
-          ]
+          ],
+          "teacher_absmax": 0.9587097764015198
         },
         "prefill_query": {
           "all_finite": [
@@ -188,11 +193,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             2048
-          ]
+          ],
+          "teacher_absmax": 0.9968681335449219
         },
         "prefill_value": {
           "all_finite": [
@@ -203,11 +208,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 40.46630859375
         },
         "recurrent_bf16": {
           "all_finite": [
@@ -218,11 +223,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 2.59375
         },
         "recurrent_out": {
           "all_finite": [
@@ -233,32 +238,14 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 3.3327927589416504
         }
       },
-      "input": {
-        "all_finite": [
-          true,
-          true
-        ],
-        "argmax_equal": true,
-        "bit_equal": true,
-        "candidate_absmax": 0.58203125,
-        "cells": 327680,
-        "finite_cells": 327680,
-        "max_abs": 0.0,
-        "rel": 0.0,
-        "rms": 0.0,
-        "shape": [
-          64,
-          5120
-        ],
-        "teacher_absmax": 0.58203125
-      },
+      "input_bit_equal": true,
       "input_sha256": [
         "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
         "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f"
@@ -272,14 +259,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.001953125,
-          "rel": 6.975446428571428e-05,
-          "rms": 5.415879138965629e-05,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             5120
-          ]
+          ],
+          "teacher_absmax": 28.0
         },
         "conv_out": {
           "all_finite": [
@@ -287,14 +274,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.068359375,
-          "rel": 0.0016892911010558068,
-          "rms": 0.0002688963591724285,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 40.46630859375
         },
         "linear_alpha": {
           "all_finite": [
@@ -305,11 +292,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 20.0
         },
         "linear_beta": {
           "all_finite": [
@@ -320,11 +307,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 8.5
         },
         "linear_qkv": {
           "all_finite": [
@@ -332,14 +319,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.25,
-          "rel": 0.0037313432835820895,
-          "rms": 0.0016061001065499805,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 67.0
         },
         "linear_qkv_f32": {
           "all_finite": [
@@ -347,14 +334,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.25,
-          "rel": 0.0037313432835820895,
-          "rms": 0.0016061001065499805,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             10240
-          ]
+          ],
+          "teacher_absmax": 67.0
         },
         "linear_z": {
           "all_finite": [
@@ -365,11 +352,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 33.25
         },
         "norm": {
           "all_finite": [
@@ -380,11 +367,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             5120
-          ]
+          ],
+          "teacher_absmax": 50.25
         },
         "prefill_beta": {
           "all_finite": [
@@ -395,11 +382,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 0.9997965693473816
         },
         "prefill_decay": {
           "all_finite": [
@@ -410,11 +397,11 @@
           "bit_equal": true,
           "max_abs": 0.0,
           "rel": 0.0,
-          "rms": 0.0,
           "shape": [
             64,
             48
-          ]
+          ],
+          "teacher_absmax": 0.9999995827674866
         },
         "prefill_key": {
           "all_finite": [
@@ -422,14 +409,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.0031742751598358154,
-          "rel": 0.0033110108246127,
-          "rms": 5.601009017676058e-05,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             2048
-          ]
+          ],
+          "teacher_absmax": 0.9587097764015198
         },
         "prefill_query": {
           "all_finite": [
@@ -437,14 +424,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.006967633962631226,
-          "rel": 0.006989524219069887,
-          "rms": 4.765522444129567e-05,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             2048
-          ]
+          ],
+          "teacher_absmax": 0.9968681335449219
         },
         "prefill_value": {
           "all_finite": [
@@ -452,14 +439,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.068359375,
-          "rel": 0.0016892911010558068,
-          "rms": 0.0003264649548609292,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 40.46630859375
         },
         "recurrent_bf16": {
           "all_finite": [
@@ -467,14 +454,14 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.00390625,
-          "rel": 0.0015060240963855422,
-          "rms": 2.3848937956616062e-05,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 2.59375
         },
         "recurrent_out": {
           "all_finite": [
@@ -482,35 +469,17 @@
             true
           ],
           "argmax_equal": true,
-          "bit_equal": false,
-          "max_abs": 0.0032019615173339844,
-          "rel": 0.0009607158083890591,
-          "rms": 2.4537309983296782e-05,
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "rel": 0.0,
           "shape": [
             64,
             6144
-          ]
+          ],
+          "teacher_absmax": 3.3327927589416504
         }
       },
-      "input": {
-        "all_finite": [
-          true,
-          true
-        ],
-        "argmax_equal": true,
-        "bit_equal": true,
-        "candidate_absmax": 0.58203125,
-        "cells": 327680,
-        "finite_cells": 327680,
-        "max_abs": 0.0,
-        "rel": 0.0,
-        "rms": 0.0,
-        "shape": [
-          64,
-          5120
-        ],
-        "teacher_absmax": 0.58203125
-      },
+      "input_bit_equal": true,
       "input_sha256": [
         "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
         "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f"
@@ -518,44 +487,89 @@
     }
   },
   "date": "2026-09-17",
-  "earliest_divergence": {
-    "candidate_absmax": 67.0,
-    "dtype": "bf16",
-    "field": "linear_qkv",
-    "max_abs": 0.25,
-    "note": "linear_z (attn_gate projection, Q4_K) is bit-identical from the same launch group, so the difference is specific to the Q6_K attn_qkv route, not to the shared input.",
-    "producer": "qkv_gate (attn_qkv projection, Q6_K)",
-    "rel": 0.0037313432835820895,
-    "shape": [
-      64,
-      10240
-    ],
-    "teacher_absmax": 67.0
-  },
-  "env": {
-    "HIPENGINE_C8_Q6_DP4A_GROUPED": "1",
-    "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
-    "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28": "1",
-    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
-    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "0",
-    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "0"
-  },
-  "finding": "With identical layer input (sha256 306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f), identical layer-0 weights, identical all-zero initial conv/recurrent state and the same chain_compact_peer_wave32 GDN mode, the earliest differing operation between the resident TP1 bulk teacher and the TP2 bulk candidate is the Q6_K attn_qkv projection: linear_qkv (bf16 [64,10240]) differs by rel 3.73e-03 / max_abs 0.25 on a 67.0 peak, while the Q4_K attn_gate projection (linear_z, bf16 [64,6144]) from the same launch group is bit-identical. Both routes resolve the same GDN mode and the same launch sequence. Verified cause: MlpTP2GenerationSession.bulk_prefill calls the shared resident layer helpers directly, while Qwen35GGUFResidentSession wraps its whole bulk prefill in the session-scoped GGUF linear dispatch owners (q8_t16_two_wave_prefill_session, wmma_prefill_session, gemv_decode_session, q8_t16_dual_wmma_prefill_session, q4_pack8_dual_wmma_silu_prefill_session, q4_t16_unequal_pair_prefill_session, _prefill_f16_staging_context, _q6_integer_mmq_context, _iq_dense_mmq_context, _q8_mmq_prefill_context, _q6_f16_rocblas_prefill_context). Those context variables participate in launch_gguf_linear dispatch resolution and in its dispatch cache key, so the Q6_K projection resolves a different kernel on each route. Every downstream difference (conv_out 1.69e-03, prefill_query 6.99e-03, recurrent_bf16 1.51e-03, attn_out 6.98e-05) is consistent with this upstream difference. No production arithmetic was changed; the bulk route stays opt-in/default-off and no numerical threshold was relaxed.",
-  "host": {
-    "cpu": "AMD Ryzen 9 5950X",
-    "gpus": [
+  "dispatch_context": {
+    "candidate_contexts": [
       {
-        "model": "AMD Radeon Pro W7900",
-        "pci": "0000:0d:00.0",
-        "role": "rank0"
+        "gemv_decode": false,
+        "q4_pack8_dual_wmma_silu_prefill": false,
+        "q4_t16_unequal_pair_prefill": false,
+        "q8_t16_dual_wmma_prefill": false,
+        "q8_t16_two_wave_prefill": false,
+        "t16_f16_rocblas_prefill": false,
+        "wmma_prefill": false
       },
       {
-        "model": "AMD Radeon RX 7900 XTX",
-        "pci": "0000:10:00.0",
-        "role": "rank1"
+        "gemv_decode": true,
+        "q4_pack8_dual_wmma_silu_prefill": false,
+        "q4_t16_unequal_pair_prefill": true,
+        "q8_t16_dual_wmma_prefill": false,
+        "q8_t16_two_wave_prefill": true,
+        "t16_f16_rocblas_prefill": false,
+        "wmma_prefill": true
       }
-    ]
+    ],
+    "candidate_resolutions": 328,
+    "diff": {
+      "differing_variants": {
+        "linear:gguf_q4_k_t16_v1": {
+          "candidate": [
+            "dense_single_local32_bf16_bf16_out",
+            "t16_wmma_prefill_bf16_bf16_out"
+          ],
+          "teacher": [
+            "t16_wmma_prefill_bf16_bf16_out"
+          ]
+        },
+        "linear:gguf_q5_k_t16_v1": {
+          "candidate": [
+            "dense_single_local32_bf16_bf16_out",
+            "t16_wmma_prefill_bf16_bf16_out"
+          ],
+          "teacher": [
+            "t16_wmma_prefill_bf16_bf16_out"
+          ]
+        },
+        "linear:gguf_q6_k_t16_qmicro_planar_v1": {
+          "candidate": [
+            "t16_gemv_decode_bf16_bf16_out",
+            "t16_gemv_decode_bf16_f32_out",
+            "t16_wmma_prefill_bf16_bf16_out"
+          ],
+          "teacher": [
+            "t16_gemv_decode_bf16_f32_out",
+            "t16_wmma_prefill_bf16_bf16_out"
+          ]
+        },
+        "linear_pair_silu:gguf_q4_k_t16_v1": {
+          "candidate": [
+            "dense_dual_local32_bf16_bf16_out"
+          ],
+          "teacher": [
+            "dense_dual_wmma_prefill_row64_bf16_bf16_out"
+          ]
+        }
+      },
+      "only_candidate": {},
+      "only_teacher": {}
+    },
+    "teacher_contexts": [
+      {
+        "gemv_decode": true,
+        "q4_pack8_dual_wmma_silu_prefill": false,
+        "q4_t16_unequal_pair_prefill": true,
+        "q8_t16_dual_wmma_prefill": false,
+        "q8_t16_two_wave_prefill": true,
+        "t16_f16_rocblas_prefill": false,
+        "wmma_prefill": true
+      }
+    ],
+    "teacher_resolutions": 99
   },
+  "earliest_divergence": {
+    "teacher_vs_candidate_0": {}
+  },
+  "finding": "After giving the TP2 rank-local bulk prefill the same session-scoped GGUF linear dispatch context the resident bulk prefill establishes, all 15 layer-0 producer fields are bit-identical between the resident TP1 bulk teacher and the TP2 bulk candidate on identical input (sha256 306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f), identical layer-0 weights, identical all-zero initial conv/recurrent state and the same chain_compact_peer_wave32 GDN mode. The previously measured divergence was the Q6_K attn_qkv projection (linear_qkv rel 3.73e-03, max_abs 0.25): the resident session runs it inside wmma_prefill_session(self.use_wmma_prefill=True) and the TP2 bulk path did not, so the same Q6_K weight at rows=64 resolved t16_wmma_prefill_bf16_bf16_out on the teacher and t16_gemv_decode_bf16_bf16_out on the candidate. The Q4_K attn_gate projection from the same launch group was already on its WMMA variant in both routes, which is why it stayed bit-identical. The candidate's resolve log now shows exactly one bulk context, equal to the teacher's; its remaining extra resolutions are the ambient-context decode warmup and the head projection.",
+  "host": "epyc",
   "initial_state_hashes": {
     "candidate_0": {
       "conv": {
@@ -597,1910 +611,531 @@
   "kind": "correctness-diagnostic",
   "limitations": [
     "Correctness diagnostic only: no performance claim.",
+    "Layer 0 only. Bit-identical layer-0 intermediates do not by themselves prove that every end-to-end difference was caused by the dispatch context; the paired end-to-end A/B in 2026-09-17-w7900-tp2-bulk-prefill-dispatch-context-ab.json is the controlled intervention.",
     "attn_qkv/attn_gate weight bytes could not be hashed through layer.weight(name).allocation() (KeyError 'raw': those weights expose packed allocations under other names); the dispatch-context evidence does not depend on that hash.",
-    "One paired capture; no repeat run and no envelope run for the bulk route."
+    "The TP2 bulk head projection is deliberately left outside the dispatch context: the resident samples through its dedicated lm_head kernel, and the Q6_K planar t16_wmma_prefill_bf16_f32_out leaf is not registered (the registry silently returns the CPU reference). See docs/REFACTOR.md."
   ],
-  "model": {
-    "layer0_quant": {
-      "attn_gate": "Q4_K",
-      "attn_qkv": "Q6_K",
-      "ffn_down": "Q6_K",
-      "ffn_gate": "Q4_K",
-      "ssm_out": "Q5_K"
-    },
-    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
-    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
-  },
-  "next_action": "Give the TP2 bulk path the same session-scoped dispatch context per rank, then re-run this paired capture and confirm linear_qkv becomes bit-identical before any envelope claim.",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "next_action": "Bulk stays default-off. The remaining end-to-end gap is no longer the dispatch context; localize it downstream of layer 0 (MLP shard chain route, later-layer accumulation) before any envelope or promotion claim.",
   "performance_claim": false,
+  "profile": {
+    "env_after_binding": {
+      "HIPENGINE_C8_Q6_DP4A_GROUPED": "1",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28": "1",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "0",
+      "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "0"
+    },
+    "fell_back_to_strict": false,
+    "manifest": {
+      "backend": "hip_gfx1100",
+      "execution_profile": "production",
+      "graph_policy": "specdec2_eager_c1_exact_qwen38_c8_q6_dp4a",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16",
+      "model": "qwen3_5_gguf",
+      "quant": "gguf_q4_k_m",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+          "layer": "linear_attn_chain_conv_decode",
+          "registry_quant": "gguf_qwen35",
+          "scope": "specdec2_mtp2_c1",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop"
+        },
+        {
+          "evidence_artifact": "benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json",
+          "layer": "linear_pair_silu",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "scope": "specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+          "selected_variant": "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_rowtile_bf16_bf16_out"
+        }
+      ]
+    },
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "requested": "production",
+    "scope_note": "Named TP1 arithmetic binder; not a distributed/AR-graph promotion certificate.",
+    "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
+  },
   "protocol": "resident TP1 bulk vs TP2 bulk, layer-0 GDN primitive chain, producer-derived descriptors captured immediately after each producer on its owning stream",
   "routes": {
     "candidate_0": {
-      "allocation": {
-        "aliasing_pairs": [
-          [
-            "norm",
-            "linear_qkv_f32"
-          ],
-          [
-            "norm",
-            "conv_out"
-          ],
-          [
-            "norm",
-            "prefill_query"
-          ],
-          [
-            "norm",
-            "prefill_key"
-          ],
-          [
-            "norm",
-            "prefill_value"
-          ],
-          [
-            "norm",
-            "prefill_beta"
-          ],
-          [
-            "norm",
-            "prefill_decay"
-          ],
-          [
-            "norm",
-            "recurrent_out"
-          ],
-          [
-            "norm",
-            "recurrent_bf16"
-          ],
-          [
-            "norm",
-            "attn_out"
-          ],
-          [
-            "linear_qkv",
-            "conv_out"
-          ],
-          [
-            "linear_qkv",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv",
-            "attn_out"
-          ],
-          [
-            "linear_z",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_z",
-            "attn_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_alpha",
-            "attn_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_beta",
-            "attn_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv_f32",
-            "attn_out"
-          ],
-          [
-            "conv_out",
-            "recurrent_bf16"
-          ],
-          [
-            "conv_out",
-            "attn_out"
-          ],
-          [
-            "prefill_query",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_query",
-            "attn_out"
-          ],
-          [
-            "prefill_key",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_key",
-            "attn_out"
-          ],
-          [
-            "prefill_value",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_value",
-            "attn_out"
-          ],
-          [
-            "prefill_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_beta",
-            "attn_out"
-          ],
-          [
-            "prefill_decay",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_decay",
-            "attn_out"
-          ],
-          [
-            "recurrent_out",
-            "recurrent_bf16"
-          ],
-          [
-            "recurrent_out",
-            "attn_out"
-          ]
-        ],
-        "allocation_mode": "dedicated",
-        "fields": {
-          "attn_out": {
-            "allocated_nbytes": 2048000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                7
-              ],
-              [
-                "full",
-                5,
-                7
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fb09f200000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "conv_out": {
-            "allocated_nbytes": 8192000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                2,
-                5
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fb0f7400000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_alpha": {
-            "allocated_nbytes": 19200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fb16c5f4000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_beta": {
-            "allocated_nbytes": 19200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fb16c5f9000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_qkv": {
-            "allocated_nbytes": 4096000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                2
-              ]
-            ],
-            "nbytes": 1310720,
-            "ptr": "0x7fb15c200000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_qkv_f32": {
-            "allocated_nbytes": 8192000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                1,
-                3
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fb127200000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_z": {
-            "allocated_nbytes": 2457600,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                5
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fb15bc00000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "norm": {
-            "allocated_nbytes": 2048000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                1
-              ],
-              [
-                "full",
-                0,
-                1
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fb16c400000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "prefill_beta": {
-            "allocated_nbytes": 38400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fb104ff4000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_decay": {
-            "allocated_nbytes": 38400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fb17d3b8000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_key": {
-            "allocated_nbytes": 1638400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fb12b400000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_query": {
-            "allocated_nbytes": 1638400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fb138200000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_value": {
-            "allocated_nbytes": 4915200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fb0fb600000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_bf16": {
-            "allocated_nbytes": 2457600,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                6
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fb0e6200000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_out": {
-            "allocated_nbytes": 4915200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                4,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fb0ea000000",
-            "shape": [
-              64,
-              6144
-            ]
-          }
-        },
-        "gdn_effective_mode": "chain_compact_peer_wave32",
-        "scratch_rows": 64
-      },
-      "args": {
-        "gdn_mode": "chain_compact_peer_wave32",
-        "hidden_f32_ptr": null,
-        "norm_f32_ptr": null,
-        "out_f32_ptr": 140395694522368
-      },
-      "device": 0,
-      "events": [
+      "aliasing_pairs": 49,
+      "allocation_mode": "dedicated",
+      "capture_plan": [
         {
-          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "buffers": [
+            "norm"
+          ],
+          "kernel": "unresolved",
           "producer": "attn_norm"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "linear_qkv",
+            "linear_z"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_gate"
         },
         {
-          "kernel": "fallback",
+          "buffers": [
+            "linear_alpha",
+            "linear_beta"
+          ],
+          "kernel": "unresolved",
           "producer": "alpha_beta"
         },
         {
-          "kernel": "bf16_to_f32",
+          "buffers": [
+            "linear_qkv_f32"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_bf16_to_f32"
         },
         {
-          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "buffers": [
+            "conv_out"
+          ],
+          "kernel": "unresolved",
           "producer": "conv_prefill"
         },
         {
-          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "buffers": [
+            "prefill_query",
+            "prefill_key",
+            "prefill_value",
+            "prefill_beta",
+            "prefill_decay"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_prepare"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "recurrent_out"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_recurrent"
         },
         {
-          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "buffers": [
+            "recurrent_bf16"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_rmsnorm_gate"
         },
         {
-          "kernel": "_try_launch_dense_q8_single_dp4a",
-          "producer": "ssm_out"
-        },
-        {
-          "kernel": "launch_gguf_linear",
+          "buffers": [
+            "attn_out"
+          ],
+          "kernel": "unresolved",
           "producer": "ssm_out"
         }
       ],
+      "captured_fields": [
+        "attn_out",
+        "conv_out",
+        "linear_alpha",
+        "linear_beta",
+        "linear_qkv",
+        "linear_qkv_f32",
+        "linear_z",
+        "norm",
+        "prefill_beta",
+        "prefill_decay",
+        "prefill_key",
+        "prefill_query",
+        "prefill_value",
+        "recurrent_bf16",
+        "recurrent_out"
+      ],
+      "device": 0,
+      "gdn_effective_mode": "chain_compact_peer_wave32",
       "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
       "launch_log": [
         {
           "kernel": "_try_launch_dense_q8_pair_dp4a",
-          "out3_ptr": "0x7fb15c200000",
-          "out4_ptr": "0x7fb15bc00000",
+          "out3_ptr": "0x7f7231400000",
+          "out4_ptr": "0x7f721b600000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fb15c200000",
-          "out4_ptr": "0x7fb15bc00000",
+          "out3_ptr": "0x7f7231400000",
+          "out4_ptr": "0x7f721b600000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb15c200000",
+          "out_ptr": "0x7f7231400000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb15bc00000",
+          "out_ptr": "0x7f721b600000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fb16c5f4000",
-          "out4_ptr": "0x7fb16c5f9000",
+          "out3_ptr": "0x7f7231bf4000",
+          "out4_ptr": "0x7f7231bf9000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb16c5f4000",
+          "out_ptr": "0x7f7231bf4000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb16c5f9000",
+          "out_ptr": "0x7f7231bf9000",
           "rows": 64
         },
         {
           "kernel": "bf16_to_f32",
-          "out_ptr": "0x7fb127200000"
+          "out_ptr": "0x7f71fa000000"
         },
         {
           "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
-          "out_ptr": "0x7fb0ea000000",
+          "out_ptr": "0x7f71d2200000",
           "rows": 64
         },
         {
           "kernel": "_try_launch_dense_q8_single_dp4a",
-          "out_ptr": "0x7fb09f200000",
+          "out_ptr": "0x7f71d1800000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb09f200000",
+          "out_ptr": "0x7f71d1800000",
           "rows": 64
         }
       ],
-      "rows": 64
+      "rows": 64,
+      "scratch_rows": 64
     },
     "candidate_1": {
-      "allocation": {
-        "aliasing_pairs": [
-          [
-            "norm",
-            "linear_qkv_f32"
-          ],
-          [
-            "norm",
-            "conv_out"
-          ],
-          [
-            "norm",
-            "prefill_query"
-          ],
-          [
-            "norm",
-            "prefill_key"
-          ],
-          [
-            "norm",
-            "prefill_value"
-          ],
-          [
-            "norm",
-            "prefill_beta"
-          ],
-          [
-            "norm",
-            "prefill_decay"
-          ],
-          [
-            "norm",
-            "recurrent_out"
-          ],
-          [
-            "norm",
-            "recurrent_bf16"
-          ],
-          [
-            "norm",
-            "attn_out"
-          ],
-          [
-            "linear_qkv",
-            "conv_out"
-          ],
-          [
-            "linear_qkv",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv",
-            "attn_out"
-          ],
-          [
-            "linear_z",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_z",
-            "attn_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_alpha",
-            "attn_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_beta",
-            "attn_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv_f32",
-            "attn_out"
-          ],
-          [
-            "conv_out",
-            "recurrent_bf16"
-          ],
-          [
-            "conv_out",
-            "attn_out"
-          ],
-          [
-            "prefill_query",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_query",
-            "attn_out"
-          ],
-          [
-            "prefill_key",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_key",
-            "attn_out"
-          ],
-          [
-            "prefill_value",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_value",
-            "attn_out"
-          ],
-          [
-            "prefill_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_beta",
-            "attn_out"
-          ],
-          [
-            "prefill_decay",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_decay",
-            "attn_out"
-          ],
-          [
-            "recurrent_out",
-            "recurrent_bf16"
-          ],
-          [
-            "recurrent_out",
-            "attn_out"
-          ]
-        ],
-        "allocation_mode": "dedicated",
-        "fields": {
-          "attn_out": {
-            "allocated_nbytes": 2048000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                7
-              ],
-              [
-                "full",
-                5,
-                7
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fac92c00000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "conv_out": {
-            "allocated_nbytes": 8192000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                2,
-                5
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fac9ac00000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_alpha": {
-            "allocated_nbytes": 19200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fac9ddf4000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_beta": {
-            "allocated_nbytes": 19200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fac9ddf9000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_qkv": {
-            "allocated_nbytes": 4096000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                2
-              ]
-            ],
-            "nbytes": 1310720,
-            "ptr": "0x7fac9ce00000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_qkv_f32": {
-            "allocated_nbytes": 8192000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                1,
-                3
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fac9c400000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_z": {
-            "allocated_nbytes": 2457600,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                5
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fac9be00000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "norm": {
-            "allocated_nbytes": 2048000,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                1
-              ],
-              [
-                "full",
-                0,
-                1
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fac9dc00000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "prefill_beta": {
-            "allocated_nbytes": 38400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fac999f4000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_decay": {
-            "allocated_nbytes": 38400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fac9a990000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_key": {
-            "allocated_nbytes": 1638400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fac9a400000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_query": {
-            "allocated_nbytes": 1638400,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fac9a800000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_value": {
-            "allocated_nbytes": 4915200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fac99c00000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_bf16": {
-            "allocated_nbytes": 2457600,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                6
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fac96200000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_out": {
-            "allocated_nbytes": 4915200,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                4,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fac96800000",
-            "shape": [
-              64,
-              6144
-            ]
-          }
-        },
-        "gdn_effective_mode": "chain_compact_peer_wave32",
-        "scratch_rows": 64
-      },
-      "args": {
-        "gdn_mode": "chain_compact_peer_wave32",
-        "hidden_f32_ptr": null,
-        "norm_f32_ptr": null,
-        "out_f32_ptr": 140379162673152
-      },
-      "device": 1,
-      "events": [
+      "aliasing_pairs": 49,
+      "allocation_mode": "dedicated",
+      "capture_plan": [
         {
-          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "buffers": [
+            "norm"
+          ],
+          "kernel": "unresolved",
           "producer": "attn_norm"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "linear_qkv",
+            "linear_z"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_gate"
         },
         {
-          "kernel": "fallback",
+          "buffers": [
+            "linear_alpha",
+            "linear_beta"
+          ],
+          "kernel": "unresolved",
           "producer": "alpha_beta"
         },
         {
-          "kernel": "bf16_to_f32",
+          "buffers": [
+            "linear_qkv_f32"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_bf16_to_f32"
         },
         {
-          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "buffers": [
+            "conv_out"
+          ],
+          "kernel": "unresolved",
           "producer": "conv_prefill"
         },
         {
-          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "buffers": [
+            "prefill_query",
+            "prefill_key",
+            "prefill_value",
+            "prefill_beta",
+            "prefill_decay"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_prepare"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "recurrent_out"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_recurrent"
         },
         {
-          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "buffers": [
+            "recurrent_bf16"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_rmsnorm_gate"
         },
         {
-          "kernel": "_try_launch_dense_q8_single_dp4a",
-          "producer": "ssm_out"
-        },
-        {
-          "kernel": "launch_gguf_linear",
+          "buffers": [
+            "attn_out"
+          ],
+          "kernel": "unresolved",
           "producer": "ssm_out"
         }
       ],
+      "captured_fields": [
+        "attn_out",
+        "conv_out",
+        "linear_alpha",
+        "linear_beta",
+        "linear_qkv",
+        "linear_qkv_f32",
+        "linear_z",
+        "norm",
+        "prefill_beta",
+        "prefill_decay",
+        "prefill_key",
+        "prefill_query",
+        "prefill_value",
+        "recurrent_bf16",
+        "recurrent_out"
+      ],
+      "device": 1,
+      "gdn_effective_mode": "chain_compact_peer_wave32",
       "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
       "launch_log": [
         {
           "kernel": "_try_launch_dense_q8_pair_dp4a",
-          "out3_ptr": "0x7fac9ce00000",
-          "out4_ptr": "0x7fac9be00000",
+          "out3_ptr": "0x7f6e24400000",
+          "out4_ptr": "0x7f6e23400000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fac9ce00000",
-          "out4_ptr": "0x7fac9be00000",
+          "out3_ptr": "0x7f6e24400000",
+          "out4_ptr": "0x7f6e23400000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fac9ce00000",
+          "out_ptr": "0x7f6e24400000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fac9be00000",
+          "out_ptr": "0x7f6e23400000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fac9ddf4000",
-          "out4_ptr": "0x7fac9ddf9000",
+          "out3_ptr": "0x7f6e253f4000",
+          "out4_ptr": "0x7f6e253f9000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fac9ddf4000",
+          "out_ptr": "0x7f6e253f4000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fac9ddf9000",
+          "out_ptr": "0x7f6e253f9000",
           "rows": 64
         },
         {
           "kernel": "bf16_to_f32",
-          "out_ptr": "0x7fac9c400000"
+          "out_ptr": "0x7f6e23a00000"
         },
         {
           "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
-          "out_ptr": "0x7fac96800000",
+          "out_ptr": "0x7f6e1de00000",
           "rows": 64
         },
         {
           "kernel": "_try_launch_dense_q8_single_dp4a",
-          "out_ptr": "0x7fac92c00000",
+          "out_ptr": "0x7f6e1a200000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fac92c00000",
+          "out_ptr": "0x7f6e1a200000",
           "rows": 64
         }
       ],
-      "rows": 64
+      "rows": 64,
+      "scratch_rows": 64
     },
     "teacher": {
-      "allocation": {
-        "aliasing_pairs": [
-          [
-            "norm",
-            "linear_qkv_f32"
-          ],
-          [
-            "norm",
-            "conv_out"
-          ],
-          [
-            "norm",
-            "prefill_query"
-          ],
-          [
-            "norm",
-            "prefill_key"
-          ],
-          [
-            "norm",
-            "prefill_value"
-          ],
-          [
-            "norm",
-            "prefill_beta"
-          ],
-          [
-            "norm",
-            "prefill_decay"
-          ],
-          [
-            "norm",
-            "recurrent_out"
-          ],
-          [
-            "norm",
-            "recurrent_bf16"
-          ],
-          [
-            "norm",
-            "attn_out"
-          ],
-          [
-            "linear_qkv",
-            "conv_out"
-          ],
-          [
-            "linear_qkv",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv",
-            "attn_out"
-          ],
-          [
-            "linear_z",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_z",
-            "attn_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_out"
-          ],
-          [
-            "linear_alpha",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_alpha",
-            "attn_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_out"
-          ],
-          [
-            "linear_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_beta",
-            "attn_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_query"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_key"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_value"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_beta"
-          ],
-          [
-            "linear_qkv_f32",
-            "prefill_decay"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_out"
-          ],
-          [
-            "linear_qkv_f32",
-            "recurrent_bf16"
-          ],
-          [
-            "linear_qkv_f32",
-            "attn_out"
-          ],
-          [
-            "conv_out",
-            "recurrent_bf16"
-          ],
-          [
-            "conv_out",
-            "attn_out"
-          ],
-          [
-            "prefill_query",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_query",
-            "attn_out"
-          ],
-          [
-            "prefill_key",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_key",
-            "attn_out"
-          ],
-          [
-            "prefill_value",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_value",
-            "attn_out"
-          ],
-          [
-            "prefill_beta",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_beta",
-            "attn_out"
-          ],
-          [
-            "prefill_decay",
-            "recurrent_bf16"
-          ],
-          [
-            "prefill_decay",
-            "attn_out"
-          ],
-          [
-            "recurrent_out",
-            "recurrent_bf16"
-          ],
-          [
-            "recurrent_out",
-            "attn_out"
-          ]
-        ],
-        "allocation_mode": "dedicated",
-        "fields": {
-          "attn_out": {
-            "allocated_nbytes": 2621440,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                7
-              ],
-              [
-                "full",
-                5,
-                7
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fb93fe00000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "conv_out": {
-            "allocated_nbytes": 10485760,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                2,
-                5
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fb986400000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_alpha": {
-            "allocated_nbytes": 24576,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fbfa4581000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_beta": {
-            "allocated_nbytes": 24576,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                4
-              ]
-            ],
-            "nbytes": 6144,
-            "ptr": "0x7fbfa4593000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "linear_qkv": {
-            "allocated_nbytes": 5242880,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                2
-              ]
-            ],
-            "nbytes": 1310720,
-            "ptr": "0x7fb988a00000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_qkv_f32": {
-            "allocated_nbytes": 10485760,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                1,
-                3
-              ]
-            ],
-            "nbytes": 2621440,
-            "ptr": "0x7fb987e00000",
-            "shape": [
-              64,
-              10240
-            ]
-          },
-          "linear_z": {
-            "allocated_nbytes": 3145728,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                5
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fb987800000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "norm": {
-            "allocated_nbytes": 2621440,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                0,
-                1
-              ],
-              [
-                "full",
-                0,
-                1
-              ]
-            ],
-            "nbytes": 655360,
-            "ptr": "0x7fb989e00000",
-            "shape": [
-              64,
-              5120
-            ]
-          },
-          "prefill_beta": {
-            "allocated_nbytes": 49152,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fbfa45a5000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_decay": {
-            "allocated_nbytes": 49152,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 12288,
-            "ptr": "0x7fbfa45b1000",
-            "shape": [
-              64,
-              48
-            ]
-          },
-          "prefill_key": {
-            "allocated_nbytes": 2097152,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fb985c00000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_query": {
-            "allocated_nbytes": 2097152,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 524288,
-            "ptr": "0x7fb986000000",
-            "shape": [
-              64,
-              2048
-            ]
-          },
-          "prefill_value": {
-            "allocated_nbytes": 6291456,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                3,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fb985400000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_bf16": {
-            "allocated_nbytes": 3145728,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "bf16",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                5,
-                6
-              ]
-            ],
-            "nbytes": 786432,
-            "ptr": "0x7fb943200000",
-            "shape": [
-              64,
-              6144
-            ]
-          },
-          "recurrent_out": {
-            "allocated_nbytes": 6291456,
-            "arena_group": null,
-            "arena_offset": null,
-            "dtype": "f32",
-            "inplace_alias": null,
-            "lifetimes": [
-              [
-                "linear",
-                4,
-                5
-              ]
-            ],
-            "nbytes": 1572864,
-            "ptr": "0x7fb943800000",
-            "shape": [
-              64,
-              6144
-            ]
-          }
-        },
-        "gdn_effective_mode": "chain_compact_peer_wave32",
-        "scratch_rows": 64
-      },
-      "args": {
-        "gdn_mode": "chain_compact_peer_wave32",
-        "hidden_f32_ptr": null,
-        "norm_f32_ptr": null,
-        "out_f32_ptr": 140433602641920
-      },
-      "device": 0,
-      "events": [
+      "aliasing_pairs": 49,
+      "allocation_mode": "dedicated",
+      "capture_plan": [
         {
-          "kernel": "gguf_rmsnorm_bf16_f32_weight",
+          "buffers": [
+            "norm"
+          ],
+          "kernel": "unresolved",
           "producer": "attn_norm"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "linear_qkv",
+            "linear_z"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_gate"
         },
         {
-          "kernel": "fallback",
+          "buffers": [
+            "linear_alpha",
+            "linear_beta"
+          ],
+          "kernel": "unresolved",
           "producer": "alpha_beta"
         },
         {
-          "kernel": "bf16_to_f32",
+          "buffers": [
+            "linear_qkv_f32"
+          ],
+          "kernel": "unresolved",
           "producer": "qkv_bf16_to_f32"
         },
         {
-          "kernel": "qwen35_linear_attn_conv_prefill_f32",
+          "buffers": [
+            "conv_out"
+          ],
+          "kernel": "unresolved",
           "producer": "conv_prefill"
         },
         {
-          "kernel": "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16",
+          "buffers": [
+            "prefill_query",
+            "prefill_key",
+            "prefill_value",
+            "prefill_beta",
+            "prefill_decay"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_prepare"
         },
         {
-          "kernel": "see launch_log",
+          "buffers": [
+            "recurrent_out"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_recurrent"
         },
         {
-          "kernel": "qwen35_gdn_prefill_rmsnorm_gate_bf16",
+          "buffers": [
+            "recurrent_bf16"
+          ],
+          "kernel": "unresolved",
           "producer": "gdn_rmsnorm_gate"
         },
         {
-          "kernel": "_try_launch_dense_q8_single_dp4a",
-          "producer": "ssm_out"
-        },
-        {
-          "kernel": "launch_gguf_linear",
+          "buffers": [
+            "attn_out"
+          ],
+          "kernel": "unresolved",
           "producer": "ssm_out"
         }
       ],
+      "captured_fields": [
+        "attn_out",
+        "conv_out",
+        "linear_alpha",
+        "linear_beta",
+        "linear_qkv",
+        "linear_qkv_f32",
+        "linear_z",
+        "norm",
+        "prefill_beta",
+        "prefill_decay",
+        "prefill_key",
+        "prefill_query",
+        "prefill_value",
+        "recurrent_bf16",
+        "recurrent_out"
+      ],
+      "device": 0,
+      "gdn_effective_mode": "chain_compact_peer_wave32",
       "input_sha256": "306c076e9d0adb2214074d7e27d85d7249da2e38fc44614bd776c0cffbda9c5f",
       "launch_log": [
         {
           "kernel": "_try_launch_dense_q8_pair_dp4a",
-          "out3_ptr": "0x7fb988a00000",
-          "out4_ptr": "0x7fb987800000",
+          "out3_ptr": "0x7f7b0fc00000",
+          "out4_ptr": "0x7f7b0ea00000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fb988a00000",
-          "out4_ptr": "0x7fb987800000",
+          "out3_ptr": "0x7f7b0fc00000",
+          "out4_ptr": "0x7f7b0ea00000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb988a00000",
+          "out_ptr": "0x7f7b0fc00000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb987800000",
+          "out_ptr": "0x7f7b0ea00000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear_pair",
-          "out3_ptr": "0x7fbfa4581000",
-          "out4_ptr": "0x7fbfa4593000",
+          "out3_ptr": "0x7f7b12381000",
+          "out4_ptr": "0x7f7b12393000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fbfa4581000",
+          "out_ptr": "0x7f7b12381000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fbfa4593000",
+          "out_ptr": "0x7f7b12393000",
           "rows": 64
         },
         {
           "kernel": "bf16_to_f32",
-          "out_ptr": "0x7fb987e00000"
+          "out_ptr": "0x7f7b0f000000"
         },
         {
           "kernel": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32",
-          "out_ptr": "0x7fb943800000",
+          "out_ptr": "0x7f7acae00000",
           "rows": 64
         },
         {
           "kernel": "_try_launch_dense_q8_single_dp4a",
-          "out_ptr": "0x7fb93fe00000",
+          "out_ptr": "0x7f7ac7000000",
           "rows": 64
         },
         {
           "kernel": "launch_gguf_linear",
-          "out_ptr": "0x7fb93fe00000",
+          "out_ptr": "0x7f7ac7000000",
           "rows": 64
         }
       ],
-      "rows": 64
+      "rows": 64,
+      "scratch_rows": 64
     }
   },
   "schema": "hipengine-benchmark-result/1",
-  "status": "root-cause-identified-not-fixed",
+  "status": "layer0-bit-identical",
   "teacher": "resident TP1 bulk (arm tp1-d0), production profile bound in-process",
-  "title": "Layer-0 earliest divergent operation: the TP2 bulk QKV projection",
+  "title": "Layer-0 TP2 bulk vs resident TP1 bulk: bit-identical after the dispatch-context fix",
   "weight_hashes": {
     "candidate_0": {
       "attn_gate": {
