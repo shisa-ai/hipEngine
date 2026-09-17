@@ -7,11 +7,13 @@ import pytest
 
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.llm import LLM
+from hipengine.models.kv_capabilities import ModelArtifactIdentity
 from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
     SpeculativeMTPStaticState,
+    resolve_max_qualified_candidate_budget,
     resolve_speculative_mtp_serving_plan,
 )
 
@@ -722,6 +724,42 @@ def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
     assert generic.reason == "no_model_plugin_evidence"
 
 
+def test_generator_resolves_the_qualified_qwen_depth_from_evidence(tmp_path) -> None:
+    """The Qwen3.8 gfx1151 cell resolves to its qualified B3, not a constant."""
+
+    model_path = tmp_path / "qwen38-q4km.gguf"
+    with model_path.open("wb") as handle:
+        handle.truncate(17_106_775_008)
+    generator = Qwen35GGUFBringupGenerator.__new__(Qwen35GGUFBringupGenerator)
+    generator.model_path = model_path
+    generator.weight_index = SimpleNamespace(path=model_path, file_type_name="Q4_K_M")
+    generator.model_plugin = Qwen35GGUFModel()
+    generator.backend = "hip_gfx1151"
+    generator._kv_artifact_identity = ModelArtifactIdentity(
+        path=str(model_path),
+        size_bytes=17_106_775_008,
+        sha256=_MODEL_SHA256,
+        content_verified=True,
+    )
+
+    assert (
+        generator.max_qualified_speculative_candidate_budget(
+            realized_group_rows=1,
+            resident_capacity=1,
+            sampling_mode="greedy_fast",
+        )
+        == 3
+    )
+    assert (
+        generator.max_qualified_speculative_candidate_budget(
+            realized_group_rows=1,
+            resident_capacity=8,
+            sampling_mode="greedy_fast",
+        )
+        is None
+    )
+
+
 def test_unrelated_q4ks_artifact_keeps_legacy_explicit_compatibility(tmp_path) -> None:
     model_path = tmp_path / "qwen38-q4ks.gguf"
     with model_path.open("wb") as handle:
@@ -849,3 +887,257 @@ def test_serving_key_has_no_prompt_content_or_benchmark_identity_fields() -> Non
             "oracle",
         }
     )
+
+
+def test_max_qualified_candidate_budget_reads_the_cell_not_the_request() -> None:
+    """An omitted budget resolves to the deepest depth this cell qualifies."""
+
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+
+    assert (
+        resolve_max_qualified_candidate_budget(
+            evidence, key=_key(candidate_budget=1)
+        )
+        == 3
+    )
+    assert (
+        resolve_max_qualified_candidate_budget(
+            evidence, key=_key(resident_capacity=4, candidate_budget=1)
+        )
+        == 3
+    )
+
+
+def test_max_qualified_candidate_budget_fails_closed_for_unqualified_cells() -> None:
+    """No matching physical row means no depth to resolve, not a default."""
+
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+
+    for changed in (
+        {"artifact_sha256": _W7900_MODEL_SHA256, "artifact_size_bytes": 17_106_773_984,
+         "backend": "hip_gfx1100", "target_arch": "gfx1100"},
+        {"weight_quant": "gguf_q4_k_s"},
+        {"realized_group_rows": 2, "resident_capacity": 2},
+        {"sampling_mode": "processed_argmax"},
+        {"memory_fit": False},
+    ):
+        assert (
+            resolve_max_qualified_candidate_budget(
+                evidence, key=_key(candidate_budget=1, **changed)
+            )
+            is None
+        )
+
+
+def test_max_qualified_candidate_budget_prefers_automatic_over_deeper_explicit() -> None:
+    """A depth retained only for explicit use never becomes the default."""
+
+    automatic = replace(_evidence(), candidate_budget=3, automatic_eligible=True)
+    deeper_explicit = replace(
+        _evidence(),
+        evidence_key="fake-explicit-b4",
+        candidate_budget=4,
+        automatic_eligible=False,
+    )
+
+    assert (
+        resolve_max_qualified_candidate_budget(
+            (deeper_explicit, automatic), key=_key(candidate_budget=1)
+        )
+        == 3
+    )
+    # Without the automatic row the explicit-only depth is still the best
+    # retained authorization for the cell.
+    assert (
+        resolve_max_qualified_candidate_budget(
+            (deeper_explicit,), key=_key(candidate_budget=1)
+        )
+        == 4
+    )
+
+
+def _budget_resolution_llm(generator, **kwargs) -> LLM:
+    class LoadedLLM(LLM):
+        def _get_text_generator(self):
+            return generator
+
+    return LoadedLLM(
+        "fake.gguf",
+        execution_profile="strict",
+        max_active_requests=1,
+        max_sequence_length=1024,
+        **kwargs,
+    )
+
+
+def test_omitted_budget_waits_for_the_resident_owner_before_reading_evidence() -> None:
+    """Evidence keys on the served capacity, so it is not read pre-prepare."""
+
+    calls = []
+
+    class Generator:
+        # No ``resident_capacity`` yet: the resident runner does not exist.
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            calls.append(dict(kwargs))
+            return 3 if kwargs["resident_capacity"] == 4 else None
+
+        def speculative_candidate_budget_default(self):
+            raise AssertionError("a pre-prepare lookup must not publish a default")
+
+    generator = Generator()
+    llm = _budget_resolution_llm(generator)
+
+    llm._publish_candidate_budget(generator)
+    assert calls == []
+    assert llm.speculative_candidate_budget is None
+    assert llm.speculative_candidate_budget_source == "pending"
+
+    # ``prepare`` creates the resident runner, which publishes its capacity.
+    generator.resident_capacity = 4
+    llm._publish_candidate_budget(generator)
+
+    assert calls == [
+        {
+            "realized_group_rows": 1,
+            "resident_capacity": 4,
+            "sampling_mode": "greedy_fast",
+            "kv_storage": "auto",
+            "memory_fit": True,
+        }
+    ]
+    assert llm.speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget_source == "model_plugin_evidence"
+    assert generator.speculative_candidate_budget == 3
+
+
+def test_omitted_budget_resolves_from_model_plugin_evidence() -> None:
+    """The default server configuration must not need a budget flag at all."""
+
+    calls = []
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            calls.append(dict(kwargs))
+            return 3
+
+        def speculative_candidate_budget_default(self):
+            raise AssertionError("evidence must win over the generator default")
+
+    llm = _budget_resolution_llm(Generator())
+    budget, source = llm._resolve_candidate_budget(Generator())
+
+    assert (budget, source) == (3, "model_plugin_evidence")
+    assert calls == [
+        {
+            "realized_group_rows": 1,
+            "resident_capacity": 1,
+            "sampling_mode": "greedy_fast",
+            "kv_storage": "auto",
+            "memory_fit": True,
+        }
+    ]
+    assert llm.speculative_candidate_budget_requested is None
+
+
+def test_omitted_budget_falls_back_to_the_generator_default() -> None:
+    """An unmeasured cell keeps the dense MTP owner's own declared depth."""
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            return None
+
+        def speculative_candidate_budget_default(self):
+            return 3
+
+    llm = _budget_resolution_llm(Generator())
+
+    assert llm._resolve_candidate_budget(Generator()) == (3, "generator_default")
+
+
+def test_omitted_budget_without_capability_data_stays_unresolved() -> None:
+    """No evidence and no declared default means no speculative admission."""
+
+    class Generator:
+        resident_capacity = 1
+
+        def resolve_speculative_mtp_serving_plan(self, **kwargs):
+            raise AssertionError("an unresolved budget must not reach the resolver")
+
+    llm = _budget_resolution_llm(Generator())
+
+    assert llm._resolve_candidate_budget(Generator()) == (None, "unresolved")
+    llm.speculative_candidate_budget = None
+    assert (
+        llm.resolve_speculative_mtp_serving_plan(
+            realized_group_rows=1, sampling_mode="greedy_fast"
+        )
+        is None
+    )
+
+
+def test_omitted_budget_keeps_the_provider_declared_depth() -> None:
+    """A generic provider owns its own shape; the server must not invent one."""
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            raise AssertionError("provider depth is not model-plugin evidence")
+
+    llm = _budget_resolution_llm(
+        Generator(),
+        speculative_provider="dflash",
+        draft_model="draft.gguf",
+    )
+
+    assert llm._resolve_candidate_budget(Generator()) == (4, "provider_default")
+
+
+def test_explicit_budget_is_never_rewritten() -> None:
+    """An operator-pinned depth passes through capability resolution intact."""
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            raise AssertionError("an explicit budget is not resolved from evidence")
+
+    llm = _budget_resolution_llm(Generator(), speculative_candidate_budget=7)
+    generator = Generator()
+
+    assert llm._resolve_candidate_budget(generator) == (7, "explicit")
+    assert llm.speculative_candidate_budget_requested == 7
+
+    # The pinned depth still reaches the resident owner that consumes it.
+    llm._publish_candidate_budget(generator)
+    assert generator.speculative_candidate_budget == 7
+    assert llm.speculative_candidate_budget_resolution == {
+        "requested_candidate_budget": 7,
+        "candidate_budget": 7,
+        "candidate_budget_source": "explicit",
+    }
+
+
+def test_budget_resolution_reports_requested_resolved_and_source() -> None:
+    """Operators can see which depth the server actually runs."""
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            return 3
+
+    llm = _budget_resolution_llm(Generator())
+    llm.speculative_candidate_budget, llm.speculative_candidate_budget_source = (
+        llm._resolve_candidate_budget(Generator())
+    )
+
+    assert llm.speculative_candidate_budget_resolution == {
+        "requested_candidate_budget": None,
+        "candidate_budget": 3,
+        "candidate_budget_source": "model_plugin_evidence",
+    }

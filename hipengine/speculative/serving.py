@@ -530,6 +530,42 @@ def _admit(
     )
 
 
+def resolve_max_qualified_candidate_budget(
+    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
+    *,
+    key: SpeculativeMTPServingKey,
+) -> int | None:
+    """Deepest candidate depth the retained rows qualify for this cell.
+
+    Every axis except the requested depth must match, so the answer is the
+    strongest depth the artifact's own evidence authorizes for this physical
+    identity rather than a global constant. Automatic-eligible rows are
+    preferred over explicit-only rows, mirroring the admission rule: a depth
+    retained only for explicit use never becomes the default selection.
+    ``None`` means no retained row describes the cell at all.
+    """
+
+    best: int | None = None
+    best_automatic = False
+    for row in evidence_rows:
+        if not all(
+            passed
+            for passed, reason in _evidence_checks(key, row)
+            if reason != "candidate_budget_not_qualified"
+        ):
+            continue
+        depth = int(row.candidate_budget)
+        automatic = bool(row.automatic_eligible)
+        if (
+            best is None
+            or (automatic and not best_automatic)
+            or (automatic == best_automatic and depth > best)
+        ):
+            best = depth
+            best_automatic = automatic
+    return best
+
+
 def resolve_speculative_mtp_serving_plan(
     evidence_rows: Sequence[SpeculativeMTPServingEvidence],
     *,
@@ -631,5 +667,6 @@ __all__ = [
     "SpeculativeMTPServingKey",
     "SpeculativeMTPStaticEligibility",
     "SpeculativeMTPStaticState",
+    "resolve_max_qualified_candidate_budget",
     "resolve_speculative_mtp_serving_plan",
 ]

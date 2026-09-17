@@ -118,6 +118,9 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
             calls["request"] = request
             return [prompt + "!" for prompt in request.prompts]
 
+        def speculative_candidate_budget_default(self) -> int:
+            return 3
+
     def factory(**kwargs):
         calls["factory_kwargs"] = kwargs
         generator = FakeGenerator()
@@ -149,7 +152,11 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
 
     assert out == ["a!", "b!"]
     assert llm._text_generator._runner.capacity == 8
-    assert calls["generator"].speculative_candidate_budget == 4
+    # An omitted budget resolves from the generator's declared default, and is
+    # published on the resident owner that consumes it.
+    assert calls["generator"].speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget_source == "generator_default"
     assert llm._text_generator._loop.config.prefix_cache == "radix"
     assert calls["factory_kwargs"] == {
         "model_path": "/tmp/fake-model",

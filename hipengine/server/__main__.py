@@ -347,10 +347,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
-        default=int(os.environ.get("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")),
+        default=_env_positive_int("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"),
         help=(
-            "Fixed candidate budget for the explicit speculative owner "
-            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; default: 4)"
+            "Candidate depth for the speculative owner; omit to resolve it from "
+            "the loaded model's serving evidence "
+            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET)"
         ),
     )
     parser.add_argument(

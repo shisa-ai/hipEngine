@@ -87,6 +87,7 @@ from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
+from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.tokenization.identity import token_ids_sha256
 
@@ -377,7 +378,7 @@ class ServerConfig:
     speculative_mtp_thinking: str = "hint"
     speculative_provider: str | None = None
     draft_model: str | None = None
-    speculative_candidate_budget: int = 4
+    speculative_candidate_budget: int | None = None
     vision_model: str | None = None
     # HTTP vision input bounds. None means: take the decoded-pixel bound from
     # the engine's declared ``vision_max_pixels`` (falling back to the 1 MP
@@ -424,8 +425,12 @@ class ServerConfig:
             raise ValueError("draft_model requires speculative_provider")
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
-        candidate_budget = int(self.speculative_candidate_budget)
-        if candidate_budget <= 0:
+        candidate_budget = (
+            None
+            if self.speculative_candidate_budget is None
+            else int(self.speculative_candidate_budget)
+        )
+        if candidate_budget is not None and candidate_budget <= 0:
             raise ValueError("speculative_candidate_budget must be positive")
         object.__setattr__(self, "speculative_provider", provider)
         object.__setattr__(self, "draft_model", drafter)
@@ -1466,6 +1471,7 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
         "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
+        "candidate_budget": _candidate_budget_resolution(config, engine=engine),
     }
     if serving_plan is not None:
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
@@ -1553,6 +1559,7 @@ def _speculative_provider_capability(
 
     configured = config.speculative_provider is not None
     supported = configured and _engine_supports_speculative(engine)
+    resolved_budget = _effective_speculative_candidate_budget(config, engine=engine)
     payload: dict[str, Any] = {
         "configured": bool(configured),
         "serving_route": bool(supported),
@@ -1563,7 +1570,10 @@ def _speculative_provider_capability(
         "streaming_compatible": bool(
             supported and _engine_supports_speculative_streaming(engine)
         ),
-        "candidate_budget": int(config.speculative_candidate_budget),
+        "candidate_budget": resolved_budget,
+        "candidate_budget_resolution": _candidate_budget_resolution(
+            config, engine=engine
+        ),
         "compatibility_guard": "raw_greedy_bf16_c1",
         "processed_target_verification": False,
     }
@@ -1580,7 +1590,10 @@ def _speculative_provider_capability(
             "policy": "explicit_only",
             "default_enabled": False,
             "streaming_compatible": _engine_supports_speculative_streaming(engine),
-            "candidate_budget": int(config.speculative_candidate_budget),
+            "candidate_budget": resolved_budget,
+            "candidate_budget_resolution": _candidate_budget_resolution(
+                config, engine=engine
+            ),
             "compatibility_guard": "raw_greedy_bf16_c1",
         }
     )
@@ -10980,19 +10993,71 @@ def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> No
     if engine is None:
         _LOGGER.info(
             "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
-            "default_enabled=unknown policy=%s thinking=%s",
+            "default_enabled=unknown policy=%s thinking=%s "
+            "candidate_budget=requested:%s resolved:pending source:pending",
             config.speculative_mtp_serving,
             config.speculative_mtp_thinking,
+            config.speculative_candidate_budget,
         )
         return
     capability = _speculative_mtp_capability(config, engine=engine)
+    budget = _candidate_budget_resolution(config, engine=engine)
     _LOGGER.info(
-        "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s",
+        "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s "
+        "candidate_budget=requested:%s resolved:%s source:%s",
         "enabled" if capability["serving_route"] else "off",
         _engine_supports_speculative_mtp(engine),
         capability.get("default_enabled", False),
         capability.get("policy", str(config.speculative_mtp_serving)),
         capability.get("thinking_policy", str(config.speculative_mtp_thinking)),
+        budget["requested"],
+        budget["resolved"],
+        budget["source"],
+    )
+    _warn_unservable_mtp_budget(config, engine=engine, budget=budget)
+
+
+def _warn_unservable_mtp_budget(
+    config: ServerConfig,
+    *,
+    engine: Any | None,
+    budget: Mapping[str, Any],
+) -> None:
+    """Warn when an explicitly enabled MTP server cannot serve its budget.
+
+    An unsupported depth is reported, never silently rewritten: the operator
+    asked for it, so the server says which axis the evidence rejected.
+    """
+
+    if str(config.speculative_mtp_serving) != "enabled":
+        return
+    if not _engine_supports_speculative_mtp(engine):
+        _LOGGER.warning(
+            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but this model/backend "
+            "has no speculative MTP route; requests fall back to autoregressive decode"
+        )
+        return
+    plan = _engine_speculative_mtp_serving_capability(engine)
+    if plan is None:
+        _LOGGER.warning(
+            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but no retained serving "
+            "evidence describes this artifact/physical cell; requests fall back to "
+            "autoregressive decode (candidate_budget requested:%s resolved:%s source:%s)",
+            budget.get("requested"),
+            budget.get("resolved"),
+            budget.get("source"),
+        )
+        return
+    if bool(plan.get("admitted")):
+        return
+    _LOGGER.warning(
+        "EFFECTIVE_MTP: speculative_mtp_serving=enabled but the retained evidence "
+        "rejects this cell (%s); requests fall back to autoregressive decode "
+        "(candidate_budget requested:%s resolved:%s source:%s)",
+        plan.get("reason"),
+        budget.get("requested"),
+        budget.get("resolved"),
+        budget.get("source"),
     )
 
 
@@ -13046,6 +13111,60 @@ def _speculative_mtp_route_for_request(
     return _SPECULATIVE_MTP_AUTO_ROUTE
 
 
+def _candidate_budget_resolution(
+    config: ServerConfig,
+    *,
+    engine: Any | None = None,
+) -> dict[str, Any]:
+    """Return requested/effective/source for the speculative candidate depth.
+
+    An operator-pinned depth is used unchanged. An omitted one is reported by
+    the loaded engine (which resolves it from model-plugin evidence); before
+    that resolution a configured generic provider declares its own shape, and
+    without either the depth stays unresolved rather than guessed.
+    """
+
+    requested = config.speculative_candidate_budget
+    requested = None if requested is None else int(requested)
+    if requested is not None:
+        return {"requested": requested, "resolved": requested, "source": "explicit"}
+    engine_resolution = getattr(engine, "speculative_candidate_budget_resolution", None)
+    if isinstance(engine_resolution, Mapping):
+        resolved = engine_resolution.get("candidate_budget")
+        source = engine_resolution.get("candidate_budget_source")
+        if resolved is not None:
+            return {
+                "requested": engine_resolution.get("requested_candidate_budget", requested),
+                "resolved": int(resolved),
+                "source": str(source or "engine_resolved"),
+            }
+        if str(source) == "pending":
+            # The engine exists but has not loaded its artifact yet, so the
+            # capability data that resolves the depth is not available.
+            return {
+                "requested": engine_resolution.get("requested_candidate_budget", requested),
+                "resolved": None,
+                "source": "pending",
+            }
+    if config.speculative_provider is not None:
+        return {
+            "requested": requested,
+            "resolved": int(DEFAULT_PROVIDER_CANDIDATE_BUDGET),
+            "source": "provider_default",
+        }
+    return {"requested": requested, "resolved": None, "source": "unresolved"}
+
+
+def _effective_speculative_candidate_budget(
+    config: ServerConfig,
+    *,
+    engine: Any | None = None,
+) -> int | None:
+    """Return the depth this server runs with, resolving an omitted request."""
+
+    return _candidate_budget_resolution(config, engine=engine)["resolved"]
+
+
 def _speculative_provider_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
@@ -13082,12 +13201,11 @@ def _speculative_provider_route_for_request(
             code="unsupported_parameter",
             param="speculative",
         )
+    effective_budget = _effective_speculative_candidate_budget(config, engine=engine)
     candidate_budget = (
-        int(config.speculative_candidate_budget)
-        if requested_budget is None
-        else int(requested_budget)
+        effective_budget if requested_budget is None else int(requested_budget)
     )
-    if candidate_budget != int(config.speculative_candidate_budget):
+    if effective_budget is not None and candidate_budget != effective_budget:
         raise OpenAIHTTPError(
             400,
             "requested speculative candidate budget does not match the configured owner",

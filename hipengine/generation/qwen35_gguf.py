@@ -2436,7 +2436,7 @@ class Qwen35GGUFBringupGenerator:
 
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
-    def resolve_speculative_mtp_serving_plan(
+    def _speculative_mtp_serving_key(
         self,
         *,
         realized_group_rows: int,
@@ -2446,12 +2446,14 @@ class Qwen35GGUFBringupGenerator:
         kv_storage: str,
         memory_fit: bool,
     ):
-        """Resolve the model-plugin-owned exact serving plan before mutation."""
+        """Build the resident artifact's model-plugin serving scope.
 
-        from hipengine.speculative.serving import (
-            SpeculativeMTPServingKey,
-            resolve_speculative_mtp_serving_plan,
-        )
+        Returns ``(evidence, key)``, or ``(evidence, None)`` when this model
+        plugin owns unrelated artifacts (for example Q4_K_S) whose explicit
+        compatibility route is independent of the typed serving evidence.
+        """
+
+        from hipengine.speculative.serving import SpeculativeMTPServingKey
 
         requested_kv = str(kv_storage or "auto")
         effective_kv = "bf16" if requested_kv == "auto" else requested_kv
@@ -2476,10 +2478,7 @@ class Qwen35GGUFBringupGenerator:
             and row.weight_quant == weight_quant
             for row in evidence
         ):
-            # This model plugin may own unrelated dense artifacts (for example
-            # Q4_K_S). No typed plan applies; preserve their independent
-            # explicit compatibility route without implying default evidence.
-            return None
+            return evidence, None
         artifact = self._kv_model_artifact_identity()
         key = SpeculativeMTPServingKey(
             artifact_sha256=artifact.sha256,
@@ -2496,6 +2495,34 @@ class Qwen35GGUFBringupGenerator:
             sampling_mode=str(sampling_mode),
             memory_fit=bool(memory_fit),
         )
+        return evidence, key
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        kv_storage: str,
+        memory_fit: bool,
+    ):
+        """Resolve the model-plugin-owned exact serving plan before mutation."""
+
+        from hipengine.speculative.serving import resolve_speculative_mtp_serving_plan
+
+        evidence, key = self._speculative_mtp_serving_key(
+            realized_group_rows=realized_group_rows,
+            resident_capacity=resident_capacity,
+            candidate_budget=candidate_budget,
+            sampling_mode=sampling_mode,
+            kv_storage=kv_storage,
+            memory_fit=memory_fit,
+        )
+        if key is None:
+            # No typed plan applies; preserve the independent explicit
+            # compatibility route without implying default evidence.
+            return None
         resolver = getattr(
             self.model_plugin,
             "resolve_speculative_mtp_serving_plan",
@@ -2504,6 +2531,43 @@ class Qwen35GGUFBringupGenerator:
         if callable(resolver):
             return resolver(key=key)
         return resolve_speculative_mtp_serving_plan((), key=key)
+
+    def max_qualified_speculative_candidate_budget(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        sampling_mode: str,
+        kv_storage: str = "auto",
+        memory_fit: bool = True,
+    ) -> int | None:
+        """Deepest depth the resident artifact's evidence qualifies for this cell.
+
+        The requested-depth axis is deliberately ignored: the answer describes
+        what the retained evidence authorizes, which is how an omitted server
+        budget resolves without a global constant.
+        """
+
+        evidence, key = self._speculative_mtp_serving_key(
+            realized_group_rows=realized_group_rows,
+            resident_capacity=resident_capacity,
+            # Placeholder: the capability resolver drops the depth axis.
+            candidate_budget=1,
+            sampling_mode=sampling_mode,
+            kv_storage=kv_storage,
+            memory_fit=memory_fit,
+        )
+        if key is None or not evidence:
+            return None
+        resolver = getattr(self.model_plugin, "max_qualified_candidate_budget", None)
+        if not callable(resolver):
+            return None
+        return resolver(key=key)
+
+    def speculative_candidate_budget_default(self) -> int:
+        """Depth this generator's own dense MTP path uses when unpinned."""
+
+        return int(_gguf_mtp_server_candidate_budget())
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
