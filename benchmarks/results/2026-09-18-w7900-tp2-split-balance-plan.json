@@ -1,0 +1,3126 @@
+{
+  "schema": 1,
+  "kind": "tp2-split-balance-plan",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "world_size": 2,
+  "eligible": "blk.*.ffn_(gate|up|down).weight",
+  "splittable_gib": 9.6497,
+  "rank_rates_gib_s": [
+    432.0167,
+    526.5722
+  ],
+  "rank_fixed_ms": [
+    2.3473,
+    2.0923
+  ],
+  "rank_spin_ms": [
+    0.2604,
+    4.1825
+  ],
+  "rank_streamed_gib": [
+    7.4917,
+    7.4917
+  ],
+  "rank_eligible_gib": [
+    4.8248,
+    4.8248
+  ],
+  "predicted_even_ms": [
+    19.6886,
+    16.3196
+  ],
+  "predicted_uneven_ms": [
+    17.7178,
+    17.9366
+  ],
+  "byte_fractions": [
+    0.417145,
+    0.582855
+  ],
+  "rank_bytes_even_gib": [
+    8.646,
+    7.0086
+  ],
+  "rank_bytes_uneven_gib": [
+    7.7945,
+    7.86
+  ],
+  "predicted_balanced_ms_per_step": 17.838,
+  "predicted_pacer_ms_even": 19.6886,
+  "predicted_pacer_ms_uneven": 17.9366,
+  "predicted_saving_ms_per_step": 1.7521,
+  "tensors": [
+    {
+      "name": "blk.0.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.0.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.0.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.1.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.1.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.1.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.2.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.2.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.2.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.3.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.3.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.3.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.4.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.4.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.4.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.5.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.5.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.5.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.6.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.6.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.6.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.7.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.7.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.7.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.8.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.8.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.8.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.9.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.9.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.9.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.10.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.10.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.10.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.11.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.11.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.11.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.12.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.12.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.12.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.13.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.13.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.13.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.14.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.14.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.14.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.15.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.15.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.15.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.16.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.16.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.16.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.17.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.17.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.17.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.18.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.18.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.18.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.19.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.19.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.19.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.20.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.20.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.20.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.21.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.21.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.21.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.22.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.22.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.22.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.23.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.23.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.23.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.24.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.24.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.24.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.25.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.25.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.25.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.26.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.26.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.26.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.27.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.27.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.27.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.28.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.28.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.28.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.29.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.29.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.29.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.30.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.30.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.30.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.31.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.31.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.31.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.32.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.32.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.32.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.33.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.33.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.33.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.34.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.34.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.34.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.35.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.35.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.35.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.36.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.36.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.36.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.37.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.37.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.37.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.38.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.38.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.38.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.39.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.39.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.39.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.40.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.40.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.40.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.41.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.41.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.41.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.42.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.42.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.42.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.43.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.43.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.43.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.44.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.44.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.44.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.45.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.45.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.45.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.46.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.46.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.46.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.47.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.47.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.47.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.48.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.48.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.48.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.49.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.49.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.49.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.50.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.50.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.50.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.51.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.51.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.51.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.52.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.52.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.52.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.53.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.53.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.53.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.54.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.54.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.54.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.55.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.55.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.55.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.56.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.56.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.56.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.57.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.57.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.57.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.58.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.58.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.58.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.59.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.59.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.59.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.60.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.60.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.60.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.61.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.61.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.61.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.62.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.62.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.62.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.63.ffn_down.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        28.711,
+        41.016
+      ]
+    },
+    {
+      "name": "blk.63.ffn_gate.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    },
+    {
+      "name": "blk.63.ffn_up.weight",
+      "blocks": 68,
+      "blocks_even": [
+        34,
+        34
+      ],
+      "blocks_uneven": [
+        28,
+        40
+      ],
+      "mib_uneven": [
+        19.688,
+        28.125
+      ]
+    }
+  ]
+}
