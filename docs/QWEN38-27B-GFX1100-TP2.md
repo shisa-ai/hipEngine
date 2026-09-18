@@ -856,21 +856,35 @@ default-off and the token-serial route remains the committed prefill schedule.
   TP1 product path fails it too. Evidence:
   `benchmarks/results/2026-09-17-tp2-prefill-schedule-failure-probe.json` (+ its
   `.worst-rows.npz`, the full logit rows at each comparison's worst position).
-- **Consequence for the sustained gate (2026-09-17, open):** the discriminating
+- **Consequence for the sustained gate (2026-09-17, decided):** the discriminating
   sustained measurements are mean/p95 KL, top-1 agreement, and a
   **same-schedule** implementation-spread comparison, not the raw max against a
-  single bulk-prefill reference. Which criterion replaces the absolute max
-  ceiling is a normative decision in `docs/EXECUTION-PROFILES.md` and is not
-  settled here; this is not a request to relax the envelope for a candidate, and
-  the stable statistics (mean/p95, top-1) stay binding either way. Nothing is
-  promoted on this evidence: `decode_partial_dtype`
+  single bulk-prefill reference. The absolute max ceiling is not relaxed: instead
+  the comparison **horizon** is declared, which is the mechanism
+  `docs/EXECUTION-PROFILES.md` already uses for the C2/C3 packets. Section 6.5 of
+  that document now declares **D=42** for this model/host/suite, with the
+  three-part test it rests on (the reference reproduces itself exactly;
+  materially different implementations breach the same prompts at the same
+  depths; the breaching rows are flat and keep the reference's top-1 token).
+  Both harnesses are horizon-aware: `--horizon D` gates the first D rows of each
+  prompt and always records the full-horizon envelope as an unscored diagnostic,
+  so a shorter horizon cannot make a tail disappear from an artifact. Measured at
+  that horizon on one revision (18 prompts, 756 scored rows per arm, three
+  bit-identical repeats each): both ranks' bulk-prefill TP1 arms are
+  bit-identical to the reference (max KL 0.0, top-1 100%) and TP2 token-serial
+  scores mean 9.442e-05 / p95 4.411e-04 / p99 1.029e-03 / max 4.955e-03 /
+  top-1 99.74% (worst category 99.4%), so **the sustained numerical gate passes
+  in the advertised scope D<=42** with 10x or better margin on max/p99; the same
+  artifact records TP2's unscored 0.268571 max KL over the full 128 rows. Nothing
+  is promoted by the declaration itself: `decode_partial_dtype`
   stays `bf16` and token-serial prefill stays the shipped prefill route. The bulk
   candidate's own arithmetic effect is bounded by
   `tp2-serial_vs_tp2-bulk` = 0.0258852 max KL with top-1 1.000 and no position
   over the ceiling on that prompt — inside the ceiling on the schedule-difference
   axis — but its distance to the single bulk teacher grows 1.4-2.3x on
-  mean/p95/p99/max relative to the serial arm, so retaining it needs the gate
-  decision above plus the full mtp-bench category suite.
+  mean/p95/p99/max relative to the serial arm, and its own horizon is 42 against
+  the shipped route's 45, so retaining it still needs the full mtp-bench
+  category suite.
 - **The sustained failure is suite-wide and has a measured horizon
   (2026-09-17):** the same comparison was run over the whole 18-prompt teacher
   suite (2,304 teacher-forced positions per arm, one revision, one host; arms one

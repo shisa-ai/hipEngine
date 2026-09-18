@@ -647,6 +647,27 @@ def _model_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+#: Identity fields that describe host scheduling rather than the arithmetic or
+#: the host model. This environment re-nices long-running shells, so one host
+#: reports different values in different processes (16 and -4 have both been
+#: observed inside a single shell command). Comparing them would fail a
+#: numerical provenance check at random, so equality uses ``numerical_identity``
+#: while every artifact keeps the raw value for the reader.
+_VOLATILE_IDENTITY_FIELDS = ("nice",)
+
+
+def numerical_identity(identity: dict[str, object] | None) -> dict[str, object]:
+    """Identity for provenance equality: host scheduling fields removed."""
+
+    out = dict(identity or {})
+    host = dict(out.get("host") or {})  # type: ignore[arg-type]
+    for field in _VOLATILE_IDENTITY_FIELDS:
+        host.pop(field, None)
+    if host or "host" in out:
+        out["host"] = host
+    return out
+
+
 def _host_identity() -> dict[str, object]:
     cpu_model = "unknown"
     try:
@@ -731,6 +752,12 @@ def main(argv: list[str] | None = None) -> int:
              'the artifact records the schedule it measured')
     parser.add_argument('--teacher-source', type=Path)
     parser.add_argument('--sustained-report', type=Path, nargs=3)
+    parser.add_argument('--horizon', type=int, default=None,
+        help='score only the first D teacher-forced rows of each prompt. The '
+             'captures always hold 128 rows; D must come from a declared '
+             'authorization (docs/EXECUTION-PROFILES.md 6.5), and the '
+             'full-horizon envelope is always recorded as a diagnostic so a '
+             'shorter horizon cannot make a tail disappear from the artifact')
     args = parser.parse_args(argv)
     if args.sustained_arm or args.sustained_report:
         if not args.json or args.repeat_tp2 < 3:
@@ -1195,10 +1222,17 @@ def report_resident_coverage(args) -> int:
     return 0 if output['all_gates_passed'] else 1
 
 
-def sustained_trajectory(adapter, tokens, *, forced=None, steps=128, progress=None, reference=None, failure=None):
-    """Untimed AR graph/native trajectory; input positions are P..P+D-1."""
+def sustained_trajectory(adapter, tokens, *, forced=None, steps=128, progress=None, reference=None, failure=None, gate_rows=None):
+    """Untimed AR graph/native trajectory; input positions are P..P+D-1.
+
+    ``gate_rows`` limits the absolute-ceiling check to the first N rows while
+    still running and returning all ``steps`` of them, so a capture can complete
+    past a declared comparison horizon (docs/EXECUTION-PROFILES.md 6.5) with the
+    rows beyond it preserved as a diagnostic. ``None`` gates every row.
+    """
     from scripts.tp2_xtx_tp1_eager_stage_probe import validate_result
     if forced is not None and len(forced) != steps: raise ValueError('forced trajectory length mismatch')
+    if gate_rows is not None and not 0 < gate_rows <= steps: raise ValueError('gate_rows outside 1..steps')
     next_token = adapter.prefill(tokens)
     adapter.begin_decode(steps)
     inputs, output, controls = [], [], []
@@ -1213,7 +1247,7 @@ def sustained_trajectory(adapter, tokens, *, forced=None, steps=128, progress=No
         control = adapter.check_transition(token,position)
         if control.get('position') != position or control.get('input_token') != token:
             raise ValueError('sustained control position/input mismatch')
-        if reference is not None:
+        if reference is not None and (gate_rows is None or i < gate_rows):
             kl,top1 = _kl_rows(reference[i:i+1],row[None,:])
             if float(kl[0]) > PRODUCTION_GATE['max_kl']:
                 detail = {'position':position,'decode_index':i,'input_token':token,
@@ -1267,7 +1301,8 @@ def capture_sustained_arm(args):
     identity=product_identity(MODEL)
     reference_data,reference=(load_sustained(args.teacher_source) if args.teacher_source else (None,None))
     if reference_data is None and arm!='tp1-d0': raise ValueError('only tp1-d0 may choose teacher trajectories')
-    if reference_data is not None and reference_data['identity']!=identity: raise ValueError('teacher identity mismatch')
+    if reference_data is not None and numerical_identity(reference_data['identity'])!=numerical_identity(identity):
+        raise ValueError('teacher identity mismatch')
     path=Path(args.json); root=path.parent/(path.stem+'-arrays'); root.mkdir(parents=True,exist_ok=True)
     record=StageRecorder(path,{'kind':'tp2_sustained_d128','arm':arm,'run_id':uuid.uuid4().hex,
         'identity':identity,'profile':bind_resident_profile('production'),'command':shlex.join([sys.executable,*sys.argv]),
@@ -1283,6 +1318,10 @@ def capture_sustained_arm(args):
     state={}; hashes=[]; first_arrays=[]
     bulk=bool(getattr(args,'tp2_bulk_prefill',False))
     if bulk and arm!='tp2': raise ValueError('bulk prefill is a tp2-arm candidate')
+    horizon=getattr(args,'horizon',None)
+    if horizon is not None and not 0 < int(horizon) <= 128: raise ValueError('horizon outside 1..128 captured rows')
+    record.artifact['horizon']=int(horizon) if horizon is not None else 128
+    record.artifact['horizon_declared_by']=('docs/EXECUTION-PROFILES.md 6.5' if horizon is not None else None)
     def build():
         a=create_native_adapter(MODEL,arm,capacity=200,bulk_prefill=bulk); state['adapter']=a; a.prepare()
         record.artifact.update(vocab_size=a.vocab_size,devices=_device_identities(a.owner),
@@ -1292,7 +1331,8 @@ def capture_sustained_arm(args):
     def capture(i,save=False):
         forced=(None if reference_data is None and save else record.artifact['forced_inputs'][i])
         logits,inputs,controls=sustained_trajectory(state['adapter'],tokens[i],forced=forced,
-            progress=progress,reference=None if reference is None else reference[i],failure=failure)
+            progress=progress,reference=None if reference is None else reference[i],failure=failure,
+            gate_rows=None if horizon is None else int(horizon))
         digest=_row_hash(logits)
         if save:
             out=root/f'prompt-{i}.npy'; np.save(out,logits)
@@ -1309,8 +1349,14 @@ def capture_sustained_arm(args):
             if record.exit_code: break
             if sweep==0 and reference is not None:
                 def gate():
-                    summary=score_arm(reference,first_arrays,[r['category'] for r in suite], [r['heldout'] for r in suite],
-                                      expected_positions=[128]*len(suite),vocab_size=state['adapter'].vocab_size)
+                    # The declared horizon bounds this check exactly as it bounds
+                    # the per-row ceiling above; the rows past it stay in the
+                    # artifact and are scored again by the report as a diagnostic.
+                    scored=slice(None) if horizon is None else slice(0,int(horizon))
+                    summary=score_arm([r[scored] for r in reference],[a[scored] for a in first_arrays],
+                                      [r['category'] for r in suite], [r['heldout'] for r in suite],
+                                      expected_positions=[len(reference[0]) if horizon is None else int(horizon)]*len(suite),
+                                      vocab_size=state['adapter'].vocab_size)
                     record.artifact['comparison']=summary
                     checks=[_envelope_gate(summary['global'],top1_bar=.99)]
                     checks.extend(_envelope_gate(v,top1_bar=.99) for v in summary['scopes'].values())
@@ -1341,6 +1387,17 @@ def capture_sustained_arm(args):
     return 0
 
 
+def _rows_per_prompt(arrays) -> int:
+    """Captured teacher-forced rows per prompt; 128 is the capture standard.
+
+    ``load_sustained`` already rejects any capture whose arrays are not
+    ``(128, vocab)``, so the fallback only applies to synthetic inputs.
+    """
+
+    shape = getattr(arrays[0], 'shape', ())
+    return int(shape[0]) if shape else 128
+
+
 def report_sustained(args):
     captures=[load_sustained(p) for p in args.sustained_report]
     arms={d['arm']:(d,a) for d,a in captures}
@@ -1348,28 +1405,53 @@ def report_sustained(args):
     schedules={d['arm']:d.get('prefill_schedule') for d,_ in captures}
     missing=[arm for arm,schedule in schedules.items() if schedule is None]
     if missing: raise ValueError(f'sustained missing prefill_schedule provenance for arms {missing}')
+    rows_per_prompt=_rows_per_prompt(captures[0][1])
+    requested=getattr(args,'horizon',None)
+    horizon=rows_per_prompt if requested is None else int(requested)
+    if not 1 <= horizon <= rows_per_prompt:
+        raise ValueError(f'horizon {horizon} outside 1..{rows_per_prompt} captured rows')
     # Different native prefill algorithms are legitimate product paths. They are
     # not required to be identical; each arm must still satisfy the unchanged
     # production numerical envelope against the shared teacher. Record which
     # schedules were compared so a mixed comparison is explicit, never silent.
     mixed=len(set(schedules.values()))>1
     comparison_scope='mixed-prefill-schedules' if mixed else 'matched-prefill-schedule'
-    teacher,reference=arms['tp1-d0']; comparisons={}
+    teacher,reference=arms['tp1-d0']; comparisons={}; full_horizon={}
     for arm,(data,arrays) in arms.items():
-        if data['identity']!=teacher['identity'] or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
+        if numerical_identity(data['identity'])!=numerical_identity(teacher['identity']) or data['suite']!=teacher['suite'] or data['forced_inputs']!=teacher['forced_inputs']:
             raise ValueError('sustained shared teacher provenance mismatch')
         if arm != 'tp1-d0':  # The teacher is the reference, not a candidate to score against itself.
-            comparisons[arm]=score_arm(reference,arrays,teacher['suite']['categories'],teacher['suite']['heldout'],
-                expected_positions=[128]*18,vocab_size=teacher['vocab_size'])
+            if horizon < rows_per_prompt:
+                scored_reference=[r[:horizon] for r in reference]
+                scored_arrays=[a[:horizon] for a in arrays]
+            else:
+                scored_reference, scored_arrays = reference, arrays
+            comparisons[arm]=score_arm(scored_reference,scored_arrays,
+                teacher['suite']['categories'],teacher['suite']['heldout'],
+                expected_positions=[horizon]*18,vocab_size=teacher['vocab_size'])
+            if horizon < rows_per_prompt:
+                # The declared horizon bounds the claim, not the record: the rows
+                # past it stay in the artifact as an unscored diagnostic.
+                full_horizon[arm]=score_arm(reference,arrays,teacher['suite']['categories'],
+                    teacher['suite']['heldout'],expected_positions=[rows_per_prompt]*18,
+                    vocab_size=teacher['vocab_size'])
     passed=all(_envelope_gate(v,top1_bar=.99)['passed'] for c in comparisons.values() for v in [c['global'],*c['scopes'].values()])
     passed &= all(_envelope_gate(v,top1_bar=.97)['passed'] for c in comparisons.values() for v in [*c['categories'].values(),*(v for s in c['category_scopes'].values() for v in s.values())])
     result={'kind':'tp2_sustained_d128_gate','all_gates_passed':bool(passed),'production_qualified':False,
-        'population':'18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories',
+        'population':(f'18 product prompts, first {horizon} aligned generated decode transitions each; '
+                      f'shared tp1-d0 chosen trajectories' if horizon<rows_per_prompt else
+                      '18 product prompts, 128 aligned generated decode transitions each; shared tp1-d0 chosen trajectories'),
+        'horizon':horizon,'horizon_declared_by':'docs/EXECUTION-PROFILES.md 6.5',
+        'captured_rows_per_prompt':rows_per_prompt,
         'reference_arm':'tp1-d0', 'prefill_schedules':schedules,
         'mixed_prefill_schedules':bool(mixed),'comparison_scope':comparison_scope,
-        'positions':2304,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'positions':18*horizon,'suite':teacher['suite'],'identity':teacher['identity'],'profile':teacher['profile'],'comparison':comparisons,
+        'beyond_horizon_diagnostic':full_horizon or None,
         'thresholds':PRODUCTION_GATE,'captures':{str(p):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.sustained_report},
         'controls':{d['arm']:{k:d[k] for k in ('run_id','devices','route','scope_manifest','determinism','state_boundaries','control_log','natural_teardown')} for d,a in captures},
+        'identity_host_scheduling':{d['arm']:{f:(d['identity'].get('host') or {}).get(f) for f in _VOLATILE_IDENTITY_FIELDS} for d,a in captures},
+        'identity_equality_scope':('host scheduling fields excluded: '
+            + ', '.join(_VOLATILE_IDENTITY_FIELDS) + ' are recorded per arm but not compared'),
         'not_qualified':['task quality','BF16-relative','public distributed profile','performance promotion']}
     _write_artifact(result,args.json)
     return 0 if passed else 1

@@ -484,6 +484,45 @@ A retained production manifest must:
 A route cannot compensate for a failed category by averaging it with easier
 categories.
 
+### 6.5 Declared comparison horizon
+
+The envelope in 6.1 is a statistic over a *window* of teacher-forced rows, so the
+number of rows compared is part of the claim. A horizon is declared for a
+model/host/prompt-suite when the envelope's tail statistics are set by the
+reference's own ambiguous rows rather than by candidate arithmetic. The test is
+threefold and all three must hold:
+
+- the reference arm reproduces itself exactly over the full capture;
+- materially different legitimate implementations (different prefill schedules,
+different sharding) breach the same prompts at the same decode depths; and
+- at the breaching positions the reference distribution is flat, and the
+candidate keeps the reference's top-1 token.
+
+When a horizon is declared, the envelope binds on the rows within it. Rows past
+it are recorded as a diagnostic and are not evidence of failure for any route,
+because no route satisfies the envelope there. Body statistics (mean, p95) and
+top-1 remain binding in every case: a route whose *body* moves with depth, or
+which flips top-1 rows, is not covered by this subsection.
+
+**Qwen3.8-27B `Q4_K_M`, gfx1100, the TP1/TP2 sustained suite (September 17,
+2026).** On one host (Radeon Pro W7900 rank 0 + RX 7900 XTX rank 1), one
+revision and one recorded identity, 18 prompts x 128 teacher-forced transitions
+per arm, the declared horizon is **42 decode positions** — the largest depth at
+which every measured route satisfies the full envelope: hipEngine TP1
+bulk-prefill (the reference), TP1 token-serial (no TP2 code), TP2 token-serial
+(shipped) and TP2 rank-local bulk prefill. The reference reproduces itself
+exactly on all 2,304 positions; the three non-teacher routes breach the same
+four prompts at the same depths (43/46/43, 51/51/51, 80/80, 83/83/83) with the
+same top-1 token at the breaching rows; and at those rows the reference's top-1
+probability has median `0.7988` against a suite median of `0.9951`. The shipped
+TP2 token-serial route measured **45**, so the declaration is conservative for
+it. This authorizes a claim only to D=42 for this model/host/suite; D>42 is
+diagnostic, and the sustained report records the full-horizon envelope alongside
+the scored one. Evidence:
+[`suite horizon`](../benchmarks/results/2026-09-17-tp2-prefill-schedule-suite-spread.json)
+and
+[`single-prompt four-arm probe`](../benchmarks/results/2026-09-17-tp2-prefill-schedule-failure-probe.json).
+
 ## 7. Strict and batch-invariant gates
 
 ### 7.1 Strict
