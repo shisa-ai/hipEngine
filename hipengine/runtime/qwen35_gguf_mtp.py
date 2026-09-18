@@ -1716,6 +1716,27 @@ class Qwen35GGUFTransactionalVerifier:
         if self._prepared is not prepared:
             raise ValueError("prepared GGUF verification is not the open transaction")
 
+    def adopt_accept_summary(
+        self,
+        prepared: Qwen35GGUFPreparedVerify,
+        summary: TargetAcceptSummary,
+    ) -> Qwen35GGUFPreparedVerify:
+        """Install a recomputed accept summary on the open transaction.
+
+        The prepared object *is* the transaction's identity: ``commit`` and
+        ``rollback`` accept only the instance ``prepare`` returned, and
+        ``commit`` validates its plan against ``prepared.summary``. A route that
+        recomputes the accept decision (the sampled route's ``min(1, p/q)``
+        coupling) therefore has to write the summary onto that instance rather
+        than into a copy: a copy is refused as "not the open transaction". Only
+        the accept decision changes; the verified rows, buffers, and journal
+        stay exactly as prepared.
+        """
+
+        self._require_open(prepared)
+        object.__setattr__(prepared, "summary", summary)
+        return prepared
+
     def __enter__(self) -> "Qwen35GGUFTransactionalVerifier":
         return self
 

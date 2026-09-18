@@ -1311,3 +1311,48 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
     assert proposed == []
     assert device_proposals == []
     assert prepared == []
+
+
+def test_adopt_accept_summary_keeps_the_open_transaction_identity() -> None:
+    """A recomputed accept summary must be installed on the open transaction.
+
+    The prepared object *is* the transaction's identity: commit and rollback
+    accept only the instance prepare returned, and commit validates its plan
+    against ``prepared.summary``. The sampled route recomputes the accept
+    decision, and copying the prepared object instead of installing the summary
+    on it made the verifier refuse the copy as "not the open transaction", which
+    disabled the request and silently fell back to autoregressive decoding.
+    """
+
+    import dataclasses
+
+    import numpy as np
+
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    prepared = mtp_module.Qwen35GGUFPreparedVerify(
+        batch=SimpleNamespace(),
+        buffers=SimpleNamespace(),
+        summary="argmax-summary",
+        target_top1=(1,),
+        target_logits=np.zeros((1, 1), dtype=np.float32),
+        graph_bucket=SimpleNamespace(),
+        initial_position=0,
+        kv_journal_positions=(0,),
+        gpu_accept_match_cpu=True,
+        target_verify_mode="native",
+    )
+    verifier._prepared = prepared
+
+    adopted = verifier.adopt_accept_summary(prepared, "sampled-summary")
+    assert adopted is prepared
+    assert prepared.summary == "sampled-summary"
+
+    # A copy is still refused: the identity check is what commit relies on.
+    copy = dataclasses.replace(prepared, summary="copied-summary")
+    assert copy is not prepared
+    with pytest.raises(ValueError, match="not the open transaction"):
+        verifier.adopt_accept_summary(copy, "other-summary")
+    with pytest.raises(ValueError, match="not the open transaction"):
+        verifier._require_open(copy)
