@@ -737,6 +737,23 @@
   "policy": "hipengine/kernels/hip_gfx1151/__init__.py GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production'] now owns (1..4, 1..3) only",
   "evidence_row_removed": "qwen38-q4km-gfx1151-production-bf16-c8-k3-d24",
   "explicit_capacity_8_result": "registered strict fallback gguf_target_ar",
-  "server_confirmation": "pending at the time this artifact was written; recorded in the withdrawal worklog entry"
+  "server_confirmation": {
+   "command": "the census width-8 protocol with production admission (no --generation2-diagnostic) after the withdrawal commit 9c8ff5444",
+   "engaged_cells": 0,
+   "cells": 10,
+   "ar_tok_s": 50.01,
+   "mtp_arm_tok_s": 50.02,
+   "ratio": 1.0002,
+   "ar_equal_cells": 10,
+   "route": "default",
+   "used": false,
+   "decision_reason": "physical_group_not_qualified",
+   "generated_ids": "identical between the arms on all 10 cells; the control-token loop is gone",
+   "harness_status": "failed only on --expected-mtp-widths 8 (engaged=0/10), which is the expectation the withdrawal is meant to break",
+   "raw_artifact": {
+    "path": "/tmp/widths/c1c8-prod-w8-after-withdrawal.json",
+    "sha256": "e360c6daeaa2b399c2d606940a66bc8a087844710606aec840c6aaff917fab0c"
+   }
+  }
  }
 }
