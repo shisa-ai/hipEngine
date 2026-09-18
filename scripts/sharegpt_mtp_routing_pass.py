@@ -339,31 +339,73 @@ def _stream_request(
         ],
     }
 
-def _inter_token_latencies_ms(timeline: Any) -> list[float]:
-    """Milliseconds per generated token between consecutive decode reports."""
+# Tokens per inter-token-latency window. Long enough that a burst's buffered
+# reads average out, short enough that a mid-stream stall still shows up.
+ITL_WINDOW_TOKENS = 16
 
-    intervals: list[float] = []
-    previous_ms: float | None = None
-    previous_tokens: int | None = None
+
+def _inter_token_latencies_ms(
+    timeline: Any, *, window: int = ITL_WINDOW_TOKENS
+) -> list[float]:
+    """Milliseconds per generated token, measured over token windows.
+
+    The live c=2 artifact reported a 0.29 ms median because the decode reports
+    arrive in buffered bursts: a speculative cycle's committed tokens are read
+    microseconds apart while the wait for the next cycle is not reported at
+    all. Dividing each consecutive pair therefore measures the client's read
+    pattern, not the model's decode cost, and a stalled window disappears into
+    one large interval that a median hides.
+
+    Rate is measured over windows of ``window`` committed tokens instead, and
+    the per-token cost is the window's span divided by its tokens. Buffering
+    cannot fake a window's rate, and a stalled window is a slow window rather
+    than an invisible one.
+    """
+
+    points: list[tuple[float, int]] = []
     for entry in timeline or ():
         if not isinstance(entry, (list, tuple)) or len(entry) < 2:
             continue
         try:
-            reported_ms = float(entry[0])
-            generated = int(entry[1])
+            points.append((float(entry[0]), int(entry[1])))
         except (TypeError, ValueError):
             continue
-        if (
-            previous_ms is not None
-            and previous_tokens is not None
-            and generated > previous_tokens
-        ):
-            intervals.append(
-                (reported_ms - previous_ms) / (generated - previous_tokens)
-            )
-        previous_ms = reported_ms
-        previous_tokens = generated
+    intervals: list[float] = []
+    start = 0
+    while start < len(points) - 1:
+        end = start + 1
+        while end < len(points) - 1 and points[end][1] - points[start][1] < window:
+            end += 1
+        tokens = points[end][1] - points[start][1]
+        span_ms = points[end][0] - points[start][0]
+        if tokens > 0 and span_ms > 0:
+            intervals.append(span_ms / tokens)
+        start = end
     return intervals
+
+
+def _decode_ms_per_token(timeline: Any) -> float | None:
+    """Milliseconds per generated token across the whole decode, no bursts.
+
+    The aggregate is the cross-check on a burst-amortized median: if the two
+    disagree by more than a small factor, the timeline is not a decode
+    sequence and the row should be read with that in mind.
+    """
+
+    entries: list[tuple[float, int]] = []
+    for entry in timeline or ():
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        try:
+            entries.append((float(entry[0]), int(entry[1])))
+        except (TypeError, ValueError):
+            continue
+    if len(entries) < 2:
+        return None
+    tokens = max(entry[1] for entry in entries) - entries[0][1]
+    if tokens <= 0:
+        return None
+    return (entries[-1][0] - entries[0][0]) / tokens
 
 
 def _percentile(values: Sequence[float], percentile: float) -> float | None:
@@ -466,8 +508,18 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         # Inter-token latency after the first token, from the decode-state
         # timeline. This is the latency a streaming client actually feels and
         # the quantity a coverage change must not degrade.
-        "itl_median_ms": statistics.median(itl) if itl else None,
+        # Inter-token latency for a client is the average gap between tokens it
+        # received, so the row's number is the whole-timeline average and the
+        # windowed values are the tail: buffering can only shorten a window's
+        # measured span, so a high windowed p95 is real evidence of a stall
+        # while a low windowed median is not evidence of speed.
+        "itl_median_ms": (
+            _decode_ms_per_token(result.get("timeline"))
+            if _decode_ms_per_token(result.get("timeline")) is not None
+            else (statistics.median(itl) if itl else None)
+        ),
         "itl_p95_ms": _percentile(itl, 95.0),
+        "itl_window_median_ms": statistics.median(itl) if itl else None,
         "itl_samples": len(itl),
         "output_sha256": result.get("output_sha256"),
         "generated_token_ids": result.get("generated_token_ids") or None,
@@ -513,7 +565,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
 def _rate_windows(timeline: Sequence[Sequence[float]], *, window: int = 16) -> list[dict[str, float]]:
     """Decode rate per window of committed tokens, from the chunk timeline."""
 
-    points = [(float(ms), int(tokens)) for ms, tokens in timeline]
+    points = [(float(ms), int(tokens)) for ms, tokens in (timeline or ())]
     if len(points) < 2:
         return []
     windows: list[dict[str, float]] = []
@@ -673,6 +725,18 @@ def _serving_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "decode_tokens_per_second": tokens / (wall / 1000.0) if wall else None,
         "completed_requests_per_second": len(completed) / (wall / 1000.0) if wall else None,
         "median_itl_ms": statistics.median(itl) if itl else None,
+        "median_itl_window_ms": (
+            statistics.median(
+                [
+                    float(value)
+                    for row in completed
+                    for value in [row.get("itl_window_median_ms")]
+                    if value is not None
+                ]
+            )
+            if any(row.get("itl_window_median_ms") is not None for row in completed)
+            else None
+        ),
         "median_ttft_ms": statistics.median(ttft) if ttft else None,
         "p95_ttft_ms": _percentile(ttft, 95.0),
     }
@@ -687,12 +751,22 @@ def _arm_identity(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     two streams part.
     """
 
-    by_prompt: dict[tuple[Any, Any, Any], dict[str, Mapping[str, Any]]] = {}
+    by_prompt: dict[tuple[Any, Any], dict[str, Mapping[str, Any]]] = {}
     for row in rows:
         if row.get("error") or not row.get("route_arm"):
             continue
-        key = (row.get("source_id"), row.get("case"), row.get("repeat_index"))
-        by_prompt.setdefault(key, {})[str(row["route_arm"])] = row
+        # Keyed without the repeat index: with --prompt-repeats and a route mix
+        # the arms alternate across repeats, so the same prompt is served by
+        # each arm in a different repeat. The first occurrence per arm is the
+        # comparison, and it is the same prompt either way.
+        key = (row.get("source_id"), row.get("case"))
+        arms = by_prompt.setdefault(key, {})
+        arm = str(row["route_arm"])
+        existing = arms.get(arm)
+        if existing is None or int(row.get("repeat_index") or 0) < int(
+            existing.get("repeat_index") or 0
+        ):
+            arms[arm] = row
     pairs: list[dict[str, Any]] = []
     for key, arms in sorted(by_prompt.items(), key=lambda item: str(item[0])):
         if len(arms) < 2:
@@ -716,7 +790,8 @@ def _arm_identity(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 {
                     "source_id": key[0],
                     "case": key[1],
-                    "repeat_index": key[2],
+                    "left_repeat_index": left.get("repeat_index"),
+                    "right_repeat_index": right.get("repeat_index"),
                     "left_arm": left_name,
                     "right_arm": right_name,
                     "left_tokens": len(left_ids),
@@ -835,6 +910,14 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
     itl_samples: list[float] = []
     for row in rows:
         itl_samples.extend(_inter_token_latencies_ms(row.get("timeline")))
+    # The run's central inter-token latency is the per-request average, not the
+    # pooled window median: a row whose response was fully buffered contributes
+    # one fast window per token and would otherwise drag the pooled median down.
+    row_itl = [
+        float(row["itl_median_ms"])
+        for row in rows
+        if row.get("itl_median_ms") is not None
+    ]
     completed_hashes = Counter(
         str(row["output_sha256"])
         for row in rows
@@ -973,9 +1056,13 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         "median_e2e_ms": statistics.median(latencies) if latencies else None,
         "p95_e2e_ms": _percentile(latencies, 95.0),
         "total_e2e_ms": sum(latencies),
-        "median_itl_ms": statistics.median(itl_samples) if itl_samples else None,
+        "median_itl_ms": statistics.median(row_itl) if row_itl else None,
         "p95_itl_ms": _percentile(itl_samples, 95.0),
         "itl_samples": len(itl_samples),
+        "itl_requests": len(row_itl),
+        "median_itl_window_ms": (
+            statistics.median(itl_samples) if itl_samples else None
+        ),
         "median_first_answer_ms": statistics.median(answers) if answers else None,
         "answer_requests": len(answers),
         "median_first_thinking_ms": (
@@ -1334,6 +1421,45 @@ def main() -> int:
         f"{_fmt_ms(summary['median_e2e_ms'])}/{_fmt_ms(summary['p95_e2e_ms'])}"
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
+    for arm, metrics in summary["by_route_arm"].items():
+        print(
+            f"[{args.label}] arm {arm}: requests={metrics['requests']} "
+            f"completed={metrics['completed_requests']} "
+            f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
+            f"itl(avg/med-window)={_fmt_ms(metrics['median_itl_ms'])}/"
+            f"{_fmt_ms(metrics['median_itl_window_ms'])} "
+            f"ttft(med/p95)={_fmt_ms(metrics['median_ttft_ms'])}/"
+            f"{_fmt_ms(metrics['p95_ttft_ms'])} "
+            f"mtp_requests={metrics['mtp_requests']} "
+            f"mtp_output_tokens={metrics['mtp_output_tokens']} "
+            f"median_prompt_tokens={metrics['median_prompt_tokens']}"
+        )
+    for case, metrics in summary["by_case"].items():
+        print(
+            f"[{args.label}] case {case}: requests={metrics['requests']} "
+            f"completed={metrics['completed_requests']} "
+            f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
+            f"itl(avg)={_fmt_ms(metrics['median_itl_ms'])} "
+            f"ttft(med)={_fmt_ms(metrics['median_ttft_ms'])} "
+            f"median_prompt_tokens={metrics['median_prompt_tokens']} "
+            f"mtp_requests={metrics['mtp_requests']}"
+        )
+    identity = summary["arm_identity"]
+    if identity["compared_prompts"]:
+        print(
+            f"[{args.label}] arm identity: compared={identity['compared_prompts']} "
+            f"identical={identity['identical_prompts']} "
+            f"differing={identity['differing_prompts']} "
+            f"shared_prefix(med/min)="
+            f"{identity['median_shared_prefix_tokens']}/"
+            f"{identity['min_shared_prefix_tokens']}"
+        )
+        if identity["differing_prompts"]:
+            print(
+                f"[{args.label}] QUALITY: the arms disagree on greedy output for "
+                f"{identity['differing_prompts']} prompt(s): "
+                f"{json.dumps(identity['differing'][:5])}"
+            )
     print(
         f"[{args.label}] groups by realized rows: "
         f"{json.dumps(summary['groups_by_realized_rows'])}"
