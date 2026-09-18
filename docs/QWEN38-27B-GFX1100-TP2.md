@@ -105,7 +105,7 @@ requires measurement; the review does not establish a performance result.
 
 ## Measured status
 
-**External cross-engine checkpoint (2026-09-19).** The same
+**External cross-engine checkpoint (2026-09-18).** The same
 `Qwen3.8-27B-Q4_K_M.gguf` on the same host, c=1, 512-token prompt, 128 decode
 tokens, f16 KV, no speculative decoding, measured against the
 `llama.cpp-rdna3-opt` RDNA3 fork at build `15995a1`:
@@ -126,7 +126,7 @@ of planned resident weights from the shard manifest, leaving only 1.58 GiB free
 on the 24 GiB XTX rank. Full protocol, commands, and artifacts:
 [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) "Qwen3.8-27B dense Q4_K_M
 TP1/TP2 vs llama.cpp RDNA3 fork" and
-[`2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](../benchmarks/results/2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
+[`2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](../benchmarks/results/2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
 
 Packets 0-2 are measured on the target host (Ryzen 9 5950X, W7900 at
 `0000:0d:00.0` + RX 7900 XTX at `0000:10:00.0`, both `gfx1100`, separate CPU root

@@ -3,7 +3,7 @@
   "kind": "cross_engine_tp_comparison",
   "status": "diagnostic_retained",
   "performance_claim": false,
-  "date": "2026-09-19",
+  "date": "2026-09-18",
   "host": "epyc",
   "hardware": [
     "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
@@ -160,8 +160,8 @@
     "Audit TP2 per-rank residency against the shard manifest: identify the ~14.5 GiB per rank that is not planned resident weight, then decide whether the full-model materialization should be released after shard binding."
   ],
   "artifacts": {
-    "hipengine_tp1_cell": "benchmarks/results/2026-09-19-w7900-hipengine-tp1-c1-512.json",
-    "hipengine_tp2_cell": "benchmarks/results/2026-09-19-w7900-hipengine-tp2-c1-512.json",
+    "hipengine_tp1_cell": "benchmarks/results/2026-09-18-w7900-hipengine-tp1-c1-512.json",
+    "hipengine_tp2_cell": "benchmarks/results/2026-09-18-w7900-hipengine-tp2-c1-512.json",
     "llamacpp_raw_log": "/tmp/kendex-pi-bg/bg-84-1789749606956.log (llama-bench tp1/tp2, 3 reps)",
     "llamacpp_memory_log": "/tmp/kendex-pi-bg/bg-86-1789750539948.log (llama-cli --verbose buffer report)"
   }
