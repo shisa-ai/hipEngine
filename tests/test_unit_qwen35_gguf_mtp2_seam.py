@@ -5032,3 +5032,194 @@ def test_prefill_needs_activation_marks_only_unstarted_speculative_rows() -> Non
     assert runner.prefill_needs_activation(2) is False
     assert runner.prefill_needs_activation(3) is False
     assert runner.prefill_needs_activation(4) is False
+
+
+def test_sampled_prefill_hands_the_row_to_its_mtp_provider(monkeypatch) -> None:
+    """Both prefill finishes must open provider draft state for a due row.
+
+    `observe_prefill_result` is what records a row's prompt hidden rows, and the
+    provider's capability refuses a row that has neither hidden rows nor a
+    request state. A sampled row finishes prefill through
+    `_finish_sampled_prefill`, which never called the hook, so a sampled request
+    that registered a candidate budget still had no provider on every cycle:
+    the planner reported `no_provider` and the row decoded autoregressively even
+    with the sampled route's evidence row in place.
+    """
+
+    import sys
+    import time
+    from collections import defaultdict
+
+    import hipengine.generation.qwen35_gguf as gguf_module
+
+    observed = []
+
+    class _Provider:
+        def observe_prefill_result(self, request_id, prompt_ids, result):
+            observed.append((int(request_id), tuple(prompt_ids), result))
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = _Provider()
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(tokenizer=object())
+    runner._route_counts = defaultdict(int)
+    runner._fallback_reasons = defaultdict(int)
+    runner._refresh_prefix_cache = lambda row: None
+    sampling_request = SimpleNamespace(max_tokens=8)
+    runner._prepare_sampled_prefill = lambda row: (sampling_request, object())
+
+    monkeypatch.setattr(
+        gguf_module,
+        "_select_from_gguf_logits",
+        lambda result, request, state, tokenizer: SimpleNamespace(token_id=11),
+    )
+    monkeypatch.setattr(gguf_module, "_gguf_token_text", lambda tokenizer, sample: "x")
+    monkeypatch.setattr(gguf_module, "_gguf_logits_d2h_metadata", lambda result: (False, 0))
+    monkeypatch.setattr(
+        gguf_module, "_gguf_queue_json_object_close_if_needed", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(gguf_module, "_gguf_finished", lambda *args, **kwargs: False)
+    assert sys.modules[Qwen35GGUFResidentModelRunner.__module__] is gguf_module
+
+    def _row(*, budget: int):
+        return SimpleNamespace(
+            request_id=7,
+            prompt_ids=(1, 2, 3),
+            slot=None,
+            lease=SimpleNamespace(session=SimpleNamespace(position=5), pool_key="pool"),
+            native_sampler=False,
+            sampler_plan=SimpleNamespace(fallback_reason=None, mode=SimpleNamespace(value="host")),
+            samples=[],
+            tokenize_ms=0.0,
+            prompt_encode_ms=0.0,
+            render_ms=0.0,
+            admission_prepare_ms=0.0,
+            prefill_ms=0.0,
+            prefill_chunk_count=0.0,
+            submitted_at=time.perf_counter(),
+            request=SimpleNamespace(max_tokens=8),
+            mtp2_candidate_budget=budget,
+        )
+
+    result = SimpleNamespace(token_id=11)
+    row = _row(budget=3)
+    runner._finish_sampled_prefill(row, result, native_compact_prefill=False)
+    assert row.slot is not None
+    assert observed == [(7, (1, 2, 3), result)]
+
+    # A row that registered no candidate budget owns no provider state.
+    observed.clear()
+    runner._finish_sampled_prefill(_row(budget=0), result, native_compact_prefill=False)
+    assert observed == []
+
+    # The hook is also a no-op without a resolved adapter.
+    runner._mtp2_adapter = None
+    runner._observe_mtp2_prefill(_row(budget=3), result)
+    assert observed == []
+
+
+def test_sampled_prefill_streams_prompt_hidden_rows_for_a_due_row(monkeypatch) -> None:
+    """A sampled row that owes a draft provider must open the hidden-row sink.
+
+    A sampled row needs its first-token logits on the host, and a packed prefill
+    refuses to return logits and host hidden rows together, so the only route
+    that serves both is the streamed target-hidden sink the greedy path uses.
+    The provider refuses a row with no hidden rows, so without the sink a due
+    sampled row had no provider for its whole lifetime.
+    """
+
+    from collections import defaultdict
+
+    import hipengine.generation.qwen35_gguf as gguf_module
+
+    captured = []
+
+    def _prefill_batch(
+        chunks,
+        sessions=None,
+        full_prompt_lengths=None,
+        return_logits=None,
+        return_hidden_seeds=None,
+        target_hidden_chunk_sinks=None,
+        target_hidden_request_ids=None,
+        target_hidden_chunk_starts=None,
+        **kwargs,
+    ):
+        captured.append(
+            (
+                "batch",
+                return_logits,
+                return_hidden_seeds,
+                None if target_hidden_chunk_sinks is None else len(tuple(target_hidden_chunk_sinks)),
+                None if target_hidden_request_ids is None else tuple(target_hidden_request_ids),
+            )
+        )
+        return [SimpleNamespace(token_id=1)]
+
+    scalar_calls = []
+
+    def _scalar_prefill(token_ids, **kwargs):
+        scalar_calls.append((tuple(token_ids), kwargs.get("return_logits")))
+        return SimpleNamespace(token_id=1)
+
+    monkeypatch.setattr(
+        gguf_module, "_gguf_single_row_block_table_prefill_required", lambda session: False
+    )
+    session = SimpleNamespace(prefill=_scalar_prefill)
+    owner = SimpleNamespace(prefill_batch_native=_prefill_batch)
+    finished = []
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._resident_batch_owner = None
+    runner._route_counts = defaultdict(int)
+    runner._packed_execution_owner = lambda lease_session: owner
+    runner._prepare_sampled_prefill = lambda row: (SimpleNamespace(max_tokens=8), object())
+    runner._finish_sampled_prefill = lambda row, result, **kwargs: captured.append(
+        ("finish", row.request_id)
+    )
+    runner._finish_mtp2_prompt_streaming = (
+        lambda rows, sinks, *, success, stream=0: finished.append(
+            (tuple(int(row.request_id) for row in rows), success)
+        )
+    )
+    admitted = [True]
+    runner._begin_mtp2_prompt_streaming = lambda rows: (
+        ("sink",) if admitted[0] else (None,)
+    )
+
+    def _row(budget: int):
+        return SimpleNamespace(
+            request_id=7,
+            prompt_ids=(1, 2, 3),
+            slot=None,
+            lease=SimpleNamespace(session=session, pool_key="pool"),
+            native_sampler=False,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+            mtp2_candidate_budget=budget,
+        )
+
+    # A due row with an admitted sink streams its hidden rows and keeps logits.
+    runner._prefill_sampled_row(_row(budget=3))
+    assert captured == [("batch", True, False, 1, (7,)), ("finish", 7)]
+    assert finished == [((7,), True)]
+    assert scalar_calls == []
+
+    # A refused sink keeps the shipped scalar prefill: logits, no provider.
+    captured.clear()
+    finished.clear()
+    admitted[0] = False
+    runner._prefill_sampled_row(_row(budget=3))
+    assert captured == [("finish", 7)]
+    assert finished == []
+    assert scalar_calls == [((1, 2, 3), True)]
+
+    # No candidate budget never opens a sink at all.
+    captured.clear()
+    scalar_calls.clear()
+    runner._begin_mtp2_prompt_streaming = lambda rows: pytest.fail(
+        "a row with no candidate budget must not open a streaming sink"
+    )
+    runner._prefill_sampled_row(_row(budget=0))
+    assert captured == [("finish", 7)]
+    assert scalar_calls == [((1, 2, 3), True)]
