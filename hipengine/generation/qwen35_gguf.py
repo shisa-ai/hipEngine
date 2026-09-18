@@ -104,14 +104,13 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
     _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
-    _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
     _qualified_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
     estimate_qwen35_gguf_kv_capacity,
-    packed_verify_lease_slot_ceiling,
+    packed_verify_workspace_lease_pages,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -6432,7 +6431,6 @@ class Qwen35GGUFResidentModelRunner:
             "kv_pool_memory_budget_mib",
             getattr(config, "kv_pool_memory_budget_mib", None),
         )
-        max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None
@@ -6450,37 +6448,37 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the capacity-
-            # honest union-geometry ceiling (serving-capacity slots x
-            # max(1024, request context) tokens). The serving loop cannot
-            # open more resident slots than ``self.capacity``, so the lease
-            # follows it instead of the historical 8-slot floor; admission
-            # accounting still sees every pinned page and the workspace
-            # never grows.
-            workspace_pages_per_slot = max(
-                max_pages_per_request,
-                _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
-            )
-            # Workspace is an execution scratch budget, not one full-context
-            # KV reservation per admitted request.  Multi-row execution grows
-            # or falls back to request-owned storage when this shared floor is
-            # insufficient.
+            # Eager packed-execution workspace lease. This is an execution
+            # scratch budget, not a full-context KV reservation per admitted
+            # request: multi-row execution grows or falls back to
+            # request-owned storage when this shared floor is insufficient.
             #
-            # The slot term must match the union geometry the allocation uses
-            # (`packed_verify_lease_slot_ceiling`): the workspace unions the
-            # realized layout slots with the serving capacity, so a one-slot
-            # lease is short as soon as the loop packs a verify group. At an
-            # 8192-token session that was 32 leased pages against a 4-slot x
-            # 9-page workspace (36), and at 1024 it was 4 against 16 - both
-            # failed closed at prefill time instead of serving.
-            workspace_slots = packed_verify_lease_slot_ceiling(
-                getattr(
-                    getattr(self, "_resident_model_runner", None),
-                    "max_batch_size",
-                    None,
-                )
+            # Both terms come from `packed_verify_workspace_lease_pages`, the
+            # shared twin of `_packed_verify_union_geometry`, so the lease and
+            # the allocation's demand cannot be written differently again.
+            # That drift is what this fixes (2026-09-19):
+            #   * The capacity argument read `self._resident_model_runner`, a
+            #     field of Qwen35GGUFBringupGenerator that never exists on this
+            #     runner. The getattr always yielded None, so the ceiling
+            #     silently fell back to the historical 8-slot floor and every
+            #     server over-pinned the pages it could actually touch. The two
+            #     configure_engine_loop_leases_* tests had been RED on this
+            #     since the capacity term was introduced.
+            #   * The per-slot term was `max(max_pages_per_request, 4)`, equal
+            #     to the demand side's `ceil(max(max_positions, 1024)/256)`
+            #     only by coincidence of how scratch.max_positions rounds.
+            #
+            # `self.capacity` is the right cap: it is exactly what this runner
+            # passes as `max_batch_size` when it builds the packed batch owner,
+            # so the demand side's ceiling resolves to the identical value.
+            # A caller that packs MORE slots than capacity (an MTP verify group
+            # at C1) is a legitimate geometry no pool-creation-time lease can
+            # cover; `_GGUFPackedTargetState.allocate` degrades those to a
+            # private KV chunk instead of failing closed.
+            workspace_pages = packed_verify_workspace_lease_pages(
+                int(self.capacity),
+                int(scratch.max_positions),
             )
-            workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache
             # COW scatter), packed batch decode above one resident slot, and

@@ -994,14 +994,143 @@ def test_union_geometry_never_exceeds_the_lease_slot_ceiling() -> None:
     assert union_slots > 1
 
 
-def test_lease_sized_from_ceiling_covers_the_realized_workspace() -> None:
-    """Observed failure geometry: 4 slots x 9 pages needed, 1 slot leased."""
+def test_lease_pages_helper_covers_every_capacity_bounded_geometry() -> None:
+    """The lease helper must never under-size what the union geometry demands.
 
-    session_pages = 8192 // 256
-    pages_per_slot = max(session_pages, gguf_runner._PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)
-    old_lease_pages = 1 * pages_per_slot
-    new_lease_pages = gguf_runner.packed_verify_lease_slot_ceiling(None) * pages_per_slot
-    workspace_need = 4 * 9
+    This is the anti-drift contract. `packed_verify_workspace_lease_pages` and
+    `_packed_verify_union_geometry` are two expressions of one geometry; when
+    they were written separately they disagreed, and the disagreement only
+    surfaced at prefill time as "packed workspace lease holds N pages but the
+    workspace needs M". Sweeping the capacity/context grid here keeps them
+    pinned together for every request the serving loop can raise within its
+    own capacity.
+    """
 
-    assert old_lease_pages < workspace_need  # the reported failure
-    assert new_lease_pages >= workspace_need
+    for capacity in (1, 2, 4, 8):
+        for max_positions in (256, 512, 1024, 2048, 8192):
+            leased = gguf_runner.packed_verify_workspace_lease_pages(
+                capacity, max_positions
+            )
+
+            owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+            owner.max_batch_size = capacity
+            owner._packed_verify_state = None
+            owner._packed_verify_scratch = None
+            owner._packed_verify_prefill_row_cap = lambda: 8
+
+            # The loop cannot request more slots than its own capacity; an MTP
+            # verify group that packs wider is the documented exception and is
+            # covered by the degradation test below, not by the lease.
+            for slot_count in range(1, capacity + 1):
+                union_slots, _rows, union_max_seq, _segments = (
+                    owner._packed_verify_union_geometry(
+                        slot_count=slot_count,
+                        rows=8,
+                        max_sequence_length=max_positions,
+                    )
+                )
+                needed = union_slots * ((union_max_seq + 255) // 256)
+                assert leased >= needed, (
+                    f"capacity={capacity} positions={max_positions} "
+                    f"slots={slot_count}: leased {leased} < needed {needed}"
+                )
+
+
+def test_lease_pages_helper_applies_the_context_floor_and_capacity_term() -> None:
+    """Both terms are load-bearing and neither silently disappears."""
+
+    # 1024-token per-slot floor: a short request context does not shrink below it.
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 256) == 4
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 1024) == 4
+    # Context above the floor scales pages per slot.
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 2048) == 8
+    # Capacity scales slots.
+    assert gguf_runner.packed_verify_workspace_lease_pages(4, 2048) == 32
+    # An unusable capacity falls back to the historical floor rather than 0.
+    assert gguf_runner.packed_verify_workspace_lease_pages(None, 1024) == (
+        gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY * 4
+    )
+
+
+def test_short_lease_degrades_to_private_instead_of_failing_closed(
+    monkeypatch,
+) -> None:
+    """A lease too small for the request must not wedge serving.
+
+    The lease is sized once at pool creation from the caps known then, but
+    `_packed_verify_union_geometry` lets a caller pack more slots than the
+    serving capacity (an MTP verify group does exactly this at C1). That used
+    to raise from `allocate`, turning a legitimate geometry into a hard prefill
+    failure. The private branch allocates the identical geometry, so the lease
+    is a fast path and never a correctness dependency.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    private_calls: list[dict] = []
+    real_chunk = gguf_runner._allocate_qwen35_gguf_kv_chunk
+
+    def recording_chunk(*args, **kwargs):
+        private_calls.append(dict(kwargs))
+        return real_chunk(*args, **kwargs)
+
+    monkeypatch.setattr(
+        gguf_runner, "_allocate_qwen35_gguf_kv_chunk", recording_chunk
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    # 1 slot x 1024 positions needs 4 pages; the lease holds 2.
+    pool = _fake_kv_pool(layout, pages=(0, 1))
+    runner = _allocator_fake_runner()
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=pool,
+        lease_kv_planes=True,
+    )
+
+    assert state.kv_backing_kind == "private"
+    assert len(private_calls) == 1
+    assert private_calls[0]["pages"] == 4
+    # The shortfall is recorded, not silently swallowed: chronic under-leasing
+    # is a perf defect that must stay visible.
+    shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", [])
+    assert len(shortfalls) == 1
+    assert shortfalls[0]["leased_pages"] == 2
+    assert shortfalls[0]["needed_pages"] == 4
+
+
+def test_sufficient_lease_still_prefers_the_arena(monkeypatch) -> None:
+    """The degradation path must not cost the arena win in the normal case."""
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    monkeypatch.setattr(
+        gguf_runner,
+        "_allocate_qwen35_gguf_kv_chunk",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("a sufficient lease must not fall back to private")
+        ),
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    runner = _allocator_fake_runner()
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=_fake_kv_pool(layout, pages=(4, 5, 6, 7)),
+        lease_kv_planes=True,
+    )
+
+    assert state.kv_backing_kind == "pool_lease"
+    assert getattr(runner, "_packed_workspace_lease_shortfalls", []) == []
