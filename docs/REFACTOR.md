@@ -37,6 +37,40 @@
   with "not worth a trie probe". Decide the floor from measured probe cost, not
   from `block_size_tokens`, and re-measure the ShareGPT lanes.
 
+## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18)
+
+- `capture_prefix_state_snapshot` allocates two device buffers per linear-state
+  layer, copies the Conv/GDN state into them with `memcpy_async`, and calls
+  `device_synchronize`. `_evict_prefix_snapshot` frees them again. Measured on
+  gfx1151 with rocprofv3 over 4 served requests: **+161 `hipMalloc` and +161
+  `hipFree` calls** (~54 per capture) at **~3.2 ms per malloc**, against state
+  copies of **~25 us each**. The engine's own phase counter puts a capture at
+  **0.18-0.38 s** on the greedy route and up to **1.4 s** on the sampled route,
+  and the prompt-boundary refresh pays it on **every eligible turn, hit or miss**.
+- Fix direction: hold the snapshot buffers in a per-session pool sized to the
+  largest capture (the state size is fixed by the model) instead of malloc/free
+  per capture, and drop the `device_synchronize` to a stream sync when the
+  capture is already on the request's stream. RED test target: capture, evict,
+  capture again and assert the second capture performs no allocation.
+- Evidence: `benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json`
+  (`rocprof.hip_api.radix.hipMalloc`, `ranked_cost[1]`).
+
+## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
+
+- The greedy cumulative lanes prefill a reused row's suffix through
+  `_prefill_native_chunk`'s serial loop, one `session.step()` per token: measured
+  **33.8-35.3 ms per suffix token** (6.2-6.9 s on a hit turn) with **~1,679 extra
+  kernel dispatches per token** against **~0.4 ms/token** for the batched prefill
+  kernels. The sampled/processed-argmax fixture lanes reuse a comparable volume
+  (2,560-8,704 tokens, 172-189 token suffixes) and record **no `suffix_prefill`
+  phase at all**, with turn walls 3-5 s lower.
+- Both routes report `native_compact_prefill=False`, so the difference is not the
+  flag; the sampled route never enters the serial loop. Find that route and give
+  it to greedy rows before writing a new batched reused-prefix path.
+- This is the same defect as "Shared-prefix suffix prefill runs one token at a
+  time" below; that entry records the correctness constraints, this one records
+  where the cheap route already lives.
+
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 
 - `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several

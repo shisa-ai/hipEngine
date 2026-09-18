@@ -635,6 +635,87 @@ def test_completed_prefix_survives_unaligned_tail_and_lru_residency_is_bounded()
     runner.close()
 
 
+def test_prefix_phase_counters_attribute_admission_refresh_and_capture() -> None:
+    """Serving diagnostics attribute prefix cost to the phase that paid it."""
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2, forced_token_id=811)
+    runner.register_batch((10,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=10))
+    source = runner._rows[10]
+    assert source.prefix_fallback_reason == "miss"
+
+    admission = runner._prefix_cache_observability()
+    admission_calls = admission["phase_calls"]
+    # A miss still pays the packed-owner flush, the trie probe, and the pool
+    # reservation; it pays nothing for state restore because there is no source.
+    assert admission_calls["admission_lookup"] == 1
+    assert admission_calls["lookup_flush_packed"] == 1
+    assert admission_calls["lookup_match"] == 1
+    assert admission_calls["admission_pool"] == 1
+    assert "admission_restore_state" not in admission_calls
+    assert "capture_total" not in admission_calls
+
+    assert source.lease is not None
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    captured = runner._prefix_cache_observability()
+    captured_calls = captured["phase_calls"]
+    assert captured_calls["capture_total"] == 1
+    assert captured_calls["capture_clone_state"] == 1
+    assert captured_calls["refresh_trie"] == 1
+    assert captured_calls["processed_tokens"] >= 1
+    assert captured_calls["refresh_total"] == 1
+    # Every recorded phase carries a non-negative wall time and a call count.
+    assert set(captured["phase_ms"]) == set(captured_calls)
+    for name, calls in captured_calls.items():
+        assert calls >= 1, name
+        assert float(captured["phase_ms"][name]) >= 0.0, name
+    # Counters accumulate across requests rather than reporting one call.
+    assert captured_calls["admission_lookup"] == 1
+    assert captured["phase_ms"]["admission_lookup"] >= admission["phase_ms"]["admission_lookup"]
+
+    runner._release_row_resources(source, retain_prefix_snapshots=True)
+    runner._rows.pop(10)
+    continued_prompt = (*prefix, 999, 998)
+    continued_request = _request(continued_prompt, max_tokens=2, forced_token_id=812)
+    runner.register_batch((11,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=11))
+    continued = runner._rows[11]
+    assert continued.prefix_snapshot_hit is True
+
+    reused = runner._prefix_cache_observability()
+    reused_calls = reused["phase_calls"]
+    assert reused_calls["admission_lookup"] == 2
+    assert reused_calls["lookup_resolve"] == 1
+    assert reused_calls["admission_restore_state"] == 1
+    # A hit refreshes the new owner's boundary from the cloned session position,
+    # so it re-inserts the trie entry; the capture is skipped because the same
+    # token tuple is already resident.
+    assert reused_calls["admission_refresh"] == 1
+    assert reused_calls["refresh_trie"] == 2
+    assert reused_calls["capture_total"] == 1
+    assert reused_calls["capture_clone_state"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=11))
+    runner._evict_prefix_snapshot(prefix)
+    runner.close()
+
+
 def test_prefix_reuse_falls_back_for_exact_prompt_and_sampled_boundary() -> None:
     owner = _FakePrefixOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
