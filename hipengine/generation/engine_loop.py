@@ -49,7 +49,7 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
 )
-from hipengine.speculative.policy import plan_speculative_requests
+from hipengine.speculative.policy import SpecRequestPlan, plan_speculative_requests
 from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.speculative.transaction import (
     SpecCycleResult,
@@ -2036,6 +2036,16 @@ class ResidentEngineLoop:
                     raise ValueError("capacity conflicts with config.max_active_requests")
         assert resolved_capacity is not None
         self.runner = runner
+        # A due group the provider refuses as a whole keeps its shipped route:
+        # one batched autoregressive decode. Decomposing it into one provider
+        # cycle per capable row measured 19-26% slower per token even at perfect
+        # depth-3 acceptance, so it stays behind a default-off flag that the
+        # serving ladder can re-open; see docs/REFACTOR.md for the removal
+        # condition.
+        self.speculative_split_refused_groups = (
+            os.environ.get("HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS", "0").strip()
+            not in {"", "0"}
+        )
         self.prefill_chunk_size = int(resolved_config.max_prefill_chunk_tokens)
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
@@ -2772,9 +2782,111 @@ class ResidentEngineLoop:
             if callable(observe):
                 observe(request_id, reason)
 
+    def _resolve_speculative_capability(
+        self,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+    ) -> SpeculativeCapability | None:
+        resolve = getattr(self.runner, "speculative_capability", None)
+        if not callable(resolve):
+            return None
+        capability = resolve(semantics)
+        if capability is not None and not isinstance(capability, SpeculativeCapability):
+            raise TypeError(
+                "runner speculative_capability must return SpeculativeCapability or None"
+            )
+        return capability
+
+    def _compatible_speculative_subset(
+        self,
+        work: WorkItem,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        plan: SpecRequestPlan,
+    ) -> tuple[int, ...]:
+        """Return the rows of a refused group the provider can serve on their own.
+
+        The provider runs one target verify shape, so a group that mixes rows it
+        can serve with rows it refuses -- a row that crosses the target's
+        short-context window, a row whose target profile is unsupported, a row
+        out of candidate room -- is planned K0 as a whole. This names the rows
+        that would be served if the group were decomposed.
+        """
+
+        group = tuple(int(value) for value in work.request_ids)
+        candidate = (
+            tuple(int(value) for value in plan.speculative_request_ids)
+            if plan.has_speculative_rows
+            else group
+        )
+        by_id = {int(item.request_id): item for item in semantics}
+        return tuple(
+            request_id
+            for request_id in candidate
+            if request_id in by_id
+            and self._resolve_speculative_capability((by_id[request_id],)) is not None
+        )
+
+    def _record_refused_reasons(
+        self,
+        plan: SpecRequestPlan,
+        request_ids: tuple[int, ...],
+    ) -> None:
+        """Carry a refused row's own plan reason to its AR emission."""
+
+        reason_by_id = dict(zip(plan.request_ids, plan.reasons, strict=True))
+        for request_id in request_ids:
+            reason = reason_by_id.get(int(request_id))
+            if reason is not None:
+                self._pending_ar_reasons[int(request_id)] = reason
+
+    def _run_split_refused_group(
+        self,
+        work: WorkItem,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        plan: SpecRequestPlan,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Serve every individually capable row of a refused group separately.
+
+        This is the route the adapter's partition contract deliberately closes
+        (a multi-row due batch of one-row-qualified requests must not decompose
+        into serial singleton cycles), kept behind a flag so the serving ladder
+        can re-measure it on this tree against the whole-group autoregressive
+        route. Each capable row runs the same one-row cycle the scheduler would
+        run for it alone, and any row that is still refused decodes
+        autoregressively in the same tick.
+        """
+
+        eligible = self._compatible_speculative_subset(work, semantics, plan)
+        if not eligible:
+            return None
+        events: list[EngineLoopEvent] = []
+        served: list[int] = []
+        for request_id in eligible:
+            row_events = self._maybe_run_speculative_cycle(
+                self._decode_work_subset(work, (request_id,)),
+                allow_refused_split=False,
+            )
+            if row_events is None:
+                continue
+            served.append(request_id)
+            events.extend(row_events)
+        if not served:
+            return None
+        selected = set(served)
+        remainder = tuple(
+            int(request_id)
+            for request_id in work.request_ids
+            if int(request_id) not in selected
+        )
+        if not remainder:
+            return tuple(events)
+        self._record_refused_reasons(plan, remainder)
+        return (*events, *self._run_ar_decode(self._decode_work_subset(work, remainder)))
+
     def _maybe_run_speculative_cycle(
         self,
         work: WorkItem,
+        *,
+        allow_refused_split: bool = True,
     ) -> tuple[EngineLoopEvent, ...] | None:
         desired = tuple(
             self._speculative_candidate_counts.get(int(request_id), 0)
@@ -2810,12 +2922,10 @@ class ResidentEngineLoop:
             )
         resolve_capability = getattr(self.runner, "speculative_capability", None)
         capability = (
-            resolve_capability(tuple(semantics))
+            self._resolve_speculative_capability(tuple(semantics))
             if callable(resolve_capability)
             else None
         )
-        if capability is not None and not isinstance(capability, SpeculativeCapability):
-            raise TypeError("runner speculative_capability must return SpeculativeCapability or None")
         self._speculative_cycle_sequence += 1
         operation_id = f"specdec2-cycle:{self._speculative_cycle_sequence}"
         graph_available = self._speculative_runner_flag(
@@ -2842,7 +2952,27 @@ class ResidentEngineLoop:
             declared_logical_c=work.declared_logical_c,
         )
         claims_fit = getattr(self.runner, "speculative_claims_fit", None)
-        if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
+        refused = bool(
+            plan.has_speculative_rows
+            and callable(claims_fit)
+            and not bool(claims_fit(plan))
+        )
+        if refused or not plan.has_speculative_rows:
+            # The provider owns one target verify shape, so a due group that
+            # mixes rows it can serve with rows it refuses is planned K0 as a
+            # whole and the batch decodes autoregressively. The adapter's
+            # partition contract closes the alternative route (one provider
+            # cycle per capable row); the flag re-opens it for measurement, and
+            # the serving ladder measured it slower per token even at perfect
+            # depth-3 acceptance (docs/REFACTOR.md).
+            if (
+                allow_refused_split
+                and self.speculative_split_refused_groups
+            ):
+                split = self._run_split_refused_group(work, tuple(semantics), plan)
+                if split is not None:
+                    return split
+        if refused:
             plan = plan_speculative_requests(
                 capability,
                 tuple(semantics),

@@ -1,0 +1,1289 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M on gfx1151: decomposing a refused MTP due group into one-row cycles loses 19-26% per token even at perfect depth-3 acceptance",
+ "date": "2026-09-18",
+ "status": "measured_rejected",
+ "performance_claim": false,
+ "purpose": "Answer the mixed K/K0 question the concurrent-coverage review raised: when a due group is refused as a whole (static one-row evidence, a row that crosses the provider's 1023-token window, an unsupported target profile), should the engine serve each capable row on its own instead of decoding the whole batch autoregressively? Measured as three arms on two protocols at c=2 and c=4: AR control, whole-group AR (current default), and the one-row-cycle split (the route the adapter's partition contract closes).",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "kv_storage": "bf16",
+ "execution_profile": "production",
+ "host": "zbook",
+ "tree": {
+  "commit": "4029da670",
+  "note": "the split arm needs HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS=1; the default (0) is the whole-group AR route, which is what this tree ships"
+ },
+ "server": {
+  "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+  "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1",
+  "arm_control": "HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS=0|1 per server; one server per arm"
+ },
+ "workload": {
+  "harness": "scripts/sharegpt_mtp_routing_pass.py --cases --min-prompt-len --max-total-len 2048 --output-len 0 --record-ids",
+  "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+  "output_len": "dataset (natural)",
+  "max_prompt_len": 1023,
+  "max_total_len": 2048,
+  "protocols": {
+   "long2": {
+    "seed": 0,
+    "cases": "long,long",
+    "min_prompt_len": 900,
+    "rows": [
+     "996 prompt + 530 output: crosses the provider's 1023-token window after 27 generated tokens",
+     "936 prompt + 47 output: never crosses"
+    ],
+    "note": "both rows carry speculative intent, so the due group is refused from its first tick and the healthy row is short-lived"
+   },
+   "pair": {
+    "seed": 373,
+    "cases": "long,mid",
+    "min_prompt_len": 300,
+    "rows": [
+     "839 prompt + 464 output: crosses after 184 generated tokens",
+     "380 prompt + 481 output: never crosses, so it can speculate for its whole life"
+    ],
+    "note": "the protocol the task named: a row that crosses the window mid-stream beside a co-resident that does not"
+   }
+  },
+  "concurrency": "2 and 4, one load per point, no warmup, greedy",
+  "route_mix": "auto,auto (c=2) and auto,auto,auto,auto (c=4) for the speculative points; off,... for the AR control"
+ },
+ "points": {
+  "long2": {
+   "c2": {
+    "ar-split0": {
+     "concurrency": 2,
+     "arm": "ar",
+     "split": false,
+     "wall_seconds": 52.4,
+     "requests": 2,
+     "completion_tokens": 1060,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 20.21,
+     "decode_tokens_per_second_excluding_ttft": 22.49,
+     "median_ttft_ms": 5304.7,
+     "median_itl_ms": 89.3,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1060,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 5305.0,
+       "decode_ms_per_token": 88.9,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 5304.5,
+       "decode_ms_per_token": 88.9,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split0": {
+     "concurrency": 2,
+     "arm": "spec",
+     "split": false,
+     "wall_seconds": 63.0,
+     "requests": 2,
+     "completion_tokens": 1060,
+     "mtp_requests": 1,
+     "mtp_output_share": 0.0113,
+     "mtp_output_tokens": 12,
+     "ar_tokens_by_reason": {
+      "no_provider": 1035,
+      "target_graph_context_bucket_miss": 11
+     },
+     "draft_cycles": 4,
+     "accepted_draft_tokens": 8,
+     "accepted_per_cycle": 2.0,
+     "tokens_per_cycle": 265.0,
+     "decode_tokens_per_second_e2e": 16.82,
+     "decode_tokens_per_second_excluding_ttft": 21.07,
+     "median_ttft_ms": 13803.3,
+     "median_itl_ms": 93.2,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1060,
+       "mtp_output_tokens": 12,
+       "mtp_requests": 1,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 14919.3,
+       "decode_ms_per_token": 90.7,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 518,
+        "target_graph_context_bucket_miss": 11
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 12687.3,
+       "decode_ms_per_token": 94.9,
+       "mtp_coverage": 0.0226,
+       "draft_cycles": 4,
+       "accepted_draft_tokens": 8,
+       "selected_depth_histogram": {
+        "3": 4
+       },
+       "fallback_event_counts": {
+        "no_provider": 517
+       }
+      }
+     ]
+    },
+    "ar-split1": {
+     "concurrency": 2,
+     "arm": "ar",
+     "split": true,
+     "wall_seconds": 52.5,
+     "requests": 2,
+     "completion_tokens": 1060,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 20.19,
+     "decode_tokens_per_second_excluding_ttft": 22.42,
+     "median_ttft_ms": 5259.1,
+     "median_itl_ms": 89.4,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1060,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 5305.0,
+       "decode_ms_per_token": 89.0,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 5213.1,
+       "decode_ms_per_token": 89.2,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split1": {
+     "concurrency": 2,
+     "arm": "spec",
+     "split": true,
+     "wall_seconds": 63.5,
+     "requests": 2,
+     "completion_tokens": 1060,
+     "mtp_requests": 2,
+     "mtp_output_share": 0.034,
+     "mtp_output_tokens": 36,
+     "ar_tokens_by_reason": {
+      "no_provider": 1019,
+      "target_graph_context_bucket_miss": 3
+     },
+     "draft_cycles": 12,
+     "accepted_draft_tokens": 24,
+     "accepted_per_cycle": 2.0,
+     "tokens_per_cycle": 88.333,
+     "decode_tokens_per_second_e2e": 16.7,
+     "decode_tokens_per_second_excluding_ttft": 20.87,
+     "median_ttft_ms": 14037.4,
+     "median_itl_ms": 93.6,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1060,
+       "mtp_output_tokens": 36,
+       "mtp_requests": 2,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 12666.9,
+       "decode_ms_per_token": 95.8,
+       "mtp_coverage": 0.034,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 12,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 5
+       },
+       "fallback_event_counts": {
+        "no_provider": 511
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 15407.9,
+       "decode_ms_per_token": 90.7,
+       "mtp_coverage": 0.034,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 12,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 5
+       },
+       "fallback_event_counts": {
+        "no_provider": 508,
+        "target_graph_context_bucket_miss": 3
+       }
+      }
+     ]
+    }
+   },
+   "c4": {
+    "ar-split0": {
+     "concurrency": 4,
+     "arm": "ar",
+     "split": false,
+     "wall_seconds": 57.8,
+     "requests": 4,
+     "completion_tokens": 1154,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 19.97,
+     "decode_tokens_per_second_excluding_ttft": 24.21,
+     "median_ttft_ms": 10310.9,
+     "median_itl_ms": 235.1,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1154,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 10092.9,
+       "decode_ms_per_token": 90.0,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 10530.2,
+       "decode_ms_per_token": 363.7,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 10091.8,
+       "decode_ms_per_token": 89.9,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 10529.0,
+       "decode_ms_per_token": 363.7,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split0": {
+     "concurrency": 4,
+     "arm": "spec",
+     "split": false,
+     "wall_seconds": 68.9,
+     "requests": 4,
+     "completion_tokens": 1154,
+     "mtp_requests": 1,
+     "mtp_output_share": 0.0069,
+     "mtp_output_tokens": 8,
+     "ar_tokens_by_reason": {
+      "no_provider": 1139,
+      "target_graph_context_bucket_miss": 3
+     },
+     "draft_cycles": 2,
+     "accepted_draft_tokens": 6,
+     "accepted_per_cycle": 3.0,
+     "tokens_per_cycle": 577.0,
+     "decode_tokens_per_second_e2e": 16.75,
+     "decode_tokens_per_second_excluding_ttft": 23.02,
+     "median_ttft_ms": 15669.1,
+     "median_itl_ms": 302.5,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1154,
+       "mtp_output_tokens": 8,
+       "mtp_requests": 1,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 18750.6,
+       "decode_ms_per_token": 94.6,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 529
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 5002.7,
+       "decode_ms_per_token": 611.1,
+       "mtp_coverage": 0.1702,
+       "draft_cycles": 2,
+       "accepted_draft_tokens": 6,
+       "selected_depth_histogram": {
+        "3": 2
+       },
+       "fallback_event_counts": {
+        "no_provider": 38
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 20557.3,
+       "decode_ms_per_token": 91.2,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 526,
+        "target_graph_context_bucket_miss": 3
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 12587.7,
+       "decode_ms_per_token": 488.4,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 46
+       }
+      }
+     ]
+    },
+    "ar-split1": {
+     "concurrency": 4,
+     "arm": "ar",
+     "split": true,
+     "wall_seconds": 57.8,
+     "requests": 4,
+     "completion_tokens": 1154,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 19.97,
+     "decode_tokens_per_second_excluding_ttft": 24.37,
+     "median_ttft_ms": 10433.4,
+     "median_itl_ms": 234.1,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1154,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 10434.3,
+       "decode_ms_per_token": 89.4,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 10433.6,
+       "decode_ms_per_token": 362.5,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 10433.1,
+       "decode_ms_per_token": 89.4,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 9993.7,
+       "decode_ms_per_token": 366.1,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split1": {
+     "concurrency": 4,
+     "arm": "spec",
+     "split": true,
+     "wall_seconds": 72.8,
+     "requests": 4,
+     "completion_tokens": 1154,
+     "mtp_requests": 4,
+     "mtp_output_share": 0.1109,
+     "mtp_output_tokens": 128,
+     "ar_tokens_by_reason": {
+      "no_provider": 1019,
+      "target_graph_context_bucket_miss": 5
+     },
+     "draft_cycles": 42,
+     "accepted_draft_tokens": 86,
+     "accepted_per_cycle": 2.048,
+     "tokens_per_cycle": 27.476,
+     "decode_tokens_per_second_e2e": 15.86,
+     "decode_tokens_per_second_excluding_ttft": 19.26,
+     "median_ttft_ms": 16647.1,
+     "median_itl_ms": 281.2,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1154,
+       "mtp_output_tokens": 128,
+       "mtp_requests": 4,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 12830.6,
+       "decode_ms_per_token": 113.1,
+       "mtp_coverage": 0.034,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 12,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 5
+       },
+       "fallback_event_counts": {
+        "no_provider": 511
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 20463.7,
+       "decode_ms_per_token": 429.8,
+       "mtp_coverage": 0.9787,
+       "draft_cycles": 15,
+       "accepted_draft_tokens": 31,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 14
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 1004,
+       "completion_tokens": 530,
+       "ttft_ms": 25146.7,
+       "decode_ms_per_token": 89.8,
+       "mtp_coverage": 0.034,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 12,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 5
+       },
+       "fallback_event_counts": {
+        "no_provider": 506,
+        "target_graph_context_bucket_miss": 5
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 944,
+       "completion_tokens": 47,
+       "ttft_ms": 5010.5,
+       "decode_ms_per_token": 707.7,
+       "mtp_coverage": 0.9787,
+       "draft_cycles": 15,
+       "accepted_draft_tokens": 31,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 14
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  "pair": {
+   "c2": {
+    "ar-split0": {
+     "concurrency": 2,
+     "arm": "ar",
+     "split": false,
+     "wall_seconds": 46.6,
+     "requests": 2,
+     "completion_tokens": 945,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 20.28,
+     "decode_tokens_per_second_excluding_ttft": 21.72,
+     "median_ttft_ms": 3540.1,
+     "median_itl_ms": 91.5,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 945,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 3983.3,
+       "decode_ms_per_token": 91.8,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 3096.9,
+       "decode_ms_per_token": 90.4,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split0": {
+     "concurrency": 2,
+     "arm": "spec",
+     "split": false,
+     "wall_seconds": 55.3,
+     "requests": 2,
+     "completion_tokens": 945,
+     "mtp_requests": 1,
+     "mtp_output_share": 0.018,
+     "mtp_output_tokens": 17,
+     "ar_tokens_by_reason": {
+      "no_provider": 927
+     },
+     "draft_cycles": 6,
+     "accepted_draft_tokens": 11,
+     "accepted_per_cycle": 1.833,
+     "tokens_per_cycle": 157.5,
+     "decode_tokens_per_second_e2e": 17.08,
+     "decode_tokens_per_second_excluding_ttft": 21.33,
+     "median_ttft_ms": 11929.8,
+     "median_itl_ms": 92.2,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 945,
+       "mtp_output_tokens": 17,
+       "mtp_requests": 1,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 12850.6,
+       "decode_ms_per_token": 91.5,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 463
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 11009.1,
+       "decode_ms_per_token": 92.1,
+       "mtp_coverage": 0.0353,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 11,
+       "selected_depth_histogram": {
+        "1": 1,
+        "2": 1,
+        "3": 4
+       },
+       "fallback_event_counts": {
+        "no_provider": 464
+       }
+      }
+     ]
+    },
+    "ar-split1": {
+     "concurrency": 2,
+     "arm": "ar",
+     "split": true,
+     "wall_seconds": 46.6,
+     "requests": 2,
+     "completion_tokens": 945,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 20.29,
+     "decode_tokens_per_second_excluding_ttft": 22.01,
+     "median_ttft_ms": 3633.6,
+     "median_itl_ms": 91.3,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 945,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 3633.8,
+       "decode_ms_per_token": 92.5,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 3633.4,
+       "decode_ms_per_token": 89.3,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split1": {
+     "concurrency": 2,
+     "arm": "spec",
+     "split": true,
+     "wall_seconds": 66.7,
+     "requests": 2,
+     "completion_tokens": 945,
+     "mtp_requests": 2,
+     "mtp_output_share": 0.6931,
+     "mtp_output_tokens": 655,
+     "ar_tokens_by_reason": {
+      "no_provider": 100,
+      "target_graph_context_bucket_miss": 189
+     },
+     "draft_cycles": 226,
+     "accepted_draft_tokens": 429,
+     "accepted_per_cycle": 1.898,
+     "tokens_per_cycle": 4.181,
+     "decode_tokens_per_second_e2e": 14.17,
+     "decode_tokens_per_second_excluding_ttft": 17.51,
+     "median_ttft_ms": 12988.8,
+     "median_itl_ms": 114.2,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 945,
+       "mtp_output_tokens": 655,
+       "mtp_requests": 2,
+       "requests": 2
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 12731.7,
+       "decode_ms_per_token": 116.3,
+       "mtp_coverage": 0.3772,
+       "draft_cycles": 64,
+       "accepted_draft_tokens": 111,
+       "selected_depth_histogram": {
+        "2": 1,
+        "3": 63
+       },
+       "fallback_event_counts": {
+        "no_provider": 99,
+        "target_graph_context_bucket_miss": 189
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 13246.0,
+       "decode_ms_per_token": 111.1,
+       "mtp_coverage": 0.9979,
+       "draft_cycles": 162,
+       "accepted_draft_tokens": 318,
+       "selected_depth_histogram": {
+        "3": 162
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      }
+     ]
+    }
+   },
+   "c4": {
+    "ar-split0": {
+     "concurrency": 4,
+     "arm": "ar",
+     "split": false,
+     "wall_seconds": 50.9,
+     "requests": 4,
+     "completion_tokens": 1123,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 22.08,
+     "decode_tokens_per_second_excluding_ttft": 25.68,
+     "median_ttft_ms": 7125.0,
+     "median_itl_ms": 183.7,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1123,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 7126.3,
+       "decode_ms_per_token": 94.2,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 742,
+       "completion_tokens": 16,
+       "ttft_ms": 6689.8,
+       "decode_ms_per_token": 376.3,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 7125.3,
+       "decode_ms_per_token": 90.9,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 413,
+       "completion_tokens": 162,
+       "ttft_ms": 7124.6,
+       "decode_ms_per_token": 269.4,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split0": {
+     "concurrency": 4,
+     "arm": "spec",
+     "split": false,
+     "wall_seconds": 60.3,
+     "requests": 4,
+     "completion_tokens": 1123,
+     "mtp_requests": 2,
+     "mtp_output_share": 0.0214,
+     "mtp_output_tokens": 24,
+     "ar_tokens_by_reason": {
+      "no_provider": 1095
+     },
+     "draft_cycles": 8,
+     "accepted_draft_tokens": 16,
+     "accepted_per_cycle": 2.0,
+     "tokens_per_cycle": 140.375,
+     "decode_tokens_per_second_e2e": 18.63,
+     "decode_tokens_per_second_excluding_ttft": 24.68,
+     "median_ttft_ms": 15235.6,
+     "median_itl_ms": 185.7,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1123,
+       "mtp_output_tokens": 24,
+       "mtp_requests": 2,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 14775.7,
+       "decode_ms_per_token": 98.1,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 463
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 742,
+       "completion_tokens": 16,
+       "ttft_ms": 4429.0,
+       "decode_ms_per_token": 921.9,
+       "mtp_coverage": 0.4375,
+       "draft_cycles": 2,
+       "accepted_draft_tokens": 5,
+       "selected_depth_histogram": {
+        "3": 2
+       },
+       "fallback_event_counts": {
+        "no_provider": 8
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 15695.5,
+       "decode_ms_per_token": 92.7,
+       "mtp_coverage": 0.0353,
+       "draft_cycles": 6,
+       "accepted_draft_tokens": 11,
+       "selected_depth_histogram": {
+        "3": 6
+       },
+       "fallback_event_counts": {
+        "no_provider": 463
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 413,
+       "completion_tokens": 162,
+       "ttft_ms": 16482.3,
+       "decode_ms_per_token": 269.6,
+       "mtp_coverage": 0.0,
+       "draft_cycles": 0,
+       "accepted_draft_tokens": 0,
+       "selected_depth_histogram": {},
+       "fallback_event_counts": {
+        "no_provider": 161
+       }
+      }
+     ]
+    },
+    "ar-split1": {
+     "concurrency": 4,
+     "arm": "ar",
+     "split": true,
+     "wall_seconds": 50.8,
+     "requests": 4,
+     "completion_tokens": 1123,
+     "mtp_requests": 0,
+     "mtp_output_share": 0.0,
+     "mtp_output_tokens": 0,
+     "ar_tokens_by_reason": {},
+     "draft_cycles": 0,
+     "accepted_draft_tokens": 0,
+     "accepted_per_cycle": null,
+     "tokens_per_cycle": null,
+     "decode_tokens_per_second_e2e": 22.1,
+     "decode_tokens_per_second_excluding_ttft": 25.52,
+     "median_ttft_ms": 6788.9,
+     "median_itl_ms": 184.1,
+     "groups_by_realized_rows": {
+      "unknown": {
+       "completion_tokens": 1123,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 7555.2,
+       "decode_ms_per_token": 93.2,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 742,
+       "completion_tokens": 16,
+       "ttft_ms": 6574.9,
+       "decode_ms_per_token": 383.4,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 6788.9,
+       "decode_ms_per_token": 91.5,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 413,
+       "completion_tokens": 162,
+       "ttft_ms": 6788.8,
+       "decode_ms_per_token": 271.2,
+       "mtp_coverage": null,
+       "draft_cycles": null,
+       "accepted_draft_tokens": null,
+       "selected_depth_histogram": null,
+       "fallback_event_counts": null
+      }
+     ]
+    },
+    "spec-split1": {
+     "concurrency": 4,
+     "arm": "spec",
+     "split": true,
+     "wall_seconds": 76.7,
+     "requests": 4,
+     "completion_tokens": 1123,
+     "mtp_requests": 4,
+     "mtp_output_share": 0.7391,
+     "mtp_output_tokens": 830,
+     "ar_tokens_by_reason": {
+      "no_provider": 104,
+      "target_graph_context_bucket_miss": 187
+     },
+     "draft_cycles": 280,
+     "accepted_draft_tokens": 550,
+     "accepted_per_cycle": 1.964,
+     "tokens_per_cycle": 4.011,
+     "decode_tokens_per_second_e2e": 14.65,
+     "decode_tokens_per_second_excluding_ttft": 16.94,
+     "median_ttft_ms": 13872.3,
+     "median_itl_ms": 271.2,
+     "groups_by_realized_rows": {
+      "1": {
+       "completion_tokens": 1123,
+       "mtp_output_tokens": 830,
+       "mtp_requests": 4,
+       "requests": 4
+      }
+     },
+     "coverage": null,
+     "rows": [
+      {
+       "case": "long",
+       "prompt_tokens": 847,
+       "completion_tokens": 464,
+       "ttft_ms": 17454.6,
+       "decode_ms_per_token": 127.6,
+       "mtp_coverage": 0.3772,
+       "draft_cycles": 64,
+       "accepted_draft_tokens": 111,
+       "selected_depth_histogram": {
+        "2": 1,
+        "3": 63
+       },
+       "fallback_event_counts": {
+        "no_provider": 101,
+        "target_graph_context_bucket_miss": 187
+       }
+      },
+      {
+       "case": "long",
+       "prompt_tokens": 742,
+       "completion_tokens": 16,
+       "ttft_ms": 8243.2,
+       "decode_ms_per_token": 1481.1,
+       "mtp_coverage": 0.9375,
+       "draft_cycles": 5,
+       "accepted_draft_tokens": 10,
+       "selected_depth_histogram": {
+        "1": 1,
+        "3": 4
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 388,
+       "completion_tokens": 481,
+       "ttft_ms": 20109.6,
+       "decode_ms_per_token": 117.6,
+       "mtp_coverage": 0.9979,
+       "draft_cycles": 162,
+       "accepted_draft_tokens": 318,
+       "selected_depth_histogram": {
+        "3": 162
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      },
+      {
+       "case": "mid",
+       "prompt_tokens": 413,
+       "completion_tokens": 162,
+       "ttft_ms": 10290.0,
+       "decode_ms_per_token": 409.2,
+       "mtp_coverage": 0.9877,
+       "draft_cycles": 49,
+       "accepted_draft_tokens": 111,
+       "selected_depth_histogram": {
+        "3": 49
+       },
+       "fallback_event_counts": {
+        "no_provider": 1
+       }
+      }
+     ]
+    }
+   }
+  }
+ },
+ "reading": {
+  "split_loses": "pair c=2: MTP output share 1.8% -> 69.3%, decode 17.08 -> 14.17 tok/s end to end and 21.33 -> 17.51 tok/s excluding TTFT. pair c=4: share 2.1% -> 73.9%, 18.63 -> 14.65 end to end and 24.68 -> 16.94 excluding TTFT. long2 c=4: share 0.7% -> 11.1%, 16.75 -> 15.86 end to end and 23.02 -> 19.26 excluding TTFT. long2 c=2 is the one flat point (16.82 -> 16.70, share 1.1% -> 3.4%) because both of its rows cross the 1023-token window after 19 tokens, so the split has almost no window to act in.",
+  "acceptance_was_not_the_limit": "in pair c=2 the healthy row accepted depth 3 on all 162 of its cycles (318 accepted draft tokens, 2.96 emitted tokens per cycle, 99.8% MTP coverage) and still cost 111.1 ms per token against 92.1 ms for the same row when the group stayed autoregressive, and 91.8 ms for the pure-AR control. At c=4 the same row cost 117.6 ms against 92.7 ms. Coverage and acceptance are not what the split pays for.",
+  "why": "one one-row provider cycle and the co-resident row's autoregressive step serialize inside the same tick, so the split replaces one batched AR decode per tick with N provider cycles plus N AR steps. The cycle's own cost (provider step, K+1-row target verify, commit) is not amortized the way a batched AR step is, so the per-token cost rises even when every cycle returns the full depth-3 acceptance.",
+  "route_cost_is_separate": "both speculative arms sit below their AR controls on these long-prompt protocols (pair c=2: 17.08 and 14.17 against 20.28) because the speculative route's TTFT is 3.4x the AR arm's (11.9-13.0 s against 3.5 s on ~840-token prompts): provider activation is paid during prefill and returns nothing when the group is refused. That cost is independent of grouping and is the larger lever on this protocol.",
+  "reproducibility": "the AR control was re-run on the split server at both concurrencies: pair c=2 20.28 against 20.29 tok/s end to end (21.72 against 22.01 excluding TTFT) and pair c=4 22.08 against 22.10 (25.68 against 25.52), so the arm comparison is not server-instance drift."
+ },
+ "decision": {
+  "split": "rejected: not promoted; the flag stays default-off so the arm remains reproducible",
+  "coupling": "kept: a due group the provider refuses as a whole decodes autoregressively in one batch, which is what the adapter's partition contract already specified",
+  "targeted_variant": "not retained either: the split's post-crossing window (the healthy row cycling beside the refused row's AR steps) is exactly the window a targeted split would open, and the healthy row measured 9.0 tok/s in it against 10.9 tok/s when it stayed AR",
+  "next_levers": [
+   "do not pay provider activation for a row whose due group cannot be served: the refused speculative arms spend 3.4x the AR TTFT and then decode at the AR rate",
+   "a wider realized group still needs the width-2 execution path (the 2026-09-18 wider-realized-groups artifact measured it inert) and its own economics; serial one-row cycles are now measured as the worse alternative"
+  ]
+ },
+ "source": {
+  "raw": [
+   "/tmp/mtp-split/c2-ar-split0.json",
+   "/tmp/mtp-split/c2-spec-split0.json",
+   "/tmp/mtp-split/c4-ar-split0.json",
+   "/tmp/mtp-split/c4-spec-split0.json",
+   "/tmp/mtp-split/long2-c2-ar-split1.json",
+   "/tmp/mtp-split/long2-c2-spec-split1.json",
+   "/tmp/mtp-split/long2-c4-ar-split1.json",
+   "/tmp/mtp-split/long2-c4-spec-split1.json",
+   "/tmp/mtp-split/pair-c2-ar-split0.json",
+   "/tmp/mtp-split/pair-c2-spec-split0.json",
+   "/tmp/mtp-split/pair-c4-ar-split0.json",
+   "/tmp/mtp-split/pair-c4-spec-split0.json",
+   "/tmp/mtp-split/pair-c2-ar-split1.json",
+   "/tmp/mtp-split/pair-c2-spec-split1.json",
+   "/tmp/mtp-split/pair-c4-ar-split1.json",
+   "/tmp/mtp-split/pair-c4-spec-split1.json"
+  ],
+  "worklog": "worklog/entries/20260918T102601.012667Z-lhl-mtp-refused-group-split-30a63d.md",
+  "related": [
+   "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-wider-realized-groups-rejected.json",
+   "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-serving-coupling-route-mix.json"
+  ]
+ }
+}
