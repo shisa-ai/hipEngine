@@ -165,12 +165,15 @@ def _session_factory(
     model: str, *, devices: tuple[int, ...], mode: str,
     resident_control: bool = False, capacity: int = 2048, row_hook=None,
     shard_fractions: tuple[float, ...] | None = None,
+    bulk_prefill: bool = False,
 ) -> object:
     """Seam for mocked tests; constructs one resident session.
 
     ``shard_fractions`` applies to the tp2 arm only. The tp1 controls are the
     comparison basis and must stay exactly as they are, so they never receive
-    it.
+    it. ``bulk_prefill`` is the same kind of tp2-only candidate switch: it
+    selects the rank-local bulk prefill schedule instead of the committed
+    token-serial one, and the tp1 controls must never receive it either.
     """
 
     if resident_control:
@@ -181,7 +184,8 @@ def _session_factory(
 
     uneven_split = shard_fractions if mode == "tp2" else None
     return MlpTP2GenerationSession(
-        model, devices=devices, mode=mode, uneven_split=uneven_split
+        model, devices=devices, mode=mode, uneven_split=uneven_split,
+        bulk_prefill=bool(bulk_prefill) and mode == "tp2",
     )
 
 
@@ -861,9 +865,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
     parser.add_argument('--sustained-arm', choices=('tp1-d0','tp1-d1','tp2'))
     parser.add_argument('--tp2-bulk-prefill', action='store_true',
-        help='drive the tp2 sustained arm through the session rank-local bulk '
-             'prefill candidate instead of the committed token-serial route; '
-             'the artifact records the schedule it measured')
+        help='drive the tp2 arm through the session rank-local bulk prefill '
+             'candidate instead of the committed token-serial route, in both '
+             'the full-suite run and the sustained-arm path; the artifact '
+             'records the schedule it measured. The tp1 controls never receive '
+             'it, so they stay the comparison basis')
     parser.add_argument('--teacher-source', type=Path)
     parser.add_argument(
         '--shard-fractions',
@@ -939,6 +945,7 @@ def main(argv: list[str] | None = None) -> int:
                 devices=devices,
                 mode=mode,
                 shard_fractions=(args.shard_fractions if mode == "tp2" else None),
+                bulk_prefill=(args.tp2_bulk_prefill if mode == "tp2" else False),
             )
             arm_build_s[arm] = time.perf_counter() - build0
             device_identities[arm] = _device_identities(session)
