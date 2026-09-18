@@ -241,6 +241,109 @@ class _C1OnlyRunner(_CycleRunner):
         )
 
 
+def test_refused_group_decodes_the_whole_batch_autoregressively() -> None:
+    """A group the provider refuses must not take its capable rows down alone.
+
+    With width-1 serving evidence the provider admits a one-row group and refuses
+    a wider one, so a due group that contains one refused row plans K0 as a whole
+    and every row decodes autoregressively. Decomposing the group into one
+    provider cycle per capable row is the adapter's closed route; the serving
+    ladder measured it slower per token even at perfect depth-3 acceptance, so
+    the default keeps the batch autoregressive.
+    """
+
+    runner = _RowRefusingRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(2)
+    )
+    refused_id = request_ids[1]
+    runner.refused = {int(refused_id)}
+
+    events = loop.poll(max_ticks=6)
+
+    assert runner.cycle_plans == []
+    assert {tuple(work.request_ids) for work in runner.decodes} == {request_ids}
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+    assert loop.completed[refused_id].generated_tokens
+
+
+def test_split_flag_serves_every_capable_row_of_a_refused_group(monkeypatch) -> None:
+    """The measurement flag decomposes a refused group into one-row cycles."""
+
+    monkeypatch.setenv("HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS", "1")
+    runner = _DisjointMixedRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(2)
+    )
+
+    events = loop.poll(max_ticks=6)
+
+    assert [plan.request_ids for plan in runner.cycle_plans] == [
+        (request_ids[0],),
+        (request_ids[1],),
+    ]
+    assert runner.decodes == []
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+
+
+def test_split_flag_leaves_a_row_that_is_refused_alone_to_autoregressive(
+    monkeypatch,
+) -> None:
+    """A row the provider refuses on its own still decodes autoregressively."""
+
+    monkeypatch.setenv("HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS", "1")
+    runner = _RowRefusingRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(2)
+    )
+    runner.refused = {int(request_ids[0]), int(request_ids[1])}
+
+    events = loop.poll(max_ticks=6)
+
+    assert runner.cycle_plans == []
+    assert {tuple(work.request_ids) for work in runner.decodes} == {request_ids}
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+
+
 def test_runner_can_select_bounded_opaque_cycle_before_frontier_mutation() -> None:
     runner = _OpaquePreferredRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
@@ -286,6 +389,28 @@ class _DisjointMixedRunner(_CycleRunner):
     def speculative_capability(self, request_semantics):
         semantics = tuple(request_semantics)
         return None if len(semantics) > 1 else super().speculative_capability(semantics)
+
+
+class _RowRefusingRunner(_CycleRunner):
+    """Refuses one declared row's provider while admitting its peer.
+
+    This is the eligibility-mixed shape the serving route reaches when one row
+    crosses the target's short-context window, fails its target profile, or runs
+    out of candidate room: the group is refused as a whole even though the other
+    row is individually capable.
+    """
+
+    def __init__(self, refused: tuple[int, ...] = ()) -> None:
+        super().__init__()
+        self.refused = set(refused)
+        self.capability_calls = []
+
+    def speculative_capability(self, request_semantics):
+        semantics = tuple(request_semantics)
+        self.capability_calls.append(tuple(int(item.request_id) for item in semantics))
+        if any(int(item.request_id) in self.refused for item in semantics):
+            return None
+        return super().speculative_capability(semantics)
 
 
 class _PartitionedRunner(_CycleRunner):

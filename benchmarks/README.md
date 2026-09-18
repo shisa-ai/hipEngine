@@ -436,6 +436,22 @@ one category below 1.0. Wider realized groups therefore stay closed, and the
 width-2 automatic promotion is rejected on this evidence. [Wider realized groups
 rejected](results/2026-09-18-gfx1151-qwen38-mtp-wider-realized-groups-rejected.json).
 
+**Refused groups (2026-09-18):** decomposing a due group the provider refuses
+into one provider cycle per capable row is **not** a way to recover coverage. On
+the protocol the review named -- a row that crosses the provider's 1023-token
+window mid-stream beside a co-resident that never crosses -- the split raises MTP
+output share from **1.8% to 69.3% at c=2 and 2.1% to 73.9% at c=4** while decode
+falls **17.08 -> 14.17** and **18.63 -> 14.65 tok/s** end to end, and **21.33 ->
+17.51** / **24.68 -> 16.94** excluding TTFT, against AR controls of 20.28 and
+22.08. Acceptance is not the limit: the healthy row accepted depth 3 on all 162
+of its cycles (99.8% coverage) and still cost **111.1 ms per token against 92.1
+ms** when the group stayed autoregressive. A refused group therefore keeps
+decoding autoregressively in one batch, and the split route stays behind a
+default-off flag. The separate cost of the route itself is prefill: the refused
+speculative arms spend 3.4x the AR arm's TTFT (11.9-13.0 against 3.5 s on
+~840-token prompts) and then decode at the AR rate. [Refused-group split
+rejected](results/2026-09-18-gfx1151-qwen38-mtp-refused-group-split-rejected.json).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework

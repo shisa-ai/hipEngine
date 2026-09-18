@@ -8023,3 +8023,17 @@ Related, and separately owed: the serving evidence row for this cell is
 request admitted while it is alone is later batched into a wider decode group and
 silently realizes `effective_route="default"`. The wider realized widths need
 their own measured evidence rows before MTP can be admitted at c>1.
+
+**`HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` (default off, added 2026-09-18).**
+A due group the provider refuses as a whole now decodes autoregressively in one
+batch, which is the route the adapter's partition contract specifies. The flag
+re-opens the alternative -- one one-row provider cycle per capable row, with the
+refused rows autoregressive in the same tick -- so the serving ladder can
+re-measure it. The 2026-09-18 measurement rejected it: at c=2 and c=4 with a row
+that crosses the provider's 1023-token window beside a healthy co-resident, the
+split route raised MTP output share from 1.8%/2.1% to 69.3%/73.9% and lowered
+decode throughput by 19%/26% per token, including a row that accepted depth 3 on
+every one of its 162 cycles. Remove the flag and
+`speculative_split_refused_groups` once the coupling has a retained row on a
+second protocol or host, or once a wider-group route actually beats the batch AR
+decode; until then the flag is the only way to reproduce the rejected arm.
