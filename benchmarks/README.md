@@ -394,19 +394,32 @@ change: the serving limits above are unchanged.
 **Serving status (2026-09-18):** that staged-verifier change also reached
 short-context dense verifier rows, because it replaced the gate that declined the
 staged route whenever the session's context limit was above the 1,024-token
-split threshold. On the current tree the automatic MTP route no longer
-reproduces the autoregressive arm's greedy output: the two agree for 8 output
-tokens and diverge at token 7 for 16 or more, on an ordinary prompt, under both
-the strict and the production execution profile, and the divergent text is
-incoherent where the autoregressive arm's is correct. The same lane that decodes
-**23.60 tok/s against true AR's 11.79 (2.00x)** on the last tree whose control
-prompt was exact decodes **9.37 tok/s against 11.75** here, and true AR is
-unchanged between the two trees. That control tree is not exact in general: its
-two arms are byte-identical on five of seven natural prompts and diverge at
-tokens 47 and 155 on the other two, so the divergence exists on both trees and
-the regression moved it from late and prompt-dependent to immediate and
-universal. Treat the MTP rows above as rates from a tree without the regression,
-not as the current serving rate, and not as a claim that their output was exact. [Exactness regression and exact-tree
+split threshold. On the affected tree the automatic MTP route stopped
+reproducing the autoregressive arm's greedy output: the two agreed for 8 output
+tokens and diverged at token 7 for 16 or more, on an ordinary prompt, under both
+the strict and the production execution profile, and the divergent text was
+incoherent where the autoregressive arm's was correct. The executed route was
+localized with a temporary trace of the session, layer router, and staged chain:
+the commit's per-row branch launched the backend's short-context batch attention
+leaf, which takes the row's position cap as a host scalar, where the plain span
+leaf reads the row's own live count from the spans. The staged chain now takes
+that substitution only from a caller that staged the metadata it reads back, so
+the captured target graph keeps the span leaf. On the retained ladder protocol
+the single-prompt arms return to exact at 8, 16, and 32 tokens, and the matched
+c=1 lane returns to **23.46 tok/s against true AR's 11.74 (2.00x)**, with 99.7%
+of output tokens from speculative cycles and 2.04 accepted drafts per cycle
+against **9.37 against 11.75 (0.80x)** before the fix. The longer-context
+verifier keeps the commit's win: the retained eager packet still moves 8.129 s ->
+7.893 s with every correctness flag identical against the serial-exact teacher.
+That lane's control tree is not exact in general: its two arms are byte-identical
+on five of seven natural prompts and diverge at tokens 47 and 155 on the other
+two, and on a raw completions prompt a 32-token run differs by one repetition
+token on the control tree and on the fixed tree identically, so that residual
+late divergence is a property of this verifier route that the fix restores rather
+than removes and it still needs the production numerical envelope before it is
+called acceptable. [Verifier AR
+identity fix](results/2026-09-18-gfx1151-qwen38-mtp-verifier-ar-identity-fix.json);
+[exactness regression and exact-tree
 control](results/2026-09-18-gfx1151-qwen38-mtp-exactness-regression.json);
 [matched serving baseline](results/2026-09-18-gfx1151-qwen38-sharegpt-natural-serving-baseline.json);
 [concurrent coupling arm with an in-run AR control](results/2026-09-18-gfx1151-qwen38-mtp-serving-coupling-route-mix.json).

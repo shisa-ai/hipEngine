@@ -6,6 +6,9 @@ single/multi prompt behavior, implicit auto fallback, explicit MTP/AR, usage and
 hipEngine extensions, thinking hint/hard policy, streaming/incompatible
 rejection, app-local sessions, capabilities, and post-restart health. Direct
 response objects are the evidence source; no external telemetry is required.
+The single-prompt identity cases compare true-AR against MTP greedy ids at 8 and
+16 output tokens (32 on request), because an 8-token case only covers the first
+verify cycles.
 """
 
 from __future__ import annotations
@@ -28,6 +31,17 @@ from hipengine.server import ServerConfig, create_app
 from scripts.gguf_mtp_long_context_gate import _atomic_write_json, _git
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+# Budgets for the AR/MTP identity ladder. 8 tokens only covers the first verify
+# cycles; the retained 2026-09-18 regression agreed there and diverged at token 7
+# of a 16-token request, so 16 is the shortest budget that discriminates it.
+# Deeper budgets stay available as a diagnostic: on the raw completions arm the
+# control tree (the last tree before the regression) also diverges from AR at
+# token 14 of 32 - one repetition token fewer in a degenerate run - which is a
+# numerical-envelope question rather than a route regression, and the gate does
+# not require byte identity there.
+EXACTNESS_TOKEN_BUDGETS = (8, 16)
+IDENTITY_BUDGET_CHOICES = (8, 16, 32)
+
 AUTO_REASON = "automatic_mtp_scope_not_promoted"
 
 
@@ -45,6 +59,72 @@ def _generated_ids(body: dict[str, Any]) -> list[list[int]]:
         [int(token) for token in choice["hipengine"]["generated_token_ids"]]
         for choice in body["choices"]
     ]
+
+
+def _identity_by_budget(
+    client: TestClient,
+    endpoint: str,
+    payload: dict[str, Any],
+    *,
+    budgets: Sequence[int],
+) -> dict[str, Any]:
+    """Compare true-AR and MTP greedy ids at every budget in ``budgets``.
+
+    A single 8-token case only covers the first verify cycles, which is where
+    the 2026-09-18 leaf substitution hid: the arms agreed for 8 tokens and
+    diverged at token 7 of a 16-token request. Each budget is its own pair of
+    requests, and the row keeps the first budget and token index that diverge.
+
+    The autoregressive arm pins ``speculative_mtp: false`` instead of leaving the
+    field to the server's automatic policy: on a configuration whose automatic
+    scope is promoted the unpinned request runs the speculative route too, and
+    the comparison then measures two speculative arms against each other and
+    cannot see a verifier that diverges from the target model's own path.
+    """
+
+    exact_by_budget: dict[str, bool] = {}
+    ids_by_budget: dict[str, dict[str, list[list[int]]]] = {}
+    first_divergent_budget: int | None = None
+    first_divergent_index: int | None = None
+    for budget in budgets:
+        ar_ids = _generated_ids(
+            _post(
+                client,
+                endpoint,
+                {**payload, "max_tokens": int(budget), "speculative_mtp": False},
+            )
+        )
+        mtp_ids = _generated_ids(
+            _post(
+                client,
+                endpoint,
+                {**payload, "max_tokens": int(budget), "speculative_mtp": True},
+            )
+        )
+        exact = ar_ids == mtp_ids
+        exact_by_budget[str(int(budget))] = exact
+        ids_by_budget[str(int(budget))] = {"ar": ar_ids, "mtp": mtp_ids}
+        if not exact and first_divergent_budget is None:
+            first_divergent_budget = int(budget)
+            for left, right in zip(ar_ids, mtp_ids):
+                index = next(
+                    (
+                        position
+                        for position, (a, b) in enumerate(zip(left, right))
+                        if a != b
+                    ),
+                    None,
+                )
+                if index is not None:
+                    first_divergent_index = index
+                    break
+    return {
+        "ids_exact": all(exact_by_budget.values()),
+        "ids_exact_by_budget": exact_by_budget,
+        "ids_by_budget": ids_by_budget,
+        "first_divergent_budget": first_divergent_budget,
+        "first_divergent_index": first_divergent_index,
+    }
 
 
 def _mtp_contract(body: dict[str, Any], *, used: bool) -> bool:
@@ -163,7 +243,15 @@ def _post(client: TestClient, endpoint: str, payload: dict[str, Any]) -> dict[st
     return response.json()
 
 
-def _run_server(model: Path, *, eager_load: bool) -> dict[str, Any]:
+def _run_server(
+    model: Path,
+    *,
+    eager_load: bool,
+    max_context_tokens: int | None = None,
+    kv_storage: str = "auto",
+    execution_profile: str | None = None,
+    identity_budgets: Sequence[int] = EXACTNESS_TOKEN_BUDGETS,
+) -> dict[str, Any]:
     config = ServerConfig(
         model=str(model),
         served_model_name="qwen36-rf4",
@@ -174,6 +262,9 @@ def _run_server(model: Path, *, eager_load: bool) -> dict[str, Any]:
         speculative_mtp_thinking="hint",
         max_active_requests=4,
         generation_batch_window_ms=0.0,
+        max_context_tokens=max_context_tokens,
+        kv_storage=kv_storage,
+        execution_profile=execution_profile,
     )
     app = create_app(config)
     rows: list[dict[str, Any]] = []
@@ -200,11 +291,16 @@ def _run_server(model: Path, *, eager_load: bool) -> dict[str, Any]:
                 "id": "completion_single",
                 "ar_ids": _generated_ids(ar_completion),
                 "mtp_ids": _generated_ids(mtp_completion),
-                "ids_exact": _generated_ids(ar_completion) == _generated_ids(mtp_completion),
                 "ar_contract": _mtp_contract(ar_completion, used=False),
                 "mtp_contract": _mtp_contract(mtp_completion, used=True),
                 "auto_reason": ar_completion["hipengine"]["speculative_mtp"].get(
                     "decision_reason"
+                ),
+                **_identity_by_budget(
+                    client,
+                    "/v1/completions",
+                    base_completion,
+                    budgets=identity_budgets,
                 ),
             }
         )
@@ -245,11 +341,16 @@ def _run_server(model: Path, *, eager_load: bool) -> dict[str, Any]:
                 "id": "chat_single",
                 "ar_ids": _generated_ids(ar_chat),
                 "mtp_ids": _generated_ids(mtp_chat),
-                "ids_exact": _generated_ids(ar_chat) == _generated_ids(mtp_chat),
                 "ar_contract": _mtp_contract(ar_chat, used=False),
                 "mtp_contract": _mtp_contract(mtp_chat, used=True),
                 "auto_reason": ar_chat["hipengine"]["speculative_mtp"].get(
                     "decision_reason"
+                ),
+                **_identity_by_budget(
+                    client,
+                    "/v1/chat/completions",
+                    base_chat,
+                    budgets=identity_budgets,
                 ),
             }
         )
@@ -400,8 +501,14 @@ def _run_server(model: Path, *, eager_load: bool) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
-    eager = _run_server(args.model, eager_load=True)
-    lazy_restart = _run_server(args.model, eager_load=False)
+    served = {
+        "max_context_tokens": args.max_context_tokens,
+        "kv_storage": args.kv_storage,
+        "execution_profile": args.execution_profile,
+        "identity_budgets": tuple(args.identity_budgets),
+    }
+    eager = _run_server(args.model, eager_load=True, **served)
+    lazy_restart = _run_server(args.model, eager_load=False, **served)
     passed = bool(eager["passed"] and lazy_restart["passed"])
     payload = {
         "schema": 1,
@@ -418,6 +525,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "eager": eager,
         "lazy_restart": lazy_restart,
+        "served_config": dict(served),
         "summary": {"passed": 2 if passed else int(eager["passed"]) + int(lazy_restart["passed"]), "total": 2, "wall_seconds": time.perf_counter() - started},
         "passed": passed,
     }
@@ -435,9 +543,49 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--hash-model", action="store_true")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--fail-on-fail", action="store_true")
+    parser.add_argument(
+        "--max-context-tokens",
+        type=int,
+        default=None,
+        help=(
+            "KV/context budget for the served engine. The identity cases only "
+            "reach the staged verifier route on a budget above the split "
+            "threshold, so pinning it here is what makes the ladder able to "
+            "see a staged-route regression at all."
+        ),
+    )
+    parser.add_argument(
+        "--kv-storage",
+        default="auto",
+        help="KV element type for the served engine (the MTP route is qualified on bf16).",
+    )
+    parser.add_argument(
+        "--identity-budgets",
+        type=lambda value: tuple(
+            int(item) for item in str(value).replace(",", " ").split()
+        ),
+        default=EXACTNESS_TOKEN_BUDGETS,
+        metavar="N[,N...]",
+        help=(
+            "Output budgets for the true-AR/MTP identity ladder. Default "
+            f"{','.join(str(item) for item in EXACTNESS_TOKEN_BUDGETS)}; "
+            "32 is diagnostic only, because the control tree diverges there too "
+            "on the raw completions arm."
+        ),
+    )
+    parser.add_argument(
+        "--execution-profile",
+        default=None,
+        help="Execution profile for the served engine (for example production).",
+    )
     args = parser.parse_args(argv)
     if not args.model.is_file():
         raise SystemExit(f"model not found: {args.model}")
+    unknown = [item for item in args.identity_budgets if item not in IDENTITY_BUDGET_CHOICES]
+    if unknown:
+        raise SystemExit(
+            f"identity budgets must be drawn from {IDENTITY_BUDGET_CHOICES}: {unknown}"
+        )
     payload = run(args)
     return 1 if args.fail_on_fail and not payload["passed"] else 0
 

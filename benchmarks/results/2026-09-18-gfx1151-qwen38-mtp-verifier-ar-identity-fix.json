@@ -1,0 +1,255 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M: the staged MTP verifier's short-context leaf is restored to the row's own live count, restoring AR identity and the 2x serving win",
+ "date": "2026-09-18",
+ "status": "measured",
+ "performance_claim": true,
+ "purpose": "Record the fix for the MTP exactness regression that the matched serving baseline exposed, the route evidence that localizes it, and the same-lane serving rate after the fix.",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "host": "zbook",
+ "kv_storage": "bf16",
+ "execution_profile": {
+  "requested": "production",
+  "resolved": "production"
+ },
+ "server_command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+ "head_commit": "1df2f008fa89a3bd881610f293f512e782fa8394",
+ "root_cause": {
+  "commit": "085bdd86b perf: stage long-context verifier rows on per-row exact attention leaves",
+  "change": "The staged full-attention verifier chain's per-row branch used to launch the plain span leaf (qwen35_paged_full_attn_decode_context_bf16_spans with the span-wide attention_context_limit, a leaf whose loop is bounded by the row's own live count). The commit made it reproduce the scalar owner's short-context batch leaf (_full_attn_decode_short_batch_fn), which takes the row's position + 1 cap as a scalar argument instead of reading a live count.",
+  "why_gfx1151_only": "The substitution only fires where the backend publishes GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT: hip_gfx1151 publishes 1023, hip_gfx1100 publishes nothing, so every unit test on the default backend kept passing while the executed kernel changed on the serving host.",
+  "why_the_cap_is_wrong_on_this_route": "The cap comes from row_scratch.position_host, a host mirror. The eager verifier stages the metadata it reads back, but the captured target graph updates positions on device, so the mirror is a capture-time value rather than the row's live count. The plain span leaf is immune because it reads the live count from the spans.",
+  "executed_route_evidence": {
+   "method": "temporary HIPENGINE_ROUTE_TRACE instrumentation in the session, the layer router, and the staged chain, on the shipping server during the divergent request",
+   "session": "rows=4 start=14 end=18 mode=native views=True limit=1023 scalar_caps=False",
+   "layer": "layer=3 full rows=4 start=14 limit=1023 views=True strict=False staged_linear=False staged_full=True",
+   "staged_chain": "rows=4 limit=1023 quant=None batch_fn=False shared=False split_rows=False",
+   "reading": "views=True with end=18 cannot come from the eager view builder (its own context_limit gate declines spans below 1,024), so the views are the captured target graph's. batch_fn=False because the bf16_context_batch_shared_native_exact_spans variant resolves only for the gguf_q4_k_m/gguf_ud_q3_k_m quant keys and _gguf_prefill_quant is None on this path, and split_rows=False, so the per-row branch is the executed one."
+  }
+ },
+ "rejected_hypotheses": [
+  {
+   "hypothesis": "The commit's eager view synthesis (_eager_native_row_views) reached short batches and moved them onto the staged route.",
+   "measurement": "gated the builder on the batch's own reach (start_position + rows) instead of the span end; the ladder stayed at shared prefix 7 of 16",
+   "outcome": "rejected; gate removed"
+  },
+  {
+   "hypothesis": "The staged_dense_full gate accepted any resolvable row set, so short batches moved off the row-wise route.",
+   "measurement": "gated the staged route on the batch crossing the split boundary; the ladder stayed at shared prefix 7 of 16",
+   "outcome": "rejected; gate removed"
+  }
+ ],
+ "fix": {
+  "file": "hipengine/runtime/qwen35_gguf_runner.py",
+  "change": "The staged full-attention chain takes row_views_have_scalar_caps from its caller and launches the short-context batch leaf only under that guarantee; otherwise it launches the plain span leaf. Rows at or above the split threshold keep the commit's per-row split-K leaf selection.",
+  "caller_guarantee": "Qwen35GGUFResidentSession sets row_views_keep_scalar_caps when its own eager builder staged the row metadata (_eager_native_row_views); the captured target graph passes its device-driven views without the guarantee.",
+  "why_not_drop_the_leaf_entirely": "The plain leaf everywhere fails the long-context gate's per-row teacher parity: all five straddling direct cases report target_logits_exact=False, against 5 of 5 passing with the caller guarantee."
+ },
+ "serving_ladder": {
+  "prompt": "Write exactly one short greeting.",
+  "protocol": "non-streaming and streaming chat completions, greedy, max_tokens 8/16/32, both stream_options settings, same server flags and host",
+  "rows": [
+   {
+    "tree": "f607e3184",
+    "note": "085bdd86b~1, control",
+    "budgets": {
+     "8": "exact",
+     "16": "exact",
+     "32": "exact"
+    }
+   },
+   {
+    "tree": "1df2f008f",
+    "note": "head",
+    "budgets": {
+     "8": "exact",
+     "16": "diverges at token 7",
+     "32": "diverges at token 7"
+    }
+   },
+   {
+    "tree": "1df2f008f + fix",
+    "note": "this change",
+    "budgets": {
+     "8": "exact",
+     "16": "exact",
+     "32": "exact"
+    }
+   },
+   {
+    "tree": "f607e3184 + gate serving config",
+    "note": "control, AR-pinned ladder",
+    "budgets": {
+     "8": "exact",
+     "16": "exact",
+     "32": "diverges at token 14 on the raw completions arm only (pre-existing)"
+    }
+   }
+  ]
+ },
+ "long_context_gate": {
+  "harness": "scripts/gguf_mtp_long_context_gate.py",
+  "command": "python scripts/gguf_mtp_long_context_gate.py --model Qwen3.8-27B-Q4_K_M.gguf --cycle-ends 1024,1025 --candidate-budgets 1,2,3 --acceptance-cycle-ends '' --generation-contexts '' --max-sequence-length 1040",
+  "fixed_tree": "6 of 6 direct cases pass with target_logits_exact, hidden_exact, kv_rows_exact and linear_state_exact true; split-K calls 16 per case at cycle end 1024 and 32 at 1025, matching the commit's retained run",
+  "plain_leaf_everywhere": "5 of 5 straddling cases completed before the run was stopped report target_logits_exact=False"
+ },
+ "unit_test": {
+  "name": "tests/test_live_gguf_native_spec_cycle.py::test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee",
+  "red": "on the unfixed head the recorded calls are ['attn_short'] * 4 against the expected plain-leaf calls",
+  "green": "with the fix, graph-style views take the plain span leaf with the span limit and caller-guaranteed views take the batch leaf with the row's own cap 12..15"
+ },
+ "api_gate": {
+  "harness": "scripts/gguf_mtp_api_gate.py",
+  "changes": [
+   "the single-prompt identity cases pin the autoregressive arm with speculative_mtp: false instead of leaving the field to the server's automatic policy; on a configuration whose automatic scope is promoted the unpinned request runs the speculative route too, so the old comparison measured two speculative arms against each other",
+   "the ladder covers 8 and 16 tokens by default (32 by --identity-budgets) and reports ids_exact_by_budget, first_divergent_budget and first_divergent_index",
+   "new --max-context-tokens / --kv-storage / --execution-profile flags, because the identity cases only reach the staged verifier route on a context budget above the split threshold: the gate's historical configuration (no budget pinned) reports exact on the unfixed head, which is why the 8-token case could not see the regression"
+  ],
+  "red_green_serving_config": {
+   "config": "max_context_tokens=8192, kv_storage=bf16, execution_profile=production, speculative_mtp_serving=auto, candidate budget resolved from retained evidence",
+   "protocol": "the gate's own request sequence through TestClient, both lifecycles (eager_load true and false), identity budgets 8 and 16",
+   "rows": [
+    {
+     "tree": "1df2f008f (unfixed head)",
+     "completion_single": {
+      "8": "diverges at token 3",
+      "16": "diverges at token 3"
+     },
+     "chat_single": {
+      "8": "exact",
+      "16": "diverges at token 7"
+     }
+    },
+    {
+     "tree": "1df2f008f + fix",
+     "completion_single": {
+      "8": "exact",
+      "16": "exact"
+     },
+     "chat_single": {
+      "8": "exact",
+      "16": "exact"
+     }
+    }
+   ],
+   "reading": "All four identity rows move from failing to exact in both lifecycles, which is the RED/GREEN for the fix on a protocol independent of the retained serving ladder.",
+   "diagnostic_budget_32": {
+    "note": "32 is not part of the default ladder",
+    "head": {
+     "completion_single": "diverges at token 7",
+     "chat_single": "diverges at token 7"
+    },
+    "fixed": {
+     "completion_single": "diverges at token 14",
+     "chat_single": "exact"
+    },
+    "control_f607e3184": {
+     "completion_single": "diverges at token 14",
+     "chat_single": "exact"
+    },
+    "classification": "The fixed tree's 32-token divergence on the raw completions arm is the control tree's own divergence, not a new one: both emit four 248045 tokens under true AR and three under MTP, after which the arms track each other exactly. It is the same late, prompt-dependent class the 2026-09-18 exactness entry recorded at tokens 47 and 155 on two of seven natural prompts, and it belongs to the production numerical envelope (KL, top-1) rather than to byte identity, which is why the default ladder stops at 16."
+   },
+   "gate_verdict_note": "The gate's overall verdict is False on every tree here for rows unrelated to this change, and those rows already failed before it: the identity rows require auto_reason == automatic_mtp_scope_not_promoted and an autoregressive arm with no draft counters, which a configuration with promoted automatic MTP does not report; thinking_policy and explicit_rejections expect HTTP 400 where this model and configuration answer 200; capability_and_readiness compares the retained Qwen3.6 evidence set. The identity fields (ids_exact, ids_exact_by_budget, first_divergent_budget) are the rows this change owns."
+  },
+  "raw": [
+   "/tmp/api-gate-final/hipengine-head.json",
+   "/tmp/api-gate-final/hipEngine-main.json",
+   "/tmp/api-gate-serving/hipengine-head.json",
+   "/tmp/api-gate-serving/hipEngine-main.json",
+   "/tmp/api-gate-serving/hipengine-bisect.json",
+   "/tmp/api-gate-ladder/hipengine-head.json",
+   "/tmp/api-gate-ladder/hipEngine-main.json"
+  ]
+ },
+ "postfix_serving_baseline": {
+  "protocol": "scripts/sharegpt_mtp_routing_pass.py, ShareGPT_V3_unfiltered_cleaned_split.json, 6 prompts, c=1, --max-total-len 1024, natural output lengths, greedy, one warmup discarded, --record-ids, one server process per arm, HIPENGINE_MTP2_OUTPUT_SPANS=1",
+  "arms": {
+   "c1-off": {
+    "wall_seconds": 186.8,
+    "completion_tokens": 2194,
+    "decode_tokens_per_second": 11.74,
+    "mtp_requests": 0,
+    "mtp_output_share": 0.0,
+    "accepted_draft_tokens": 0,
+    "draft_cycles": 0,
+    "accepted_per_cycle": null,
+    "median_ttft_ms": 415.2,
+    "groups_by_realized_rows": {
+     "unknown": {
+      "completion_tokens": 2194,
+      "requests": 6
+     }
+    }
+   },
+   "c1-auto": {
+    "wall_seconds": 93.5,
+    "completion_tokens": 2194,
+    "decode_tokens_per_second": 23.46,
+    "mtp_requests": 6,
+    "mtp_output_share": 0.9968,
+    "accepted_draft_tokens": 1467,
+    "draft_cycles": 720,
+    "accepted_per_cycle": 2.04,
+    "median_ttft_ms": 517.2,
+    "groups_by_realized_rows": {
+     "1": {
+      "completion_tokens": 2194,
+      "mtp_output_tokens": 2187,
+      "mtp_requests": 6,
+      "requests": 6
+     }
+    }
+   },
+   "c1-mix": {
+    "wall_seconds": 171.5,
+    "completion_tokens": 2194,
+    "decode_tokens_per_second": 12.79,
+    "mtp_requests": 3,
+    "mtp_output_share": 0.1604,
+    "accepted_draft_tokens": 240,
+    "draft_cycles": 112,
+    "accepted_per_cycle": 2.14,
+    "median_ttft_ms": 466.0,
+    "groups_by_realized_rows": {
+     "1": {
+      "completion_tokens": 355,
+      "mtp_output_tokens": 352,
+      "mtp_requests": 3,
+      "requests": 3
+     },
+     "unknown": {
+      "completion_tokens": 1839,
+      "requests": 3
+     }
+    }
+   }
+  },
+  "comparison_basis": "same host, same server flags, same prompts and consumer protocol as benchmarks/results/2026-09-18-gfx1151-qwen38-sharegpt-natural-serving-baseline.json"
+ },
+ "reading": {
+  "headline": "The fix restores both contracts the regression broke. AR identity returns on the ladder (8/16/32 exact on both arms, against 7 of 16 shared at the head) and the matched c=1 serving lane returns to 23.46 tok/s against true AR's 11.74 (2.00x, 99.7% MTP share), where the head measured 9.37 against 11.75 (0.80x). Accepted drafts per cycle move from 0.10-0.24 at the head to 2.04 of a budget of 3, which is the expected direction when the verifier stops rejecting proposals the target model itself would make.",
+  "not_claimed": "The control tree's residual late divergence (2 of 7 natural prompts, tokens 47 and 155) is a property of this verifier route that the fix restores rather than removes; it still needs the production numerical envelope (KL, top-1 by category) before it is called acceptable. The c=2/c=4 lanes and the long-prompt pair were not re-measured.",
+  "residual": "The control tree's late divergence is now classified for one case: the 32-token raw-completions arm differs by one repetition token on the control tree and on the fixed tree identically, so it is a property of this verifier route rather than of the regression or its fix."
+ },
+ "source": {
+  "raw": [
+   "/tmp/mtp-fixed2/ladder.log",
+   "/tmp/mtp-nogate/ladder.log",
+   "/tmp/optionb/ladder.log",
+   "/tmp/mtp-traced/server-ladder.log",
+   "/tmp/mtp-traced-ctl/server-ladder.log",
+   "/tmp/optionb/boundary.json",
+   "/tmp/fix-verify/boundary.json",
+   "/tmp/mtp-postfix/c1-off.json",
+   "/tmp/mtp-postfix/c1-auto.json",
+   "/tmp/mtp-postfix/c1-mix.json",
+   "/tmp/mtp-postfix/api-gate.json"
+  ],
+  "worklog": "worklog/entries/20260918T063936.600522Z-lhl-mtp-verifier-ar-identity-f3fec1.md"
+ }
+}

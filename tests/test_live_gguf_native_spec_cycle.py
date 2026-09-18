@@ -2380,6 +2380,76 @@ def test_staged_full_attention_uses_split_k_rows_across_the_split_boundary(
     assert [call[8] for call in cache_calls if call[0] == "split_gate"] == [0x15000] * 3
 
 
+def test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee(
+    monkeypatch,
+) -> None:
+    """The short-context leaf needs a vouched-for row position.
+
+    The scalar owner picks its short-context batch leaf from ``position + 1`` and
+    passes that cap as a scalar argument. The eager verifier stages the row
+    metadata it reads back, so it can vouch for it; the captured target graph
+    updates positions on device and its host mirror is a capture-time guess.
+    Launching the batch leaf with a guessed cap broke AR identity on the
+    retained 3-prompt ladder (shared prefix 7 of 16), while dropping the leaf for
+    every caller breaks the long-context gate's per-row teacher parity. The
+    caller's guarantee therefore decides, and both sides are asserted here.
+    """
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    calls: list[tuple[object, ...]] = []
+    runner, scratch, row_scratches = _staged_full_attention_fixture(
+        monkeypatch, calls, start_position=11, shared_cache=False
+    )
+    monkeypatch.setattr(
+        qgr,
+        "backend_package_capability",
+        lambda backend, key, default=None: (
+            1023 if key == "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT" else default
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_full_attn_decode_short_batch_fn",
+        lambda spans: lambda *args, **kwargs: calls.append(
+            ("attn_short", args[6])
+        ),
+        raising=False,
+    )
+
+    def run(**kwargs):
+        calls.clear()
+        runner._run_full_attention_attn_chain_rows_exact(
+            7,
+            0xF000,
+            0x11000,
+            scratch,
+            rows=4,
+            decode_row_scratches=tuple(row_scratches),
+            start_position=11,
+            hidden_f32_ptr=0x12000,
+            attention_context_limit=8192,
+            **kwargs,
+        )
+        return [
+            call
+            for call in calls
+            if call[0] in {"attn", "attn_short", "attn_batch"}
+        ]
+
+    # Graph-supplied views: the host position is not authoritative, so the row
+    # keeps the span leaf whose loop is bounded by its own live count.
+    graph_calls = run()
+    assert [call[0] for call in graph_calls] == ["attn"] * 4
+    assert [call[-1] for call in graph_calls] == [8192] * 4
+
+    # Eager views: the caller staged the metadata, so the row reproduces the
+    # scalar owner's leaf and its own ``position + 1`` cap.
+    eager_calls = run(row_views_have_scalar_caps=True)
+    assert [call[0] for call in eager_calls] == ["attn_short"] * 4
+    assert [call[-1] for call in eager_calls] == [12, 13, 14, 15]
+
+
 def test_staged_full_attention_uses_split_k_rows_without_a_shared_cache(
     monkeypatch,
 ) -> None:
