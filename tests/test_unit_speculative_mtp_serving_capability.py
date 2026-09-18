@@ -317,7 +317,13 @@ def test_serving_evidence_rows_are_not_admitted_by_profile_or_request_shape() ->
     }.isdisjoint(removed_axes)
 
 
-def test_qwen38_q4km_production_c8_k3_d24_is_explicit_and_c7_is_not() -> None:
+def test_qwen38_q4km_gfx1151_production_c8_k3_d24_is_withdrawn() -> None:
+    # The gfx1151 C8-K3 serving row was withdrawn on 2026-09-19: the backend's
+    # prompt-streaming policy admits widths (1,2,3,4), so an eight-row pending set
+    # is refused by the provider while the route still ran its cycles, and the
+    # cell measured 46.88 tok/s against 50.10 true AR (0.936x) with 0 of 10 cells
+    # reproducing the AR output. An explicit capacity-8 request now resolves to
+    # the registered strict fallback instead of a wide speculative cell.
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     key = _key(
         realized_group_rows=8,
@@ -330,18 +336,14 @@ def test_qwen38_q4km_production_c8_k3_d24_is_explicit_and_c7_is_not() -> None:
         key=replace(key, realized_group_rows=7),
     )
 
-    assert decision.admitted is True
-    assert decision.selected_route == "speculative_mtp"
-    assert decision.selected_candidate_count == 3
-    assert decision.reason == (
-        "qualified_explicit_production_c8_k3_after_q6_lm_head_rebase"
-    )
-    assert decision.automatic_eligible is False
-    assert decision.static_eligibility.max_realized_group_rows == 8
+    assert decision.admitted is False
+    assert decision.selected_route == "default"
+    assert decision.selected_candidate_count == 0
     assert decision.strict_fallback_key == "gguf_target_ar"
-    assert decision.evidence_artifacts[0] == (
-        "benchmarks/results/"
-        "2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json"
+    assert c7.admitted is False
+    assert all(
+        row.evidence_key != "qwen38-q4km-gfx1151-production-bf16-c8-k3-d24"
+        for row in evidence
     )
     assert c7.admitted is False
     assert c7.reason == "physical_group_not_qualified"
