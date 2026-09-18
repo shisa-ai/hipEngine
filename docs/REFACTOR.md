@@ -88,14 +88,78 @@
   recorded on both routes. The sampled lanes' 3-5 s lower walls are therefore not
   explained by the missing phase and still need per-phase re-attribution against
   the same lane prompts.
-- What is real: every reused row pays ~34 ms per suffix token because the batched
-  `prefill_batch_native` route cannot start at a non-zero sequence position. A
-  batched suffix prefill (causal mask and block table offset by the reused
-  boundary) is the only path to a hit that is cheaper than a miss; until then
-  more hits cost more wall time, because a miss prefills the whole prompt through
-  the ~0.4 ms/token batched route.
-- This is the same defect as "Shared-prefix suffix prefill runs one token at a
-  time" below; that entry records the correctness constraints.
+- **Resolved 2026-09-18 (same day, later): the batched route exists and was
+  gated by policy, not capability.** The packed AR prefill accepts non-zero
+  start positions (`_GGUFPackedVerifySlotBlock.start_position`), seeds per-slot
+  GDN state from the restored session (`_sync_packed_decode_initial_state`),
+  imports prefix KV through page-aligned D2D segments, and commits the suffix
+  back through the session block table. The only blocker was
+  `_validate_packed_ar_prefill_context` refusing `max_live_count >= 1024` on
+  the paged route (a 2026-07-20 policy gate from 84fd737a3, never numerically
+  qualified past 1024 because the slot-local AOTriton route took over there).
+  The gate is removed; the reused branch of both `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk` now prefills the suffix batched, with the
+  serial loop kept as the opt-in fallback
+  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`). Fixture evidence (Qwen3.5-0.8B,
+  18 GDN + 6 full-attention layers): shared-prefix batched extend matches the
+  serial oracle token-for-token with KL <= 0.05 and identical 8-step decode
+  continuations at total contexts 712/1224/2248/4296, with and without
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`.
+- Historical note: the mid-day correction ("there is no cheap second route")
+  was right about the sampled route's missing phase counter and wrong about
+  the batched route's reach; the audit entry
+  `worklog/entries/20260918T142514.675878Z-pi-prefix-cache-batched-suffix-audit-73980d.md`
+  records the mechanism.
+
+## Split prefill diverges from a single call (found 2026-09-19)
+
+- Prefilling a prompt in two `prefill_batch_native` calls does not always equal
+  prefilling it in one. Two shapes diverge, measured on the Qwen3.5-0.8B
+  fixture and reproduced identically on Qwen3.6-35B-A3B across all four
+  mtp-bench categories:
+  * `rows == 1` - a one-token chunk selects decode-shaped kernels
+    (`dense_down_decode_fused`, the rows==1 projection routes), whose
+    arithmetic differs from the bulk prefill path.
+  * total context above 2048 - splitting anywhere diverges from one call. The
+    threshold is absolute, not relative to `max_sequence_length` (verified with
+    the session capacity held at 4096), and is independent of the split point:
+    at total 2148 the split result is identical for boundaries 1024, 1792,
+    1920 and 2048, and differs from the single call in all four.
+- **This is not a prefix-cache defect.** The probe uses one session and two
+  direct prefill calls - no pool sharing, no snapshot restore, no cache. Both
+  families reproduce on clean HEAD (d01ec1b51) to three significant figures.
+  The batched reused-suffix extend inherits them because a cache hit takes the
+  split path; it does not cause them.
+- Which side is right: against a serial autoregressive reference at total 2052,
+  the single call is closer (kl_mean 2.37e-2, top-1 100%) than the split
+  (kl_mean 1.59e-1, top-1 91.7%). So the >2048 split path is a real accuracy
+  gap, not a neutral re-association.
+- Pinned by `test_split_prefill_divergence_boundaries_are_unchanged` in
+  `tests/test_live_qwen35_gguf_chunked_prefill.py`, which also asserts that
+  total 2048 is still bit-exact. Fixing either family should break that test;
+  replace it with coverage in
+  `test_batched_suffix_extend_is_bit_exact_against_recompute`.
+- Removal scope: the pin, once both families are fixed and every shape is
+  covered by the bit-exact contract test.
+
+## Strict prefix gate cannot bind a batched candidate (found 2026-09-19)
+
+- `scripts/gguf_prefix_reuse_gate.py` builds its reference by consuming the
+  suffix through serial `session.step` calls, then compares GDN state bytes
+  (`initial_state_exact` / `final_state_exact`). Only a serial candidate can
+  satisfy that, so the gate reports `failed` for the batched reused-suffix
+  route on every arm while `output_exact`, `trajectory_exact`, top-1 and the
+  lifecycle checks all pass.
+- Batched-versus-serial GDN state differs by ~5e-3 relative L2 at
+  `start_position == 0` as well, so this is a property of batched prefill, not
+  of reuse. Treat the gate as the strict oracle for the serial fallback
+  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`, which passes it outright) and gate
+  the batched route on HIT == MISS bit-equality instead.
+- The gate now accepts `--prompt-file` / `--prompt-category` so its numerical
+  checks can run on real tokenized suite text; its default repeated-token-id
+  prompt produces degenerate logits that make KL unrepresentative.
+- Removal scope: this entry, once the gate grows a production arm that builds
+  its reference with the candidate's own route.
 
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 
@@ -116,7 +180,7 @@
   prefix-cache engine or allocator fragmentation across two 64 GiB loads. A
   minimal reproduction (two `radix` arms, one lane) is the first step.
 
-## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18)
+## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
 
 - `_prefill_native_chunk` has two routes for a chunk: a batched call through
   `prefill_batch_native`, and a serial loop that calls `session.step()` once per
@@ -126,22 +190,25 @@
   against **1.8 ms/token** for the batched full prefill it replaces. That single
   route is why the measured A/B is net-negative (+6.4% wall overall, ShareGPT
   +22.7%) even though reuse resolves 16 of 27 lookups.
-- Removal scope: the serial loop in `_prefill_native_chunk` and the
-  `prefix_c1_suffix_prefill_chunks` / `prefix_c1_suffix_prefill_tokens` counters
-  that only it feeds, once a reused row can take the batched route.
-- Two things must be settled before that removal, and neither is a performance
-  question. `_disable_incremental_prefill` fails closed for a reused row
-  (`RuntimeError: GGUF shared-prefix admission requires incremental prefill
-  support`) because its fallback re-prefills the whole prompt, which would write
-  into the shared prefix pages; a batched route for reused rows needs the serial
-  loop kept as the decline path instead. And `_finish_native_prefill`'s
-  `native_compact_prefill` differs by route (`False` from the serial loop,
-  `True` from the batched one), so the reused route must pass the value its
-  downstream decode expects. Verify both against the byte-exact gfx1100 prefix
-  gate (`scripts/gguf_prefix_reuse_gate.py`) and generated-ID equality against a
-  cache-off arm before promoting.
-- Keep the invariant while it lives: a reused row's prefix pages are shared with
-  another request, so no fallback may write them.
+- **Resolved 2026-09-18:** the reused branch of both reused-suffix routes now
+  prefills batched via `prefill_batch_native` (the <1024 paged-prefill policy
+  gate was the only blocker; see the resolution note in "Reused-suffix prefill
+  has two routes and only one is slow" above). Shared-prefix admission no longer
+  asks for a contiguous suffix run: the paged route walks the block table, so
+  `shared_admission_noncontiguous` cannot fire. The serial loop remains as the
+  decline path for `_disable_incremental_prefill` (which fails closed for reused
+  rows by design) and as the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0` rollback.
+- Removal scope: the serial loop in `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk`, the `prefix_c1_suffix_prefill_chunks` /
+  `prefix_c1_suffix_prefill_tokens` / `processed_argmax_prefix_c1_suffix_*`
+  counters that only it feeds, and the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX`
+  flag, once the served multi-turn A/B re-measurement with the wide retained
+  set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) shows the batched route
+  holding exactness and the win in production shapes, and the
+  `scripts/gguf_prefix_reuse_gate.py` gate passes at >=1024 total context on
+  gfx1151 and gfx1100.
+- The invariant stands while the loop lives: a reused row's prefix pages are
+  shared with another request, so no fallback may write them.
 
 ## Screening override now spans the plan layer (extended 2026-09-17)
 

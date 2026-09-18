@@ -1958,23 +1958,12 @@ def _packed_prefill_requires_slot_local_full_attention(
     )
 
 
-# Context length at or above which the packed paged AR prefill path can only reach
-# the sequence through a slot-local contiguous KV view. Sessions whose device KV
-# allocation has a page gap must fall back to a private contiguous allocation.
+# Context length at or above which the private-miss packed AR prefill route can
+# only reach the sequence through a slot-local contiguous KV view, so its pool
+# allocation must be one contiguous run. The paged packed prefill route itself
+# accepts any context length: it walks the block table, so shared-prefix
+# (non-contiguous) admissions use it at every length.
 PACKED_AR_PREFILL_CONTEXT_LIMIT = 1024
-
-
-def _validate_packed_ar_prefill_context(
-    layout: _GGUFPackedVerifyLayout,
-    *,
-    slot_local_full_prefill: bool,
-) -> None:
-    """Keep long contexts on the per-session full-attention cache path."""
-
-    if int(layout.max_live_count) >= PACKED_AR_PREFILL_CONTEXT_LIMIT and not slot_local_full_prefill:
-        raise NotImplementedError(
-            "packed paged AR prefill currently requires context < 1024"
-        )
 
 
 @dataclass(frozen=True)
@@ -24332,10 +24321,6 @@ class Qwen35GGUFResidentSession:
         )
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
-        _validate_packed_ar_prefill_context(
-            layout,
-            slot_local_full_prefill=slot_local_full_prefill,
-        )
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )

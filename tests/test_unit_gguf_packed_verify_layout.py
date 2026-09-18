@@ -53,26 +53,41 @@ def test_private_resident_slot_kv_copy_segments_include_slot_base() -> None:
     ) == ((37, 37, 5),)
 
 
-def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
-    layout = _build_gguf_packed_verify_layout(
+def test_long_packed_prefill_admits_the_paged_route_for_suffix_slabs() -> None:
+    """Suffix-shaped slabs select the paged route at any context length.
+
+    The <1024 paged-prefill policy gate was removed: slot-local (contiguous
+    AOTriton) selection is a pure function of per-slot slab rows, and a long
+    context with a short suffix slab must be admitted on the paged route
+    instead of refused.
+    """
+
+    suffix_slab = _build_gguf_packed_verify_layout(
         (
             _GGUFPackedVerifySlotBlock(
-                input_token_ids=(17,),
-                start_position=1023,
+                input_token_ids=tuple([17] * 200),
+                start_position=1024,
+            ),
+        ),
+        slot_capacity=1280,
+    )
+    assert suffix_slab.max_live_count == 1224
+    assert not gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        suffix_slab
+    )
+
+    full_prefill_slab = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=tuple([17] * 1024),
+                start_position=0,
             ),
         ),
         slot_capacity=1024,
     )
-
-    gguf_runner._validate_packed_ar_prefill_context(
-        layout,
-        slot_local_full_prefill=True,
+    assert gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        full_prefill_slab
     )
-    with pytest.raises(NotImplementedError, match="packed paged AR prefill"):
-        gguf_runner._validate_packed_ar_prefill_context(
-            layout,
-            slot_local_full_prefill=False,
-        )
 
 
 def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
