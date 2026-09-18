@@ -6664,6 +6664,7 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
         attention_context_limit: int,
+        row_views_have_scalar_caps: bool = False,
         stream: int = 0,
     ) -> None:
         """Stage independent full-attention work around exact cache reads.
@@ -7001,13 +7002,19 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    # Below the split threshold the scalar owner still picks
-                    # between its short-context batch leaf and the plain leaf
-                    # from this row's own ``position + 1`` cap. The leaf is part
-                    # of that row's arithmetic, so reproduce the choice; both
-                    # leaves bound their loops by the row's live count, so the
-                    # span-wide limit the plain leaf is launched with stays
-                    # inert and keeps the staged chain's existing contract.
+                    # Below the split threshold the scalar owner picks its
+                    # short-context batch leaf from this row's own ``position + 1``
+                    # cap. That leaf takes the cap as a scalar argument, so it is
+                    # only the scalar owner's arithmetic when the caller can
+                    # vouch for the row's position: the eager verifier stages the
+                    # metadata it reads back, while the captured target graph
+                    # updates positions on device and the host mirror is a
+                    # capture-time guess. Using a guessed cap launches the batch
+                    # leaf with the wrong live count and breaks AR identity on the
+                    # retained 3-prompt ladder (shared prefix 7/16). Without that
+                    # guarantee the plain span leaf is the correct choice: its
+                    # loop is bounded by the row's own live count, so the
+                    # span-wide limit stays inert.
                     row_active_context = int(row_scratch.position_host[0]) + 1
                     row_short_batch_max_context = max(
                         0,
@@ -7019,7 +7026,10 @@ class Qwen35GGUFFullStackRunner:
                             )
                         ),
                     )
-                    if 0 < row_active_context <= row_short_batch_max_context:
+                    if (
+                        row_views_have_scalar_caps
+                        and 0 < row_active_context <= row_short_batch_max_context
+                    ):
                         self._full_attn_decode_short_batch_fn(
                             row_scratch.decode_spans
                         )(
@@ -7869,6 +7879,7 @@ class Qwen35GGUFFullStackRunner:
                 hidden_f32_ptr=hidden_f32_ptr,
                 input_norm_ptr=input_norm_ptr,
                 attention_context_limit=attention_context_limit,
+                row_views_have_scalar_caps=row_views_keep_scalar_caps,
                 stream=stream,
             )
         else:
