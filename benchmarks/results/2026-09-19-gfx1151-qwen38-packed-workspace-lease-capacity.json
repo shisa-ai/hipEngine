@@ -1,0 +1,247 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M gfx1151: the packed workspace lease follows the serving capacity",
+  "date": "2026-09-19",
+  "status": "measured_retained",
+  "performance_claim": true,
+  "claim": "The eager packed-execution KV workspace lease takes one slot per serving capacity instead of the fixed eight-slot fallback, cutting pinned workspace pages 8x at C1 and 2x at C4 on an 8192-token session, with every measured request still completing at both capacities.",
+  "purpose": "Task #7: the lease slot term read `max_batch_size` from the resident model runner, an attribute that runner never has, so `packed_verify_lease_slot_ceiling` always fell back to _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY = 8. Repair the term from the serving capacity and re-measure pinned/current pages at C1 and C4.",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "host": "zbook",
+  "execution_profile": "production",
+  "tree": {
+    "base_commit": "eed290033e9f6b10fcdeefdbf3cdf06d45cf10a6",
+    "before_digest": {
+      "hipengine/generation/qwen35_gguf.py": "34ab2d65a4653d0d"
+    },
+    "after_digest": {
+      "hipengine/generation/qwen35_gguf.py": "46e609dff223911a"
+    },
+    "dirty": true
+  },
+  "change": {
+    "file": "hipengine/generation/qwen35_gguf.py",
+    "before": "packed_verify_lease_slot_ceiling(getattr(getattr(self, '_resident_model_runner', None), 'max_batch_size', None))",
+    "after": "packed_verify_lease_slot_ceiling(int(self.capacity))",
+    "why_the_old_term_was_dead": "`_resident_model_runner` is set on the generator (hipengine/generation/qwen35_gguf.py:1722), not on the resident model runner that calls configure_engine_loop, so the lookup was always None. Every resident session is built with the runner's capacity as its packed width (`_acquire_shared_session(..., max_batch_size=self.capacity)`), and slot views carry a width of one, which is why the term cannot come from an arbitrary resident session.",
+    "why_capacity_is_the_exact_bound": "One MTP verify job is one request row: hipengine/generation/qwen35_gguf_mtp2.py builds one job per request_id with input_token_ids = (root, *candidates) and calls verify_target_blocks_batch under target_verifier_active_slots_session(len(jobs)); that method creates one _GGUFPackedVerifySlotBlock per job, so layout.slot_count is the number of speculative rows, at most the serving capacity. A K=3 verify group is therefore 4 rows in 1 slot, not 4 slots. Packed AR decode passes slot_count=rows for a group the loop caps at the capacity, and step_hidden_batch_native refuses rows <= 1, so its slot_count=rows is bounded by the capacity as well. Measured: the largest slot count any layout requested was 1 at C1 and the largest union was 4 at C4, matching the capacity in both cases."
+  },
+  "protocol": {
+    "driver": "scripts/gguf_packed_lease_probe.py",
+    "driver_description": "Installs in-process probes on Qwen35GGUFResidentSession._packed_verify_union_geometry, _ensure_packed_verify_workspace, and _GGUFPackedTargetState.allocate; builds LLM + create_app and drives the real in-process server through fastapi.testclient.TestClient; records kv_pool_memory_snapshot(), the pool stats, the resolved context, every geometry/workspace request, the source digest, and the MTP route reported by each response.",
+    "requests_per_run": [
+      "short prompt, no speculative field (auto)",
+      "short prompt with `speculative_mtp: true`",
+      "a long prompt targeting ~3530 tokens (measured 5469 prompt tokens) with `speculative_mtp: true`, 8 output tokens"
+    ],
+    "env": "HIPENGINE_HIP_ARCH=gfx1151, HIPENGINE_GGUF_AUTO_CONTEXT as noted, bf16 KV, production execution profile, prefix_cache off",
+    "pinned_config": "HIPENGINE_GGUF_AUTO_CONTEXT=0 --max-sequence-length 8192",
+    "auto_config": "default auto context resolution, --max-sequence-length 8192 as the request ceiling",
+    "note": "MTP did not engage in any run (route null, no speculative_mtp payload): the production serving plan does not admit MTP on this box's gfx1151 cells. The verify geometry is therefore pinned by the layout contract test rather than a live verify group.",
+    "driver_note": "The probe is committed so the measurement is reproducible from the repository; it installs in-process probes on the union geometry, the workspace allocation, and the packed target state, drives the real in-process server through fastapi.testclient.TestClient, and records kv_pool_memory_snapshot(), the pool stats, the resolved context, every geometry/workspace request, the source digest, and the route each response reports."
+  },
+  "commands": {
+    "command": "HIPENGINE_GGUF_AUTO_CONTEXT=0 python scripts/gguf_packed_lease_probe.py --capacity 1 --max-sequence-length 8192 --out /tmp/lease-committed/c1.json",
+    "command_c4": "HIPENGINE_GGUF_AUTO_CONTEXT=0 python scripts/gguf_packed_lease_probe.py --capacity 4 --max-sequence-length 8192 --out /tmp/lease-committed/c4.json",
+    "command_auto_context": "python scripts/gguf_packed_lease_probe.py --capacity 1 --max-sequence-length 8192 --out /tmp/lease-auto/c1.json",
+    "before_arm": "git stash push -- hipengine/generation/qwen35_gguf.py, then the same probe command; the before rows ran the /tmp/lease-probe-mtp.py build of this probe, which records the same fields",
+    "unit_gate": "uv run pytest tests/test_unit_gguf_prefix_cache_runner.py tests/test_unit_gguf_packed_workspace_stability.py tests/test_unit_gguf_long_context_pressure_gate.py tests/test_unit_qwen35_gguf_capacity.py tests/test_unit_gguf_prefix_reuse_gate.py"
+  },
+  "page_accounting": {
+    "page_bytes": 16777216,
+    "page_tokens": 256,
+    "lease_pages_formula": "packed_verify_lease_slot_ceiling(capacity) * max(ceil(session_scratch.max_positions / 256), 4)"
+  },
+  "pinned_8192_session": {
+    "C1": {
+      "before": {
+        "lease_pages": 256,
+        "lease_gib": 4.0,
+        "pinned_pages": 256,
+        "current_pages": 384,
+        "free_pages": 128,
+        "hip_used_current_gib": 33.74,
+        "hip_used_peak_sampled_gib": 33.9,
+        "resolved_context": 8192,
+        "artifact": "/tmp/lease-mtp-pinned/pre-c1.json"
+      },
+      "after": {
+        "lease_pages": 32,
+        "lease_gib": 0.5,
+        "pinned_pages": 32,
+        "current_pages": 160,
+        "free_pages": 128,
+        "hip_used_current_gib": 30.24,
+        "hip_used_peak_sampled_gib": 30.4,
+        "resolved_context": 8192,
+        "artifact": "/tmp/lease-committed/c1.json",
+        "note": "Reproduced with the committed probe: 32 pages, pinned 32, current 160, HIP used 30.24 GiB, 0 workspace failures."
+      },
+      "lease_reduction": "8.0x",
+      "device_memory_freed_gib": 3.5
+    },
+    "C4": {
+      "before": {
+        "lease_pages": 256,
+        "lease_gib": 4.0,
+        "pinned_pages": 256,
+        "current_pages": 384,
+        "free_pages": 128,
+        "hip_used_current_gib": 34.55,
+        "resolved_context": 8192,
+        "artifact": "/tmp/lease-mtp-pinned/pre-c4.json"
+      },
+      "after": {
+        "lease_pages": 128,
+        "lease_gib": 2.0,
+        "pinned_pages": 128,
+        "current_pages": 256,
+        "free_pages": 128,
+        "hip_used_current_gib": 32.55,
+        "resolved_context": 8192,
+        "artifact": "/tmp/lease-committed/c4.json",
+        "note": "Reproduced with the committed probe: 128 pages, pinned 128, current 256, HIP used 32.55 GiB, 0 workspace failures."
+      },
+      "lease_reduction": "2.0x",
+      "device_memory_freed_gib": 2.0
+    }
+  },
+  "auto_context": {
+    "C1": {
+      "before": {
+        "lease_pages": 4096,
+        "lease_gib": 64.0,
+        "pinned_pages": 4096,
+        "current_pages": 4224,
+        "hip_used_current_gib": 89.21,
+        "resolved_context": 131072,
+        "artifact": "/tmp/lease/c1.json"
+      },
+      "after": {
+        "lease_pages": 1024,
+        "lease_gib": 16.0,
+        "pinned_pages": 1024,
+        "current_pages": 1152,
+        "hip_used_current_gib": 47.0,
+        "resolved_context": 262144,
+        "artifact": "/tmp/lease-mtp-auto/c1.json"
+      },
+      "note": "Pages fall 4x while the resolved context doubles: the auto-context resolver spends the freed 48 GiB on context (8 slots x 512 pages at 131072 becomes 1 slot x 1024 pages at 262144)."
+    },
+    "C4": {
+      "before": {
+        "lease_pages": 4096,
+        "lease_gib": 64.0,
+        "pinned_pages": 4096,
+        "hip_used_current_gib": 90.06,
+        "resolved_context": 131072,
+        "artifact": "/tmp/lease/c4.json"
+      },
+      "after": {
+        "lease_pages": 4096,
+        "lease_gib": 64.0,
+        "pinned_pages": 4096,
+        "current_pages": 4224,
+        "hip_used_current_gib": 95.89,
+        "resolved_context": 262144,
+        "artifact": "/tmp/lease-mtp-auto/c4.json"
+      },
+      "note": "Flat on pages by construction: 8 slots x 512 pages at 131072 equals 4 slots x 1024 pages at 262144. The slot term halved; the resolved context doubled."
+    }
+  },
+  "geometry_evidence": {
+    "C1": {
+      "geometry_calls": 24,
+      "max_slot_count_requested": 1,
+      "max_union_slots": 1,
+      "distinct_slot_counts": [
+        1
+      ],
+      "distinct_union_slots": [
+        1
+      ],
+      "max_rows_requested": 256,
+      "max_union_rows": 4096,
+      "max_union_max_sequence_length": 5469,
+      "state_slot_counts": [
+        1
+      ],
+      "workspace_failures": 0
+    },
+    "C4": {
+      "geometry_calls": 24,
+      "max_slot_count_requested": 1,
+      "max_union_slots": 4,
+      "distinct_union_slots": [
+        4
+      ],
+      "max_rows_requested": 256,
+      "max_union_rows": 4096,
+      "max_union_max_sequence_length": 5469,
+      "state_slot_counts": [
+        4
+      ],
+      "workspace_failures": 0
+    },
+    "conclusion": "No layout in either run requested more slots than the serving capacity, and at C1 no layout requested more than one, so the eight-slot floor was pure over-reservation."
+  },
+  "serving_outcome": {
+    "http_200": "3 of 3 requests per run at both capacities",
+    "long_prompt": "5469 prompt tokens, 8 output tokens, prefilled and generated at both capacities",
+    "workspace_allocation_failures": 0,
+    "mtp_engaged": false,
+    "mtp_note": "The production plan does not admit MTP on this box's gfx1151 cells, so no verify group ran live; the K=3 verify geometry (4 rows in 1 slot) is pinned by test_mtp_verify_width_packs_rows_inside_one_slot."
+  },
+  "unit_gate": {
+    "red_at_base_commit": [
+      "tests/test_unit_gguf_prefix_cache_runner.py::test_configure_engine_loop_leases_the_serving_capacity_at_c1 -> assert 40 == (8 + 4)",
+      "tests/test_unit_gguf_prefix_cache_runner.py::test_configure_engine_loop_leases_packed_workspace_pages -> assert 12 == (8 + 8)"
+    ],
+    "green_after": "52 tests pass across the five named files",
+    "new_contract_tests": [
+      "tests/test_unit_gguf_packed_workspace_stability.py::test_mtp_verify_width_packs_rows_inside_one_slot",
+      "tests/test_unit_gguf_prefix_cache_runner.py::test_configure_engine_loop_leases_the_serving_capacity_at_c1"
+    ]
+  },
+  "followups": [
+    "The per-slot term is now the dominant reservation: ceil(session max context / 256) pages per slot, i.e. 1024 pages (16 GiB) per slot at a 262144-token auto context while the realized union stayed at 5469 tokens. Recorded in docs/REFACTOR.md.",
+    "estimate_qwen35_gguf_kv_capacity prices the lease with max_batch_size=1 while the pool leases one slot per capacity, under-reporting 48 GiB at C4 on a 262144-token session. Recorded in docs/REFACTOR.md."
+  ],
+  "raw_artifacts": {
+    "committed_tool_after_c1": {
+      "path": "/tmp/lease-committed/c1.json",
+      "sha256": "7f0fff03c8aed765cd8caa03ee2f865b3254f0a7f69b8bf5d6bcc47ef78effb0"
+    },
+    "committed_tool_after_c4": {
+      "path": "/tmp/lease-committed/c4.json",
+      "sha256": "bf6100266d40947b586edbd5613889c10d612e0b1457789d9bf86470e8a4c887"
+    },
+    "pinned_before_c1": {
+      "path": "/tmp/lease-mtp-pinned/pre-c1.json",
+      "sha256": "59daabd9ce6e77061bb1ee7940bb7c64067af4c746ddf87329e1d9ef93d653f5"
+    },
+    "pinned_before_c4": {
+      "path": "/tmp/lease-mtp-pinned/pre-c4.json",
+      "sha256": "2862a30015be91651c31d7e30c5edce1be3d292f1a2adb0a079f7dae1207d01a"
+    },
+    "auto_before_c1": {
+      "path": "/tmp/lease/c1.json",
+      "sha256": "3f1829bda43f781fb6ae33ebe87139e7a860377ce2bdfe9803b79ee85b0deb3b"
+    },
+    "auto_before_c4": {
+      "path": "/tmp/lease/c4.json",
+      "sha256": "a78b70aaffeda6a67a98abf575c91730f69542be1a8834cb6142d141e4ea2eac"
+    },
+    "auto_after_c1": {
+      "path": "/tmp/lease-mtp-auto/c1.json",
+      "sha256": "23f341d5974e822113d66c4e931a8748a15e272f94037fb507244b365e0e0750"
+    },
+    "auto_after_c4": {
+      "path": "/tmp/lease-mtp-auto/c4.json",
+      "sha256": "849dcd0409552c8e941936525f97500cd18533b44cbfe317ed8848aab5e7652c"
+    }
+  }
+}

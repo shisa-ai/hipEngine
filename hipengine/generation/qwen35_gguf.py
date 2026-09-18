@@ -6409,12 +6409,12 @@ class Qwen35GGUFResidentModelRunner:
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
             # Eager packed-execution workspace lease: sized to the capacity-
-            # honest union-geometry ceiling (serving-capacity slots x
-            # max(1024, request context) tokens). The serving loop cannot
-            # open more resident slots than ``self.capacity``, so the lease
+            # honest union-geometry ceiling (packed-width slots x
+            # max(1024, request context) tokens). The serving loop cannot open
+            # more resident slots than the session's packed width, so the lease
             # follows it instead of the historical 8-slot floor; admission
-            # accounting still sees every pinned page and the workspace
-            # never grows.
+            # accounting still sees every pinned page and the workspace never
+            # grows.
             workspace_pages_per_slot = max(
                 max_pages_per_request,
                 _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
@@ -6426,18 +6426,20 @@ class Qwen35GGUFResidentModelRunner:
             #
             # The slot term must match the union geometry the allocation uses
             # (`packed_verify_lease_slot_ceiling`): the workspace unions the
-            # realized layout slots with the serving capacity, so a one-slot
-            # lease is short as soon as the loop packs a verify group. At an
-            # 8192-token session that was 32 leased pages against a 4-slot x
-            # 9-page workspace (36), and at 1024 it was 4 against 16 - both
-            # failed closed at prefill time instead of serving.
-            workspace_slots = packed_verify_lease_slot_ceiling(
-                getattr(
-                    getattr(self, "_resident_model_runner", None),
-                    "max_batch_size",
-                    None,
-                )
-            )
+            # realized layout slots with the packed width of the session that
+            # owns it, so a one-slot lease is short as soon as the loop packs
+            # more rows. At an 8192-token session that was 32 leased pages
+            # against a 4-slot x 9-page workspace (36), and at 1024 it was 4
+            # against 16 - both failed closed at prefill time instead of
+            # serving.
+            #
+            # The packed width is the serving capacity the loop enforces and the
+            # number every resident session is built with
+            # (`_acquire_shared_session(max_batch_size=self.capacity)`), so it is
+            # the same term the union geometry reads on the batch owner. Slot
+            # views carry their own width of one, which is why the lease cannot
+            # take the term from an arbitrary resident session.
+            workspace_slots = packed_verify_lease_slot_ceiling(int(self.capacity))
             workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache

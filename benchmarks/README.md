@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-19**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -555,6 +555,27 @@ width-8 cycle is 0.936x of AR. The gfx1100 cell is unaffected: that backend's
 prompt-streaming policy admits width 8. [Width census and
 C8/K3
 withdrawal](results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json).
+
+**Packed workspace lease (2026-09-19):** the eager packed-execution KV
+workspace on gfx1151 now leases one slot per serving capacity instead of a fixed
+eight. The slot term read a `max_batch_size` attribute the resident model runner
+does not have, so every server pinned an eight-slot workspace whatever
+`--max-active-requests` said. On the 27B `Q4_K_M` / BF16 KV shape with
+8192-token sessions the lease falls from **256 pages (4.00 GiB) to 32 pages
+(0.50 GiB) at one active request** and from 256 to **128 pages (2.00 GiB) at
+four**, with device memory after a 5,469-token prompt at **33.74 -> 30.24 GiB**
+and 34.55 -> 32.55 GiB. With the default automatic context the one-request lease
+falls from 4096 pages (64 GiB) to **1024 pages (16 GiB)** while the resolver
+spends the freed memory on context: it selects 262,144 tokens where the
+8-slot lease left it 131,072, so the four-request arm leases the same 4096 pages
+at twice the context. The slot term is the serving capacity and not one more:
+an MTP verify group is K+1 rows *inside* one slot, and across 24 geometry
+requests at one active request (two short prompts, an explicit MTP request, and
+the 5,469-token prefill) the largest slot count any layout asked for was 1. No
+workspace allocation failed at either capacity and every request completed.
+[Workspace lease artifact](results/2026-09-19-gfx1151-qwen38-packed-workspace-lease-capacity.json);
+[per-run rows](results/2026-09-19-gfx1151-qwen38-packed-workspace-lease-capacity-rows.json);
+source: [worklog entry](../worklog/entries/20260918T205735.370215Z-lhl-packed-workspace-lease-capacity-be3814.md).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
