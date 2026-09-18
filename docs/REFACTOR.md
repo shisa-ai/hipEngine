@@ -119,8 +119,25 @@
   mtp-bench categories:
   * `rows == 1` - a one-token chunk selects decode-shaped kernels
     (`dense_down_decode_fused`, the rows==1 projection routes), whose
-    arithmetic differs from the bulk prefill path.
-  * total context above 2048 - splitting anywhere diverges from one call. The
+    arithmetic differs from the bulk prefill path. **Closed for the prefix
+    cache on 2026-09-19**: a one-token reused suffix now takes the serial step
+    (`_gguf_prefix_batched_suffix_chunk_eligible`), so a hit never emits a
+    one-row prefill, and prefill callers pass `force_bulk_rows` to
+    `_run_post_attention_ffn_rows` to keep a one-row prefill off the dense GEMV
+    decode variants. MoE cannot be redirected the same way -
+    `_run_post_attention_moe_rows` refuses `rows <= 1` - so the raw
+    `prefill_batch_native` API still exposes the shape and the pin covers it.
+  * total context above 2048 - splitting anywhere diverges from one call.
+    **Root cause located 2026-09-19**: per-layer capture shows the first
+    divergent layer is the first `full_attention` layer (layer 3 on
+    Qwen3.5-0.8B, max|d| 1.953e-03, BF16-ULP scale) while every preceding
+    `linear_attention` layer is bit-identical, so the effect is in full
+    attention, not GDN. Splits at different boundaries agree with each other
+    and only the single call differs, which places it in query-window handling
+    once one call carries more than 2048 query rows. Capping the query window
+    would make misses match hits but measured *worse* against a serial
+    reference (kl_mean 2.37e-2 single call versus 1.59e-1 split), so that trade
+    was rejected. The
     threshold is absolute, not relative to `max_sequence_length` (verified with
     the session capacity held at 4096), and is independent of the split point:
     at total 2148 the split result is identical for boundaries 1024, 1792,

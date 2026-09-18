@@ -561,7 +561,10 @@ def test_split_prefill_divergence_boundaries_are_unchanged() -> None:
     deliberate, visible decision instead of a silent drift:
 
       * ``suffix == 1``: a one-row prefill selects ``rows == 1`` decode-shaped
-        kernels, whose arithmetic differs from the bulk prefill route.
+        kernels, whose arithmetic differs from the bulk prefill route. The
+        prefix cache no longer routes into this shape - a one-token reused
+        suffix takes the serial step instead - so this pin covers the raw
+        ``prefill_batch_native`` API, which still exposes it.
       * ``total > 2048``: splitting anywhere diverges from one call; measured
         against a serial reference the single call is the closer of the two.
 
