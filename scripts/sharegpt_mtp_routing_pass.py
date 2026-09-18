@@ -148,6 +148,7 @@ def load_samples(
     max_total_len: int,
     min_prompt_len: int = MIN_LEN,
     cases: Sequence[str] = (),
+    turns: int = 1,
 ) -> list[dict[str, Any]]:
     """Reproduce the vLLM ShareGPT sample set for one benchmark point.
 
@@ -155,6 +156,14 @@ def load_samples(
     cases (``short``/``mid``/``long``) and every row is labelled with its case,
     so one load can hold a healthy short request beside a boundary-crossing
     row. Without it the selection is the original single-window sample.
+
+    With ``turns > 1`` each dataset conversation becomes one growing multi-turn
+    conversation: turn ``t`` submits the first ``t`` user turns and their
+    dataset replies, so every turn after the first shares a token-exact prefix
+    with the turn before it. ``count`` then counts conversations, not requests,
+    and the load holds ``count * turns`` requests. The prompts come from the
+    dataset rather than from the model's own replies so that both arms of a
+    paired run submit byte-identical prompt sequences.
     """
 
     with dataset.open(encoding="utf-8") as handle:
@@ -165,6 +174,17 @@ def load_samples(
         if isinstance(row.get("conversations"), list) and len(row["conversations"]) >= 2
     ]
     random.Random(seed).shuffle(rows)
+    if int(turns) > 1:
+        return _multi_turn_candidates(
+            rows,
+            tokenizer=tokenizer,
+            count=count,
+            turns=int(turns),
+            output_len=output_len,
+            max_prompt_len=max_prompt_len,
+            max_total_len=max_total_len,
+            min_prompt_len=min_prompt_len,
+        )
     candidates: list[dict[str, Any]] = []
     for row in rows:
         prompt = str(row["conversations"][0].get("value") or "")
@@ -205,6 +225,80 @@ def load_samples(
             )
         samples.extend({**candidate, "case": case} for candidate in selected)
     return samples
+
+
+def _multi_turn_candidates(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    tokenizer,
+    count: int,
+    turns: int,
+    output_len: int | None,
+    max_prompt_len: int,
+    max_total_len: int,
+    min_prompt_len: int,
+) -> list[dict[str, Any]]:
+    """Expand each conversation into its ``turns`` growing prompts.
+
+    Turn ``t`` renders the dataset's first ``t`` user turns and the replies
+    between them, so turn ``t + 1`` opens with turn ``t``'s prompt verbatim and
+    a prefix cache has a token-exact prefix to reuse. Every turn of a
+    conversation is kept or dropped together: a conversation whose later turns
+    exceed the loader's length bounds would otherwise measure a different
+    request than the one the bound describes.
+    """
+
+    conversations: list[list[dict[str, Any]]] = []
+    for row in rows:
+        values = [
+            str(entry.get("value") or "")
+            for entry in row["conversations"]
+            if isinstance(entry, Mapping)
+        ]
+        if len(values) < 2 * turns - 1:
+            continue
+        parts: list[str] = []
+        expanded: list[dict[str, Any]] = []
+        usable = True
+        for turn_index in range(turns):
+            parts.append(values[2 * turn_index])
+            prompt = "\n\n".join(parts)
+            prompt_len = len(tokenizer.encode(prompt))
+            expected = (
+                len(tokenizer.encode(values[2 * turn_index + 1]))
+                if output_len is None and 2 * turn_index + 1 < len(values)
+                else (output_len if output_len is not None else 0)
+            )
+            if prompt_len < min_prompt_len or prompt_len > max_prompt_len:
+                usable = False
+                break
+            if expected < MIN_LEN or prompt_len + expected > max_total_len:
+                usable = False
+                break
+            expanded.append(
+                {
+                    "source_id": row.get("id"),
+                    "conversation_id": row.get("id"),
+                    "turn_index": turn_index,
+                    "turns": turns,
+                    "prompt": prompt,
+                    "prompt_tokens": prompt_len,
+                    "expected_output_tokens": expected,
+                }
+            )
+            if 2 * turn_index + 1 < len(values):
+                parts.append(values[2 * turn_index + 1])
+        if not usable:
+            continue
+        conversations.append(expanded)
+        if len(conversations) >= count:
+            break
+    if len(conversations) < count:
+        raise SystemExit(
+            f"dataset produced {len(conversations)} usable {turns}-turn "
+            f"conversations, need {count}"
+        )
+    return [turn for conversation in conversations for turn in conversation]
 
 
 def _stream_request(
@@ -341,6 +435,13 @@ def _stream_request(
         "speculative_mtp": extension.get("speculative_mtp"),
         "generation_shape": extension.get("generation_shape"),
         "routing": extension.get("routing"),
+        # The backend's per-request diagnostics (prefix-cache outcome, MTP
+        # accounting) and its own timing decomposition. Both are published on
+        # the terminal chunk; keeping them here is what makes a prefix hit and
+        # its prefill cost readable per row instead of inferred from a shorter
+        # TTFT.
+        "diagnostics": extension.get("diagnostics"),
+        "timing": extension.get("timing"),
         # The greedy token stream, when the server reports it. Two arms of the
         # same prompt can then be compared for identity inside one run instead
         # of by digest across two artifacts.
@@ -491,6 +592,39 @@ def _route_fields(result: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _prefix_fields(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Per-request prefix-cache telemetry, when the backend published it.
+
+    The terminal chunk carries the backend's ``diagnostics`` block, whose
+    ``prefix_cache`` entry says whether this row reused a cached prefix, how
+    many tokens it avoided prefilling, and why a lookup missed. Without it a
+    hit is only inferable from a shorter TTFT, which is exactly the inference a
+    prefix measurement must not have to make.
+    """
+
+    diagnostics = result.get("diagnostics")
+    if not isinstance(diagnostics, Mapping):
+        return {}
+    block = diagnostics.get("prefix_cache")
+    if not isinstance(block, Mapping):
+        return {}
+    return {
+        "prefix_mode": block.get("mode"),
+        "prefix_eligible": block.get("eligible"),
+        "prefix_lookup": block.get("lookup"),
+        "prefix_hit": block.get("hit"),
+        "prefix_source": block.get("source"),
+        "prefix_matched_tokens": block.get("matched_tokens"),
+        "prefix_reused_tokens": block.get("reused_tokens"),
+        "prefix_executed_prefill_tokens": block.get("executed_prefill_tokens"),
+        "prefix_state_clone_bytes": block.get("state_clone_bytes"),
+        "prefix_snapshot_hit": block.get("snapshot_hit"),
+        "prefix_fallback_reason": block.get("fallback_reason"),
+        "prefix_cache_resident_bytes": block.get("cache_resident_bytes"),
+        "prefix_cache_resident_entries": block.get("cache_resident_entries"),
+    }
+
+
 def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
     usage = result.get("usage") or {}
     if usage.get("completion_tokens") is None:
@@ -506,6 +640,11 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "source_id": sample.get("source_id"),
         "case": sample.get("case"),
         "route_arm": sample.get("route_arm"),
+        # Multi-turn load identity. Turn 0 has no prefix to reuse and every
+        # later turn shares the turn before it, so the turn index is the key the
+        # summary splits the reuse evidence by.
+        "turn_index": sample.get("turn_index"),
+        "conversation_id": sample.get("conversation_id"),
         "prompt_tokens_local": sample.get("prompt_tokens"),
         "prompt_tokens": usage.get("prompt_tokens"),
         "expected_output_tokens": sample.get("expected_output_tokens"),
@@ -537,6 +676,10 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "thinking_characters": result.get("thinking_characters"),
         "route": shape.get("route"),
         **_route_fields(result),
+        **_prefix_fields(result),
+        # The backend's own prefill/decode split for this row, which separates
+        # "the prompt cost this much" from "the client waited this long".
+        "backend_timing": result.get("timing"),
         "mtp_used": mtp.get("used"),
         "mtp_output_tokens": mtp.get("mtp_output_tokens"),
         "ar_output_tokens": mtp.get("ar_output_tokens"),
@@ -1044,6 +1187,16 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             str(case): _serving_metrics(group)
             for case, group in sorted(_group_rows(rows, "case").items())
         },
+        # Prefix-cache hit beside miss, from the backend's own per-request
+        # telemetry rather than inferred from a shorter TTFT.
+        "by_prefix": {
+            key: _serving_metrics(group)
+            for key, group in (
+                ("hit", [row for row in rows if row.get("prefix_hit") is True]),
+                ("miss", [row for row in rows if row.get("prefix_hit") is False]),
+            )
+            if group
+        },
         # Prefix-cache hit beside miss. With --prompt-repeats the rows after the
         # first for a prompt reuse its prefix; this splits the run by that fact
         # so a hit's rate is not read as a miss's.
@@ -1051,6 +1204,15 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             ("miss" if int(repeat) == 0 else f"hit-{repeat}"): _serving_metrics(group)
             for repeat, group in sorted(
                 _group_rows(rows, "repeat_index").items(), key=lambda item: int(item[0])
+            )
+        },
+        # Per-turn slice of a multi-turn load. Turn 0 has no prefix to reuse and
+        # every later turn shares the turn before it, so this is where a
+        # prefix-cache hit and its interaction with the route show up together.
+        "by_turn": {
+            str(turn): _serving_metrics(group)
+            for turn, group in sorted(
+                _group_rows(rows, "turn_index").items(), key=lambda item: int(item[0])
             )
         },
         "arm_identity": _arm_identity(rows),
@@ -1266,9 +1428,24 @@ def main() -> int:
         default=0,
         help="Requests to run (and discard) before the measured load.",
     )
+    parser.add_argument(
+        "--turns",
+        type=int,
+        default=1,
+        help=(
+            "Expand each dataset conversation into this many growing turns, so "
+            "every turn after the first shares a token-exact prefix with the "
+            "turn before it and a prefix cache has something to reuse. "
+            "--num-prompts then counts conversations and the load holds "
+            "num_prompts * turns requests; --route-mix assigns the arm per "
+            "conversation so both arms submit identical prompt sequences."
+        ),
+    )
     args = parser.parse_args()
     if args.prompt_repeats < 1:
         parser.error("--prompt-repeats must be positive")
+    if args.turns < 1:
+        parser.error("--turns must be positive")
     if args.cancel_count < 0 or args.cancel_count > args.num_prompts * args.prompt_repeats:
         parser.error("--cancel-count must be between 0 and the measured load size")
     route_mix: list[str] = []
@@ -1297,8 +1474,20 @@ def main() -> int:
         max_total_len=args.max_total_len,
         min_prompt_len=args.min_prompt_len,
         cases=cases,
+        turns=args.turns,
     )
     warmup, measured = samples[: args.warmup], samples[args.warmup :]
+    if args.turns > 1 and args.warmup:
+        # A multi-turn warmup is whole conversations: a warmup that stopped
+        # mid-conversation would leave its later turns in the measured load.
+        conversations = {
+            sample.get("conversation_id") for sample in warmup
+        }
+        measured = [
+            sample
+            for sample in samples
+            if sample.get("conversation_id") not in conversations
+        ]
     # Repeat rows keep the prompt and differ only in arrival order, which is
     # what a prefix-cache hit is: the same prefix, submitted again.
     measured = [
@@ -1309,10 +1498,27 @@ def main() -> int:
     # Assign the arm per request, cycling in submission order. A mix makes the
     # true-AR control and the speculative arm part of one load: same process,
     # same occupancy history, same cache state.
-    for index, sample in enumerate(measured):
-        sample["route_arm"] = (
-            route_mix[index % len(route_mix)] if route_mix else args.speculative_mtp
-        )
+    if args.turns > 1:
+        # A conversation is one arm's whole prompt sequence. Assigning per
+        # request would split a conversation across the arms and compare an
+        # early turn against a later one.
+        arm_by_conversation: dict[Any, str] = {}
+        for sample in measured:
+            conversation_id = sample.get("conversation_id")
+            if conversation_id in arm_by_conversation:
+                continue
+            arm_by_conversation[conversation_id] = (
+                route_mix[len(arm_by_conversation) % len(route_mix)]
+                if route_mix
+                else args.speculative_mtp
+            )
+        for sample in measured:
+            sample["route_arm"] = arm_by_conversation[sample.get("conversation_id")]
+    else:
+        for index, sample in enumerate(measured):
+            sample["route_arm"] = (
+                route_mix[index % len(route_mix)] if route_mix else args.speculative_mtp
+            )
     cancel_ids = {
         id(sample) for sample in measured[len(measured) - args.cancel_count :]
     }
@@ -1322,6 +1528,7 @@ def main() -> int:
         f"speculative_mtp={args.speculative_mtp}, "
         f"route_mix={args.route_mix or '-'}, cases={args.cases or '-'}, "
         f"repeats={args.prompt_repeats}, stagger_ms={args.stagger_ms}, "
+        f"turns={args.turns}, "
         f"temperature={args.temperature if args.temperature is not None else 'server-default'}"
     )
 
@@ -1400,6 +1607,7 @@ def main() -> int:
         "cases": cases or None,
         "record_ids": bool(args.record_ids),
         "prompt_repeats": args.prompt_repeats,
+        "turns": args.turns,
         "stagger_ms": args.stagger_ms,
         "min_prompt_len": args.min_prompt_len,
         "cancel_count": args.cancel_count,
@@ -1471,6 +1679,24 @@ def main() -> int:
             f"[{args.label}] prefix {repeat}: requests={metrics['requests']} "
             f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
             f"itl(avg)={_fmt_ms(metrics['median_itl_ms'])} "
+            f"ttft(med)={_fmt_ms(metrics['median_ttft_ms'])} "
+            f"mtp_requests={metrics['mtp_requests']} "
+            f"median_prompt_tokens={metrics['median_prompt_tokens']}"
+        )
+    for hit, metrics in summary["by_prefix"].items():
+        print(
+            f"[{args.label}] cache {hit}: requests={metrics['requests']} "
+            f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
+            f"itl(avg)={_fmt_ms(metrics['median_itl_ms'])} "
+            f"ttft(med/p95)={_fmt_ms(metrics['median_ttft_ms'])}/"
+            f"{_fmt_ms(metrics['p95_ttft_ms'])} "
+            f"mtp_requests={metrics['mtp_requests']} "
+            f"median_prompt_tokens={metrics['median_prompt_tokens']}"
+        )
+    for turn, metrics in summary["by_turn"].items():
+        print(
+            f"[{args.label}] turn {turn}: requests={metrics['requests']} "
+            f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
             f"ttft(med)={_fmt_ms(metrics['median_ttft_ms'])} "
             f"mtp_requests={metrics['mtp_requests']} "
             f"median_prompt_tokens={metrics['median_prompt_tokens']}"

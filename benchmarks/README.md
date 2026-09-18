@@ -485,6 +485,25 @@ what would make this route worth re-measuring. [Sampled-acceptance distribution
 gate](results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json);
 [serving measurement](results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json).
 
+**Prefix-cache hits (2026-09-18):** a hit is a measured loss on a realistic
+multi-turn load, and the reason is the prefill route rather than the cache. Four
+ShareGPT conversations replayed as four growing turns each (272-1,098-token
+prompts, 128 output tokens, the true-AR control and the MTP arm in one load)
+hit **12 of 16** lookups -- every turn after the first, from
+`completed_snapshot`, at 256-512 matched tokens and 158,859,264 state-clone
+bytes -- and the hit rows prefill the reused-prefix suffix **one token at a
+time**: **82.1 ms per executed token against 3.3 ms on the miss rows (24.9x)**, a
+**33,475 ms median TTFT against 1,160 ms**, with the suffix split across 1-3
+chunks in `prefill_ms`. The same refusals that block the suffix also block the
+draft provider, so every hit row ran 100% autoregressive (0 cycles, one
+`no_provider` event per output token) against 126 of 128 tokens from speculation
+on the matching miss rows. End to end the same load decodes **3.47 tok/s with
+`--prefix-cache radix` against 46.52 with it off**, so the cache stays off by
+default and no MTP row is written for hits. The retained 11.8x prefix win is a
+p256+s1 packet, where the per-token loop costs exactly one step. [Prefix hits
+rejected](results/2026-09-18-gfx1151-qwen38-prefix-hit-multiturn-rejected.json);
+source: [worklog entry](../worklog/entries/20260918T180419.254833Z-lhl-prefix-hit-multiturn-462873.md).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework

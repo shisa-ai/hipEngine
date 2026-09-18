@@ -804,3 +804,205 @@ def test_beyond_case_selects_a_prompt_past_the_loader_bound() -> None:
         ("beyond", "beyond"),
     ]
     assert samples[1]["prompt_tokens"] > module.MAX_PROMPT_LEN
+
+
+def _multi_turn_dataset(path: Path) -> Path:
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "conv-a",
+                    "conversations": [
+                        {"from": "human", "value": "alpha " * 40},
+                        {"from": "gpt", "value": "reply-a0 " * 8},
+                        {"from": "human", "value": "beta " * 30},
+                        {"from": "gpt", "value": "reply-a1 " * 8},
+                        {"from": "human", "value": "gamma " * 30},
+                        {"from": "gpt", "value": "reply-a2 " * 8},
+                    ],
+                },
+                {
+                    "id": "conv-b",
+                    "conversations": [
+                        {"from": "human", "value": "delta " * 50},
+                        {"from": "gpt", "value": "reply-b0 " * 8},
+                        {"from": "human", "value": "epsilon " * 30},
+                        {"from": "gpt", "value": "reply-b1 " * 8},
+                        {"from": "human", "value": "zeta " * 30},
+                        {"from": "gpt", "value": "reply-b2 " * 8},
+                    ],
+                },
+            ]
+        )
+    )
+    return path
+
+
+def test_multi_turn_expansion_makes_every_turn_extend_the_previous(monkeypatch) -> None:
+    """A multi-turn load is a prefix chain, which is what a cache can reuse.
+
+    Turn ``t`` must open with turn ``t - 1``'s prompt verbatim, or a prefix
+    lookup is a miss by construction and the load measures nothing about reuse.
+    """
+
+    module = _module()
+    dataset = _multi_turn_dataset(Path("/tmp/sharegpt-recorder-multi-turn.json"))
+    monkeypatch.setattr(
+        module,
+        "_tokenizer",
+        lambda gguf: type(
+            "Tokenizer",
+            (),
+            {"encode": staticmethod(lambda text: list(range(len(text.split()))))},
+        )(),
+    )
+    tokenizer = module._tokenizer(dataset)
+
+    samples = module.load_samples(
+        dataset,
+        tokenizer=tokenizer,
+        count=2,
+        seed=0,
+        output_len=16,
+        max_prompt_len=4096,
+        max_total_len=8192,
+        min_prompt_len=4,
+        turns=3,
+    )
+
+    # count counts conversations, not requests.
+    assert len(samples) == 6
+    assert [sample["conversation_id"] for sample in samples] == ["conv-a"] * 3 + ["conv-b"] * 3
+    assert [sample["turn_index"] for sample in samples] == [0, 1, 2, 0, 1, 2]
+    previous: dict[str, str] = {}
+    for sample in samples:
+        conversation = str(sample["conversation_id"])
+        if conversation in previous:
+            assert sample["prompt"].startswith(previous[conversation])
+        previous[conversation] = str(sample["prompt"])
+    assert samples[0]["prompt_tokens"] < samples[1]["prompt_tokens"] < samples[2]["prompt_tokens"]
+
+
+def test_multi_turn_drops_a_conversation_whose_later_turn_breaks_a_bound(monkeypatch) -> None:
+    """Every turn of a conversation is kept or dropped together.
+
+    A partial conversation would submit a turn whose predecessor never ran, so
+    the later turn's prefix was never cached and the load silently measures a
+    miss where the protocol promised a hit.
+    """
+
+    module = _module()
+    dataset = _multi_turn_dataset(Path("/tmp/sharegpt-recorder-multi-turn-bound.json"))
+    monkeypatch.setattr(
+        module,
+        "_tokenizer",
+        lambda gguf: type(
+            "Tokenizer",
+            (),
+            {"encode": staticmethod(lambda text: list(range(len(text.split()))))},
+        )(),
+    )
+    tokenizer = module._tokenizer(dataset)
+
+    # conv-a's turns are 40 / 86 / 116 words; conv-b's are 50 / 96 / 126, so a
+    # 120-word bound keeps conv-a whole and drops conv-b whole.
+    samples = module.load_samples(
+        dataset,
+        tokenizer=tokenizer,
+        count=1,
+        seed=0,
+        output_len=16,
+        max_prompt_len=120,
+        max_total_len=8192,
+        min_prompt_len=4,
+        turns=3,
+    )
+
+    assert [sample["conversation_id"] for sample in samples] == ["conv-a"] * 3
+    assert samples[-1]["prompt_tokens"] < 120
+
+    with pytest.raises(SystemExit):
+        module.load_samples(
+            dataset,
+            tokenizer=tokenizer,
+            count=1,
+            seed=0,
+            output_len=16,
+            max_prompt_len=60,
+            max_total_len=8192,
+            min_prompt_len=4,
+            turns=3,
+        )
+
+
+def test_prefix_fields_surface_the_backend_hit_and_stay_absent_without_one() -> None:
+    """A hit is reported, not inferred from a shorter TTFT.
+
+    The terminal chunk carries the backend's ``prefix_cache`` telemetry. When it
+    is absent the row must carry no prefix keys at all, so a summary cannot
+    count an unreported lookup as a miss.
+    """
+
+    module = _module()
+    hit = module._prefix_fields(
+        {
+            "diagnostics": {
+                "prefix_cache": {
+                    "mode": "radix",
+                    "eligible": True,
+                    "lookup": True,
+                    "hit": True,
+                    "source": "completed_snapshot",
+                    "matched_tokens": 512,
+                    "reused_tokens": 512,
+                    "executed_prefill_tokens": 414,
+                    "state_clone_bytes": 66846720,
+                    "snapshot_hit": True,
+                    "fallback_reason": None,
+                    "cache_resident_bytes": 72089600,
+                    "cache_resident_entries": 3,
+                }
+            }
+        }
+    )
+    assert hit["prefix_hit"] is True
+    assert hit["prefix_reused_tokens"] == 512
+    assert hit["prefix_executed_prefill_tokens"] == 414
+    assert hit["prefix_snapshot_hit"] is True
+
+    assert module._prefix_fields({}) == {}
+    assert module._prefix_fields({"diagnostics": {"specdec2_mtp2": {}}}) == {}
+
+
+def test_summary_splits_a_prefix_hit_from_a_miss() -> None:
+    """The hit's own TTFT and decode rate are the reuse evidence."""
+
+    module = _module()
+    hit = module._request_row({"source_id": 1}, _response())
+    hit.update({"prefix_hit": True, "prefix_reused_tokens": 512, "prefix_executed_prefill_tokens": 100})
+    miss = module._request_row({"source_id": 2}, _response())
+    miss.update({"prefix_hit": False, "prefix_reused_tokens": 0, "prefix_executed_prefill_tokens": 612})
+
+    summary = module.summarize([hit, miss])
+
+    assert set(summary["by_prefix"]) == {"hit", "miss"}
+    assert summary["by_prefix"]["hit"]["requests"] == 1
+    assert summary["by_prefix"]["miss"]["requests"] == 1
+
+
+def test_summary_splits_a_multi_turn_load_by_turn() -> None:
+    """Turn 0 has no prefix to reuse; every later turn does."""
+
+    module = _module()
+    first = module._request_row({"source_id": 1, "turn_index": 0}, _response())
+    later = module._request_row({"source_id": 1, "turn_index": 1}, _response())
+
+    summary = module.summarize([first, later])
+
+    assert set(summary["by_turn"]) == {"0", "1"}
+    assert summary["by_turn"]["0"]["requests"] == 1
+    assert summary["by_turn"]["1"]["requests"] == 1
+
+    # A single-turn load carries no turn_index and reports no turn slices.
+    plain = module._request_row({"source_id": 1}, _response())
+    assert module.summarize([plain])["by_turn"] == {}
