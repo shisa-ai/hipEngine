@@ -514,6 +514,43 @@ the adapter's 1,023-token window.
 This corrects the earlier public statement that production-profile requests use
 AR. [c=1 engagement](results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
 
+**Realized groups and the width cells (2026-09-19):** the width policy's C5-C8
+question is answered by what the server actually executes. Across 36 measured
+points -- 8-prompt ShareGPT loads with four 17-34-token and four 696-841-token
+prompts, at concurrency 2 through 8, with burst, 400-ms-staggered, and 50-ms
+dispatch-window arrivals, each against a true-AR arm in the same load -- **every
+one of the 24 speculative points ran one-row speculative groups**. No wider group
+formed in any arrival pattern, so the wide cells are not a throughput lever on
+real traffic and concurrency never batches speculative rows. What MTP buys at
+concurrency is interleaving: with staggered arrivals it holds 6-7 of 8 rows and
+about half the output tokens at every concurrency, and decodes **18.92 against
+true AR's 15.22 tok/s at c=2 (+24%), 23.74 against 18.84 at c=4 (+26%), and 25.20
+against 18.87 at c=8 (+34%)**, while true AR itself saturates near 19 tok/s from
+c=4 up. Burst arrival is not that regime: the provider's single prompt activation
+is contested, so only 1 of 8 rows engages at c=4 and c=7 and none at c=8, and
+those points measure contention rather than the route.
+
+The engaging wide cell does not survive re-measurement. On the same instrument
+that qualified it (one synchronized 8-row batch per cell, 10 mtp-bench prompts,
+24-token horizon, true no-MTP AR baseline in the same run) the gfx1151 production
+`(8,3)` cell measures **46.88 tok/s against 50.10 AR (0.936x)** with **0 of 10
+cells reproducing the AR output**, against the retained 2026-09-05 qualification
+of 52.10 against 52.03 (1.0015x) with 40 of 40 cells AR-equal. The failure is not
+numerical drift: every one of the 80 rows reports
+`effective_route=speculative_mtp` with 7-9 draft cycles and a
+`physical_streaming_category_rejected` event, because the backend's prompt-streaming
+policy admits widths 1-4, so the provider opens without prompt state while the
+route still runs. The generated ids agree with AR for 3-5 tokens and then land in
+the same `<|im_end|>`/`<|im_start|>` loop on all 10 prompts -- the MTP arm's
+output does not depend on the prompt. The cell is reachable through production
+admission, not just the diagnostic resolver: the same protocol run without
+`--generation2-diagnostic` engages it on all 10 cells and reproduces the identical
+degenerate output. The C5-C7 refusal cost did improve to -6%/-7%/-7% from
+-15%/-18%/-18%. The gfx1151 production `(8,3)` cell is therefore withdrawn
+pending a fail-closed refusal when the prompt sink is refused. [Width census and
+C8/K3
+withdrawal](results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework

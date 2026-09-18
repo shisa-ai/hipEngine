@@ -1,5 +1,41 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19)
+
+- `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`, but
+  `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` for the same
+  geometry/file-type/profile admits widths `(1, 2, 3, 4)`, so
+  `begin_prompt_streaming` refuses a pending set of 8 rows and stamps every row
+  `mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"`. The
+  refusal does not fail the route closed: the group still reports
+  `effective_route=speculative_mtp`, `used=true`, and executes 7-9 draft cycles
+  per row against a provider with no prompt state. Measured on all 80 rows of
+  the 10-cell width-8 protocol, with production admission as well as the
+  diagnostic resolver: the MTP arm agrees with AR for 3-5 tokens and then emits
+  the same `<|im_end|>`/`<|im_start|>` loop on all 10 prompts, so its output does
+  not depend on the prompt, and the cell is 0.936x of its own AR baseline where
+  the 2026-09-05 qualification recorded 1.0015x with 40/40 AR-equal cells.
+  Evidence:
+  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
+- `hipengine/generation/qwen35_gguf_mtp2.py` `partition_max_requests` returns 0
+  for a due group wider than
+  `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"]` (4), but
+  `hipengine/generation/engine_loop.py`
+  `_maybe_run_partitioned_speculative_decode` reads a non-positive bound as
+  "do not partition" and returns `None`, after which `_run_decode` falls through
+  to `_maybe_run_speculative_cycle` on the whole wide work item. The M5
+  whole-batch-AR defense is therefore inert for an over-width all-speculative due
+  item; `docs/REFACTOR.md` RF-M5 recorded that precondition as unreached before
+  the 2026-09-05 width policy admitted `(8, 3)`.
+- Remove the wide cell by either failing the route closed when the prompt sink is
+  refused (refusal is not a partial state the cycle can run on), or by adding
+  widths 5-8 to the prompt-streaming policy and re-qualifying the cell against a
+  same-run true-AR baseline. Move the over-width demotion to the admission owner
+  or make the engine treat a zero partition bound as a whole-batch AR step; then
+  the partitioner-level defense can be deleted. Do not keep `(8, 3)` listed while
+  the prompt sink refuses width 8.
+
 ## Per-token reused-prefix suffix prefill (found 2026-09-18)
 
 - `hipengine/generation/qwen35_gguf.py` `_prefill_native_chunk` and
@@ -6684,6 +6720,13 @@ batches (len(sessions) >= 2) with a RED-first contract
   `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`
   and
   `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
+- **The gfx1151 half of that row is withdrawn (2026-09-19).** Re-measured on the
+  same instrument the cell is 46.88 tok/s against 50.10 true AR (0.936x) with
+  0 of 10 cells reproducing the AR output, because the prompt-streaming policy
+  refuses a pending set of 8 rows while the route runs anyway; the gfx1100 cell
+  is untouched by that measurement. See the 2026-09-19 entry at the top of this
+  ledger and
+  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
 - Roll back by removing only the failing exact cell from that backend/profile
   policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
   the registered strict fallback.
@@ -6692,10 +6735,17 @@ batches (len(sessions) >= 2) with a RED-first contract
 
 `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
 zero `partition_max_requests` result make an over-bound due batch take one
-full-width AR step rather than chained MTP subgroups. This is currently inert
-on the server benchmark because admission caps explicit groups at four before
-the partitioner sees them. If admission semantics broaden, move demotion to
-the admission owner, remeasure C5-C8 against current AR, and remove the
+full-width AR step rather than chained MTP subgroups. **Measured 2026-09-19: it
+does not.** `_maybe_run_partitioned_speculative_decode` treats a zero bound as
+"do not partition" and returns `None`, so `_run_decode` falls through to
+`_maybe_run_speculative_cycle` on the whole wide work item, and the 8-row
+width-8 protocol runs 8-row speculative cycles this way. The defense was inert
+on the server benchmark only while admission capped explicit groups at four
+before the partitioner saw them; admission broadened when the 2026-09-05 width
+policy listed `(8, 3)`, so this entry's precondition is met. Evidence:
+`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
+Move demotion to the admission owner (or make a zero partition bound mean one
+whole-batch AR step), remeasure C5-C8 against current AR, and remove the
 partitioner-level defense once redundant.
 
 ## RF-B1A — MTP serving target WMMA-prefill transfer (2026-09-02)
