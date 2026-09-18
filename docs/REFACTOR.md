@@ -7970,7 +7970,6 @@ Desktop gfx1151 measurements must establish a new physical-host baseline before
 claiming further gains over torch or the previous implementation.
 
 ## Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)
-
 `hipengine/server/api.py` pulls each streamed chunk with a separate
 `await run_in_threadpool(_next_stream_item, iterator)` call, and
 `StreamingOutputCollector.drain()` is invoked with `max_chunks=1`. The engine
@@ -8005,11 +8004,19 @@ request (`_request_slots`, `_prompt_prime_rows`, `_prompt_priming_staging`) and
 hidden rows land in a per-slot region, and
 `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` already admits prompt-streaming
 widths 1-4 on gfx1151. The refusal is therefore conservative, not a hardware
-limit. Replace it with real overlap (or with deferral of the second request's
-prefill) once an exactness gate proves two interleaved activations cannot corrupt
-carried rows: the gate is generated-token equality plus non-collapsed acceptance
-against independent c=1 runs, because a corrupted draft provider lowers
-acceptance rather than changing accepted tokens.
+limit.
+
+**Half replaced 2026-09-18 by scheduling, not overlap.** The scheduler now
+consults `prefill_activation_ready` and `prefill_needs_activation`, so a fresh
+speculative row's first chunk is deferred until the claim is free and at most one
+claim-opening chunked row is admitted per prefill item. A concurrent arrival
+keeps its provider instead of being refused; activations still serialize, which
+costs the waiting request prefill-start latency. What remains owed is the
+overlap path itself: co-activating several chunked rows in one activation, which
+needs the exactness gate below (generated-token equality plus non-collapsed
+acceptance against independent c=1 runs) and a claim that stays held until every
+co-activated sink finishes (`finish_prompt_streaming` currently clears
+`_active_prompt_claims` as soon as any one row finishes).
 
 Related, and separately owed: the serving evidence row for this cell is
 `cap4-realized-c1-b3`, which matches only `realized_group_rows == 1`, so a

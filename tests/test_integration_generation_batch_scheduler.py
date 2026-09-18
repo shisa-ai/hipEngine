@@ -28096,3 +28096,144 @@ def test_qwen35_batch_diagnostic_artifact_schema_rejects_missing_correctness() -
 
     with pytest.raises(ValueError, match="correctness"):
         validate_cn_diagnostic_artifact_payload(payload)
+
+
+def test_prefill_ready_filter_defers_a_row_without_advancing_its_cursor() -> None:
+    """A deferred row keeps its prompt cursor so no prefill work is lost.
+
+    The runner defers a speculative row whose first chunk would forfeit an MTP
+    prompt activation another request holds. The scheduler must skip that row
+    without consuming its chunk, then emit it once it becomes ready.
+    """
+
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    first = scheduler.submit([1, 2, 3, 4], max_new_tokens=1)
+    second = scheduler.submit([5, 6, 7, 8], max_new_tokens=1)
+    assert scheduler.admit_pending() == (first, second)
+
+    blocked = {first}
+    ready = lambda request_id: request_id not in blocked  # noqa: E731
+
+    work = scheduler.next_prefill_work(chunk_size=4, ready=ready)
+    assert work is not None
+    assert work.request_ids == (second,)
+
+    # The deferred row is still at its start: the whole prompt is emitted once
+    # it becomes ready, not a shortened remainder.
+    blocked.clear()
+    work = scheduler.next_prefill_work(chunk_size=4, ready=ready)
+    assert work is not None
+    assert work.request_ids == (first,)
+    assert work.token_rows == ((1, 2, 3, 4),)
+
+
+def test_prefill_batch_ready_filter_excludes_only_deferred_rows() -> None:
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
+    ids = [
+        scheduler.submit([1, 2, 3, 4], max_new_tokens=1),
+        scheduler.submit([5, 6, 7, 8], max_new_tokens=1),
+        scheduler.submit([9, 10, 11, 12], max_new_tokens=1),
+    ]
+    assert scheduler.admit_pending() == tuple(ids)
+
+    work = scheduler.next_prefill_batch_work(
+        chunk_size=4,
+        max_rows=3,
+        ready=lambda request_id: request_id != ids[1],
+    )
+
+    assert work is not None
+    assert work.request_ids == (ids[0], ids[2])
+    # The excluded row's cursor is untouched, so it still has its full prompt.
+    deferred = scheduler.active_batch.requests[ids[1]]
+    assert deferred.remaining_prefill == 4
+
+
+def test_round_robin_prefill_ready_filter_skips_blocked_slots() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    first = scheduler.submit([1, 2, 3, 4], max_new_tokens=1)
+    second = scheduler.submit([5, 6, 7, 8], max_new_tokens=1)
+    assert scheduler.admit_pending() == (first, second)
+
+    work = scheduler.next_round_robin_prefill_work(
+        chunk_size=4,
+        ready=lambda request_id: request_id == second,
+    )
+
+    assert work is not None
+    assert work.request_ids == (second,)
+    assert scheduler.active_batch.requests[first].remaining_prefill == 4
+
+
+def test_prefill_batch_selects_at_most_one_claim_opening_chunked_row() -> None:
+    """A second claim-opening row in one item would forfeit its provider.
+
+    The serial prefill path activates each row immediately before its own first
+    chunk, so a chunked row's activation is still held when the next row's first
+    chunk runs. The scheduler keeps that second row for a later item instead of
+    advancing a chunk it cannot execute.
+    """
+
+    scheduler = ResidentBatchScheduler(capacity=4, context_bucket_size=4)
+    ids = [
+        scheduler.submit([1, 2, 3, 4, 5, 6, 7, 8], max_new_tokens=1),
+        scheduler.submit([11, 12, 13, 14, 15, 16, 17, 18], max_new_tokens=1),
+        scheduler.submit([21, 22, 23, 24, 25, 26, 27, 28], max_new_tokens=1),
+    ]
+    assert scheduler.admit_pending() == tuple(ids)
+
+    work = scheduler.next_prefill_batch_work(
+        chunk_size=4,
+        max_rows=3,
+        needs_activation=lambda request_id: True,
+    )
+
+    assert work is not None
+    assert work.request_ids == (ids[0],)
+    # The deferred rows keep their full prompts for the next item.
+    for request_id in ids[1:]:
+        assert scheduler.active_batch.requests[request_id].remaining_prefill == 8
+
+
+def test_prefill_batch_does_not_cap_rows_that_need_no_activation() -> None:
+    """A row already mid-prompt or without intent does not consume the claim."""
+
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
+    ids = [
+        scheduler.submit([1, 2, 3, 4, 5, 6, 7, 8], max_new_tokens=1),
+        scheduler.submit([11, 12, 13, 14, 15, 16, 17, 18], max_new_tokens=1),
+    ]
+    assert scheduler.admit_pending() == tuple(ids)
+
+    # Advance both rows' cursors one chunk so they are mid-prompt.
+    first = scheduler.next_prefill_batch_work(chunk_size=4, max_rows=2)
+    assert first is not None and first.request_ids == tuple(ids)
+
+    work = scheduler.next_prefill_batch_work(
+        chunk_size=4,
+        max_rows=2,
+        needs_activation=lambda request_id: True,
+    )
+
+    assert work is not None
+    assert work.request_ids == tuple(ids)
+
+
+def test_prefill_batch_does_not_cap_a_single_chunk_prompt() -> None:
+    """A prompt that fits one chunk cannot hold the claim across ticks."""
+
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    ids = [
+        scheduler.submit([1, 2, 3, 4], max_new_tokens=1),
+        scheduler.submit([11, 12, 13, 14], max_new_tokens=1),
+    ]
+    assert scheduler.admit_pending() == tuple(ids)
+
+    work = scheduler.next_prefill_batch_work(
+        chunk_size=4,
+        max_rows=2,
+        needs_activation=lambda request_id: True,
+    )
+
+    assert work is not None
+    assert work.request_ids == tuple(ids)

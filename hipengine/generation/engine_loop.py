@@ -2348,15 +2348,46 @@ class ResidentEngineLoop:
             packed_prefill_rows = int(
                 getattr(self.runner, "packed_prefill_max_rows", 1)
             )
+            # A row whose first chunk would forfeit an unrecoverable resource
+            # (an MTP prompt activation another request holds) is deferred, not
+            # advanced. The claim holder is always ready, so a deferred-only
+            # selection means every remaining row is waiting on a claim that is
+            # about to be released; fall through to decode, and only if there is
+            # no decode work either, run the unfiltered selection so the loop
+            # cannot stall.
+            ready = getattr(self.runner, "prefill_activation_ready", None)
+            if not callable(ready):
+                ready = None
+            needs_activation = getattr(
+                self.runner, "prefill_needs_activation", None
+            )
+            if not callable(needs_activation):
+                needs_activation = None
             if packed_prefill_rows > 1:
                 prefill = self.scheduler.next_prefill_batch_work(
                     chunk_size=self.prefill_chunk_size,
                     max_rows=packed_prefill_rows,
+                    ready=ready,
+                    needs_activation=needs_activation,
                 )
             else:
                 prefill = self.scheduler.next_prefill_work(
-                    chunk_size=self.prefill_chunk_size
+                    chunk_size=self.prefill_chunk_size,
+                    ready=ready,
                 )
+            if prefill is None and decode is not None:
+                events.extend(self._run_decode(decode))
+                return tuple(events)
+            if prefill is None:
+                if packed_prefill_rows > 1:
+                    prefill = self.scheduler.next_prefill_batch_work(
+                        chunk_size=self.prefill_chunk_size,
+                        max_rows=packed_prefill_rows,
+                    )
+                else:
+                    prefill = self.scheduler.next_prefill_work(
+                        chunk_size=self.prefill_chunk_size
+                    )
             assert prefill is not None
             events.extend(self._run_prefill(prefill))
             return tuple(events)
@@ -2456,8 +2487,10 @@ class ResidentEngineLoop:
             getattr(self.runner, "supports_multiple_prefill_quanta_per_round", False)
         )
         while prefill_budget > 0 and self.scheduler.has_prefill_work():
+            ready = getattr(self.runner, "prefill_activation_ready", None)
             work = self.scheduler.next_round_robin_prefill_work(
-                chunk_size=min(self.prefill_chunk_size, prefill_budget)
+                chunk_size=min(self.prefill_chunk_size, prefill_budget),
+                ready=ready if callable(ready) else None,
             )
             if work is None:
                 break
