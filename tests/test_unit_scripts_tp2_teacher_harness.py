@@ -940,3 +940,95 @@ def test_sentinel_classify_written_noop_partial(sentinel_probe):
     assert sentinel_probe.classify(0, 0, 0, 17408).startswith("device 0: WRITTEN")
     assert sentinel_probe.classify(1, 17408, 17408, 17408).startswith("device 1: NO-OP")
     assert sentinel_probe.classify(1, 10, 0, 17408).startswith("device 1: PARTIAL")
+
+
+# -- tail localization (pure) -----------------------------------------------
+
+
+def test_worst_rows_names_the_position_that_breaches_the_ceiling(coverage):
+    """A max_kl failure must name a place, not only a number."""
+
+    row_kl = [np.array([1e-4, 2e-4, 7e-2], dtype=np.float64)]
+    row_top1 = [np.array([True, True, False])]
+    report = coverage._worst_rows(
+        row_kl,
+        row_top1,
+        [0],
+        ["code"],
+        [False],
+        ceiling=0.05,
+    )
+    assert report["scored_positions"] == 3
+    assert report["rows_over_max_kl_ceiling"] == 1
+    worst = report["worst"][0]
+    assert worst["prompt_index"] == 0
+    assert worst["position"] == 2
+    assert worst["category"] == "code"
+    assert worst["heldout"] is False
+    assert worst["kl"] == pytest.approx(7e-2)
+    assert worst["top1_flipped"] is True
+
+
+def test_worst_rows_orders_across_prompts_and_respects_the_limit(coverage):
+    row_kl = [np.array([0.3, 0.1]), np.array([0.5, 0.2])]
+    row_top1 = [np.array([True, True]), np.array([True, True])]
+    report = coverage._worst_rows(
+        row_kl,
+        row_top1,
+        [0, 1],
+        ["code", "general_ja"],
+        [False, True],
+        limit=2,
+        ceiling=0.05,
+    )
+    assert [entry["kl"] for entry in report["worst"]] == pytest.approx([0.5, 0.3])
+    assert [entry["prompt_index"] for entry in report["worst"]] == [1, 0]
+    assert report["worst"][0]["category"] == "general_ja"
+    assert report["worst"][0]["heldout"] is True
+    assert report["rows_over_max_kl_ceiling"] == 4
+
+
+def test_worst_rows_limit_zero_still_counts(coverage):
+    report = coverage._worst_rows(
+        [np.array([0.9])], [np.array([True])], [0], ["code"], [False], limit=0, ceiling=0.05
+    )
+    assert report["worst"] == []
+    assert report["rows_over_max_kl_ceiling"] == 1
+    assert report["scored_positions"] == 1
+
+
+def test_worst_rows_without_a_ceiling_reports_zero_breaches(coverage):
+    report = coverage._worst_rows(
+        [np.array([0.9, 0.0])], [np.array([True, True])], [0], ["code"], [False]
+    )
+    assert report["rows_over_max_kl_ceiling"] == 0
+    assert len(report["worst"]) == 2
+
+
+def test_worst_rows_on_an_empty_suite_is_empty(coverage):
+    report = coverage._worst_rows([], [], [], [], [], ceiling=0.05)
+    assert report == {
+        "scored_positions": 0,
+        "rows_over_max_kl_ceiling": 0,
+        "worst": [],
+    }
+
+
+def test_score_arm_reports_worst_rows(coverage):
+    """score_arm must carry the localization, not only the aggregate."""
+
+    teacher = [np.array([[0.0, 4.0], [0.0, 4.0]], dtype=np.float32)]
+    student = [np.array([[0.0, 4.0], [4.0, 0.0]], dtype=np.float32)]
+    summary = coverage.score_arm(
+        teacher,
+        student,
+        ["code"],
+        [False],
+        expected_positions=[2],
+        vocab_size=2,
+    )
+    assert summary["scored_rows"] == 1
+    worst = summary["worst_rows"]["worst"][0]
+    assert worst["position"] == 1
+    assert worst["top1_flipped"] is True
+    assert summary["worst_rows"]["scored_positions"] == 2

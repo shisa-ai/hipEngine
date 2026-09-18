@@ -386,6 +386,53 @@ def run_teacher_arm(session: object, token_rows: list[tuple[int, ...]]) -> list[
     ]
 
 
+def _worst_rows(
+    row_kl: list[np.ndarray],
+    row_top1: list[np.ndarray],
+    row_index: list[int],
+    categories: list[str],
+    heldout: list[bool],
+    *,
+    limit: int = 8,
+    ceiling: float | None = None,
+) -> dict[str, object]:
+    """Localize the tail: the highest-KL positions and how many breach a ceiling.
+
+    A gate failure on ``max_kl`` names a number, not a place, and the fix for a
+    single tail row is rarely the fix for a systemic shift. This reports the
+    worst positions with their prompt index, position within the prompt,
+    category and scope, so the failing row can be reproduced directly instead
+    of by re-running the whole suite. It is pure so the localization itself is
+    testable.
+    """
+
+    entries: list[dict[str, object]] = []
+    over_ceiling = 0
+    for slot, source in enumerate(row_index):
+        kl = row_kl[slot]
+        top1 = row_top1[slot]
+        for position in range(int(kl.size)):
+            value = float(kl[position])
+            if ceiling is not None and value > float(ceiling):
+                over_ceiling += 1
+            entries.append(
+                {
+                    "prompt_index": int(source),
+                    "position": int(position),
+                    "category": str(categories[source]),
+                    "heldout": bool(heldout[source]),
+                    "kl": value,
+                    "top1_flipped": bool(not bool(top1[position])),
+                }
+            )
+    entries.sort(key=lambda entry: float(entry["kl"]), reverse=True)
+    return {
+        "scored_positions": len(entries),
+        "rows_over_max_kl_ceiling": over_ceiling,
+        "worst": entries[: max(0, int(limit))],
+    }
+
+
 def score_arm(
     teacher: list[np.ndarray],
     student: list[np.ndarray],
@@ -508,6 +555,14 @@ def score_arm(
         "shape_mismatches": shape_mismatches,
         "nonfinite_rows": nonfinite_rows,
         "scored_rows": len(row_index),
+        "worst_rows": _worst_rows(
+            row_kl,
+            row_top1,
+            row_index,
+            categories,
+            heldout,
+            ceiling=PRODUCTION_GATE.get("max_kl"),
+        ),
     }
 
 
