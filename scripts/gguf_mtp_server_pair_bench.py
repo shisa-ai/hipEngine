@@ -17,7 +17,12 @@ Protocol:
 
 Per-arm request extras come from ``BENCH_EXTRA_JSON`` (for example
 ``{"speculative_mtp": false}`` for the AR control arm), so the arm is recorded
-in the artifact rather than in a copied harness.
+in the artifact rather than in a copied harness. Each run records the routing
+block the server reported about itself (effective route, decision reason, MTP
+output coverage and cycles, fallback counts); ``--identity-tokens N`` adds one
+non-streaming greedy probe per row whose exact generated ids let the arms be
+compared token for token. Set ``BENCH_INCLUDE_HIPENGINE=0`` when pointing the
+harness at an engine that rejects hipEngine's ``stream_options`` extension.
 
 Usage:
   scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
@@ -34,6 +39,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from typing import Any, Mapping
 
 PARA = (
     "The Strix Halo package pairs sixteen Zen 5 cores with a Radeon 8060S "
@@ -63,6 +69,89 @@ def make_prompt(target_tokens: int) -> str:
     )
 
 
+def request_extras() -> dict:
+    """Per-engine request fields, e.g. hipEngine's ``speculative_mtp`` pin."""
+    return json.loads(os.environ.get("BENCH_EXTRA_JSON", "{}"))
+
+
+def stream_options() -> dict:
+    """Stream options, including hipEngine's own extension channel.
+
+    The routing/accounting block rides on ``include_hipengine``, which is what
+    makes a row's own route and speculation coverage observable. Both servers
+    this harness compares are OpenAI-compatible and ignore an unknown
+    ``stream_options`` key, but a stricter engine can opt out with
+    ``BENCH_INCLUDE_HIPENGINE=0`` rather than failing on the request.
+    """
+    options: dict[str, Any] = {"include_usage": True}
+    if os.environ.get("BENCH_INCLUDE_HIPENGINE", "1") not in ("", "0"):
+        options["include_hipengine"] = True
+    return options
+
+
+def route_summary(extension: Mapping[str, Any]) -> dict:
+    """The routing and MTP accounting a served row reports about itself.
+
+    A serving rate is only comparable across arms if the row says which route
+    ran and how much of its output came from speculative cycles, so the pair
+    harness records the same fields the ShareGPT recorder reads rather than
+    inferring coverage from the arm's intent.
+    """
+    route = (extension.get("generation_shape") or {}).get("route_decision") or {}
+    mtp = extension.get("speculative_mtp") or {}
+    accounting = mtp.get("output_accounting") or {}
+    token_accounting = extension.get("token_accounting") or {}
+    return {
+        "effective_route": route.get("effective_route"),
+        "decision_reason": route.get("decision_reason"),
+        "mtp_used": bool(mtp.get("used")),
+        "speculative_cycles": mtp.get("speculative_cycles"),
+        "mtp_output_tokens": accounting.get("mtp_output_tokens"),
+        "ar_output_tokens": accounting.get("ar_output_tokens"),
+        "mtp_coverage": accounting.get("mtp_coverage"),
+        "fallback_event_counts": mtp.get("fallback_event_counts"),
+        "generated_ids": token_accounting.get("choice_generated_token_ids"),
+    }
+
+
+def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
+                  timeout: float = 900.0) -> dict:
+    """Non-streaming greedy probe used as the cross-arm identity oracle.
+
+    Exact generated ids are only attached to a non-streaming response, so the
+    identity probe is a separate request from the timed streaming repeats. It
+    runs the same route the repeats do (the request fields are identical apart
+    from ``stream``) and reports the ids, the text and the routing block.
+    """
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": decode_tokens,
+        "temperature": 0.0,
+        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "stream": False,
+        **request_extras(),
+    }
+    req = urllib.request.Request(
+        url.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    choice = (body.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    return {
+        "prompt_tokens": (body.get("usage") or {}).get("prompt_tokens"),
+        "completion_tokens": (body.get("usage") or {}).get("completion_tokens"),
+        "finish_reason": choice.get("finish_reason"),
+        "text": message.get("content") or "",
+        "reasoning_chars": len(message.get("reasoning_content") or ""),
+        **route_summary(body.get("hipengine") or {}),
+    }
+
+
 def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
                 timeout: float = 900.0) -> dict:
     # Identical JSON to both engines, including the thinking pin: Atlas defaults
@@ -76,9 +165,9 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
         "enable_thinking": False,
         "chat_template_kwargs": {"enable_thinking": False},
         "stream": True,
-        "stream_options": {"include_usage": True},
+        "stream_options": stream_options(),
         # Optional per-engine extras (e.g. hipEngine's ``speculative_mtp``).
-        **json.loads(os.environ.get("BENCH_EXTRA_JSON", "{}")),
+        **request_extras(),
     }
     req = urllib.request.Request(
         url.rstrip("/") + "/v1/chat/completions",
@@ -92,6 +181,7 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
     reasoning = []
     usage = {}
     finish = None
+    extension: dict[str, Any] = {}
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
             line = raw.decode("utf-8", "replace").strip()
@@ -104,9 +194,13 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
                 chunk = json.loads(data)
             except json.JSONDecodeError:
                 continue
+            if isinstance(chunk.get("hipengine"), Mapping):
+                extension.update(chunk["hipengine"])
             if chunk.get("usage"):
                 usage = chunk["usage"]
             for choice in chunk.get("choices") or []:
+                if isinstance(choice.get("hipengine"), Mapping):
+                    extension.update(choice["hipengine"])
                 if choice.get("finish_reason"):
                     finish = choice["finish_reason"]
                 delta = choice.get("delta") or {}
@@ -136,6 +230,7 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
         "decode_tok_s": ((completion - 1) / decode_s) if decode_s else None,
         "prefill_tok_s": (usage.get("prompt_tokens") / ttft) if ttft else None,
         "text": "".join(text),
+        **route_summary(extension),
     }
 
 
@@ -217,9 +312,22 @@ def measure(
               f"decode {r['decode_tok_s']:.2f} tok/s, ttft {r['ttft_s']*1000:.0f} ms, "
               f"prompt {r['prompt_tokens']} tok, gen {r['completion_tokens']} tok "
               f"({r['finish_reason']}){short}", flush=True)
+    identity = None
+    if args.identity_tokens:
+        identity = identity_once(
+            args.url, args.model, prompt, int(args.identity_tokens)
+        )
+        print(f"[{args.tag}] {label} identity: {len(identity['generated_ids'] or [])} ids, "
+              f"route {identity['effective_route']}, mtp_used {identity['mtp_used']}", flush=True)
     return {
         "prompt_tokens": runs[0]["prompt_tokens"],
         "completion_tokens": runs[0]["completion_tokens"],
+        "identity": identity,
+        "route": {k: runs[0][k] for k in (
+            "effective_route", "decision_reason", "mtp_used", "speculative_cycles",
+            "mtp_output_tokens", "ar_output_tokens", "mtp_coverage",
+            "fallback_event_counts",
+        )},
         "decode_tok_s_median": statistics.median([r["decode_tok_s"] for r in runs]),
         "decode_tok_s_cv": cv([r["decode_tok_s"] for r in runs]),
         "prefill_tok_s_median": statistics.median([r["prefill_tok_s"] for r in runs]),
@@ -245,6 +353,16 @@ def main() -> int:
                     help="prepend deterministic filler so the context reaches this size")
     ap.add_argument("--decode", type=int, default=128)
     ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument(
+        "--identity-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Also run one non-streaming greedy probe per shape/prompt with this "
+            "output budget and record its exact generated ids, so the two arms "
+            "can be compared token for token. 0 disables the probe."
+        ),
+    )
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 

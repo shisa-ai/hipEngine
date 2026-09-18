@@ -3,13 +3,13 @@
   "date": "2026-09-18",
   "status": "retained",
   "purpose": "The staged full-attention chain was refused whenever the span-wide attention limit crossed the split-K threshold, so at a 1024-token split boundary the eager verifier fell back to the scalar row-wise owner for every full-attention layer (measured: staged_chain_total 0, scalar_attn_total 1232 across the packet). The chain now resolves each row's own c1 leaf -- the same split-K gate leaf, chunk size, and split tiling the scalar owner runs at that position, and below the threshold the same non-split or short-context batch leaf -- so rows on both sides of the boundary stay in one batched projection/head-norm/rotary/KV-write/output-projection chain.",
-  "source": "scripts/gguf_mtp_long_context_gate.py (wrapped by a route probe that counts staged-chain and scalar-owner calls)",
+  "source": "scripts/gguf_mtp_route_owner_probe.py (wraps scripts/gguf_mtp_long_context_gate.py and counts staged-chain, scalar-owner, FFN-row and split-plan calls)",
   "model": "Qwen3.8-27B-Q4_K_M.gguf (qwen3.8-27b-q4km)",
   "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo), ROCm SDK from /home/lhl/miniforge3/envs/therock",
   "protocol": {
-    "harness": "scripts/gguf_mtp_long_context_gate.py",
-    "command": "/home/lhl/miniforge3/envs/therock/bin/python /tmp/lc_path_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends 1024,1025 --candidate-budgets 1,2,3 --acceptance-cycle-ends 1024 --generation-contexts '' --max-sequence-length 1040 --out <out>.json",
-    "baseline_command": "same command with /tmp/lc_path_probe_base_wt.py from a clean git worktree at f607e3184",
+    "harness": "scripts/gguf_mtp_route_owner_probe.py",
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_route_owner_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends 1024,1025 --candidate-budgets 1,2,3 --acceptance-cycle-ends 1024 --generation-contexts '' --max-sequence-length 1040 --out <out>.json",
+    "baseline_command": "the same probe and gate packet run from a clean worktree at f607e3184 (the commit before the staged-chain change)",
     "route": "eager_native (target graph rejected: start_position < 1024)",
     "repetitions": 3,
     "measured_quantity": "gate per-case wall_seconds (native verify plus the serial-exact teacher and the state/KV/hidden comparisons in one process)",
@@ -683,7 +683,7 @@
   ],
   "longer_span_packets": {
     "purpose": "The same per-row leaf resolution at spans far past the split boundary, where each row needs a much larger split count and the split workspace is the binding constraint. Every case is compared against the serial-exact teacher with the same gate as the retained packet.",
-    "command_template": "/home/lhl/miniforge3/envs/therock/bin/python /tmp/lc_path_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends <ends> --candidate-budgets 3 --acceptance-cycle-ends '' --generation-contexts '' --out <out>.json",
+    "command_template": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_route_owner_probe.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --cycle-ends <ends> --candidate-budgets 3 --acceptance-cycle-ends '' --generation-contexts '' --out <out>.json",
     "packets": [
       {
         "cycle_ends": [
