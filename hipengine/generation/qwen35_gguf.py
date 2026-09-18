@@ -8749,6 +8749,7 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=bool(native_compact_prefill),
         )
+        self._observe_mtp2_prefill(row, result)
 
     def _prefill_sampled_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
@@ -8759,9 +8760,22 @@ class Qwen35GGUFResidentModelRunner:
         start = time.perf_counter()
         native_compact_prefill = False
         packed_owner = self._packed_execution_owner(lease.session)
+        # A sampled row needs the prompt's first-token logits for its host
+        # sampler, and a packed prefill refuses to return logits and host hidden
+        # rows together, so a row that owes a draft provider takes the streamed
+        # target-hidden sink the greedy path uses: the sink carries the rows and
+        # the call still returns logits. Without a sink the row keeps the shipped
+        # scalar prefill and decodes without a provider.
+        streaming_sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if row.mtp2_candidate_budget > 0
+            else (None,)
+        )
+        streaming = streaming_sinks[0] is not None
         if (
             getattr(self, "_resident_batch_owner", None) is None
             and not _gguf_single_row_block_table_prefill_required(lease.session)
+            and not streaming
         ):
             result = lease.session.prefill(
                 row.prompt_ids,
@@ -8780,15 +8794,40 @@ class Qwen35GGUFResidentModelRunner:
             native_logits_kwargs = (
                 {"require_logits": True} if row.native_sampler else {}
             )
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    [row.prompt_ids],
-                    sessions=[lease.session],
-                    full_prompt_lengths=[len(row.prompt_ids)],
-                    return_logits=not row.native_sampler,
-                    return_hidden_seeds=False,
-                    **native_logits_kwargs,
+            streaming_kwargs = (
+                {
+                    "target_hidden_chunk_sinks": streaming_sinks,
+                    "target_hidden_request_ids": (row.request_id,),
+                    "target_hidden_chunk_starts": (0,),
+                }
+                if streaming
+                else {}
+            )
+            try:
+                with _temporary_env(
+                    {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                ):
+                    results = prefill_batch(
+                        [row.prompt_ids],
+                        sessions=[lease.session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=not row.native_sampler,
+                        return_hidden_seeds=False,
+                        **streaming_kwargs,
+                        **native_logits_kwargs,
+                    )
+            except Exception:
+                self._finish_mtp2_prompt_streaming(
+                    (row,),
+                    streaming_sinks,
+                    success=False,
                 )
+                raise
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=True,
+            )
             result_list = [] if results is None else list(results)
             if len(result_list) != 1:
                 raise RuntimeError(
@@ -9248,14 +9287,25 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=bool(native_compact_prefill),
         )
-        if row.mtp2_candidate_budget > 0:
-            adapter = self._resolved_mtp2_adapter()
-            if adapter is not None:
-                adapter.observe_prefill_result(
-                    row.request_id,
-                    row.prompt_ids,
-                    result,
-                )
+        self._observe_mtp2_prefill(row, result)
+
+    def _observe_mtp2_prefill(self, row: _GGUFResidentLoopRow, result: Any) -> None:
+        """Hand a prefilled row's hidden rows to its MTP provider, if it has one.
+
+        Both prefill finishes call this: the greedy path and the sampled path.
+        A row that registered a candidate budget owns provider draft state, and
+        the provider's capability needs the prompt's hidden rows before it can
+        admit the row, so skipping this on the sampled path left a sampled row
+        without a provider for its whole lifetime (planner reason
+        ``no_provider`` on every cycle).
+        """
+
+        if row.mtp2_candidate_budget <= 0:
+            return
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return
+        adapter.observe_prefill_result(row.request_id, row.prompt_ids, result)
 
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
         if row.fallback_output is not None:
