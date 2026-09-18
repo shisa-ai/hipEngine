@@ -61,11 +61,15 @@ from hipengine.distributed.shard_exec import upload_shard_weight
 from hipengine.distributed.shard_group import MlpShardGroup
 from hipengine.distributed.tp2_prefill import run_sharded_mlp_with_residual
 from hipengine.distributed.shard_weights import (
+    MLP_TENSORS,
     materialize_mlp_shards,
     resolve_mlp_shard_context,
     upload_mlp_shard_weights,
 )
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
+from hipengine.loading.qwen35_gguf_admission import build_qwen35_gguf_role_manifest
+from hipengine.loading.qwen35_gguf_materialize import build_qwen35_gguf_tensor_map
+from hipengine.loading.gguf import scan_gguf
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
     gguf_rmsnorm_bf16_f32_weight,
@@ -121,6 +125,37 @@ class GenerationResult:
     finished_on_eos: bool
     step_traces: tuple[StepTrace, ...]
     logits: np.ndarray | None = None
+
+
+def rank_slot_allowlist_from_records(
+    records: Sequence[Sequence[str]],
+) -> tuple[str, ...]:
+    """The rank's resident slot allowlist for a file's role manifest records.
+
+    A ``tp2`` rank's MLP is entirely served by its own shard of
+    ``ffn_gate``/``ffn_up``/``ffn_down`` (``_shard_group.forward``), so the
+    full-width MLP copy the generic runner would materialize is dead residency:
+    it is never read on this path. The only reader of a runner's resident MLP is
+    ``_local_mlp``, which runs in ``mode != 'tp2'``. Measured on the supplied
+    Q4_K_M GGUF that copy is 9.650 GiB of source weights, so every rank was
+    holding half of it (4.825 GiB) for nothing - the shard's own half is
+    materialized and uploaded separately.
+
+    The leaves come from the shard module's own tensor list, so the allowlist
+    and the shard materializer cannot disagree about what the shard replaces.
+    """
+
+    slots = tuple(str(record[0]) for record in records)
+    mlp_leaves = {name.split(".")[0] for name in MLP_TENSORS}
+    excluded = {slot for slot in slots if slot.rsplit(".", 1)[-1] in mlp_leaves}
+    if not excluded:
+        raise TP2GroupError(
+            "the file's role manifest has no MLP shard leaves to exclude"
+        )
+    allowed = tuple(slot for slot in slots if slot not in excluded)
+    if not allowed:
+        raise TP2GroupError("the rank slot allowlist resolved empty")
+    return allowed
 
 
 class MlpTP2GenerationSession:
@@ -313,6 +348,13 @@ class MlpTP2GenerationSession:
             )
         self.decode_partial_dtype = str(decode_partial_dtype)
         self._tp1_mlp_ptrs: dict[int, tuple[int, int, int]] = {}
+        # A tp2 rank never reads its runner's full-width MLP (see
+        # ``_rank_slot_allowlist``), so the runner is built without those slots
+        # instead of materializing them and holding them for the session's
+        # lifetime. The tp1 control mode still needs them for ``_local_mlp``.
+        self._slot_allowlist: tuple[str, ...] | None = (
+            self._rank_slot_allowlist() if self.mode == "tp2" else None
+        )
         self._step_buffers: dict[int, Any] = {}
         self._add_norm_cache: dict[int, Any] = {}
         self._layer_graphs: dict[tuple[int, int], int] = {}
@@ -366,6 +408,28 @@ class MlpTP2GenerationSession:
 
         return self._created_streams.get(int(device), 0)
 
+    def _rank_slot_allowlist(self) -> tuple[str, ...]:
+        """Every resident slot except the MLP leaves the shard group supplies.
+
+        A ``tp2`` rank's MLP is entirely served by its own shard of
+        ``ffn_gate``/``ffn_up``/``ffn_down`` (``_shard_group.forward``), so the
+        full-width MLP copy the generic runner would materialize is dead
+        residency: it is never read on this path. The only reader of a runner's
+        resident MLP is ``_local_mlp``, which runs in ``mode != 'tp2'``. Measured
+        on the supplied Q4_K_M GGUF that copy is 9.650 GiB of source weights, so
+        every rank was holding half of it (4.825 GiB) for nothing - the shard's
+        own half is still materialized and uploaded separately.
+
+        The allowlist is derived from the file's own role manifest, never from a
+        hardcoded geometry, so a different model or layer count stays correct.
+        """
+
+        info = scan_gguf(self.model_path)
+        manifest = build_qwen35_gguf_role_manifest(
+            build_qwen35_gguf_tensor_map(info)
+        )
+        return rank_slot_allowlist_from_records(manifest.records)
+
     def _build_rank(self, device: int) -> None:
         """One rank's runner and scratch, entirely inside its device scope."""
 
@@ -376,6 +440,7 @@ class MlpTP2GenerationSession:
                 execution_routes=("eager",),
                 runtime=self.runtime,
                 deferred_device_slots=("root.lm_head",) if self.head_shard else (),
+                selected_slots=self._slot_allowlist,
             )
             scratch = _FullStackScratch.allocate(
                 runner,

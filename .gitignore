@@ -33,6 +33,8 @@ uv.lock
 *.rocprof
 *.rocprofv3
 rocprof_*/
+# rocprofv3 writes <hostname>/<pid>_results.db next to the profiled process.
+*_results.db
 profile_*/
 bench_*.json
 bench_*.csv

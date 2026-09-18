@@ -343,6 +343,7 @@ def env(monkeypatch):
     def fake_runner(model_path, *, backend, execution_routes, runtime, **kwargs):
         spy = RunnerSpy(rt, LAYER_TYPES)
         spy.deferred_device_slots = tuple(kwargs.get("deferred_device_slots", ()))
+        spy.selected_slots = kwargs.get("selected_slots")
         runner_spies.append(spy)
         return spy
 
@@ -457,6 +458,14 @@ def env(monkeypatch):
         return FakeHeadWeight(device)
 
     monkeypatch.setattr(tg, "get_hip_runtime", fake_runtime)
+    # The real allowlist reads the GGUF header; this fixture's model path is a
+    # fake, so the plumbing test pins the value here and the pure function is
+    # covered directly below.
+    monkeypatch.setattr(
+        tg.MlpTP2GenerationSession,
+        "_rank_slot_allowlist",
+        lambda self: ("root.token_embedding", "layers.0.attn_qkv"),
+    )
     monkeypatch.setattr(tg, "Qwen35GGUFFullStackRunner", fake_runner)
     monkeypatch.setattr(tg, "_FullStackScratch", FakeScratchFactory)
     monkeypatch.setattr(tg, "_gguf_norm_residual_decode_kernel", fake_norm_kernel)
@@ -562,8 +571,6 @@ def _logits_row(preferred: int) -> np.ndarray:
 
 
 def _session(env, *, devices=(0, 1), mode="tp2") -> MlpTP2GenerationSession:
-    # The eager per-launch schedule pinned: these tests assert the eager
-    # per-layer launch recipe; the graphed schedule has its own tests below.
     return MlpTP2GenerationSession(
         "fake.gguf",
         devices=devices,
@@ -576,6 +583,53 @@ def _session(env, *, devices=(0, 1), mode="tp2") -> MlpTP2GenerationSession:
 # ---------------------------------------------------------------------------
 # Schedule
 # ---------------------------------------------------------------------------
+
+
+def test_rank_slot_allowlist_drops_only_the_shard_owned_mlp_leaves() -> None:
+    # A tp2 rank never reads its runner's full-width MLP: the shard group owns
+    # gate/up/down. Keeping that copy resident cost 4.825 GiB per rank on the
+    # supplied Q4_K_M file, so the runner is built without those slots.
+    records = [
+        ("root.token_embedding", "root", (VOCAB, HIDDEN), "Q6_K"),
+        ("root.output_norm", "root", (HIDDEN,), "F32"),
+        ("layers.0.attn_qkv", "linear_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.0.ffn_gate", "linear_attention", (FFN, HIDDEN), "Q4_K"),
+        ("layers.0.ffn_up", "linear_attention", (FFN, HIDDEN), "Q4_K"),
+        ("layers.0.ffn_down", "linear_attention", (HIDDEN, FFN), "Q6_K"),
+        ("layers.1.ffn_gate", "full_attention", (FFN, HIDDEN), "Q4_K"),
+        ("layers.1.attn_q", "full_attention", (HIDDEN, HIDDEN), "Q6_K"),
+    ]
+    assert tg.rank_slot_allowlist_from_records(records) == (
+        "root.token_embedding",
+        "root.output_norm",
+        "layers.0.attn_qkv",
+        "layers.1.attn_q",
+    )
+
+
+def test_rank_slot_allowlist_refuses_a_manifest_without_mlp_leaves() -> None:
+    with pytest.raises(TP2GroupError):
+        tg.rank_slot_allowlist_from_records(
+            [("root.token_embedding", "root", (VOCAB, HIDDEN), "Q6_K")]
+        )
+
+
+def test_tp2_rank_runner_omits_the_shard_owned_mlp_slots(env) -> None:
+    env["queue_logits"]([2, 2])
+    session = _session(env)
+    assert len(env["runners"]) == 2
+    for spy in env["runners"]:
+        assert spy.selected_slots == ("root.token_embedding", "layers.0.attn_qkv")
+    session.close()
+
+
+def test_tp1_rank_runner_keeps_the_full_slot_set(env) -> None:
+    # tp1 mode serves the MLP from the runner itself (``_local_mlp``), so the
+    # allowlist must not be applied there.
+    env["queue_logits"]([2, 2])
+    session = _session(env, devices=(0,), mode="tp1")
+    assert env["runners"][0].selected_slots is None
+    session.close()
 
 
 def test_tp2_interleaves_both_ranks_per_layer(env) -> None:
