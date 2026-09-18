@@ -227,6 +227,126 @@ class TensorShardPlan:
         return self.slices[int(rank)]
 
 
+#: Tensors whose split axis carries no head semantics, so an uneven split is a
+#: geometry change rather than a wrong result. ``ffn_gate``/``ffn_up`` split
+#: independent output rows; ``ffn_down`` splits the input-feature axis whose
+#: partials the exchange already sums.
+COUPLED_MLP_LEAVES = ("ffn_gate", "ffn_up", "ffn_down")
+
+#: The only leaves an uneven split may name. Everything else in the model is
+#: head-structured (attention, GDN) or single-owner, and splitting those
+#: unevenly would be silently wrong rather than an error - so the policy
+#: refuses them here instead of relying on a caller to know better.
+SAFE_UNEVEN_LEAVES = COUPLED_MLP_LEAVES
+
+
+@dataclass(frozen=True)
+class UnevenSplitPolicy:
+    """Per-rank shares for the tensors whose split axis carries no head semantics.
+
+    Only the MLP projections qualify. Their split is *coupled*: the rank that
+    owns intermediate rows ``[b, b')`` of ``ffn_gate``/``ffn_up`` is the one
+    that must reduce over exactly those columns of ``ffn_down``, so all three
+    tensors share one boundary. Because ``ffn_down`` requires its boundary to
+    land on a quant block, the shared boundary is rounded on ``alignment``
+    elements and applied to every eligible tensor of the layer - rounding each
+    tensor independently would move the boundary and silently break the
+    coupling.
+
+    Attention and GDN tensors are deliberately out of scope:
+    :func:`partition_groups` refuses uneven splits for head-structured axes
+    because query-head ownership and KV-head loading have to correspond.
+    """
+
+    fractions: tuple[float, ...]
+    leaves: tuple[str, ...] = ("ffn_gate", "ffn_up", "ffn_down")
+    alignment: int = 256
+
+    def __post_init__(self) -> None:
+        if len(self.fractions) < 2:
+            raise ShardPlanError("an uneven split needs at least two ranks")
+        if any(float(value) <= 0.0 for value in self.fractions):
+            raise ShardPlanError("every rank's share must be positive")
+        total = sum(float(value) for value in self.fractions)
+        if abs(total - 1.0) > 1e-9:
+            raise ShardPlanError(f"shares must sum to 1.0, not {total!r}")
+        if int(self.alignment) < 1:
+            raise ShardPlanError("alignment must be a positive element count")
+        if not self.leaves:
+            raise ShardPlanError("an uneven split must name at least one tensor")
+        unknown = sorted(set(self.leaves) - set(SAFE_UNEVEN_LEAVES))
+        if unknown:
+            raise ShardPlanError(
+                f"an uneven split cannot name {unknown}: only {list(SAFE_UNEVEN_LEAVES)} "
+                "split an axis without head semantics. The attention and GDN tensors "
+                "are head-structured, and moving their boundary would silently "
+                "break query-head ownership against KV coverage."
+            )
+        missing = sorted(set(COUPLED_MLP_LEAVES) - set(self.leaves))
+        if missing:
+            raise ShardPlanError(
+                f"the MLP projections are coupled and must be named together; "
+                f"{missing} is missing from {list(self.leaves)}. The rank that owns "
+                "intermediate rows of ffn_gate/ffn_up must reduce over exactly those "
+                "columns of ffn_down."
+            )
+
+    def applies_to(self, name: str) -> bool:
+        return _tensor_leaf(name) in self.leaves
+
+    def ranges(self, axis_length: int) -> tuple[tuple[int, int], ...]:
+        """Per-rank ``[start, stop)`` boundaries on a shared axis.
+
+        Whole ``alignment`` units are assigned by largest remainder, then every
+        rank is left at least one unit, so the result always tiles the axis.
+        """
+
+        length = int(axis_length)
+        unit = int(self.alignment)
+        if length % unit:
+            raise ShardPlanError(
+                f"axis {length} is not a whole number of {unit}-element units; "
+                "the coupled MLP boundary cannot be placed"
+            )
+        units = length // unit
+        ranks = len(self.fractions)
+        if units < ranks:
+            raise ShardPlanError(
+                f"axis {length} holds {units} units, fewer than the {ranks} ranks"
+            )
+        exact = [units * float(value) for value in self.fractions]
+        counts = [int(value) for value in exact]
+        for index in sorted(
+            range(ranks), key=lambda i: exact[i] - counts[i], reverse=True
+        )[: units - sum(counts)]:
+            counts[index] += 1
+        for index in range(ranks):
+            if counts[index] < 1:
+                donor = max(range(ranks), key=lambda i: counts[i])
+                if counts[donor] <= 1:
+                    raise ShardPlanError(
+                        "the shares leave a rank no unit; no split can honor them"
+                    )
+                counts[donor] -= 1
+                counts[index] = 1
+        if sum(counts) != units:
+            raise ShardPlanError("unit counts do not tile the axis")
+        ranges: list[tuple[int, int]] = []
+        start = 0
+        for count in counts:
+            stop = start + count * unit
+            ranges.append((start, stop))
+            start = stop
+        return tuple(ranges)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fractions": [float(value) for value in self.fractions],
+            "leaves": list(self.leaves),
+            "alignment": int(self.alignment),
+        }
+
+
 @dataclass(frozen=True)
 class ShardManifest:
     """Immutable rank-qualified shard manifest for one model and degree."""
@@ -474,7 +594,44 @@ def shard_rule_for_tensor(name: str, *, config: Any) -> TensorShardRule:
 # ---------------------------------------------------------------------------
 
 
-def partition_groups(segment: AxisSegment, world_size: int) -> list[tuple[int, int]]:
+def _tensor_leaf(name: str) -> str:
+    """The role name of a tensor (``blk.3.ffn_gate.weight`` -> ``ffn_gate``)."""
+
+    return str(name).split(".", 2)[-1].removesuffix(".weight")
+
+
+def _validate_explicit_tiling(
+    name: str,
+    element_ranges: Sequence[tuple[int, int]],
+    segments: Sequence[AxisSegment],
+) -> None:
+    """Assert that explicit per-rank ranges tile the declared segments exactly."""
+
+    ranges = sorted((int(start), int(stop)) for start, stop in element_ranges)
+    for start, stop in ranges:
+        if start >= stop:
+            raise ShardPlanError(f"{name}: explicit range [{start}, {stop}) is empty or inverted")
+    expected = min(segment.start for segment in segments)
+    for start, stop in ranges:
+        if start != expected:
+            raise ShardPlanError(
+                f"{name}: explicit ranges must tile the axis from {expected}; "
+                f"the next range starts at {start}"
+            )
+        expected = stop
+    if expected != max(segment.stop for segment in segments):
+        raise ShardPlanError(
+            f"{name}: explicit ranges stop at {expected}, short of "
+            f"{max(segment.stop for segment in segments)}"
+        )
+
+
+def partition_groups(
+    segment: AxisSegment,
+    world_size: int,
+    *,
+    rank_groups: Sequence[int] | None = None,
+) -> list[tuple[int, int]]:
     """Split one axis segment into ``world_size`` contiguous complete groups.
 
     Groups divide evenly whenever the segment holds at least one group per rank.
@@ -495,6 +652,28 @@ def partition_groups(segment: AxisSegment, world_size: int) -> list[tuple[int, i
     if int(world_size) < 1:
         raise ShardPlanError("world_size must be positive")
     groups = segment.groups
+    if rank_groups is not None:
+        # An explicit per-rank group count. Ranges stay contiguous runs, which
+        # is what keeps a head split's query ownership and KV coverage
+        # corresponding; only the run lengths change.
+        counts = [int(value) for value in rank_groups]
+        if len(counts) != int(world_size):
+            raise ShardPlanError(
+                f"{len(counts)} group counts for world size {world_size}"
+            )
+        if any(count < 1 for count in counts):
+            raise ShardPlanError("every rank must own at least one whole group")
+        if sum(counts) != groups:
+            raise ShardPlanError(
+                f"group counts {counts} do not sum to the segment's {groups} groups"
+            )
+        ranges = []
+        start = segment.start
+        for count in counts:
+            stop = start + count * segment.group
+            ranges.append((start, stop))
+            start = stop
+        return ranges
     if groups < 1:
         raise ShardPlanError(f"segment [{segment.start}, {segment.stop}) has no complete groups")
     if groups < int(world_size):
@@ -609,8 +788,14 @@ def build_tensor_shard_plan(
     quant_type_name: str,
     rule: TensorShardRule,
     world_size: int,
+    element_ranges: Sequence[tuple[int, int]] | None = None,
 ) -> TensorShardPlan:
-    """Resolve one tensor's rule into per-rank byte segments and local shapes."""
+    """Resolve one tensor's rule into per-rank byte segments and local shapes.
+
+    ``element_ranges`` overrides the even split with explicit per-rank ranges
+    along the split axis. It is how a coupled uneven split is placed: every
+    tensor that shares the axis receives the same boundaries.
+    """
 
     plan = _resolve_tensor_shard_plan(
         name=name,
@@ -620,6 +805,7 @@ def build_tensor_shard_plan(
         quant_type_name=quant_type_name,
         rule=rule,
         world_size=world_size,
+        element_ranges=element_ranges,
     )
     validate_plan_coverage(plan)
     return plan
@@ -634,6 +820,7 @@ def _resolve_tensor_shard_plan(
     quant_type_name: str,
     rule: TensorShardRule,
     world_size: int,
+    element_ranges: Sequence[tuple[int, int]] | None = None,
 ) -> TensorShardPlan:
     """Resolve one tensor's rule into per-rank byte segments and local shapes."""
 
@@ -643,6 +830,16 @@ def _resolve_tensor_shard_plan(
     shape_tuple = tuple(int(dim) for dim in shape)
     if int(nbytes) <= 0:
         raise ShardPlanError(f"tensor {name!r} has no payload")
+    if element_ranges is not None:
+        if len(element_ranges) != int(world_size):
+            raise ShardPlanError(
+                f"{name}: {len(element_ranges)} explicit ranges for world size {world_size}"
+            )
+        if len(rule.segments) > 1:
+            raise ShardPlanError(
+                f"{name}: an explicit uneven split is only defined for single-segment rules, "
+                f"but this tensor declares {len(rule.segments)} segments"
+            )
 
     if rule.kind in AXIS0_KINDS:
         slices: list[TensorShardSlice] = []
@@ -650,7 +847,21 @@ def _resolve_tensor_shard_plan(
         for rank in range(int(world_size)):
             ranges: list[tuple[int, int]] = []
             for segment in rule.segments:
-                ranges.append(partition_groups(segment, int(world_size))[rank])
+                if element_ranges is None:
+                    ranges.append(partition_groups(segment, int(world_size))[rank])
+                    continue
+                start, stop = (int(value) for value in element_ranges[rank])
+                if start < segment.start or stop > segment.stop or start >= stop:
+                    raise ShardPlanError(
+                        f"{name}: explicit range [{start}, {stop}) leaves segment "
+                        f"[{segment.start}, {segment.stop})"
+                    )
+                if (start - segment.start) % segment.group or (stop - segment.start) % segment.group:
+                    raise ShardPlanError(
+                        f"{name}: explicit range [{start}, {stop}) is not a whole number of "
+                        f"{segment.group}-element groups"
+                    )
+                ranges.append((start, stop))
             segments: list[ShardSegment] = []
             local_rows = 0
             for start, stop in ranges:
@@ -666,6 +877,8 @@ def _resolve_tensor_shard_plan(
                     segments=tuple(segments),
                 )
             )
+        if element_ranges is not None:
+            _validate_explicit_tiling(name, element_ranges, rule.segments)
         return TensorShardPlan(
             name=name,
             kind=rule.kind,
@@ -683,9 +896,16 @@ def _resolve_tensor_shard_plan(
             raise ShardPlanError(f"tensor {name!r} has no input axis to split")
         source_row_bytes = int(nbytes) // shape_tuple[0]
         segments = rule.segments or (AxisSegment(0, shape_tuple[1], 1),)
+        if element_ranges is not None:
+            _validate_explicit_tiling(name, element_ranges, segments)
         # Per-rank column ranges, one list per declared segment family.
         per_rank_ranges: list[list[tuple[int, int]]] = []
         for segment in segments:
+            if element_ranges is not None:
+                per_rank_ranges.append(
+                    [tuple(int(value) for value in element_ranges[rank]) for rank in range(int(world_size))]
+                )
+                continue
             if segment.length % int(world_size):
                 raise ShardPlanError(
                     f"input block [{segment.start}, {segment.stop}) is not divisible by world size {world_size}"
@@ -710,6 +930,19 @@ def _resolve_tensor_shard_plan(
         slices = []
         for rank in range(int(world_size)):
             ranges = tuple(entry[rank] for entry in per_rank_ranges)
+            for segment, (start, stop) in zip(segments, ranges):
+                if (start - segment.start) % block_size or (stop - segment.start) % block_size:
+                    raise ShardPlanError(
+                        f"{name}: rank {rank} range [{start}, {stop}) is not a whole number of "
+                        f"{block_size}-element quant blocks"
+                    )
+                if segment.group > 1 and (
+                    (start - segment.start) % segment.group or (stop - segment.start) % segment.group
+                ):
+                    raise ShardPlanError(
+                        f"{name}: rank {rank} range [{start}, {stop}) is not a whole number of "
+                        f"{segment.group}-element groups"
+                    )
             byte_ranges = tuple(
                 (start // block_size * type_size, stop // block_size * type_size) for start, stop in ranges
             )
@@ -919,6 +1152,7 @@ def build_shard_manifest(
     model_hash: str = "",
     exclude_prefixes: Sequence[str] = (),
     owner_rank: int = 0,
+    uneven_split: UnevenSplitPolicy | None = None,
 ) -> ShardManifest:
     """Build the full manifest for one GGUF model and TP degree.
 
@@ -926,6 +1160,12 @@ def build_shard_manifest(
     config already classified as non-autoregressive (the MTP/NextN block, via
     ``config.ignored_block_ids``) are excluded from the AR shard set and
     recorded in ``notes``; ``exclude_prefixes`` adds further exclusions.
+
+    ``uneven_split`` gives named tensors an explicit per-rank boundary instead
+    of an even one. The boundary is computed once per split axis and applied to
+    every eligible tensor of the layer, because the MLP projections are
+    coupled: the rank owning intermediate rows of ``ffn_gate``/``ffn_up`` must
+    reduce over exactly those columns of ``ffn_down``.
     """
 
     from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
@@ -936,9 +1176,17 @@ def build_shard_manifest(
     notes: list[str] = []
     if int(owner_rank) != 0:
         notes.append(f"single-owner tensors (embedding/lm_head) live on rank {int(owner_rank)}")
+    if uneven_split is not None and len(uneven_split.fractions) != int(world_size):
+        raise ShardPlanError(
+            f"the uneven split names {len(uneven_split.fractions)} shares for world size {world_size}"
+        )
     prefixes = tuple(exclude_prefixes) + tuple(
         f"blk.{int(block_id)}." for block_id in getattr(config, "ignored_block_ids", ()) or ()
     )
+    # One boundary per split axis, so every coupled tensor of a layer gets the
+    # same one regardless of the order the tensors are visited in.
+    boundary_cache: dict[int, tuple[tuple[int, int], ...]] = {}
+    axis_lengths: dict[str, int] = {}
     plans: list[TensorShardPlan] = []
     excluded: list[str] = []
     for tensor in info.tensors:
@@ -948,6 +1196,18 @@ def build_shard_manifest(
         rule = shard_rule_for_tensor(tensor.name, config=config)
         if rule.kind == OWNER:
             rule = replace(rule, owner_rank=int(owner_rank))
+        element_ranges: Sequence[tuple[int, int]] | None = None
+        if uneven_split is not None and uneven_split.applies_to(tensor.name):
+            axis = 0 if rule.kind in AXIS0_KINDS else 1
+            if len(tensor.shape) <= axis:
+                raise ShardPlanError(
+                    f"{tensor.name}: an uneven split needs an axis {axis} to split"
+                )
+            axis_length = int(tensor.shape[axis])
+            if axis_length not in boundary_cache:
+                boundary_cache[axis_length] = uneven_split.ranges(axis_length)
+            element_ranges = boundary_cache[axis_length]
+            axis_lengths[tensor.name] = axis_length
         try:
             plans.append(
                 build_tensor_shard_plan(
@@ -958,10 +1218,29 @@ def build_shard_manifest(
                     quant_type_name=tensor.ggml_type_name,
                     rule=rule,
                     world_size=int(world_size),
+                    element_ranges=element_ranges,
                 )
             )
         except ShardPlanError as error:
             raise ShardPlanError(f"{tensor.name}: {error}") from error
+    if uneven_split is not None:
+        named = {
+            _tensor_leaf(tensor.name)
+            for tensor in info.tensors
+            if uneven_split.applies_to(tensor.name)
+        }
+        absent = sorted(set(uneven_split.leaves) - named)
+        if absent:
+            raise ShardPlanError(
+                f"the uneven split names {absent}, which this model has no tensor for"
+            )
+        _validate_coupled_split(plans, uneven_split)
+        shares = "/".join(f"{float(value):.6f}" for value in uneven_split.fractions)
+        leaves = ",".join(uneven_split.leaves)
+        notes.append(
+            f"uneven split shares {shares} on {leaves} "
+            f"at {int(uneven_split.alignment)}-element alignment"
+        )
     if excluded:
         notes.append(f"excluded {len(excluded)} MTP/NextN tensors from the AR shard set")
     notes.append(f"architecture={config.architecture} blocks={config.block_count}")
@@ -972,6 +1251,37 @@ def build_shard_manifest(
         tensors=tuple(plans),
         notes=tuple(notes),
     )
+
+
+def _validate_coupled_split(
+    plans: Sequence[TensorShardPlan], uneven_split: UnevenSplitPolicy
+) -> None:
+    """Assert that every coupled tensor of a layer shares one boundary.
+
+    ``ffn_gate``/``ffn_up`` own intermediate rows and ``ffn_down`` reduces over
+    the same columns. If their boundaries ever disagree the MLP result is
+    silently wrong rather than an error, so the coupling is checked here as
+    well as being shared by construction.
+    """
+
+    by_layer: dict[str, dict[str, tuple[tuple[int, int], ...]]] = {}
+    for plan in plans:
+        if not uneven_split.applies_to(plan.name):
+            continue
+        layer = plan.name.split(".", 2)[1] if plan.name.startswith("blk.") else ""
+        by_layer.setdefault(layer, {})[_tensor_leaf(plan.name)] = tuple(
+            tuple(int(value) for value in shard.axis_ranges[0])
+            for shard in plan.slices
+        )
+    for layer, roles in by_layer.items():
+        reference_role = sorted(roles)[0]
+        reference = roles[reference_role]
+        for role, ranges in sorted(roles.items()):
+            if ranges != reference:
+                raise ShardPlanError(
+                    f"layer {layer}: {role} splits at {ranges} but {reference_role} splits at "
+                    f"{reference}; the coupled MLP projections must share one boundary"
+                )
 
 
 # ---------------------------------------------------------------------------

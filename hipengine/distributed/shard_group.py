@@ -67,11 +67,11 @@ class MlpShardGroup:
         devices: tuple[int, ...],
         streams: Mapping[int, int],
         hidden: int,
-        per_rank_ffn: int,
+        per_rank_ffn: int | Mapping[int, int],
         weights: Mapping[int, Mapping[int, Mapping[str, Any]]],
         staging_dtype: str = "f32",
         driver: str = "compiled",
-        mlp_decode_variant: str | None = None,
+        mlp_decode_variant: str | Mapping[int, str | None] | None = None,
         slot_sets: int = 2,
         rows: int = 1,
         owns_weights: bool = True,
@@ -85,15 +85,42 @@ class MlpShardGroup:
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
         self.hidden = int(hidden)
-        self.per_rank_ffn = int(per_rank_ffn)
+        # A scalar applies to every rank (the even split); a mapping gives each
+        # rank its own shard width, which an uneven split needs. The widths
+        # must match the uploaded payloads - the manifest is the authority, and
+        # the rank's own launch validates against it.
+        if isinstance(per_rank_ffn, Mapping):
+            missing_width = [d for d in self.devices if int(d) not in per_rank_ffn]
+            if missing_width:
+                raise ShardGroupError(
+                    f"per_rank_ffn has no width for ranks {missing_width}"
+                )
+            self.per_rank_ffn: dict[int, int] = {
+                int(d): int(per_rank_ffn[int(d)]) for d in self.devices
+            }
+        else:
+            self.per_rank_ffn = {int(d): int(per_rank_ffn) for d in self.devices}
+        if any(width < 1 for width in self.per_rank_ffn.values()):
+            raise ShardGroupError(f"per_rank_ffn must be positive, got {self.per_rank_ffn!r}")
+        if isinstance(mlp_decode_variant, Mapping):
+            self._mlp_decode_variant: dict[int, str | None] = {
+                int(d): (
+                    str(mlp_decode_variant[int(d)])
+                    if mlp_decode_variant.get(int(d)) is not None
+                    else None
+                )
+                for d in self.devices
+            }
+        else:
+            uniform = (
+                str(mlp_decode_variant) if mlp_decode_variant is not None else None
+            )
+            self._mlp_decode_variant = {int(d): uniform for d in self.devices}
         # ``rows`` is the buffer/slot capacity; each ``forward(rows=n)`` runs
         # exactly ``n`` active rows and the exchange zeroes the inactive tail.
         self.rows = require_rows_value(rows, capacity=rows)
         self._streams = {int(d): int(streams[d]) for d in self.devices}
         self._closed = False
-        self._mlp_decode_variant = (
-            str(mlp_decode_variant) if mlp_decode_variant is not None else None
-        )
         # A bulk-prefill group can share the decode group's uploaded shard
         # weights; ``owns_weights=False`` keeps its ``close`` from freeing
         # them twice.
@@ -112,9 +139,9 @@ class MlpShardGroup:
                     stream=self._streams[device],
                     weights=per_device[device],
                     hidden=hidden,
-                    per_rank_ffn=per_rank_ffn,
+                    per_rank_ffn=self.per_rank_ffn[int(device)],
                     partial_dtype=staging_dtype,
-                    mlp_decode_variant=mlp_decode_variant,
+                    mlp_decode_variant=self._mlp_decode_variant[int(device)],
                     rows=self.rows,
                     owns_weights=self._owns_weights,
                 )
@@ -171,8 +198,18 @@ class MlpShardGroup:
 
     @property
     def mlp_decode_variant(self) -> str | None:
-        """The fused gate/up+SiLU variant every rank resolves, or None."""
+        """The fused gate/up+SiLU variant the ranks resolve, or None.
 
+        With an even split every rank resolves the same variant, so the scalar
+        form is kept. An uneven split gives ranks different shard shapes, and
+        the shape-qualified policy lookup can resolve differently per rank; in
+        that case the per-rank mapping is returned and a scalar answer would be
+        a lie.
+        """
+
+        resolved = set(self._mlp_decode_variant.values())
+        if len(resolved) == 1:
+            return next(iter(resolved))
         return self._mlp_decode_variant
 
     def output_ptr(self, device: int) -> int:

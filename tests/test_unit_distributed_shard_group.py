@@ -246,3 +246,106 @@ def test_closed_group_refuses_work(group_env) -> None:
     group.close()
     with pytest.raises(ShardGroupError, match="closed"):
         group.forward(0, {0: 0x3000, 1: 0x3100})
+
+
+# ---------------------------------------------------------------------------
+# Per-rank shard widths (the uneven split)
+# ---------------------------------------------------------------------------
+
+
+def _uneven_group(rt: FakeHipRuntime, *, widths, layers=(0,), hidden=8, variants=None,
+                  weight_widths=None):
+    """A group whose ranks hold different shard widths.
+
+    ``weight_widths`` lets a test supply weights for every rank while the
+    group's own ``per_rank_ffn`` mapping is incomplete, so the refusal under
+    test is the group's and not the helper's.
+    """
+
+    held = dict(weight_widths or widths)
+    weights = {
+        layer: {device: _weights(rt, device, hidden, held[device]) for device in (0, 1)}
+        for layer in layers
+    }
+    return MlpShardGroup(
+        rt,
+        devices=(0, 1),
+        streams={0: 0, 1: 0},
+        hidden=hidden,
+        per_rank_ffn=widths,
+        weights=weights,
+        driver="python",
+        mlp_decode_variant=variants,
+    )
+
+
+def test_uneven_group_gives_each_rank_its_own_width(group_env) -> None:
+    rt, _ = group_env
+    group = _uneven_group(rt, widths={0: 2, 1: 6})
+    assert group.per_rank_ffn == {0: 2, 1: 6}
+    assert group._ranks[(0, 0)].per_rank_ffn == 2
+    assert group._ranks[(0, 1)].per_rank_ffn == 6
+
+
+def test_scalar_width_still_applies_to_every_rank(group_env) -> None:
+    rt, _ = group_env
+    group, _w = _group(rt, layers=(0,), per_rank_ffn=4)
+    assert group.per_rank_ffn == {0: 4, 1: 4}
+    assert group._ranks[(0, 0)].per_rank_ffn == 4
+    assert group._ranks[(0, 1)].per_rank_ffn == 4
+
+
+def test_uneven_group_rejects_a_missing_rank_width(group_env) -> None:
+    rt, _ = group_env
+    with pytest.raises(ShardGroupError, match="no width for ranks"):
+        _uneven_group(rt, widths={0: 4}, weight_widths={0: 4, 1: 4})
+
+
+def test_uneven_group_rejects_a_non_positive_width(group_env) -> None:
+    rt, _ = group_env
+    with pytest.raises(ShardGroupError, match="must be positive"):
+        _uneven_group(rt, widths={0: 0, 1: 8})
+
+
+def test_uniform_variants_report_a_scalar(group_env) -> None:
+    rt, _ = group_env
+    group = _uneven_group(
+        rt,
+        widths={0: 4, 1: 4},
+        variants={0: "dense_dual_local32_bf16_bf16_out", 1: "dense_dual_local32_bf16_bf16_out"},
+    )
+    assert group.mlp_decode_variant == "dense_dual_local32_bf16_bf16_out"
+    assert group._ranks[(0, 0)].mlp_decode_variant == "dense_dual_local32_bf16_bf16_out"
+
+
+def test_divergent_variants_report_per_rank(group_env) -> None:
+    # An uneven split changes each rank's shard shape, so the shape-qualified
+    # policy can admit the fused route on one rank and not the other. Reporting
+    # a single scalar then would be a lie.
+    rt, _ = group_env
+    group = _uneven_group(
+        rt,
+        widths={0: 2, 1: 6},
+        variants={0: "dense_dual_local32_bf16_bf16_out", 1: None},
+    )
+    assert group.mlp_decode_variant == {0: "dense_dual_local32_bf16_bf16_out", 1: None}
+    assert group._ranks[(0, 0)].mlp_decode_variant == "dense_dual_local32_bf16_bf16_out"
+    assert group._ranks[(0, 1)].mlp_decode_variant is None
+
+
+def test_uneven_group_forward_launches_at_each_rank_own_width(group_env) -> None:
+    rt, spy = group_env
+    group = _uneven_group(rt, widths={0: 2, 1: 6})
+    group.forward(0, _inputs(rt, hidden=8))
+    # The spy records each launch's out_features, so the widths the kernels are
+    # asked for are directly visible: two projections at this rank's shard
+    # width (gate, up) and one back to hidden (down).
+    per_device: dict[int, list[int]] = {0: [], 1: []}
+    for device, name, feature in spy.calls:
+        if name == "linear":
+            per_device[device].append(feature)
+    assert sorted(per_device[0]) == [2, 2, 8]
+    assert sorted(per_device[1]) == [6, 6, 8]
+    silu_widths = {device: feature for device, name, feature in spy.calls if name == "silu"}
+    assert silu_widths == {0: 2, 1: 6}
+    group.close()

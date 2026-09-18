@@ -143,9 +143,30 @@ class MlpTP2GenerationSession:
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
         decode_partial_dtype: str = "bf16",
+        uneven_split: Any = None,
     ) -> None:
         self.model_path = str(model_path)
         self.mode = str(mode)
+        # An :class:`~hipengine.loading.qwen35_gguf_shards.UnevenSplitPolicy`
+        # (or a plain ``(fractions, ...)`` spec) gives the MLP projections an
+        # explicit per-rank boundary instead of an even one. ``None`` keeps the
+        # even split, which is the default until the uneven path has passed the
+        # production numerical gate.
+        if uneven_split is not None and not hasattr(uneven_split, "ranges"):
+            from hipengine.loading.qwen35_gguf_shards import UnevenSplitPolicy
+
+            fractions = (
+                tuple(float(v) for v in uneven_split)
+                if isinstance(uneven_split, (tuple, list))
+                else None
+            )
+            if fractions is None:
+                raise ValueError(
+                    f"uneven_split must be an UnevenSplitPolicy or a fraction sequence, "
+                    f"got {type(uneven_split).__name__}"
+                )
+            uneven_split = UnevenSplitPolicy(fractions=fractions)
+        self.uneven_split = uneven_split
         if self.mode not in {"tp1", "tp2"}:
             raise ValueError(f"unknown mode {self.mode!r}; expected 'tp1' or 'tp2'")
         if driver not in {"python", "compiled"}:
@@ -265,8 +286,8 @@ class MlpTP2GenerationSession:
         self._bulk_host_tokens: np.ndarray | None = None
         self._bulk_final_hidden: dict[int, int] = {}
         self._uploaded_shard_weights: Any | None = None
-        self._per_rank_ffn: int | None = None
-        self._fused_shard_variant: str | None = None
+        self._per_rank_ffn: dict[int, int] | None = None
+        self._fused_shard_variant: dict[int, str | None] | None = None
         # Partial dtype of the single-row decode/serial-prefill exchange. The
         # row-parallel down projection rounds its partial once before the
         # staged f32 reduction, so the dtype is an arithmetic choice: ``bf16``
@@ -368,31 +389,54 @@ class MlpTP2GenerationSession:
     def _build_shard_group(self) -> None:
         """Materialize and upload every layer's rank shards, then group them."""
 
-        materialization, _context, _plans, config = resolve_mlp_shard_context(
-            self.model_path, world_size=len(self.devices)
-        )
-        per_rank_ffn = int(config.feed_forward_length) // len(self.devices)
-        # The MLP gate/up route resolves through the same shape-qualified
-        # policy lookup the TP1 runner uses, at this rank's shard shape -
-        # never a hardcoded variant. When the policy row admits the shard
-        # shape the ranks run the fused pair+SiLU chain (bit-identical to
-        # the unfused chain and faster, per the slice probe); when it does
-        # not, every rank takes the unfused chain.
-        fused_variant = _gguf_dense_pair_silu_decode_variant(
-            self._runners[self.control_device],
-            rows=1,
-            in_features=int(config.hidden_size),
-            out_features=per_rank_ffn,
+        materialization, _context, tensor_plans, config = resolve_mlp_shard_context(
+            self.model_path,
+            world_size=len(self.devices),
+            uneven_split=self.uneven_split,
         )
         shards = materialize_mlp_shards(
-            self.model_path, world_size=len(self.devices)
+            self.model_path,
+            world_size=len(self.devices),
+            uneven_split=self.uneven_split,
         )
+        # Each rank's shard width. An even split is an even division and needs
+        # no manifest; an uneven split takes its widths from the manifest,
+        # which is the shape authority - never from a re-derived division.
+        if self.uneven_split is None:
+            width = int(config.feed_forward_length) // len(self.devices)
+            per_rank_ffn = {device: width for device in self.devices}
+        else:
+            if not tensor_plans:
+                raise TP2GroupError(
+                    "an uneven split needs the shard manifest to place its boundaries"
+                )
+            gate_plan = tensor_plans[min(tensor_plans)]["ffn_gate"]
+            per_rank_ffn = {
+                device: int(gate_plan.slice_for(rank).local_shape[0])
+                for rank, device in enumerate(self.devices)
+            }
+        # The MLP gate/up route resolves through the same shape-qualified
+        # policy lookup the TP1 runner uses, at *this rank's* shard shape -
+        # never a hardcoded variant. An uneven split gives the ranks different
+        # shapes, so the lookup is per rank; each rank that the policy admits
+        # runs the fused pair+SiLU chain (bit-identical to the unfused chain
+        # and faster, per the slice probe), and each rank it does not admits
+        # takes the unfused chain.
+        fused_variants = {
+            device: _gguf_dense_pair_silu_decode_variant(
+                self._runners[device],
+                rows=1,
+                in_features=int(config.hidden_size),
+                out_features=per_rank_ffn[device],
+            )
+            for device in self.devices
+        }
         uploaded = upload_mlp_shard_weights(
             self.runtime, shards, devices=self.devices
         )
         self._uploaded_shard_weights = uploaded
         self._per_rank_ffn = per_rank_ffn
-        self._fused_shard_variant = fused_variant
+        self._fused_shard_variant = fused_variants
         self._shard_group = MlpShardGroup(
             self.runtime,
             devices=self.devices,
@@ -408,7 +452,7 @@ class MlpTP2GenerationSession:
             # partial does not improve agreement; see docs/REFACTOR.md).
             staging_dtype=self.decode_partial_dtype,
             driver=self.driver,
-            mlp_decode_variant=fused_variant,
+            mlp_decode_variant=fused_variants,
             # Graphed schedules give every layer its own fixed mapped payload
             # slot so a captured graph's deferred consumer (the bf16 cast and
             # residual add folded into the next layer's graph) reads a stable
@@ -490,7 +534,7 @@ class MlpTP2GenerationSession:
             devices=self.devices,
             streams={device: self._rank_stream(device) for device in self.devices},
             hidden=self.hidden_size,
-            per_rank_ffn=int(self._per_rank_ffn),
+            per_rank_ffn=self._per_rank_ffn,
             weights=self._uploaded_shard_weights,
             staging_dtype="bf16",
             driver=self.driver,
