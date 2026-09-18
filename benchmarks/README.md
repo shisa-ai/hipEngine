@@ -457,20 +457,33 @@ remaining reason a real request cannot use MTP at all -- every processor except 
 EOS gate makes the row autoregressive, because the verifier's argmax accept emits
 `argmax(p)` where the request asked for a draw from `p`. The sampled rule that
 closes that gap (accept the drafted token with `min(1, p/q)`, otherwise resample
-from `normalize(max(0, p - q))`) is now implemented and **passes its arithmetic
-gate on real gfx1151 rows**: across three prompts and eight decode steps each,
+from `normalize(max(0, p - q))`) is implemented and **passes its arithmetic gate
+on real gfx1151 rows**: across three prompts and eight decode steps each,
 **824 of 824 induced-law comparisons are exact** (max total variation 4.5e-16,
 max KL 9.0e-16, top-1 agreement 1.0 against a 1e-9 tolerance) over supports up to
 248,320 tokens, **144 of 144** autoregressive-law agreements hold, and a
 Monte-Carlo arm that drives the real accept/resample walk 4,000 times per sampler
-config reports top-1 agreement 1.0 with no cell outside its calibrated limit. The
-route is nevertheless **closed to serving**: it is admitted only by a
-model-plugin evidence row that does not exist yet, so every temperature request
-still runs autoregressive and no serving rate is claimed. The route also requires
-the eager host proposal and host logits, because the accept summary is computed
-from the verified rows' own logits; a device-side accept that reads the row's
-sampler state is the follow-up. [Sampled-acceptance distribution
-gate](results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json).
+config reports top-1 agreement 1.0 with no cell outside its calibrated limit.
+
+Serving that route is **measured and rejected**. With its evidence-row switch in
+place, a temperature-0.7 request reaches a provider and commits sampled
+acceptances, and on a matched ShareGPT load with a true-AR control assigned per
+request inside the same server process it is **0.47x of that control at c=1**
+(**6.37 against 13.56 tok/s**, median TTFT 5,628 against 1,735 ms) even though
+**253 of 256** output tokens come from speculative cycles. Acceptance is not the
+limit: the sampled rows accept 89 and 87 drafts over 38 and 39 cycles, the same
+counts the greedy control accepts on the same prompts. The limit is the cycle's
+own cost -- 3.37 emitted tokens per cycle at **528.5 ms per cycle against 98.9
+ms** for the identical draft chain at temperature 0, a **5.3x** cost, while the
+same load at temperature 0 still measures **34.07 against 20.58 tok/s (+66%)**.
+The mechanism is architectural: the native target graph commits the argmax accept
+on device, so a sampled row runs without graph replay and with no device
+proposal, and the accept decision is then computed on the host from one
+full-vocabulary logits row per verified prefix. The switch is reverted, so every
+temperature request keeps running autoregressive; a device-side sampled accept is
+what would make this route worth re-measuring. [Sampled-acceptance distribution
+gate](results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json);
+[serving measurement](results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json).
 
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**

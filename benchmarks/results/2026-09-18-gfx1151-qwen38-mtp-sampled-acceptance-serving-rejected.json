@@ -1,0 +1,131 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: the sampled (temperature > 0) MTP route is a measured serving loss at 5.3x a greedy cycle",
+  "date": "2026-09-18",
+  "status": "measured_rejected",
+  "performance_claim": false,
+  "purpose": "Measure whether the sampled-acceptance MTP route, whose induced law is already exact, is a serving win for a real temperature request, against a true-AR control assigned per request inside the same load.",
+  "model": {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "tree": {
+    "commit": "cd8a5b29b",
+    "uncommitted_at_measurement": "hipengine/models/qwen35.py: the production cap4 c1 evidence row's sampling_modes gains \"sampled\", which is the route's qualification switch. Reverted in the same unit as this artifact; shipped behavior for a temperature request is unchanged.",
+    "note": "the route needed three enabling repairs to reach a provider at all, all retained and all inert without the switch: the sampled prefill path never called observe_prefill_result, a packed prefill refuses logits and host hidden rows together (so a due sampled row must open the streamed target-hidden sink), and the recomputed accept summary was installed with dataclasses.replace, which broke the verifier's open-transaction identity."
+  },
+  "server": {
+    "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --host 127.0.0.1 --port 8087 --log-level info",
+    "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1",
+    "debug_traces": "off for these points: the measured run must not pay for stderr prints"
+  },
+  "workload": {
+    "harness": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 4 --min-prompt-len 64 --max-prompt-len 900 --max-total-len 2048 --output-len 128 --record-ids --seed 4242 --route-mix off,off,on,on",
+    "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "note": "the same load serves the true-AR control in-run: --route-mix assigns the arm per request in submission order, so both arms see the same prompts, lengths, and server process.",
+    "temperature": 0.7,
+    "output_len": 128,
+    "median_prompt_tokens": 498.5
+  },
+  "results": {
+    "c1_temperature_0.7": {
+      "ar_control": {
+        "requests": 2,
+        "completion_tokens": 256,
+        "decode_tokens_per_second": 13.562662039552574,
+        "median_itl_ms": 133.41613923798184,
+        "median_ttft_ms": 1734.801201382652,
+        "p95_ttft_ms": 1981.997285434045,
+        "mtp_output_tokens": 0
+      },
+      "sampled_mtp": {
+        "requests": 2,
+        "completion_tokens": 256,
+        "decode_tokens_per_second": 6.373826509109023,
+        "median_itl_ms": 273.83343388866047,
+        "median_ttft_ms": 5628.0,
+        "p95_ttft_ms": 6615.0,
+        "mtp_output_tokens": 253,
+        "rows": [
+          {"completion_tokens": 128, "mtp_output_tokens": 127, "ar_output_tokens": 1, "accepted_draft_tokens": 89, "draft_cycles": 38, "mtp_coverage": 0.9921875},
+          {"completion_tokens": 128, "mtp_output_tokens": 126, "ar_output_tokens": 2, "accepted_draft_tokens": 87, "draft_cycles": 39, "mtp_coverage": 0.984375}
+        ]
+      },
+      "ratio": 0.4699,
+      "ttft_ratio": 3.24,
+      "artifact": "/tmp/mtp-sampled/arm2-c1-t07.json"
+    },
+    "c2_temperature_0.7": {
+      "ar_control": {
+        "requests": 2,
+        "completion_tokens": 256,
+        "decode_tokens_per_second": 9.5,
+        "median_itl_ms": 186.2,
+        "median_ttft_ms": 3497.0,
+        "mtp_output_tokens": 0
+      },
+      "sampled_mtp": {
+        "requests": 2,
+        "completion_tokens": 256,
+        "decode_tokens_per_second": 7.07,
+        "median_itl_ms": 232.0,
+        "median_ttft_ms": 6961.0,
+        "p95_ttft_ms": 10413.0,
+        "mtp_output_tokens": 12
+      },
+      "ratio": 0.744,
+      "note": "at c=2 the sampled rows mostly lose the route: 242 no_provider events against 244 autoregressive tokens, because the due group is width 2 and the admitted policy cell is the one-row (C1,K3) cell. The 7.07 tok/s is therefore a refused-route AR rate plus 12 MTP tokens, not a sampled-MTP rate.",
+      "artifact": "/tmp/mtp-sampled/arm2-c2-t07.json"
+    },
+    "c1_temperature_0.0_control": {
+      "ar_control": {"requests": 2, "decode_tokens_per_second": 20.575, "median_ttft_ms": 1521.0},
+      "greedy_mtp": {"requests": 2, "decode_tokens_per_second": 34.07, "median_ttft_ms": 1869.0, "mtp_output_tokens": 253},
+      "ratio": 1.656,
+      "note": "the same load and the same draft chain at temperature 0, where the accept rule is the retained argmax one: 1.66x, so neither the harness nor the host is the reason the sampled arm loses.",
+      "artifact": "/tmp/mtp-sampled/arm2-c1-t00.json"
+    }
+  },
+  "cost_model": {
+    "c1_temperature_0.7": {
+      "tokens_per_cycle": 3.368,
+      "sampled_cycle_ms": 528.5,
+      "ar_ms_per_token": 73.74,
+      "sampled_ms_per_emitted_token": 156.9,
+      "cycle_cost_in_ar_steps": 7.17
+    },
+    "c1_temperature_0.0_greedy": {
+      "tokens_per_cycle": 3.368,
+      "greedy_cycle_ms": 98.9,
+      "greedy_ms_per_emitted_token": 29.36
+    },
+    "cycle_ratio_sampled_over_greedy": 5.34,
+    "acceptance_is_not_the_limit": "the sampled arm accepted 89 and 87 drafts over 38 and 39 cycles, the same counts the greedy control accepted on the same prompts; coverage is 99.2% and 98.4%. The loss is the cycle's own cost.",
+    "cause": [
+      "the sampled route cannot use the native target graph: the device-accept commit path (native_device_accept_commit) commits the argmax decision on device, so the adapter passes allow_graph=False and device_proposal=None for a sampled row, and every cycle runs the eager verifier instead of a graph replay",
+      "the accept decision is then computed on the host from full-vocabulary logits: the verifier returns one logits row per verified prefix (return_logits=True) and mtp_sampled_accept processes each row's own prefix distribution against the drafted chain in Python"
+    ]
+  },
+  "correctness": {
+    "distribution_gate": "the induced law is exact: 824/824 induced-law comparisons (max total variation 4.5e-16, max KL 9.0e-16, top-1 agreement 1.0 against 1e-9) over supports up to 248,320 tokens, 144/144 autoregressive-law agreements, and a Monte-Carlo arm driving the real walk 4,000 times per config with no cell outside its calibrated limit. Artifact: results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json",
+    "identity_is_not_an_oracle_here": "cross-arm token identity is not a quality gate for this route: the sampled accept walk consumes the row's sampler stream differently from the autoregressive path (acceptance draws plus a possible residual resample against one draw per token), so equal ids are not expected even though the induced law is equal. The law gate above is the correctness evidence; the greedy route's identity contract does not transfer."
+  },
+  "decision": {
+    "promotion": "not promoted: the sampled route is a 2.1x decode loss and a 3.2x TTFT loss at c=1 temperature 0.7, with 99% of its output tokens coming from speculative cycles, so coverage cannot recover it",
+    "switch": "the evidence-row switch is reverted; the route stays closed and every temperature request keeps running autoregressive",
+    "retained": "the three enabling repairs are kept: they are correct on their own, inert without the switch, and each is pinned by a RED/GREEN test",
+    "next_lever": "a device-side sampled accept: the cycle cost is dominated by forfeiting the native target graph and by host-side full-vocabulary distribution processing. A kernel that computes the coupled acceptance from device logits and commits on device like the argmax path is what makes this route worth re-measuring; the arithmetic gate already fixes the target law."
+  },
+  "source": {
+    "worklog_entries": [
+      "worklog/entries/20260918T144617.823332Z-lhl-mtp-sampled-acceptance-distribution-gate-78f4a5.md",
+      "worklog/entries/20260918T162728.762387Z-lhl-sampled-mtp-serving-arm-inventory-849836.md",
+      "worklog/entries/20260918T164726.663021Z-lhl-sampled-prefill-provider-state-a1f41b.md",
+      "worklog/entries/20260918T165440.567230Z-lhl-sampled-route-engages-72b20c.md"
+    ],
+    "commits": ["5c272bb7a", "cd8a5b29b"]
+  }
+}

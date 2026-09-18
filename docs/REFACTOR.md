@@ -8038,19 +8038,45 @@ every one of its 162 cycles. Remove the flag and
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
 
-**Sampled MTP acceptance route (default closed, added 2026-09-18).**
+**Sampled MTP acceptance route (default closed, added 2026-09-18; serving
+measurement rejected 2026-09-18).**
 `hipengine/speculative/sampling.py` and `hipengine/generation/mtp_sampled_accept.py`
 implement the temperature-capable accept rule (`min(1, p/q)` plus the residual
 resample), the adapter reaches it only when `_sampled_route_qualified()` finds a
 model-plugin evidence row advertising the `sampled` sampling mode for
 `(backend, target_arch, quant, artifact size)`, and the engine loop's `sampled`
 planner mode is turned into `UNSUPPORTED_SAMPLING` by the policy whenever the
-capability does not advertise it. No evidence row exists yet, so every
-temperature request still runs autoregressive. The route also forces the eager
-host proposal (`allow_graph=False`) and `return_logits=True` verification because
-the accept summary is computed on host logits. Remove the qualification gate -
-and write the row - only after the serving arm measured in
-`worklog/entries/20260918T144617.823332Z-lhl-mtp-sampled-acceptance-distribution-gate-78f4a5.md`
-shows the sampled route beating a matched true-AR control at `temperature > 0`;
-the graph-capable form (a device-side accept that reads the row's sampler state)
-is the follow-up that removes the `allow_graph=False` restriction.
+capability does not advertise it. No evidence row advertises it, so every
+temperature request still runs autoregressive. The route forces the eager host
+proposal (`allow_graph=False`) and `return_logits=True` verification because the
+accept summary is computed on host logits.
+
+The switch was held open for one serving arm and the arm lost: with the row in
+place the route engages (253 of 256 output tokens from speculative cycles) and
+measures 0.47x of its in-load true-AR control at c=1 temperature 0.7, because a
+sampled cycle costs 5.3x the same draft chain's greedy cycle (528.5 against 98.9
+ms) while the same load at temperature 0 still measures +66%. The row is
+reverted; see
+`benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json`.
+Removal gate: re-measure only after a **device-side sampled accept** exists that
+computes the coupled acceptance from device logits and commits on device like the
+argmax path, which is what removes the `allow_graph=False` restriction; the
+arithmetic gate (824/824 induced-law comparisons) already fixes the target law
+and does not need redoing. The three enabling repairs kept by that arm
+(`_observe_mtp2_prefill` on the sampled prefill path, the streamed target-hidden
+sink for a due sampled row, and
+`Qwen35GGUFTransactionalVerifier.adopt_accept_summary`) are correct on their own,
+inert without the row, and pinned by RED/GREEN tests; do not delete them while
+the device-side accept is still the intended follow-up.
+
+**Sampled-route debug traces (env-gated, added 2026-09-18).**
+`HIPENGINE_DEBUG_SAMPLED_ROUTE` gates five stderr traces that named every gate on
+this route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and
+`[prefill-debug]` in `hipengine/generation/qwen35_gguf_mtp2.py`,
+`[cycle-failure]` in the same file's `recover_cycle_failure`, and
+`[plan-debug]` in `hipengine/generation/engine_loop.py`. They cost one
+`os.environ` lookup per call when the variable is unset and print nothing. Remove
+them, or replace them with a documented diagnostic, when the device-side sampled
+accept lands or the route is abandoned; they exist because the route's refusal
+chain was otherwise invisible (a silent `None` from the capability and a
+contained cycle exception that no log line reported).
