@@ -44,9 +44,14 @@ harnesses:
   token, so the server's cancel/refill path runs beside completed requests;
   cancelled rows are reported separately from failures.
 
-The summary reports realized group composition (``groups_by_realized_rows``)
-and a decode rate that excludes prefill (``decode_tokens_per_second_excluding_prefill``),
-because MTP usage alone does not say whether the run was faster.
+The summary reports realized group composition (``groups_by_realized_rows``),
+a decode rate that excludes prefill (``decode_tokens_per_second_excluding_prefill``),
+and the serving metrics a routing change has to move: completed requests per
+second, time to first token, inter-token latency, and end-to-end latency, each
+with a tail percentile. Every completed row carries an ``output_sha256`` over
+its thinking and answer text, so two arms of the same load can be checked for
+greedy-exactness instead of assuming it. MTP usage alone does not say whether
+the run was faster, so it is reported as a diagnostic beside those numbers.
 
 Usage:
     python3 scripts/sharegpt_mtp_routing_pass.py \
@@ -61,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import random
 import statistics
@@ -251,6 +257,8 @@ def _stream_request(
     e2e_ms = (time.perf_counter() - started) * 1000.0
     terminal_extension = (terminal or {}).get("hipengine") or {}
     extension = {**stream_extension, **terminal_extension}
+    answer_text = "".join(answer)
+    thinking_text = "".join(thinking)
     return {
         "ttft_ms": first_token_ms,
         "first_answer_ms": first_answer_ms,
@@ -261,12 +269,57 @@ def _stream_request(
         "timeline": timeline,
         "usage": usage,
         "error_body": None if error_body is None else dict(error_body),
-        "answer_characters": len("".join(answer)),
-        "thinking_characters": len("".join(thinking)),
+        "answer_characters": len(answer_text),
+        "thinking_characters": len(thinking_text),
+        # One digest over both channels. Greedy MTP is an exact verifier of the
+        # autoregressive output, so two arms that disagree on the text for the
+        # same prompt are a quality failure, not measurement noise. Hashing
+        # keeps the artifact small enough to retain.
+        "output_sha256": hashlib.sha256(
+            (thinking_text + "\x00" + answer_text).encode("utf-8")
+        ).hexdigest(),
         "speculative_mtp": extension.get("speculative_mtp"),
         "generation_shape": extension.get("generation_shape"),
         "routing": extension.get("routing"),
     }
+
+def _inter_token_latencies_ms(timeline: Any) -> list[float]:
+    """Milliseconds per generated token between consecutive decode reports."""
+
+    intervals: list[float] = []
+    previous_ms: float | None = None
+    previous_tokens: int | None = None
+    for entry in timeline or ():
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        try:
+            reported_ms = float(entry[0])
+            generated = int(entry[1])
+        except (TypeError, ValueError):
+            continue
+        if (
+            previous_ms is not None
+            and previous_tokens is not None
+            and generated > previous_tokens
+        ):
+            intervals.append(
+                (reported_ms - previous_ms) / (generated - previous_tokens)
+            )
+        previous_ms = reported_ms
+        previous_tokens = generated
+    return intervals
+
+
+def _percentile(values: Sequence[float], percentile: float) -> float | None:
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        return None
+    rank = (len(ordered) - 1) * float(percentile) / 100.0
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = rank - lower
+    return ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction
+
 
 def _error_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
     """Describe one request that produced no usage, without hiding the cause."""
@@ -338,6 +391,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
     shape = result.get("generation_shape") or {}
     decision = shape.get("route_decision") or {}
     accounting = mtp.get("output_accounting") or {}
+    itl = _inter_token_latencies_ms(result.get("timeline"))
     return {
         "source_id": sample.get("source_id"),
         "prompt_tokens_local": sample.get("prompt_tokens"),
@@ -349,6 +403,13 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "first_answer_ms": result.get("first_answer_ms"),
         "first_thinking_ms": result.get("first_thinking_ms"),
         "e2e_ms": result.get("e2e_ms"),
+        # Inter-token latency after the first token, from the decode-state
+        # timeline. This is the latency a streaming client actually feels and
+        # the quantity a coverage change must not degrade.
+        "itl_median_ms": statistics.median(itl) if itl else None,
+        "itl_p95_ms": _percentile(itl, 95.0),
+        "itl_samples": len(itl),
+        "output_sha256": result.get("output_sha256"),
         "answer_characters": result.get("answer_characters"),
         "thinking_characters": result.get("thinking_characters"),
         "route": shape.get("route"),
@@ -575,6 +636,18 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
                 row.get("mtp_output_tokens") or 0
             )
     ttfts = [float(row["ttft_ms"]) for row in rows if row.get("ttft_ms")]
+    latencies = [float(row["e2e_ms"]) for row in rows if row.get("e2e_ms")]
+    # Inter-token latency across every decode interval in the run. A change
+    # that raises aggregate throughput by batching but stretches each token is
+    # not a serving win, so the tail is reported beside the median.
+    itl_samples: list[float] = []
+    for row in rows:
+        itl_samples.extend(_inter_token_latencies_ms(row.get("timeline")))
+    completed_hashes = Counter(
+        str(row["output_sha256"])
+        for row in rows
+        if row.get("output_sha256")
+    )
     answers = [
         float(row["first_answer_ms"])
         for row in rows
@@ -617,14 +690,14 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
     # aggregate stays the wall-clock number.
     per_request_decode: list[float] = []
     for row in rows:
-        completion = int(row.get("completion_tokens") or 0)
+        row_completion = int(row.get("completion_tokens") or 0)
         e2e = row.get("e2e_ms")
         ttft = row.get("ttft_ms")
-        if completion <= 0 or e2e is None or ttft is None:
+        if row_completion <= 0 or e2e is None or ttft is None:
             continue
         decode_seconds = (float(e2e) - float(ttft)) / 1000.0
         if decode_seconds > 0:
-            per_request_decode.append(completion / decode_seconds)
+            per_request_decode.append(row_completion / decode_seconds)
     return {
         "requests": len(rows),
         "cancelled_requests": sum(1 for row in rows if row.get("cancelled")),
@@ -679,10 +752,26 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             statistics.median(per_request_decode) if per_request_decode else None
         ),
         "decode_requests": len(per_request_decode),
+        # Output identity, so two arms of the same load can be compared for
+        # greedy-exactness. ``duplicate_output_hashes`` above one means the
+        # load contains repeated outputs (or a prefix-cache replay); it is not
+        # an error, only context for reading the digest list.
+        "output_hashes": dict(sorted(completed_hashes.items())),
+        "duplicate_output_hashes": sum(
+            count - 1 for count in completed_hashes.values() if count > 1
+        ),
         # ttft_ms is time to the first generated token of either channel, which
         # for a thinking reply is a reasoning token.
         "median_ttft_ms": statistics.median(ttfts) if ttfts else None,
+        "p95_ttft_ms": _percentile(ttfts, 95.0),
         "ttft_requests": len(ttfts),
+        # Total request latency, end to end, including prefill and queueing.
+        "median_e2e_ms": statistics.median(latencies) if latencies else None,
+        "p95_e2e_ms": _percentile(latencies, 95.0),
+        "total_e2e_ms": sum(latencies),
+        "median_itl_ms": statistics.median(itl_samples) if itl_samples else None,
+        "p95_itl_ms": _percentile(itl_samples, 95.0),
+        "itl_samples": len(itl_samples),
         "median_first_answer_ms": statistics.median(answers) if answers else None,
         "answer_requests": len(answers),
         "median_first_thinking_ms": (
@@ -946,16 +1035,32 @@ def main() -> int:
         if wall
         else None
     )
+    report["summary"]["completed_requests_per_second"] = (
+        len(good) / wall if wall else None
+    )
+    report["summary"]["request_error_rate"] = (
+        len(failures) / len(rows) if rows else 0.0
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     summary = report["summary"]
     print(
         f"[{args.label}] requests={summary['requests']} failures={len(failures)} "
+        f"cancelled={len(cancelled)} "
         f"mtp_requests={summary['mtp_requests']} "
         f"({summary['mtp_request_share']:.1%}) "
         f"mtp_output_share={summary['mtp_output_share']:.1%} "
+        f"completed={summary['completed_requests_per_second']:.2f} req/s "
         f"decode={summary['decode_tokens_per_second']:.2f} tok/s "
         f"wall={wall:.1f}s"
+    )
+    print(
+        f"[{args.label}] latency: ttft(med/p95)="
+        f"{_fmt_ms(summary['median_ttft_ms'])}/{_fmt_ms(summary['p95_ttft_ms'])} "
+        f"itl(med/p95)="
+        f"{_fmt_ms(summary['median_itl_ms'])}/{_fmt_ms(summary['p95_itl_ms'])} "
+        f"e2e(med/p95)="
+        f"{_fmt_ms(summary['median_e2e_ms'])}/{_fmt_ms(summary['p95_e2e_ms'])}"
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
     print(
@@ -997,7 +1102,8 @@ def main() -> int:
             "the per-span attribution proof"
         )
     print(
-        f"[{args.label}] latency: ttft(first token)={_fmt_ms(summary['median_ttft_ms'])} "
+        f"[{args.label}] first-token channels: "
+        f"ttft={_fmt_ms(summary['median_ttft_ms'])} "
         f"over {summary['ttft_requests']} requests, "
         f"first_answer={_fmt_ms(summary['median_first_answer_ms'])} "
         f"over {summary['answer_requests']}, "
