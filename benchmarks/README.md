@@ -546,8 +546,13 @@ output does not depend on the prompt. The cell is reachable through production
 admission, not just the diagnostic resolver: the same protocol run without
 `--generation2-diagnostic` engages it on all 10 cells and reproduces the identical
 degenerate output. The C5-C7 refusal cost did improve to -6%/-7%/-7% from
--15%/-18%/-18%. The gfx1151 production `(8,3)` cell is therefore withdrawn
-pending a fail-closed refusal when the prompt sink is refused. [Width census and
+-15%/-18%/-18%. The gfx1151 production `(8,3)` cell is therefore withdrawn: it is
+removed from the backend's width/depth policy and its serving-evidence row is
+deleted, so an explicit capacity-8 MTP request takes the registered strict
+fallback and returns the AR output. Re-qualifying a gfx1151 wide cell requires
+admitting widths 5-8 to the prompt-streaming policy first, and the current
+width-8 cycle is 0.936x of AR. The gfx1100 cell is unaffected: that backend's
+prompt-streaming policy admits width 8. [Width census and
 C8/K3
 withdrawal](results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json).
 

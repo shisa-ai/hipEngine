@@ -706,7 +706,7 @@
  },
  "decision": {
   "width_policy": "the C5-C8 question is answered: on a realistic load the server executes one-row speculative groups at every concurrency, so wider cells are not the lever. MTP's concurrent win comes from interleaving one speculative row with AR rows, measured at +24% (c=2), +26% (c=4) and +34% (c=8) against a same-regime true-AR control under staggered arrival.",
-  "c8_k3": "withdraw the gfx1151 production (8,3) cell: it is slower than its own AR baseline, it is not AR-equal, and its provider is refused by the prompt-streaming policy while the route runs anyway. Follow-up work: fail the route closed when the prompt sink is refused, and either admit widths 5-8 to the prompt-streaming policy with re-qualification or keep the cell withdrawn.",
+  "c8_k3": "withdraw the gfx1151 production (8,3) cell: it is slower than its own AR baseline, it is not AR-equal, and its provider is refused by the prompt-streaming policy while the route runs anyway. The cell is removed from GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production'] and the qwen38-q4km-gfx1151-production-bf16-c8-k3-d24 serving-evidence row is deleted, so an explicit capacity-8 MTP request resolves to the registered strict fallback (gguf_target_ar). Re-qualification requires admitting widths 5-8 to the prompt-streaming policy first; the current width-8 cycle is 0.936x of AR, so it is not worth re-qualifying until that cycle changes. gfx1100's prompt-streaming policy admits width 8, so its own cell is unaffected. Follow-up: fail the route closed when the prompt sink is refused.",
   "arrival": "burst arrival at c>=4 forfeits rows permanently (1/8, 1/8, 0/8 engaged at c=4, 7, 8), so any retained concurrent MTP row must declare its arrival pattern; the staggered numbers are the ones that describe serving."
  },
  "commands": {
@@ -732,5 +732,11 @@
  "elapsed": {
   "widths_5_8_seconds": 400.1,
   "width_8_production_seconds": 168.4
+ },
+ "enforcement": {
+  "policy": "hipengine/kernels/hip_gfx1151/__init__.py GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS['production'] now owns (1..4, 1..3) only",
+  "evidence_row_removed": "qwen38-q4km-gfx1151-production-bf16-c8-k3-d24",
+  "explicit_capacity_8_result": "registered strict fallback gguf_target_ar",
+  "server_confirmation": "pending at the time this artifact was written; recorded in the withdrawal worklog entry"
  }
 }

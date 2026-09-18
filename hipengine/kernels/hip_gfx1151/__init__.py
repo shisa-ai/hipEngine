@@ -2300,17 +2300,23 @@ GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
 # Production MTP admission is intentionally non-monotonic. C1-C4 retain their
-# certified K1-K3 cells; the B5 suite admits only the profitable wide C8-K3
-# cell. C5-C7 and shallower C8 remain on one full-width AR step. Keeping width
-# and depth together prevents a scalar C8 maximum from silently broadening the
-# three measured-losing widths.
+# certified K1-K3 cells; C5-C8 stay on one full-width AR step, so a scalar
+# maximum cannot silently broaden the measured-losing widths.
+# The wide C8-K3 cell admitted on 2026-09-05 is withdrawn. This backend's
+# prompt-streaming policy admits widths (1,2,3,4), so a pending set of eight rows
+# is refused (`physical_streaming_category_rejected`) and the provider opens
+# without prompt state, while the route still ran its cycles. Measured on the
+# instrument that qualified the cell (one synchronized 8-row batch per cell, 10
+# prompts, 24-token horizon, same-run true-AR baseline) it is 46.88 tok/s against
+# 50.10 true AR (0.936x) with 0 of 10 cells reproducing the AR output, against
+# the retained 1.0015x with 40 of 40 cells AR-equal. gfx1100's prompt-streaming
+# policy admits width 8, so its own C8-K3 cell is unaffected.
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
     "production": (
         *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
-        (8, 3),
     )
 }
 # M5 whole-batch routing (scaling campaign, 2026-08-31): measured at the

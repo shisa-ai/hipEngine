@@ -127,7 +127,6 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) == {
         "production": (
             *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
-            (8, 3),
         )
     }
     assert backend_package_capability(
@@ -306,7 +305,11 @@ def test_physical_width_depth_policy_misconfiguration_fails_closed(
         module.backend_package_capability = real
 
 
-def test_physical_width_depth_policy_admits_only_listed_wide_cell() -> None:
+def test_physical_width_depth_policy_admits_only_listed_cells() -> None:
+    # The gfx1151 C8-K3 cell was withdrawn on 2026-09-19: this backend's
+    # prompt-streaming policy admits widths (1,2,3,4), so an eight-row group is
+    # refused by the provider while the route still ran, and the cell measured
+    # 0.936x of its own AR baseline with 0/10 cells reproducing the AR output.
     adapter = Qwen35GGUFMTP2Adapter(
         _width_bound_owner(profile="production", capacity=8),
         enabled=True,
@@ -314,14 +317,13 @@ def test_physical_width_depth_policy_admits_only_listed_wide_cell() -> None:
         candidate_budget=3,
     )
 
-    assert adapter._max_physical_requests() == 8
-    assert adapter._physical_width_depth_admitted(8, 3) is True
-    for width in (5, 6, 7):
+    assert adapter._max_physical_requests() == 4
+    for width in (5, 6, 7, 8):
         assert adapter._physical_width_depth_admitted(width, 3) is False
     for depth in (1, 2):
         assert adapter._physical_width_depth_admitted(8, depth) is False
     max_rows = adapter._max_physical_requests() * (adapter.candidate_budget + 1)
-    assert max_rows == 32
+    assert max_rows == 16
 
 
 def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
@@ -377,19 +379,17 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
             for rid in ids[:width]
         )
 
-    for width in (5, 6, 7):
+    for width in (5, 6, 7, 8):
         assert adapter.partition_max_requests(ids[:width]) == 0
         assert adapter.capability(semantics(width)) is None
-    # A zero partition bound preserves one whole due group; C8 then reaches the
-    # explicit capability cell rather than chained subgroups.
+    # A zero partition bound preserves one whole due group, and the group then
+    # takes one full-batch AR step: the wide cell is no longer listed, so
+    # per-row eligibility and capacity 8 cannot widen the group past C4.
     assert adapter.partition_max_requests(ids) == 0
-    c8 = adapter.capability(semantics(8))
-    assert c8 is not None
-    assert c8.max_requests == 8
-    assert c8.max_candidates_per_request == 3
-    assert c8.max_frontier_rows == 32
+    assert adapter.capability(semantics(8)) is None
+    assert adapter.capability(semantics(4)) is not None
 
-    for width in (5, 6, 7):
+    for width in (5, 6, 7, 8):
         assert adapter.claims_fit(
             SimpleNamespace(
                 request_ids=ids[:width],
@@ -399,19 +399,27 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
         ) is False
     assert adapter.claims_fit(
         SimpleNamespace(
-            request_ids=ids,
-            speculative_request_ids=ids,
-            candidate_counts=(3,) * 8,
+            request_ids=ids[:4],
+            speculative_request_ids=ids[:4],
+            candidate_counts=(3,) * 4,
         )
     ) is True
-    for depth in (1, 2):
+    for depth in (1, 2, 3):
         assert adapter.claims_fit(
             SimpleNamespace(
-                request_ids=ids,
-                speculative_request_ids=ids,
-                candidate_counts=(depth,) * 8,
+                request_ids=ids[:4],
+                speculative_request_ids=ids[:4],
+                candidate_counts=(depth,) * 4,
             )
-        ) is False
+        ) is True
+    # The listed depths stop at 3, and the rows' own candidate bound agrees.
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids[:4],
+            speculative_request_ids=ids[:4],
+            candidate_counts=(4,) * 4,
+        )
+    ) is False
 
 
 def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
@@ -4739,7 +4747,9 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     )
 
     assert GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"] == 4
-    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (8, 3)
+    # The wide cell is withdrawn, so the whole C1-C4 policy sits below the
+    # bound and no listed cell can reach a due group wider than it.
+    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (4, 3)
 
     row = SimpleNamespace(
         native_greedy=True,

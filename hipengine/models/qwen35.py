@@ -343,30 +343,6 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
-        evidence_key="qwen38-q4km-gfx1151-production-bf16-c8-k3-d24",
-        artifact_sha256=(
-            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
-        ),
-        artifact_size_bytes=17_106_775_008,
-        backend="hip_gfx1151",
-        target_arch="gfx1151",
-        weight_quant="gguf_q4_k_m",
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=8,
-        resident_capacity=8,
-        candidate_budget=3,
-        sampling_modes=("greedy_fast",),
-        reason="qualified_explicit_production_c8_k3_after_q6_lm_head_rebase",
-        evidence_artifacts=(
-            "benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json",
-            "benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json",
-            "benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json",
-        ),
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
-    ),
-    SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1100-production-bf16-c2-k2-d24",
         artifact_sha256=(
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
