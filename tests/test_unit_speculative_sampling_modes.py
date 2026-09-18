@@ -252,3 +252,42 @@ def test_sampled_route_request_falls_back_to_the_request_object() -> None:
     assert adapter._sampled_route_request(1) is True
     empty = _adapter(plugin_evidence=(_evidence_row(),), row=SimpleNamespace())
     assert empty._sampled_route_request(1) is False
+
+
+def test_engine_loop_selects_the_sampled_mode_for_a_temperature_request() -> None:
+    """The planner's branch must resolve, not raise: it names a helper the
+    engine loop has to import, and a missing import is invisible until a
+    temperature request reaches it."""
+
+    from hipengine.generation.engine_loop import _speculative_sampling_mode
+
+    runner = SimpleNamespace(speculative_eos_supported=lambda request_id: False)
+    assert _speculative_sampling_mode(runner, 1, _params(temperature=0.7)) == "sampled"
+    assert _speculative_sampling_mode(runner, 1, _params()) == "greedy"
+    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
+    # An EOS gate is servable, and so is ignoring EOS: both are processors the
+    # sampled law already applies, so this row takes the sampled route rather
+    # than the processed one.
+    assert (
+        _speculative_sampling_mode(runner, 1, _params(eos_token_id=9, ignore_eos=True))
+        == "sampled"
+    )
+    eos_runner = SimpleNamespace(speculative_eos_supported=lambda request_id: True)
+    assert (
+        _speculative_sampling_mode(eos_runner, 1, _params(eos_token_id=9))
+        == "greedy"
+    )
+
+
+def test_the_server_module_imports_the_serving_mode_vocabulary() -> None:
+    """The shipped server entry point imports these names from the package."""
+
+    import hipengine.server.api as server_api
+
+    from hipengine.generation import (
+        speculative_serving_sampling_mode,
+        supports_sampled_speculative_mtp,
+    )
+
+    assert server_api.speculative_serving_sampling_mode is speculative_serving_sampling_mode
+    assert callable(supports_sampled_speculative_mtp)

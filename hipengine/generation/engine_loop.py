@@ -43,7 +43,10 @@ from hipengine.generation.registry import (
     GenerationStreamChunk,
     TextGenerator,
 )
-from hipengine.generation.sampling import speculative_mtp_sampling_blockers
+from hipengine.generation.sampling import (
+    speculative_mtp_sampling_blockers,
+    supports_sampled_speculative_mtp,
+)
 from hipengine.speculative.frontier import (
     CandidateGraph,
     SpeculativeCapability,
