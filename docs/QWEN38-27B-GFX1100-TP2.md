@@ -1412,6 +1412,76 @@ bytes are already at their measured bandwidth.
 
 Artifact: `benchmarks/results/2026-09-18-w7900-tp2-decode-kernel-inventory.json`.
 
+#### The split is even; the two cards are not (2026-09-18)
+
+The per-layer inventory also settles a question the earlier projection audit
+raised but did not act on. Measured per kernel, both ranks, identical call
+counts, the RX 7900 XTX (rank 1) is faster on **every** streaming kernel:
+
+| kernel | calls/step | W7900 us | XTX us | XTX/W7900 |
+| --- | ---: | ---: | ---: | ---: |
+| `q4_k_t16_dense_single_local32` | 136 | 37.45 | 30.30 | 0.81 |
+| `q4_k_t16_dense_dual_local32_silu` | 64 | 79.09 | 64.58 | 0.82 |
+| `q6_k_t16_qmicro_planar` | 56 | 64.43 | 54.50 | 0.85 |
+| `q5_k_t16_dense_single_local32` | 48 | 42.69 | 33.66 | 0.79 |
+| `dense_gemv_bf16_f32w` | 96 | 4.84 | 4.29 | 0.89 |
+| GDN recurrence, norms, conv | 224 | - | - | 0.88-0.93 |
+
+This is not an in-situ artifact: the projection audit measured the same ratio
+in isolation (577 vs 730 GB/s on `ffn_gate`/`ffn_up`), and the resident TP1
+controls are 31.753 ms (W7900) against 26.329 ms (XTX).
+
+The cost of splitting evenly shows up in one kernel. `tp2_dev_spin_add_bf16`
+takes 4.07 us per layer on the pacer and 65.35 us on rank 1, so rank 1
+finishes its faster work and then spins for 4.182 ms/step waiting for rank 0.
+Removing the wait from both sides gives the work times: **19.689 ms** (rank 0)
+and **16.320 ms** (rank 1). The even split makes the slower card the pacer
+while the faster card idles.
+
+`scripts/tp2_split_balance_plan.py` turns that into a split. It reads the
+shard manifest and the inventory, separates each rank's streaming time from
+its fixed time and its spin time, and solves for the byte fraction that
+equalizes the two ranks:
+
+| quantity | rank 0 (W7900) | rank 1 (XTX) |
+| --- | ---: | ---: |
+| streaming rate | 432.0 GiB/s | 526.6 GiB/s |
+| fixed work | 2.347 ms/step | 2.092 ms/step |
+| spin wait (excluded from cost) | 0.260 ms/step | 4.182 ms/step |
+| streamed bytes | 7.492 GiB/step | 7.492 GiB/step |
+| movable (MLP) bytes | 4.825 GiB/step | 4.825 GiB/step |
+
+The model reproduces the measured pacer work time exactly - it predicts
+19.689 ms/step for the even split against 19.949 - 0.260 = 19.689 measured -
+and then predicts **17.937 ms/step** for a split of **0.417 / 0.583** of the
+MLP bytes: a **1.752 ms/step** saving, about 7.3% of the 24.025 ms/token wall.
+
+Two constraints define the scope, and both are deliberate:
+
+- **Only the MLP projections are eligible.** `ffn_gate`/`ffn_up` split output
+  rows and `ffn_down` splits the input-feature axis, so an uneven split there
+  is a geometry change with no head semantics. Every attention and GDN tensor
+  is head-structured, and `partition_groups` refuses uneven splits for them on
+  purpose: rank `r` owns query heads `[r * q_per_rank, (r + 1) * q_per_rank)`
+  and must load exactly the KV heads those queries attend to. An uneven split
+  there would be silently wrong attention, not an error. The eligible MLP pool
+  is 9.65 GiB of the 14.98 GiB streamed per step, which is enough to reach
+  balance without touching them.
+- **`ffn_down` changes arithmetic.** Its split point moves the summation
+  grouping of the two ranks' partials, so this is a production-profile change
+  requiring the full KL / top-1 gate, not a bit-exactness argument. The
+  `ffn_gate`/`ffn_up` part is bit-exact (independent output rows).
+
+The cost is memory on the faster card: rank 1 gains 0.851 GiB of resident
+weights (7.009 to 7.860 GiB), which it has room for in 24 GB, at some reduction
+in the maximum context that the capacity ladder would have to re-measure. Rank
+0 drops the same amount (8.646 to 7.795 GiB), so the pair ends balanced in
+resident bytes as well as in time.
+
+Status: plan and calculator only. No split has been changed yet.
+
+Artifact: `benchmarks/results/2026-09-18-w7900-tp2-split-balance-plan.json`.
+
 The consequence for the plan: the traffic-implied 19.629 ms floor assumes every
 byte moves at the resident route's *blended* rate, and the resident route only
 reaches that rate because 61.7% of its bytes are MLP. The TP2 route's byte mix
