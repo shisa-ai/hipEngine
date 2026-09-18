@@ -1,0 +1,736 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M gfx1151: MTP widths 5-8 refresh and the realized-group census",
+ "date": "2026-09-19",
+ "status": "measured_retained_c8_k3_row_withdrawn",
+ "performance_claim": false,
+ "purpose": "Two questions the width policy rests on. (1) Which MTP groups does the server actually execute on a realistic multi-request load, and what does MTP buy against a true-AR control under the same arrival pattern? (2) Does the retained 2026-09-05 C8/K3 qualification still hold on the current tree, re-measured with the same instrument that produced it?",
+ "model": "Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "kv_storage": "bf16",
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "host": "zbook",
+ "execution_profile": "production",
+ "tree": {
+  "commit": "6003778377a2949d05c38c6c972c6e919130dca0",
+  "dirty": false
+ },
+ "runtime_profile": {
+  "requested": "production",
+  "resolved": "production",
+  "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+ },
+ "realized_group_census": {
+  "protocol": {
+   "server": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto|enabled --speculative-candidate-budget 3 [--generation-batch-window-ms 0|50]",
+   "load": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 8 --cases short,long --max-total-len 1024 --record-ids; 4 prompts of 17-34 tokens and 4 of 696-841 tokens per load, natural ShareGPT completions",
+   "arms": "true AR per request (--route-mix off), automatic (omitted field), or explicit (speculative_mtp=true)",
+   "arrival_regimes": [
+    "burst (all 8 submitted at once, batch window 0 ms)",
+    "staggered (400 ms between submissions, batch window 0 ms)",
+    "burst with --generation-batch-window-ms 50 (dispatch coalescing on)"
+   ],
+   "point_count": 17
+  },
+  "result": {
+   "realized_speculative_group": "1 row in every one of the 24 speculative points, in all three arrival regimes, at every concurrency 2-8; no group wider than one row was ever executed",
+   "ar_aggregate_saturation": "true AR saturates at 15.1-15.7 tok/s at c=2 and 18.8-19.5 tok/s at c>=4 in every regime",
+   "best_regime": "staggered arrival, where MTP holds 6-7 of 8 rows and ~50% of output tokens at every concurrency",
+   "burst_penalty": "with all requests arriving at once the provider's single prompt activation is contested: 1 of 8 rows engages at c=4, 1 at c=7 and 0 at c=8, so those points measure contention rather than the route"
+  },
+  "points": [
+   {
+    "regime": "burst",
+    "concurrency": 2,
+    "ar": {
+     "tok_s": 15.13,
+     "itl": 83.5,
+     "ttft": 1612.0
+    },
+    "automatic": {
+     "tok_s": 18.89,
+     "itl": 34.3,
+     "ttft": 2652.0,
+     "mtp": 6,
+     "share": 0.532,
+     "ratio_vs_ar": 1.249
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c2-ar",
+     "auto": "c2-auto"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 3,
+    "ar": {
+     "tok_s": 17.29,
+     "itl": 196.5,
+     "ttft": 1919.0
+    },
+    "automatic": {
+     "tok_s": 21.04,
+     "itl": 78.4,
+     "ttft": 2854.0,
+     "mtp": 5,
+     "share": 0.361,
+     "ratio_vs_ar": 1.217
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c3-ar",
+     "auto": "c3-auto"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 4,
+    "ar": {
+     "tok_s": 19.43,
+     "itl": 267.4,
+     "ttft": 1881.0
+    },
+    "automatic": {
+     "tok_s": 18.84,
+     "itl": 273.8,
+     "ttft": 1870.0,
+     "mtp": 1,
+     "share": 0.005,
+     "ratio_vs_ar": 0.97
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c4-ar",
+     "auto": "c4-auto"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 5,
+    "ar": {
+     "tok_s": 19.54,
+     "itl": 413.2,
+     "ttft": 4078.0
+    },
+    "automatic": {
+     "tok_s": 24.51,
+     "itl": 151.8,
+     "ttft": 5053.0,
+     "mtp": 4,
+     "share": 0.452,
+     "ratio_vs_ar": 1.254
+    },
+    "explicit": {
+     "tok_s": 16.49,
+     "itl": 283.2,
+     "ttft": 15270.0,
+     "mtp": 1,
+     "share": 0.005,
+     "ratio_vs_ar": 0.844
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c5-ar",
+     "auto": "c5-auto",
+     "on": "c5-on"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 6,
+    "ar": {
+     "tok_s": 19.46,
+     "itl": 487.1,
+     "ttft": 3239.0
+    },
+    "automatic": {
+     "tok_s": 25.63,
+     "itl": 70.9,
+     "ttft": 6778.0,
+     "mtp": 5,
+     "share": 0.485,
+     "ratio_vs_ar": 1.317
+    },
+    "explicit": {
+     "tok_s": 23.88,
+     "itl": 79.2,
+     "ttft": 6387.0,
+     "mtp": 5,
+     "share": 0.522,
+     "ratio_vs_ar": 1.227
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c6-ar",
+     "auto": "c6-auto",
+     "on": "c6-on"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 7,
+    "ar": {
+     "tok_s": 19.16,
+     "itl": 468.9,
+     "ttft": 4282.0
+    },
+    "automatic": {
+     "tok_s": 18.84,
+     "itl": 278.6,
+     "ttft": 5296.0,
+     "mtp": 1,
+     "share": 0.005,
+     "ratio_vs_ar": 0.983
+    },
+    "explicit": {
+     "tok_s": 18.58,
+     "itl": 190.1,
+     "ttft": 21085.0,
+     "mtp": 2,
+     "share": 0.01,
+     "ratio_vs_ar": 0.97
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c7-ar",
+     "auto": "c7-auto",
+     "on": "c7-on"
+    }
+   },
+   {
+    "regime": "burst",
+    "concurrency": 8,
+    "ar": {
+     "tok_s": 19.49,
+     "itl": 493.1,
+     "ttft": 9317.0
+    },
+    "automatic": {
+     "tok_s": 18.47,
+     "itl": 367.2,
+     "ttft": 26500.0,
+     "mtp": 0,
+     "share": 0.0,
+     "ratio_vs_ar": 0.948
+    },
+    "explicit": {
+     "tok_s": 18.58,
+     "itl": 371.0,
+     "ttft": 7344.0,
+     "mtp": 1,
+     "share": 0.008,
+     "ratio_vs_ar": 0.953
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "c8-ar",
+     "auto": "c8-auto",
+     "on": "c8-on"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 2,
+    "ar": {
+     "tok_s": 15.22,
+     "itl": 83.5,
+     "ttft": 1571.0
+    },
+    "automatic": {
+     "tok_s": 18.92,
+     "itl": 33.9,
+     "ttft": 2653.0,
+     "mtp": 7,
+     "share": 0.538,
+     "ratio_vs_ar": 1.243
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "auto": "s2-auto",
+     "ar": "sa2-ar"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 3,
+    "ar": null,
+    "automatic": {
+     "tok_s": 20.78,
+     "itl": 78.0,
+     "ttft": 2678.0,
+     "mtp": 6,
+     "share": 0.375,
+     "ratio_vs_ar": null
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1"
+    ],
+    "non_mtp_reasons": [
+     "no_provider"
+    ],
+    "labels": {
+     "auto": "s3-auto"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 4,
+    "ar": {
+     "tok_s": 18.84,
+     "itl": 283.7,
+     "ttft": 2258.0
+    },
+    "automatic": {
+     "tok_s": 23.74,
+     "itl": 74.2,
+     "ttft": 2915.0,
+     "mtp": 6,
+     "share": 0.499,
+     "ratio_vs_ar": 1.26
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "auto": "s4-auto",
+     "ar": "sa4-ar"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 5,
+    "ar": null,
+    "automatic": {
+     "tok_s": 25.05,
+     "itl": 71.4,
+     "ttft": 4104.0,
+     "mtp": 6,
+     "share": 0.498,
+     "ratio_vs_ar": null
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1"
+    ],
+    "non_mtp_reasons": [
+     "no_provider"
+    ],
+    "labels": {
+     "auto": "s5-auto"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 6,
+    "ar": null,
+    "automatic": {
+     "tok_s": 25.06,
+     "itl": 71.2,
+     "ttft": 7212.0,
+     "mtp": 6,
+     "share": 0.498,
+     "ratio_vs_ar": null
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1"
+    ],
+    "non_mtp_reasons": [
+     "no_provider"
+    ],
+    "labels": {
+     "auto": "s6-auto"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 7,
+    "ar": null,
+    "automatic": {
+     "tok_s": 25.05,
+     "itl": 71.6,
+     "ttft": 8688.0,
+     "mtp": 6,
+     "share": 0.498,
+     "ratio_vs_ar": null
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1"
+    ],
+    "non_mtp_reasons": [
+     "no_provider"
+    ],
+    "labels": {
+     "auto": "s7-auto"
+    }
+   },
+   {
+    "regime": "staggered",
+    "concurrency": 8,
+    "ar": {
+     "tok_s": 18.87,
+     "itl": 483.3,
+     "ttft": 9331.0
+    },
+    "automatic": {
+     "tok_s": 25.2,
+     "itl": 71.4,
+     "ttft": 25195.0,
+     "mtp": 6,
+     "share": 0.499,
+     "ratio_vs_ar": 1.335
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "auto": "s8-auto",
+     "ar": "sa8-ar"
+    }
+   },
+   {
+    "regime": "windowed",
+    "concurrency": 2,
+    "ar": {
+     "tok_s": 15.65,
+     "itl": 170.6,
+     "ttft": 2048.0
+    },
+    "automatic": {
+     "tok_s": 18.23,
+     "itl": 98.8,
+     "ttft": 3726.0,
+     "mtp": 4,
+     "share": 0.352,
+     "ratio_vs_ar": 1.165
+    },
+    "explicit": null,
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "wa2-ar",
+     "auto": "wa2-auto"
+    }
+   },
+   {
+    "regime": "windowed",
+    "concurrency": 4,
+    "ar": {
+     "tok_s": 19.11,
+     "itl": 253.5,
+     "ttft": 1741.0
+    },
+    "automatic": {
+     "tok_s": 18.0,
+     "itl": 257.6,
+     "ttft": 4812.0,
+     "mtp": 1,
+     "share": 0.005,
+     "ratio_vs_ar": 0.942
+    },
+    "explicit": {
+     "tok_s": 20.08,
+     "itl": 249.6,
+     "ttft": 9104.0,
+     "mtp": 4,
+     "share": 0.435,
+     "ratio_vs_ar": 1.051
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "wa4-ar",
+     "auto": "wa4-auto",
+     "on": "wo4-on"
+    }
+   },
+   {
+    "regime": "windowed",
+    "concurrency": 8,
+    "ar": {
+     "tok_s": 19.05,
+     "itl": 493.9,
+     "ttft": 9517.0
+    },
+    "automatic": {
+     "tok_s": 21.69,
+     "itl": 383.3,
+     "ttft": 13456.0,
+     "mtp": 2,
+     "share": 0.492,
+     "ratio_vs_ar": 1.139
+    },
+    "explicit": {
+     "tok_s": 21.29,
+     "itl": 432.6,
+     "ttft": 12711.0,
+     "mtp": 2,
+     "share": 0.462,
+     "ratio_vs_ar": 1.118
+    },
+    "realized_groups": [
+     "1",
+     "unknown"
+    ],
+    "non_mtp_reasons": [
+     "no_provider",
+     "prompt_activation_in_flight",
+     "unknown"
+    ],
+    "labels": {
+     "ar": "wa8-ar",
+     "auto": "wa8-auto",
+     "on": "wo8-on"
+    }
+   }
+  ]
+ },
+ "widths_5_8_refresh": {
+  "protocol": {
+   "harness": "scripts/gguf_mtp_c1c8_server_bench.py --widths 5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact",
+   "load": "one synchronized 8-row batch per cell; 10 mtp-bench prompts (4 held out); true no-MTP AR baseline in the same run; generated-ID equality between the arms is reported per cell",
+   "note": "the same instrument, width set, and horizon as the retained 2026-09-05 qualification"
+  },
+  "widths": {
+   "5": {
+    "ar_tok_s": 38.34,
+    "mtp_tok_s": 36.06,
+    "ratio": 0.9405,
+    "engaged_cells": 0,
+    "exact_cells": 10,
+    "ar_equal_cells": 10,
+    "cells": 10,
+    "first_divergence": [
+     null
+    ],
+    "retained_2026_09_05": {
+     "ratio": 0.85,
+     "ar_tok_s": 39.04,
+     "mtp_tok_s": 33.18,
+     "ar_equal_cells": 40
+    }
+   },
+   "6": {
+    "ar_tok_s": 41.85,
+    "mtp_tok_s": 39.05,
+    "ratio": 0.9331,
+    "engaged_cells": 0,
+    "exact_cells": 10,
+    "ar_equal_cells": 10,
+    "cells": 10,
+    "first_divergence": [
+     null
+    ],
+    "retained_2026_09_05": {
+     "ratio": 0.8212,
+     "ar_tok_s": 43.47,
+     "mtp_tok_s": 35.7,
+     "ar_equal_cells": 40
+    }
+   },
+   "7": {
+    "ar_tok_s": 45.48,
+    "mtp_tok_s": 42.2,
+    "ratio": 0.9279,
+    "engaged_cells": 0,
+    "exact_cells": 10,
+    "ar_equal_cells": 10,
+    "cells": 10,
+    "first_divergence": [
+     null
+    ],
+    "retained_2026_09_05": {
+     "ratio": 0.8239,
+     "ar_tok_s": 47.03,
+     "mtp_tok_s": 38.74,
+     "ar_equal_cells": 40
+    }
+   },
+   "8": {
+    "ar_tok_s": 50.1,
+    "mtp_tok_s": 46.88,
+    "ratio": 0.9359,
+    "engaged_cells": 10,
+    "exact_cells": 10,
+    "ar_equal_cells": 0,
+    "cells": 10,
+    "first_divergence": [
+     3,
+     5
+    ],
+    "retained_2026_09_05": {
+     "ratio": 1.0015,
+     "ar_tok_s": 52.03,
+     "mtp_tok_s": 52.1,
+     "ar_equal_cells": 40
+    }
+   }
+  },
+  "summary": "the K0 refusal cost at widths 5-7 fell from -15%/-18%/-18% to -6%/-7%/-7% versus the retained measurement, but the engaging width-8 cell lost both claims it was qualified on: 52.10 tok/s at parity (1.0015x) with 40/40 AR-equal cells became 46.88 against 50.10 (0.936x) with 0/10 AR-equal cells"
+ },
+ "width_8_correctness": {
+  "observation": "every one of the 80 rows in the 10 width-8 cells reports effective_route=speculative_mtp, 7-9 draft cycles, 11-14 of 21-27 drafts accepted, 0.92 coverage, and fallback_event_counts containing physical_streaming_category_rejected and no_provider",
+  "route_signatures": {
+   "('speculative_mtp', (('no_provider', 1), ('physical_streaming_category_rejected', 1)))": 32,
+   "('speculative_mtp', (('no_provider', 1), ('physical_streaming_category_rejected', 1), ('resource_claim_miss', 2)))": 40,
+   "('speculative_mtp', (('no_provider', 1), ('physical_streaming_category_rejected', 1), ('resource_claim_miss', 1)))": 8
+  },
+  "prompt_independence": "the generated token ids agree with AR for the first 3-5 tokens and then land in the same control-token loop on all 10 prompts, so the MTP arm's output does not depend on the prompt",
+  "decoded": {
+   "ar": "thinking\\nThe user wants a Python function that merges overlapping closed integer intervals, plus a compact pytest-style test block. They",
+   "mtp": "thinking\\nThe user wants<|im_end|>\\n<|im_start|>thinking\\nWrite<|im_end|>\\n<|im_start|>thinking\\nThe user wants<|im_end|>\\n<|im_start|>"
+  },
+  "prompt_streaming_policy": "hipengine/kernels/hip_gfx1151/__init__.py GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES admits widths (1,2,3,4) for this geometry/file type/profile, so a pending set of 8 rows is refused by policy (begin_prompt_streaming returns None with mtp2_prompt_fallback_reason='physical_streaming_category_rejected')",
+  "fail_open": "the refusal does not fail the route closed: the group still reports used=true and executes its cycles against a provider with no prompt state",
+  "production_reachability": {
+   "generation2_diagnostic_plan": false,
+   "engaged_cells": 10,
+   "ar_equal_cells": 0,
+   "ratio": 0.9318,
+   "ar_tok_s": 50.14,
+   "mtp_tok_s": 46.72,
+   "first_divergence": [
+    3,
+    5
+   ],
+   "verdict": "the same protocol run with production admission (no diagnostic plan installed) engages the C8/K3 cell on all 10 cells and reproduces the identical degenerate output, so the cell is reachable through production admission and is not an artifact of the diagnostic resolver"
+  },
+  "partitioner": "hipengine/generation/qwen35_gguf_mtp2.py partition_max_requests returns 0 for the 8-row group under GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS={'production': 4}; engine_loop._maybe_run_partitioned_speculative_decode reads a non-positive bound as 'do not partition' and returns None, after which _run_decode falls through to _maybe_run_speculative_cycle on the whole 8-row work item. The M5 whole-batch-AR defense is therefore inert for an over-width all-speculative due item, which is the precondition docs/REFACTOR.md RF-M5 recorded as unreached before the 2026-09-05 width policy admitted (8,3)"
+ },
+ "retained_row_effect": {
+  "artifact": "benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json",
+  "claimed": {
+   "gfx1151_c8_k3_ratio": 1.0015,
+   "gfx1151_c8_k3_tok_s": 52.103,
+   "ar_tok_s": 52.025,
+   "ar_equal_cells": 40,
+   "c8_mtp_engaged_cells": 10,
+   "contract": "mtp_self_exact plus generated-ID equality to true same-protocol AR"
+  },
+  "measured_now": {
+   "gfx1151_c8_k3_ratio": 0.9359,
+   "gfx1151_c8_k3_tok_s": 46.88,
+   "ar_tok_s": 50.1,
+   "ar_equal_cells": 0,
+   "c8_mtp_engaged_cells": 10
+  },
+  "verdict": "both claims the row was retained on fail on the current tree: the wide cell is 6.4% slower than its own true-AR baseline and its output is not the AR output"
+ },
+ "decision": {
+  "width_policy": "the C5-C8 question is answered: on a realistic load the server executes one-row speculative groups at every concurrency, so wider cells are not the lever. MTP's concurrent win comes from interleaving one speculative row with AR rows, measured at +24% (c=2), +26% (c=4) and +34% (c=8) against a same-regime true-AR control under staggered arrival.",
+  "c8_k3": "withdraw the gfx1151 production (8,3) cell: it is slower than its own AR baseline, it is not AR-equal, and its provider is refused by the prompt-streaming policy while the route runs anyway. Follow-up work: fail the route closed when the prompt sink is refused, and either admit widths 5-8 to the prompt-streaming policy with re-qualification or keep the cell withdrawn.",
+  "arrival": "burst arrival at c>=4 forfeits rows permanently (1/8, 1/8, 0/8 engaged at c=4, 7, 8), so any retained concurrent MTP row must declare its arrival pattern; the staggered numbers are the ones that describe serving."
+ },
+ "commands": {
+  "census_points": "for c in 2 3 4 5 6 7 8; do scripts/sharegpt_mtp_routing_pass.py --num-prompts 8 --max-concurrency $c --cases short,long --max-total-len 1024 --route-mix off|off,auto|on --record-ids --stagger-ms 0|400 --label <regime>-c$c --out /tmp/widths/<regime>-c$c.json; done",
+  "widths_5_8": "scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths 5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --expected-mtp-widths 8",
+  "width_8_production_admission": "same command with --widths 8 and without --generation2-diagnostic"
+ },
+ "raw_artifacts": {
+  "widths_5_8": {
+   "path": "/tmp/widths/c1c8-suite.json",
+   "sha256": "f4682260ec8ed73a9e73451d27561b5ac641d1b067387e61265505419983aad9"
+  },
+  "width_8_production": {
+   "path": "/tmp/widths/c1c8-prod-w8.json",
+   "sha256": "86cfb65afd294379c400bce5bedc0eec8281a594a7e35f7ab8410d8c233fa6b8"
+  },
+  "census_points": {
+   "path": "/tmp/widths/<label>.json",
+   "count": 17,
+   "note": "one file per point; each carries the per-row prompt length, route, draft cycles, fallback events, and generated ids"
+  }
+ },
+ "elapsed": {
+  "widths_5_8_seconds": 400.1,
+  "width_8_production_seconds": 168.4
+ }
+}
