@@ -124,10 +124,10 @@ Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
 
-Qwen3.8 `Q4_K_M` defaults to production AR. MTP uses strict/K3 in one
-qualified single-request scope: **1.88x its matched 11.15 tok/s AR baseline**,
-not the 512/128 generation column.
-[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
+Qwen3.8 `Q4_K_M` speculates by default at one request: **20.0** tok/s against
+a matched 11.90 tok/s AR baseline (1.68x), declining above 1,023 tokens. The
+21.0 cell is the strict/K3 protocol.
+[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
@@ -231,8 +231,9 @@ Important limits:
   opt-in direct-INT8 routes; concurrent-request shapes on 24 GB are not
   qualified yet, so keep a conservative context limit there.
 - Automatic speculative decoding covers only narrow measured shapes. On
-  gfx1151, Qwen3.8 `Q4_K_M` requires the strict/K3 settings and request scope
-  shown above; production-profile requests use AR. Requesting speculation
+  gfx1151, Qwen3.8 `Q4_K_M` speculates at one active request with the default
+  candidate budget and bf16 KV, and declines to autoregressive decoding above
+  the speculative head's 1,023-token context window. Requesting speculation
   does not guarantee engagement. See [Server API](docs/API.md).
 - APIs and supported combinations can still change before 1.0.
 

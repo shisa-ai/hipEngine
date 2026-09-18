@@ -678,6 +678,15 @@ cycle. Acceptance alone is not enough.
   findings. A fresh matched external-engine run is needed to establish
   today's rankings; phase-timed headlines cannot settle them.
 
+**Update, 2026-09-18.** The first bullet is superseded on gfx1151. Qwen3.8-27B
+`Q4_K_M` now speculates at one active request with the server's default policy:
+**20.0** tok/s against a matched 11.90 tok/s autoregressive baseline at a
+517-token prompt, and 17.8 against 11.75 at 945, with identical generated text
+between the arms; it declines to autoregressive decoding above the speculative
+head's 1,023-token context window. The requalification this section asked for is
+what admitted it. The old FP16-production certificates are still not
+transferable, and the W7900 C1 rows remain withdrawn.
+
 ## Evidence
 
 ### hipEngine measurements
