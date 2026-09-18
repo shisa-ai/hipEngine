@@ -1,0 +1,53 @@
+{
+  "kind": "tp2_capacity_probe",
+  "protocol_tier": 1,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "max_sequence_length": 131072,
+  "prompt_length": 128,
+  "decode_tokens": 4,
+  "devices": [
+    0,
+    1
+  ],
+  "fractions": [
+    0.44,
+    0.56
+  ],
+  "vram_used_gib_baseline": {
+    "0": 0.035156,
+    "1": 0.035156
+  },
+  "build_seconds": 146.666,
+  "per_rank_ffn": {
+    "0": 7680,
+    "1": 9728
+  },
+  "per_rank_variants": {
+    "0": "dense_dual_local32_bf16_bf16_out",
+    "1": "dense_dual_local32_bf16_bf16_out"
+  },
+  "generate_seconds": 3.612,
+  "generated_tokens": [
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "per_rank_memory": {
+    "0": {
+      "vram_used_gib": 19.564453,
+      "tracked_allocated_gib_process_wide": 28.620794,
+      "vram_used_gib_after_decode": 19.587891,
+      "tracked_peak_gib_process_wide": 28.620794
+    },
+    "1": {
+      "vram_used_gib": 20.751953,
+      "tracked_allocated_gib_process_wide": 28.620794,
+      "vram_used_gib_after_decode": 20.775391,
+      "tracked_peak_gib_process_wide": 28.620794
+    }
+  },
+  "status": "pass",
+  "finite_logits": true,
+  "decode_rows": 4
+}

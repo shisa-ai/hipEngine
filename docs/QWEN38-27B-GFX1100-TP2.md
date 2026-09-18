@@ -131,6 +131,15 @@ commands, and artifacts:
 TP1/TP2 vs llama.cpp RDNA3 fork" and
 [`2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](../benchmarks/results/2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
 
+**Capacity after the residency fix (2026-09-18).** Tier-1 allocation probes at
+the retained 0.44/0.56 split give per-rank device VRAM of **11.994 / 13.182 GiB
+at 8192**, 19.564 / 20.752 at 131072, and **22.594 / 23.781 GiB at 180224** with
+0.22 GiB free on the RX 7900 XTX, then `HIP error 2: out of memory` at 196608 and
+262144. The route therefore fits **~180K context** on this pair, bounded by the
+24 GiB XTX rank rather than by the model's 262144 declaration, and the same
+ladder implies a pre-fix bound near 28K context. Slope is ~61.6 KiB per context
+token per rank.
+
 Packets 0-2 are measured on the target host (Ryzen 9 5950X, W7900 at
 `0000:0d:00.0` + RX 7900 XTX at `0000:10:00.0`, both `gfx1100`, separate CPU root
 ports, PCIe 4.0 x16 confirmed under load). Artifacts live under
