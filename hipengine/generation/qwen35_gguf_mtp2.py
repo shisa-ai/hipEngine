@@ -1855,6 +1855,27 @@ class Qwen35GGUFMTP2Adapter:
         arch = str(getattr(generator, "target_arch", "") or "")
         quant = str(getattr(self, "quant", "") or "")
         artifact_size = _adapter_artifact_size(generator)
+        import os as _os
+        if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_QUALIFY"):
+            import sys as _sys
+            print(
+                "[qualify-debug] "
+                f"backend={backend!r} arch={arch!r} quant={quant!r} size={artifact_size} "
+                + "sampled_rows="
+                + repr([
+                    (
+                        r.evidence_key,
+                        getattr(r, "backend", ""),
+                        getattr(r, "target_arch", ""),
+                        getattr(r, "weight_quant", ""),
+                        getattr(r, "artifact_size_bytes", None),
+                    )
+                    for r in evidence
+                    if "sampled" in tuple(getattr(r, "sampling_modes", ()))
+                ]),
+                file=_sys.stderr,
+                flush=True,
+            )
         for row in evidence:
             modes = tuple(str(mode) for mode in getattr(row, "sampling_modes", ()))
             if "sampled" not in modes:
@@ -1877,6 +1898,10 @@ class Qwen35GGUFMTP2Adapter:
         if not self._sampled_route_qualified():
             return False
         row = self.owner._row(int(request_id))
+        if row is None or bool(getattr(row, "native_sampler", False)):
+            # The accept rule draws from the row's live host sampler stream, so a
+            # row whose sampling runs on the device sampler cannot use it.
+            return False
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if params is None:
             return False
@@ -1942,7 +1967,7 @@ class Qwen35GGUFMTP2Adapter:
                 return self._decline(f"request {rid} unregistered or disabled")
             row = self.owner._row(rid)
             if (
-                not row.native_greedy
+                not (row.native_greedy or self._sampled_route_request(rid))
                 or not row.first_token_emitted
                 or row.lease is None
                 or row.slot is None
