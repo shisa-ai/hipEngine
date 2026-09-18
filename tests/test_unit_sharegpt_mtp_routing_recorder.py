@@ -718,3 +718,89 @@ def test_arm_identity_falls_back_to_the_digest_without_token_ids() -> None:
     assert identity["compared_prompts_with_ids"] == 0
     assert identity["identical_prompts"] == 1
     assert identity["median_shared_prefix_tokens"] is None
+
+
+def test_summary_splits_prefix_hits_from_misses() -> None:
+    """A repeat row reuses the prompt prefix; its rate is not a miss's rate."""
+
+    module = _module()
+
+    def row(repeat, tokens, e2e):
+        return {
+            "source_id": "p",
+            "case": "short",
+            "route_arm": "auto",
+            "repeat_index": repeat,
+            "prompt_tokens": 40,
+            "completion_tokens": tokens,
+            "ttft_ms": 500.0,
+            "e2e_ms": e2e,
+            "itl_median_ms": e2e / max(tokens, 1),
+            "output_sha256": f"sha-{repeat}",
+            "generated_token_ids": [1, 2, 3],
+            "mtp_used": True,
+            "mtp_output_tokens": tokens,
+            "timeline": [[0.0, 1], [100.0, tokens]],
+        }
+
+    summary = module.summarize([row(0, 64, 6400.0), row(1, 64, 3200.0)])
+    assert set(summary["by_repeat"]) == {"miss", "hit-1"}
+    assert summary["by_repeat"]["miss"]["decode_tokens_per_second"] == pytest.approx(10.0)
+    assert summary["by_repeat"]["hit-1"]["decode_tokens_per_second"] == pytest.approx(20.0)
+
+
+def test_beyond_case_selects_a_prompt_past_the_loader_bound() -> None:
+    """The provider-refused side of the matrix is constructed, not hoped for."""
+
+    module = _module()
+    dataset = Path("/tmp/sharegpt-recorder-beyond.json")
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "short",
+                    "conversations": [
+                        {"from": "human", "value": "a " * 10},
+                        {"from": "gpt", "value": "b " * 10},
+                    ],
+                },
+                {
+                    "id": "beyond",
+                    "conversations": [
+                        {"from": "human", "value": "a " * 1500},
+                        {"from": "gpt", "value": "b " * 10},
+                    ],
+                },
+            ]
+        )
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(
+            module,
+            "_tokenizer",
+            lambda gguf: type(
+                "Tokenizer",
+                (),
+                {"encode": staticmethod(lambda text: list(range(len(text.split()))))},
+            )(),
+        )
+        tokenizer = module._tokenizer(dataset)
+        samples = module.load_samples(
+            dataset,
+            tokenizer=tokenizer,
+            count=2,
+            seed=0,
+            output_len=None,
+            max_prompt_len=4096,
+            max_total_len=8192,
+            cases=["short", "beyond"],
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert [(sample["source_id"], sample["case"]) for sample in samples] == [
+        ("short", "short"),
+        ("beyond", "beyond"),
+    ]
+    assert samples[1]["prompt_tokens"] > module.MAX_PROMPT_LEN

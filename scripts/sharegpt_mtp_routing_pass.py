@@ -40,7 +40,9 @@ harnesses:
 * ``--cases short,long`` selects a labelled mix of prompt lengths in one load:
   a healthy short request beside the boundary-crossing row that the provider's
   window may refuse, so the provider-ready and provider-refused paths are
-  measured together and split by ``case`` in the summary.
+  measured together and split by ``case`` in the summary. ``beyond`` constructs
+  the refused side explicitly (a prompt past the loader's own 1,024-token
+  pruning bound, which needs ``--max-prompt-len`` raised with it).
 * ``--min-prompt-len`` selects the boundary-crossing row (for example 900) that
   the default 4-token floor excludes, so a healthy short request and a row that
   crosses the provider's context window can be measured together.
@@ -48,7 +50,8 @@ harnesses:
   which is the changing-occupancy case a single ``pool.map`` burst cannot show.
 * ``--prompt-repeats`` sends every prompt more than once; repeat rows after the
   first reuse the prompt prefix and exercise the prefix-cache hit path beside
-  the miss path.
+  the miss path. The summary splits them (``by_repeat``) so a hit's rate is not
+  read as a miss's.
 * ``--cancel-count`` aborts the last N requests after their first generated
   token, so the server's cancel/refill path runs beside completed requests;
   cancelled rows are reported separately from failures.
@@ -117,6 +120,10 @@ CASE_BOUNDS: dict[str, tuple[int, int]] = {
     "short": (MIN_LEN, 64),
     "mid": (65, 511),
     "long": (512, MAX_PROMPT_LEN),
+    # Deliberately past the loader's own pruning bound, so a prompt the
+    # provider's window refuses can be measured beside a healthy short one.
+    # Selecting it requires raising --max-prompt-len past 1024 as well.
+    "beyond": (MAX_PROMPT_LEN + 1, 4096),
 }
 
 
@@ -1034,6 +1041,15 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             str(case): _serving_metrics(group)
             for case, group in sorted(_group_rows(rows, "case").items())
         },
+        # Prefix-cache hit beside miss. With --prompt-repeats the rows after the
+        # first for a prompt reuse its prefix; this splits the run by that fact
+        # so a hit's rate is not read as a miss's.
+        "by_repeat": {
+            ("miss" if int(repeat) == 0 else f"hit-{repeat}"): _serving_metrics(group)
+            for repeat, group in sorted(
+                _group_rows(rows, "repeat_index").items(), key=lambda item: int(item[0])
+            )
+        },
         "arm_identity": _arm_identity(rows),
         "median_decode_tokens_per_second_per_request": (
             statistics.median(per_request_decode) if per_request_decode else None
@@ -1187,9 +1203,11 @@ def main() -> int:
         default=None,
         help=(
             "Comma-separated prompt-length cases selected in one load: any of "
-            "short (4-64 tokens), mid (65-511), long (512-1024). Each row is "
-            "labelled and the summary splits by case, so a healthy short "
-            "request is measured beside the boundary-crossing row."
+            "short (4-64 tokens), mid (65-511), long (512-1024), or beyond "
+            "(1025-4096, which also needs --max-prompt-len raised) for the row "
+            "the provider's window refuses. Each row is labelled and the "
+            "summary splits by case, so a healthy short request is measured "
+            "beside the boundary-crossing row."
         ),
     )
     parser.add_argument(
@@ -1443,6 +1461,15 @@ def main() -> int:
             f"ttft(med)={_fmt_ms(metrics['median_ttft_ms'])} "
             f"median_prompt_tokens={metrics['median_prompt_tokens']} "
             f"mtp_requests={metrics['mtp_requests']}"
+        )
+    for repeat, metrics in summary["by_repeat"].items():
+        print(
+            f"[{args.label}] prefix {repeat}: requests={metrics['requests']} "
+            f"decode={_fmt_rate(metrics['decode_tokens_per_second'])} "
+            f"itl(avg)={_fmt_ms(metrics['median_itl_ms'])} "
+            f"ttft(med)={_fmt_ms(metrics['median_ttft_ms'])} "
+            f"mtp_requests={metrics['mtp_requests']} "
+            f"median_prompt_tokens={metrics['median_prompt_tokens']}"
         )
     identity = summary["arm_identity"]
     if identity["compared_prompts"]:
