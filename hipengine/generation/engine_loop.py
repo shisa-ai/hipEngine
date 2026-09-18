@@ -2960,6 +2960,26 @@ class ResidentEngineLoop:
             suppress_speculation=suppression,
             declared_logical_c=work.declared_logical_c,
         )
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+
+            counts = dict(
+                zip(plan.request_ids, plan.candidate_counts, strict=True)
+            )
+            print(
+                f"[plan-debug] cycle={self._speculative_cycle_sequence} "
+                f"capability={'none' if capability is None else 'set'} "
+                + " ".join(
+                    f"rid={item.request_id}({item.sampling_mode})"
+                    f" k={counts.get(item.request_id)}"
+                    f" reason={getattr(reason, 'value', reason)}"
+                    for item, reason in zip(
+                        semantics, plan.reasons, strict=True
+                    )
+                ),
+                file=_sys.stderr,
+                flush=True,
+            )
         claims_fit = getattr(self.runner, "speculative_claims_fit", None)
         refused = bool(
             plan.has_speculative_rows
