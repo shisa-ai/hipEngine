@@ -2993,6 +2993,7 @@ class Qwen35GGUFFullStackRunner:
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
     deferred_device_slots: tuple[str, ...] = ()
+    selected_slots: tuple[str, ...] | None = None
     use_selective_weight_arena: bool = False
     selective_weight_max_allocation_bytes: int = (
         GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
@@ -3058,6 +3059,11 @@ class Qwen35GGUFFullStackRunner:
                 materialize_kwargs["deferred_device_slots"] = tuple(
                     dict.fromkeys(merged + tuple(self.deferred_device_slots))
                 )
+            if self.selected_slots is not None:
+                # An allowlist for callers that supply some slots themselves:
+                # the TP2 rank runner omits the MLP leaves its shard group owns.
+                # ``None`` keeps the full-model default.
+                materialize_kwargs["selected_slots"] = tuple(self.selected_slots)
             if self.use_selective_weight_arena:
                 materialize_kwargs["use_selective_weight_arena"] = True
                 materialize_kwargs["selective_weight_max_allocation_bytes"] = int(

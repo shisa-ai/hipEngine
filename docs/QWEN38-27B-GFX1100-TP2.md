@@ -118,12 +118,15 @@ tokens, f16 KV, no speculative decoding, measured against the
 | hipEngine TP2 | 39.5 | 38.8 | 22.37 GiB/rank |
 
 Decode is at parity with the fork's tensor split (38.8 vs 41.3 tok/s) and
-single-card prefill/decode are within 7%/1%. Two gaps are quantified rather
-than assumed: TP2 prefill is 0.045x this project's own single-card bulk route
-because the session is still token-serial (the P1/P2 plan below), and TP2 does
-not reduce per-rank residency — 22.37 GiB/rank measured against 7.83 GiB/rank
-of planned resident weights from the shard manifest, leaving only 1.58 GiB free
-on the 24 GiB XTX rank. Full protocol, commands, and artifacts:
+single-card prefill/decode are within 7%/1%. The residency gap in this table was
+closed later the same day: each TP2 rank was building a full runner and then
+adding its shard, so it held an MLP copy it never read. A manifest-derived slot
+allowlist now omits those leaves and the same cells measure **12.402 GiB per rank
+(even split) and 11.650 / 12.840 GiB (0.44/0.56 split)** instead of 22.37 GiB,
+leaving the 24 GiB XTX rank ~11 GiB free rather than 1.58 GiB. The remaining gap
+is TP2 prefill: it is 0.045x this project's own single-card bulk route because
+the session is still token-serial (the P1/P2 plan below). Full protocol,
+commands, and artifacts:
 [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) "Qwen3.8-27B dense Q4_K_M
 TP1/TP2 vs llama.cpp RDNA3 fork" and
 [`2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](../benchmarks/results/2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
