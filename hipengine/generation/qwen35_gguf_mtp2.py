@@ -35,6 +35,8 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.mtp_sampled_accept import sampled_accept_summary
+from hipengine.generation.sampling import speculative_sampling_mode
 from hipengine.speculative.accounting import (
     record_autoregressive_step,
     record_speculative_outputs,
@@ -154,6 +156,22 @@ def _mtp2_context_window(default: int = _MTP2_QUALIFIED_CONTEXT_WINDOW) -> int:
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
 _NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
 _NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
+
+
+def _adapter_artifact_size(generator: Any) -> int | None:
+    """Return the resident weight file's size for static evidence matching."""
+
+    from pathlib import Path
+
+    path = getattr(getattr(generator, "weight_index", None), "path", None)
+    if path is None:
+        path = getattr(generator, "model_path", None)
+    if path is None:
+        return None
+    try:
+        return int(Path(str(path)).expanduser().stat().st_size)
+    except OSError:
+        return None
 
 
 def _env_enabled(name: str, default: bool = False) -> bool:
@@ -1813,6 +1831,57 @@ class Qwen35GGUFMTP2Adapter:
                 print(f"[mtp2-decline] {reason}", file=sys.stderr, flush=True)
         return None
 
+    def _sampled_route_qualified(self) -> bool:
+        """Return whether a measured evidence row qualifies the sampled route.
+
+        The sampled route changes how accepted tokens are chosen, so it stays
+        closed until an evidence row for this artifact lists the mode. The check
+        is static (backend, target architecture, weight quant, artifact size),
+        because the capability is built before any request-specific evidence is
+        resolved; the request-time plan still validates the artifact's full
+        identity and fingerprint before a request is admitted at all.
+        """
+
+        generator = getattr(self, "generator", None)
+        if generator is None:
+            return False
+        plugin = getattr(generator, "model_plugin", None)
+        evidence = tuple(
+            getattr(plugin, "speculative_mtp_serving_evidence", ()) or ()
+        )
+        if not evidence:
+            return False
+        backend = str(getattr(generator, "backend", "") or "")
+        arch = str(getattr(generator, "target_arch", "") or "")
+        quant = str(getattr(self, "quant", "") or "")
+        artifact_size = _adapter_artifact_size(generator)
+        for row in evidence:
+            modes = tuple(str(mode) for mode in getattr(row, "sampling_modes", ()))
+            if "sampled" not in modes:
+                continue
+            if str(getattr(row, "backend", "")) != backend:
+                continue
+            if str(getattr(row, "target_arch", "")) != arch:
+                continue
+            if str(getattr(row, "weight_quant", "")) != quant:
+                continue
+            row_size = int(getattr(row, "artifact_size_bytes", 0) or 0)
+            if artifact_size is not None and row_size and row_size != artifact_size:
+                continue
+            return True
+        return False
+
+    def _sampled_route_request(self, request_id: int) -> bool:
+        """Return whether this request's due cycle must use the sampled route."""
+
+        if not self._sampled_route_qualified():
+            return False
+        row = self.owner._row(int(request_id))
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None:
+            return False
+        return speculative_sampling_mode(params) == "sampled"
+
     def capability(
         self,
         request_semantics: Sequence[SpeculativeRequestSemantics],
@@ -1929,6 +1998,7 @@ class Qwen35GGUFMTP2Adapter:
             _mtp2_context_window(),
             *(int(target.target_layout.max_sequence_length) for target in targets),
         )
+        sampled_route_qualified = self._sampled_route_qualified()
         realized_verify_modes = {
             str(state.verifier.target_verify_mode)
             for item in semantics
@@ -1998,7 +2068,9 @@ class Qwen35GGUFMTP2Adapter:
             attachment=ProviderAttachment.TARGET_ATTACHED,
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
             supported_modes=("verify_chain",),
-            supported_sampling_modes=("greedy",),
+            supported_sampling_modes=(
+                ("greedy", "sampled") if sampled_route_qualified else ("greedy",)
+            ),
             max_requests=max_requests,
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
@@ -2678,7 +2750,8 @@ class Qwen35GGUFMTP2Adapter:
                         remaining_decode=remaining_by_id[ids[0]],
                     )
                 )
-                if target_device_ready and callable(launch_device):
+                sampled_route = self._sampled_route_request(ids[0])
+                if not sampled_route and target_device_ready and callable(launch_device):
                     device_proposal = launch_device(
                         context,
                         candidate_budget=budgets[0],
@@ -2688,7 +2761,7 @@ class Qwen35GGUFMTP2Adapter:
                         context,
                         candidate_budget=budgets[0],
                         return_logits=False,
-                        allow_graph=target_device_ready,
+                        allow_graph=target_device_ready and not sampled_route,
                     )
                 else:
                     draft = None
@@ -2944,6 +3017,7 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 cancelled_request_ids=(rid,),
             )
+        sampled_route = self._sampled_route_request(rid)
         batch = frontier.target_batch
         device_proposal = state.proposal_device
         if batch is None:
@@ -2986,8 +3060,8 @@ class Qwen35GGUFMTP2Adapter:
                 transaction_id=transaction_id,
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
-                return_logits=False,
-                device_proposal=device_proposal,
+                return_logits=sampled_route,
+                device_proposal=None if sampled_route else device_proposal,
                 qualification_oracle=bool(
                     getattr(
                         self,
@@ -2996,7 +3070,8 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 ),
                 allow_graph=(
-                    int(batch.candidate_count) == int(self.candidate_budget)
+                    not sampled_route
+                    and int(batch.candidate_count) == int(self.candidate_budget)
                 ),
             )
             target_finished_ns = time.perf_counter_ns()
@@ -3018,6 +3093,15 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             summary = prepared.summary
+            if sampled_route:
+                summary = self._sampled_accept_summary(
+                    row,
+                    prepared,
+                    batch,
+                    transaction_id=transaction_id,
+                    remaining_decode=remaining,
+                )
+                prepared = replace(prepared, summary=summary)
             commit_plan = TargetCommitPlan(
                 transaction_id=transaction_id,
                 request_ids=summary.request_ids,
@@ -3093,6 +3177,14 @@ class Qwen35GGUFMTP2Adapter:
             if not output_ids:
                 raise RuntimeError("GGUF MTP2 committed cycle produced no visible token")
             committed_position = len(slot.generated_ids)
+            if sampled_route:
+                sampling_state = getattr(row, "sampling_state", None)
+                if sampling_state is None:
+                    raise RuntimeError(
+                        "sampled MTP route lost the row's live sampler state"
+                    )
+                for emitted in output_ids:
+                    sampling_state.observe(int(emitted))
             slot.generated_ids.extend(output_ids)
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)
@@ -3163,6 +3255,48 @@ class Qwen35GGUFMTP2Adapter:
                 state.verifier.rollback(prepared)
             self._restore_provider_checkpoint(state)
             raise
+
+    def _sampled_accept_summary(
+        self,
+        row: Any,
+        prepared: Any,
+        batch: TargetVerifyBatch,
+        *,
+        transaction_id: int,
+        remaining_decode: int,
+    ) -> TargetAcceptSummary:
+        """Accept the verified chain by sampling from the request's own law.
+
+        The verifier produced one logits row per verified prefix; each row is
+        processed against its own drafted history and coupled against the
+        drafted chain with ``min(1, p/q)`` plus residual resampling, drawing from
+        the row's live sampler stream.
+        """
+
+        sampling_state = getattr(row, "sampling_state", None)
+        params = getattr(row, "sampling_request", None) or getattr(
+            row, "request", None
+        )
+        if sampling_state is None or params is None:
+            raise RuntimeError(
+                "sampled MTP route requires the row's live sampler request/state"
+            )
+        tokenizer = getattr(self.generator, "tokenizer", None)
+        token_text_for_id = (
+            None
+            if tokenizer is None
+            else (lambda token_id: tokenizer.decode([int(token_id)]))
+        )
+        return sampled_accept_summary(
+            batch,
+            prepared.target_logits,
+            {int(batch.request_ids[0]): sampling_state},
+            params_for=lambda request_id: params,
+            draws=sampling_state.random_unit,
+            token_text_for_id=token_text_for_id,
+            transaction_id=int(transaction_id),
+            remaining_decode=(int(remaining_decode),),
+        )
 
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
         """Return inactive pad rows lifting a physical group to admitted multiples."""

@@ -819,6 +819,106 @@ def supports_speculative_mtp_sampling(params: Any) -> bool:
     return not speculative_mtp_sampling_blockers(params)
 
 
+SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
+    "temperature",
+    "logit_bias",
+    "repetition_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "suppress_token_ids",
+    "min_tokens",
+    "stop_token_ids",
+    "stop_token_sequences",
+    "eos_token_id",
+    "ignore_eos",
+)
+"""MTP blockers the sampled route serves exactly.
+
+Each of these is either position-independent (temperature, top-k/top-p, bias,
+EOS id) or history-dependent in a way the sampled route reproduces by processing
+every verified row against its own drafted prefix and observing only the
+committed tokens back into the row's live state. The route's binding contract is
+``docs/EXECUTION-PROFILES.md``: the emitted tokens must be distributed exactly as
+the autoregressive sampler's, which ``hipengine/speculative/sampling.py``
+establishes for these processors.
+"""
+
+SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
+    "logprobs",
+    "top_logprobs",
+    "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
+    "tool_call_constraint",
+    "thinking_budget",
+)
+"""MTP blockers the sampled route deliberately refuses.
+
+These need response metadata (logprobs), a caller-level override outside the
+sampling law (forced tokens, forced sequence completion), or per-token hooks that
+consume sampler queues or tokenizer text (JSON-object close forcing, tool-call
+constraints, the host thinking budget). A request carrying one of them stays on
+the autoregressive route rather than being served by a route that would report
+the wrong law or the wrong metadata.
+"""
+
+
+def sampled_speculative_mtp_blockers(params: Any) -> tuple[str, ...]:
+    """Return the blockers that keep a request off the sampled MTP route."""
+
+    return tuple(
+        blocker
+        for blocker in speculative_mtp_sampling_blockers(params)
+        if blocker not in SAMPLED_MTP_SERVABLE_BLOCKERS
+    )
+
+
+def supports_sampled_speculative_mtp(params: Any) -> bool:
+    """Return whether the sampled (temperature > 0) MTP route serves this request."""
+
+    return not sampled_speculative_mtp_blockers(params)
+
+
+def speculative_serving_sampling_mode(params: Any) -> str:
+    """Return the request-time serving vocabulary's sampling mode.
+
+    This is the string the model-plugin evidence rows are keyed on
+    (``greedy_fast`` / ``sampled`` / ``processed_argmax``), so a request that
+    cannot use either speculative route keeps the unqualified mode and falls to
+    the autoregressive path at admission instead of being served inaccurately.
+    """
+
+    if supports_speculative_mtp_sampling(params):
+        return "greedy_fast"
+    if sampler_fast_path_blockers(params) and supports_sampled_speculative_mtp(params):
+        # A request that actually samples (temperature, penalties, filters) is the
+        # sampled route's case. An EOS-only request keeps its previous
+        # unqualified mode rather than being newly admitted to the greedy route.
+        return "sampled"
+    return "processed_argmax"
+
+
+def speculative_sampling_mode(params: Any, *, eos_supported: bool = False) -> str:
+    """Return the sampling mode the speculative planner and adapter agree on.
+
+    ``"greedy"`` is today's raw-argmax route, ``"sampled"`` is the exact sampled
+    route (temperature and other servable processors), and ``"processed"``
+    collects every request neither route can serve exactly. The mode is the
+    vocabulary of ``SpeculativeRequestSemantics.sampling_mode`` and of the
+    evidence rows' ``sampling_modes``, so both sides read one decision.
+    """
+
+    blockers = speculative_mtp_sampling_blockers(params)
+    if not blockers:
+        return "greedy"
+    if blockers == ("eos_token_id",) and eos_supported:
+        return "greedy"
+    if supports_sampled_speculative_mtp(params):
+        return "sampled"
+    return "processed"
+
+
 MTP_THINKING_RELAXABLE_BLOCKERS: tuple[str, ...] = ("thinking_budget",)
 """MTP fast-path blockers the server can relax under the hint thinking policy.
 
@@ -903,32 +1003,55 @@ def row_seed_for_index(params: Any, row_index: int, *, request_id: int = 0) -> i
     return derive_row_seed(getattr(params, "seed", None), row_index, request_id=request_id)
 
 
-def select_token(
+def _default_row_state(params: Any) -> RowSamplingState:
+    """Build the state ``select_token`` uses when the caller supplies none."""
+
+    return RowSamplingState(
+        seed=derive_row_seed(getattr(params, "seed", None), 0),
+        forced_tokens_pending=_forced_tokens_pending(params),
+        forced_token_reason=getattr(params, "forced_token_reason", None),
+        stop_token_sequences=normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)),
+        post_thinking_forced_tokens_pending=_post_thinking_forced_tokens_pending(params),
+        post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
+        force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),
+        force_sequence_completion_reason=getattr(params, "force_sequence_completion_reason", None),
+        json_object_close_forcing=bool(getattr(params, "json_object_close_forcing", False)),
+        tool_call_constraint=getattr(params, "tool_call_constraint", None),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ProcessedRow:
+    """One logits row after every state-dependent processor has been applied.
+
+    The processing half of ``select_token`` and the distribution half of
+    ``processed_distribution`` share this so both routes see the identical
+    support, identical weights, and identical constraint view.
+    """
+
+    processed: np.ndarray
+    temperature: float
+    requested_logprobs: bool
+    requested_top_logprobs: int
+    constraint_active: bool
+    token_allowed: Callable[[int], bool]
+    active_processors: tuple[str, ...]
+    fast_path_blockers: tuple[str, ...]
+
+
+def _process_row(
     logits: np.ndarray | Sequence[float],
     params: Any,
-    state: RowSamplingState | None = None,
-    *,
-    token_text_for_id: Callable[[int], str] | None = None,
-) -> SampleResult:
-    """Select one token from a single logits row using the documented order."""
+    row_state: RowSamplingState,
+    token_text_for_id: Callable[[int], str] | None,
+) -> _ProcessedRow:
+    """Apply bias, penalties, suppression, and budget processors to one row.
 
-    validate_sampling_params(params)
-    row_state = (
-        state
-        if state is not None
-        else RowSamplingState(
-            seed=derive_row_seed(getattr(params, "seed", None), 0),
-            forced_tokens_pending=_forced_tokens_pending(params),
-            forced_token_reason=getattr(params, "forced_token_reason", None),
-            stop_token_sequences=normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)),
-            post_thinking_forced_tokens_pending=_post_thinking_forced_tokens_pending(params),
-            post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
-            force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),
-            force_sequence_completion_reason=getattr(params, "force_sequence_completion_reason", None),
-            json_object_close_forcing=bool(getattr(params, "json_object_close_forcing", False)),
-            tool_call_constraint=getattr(params, "tool_call_constraint", None),
-        )
-    )
+    This must stay free of RNG use and of token observation: the speculative
+    route processes several rows of one request against the same history, and a
+    draw or an ``observe`` here would shift that request's sampling stream.
+    """
+
     source = np.asarray(logits, dtype=np.float32)
     if source.ndim != 1:
         raise ValueError("logits must be a one-dimensional row")
@@ -981,6 +1104,129 @@ def select_token(
             return False
         return row_state.accepts_token_text(token_text)
 
+    return _ProcessedRow(
+        processed=processed,
+        temperature=temperature,
+        requested_logprobs=requested_logprobs,
+        requested_top_logprobs=requested_top_logprobs,
+        constraint_active=constraint_active,
+        token_allowed=token_allowed,
+        active_processors=active_processors,
+        fast_path_blockers=fast_path_blockers,
+    )
+
+
+def processed_support(
+    processed: np.ndarray,
+    params: Any,
+    *,
+    temperature: float,
+    token_allowed: Callable[[int], bool] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(retained_ids, normalized_probs)`` for a processed logits row.
+
+    This is the exact support ``select_token`` samples from: temperature scaling,
+    top-k, softmax, top-p/min-p filtering, and renormalization.
+    """
+
+    if not float(temperature) > 0.0:
+        raise ValueError("processed_support requires a positive temperature")
+    scaled = processed / float(temperature)
+    top_k = int(getattr(params, "top_k", 0))
+    candidate_ids = (
+        _constraint_candidate_ids(scaled, token_allowed, limit=top_k)
+        if token_allowed is not None
+        else _top_k_candidate_ids(scaled, top_k)
+    )
+    if candidate_ids.size == 0:
+        raise ValueError("sampling filters removed all finite logits")
+    candidate_logits = scaled[candidate_ids]
+    candidate_probs = _softmax(candidate_logits)
+    retained_ids, retained_probs = _apply_probability_filters(
+        candidate_ids,
+        candidate_probs,
+        top_p=float(getattr(params, "top_p", 1.0)),
+        min_p=float(getattr(params, "min_p", 0.0)),
+    )
+    probs_sum = float(retained_probs.sum())
+    if not math.isfinite(probs_sum) or probs_sum <= 0.0:
+        raise ValueError("sampling probabilities are not normalizable")
+    return retained_ids, retained_probs / probs_sum
+
+
+def sample_support(
+    retained_ids: np.ndarray,
+    retained_probs: np.ndarray,
+    draw: float,
+) -> tuple[int, float]:
+    """Draw one token from a retained support with one uniform ``draw``."""
+
+    cumulative = np.cumsum(retained_probs)
+    choice = int(np.searchsorted(cumulative, draw, side="right"))
+    if choice >= retained_ids.size:
+        choice = retained_ids.size - 1
+    return int(retained_ids[choice]), float(retained_probs[choice])
+
+
+def processed_distribution(
+    logits: np.ndarray | Sequence[float],
+    params: Any,
+    state: RowSamplingState | None = None,
+    *,
+    token_text_for_id: Callable[[int], str] | None = None,
+) -> tuple[tuple[int, ...], np.ndarray]:
+    """Return the support and weights the autoregressive sampler would draw from.
+
+    ``select_token`` and this function share ``_process_row`` and
+    ``processed_support``, so a speculative route that samples from this
+    distribution emits exactly the tokens the autoregressive route would.
+    A greedy row (``temperature <= 0``) returns a one-point support holding the
+    argmax, which is the decision the autoregressive route makes. The caller's
+    ``state`` is never observed into and never drawn from.
+    """
+
+    validate_sampling_params(params)
+    row_state = state if state is not None else _default_row_state(params)
+    row = _process_row(logits, params, row_state, token_text_for_id)
+    if row.temperature <= 0.0:
+        if row.constraint_active:
+            constrained_ids = _constraint_candidate_ids(row.processed, row.token_allowed, limit=1)
+            if constrained_ids.size == 0:
+                raise ValueError("no finite logits remain after token constraints")
+            token_id = int(constrained_ids[0])
+        else:
+            token_id = _argmax_lower_id(row.processed)
+        return (token_id,), np.asarray([1.0], dtype=np.float64)
+    retained_ids, retained_probs = processed_support(
+        row.processed,
+        params,
+        temperature=row.temperature,
+        token_allowed=row.token_allowed if row.constraint_active else None,
+    )
+    return tuple(int(token_id) for token_id in retained_ids), retained_probs
+
+
+def select_token(
+    logits: np.ndarray | Sequence[float],
+    params: Any,
+    state: RowSamplingState | None = None,
+    *,
+    token_text_for_id: Callable[[int], str] | None = None,
+) -> SampleResult:
+    """Select one token from a single logits row using the documented order."""
+
+    validate_sampling_params(params)
+    row_state = state if state is not None else _default_row_state(params)
+    row = _process_row(logits, params, row_state, token_text_for_id)
+    source = row.processed
+    processed = row.processed
+    active_processors = row.active_processors
+    fast_path_blockers = row.fast_path_blockers
+    requested_logprobs = row.requested_logprobs
+    requested_top_logprobs = row.requested_top_logprobs
+    temperature = row.temperature
+    constraint_active = row.constraint_active
+    token_allowed = row.token_allowed
     forced_token_id = row_state.peek_forced_token()
     if forced_token_id is not None:
         token_id = int(forced_token_id)
@@ -1046,34 +1292,14 @@ def select_token(
             fast_path_blockers=fast_path_blockers,
         )
 
-    scaled = processed / temperature
-    top_k = int(getattr(params, "top_k", 0))
-    candidate_ids = (
-        _constraint_candidate_ids(scaled, token_allowed, limit=top_k)
-        if constraint_active
-        else _top_k_candidate_ids(scaled, top_k)
+    retained_ids, retained_probs = processed_support(
+        processed,
+        params,
+        temperature=temperature,
+        token_allowed=token_allowed if constraint_active else None,
     )
-    if candidate_ids.size == 0:
-        raise ValueError("sampling filters removed all finite logits")
-    candidate_logits = scaled[candidate_ids]
-    candidate_probs = _softmax(candidate_logits)
-    retained_ids, retained_probs = _apply_probability_filters(
-        candidate_ids,
-        candidate_probs,
-        top_p=float(getattr(params, "top_p", 1.0)),
-        min_p=float(getattr(params, "min_p", 0.0)),
-    )
-    probs_sum = float(retained_probs.sum())
-    if not math.isfinite(probs_sum) or probs_sum <= 0.0:
-        raise ValueError("sampling probabilities are not normalizable")
-    retained_probs = retained_probs / probs_sum
     draw = row_state.random_unit()
-    cumulative = np.cumsum(retained_probs)
-    choice = int(np.searchsorted(cumulative, draw, side="right"))
-    if choice >= retained_ids.size:
-        choice = retained_ids.size - 1
-    token_id = int(retained_ids[choice])
-    probability = float(retained_probs[choice])
+    token_id, probability = sample_support(retained_ids, retained_probs, draw)
     row_state.observe(token_id)
     row_state._skip_next_selected_token_text = row_state._skip_next_selected_token_text or (
         constraint_active and _is_eos_token(params, token_id)

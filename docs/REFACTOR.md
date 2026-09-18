@@ -8037,3 +8037,20 @@ every one of its 162 cycles. Remove the flag and
 `speculative_split_refused_groups` once the coupling has a retained row on a
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
+
+**Sampled MTP acceptance route (default closed, added 2026-09-18).**
+`hipengine/speculative/sampling.py` and `hipengine/generation/mtp_sampled_accept.py`
+implement the temperature-capable accept rule (`min(1, p/q)` plus the residual
+resample), the adapter reaches it only when `_sampled_route_qualified()` finds a
+model-plugin evidence row advertising the `sampled` sampling mode for
+`(backend, target_arch, quant, artifact size)`, and the engine loop's `sampled`
+planner mode is turned into `UNSUPPORTED_SAMPLING` by the policy whenever the
+capability does not advertise it. No evidence row exists yet, so every
+temperature request still runs autoregressive. The route also forces the eager
+host proposal (`allow_graph=False`) and `return_logits=True` verification because
+the accept summary is computed on host logits. Remove the qualification gate -
+and write the row - only after the serving arm measured in
+`worklog/entries/20260918T144617.823332Z-lhl-mtp-sampled-acceptance-distribution-gate-78f4a5.md`
+shows the sampled route beating a matched true-AR control at `temperature > 0`;
+the graph-capable form (a device-side accept that reads the row's sampler state)
+is the follow-up that removes the `allow_graph=False` restriction.
