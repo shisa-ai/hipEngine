@@ -851,7 +851,7 @@ def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True, di
     monkeypatch.setattr(
         coverage,
         "_session_factory",
-        lambda model, *, devices, mode: _FakeCoverageSession(
+        lambda model, *, devices, mode, shard_fractions=None: _FakeCoverageSession(
             devices, mode, nonfinite=nonfinite, differ_teachers=differ_teachers
         ),
     )

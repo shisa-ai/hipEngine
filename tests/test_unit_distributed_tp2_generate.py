@@ -402,10 +402,12 @@ def env(monkeypatch):
             self.staging_dtype = kwargs.get("staging_dtype")
             groups.append(self)
 
-    def fake_resolve(model_path, *, world_size, backend="hip_gfx1100"):
+    def fake_resolve(model_path, *, world_size, backend="hip_gfx1100", uneven_split=None):
         return None, {}, None, FakeConfig(LAYER_TYPES)
 
-    def fake_materialize(model_path, *, world_size, layer_ids=None, backend="hip_gfx1100"):
+    def fake_materialize(
+        model_path, *, world_size, layer_ids=None, backend="hip_gfx1100", uneven_split=None
+    ):
         return {}
 
     def fake_upload(runtime, shards, *, devices):

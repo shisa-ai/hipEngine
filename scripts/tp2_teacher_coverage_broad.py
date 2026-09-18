@@ -144,11 +144,34 @@ def _load_tokenizer() -> object:
     return Qwen35GGUFTokenizer.from_gguf_info(_loading.load_gguf_index(MODEL))
 
 
+def _parse_shard_fractions(text: str | None) -> tuple[float, ...] | None:
+    """Parse ``"0.417145/0.582855"`` into per-rank shard shares."""
+
+    if text is None:
+        return None
+    parts = [part.strip() for part in str(text).split("/")]
+    if len(parts) < 2 or any(not part for part in parts):
+        raise SystemExit(
+            f"--shard-fractions must be a '/' separated share per rank, got {text!r}"
+        )
+    try:
+        values = tuple(float(part) for part in parts)
+    except ValueError as error:
+        raise SystemExit(f"--shard-fractions is not numeric: {text!r}") from error
+    return values
+
+
 def _session_factory(
     model: str, *, devices: tuple[int, ...], mode: str,
     resident_control: bool = False, capacity: int = 2048, row_hook=None,
+    shard_fractions: tuple[float, ...] | None = None,
 ) -> object:
-    """Seam for mocked tests; constructs one resident session."""
+    """Seam for mocked tests; constructs one resident session.
+
+    ``shard_fractions`` applies to the tp2 arm only. The tp1 controls are the
+    comparison basis and must stay exactly as they are, so they never receive
+    it.
+    """
 
     if resident_control:
         from scripts.tp2_resident_control import create_coverage_session
@@ -156,7 +179,10 @@ def _session_factory(
                                        capacity=capacity, row_hook=row_hook)
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 
-    return MlpTP2GenerationSession(model, devices=devices, mode=mode)
+    uneven_split = shard_fractions if mode == "tp2" else None
+    return MlpTP2GenerationSession(
+        model, devices=devices, mode=mode, uneven_split=uneven_split
+    )
 
 
 # -- metrics ----------------------------------------------------------------
@@ -700,6 +726,8 @@ def _device_identities(session: object) -> dict[str, object]:
 
 
 def _resolved_route(session: object) -> dict[str, object]:
+    uneven = getattr(session, "uneven_split", None)
+    group = getattr(session, "_shard_group", None)
     return {
         "mode": session.mode,  # type: ignore[attr-defined]
         "schedule": session.schedule,  # type: ignore[attr-defined]
@@ -708,6 +736,37 @@ def _resolved_route(session: object) -> dict[str, object]:
         "reduce_mode": session.reduce_mode,  # type: ignore[attr-defined]
         "head_shard": session.head_shard,  # type: ignore[attr-defined]
         "max_sequence_length": session.max_sequence_length,  # type: ignore[attr-defined]
+        "uneven_split": (
+            None
+            if uneven is None
+            else {
+                "fractions": [float(value) for value in uneven.fractions],
+                "leaves": list(uneven.leaves),
+                "alignment": int(uneven.alignment),
+            }
+        ),
+        "shard_widths": (
+            {str(k): int(v) for k, v in group.per_rank_ffn.items()}
+            if group is not None
+            else None
+        ),
+        # The dense pair+SiLU allowlist is exact-shape, so a rank whose width is
+        # not admitted silently falls back to the unfused three-launch chain.
+        # Recording the resolved variant per rank is what makes a gate artifact
+        # self-describing about the route it measured, rather than leaving the
+        # arithmetic contract to be inferred from the widths.
+        "shard_variants": (
+            (
+                {str(rank): value for rank, value in group.mlp_decode_variant.items()}
+                if isinstance(group.mlp_decode_variant, dict)
+                else {
+                    str(rank): group.mlp_decode_variant
+                    for rank in sorted(group.per_rank_ffn)
+                }
+            )
+            if group is not None
+            else None
+        ),
     }
 
 
@@ -751,6 +810,13 @@ def main(argv: list[str] | None = None) -> int:
              'prefill candidate instead of the committed token-serial route; '
              'the artifact records the schedule it measured')
     parser.add_argument('--teacher-source', type=Path)
+    parser.add_argument(
+        '--shard-fractions',
+        type=_parse_shard_fractions,
+        default=None,
+        help="per-rank MLP shard shares for the tp2 arm, e.g. '0.417145/0.582855'; "
+        'the tp1 controls are never given this, so they stay the comparison basis',
+    )
     parser.add_argument('--sustained-report', type=Path, nargs=3)
     parser.add_argument('--horizon', type=int, default=None,
         help='score only the first D teacher-forced rows of each prompt. The '
@@ -813,7 +879,12 @@ def main(argv: list[str] | None = None) -> int:
         session: object | None = None
         try:
             build0 = time.perf_counter()
-            session = _session_factory(MODEL, devices=devices, mode=mode)
+            session = _session_factory(
+                MODEL,
+                devices=devices,
+                mode=mode,
+                shard_fractions=(args.shard_fractions if mode == "tp2" else None),
+            )
             arm_build_s[arm] = time.perf_counter() - build0
             device_identities[arm] = _device_identities(session)
             resolved_routes[arm] = _resolved_route(session)

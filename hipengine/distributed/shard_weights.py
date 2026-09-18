@@ -128,6 +128,7 @@ def resolve_mlp_shard_context(
     *,
     world_size: int,
     backend: str = "hip_gfx1100",
+    uneven_split: Any = None,
 ) -> tuple[Any, dict[str, Any], dict[int, Any], Any]:
     """Resolve everything the shard payloads are derived from, once.
 
@@ -156,7 +157,7 @@ def resolve_mlp_shard_context(
     info = scan_gguf(str(model_path))
     config = qwen35_gguf_config_from_metadata(info)
     ffn = int(config.feed_forward_length)
-    if ffn % world_size:
+    if uneven_split is None and ffn % world_size:
         raise MLPShardError(
             f"feed_forward_length {ffn} does not split across {world_size} ranks"
         )
@@ -181,7 +182,12 @@ def resolve_mlp_shard_context(
     }
 
     fingerprint = build_qwen35_gguf_role_manifest(model_map).fingerprint
-    manifest = build_shard_manifest(info, world_size=world_size, model_hash=fingerprint)
+    manifest = build_shard_manifest(
+        info,
+        world_size=world_size,
+        model_hash=fingerprint,
+        uneven_split=uneven_split,
+    )
     by_name = {plan.name: plan for plan in manifest.tensors}
 
     tensor_plans: dict[int, Any] = {}
@@ -262,6 +268,7 @@ def materialize_mlp_shards(
     world_size: int,
     layer_ids: Iterable[int] | None = None,
     backend: str = "hip_gfx1100",
+    uneven_split: Any = None,
 ) -> dict[int, MlpShardLayer]:
     """Materialize every requested layer's rank-local MLP payloads.
 
@@ -271,7 +278,7 @@ def materialize_mlp_shards(
     """
 
     materialization, _context, tensor_plans, config = resolve_mlp_shard_context(
-        model_path, world_size=int(world_size), backend=backend
+        model_path, world_size=int(world_size), backend=backend, uneven_split=uneven_split
     )
     from hipengine.loading.gguf import GGUFReader
 

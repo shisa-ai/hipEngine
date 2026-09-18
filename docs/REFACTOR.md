@@ -1,3 +1,38 @@
+## TP2 uneven MLP shard split (2026-09-18)
+
+- `MlpTP2GenerationSession(uneven_split=...)` gives the MLP projections an
+  explicit per-rank boundary instead of the even `feed_forward_length //
+  world_size` one, because the two cards in the TP2 host are not equal: the
+  RX 7900 XTX runs every streaming kernel 15-21% faster than the W7900, so an
+  even split makes the slower card the pacer and leaves the faster card idle
+  inside the exchange spin (4.182 ms/step measured on rank 1). The planned
+  shares are 0.417145 / 0.582855 of the MLP pool, worth a predicted 1.752
+  ms/step (~7.3% of the 24.025 ms/token wall); see
+  `benchmarks/results/2026-09-18-w7900-tp2-split-balance-plan.json` and
+  `docs/QWEN38-27B-GFX1100-TP2.md`.
+- **Default-off.** The session takes `uneven_split=None`, which is the even
+  split, until the uneven path passes the production numerical gate
+  (`scripts/tp2_teacher_coverage_broad.py`) on the full multi-category suite.
+  `ffn_gate`/`ffn_up` move independent output rows and are bit-exact on their
+  own, but the three MLP roles are **coupled** - the rank owning intermediate
+  rows `[b, b')` of gate/up must reduce over exactly those columns of
+  `ffn_down` - so the boundary cannot move without changing `ffn_down`'s
+  summation grouping. That is a production-profile arithmetic change, not an
+  exactness argument, and it is why the policy is gated rather than defaulted.
+- `UnevenSplitPolicy` refuses any leaf outside `SAFE_UNEVEN_LEAVES`
+  (`ffn_gate`/`ffn_up`/`ffn_down`) and refuses a partially named coupled set.
+  Both refusals are structural: every attention and GDN tensor is
+  head-structured, and `partition_groups` rejects uneven splits for them
+  because query-head ownership and KV-head loading must correspond. A
+  `ffn_down`-only or `ffn_gate`-only policy would silently produce a wrong MLP
+  rather than an error, so it cannot be constructed.
+- Removal condition: once the uneven split passes the gate and is promoted to
+  the default, this entry should be reduced to the promotion note and the
+  `uneven_split` parameter kept (the split is host-dependent, so the even path
+  remains the correct default on a host with two matched cards). If a startup
+  per-rank bandwidth probe is added later, the hand-measured shares here are
+  what it should reproduce.
+
 # hipEngine Refactor / Dead-Path Ledger
 
 ## TP2 `decode_partial_dtype` knob (2026-09-17)

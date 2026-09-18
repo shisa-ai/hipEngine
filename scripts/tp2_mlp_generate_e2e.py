@@ -250,6 +250,22 @@ def _exchange_summary(group: Any, session: Any) -> dict[str, Any]:
     }
 
 
+def _parse_shard_fractions(text: str | None) -> tuple[float, ...] | None:
+    """Parse ``"0.417145/0.582855"`` into per-rank shard shares."""
+
+    if text is None:
+        return None
+    parts = [part.strip() for part in str(text).split("/")]
+    if len(parts) < 2 or any(not part for part in parts):
+        raise SystemExit(
+            f"--shard-fractions must be a '/' separated share per rank, got {text!r}"
+        )
+    try:
+        return tuple(float(part) for part in parts)
+    except ValueError as error:
+        raise SystemExit(f"--shard-fractions is not numeric: {text!r}") from error
+
+
 def run_arm(
     *,
     model: str,
@@ -263,6 +279,7 @@ def run_arm(
     schedule: str = "eager",
     reduce_mode: str = "host",
     head_shard: bool = False,
+    shard_fractions: tuple[float, ...] | None = None,
 ) -> tuple[dict[str, Any], np.ndarray]:
     """One fresh session: generations + teacher-forced logits.
 
@@ -280,6 +297,7 @@ def run_arm(
         schedule=schedule,
         reduce_mode=reduce_mode,
         head_shard=head_shard,
+        uneven_split=(shard_fractions if mode == "tp2" else None),
     )
     built_s = time.perf_counter() - started
     # Record the route the session actually resolved, not only what the caller
@@ -297,6 +315,25 @@ def run_arm(
         "head_shard_requested": head_shard,
         "mlp_decode_variant": (
             session._shard_group.mlp_decode_variant
+            if mode == "tp2" and session._shard_group is not None
+            else None
+        ),
+        "uneven_split": (
+            None
+            if getattr(session, "uneven_split", None) is None
+            else {
+                "fractions": [
+                    float(value) for value in session.uneven_split.fractions
+                ],
+                "leaves": list(session.uneven_split.leaves),
+                "alignment": int(session.uneven_split.alignment),
+            }
+        ),
+        "shard_widths": (
+            {
+                str(device): int(width)
+                for device, width in session._shard_group.per_rank_ffn.items()
+            }
             if mode == "tp2" and session._shard_group is not None
             else None
         ),
@@ -392,7 +429,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_false",
         help="run the replicated head (the opt-out control)",
     )
+    parser.add_argument(
+        "--shard-fractions",
+        default=None,
+        help="per-rank MLP shard shares for the tp2 arm, e.g. '0.417145/0.582855'. "
+        "The default (unset) is the even split; the tp1 controls never take it, "
+        "so they stay the comparison basis.",
+    )
     args = parser.parse_args(argv)
+    shard_fractions = _parse_shard_fractions(args.shard_fractions)
 
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     info = scan_gguf(args.model)
@@ -422,6 +467,7 @@ def main(argv: list[str] | None = None) -> int:
             schedule=args.schedule if mode == "tp2" else "eager",
             reduce_mode=args.reduce_mode if mode == "tp2" else "host",
             head_shard=args.head_shard if mode == "tp2" else False,
+            shard_fractions=shard_fractions,
         )
         arms.append(record)
         logits_by_label[label] = teacher_logits

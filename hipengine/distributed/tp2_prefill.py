@@ -70,9 +70,20 @@ class BatchedPrefillPlan:
     hidden: int
     ffn: int
     layers: tuple[LayerPrefillShape, ...]
+    rank_ffn: int | None = None
 
     @property
     def per_rank_ffn(self) -> int:
+        """This rank's intermediate width.
+
+        ``rank_ffn`` is the explicit width for an uneven split; when it is
+        unset the even ``ffn // num_ranks`` applies. The manifest is the
+        authority for a real session - this plan is the diagnostic's model of
+        it, and it must be told the width rather than assuming an even one.
+        """
+
+        if self.rank_ffn is not None:
+            return int(self.rank_ffn)
         return self.ffn // self.num_ranks
 
     @property
@@ -99,7 +110,16 @@ class BatchedPrefillPlan:
             raise PrefillPlanError("chunk_rows must be positive")
         if self.hidden < 1 or self.ffn < 1:
             raise PrefillPlanError("hidden and ffn must be positive")
-        if self.ffn % (self.num_ranks * MLP_BLOCK) != 0:
+        if self.rank_ffn is not None:
+            if self.rank_ffn < 1 or self.rank_ffn > self.ffn:
+                raise PrefillPlanError(
+                    f"rank_ffn {self.rank_ffn} is outside the intermediate axis {self.ffn}"
+                )
+            if self.rank_ffn % MLP_BLOCK:
+                raise PrefillPlanError(
+                    f"rank_ffn {self.rank_ffn} is not a multiple of the {MLP_BLOCK}-element block"
+                )
+        elif self.ffn % (self.num_ranks * MLP_BLOCK) != 0:
             raise PrefillPlanError(
                 f"ffn {self.ffn} is not divisible into {self.num_ranks} block-aligned ranks"
             )
@@ -161,6 +181,7 @@ def plan_batched_prefill(
     *,
     num_ranks: int,
     chunk_rows: int,
+    per_rank_ffn: int | None = None,
 ) -> BatchedPrefillPlan:
     """Derive the rank-local batched-prefill geometry from a model config.
 
@@ -168,7 +189,8 @@ def plan_batched_prefill(
     contiguous groups (column-parallel gate/up, row-parallel down); the
     reduction sums the full-hidden partials. Attention, GDN, and the final norm
     stay replicated per rank in this diagnostic, so no head or state axis is
-    split here.
+    split here. ``per_rank_ffn`` models an uneven split for one rank; it must be
+    a whole number of quant blocks.
     """
 
     num_ranks = int(num_ranks)
@@ -180,12 +202,19 @@ def plan_batched_prefill(
 
     hidden = _positive_int(config, "hidden_size")
     ffn = _positive_int(config, "feed_forward_length")
-    if ffn % (num_ranks * MLP_BLOCK) != 0:
+    if per_rank_ffn is not None:
+        width = int(per_rank_ffn)
+        if width < 1 or width > ffn or width % MLP_BLOCK:
+            raise PrefillPlanError(
+                f"per_rank_ffn {width} is not a positive whole number of {MLP_BLOCK}-element "
+                f"blocks within the intermediate axis {ffn}"
+            )
+    elif ffn % (num_ranks * MLP_BLOCK) != 0:
         raise PrefillPlanError(
             f"ffn {ffn} is not divisible into {num_ranks} block-aligned ranks "
             f"(block {MLP_BLOCK})"
         )
-    per_rank_ffn = ffn // num_ranks
+    per_rank_ffn = int(per_rank_ffn) if per_rank_ffn is not None else ffn // num_ranks
 
     ssm_group_count = _positive_int(config, "ssm_group_count")
     ssm_state_size = _positive_int(config, "ssm_state_size")
@@ -231,6 +260,7 @@ def plan_batched_prefill(
         hidden=hidden,
         ffn=ffn,
         layers=tuple(layers),
+        rank_ffn=per_rank_ffn if per_rank_ffn != ffn // num_ranks else None,
     )
     plan.validate()
     return plan
