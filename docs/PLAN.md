@@ -354,11 +354,26 @@ and speculative policy. Weight/KV representation changes and approximate
 routing, acceptance, or sampling remain explicit product/experiment choices.
 Profile resolution produces an immutable variant manifest over the existing
 `(backend, layer, quant, variant)` registry; it is not a fifth plugin axis and
-must not add `if profile` branches to engine/model hot paths. Missing or
-uncertified production variants fall back to registered strict variants.
+must not add `if profile` branches to engine/model hot paths. Public profile
+selection keeps registered strict fallbacks for uncertified arithmetic; an
+implemented candidate remains reachable for explicitly recorded evaluation.
 Profile factories remain ordinary plugin construction hooks, not artifact
 validation or transaction frameworks. Model loaders own format/consumer checks;
 numerical evidence is still scoped to the tested artifact and workload.
+
+Missing benchmark coverage is not an implementation failure. Within declared
+input, resource and execution contracts, run implemented paths, measure real
+workloads and fix observed failures instead of adding per-workload allowlists.
+Separate runnability from evidence-backed claims/default promotion. A concrete
+unsupported operation, resource bound or known failure may require a scoped
+fallback; a local transition must not permanently disable valid subsequent work
+or unrelated requests. See [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) §1.1.
+
+Failure recovery contains the smallest affected ownership scope the runner can
+establish, with quiescence and safe reclamation; unknown post-failure state
+requires a controlled stop. Group scheduling preserves per-request capabilities
+while permitting explicit compatibility, resource, fairness and economic
+choices. Sections 4.3–4.4 of the same contract define those obligations.
 
 The exact control-plane, determinism, numerical calibration, evaluator, and
 migration/default rules are normative in
@@ -372,10 +387,11 @@ but does not switch the public default: its canonical server packet fails soak
 completion (87 completed, 33 overloaded of 120), and named-profile manifest,
 task, and BF16-relative evidence remains open. See the
 [`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
-The next same-host tuning cycle is governed by the frozen
-[`ZBook production-numerics PLAN/PUNCHLIST`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md);
-its PN1 named-profile/control foundation must land before new candidate
-arithmetic or kernel tuning begins.
+The frozen
+[`ZBook production-numerics PLAN/PUNCHLIST`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md)
+records that campaign's evaluator/control sequence. Under the evaluation policy
+above, completing a qualification packet is not a prerequisite for implementing
+or running the candidate that the packet must evaluate.
 
 ## Architecture
 

@@ -652,8 +652,13 @@ other rows or hold a model/session lock.
 
 ## Correctness and evidence gates
 
-`docs/BENCHMARK.md` is authoritative. This section summarizes the concurrency
-requirements so roadmap items have local exit criteria.
+`docs/BENCHMARK.md` is authoritative for measurement protocols. These gates are
+exit criteria for claims and promotion, not prerequisites for running an
+implemented candidate to discover its behavior. Missing workload coverage is
+not a runtime failure: use representative real traffic and targeted transition
+and fault tests, then repair concrete failures. Evidence covers implementation
+regimes rather than an exhaustive list of request lengths or compositions. See
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) section 1.1.
 
 ### Gate 1 — primitive kernels
 
@@ -701,11 +706,17 @@ At minimum:
 - c4→c3→c2→c1 sparse-slot survival;
 - cancellation of one row while neighbors continue;
 - one newly admitted row while existing rows continue;
-- one row's execution failure while its neighbors keep serving, with the
-  survivors matching their control outputs;
+- a request-local execution failure with unaffected neighbors continuing;
+- a packed/shared-state failure with retirement limited to the established
+  affected ownership scope, plus a cleanup failure and simulated fatal state;
+- survivor state/ownership checks at the recovery boundary and output controls
+  appropriate to the profile and subsequent execution schedule;
 - a request admitted and completed after a contained failure;
-- the refusal path, where containment cannot be proven and the service reports
-  itself unhealthy instead of continuing;
+- the refusal path, where safe recovery after a failure cannot be established
+  and the service reports itself unhealthy instead of continuing;
+- mixed request eligibility (a context crossing, provider refusal or cache hit
+  beside an otherwise eligible row), preserving each request's capabilities and
+  reporting the actual local or scheduling reason for fallback;
 - prefill/decode interleaving;
 - standard all-row prompt 512 / decode 128.
 
@@ -713,8 +724,12 @@ A short-horizon token-only suite is supportive evidence, not lifecycle closure.
 Every profile requires exact maps, positions, masks, `KVLiveSpans`, commit/
 rollback destinations, reclaim, and neighbor isolation. Strict/batch-invariant
 add their result-equality contract; production uses strict-teacher numerical
-quality at the transition contexts. Execution-failure containment and its
-required evidence are normative in
+quality at transition contexts and same-schedule determinism. A recovery that
+changes future batch width does not impose cross-width ID equality on
+production. Scheduling may choose a compatible route for resource, fairness or
+measured cost reasons; it may not disguise a neighbor's refusal as that
+request's own ineligibility. Execution-failure containment and its required
+evidence are normative in
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) section 4.3; per-request
 eligibility under group execution is section 4.4.
 
@@ -749,8 +764,9 @@ Each retained c=N row records:
 A native row must beat the serial bridge and c1 aggregate to become a scaling
 claim. There is no arbitrary fixed speedup target for an individual qualified
 route; exact and production-profile non-regressive wins are kept under the
-repository performance policy. Changing the public default profile separately
-uses the material SLO-goodput/c1 guard in `EXECUTION-PROFILES.md`.
+repository performance policy. Changing the public default profile uses the
+correctness and non-regression requirements in `EXECUTION-PROFILES.md`; it does
+not add an arbitrary minimum speedup or prohibit diagnostic runs beforehand.
 
 ### Prompt coverage
 
