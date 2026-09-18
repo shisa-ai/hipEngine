@@ -67,6 +67,7 @@ from hipengine.generation import (
     derive_row_seed,
     relax_thinking_budget_for_mtp,
     speculative_mtp_sampling_blockers,
+    speculative_serving_sampling_mode,
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
@@ -2362,11 +2363,7 @@ def _realized_model_serving_plan(
     )
     sampling_mode = str(precomputed_key.get("sampling_mode") or "")
     if not sampling_mode:
-        sampling_mode = (
-            "greedy_fast"
-            if supports_speculative_mtp_sampling(sampling)
-            else "processed_argmax"
-        )
+        sampling_mode = speculative_serving_sampling_mode(sampling)
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,
@@ -13406,11 +13403,7 @@ def _engine_speculative_mtp_serving_plan(
     effective_sampling = sampling
     if _request_speculative_mtp_thinking(config, request) == "hint":
         effective_sampling = relax_thinking_budget_for_mtp(sampling)
-    sampling_mode = (
-        "greedy_fast"
-        if supports_speculative_mtp_sampling(effective_sampling)
-        else "processed_argmax"
-    )
+    sampling_mode = speculative_serving_sampling_mode(effective_sampling)
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,

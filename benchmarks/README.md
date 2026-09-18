@@ -452,6 +452,26 @@ speculative arms spend 3.4x the AR arm's TTFT (11.9-13.0 against 3.5 s on
 ~840-token prompts) and then decode at the AR rate. [Refused-group split
 rejected](results/2026-09-18-gfx1151-qwen38-mtp-refused-group-split-rejected.json).
 
+**Sampled acceptance (2026-09-18):** temperature sampling is the largest
+remaining reason a real request cannot use MTP at all -- every processor except an
+EOS gate makes the row autoregressive, because the verifier's argmax accept emits
+`argmax(p)` where the request asked for a draw from `p`. The sampled rule that
+closes that gap (accept the drafted token with `min(1, p/q)`, otherwise resample
+from `normalize(max(0, p - q))`) is now implemented and **passes its arithmetic
+gate on real gfx1151 rows**: across three prompts and eight decode steps each,
+**824 of 824 induced-law comparisons are exact** (max total variation 4.5e-16,
+max KL 9.0e-16, top-1 agreement 1.0 against a 1e-9 tolerance) over supports up to
+248,320 tokens, **144 of 144** autoregressive-law agreements hold, and a
+Monte-Carlo arm that drives the real accept/resample walk 4,000 times per sampler
+config reports top-1 agreement 1.0 with no cell outside its calibrated limit. The
+route is nevertheless **closed to serving**: it is admitted only by a
+model-plugin evidence row that does not exist yet, so every temperature request
+still runs autoregressive and no serving rate is claimed. The route also requires
+the eager host proposal and host logits, because the accept summary is computed
+from the verified rows' own logits; a device-side accept that reads the row's
+sampler state is the follow-up. [Sampled-acceptance distribution
+gate](results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework
