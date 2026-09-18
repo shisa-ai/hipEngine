@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-17**
+Last updated: **2026-09-18**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -294,6 +294,18 @@ whole-process memory percentage, throughput gain or proven context maximum.
 [72K pass / 74K-75K OOM evidence](results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json); [dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
+
+**Prefix caching stays off.** `hipengine serve --prefix-cache radix` reuses
+completed prompt prefixes at 256-token granularity. Measured on `zbook`/gfx1151
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14 multi-turn lanes and three turns each, one
+repetition per mode: radix resolves 16 of 27 lookups and reuses 42,496 of
+87,582 prompt tokens, but request wall time is **6.4% higher overall** — 8.3%
+lower on cumulative coding lanes, unchanged on fixture coding lanes, and 22.7%
+higher on ShareGPT chat. The reuse path is the cause: a reused request prefills
+its unmatched suffix one token at a time at **34.0 ms/token** against
+**1.8 ms/token** for a batched full prefill, so reuse pays only when the suffix
+is short relative to the reused prefix. The flag stays available for
+experiments. [Measurements](results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
