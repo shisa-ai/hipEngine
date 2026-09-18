@@ -339,6 +339,39 @@ _GGUF_AR_NATIVE_MAX_SLOTS = 8
 # multiplier: the shared pool grows against its independent device budget.
 # Pass --max-active-requests to change how many requests may be in flight.
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+
+# A retained prefix snapshot holds one full hybrid Conv/GDN state clone (~64 MiB
+# for a 35B-A3B checkpoint) plus its KV pages. Retained boundaries are the
+# cross-request working set: a conversation's next turn can only match a boundary
+# that survived every intervening request's captures. The default count budget is
+# the pre-fix effective value, max(1, capacity); a wider working set is opt-in
+# because enabling it today is a measured regression (docs/REFACTOR.md). The
+# 14-lane serving protocol needs 16 retained entries — one conversation's
+# boundary must survive 13 intervening captures — and the byte budget bounds the
+# state the wide set pins.
+_PREFIX_RETAINED_STATE_BYTES_LIMIT = 1 << 30
+_PREFIX_RETAINED_SNAPSHOTS_WIDE = 16
+_GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
+_GGUF_PREFIX_RETAINED_STATE_BYTES_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES"
+
+
+def _gguf_prefix_retained_snapshot_limit(capacity: int) -> int:
+    """Retained-snapshot count budget: pre-fix effective default, opt-in wider."""
+
+    default = max(1, int(capacity))
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, default, minimum=default
+    )
+
+
+def _gguf_prefix_retained_state_bytes_limit() -> int:
+    """State-byte ceiling for the retained snapshot working set."""
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV,
+        _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+        minimum=1 << 20,
+    )
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
@@ -5938,6 +5971,17 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_cache: RadixCache | None = None
         self._prefix_state_snapshots: dict[tuple[int, ...], _GGUFPrefixSnapshotEntry] = {}
         self._prefix_snapshot_limit = max(1, int(capacity))
+        # Retained snapshots are the durable, cross-request working set; transient
+        # ones are the current request's captures. They are trimmed separately so
+        # a request's own capture can never evict the boundary that served it.
+        # The retained count defaults to the pre-fix effective budget; the wider
+        # working set is opt-in (docs/REFACTOR.md records the regression).
+        self._prefix_retained_limit = _gguf_prefix_retained_snapshot_limit(capacity)
+        self._prefix_retained_state_bytes_limit = (
+            _gguf_prefix_retained_state_bytes_limit()
+        )
+        self._prefix_retained_evictions_by_reason: dict[str, int] = {}
+        self._prefix_snapshot_promotions = 0
         self._prefix_snapshot_hits = 0
         self._prefix_snapshot_evictions = 0
         self._prefix_snapshot_captures = 0
@@ -5945,6 +5989,7 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
         self._prefix_admission_fallbacks = 0
+        self._prefix_fallback_reasons: dict[str, int] = {}
         self._prefix_reused_tokens = 0
         self._prefix_state_clone_bytes = 0
         self._prefix_phase_ms: dict[str, float] = {}
@@ -6714,13 +6759,13 @@ class Qwen35GGUFResidentModelRunner:
                     require_contiguous=require_contiguous,
                 )
             except DeviceKVContiguityError:
-                self._prefix_admission_fallbacks += 1
-                row.prefix_admission_fallback = True
-                row.prefix_fallback_reason = "shared_admission_noncontiguous"
+                self._note_prefix_admission_fallback(
+                    row, "shared_admission_noncontiguous"
+                )
             except MemoryError:
-                self._prefix_admission_fallbacks += 1
-                row.prefix_admission_fallback = True
-                row.prefix_fallback_reason = "shared_admission_capacity"
+                self._note_prefix_admission_fallback(
+                    row, "shared_admission_capacity"
+                )
             else:
                 self._prefix_phase_add("admission_pool", start)
                 try:
@@ -6854,13 +6899,13 @@ class Qwen35GGUFResidentModelRunner:
     ) -> _GGUFPrefixReuseSource | None:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
-            row.prefix_fallback_reason = "cache_off"
+            self._note_prefix_fallback(row, "cache_off")
             return None
         if not self._prefix_reuse_supported(row):
-            row.prefix_fallback_reason = "sampling_unsupported"
+            self._note_prefix_fallback(row, "sampling_unsupported")
             return None
         if len(row.prompt_ids) <= 256:
-            row.prefix_fallback_reason = "prompt_too_short"
+            self._note_prefix_fallback(row, "prompt_too_short")
             return None
         row.prefix_eligible = True
         start = time.perf_counter()
@@ -6877,11 +6922,11 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_phase_add("lookup_match", start)
         row.prefix_matched_tokens = int(match.matched_token_count)
         if not match.hit:
-            row.prefix_fallback_reason = "miss"
+            self._note_prefix_fallback(row, "miss")
             return None
         if match.matched_token_count >= len(row.prompt_ids):
             self._prefix_unusable_hits += 1
-            row.prefix_fallback_reason = "full_prompt_boundary_requires_suffix"
+            self._note_prefix_fallback(row, "full_prompt_boundary_requires_suffix")
             return None
         start = time.perf_counter()
         state = cache.entry_state(match.matched_tokens)
@@ -6945,7 +6990,7 @@ class Qwen35GGUFResidentModelRunner:
                 )
         self._prefix_phase_add("lookup_resolve", start)
         self._prefix_unusable_hits += 1
-        row.prefix_fallback_reason = "state_source_unavailable"
+        self._note_prefix_fallback(row, "state_source_unavailable")
         return None
 
     @staticmethod
@@ -7051,6 +7096,9 @@ class Qwen35GGUFResidentModelRunner:
             "admission_fallbacks": int(
                 getattr(self, "_prefix_admission_fallbacks", 0)
             ),
+            "fallback_reasons": dict(
+                getattr(self, "_prefix_fallback_reasons", {})
+            ),
             "reused_tokens": int(getattr(self, "_prefix_reused_tokens", 0)),
             "state_clone_bytes": int(
                 getattr(self, "_prefix_state_clone_bytes", 0)
@@ -7058,6 +7106,32 @@ class Qwen35GGUFResidentModelRunner:
             "snapshot_entries": len(entries),
             "snapshot_limit": int(
                 getattr(self, "_prefix_snapshot_limit", getattr(self, "capacity", 0))
+            ),
+            "retained_snapshot_limit": int(
+                getattr(
+                    self,
+                    "_prefix_retained_limit",
+                    getattr(self, "_prefix_snapshot_limit", 0),
+                )
+            ),
+            "retained_snapshot_state_limit_bytes": int(
+                getattr(
+                    self,
+                    "_prefix_retained_state_bytes_limit",
+                    _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+                )
+            ),
+            "retained_snapshot_state_bytes": int(
+                sum(
+                    int(getattr(entry.snapshot, "nbytes", 0))
+                    for entry in retained_entries
+                )
+            ),
+            "retained_snapshot_evictions_by_reason": dict(
+                getattr(self, "_prefix_retained_evictions_by_reason", {})
+            ),
+            "snapshot_promotions": int(
+                getattr(self, "_prefix_snapshot_promotions", 0)
             ),
             "retained_snapshot_entries": len(retained_entries),
             "snapshot_hits": int(getattr(self, "_prefix_snapshot_hits", 0)),
@@ -7209,7 +7283,7 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
         for prior_tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == row.request_id:
-                self._evict_prefix_snapshot(prior_tokens)
+                self._evict_prefix_snapshot(prior_tokens, reason="superseded_by_row")
         self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
             tokens=tokens,
             block_ids=block_ids,
@@ -7221,11 +7295,45 @@ class Qwen35GGUFResidentModelRunner:
             getattr(snapshot, "nbytes", 0)
         )
         evict_start = time.perf_counter()
-        while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
-            oldest = next(iter(self._prefix_state_snapshots))
-            self._evict_prefix_snapshot(oldest)
+        self._trim_prefix_snapshots()
         self._prefix_phase_add("capture_evict", evict_start)
         self._prefix_phase_add("capture_total", phase_start)
+
+    def _trim_prefix_snapshots(self) -> None:
+        """Bound transient and retained snapshots independently.
+
+        A transient snapshot belongs to the request that captured it and can be
+        dropped freely. A retained one is the durable boundary another request
+        may still match, so the transient trim must never take it: doing so made
+        a request's own second capture evict the entry that had just served it
+        and limited reuse to one hand-off per conversation.
+        """
+
+        transient = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if not entry.retained
+        ]
+        while len(transient) > self._prefix_snapshot_limit:
+            self._evict_prefix_snapshot(transient.pop(0), reason="trim_transient")
+        retained = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if entry.retained
+        ]
+        retained_bytes = sum(
+            int(getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0))
+            for tokens in retained
+        )
+        while retained and (
+            len(retained) > self._prefix_retained_limit
+            or retained_bytes > self._prefix_retained_state_bytes_limit
+        ):
+            tokens = retained.pop(0)
+            retained_bytes -= int(
+                getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0)
+            )
+            self._evict_prefix_snapshot(tokens, reason="trim_retained")
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
         cache = self._prefix_cache
@@ -7242,25 +7350,53 @@ class Qwen35GGUFResidentModelRunner:
                 for block_id in allocation.block_ids[: len(entry.block_ids)]
             )
             if prefix != entry.block_ids:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_mismatch")
                 continue
             pool.retain_blocks(entry.block_ids)
             try:
                 cache.retain_entry(tokens, entry.block_ids)
             except Exception:
                 pool.release_blocks(entry.block_ids)
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_failed")
                 raise
             entry.owner_request_id = None
             entry.retained = True
+            self._prefix_snapshot_promotions += 1
+        self._trim_prefix_snapshots()
 
     def _drop_prefix_snapshots_for_row(self, request_id: int) -> None:
         rid = int(request_id)
         for tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == rid:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="row_released")
 
-    def _evict_prefix_snapshot(self, tokens: Sequence[int]) -> bool:
+    def _note_prefix_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str | None
+    ) -> None:
+        """Record why one row could not reuse a prefix, per reason.
+
+        The served harness only sees process-wide counters, so a fallback that
+        is not counted here is invisible in a serving artifact.
+        """
+
+        row.prefix_fallback_reason = reason
+        if reason:
+            counts = self._prefix_fallback_reasons
+            counts[reason] = int(counts.get(reason, 0)) + 1
+
+    def _note_prefix_admission_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str
+    ) -> None:
+        self._prefix_admission_fallbacks += 1
+        row.prefix_admission_fallback = True
+        self._note_prefix_fallback(row, reason)
+
+    def _evict_prefix_snapshot(
+        self,
+        tokens: Sequence[int],
+        *,
+        reason: str = "unspecified",
+    ) -> bool:
         token_tuple = tuple(int(token) for token in tokens)
         entry = self._prefix_state_snapshots.pop(token_tuple, None)
         if entry is None:
@@ -7276,11 +7412,14 @@ class Qwen35GGUFResidentModelRunner:
         if callable(close):
             close()
         self._prefix_snapshot_evictions += 1
+        if entry.retained:
+            by_reason = self._prefix_retained_evictions_by_reason
+            by_reason[reason] = int(by_reason.get(reason, 0)) + 1
         return True
 
     def _clear_prefix_snapshots(self) -> None:
         for tokens in tuple(self._prefix_state_snapshots):
-            self._evict_prefix_snapshot(tokens)
+            self._evict_prefix_snapshot(tokens, reason="clear")
 
     def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
         """Release reclaimable prefix pages before device-pool growth."""
@@ -7291,7 +7430,7 @@ class Qwen35GGUFResidentModelRunner:
             if not entry.retained:
                 continue
             pages = len(tuple(entry.block_ids))
-            if self._evict_prefix_snapshot(tokens):
+            if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
                 released += pages
             if released >= needed:
                 break
@@ -8853,6 +8992,7 @@ class Qwen35GGUFResidentModelRunner:
             self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
             self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
             row.prefill_ms += _timing_ms_since(start)
+            self._prefix_phase_add("suffix_prefill", start)
             row.prefill_chunk_count += 1
         else:
             if not final_chunk or chunk != row.prompt_ids:

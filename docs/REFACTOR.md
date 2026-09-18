@@ -20,9 +20,27 @@
   `benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json`.
 - Fix direction: make the trim prefer unretained entries and never evict a
   retained entry while an unretained one exists, and size the retained working
-  set from the pool rather than from the loop capacity. RED test target: with
-  `_prefix_snapshot_limit == 1`, capture for request A, promote it, capture for
-  request B, then assert A's entry is still resolvable.
+  set for several conversations rather than for the loop capacity. RED test
+  target: with `_prefix_snapshot_limit == 1`, capture for request A, promote it,
+  capture for request B, then assert A's entry is still resolvable.
+- Fixed 2026-09-18: transient and retained entries are now trimmed by separate
+  budgets (`_prefix_snapshot_limit` for the current request's captures,
+  `_prefix_retained_limit` plus a 1 GiB state-byte ceiling for retained ones).
+  `_prefix_retained_evictions_by_reason` and `retained_snapshot_state_bytes`
+  expose both budgets through `/ready`.
+- The retained count defaults to the pre-fix effective budget
+  `max(1, capacity)`: the wider working set is opt-in via
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` (16 covers the 14-lane serving
+  protocol, where a conversation's next turn arrives after up to 13 other lanes
+  have captured and retained their own boundaries) and
+  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). Enabling the
+  wide set today is a measured regression (docs/REFACTOR.md cost table: +11%
+  cumulative-medium_repo, +308% fixture-medium_repo) because every hit pays the
+  serial suffix prefill and, at >=1024 tokens, the contiguity gate converts hits
+  into full-prefill refusals. Promote the wide set to default only after the
+  batched suffix prefill and the paged >=1024 prefill land. The 16/1 GiB values
+  are not derived from a measured working-set distribution; re-derive them from
+  a served lane trace before claiming the retained budget is optimal.
 
 ## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
 
@@ -61,15 +79,23 @@
   `_prefill_native_chunk`'s serial loop, one `session.step()` per token: measured
   **33.8-35.3 ms per suffix token** (6.2-6.9 s on a hit turn) with **~1,679 extra
   kernel dispatches per token** against **~0.4 ms/token** for the batched prefill
-  kernels. The sampled/processed-argmax fixture lanes reuse a comparable volume
-  (2,560-8,704 tokens, 172-189 token suffixes) and record **no `suffix_prefill`
-  phase at all**, with turn walls 3-5 s lower.
-- Both routes report `native_compact_prefill=False`, so the difference is not the
-  flag; the sampled route never enters the serial loop. Find that route and give
-  it to greedy rows before writing a new batched reused-prefix path.
+  kernels.
+- **Corrected 2026-09-18 (same day): there is no cheap second route.**
+  `_prefill_processed_argmax_chunk`'s reused branch also calls `session.step()`
+  once per token; it simply never recorded the `suffix_prefill` phase (it bumped
+  `processed_argmax_prefix_c1_suffix_*` route counters instead), so the fixture
+  lanes looked like they skipped the serial loop. The phase counter is now
+  recorded on both routes. The sampled lanes' 3-5 s lower walls are therefore not
+  explained by the missing phase and still need per-phase re-attribution against
+  the same lane prompts.
+- What is real: every reused row pays ~34 ms per suffix token because the batched
+  `prefill_batch_native` route cannot start at a non-zero sequence position. A
+  batched suffix prefill (causal mask and block table offset by the reused
+  boundary) is the only path to a hit that is cheaper than a miss; until then
+  more hits cost more wall time, because a miss prefills the whole prompt through
+  the ~0.4 ms/token batched route.
 - This is the same defect as "Shared-prefix suffix prefill runs one token at a
-  time" below; that entry records the correctness constraints, this one records
-  where the cheap route already lives.
+  time" below; that entry records the correctness constraints.
 
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 

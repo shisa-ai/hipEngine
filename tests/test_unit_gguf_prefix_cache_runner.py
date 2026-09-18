@@ -3,9 +3,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.generation.engine_loop import EngineLoopConfig
-from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+from hipengine.generation.qwen35_gguf import (
+    _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV,
+    _PREFIX_RETAINED_SNAPSHOTS_WIDE,
+    Qwen35GGUFResidentModelRunner,
+)
 from hipengine.generation.registry import GenerationRequest
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.kvcache import DeviceChunkedKVPool
@@ -359,6 +364,9 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
 
     assert session.prefill_calls == []
     assert session.step_calls == [(999, 256, 257)]
+    # Both reused-suffix routes run the serial per-token loop; both must record the
+    # phase, or a served run cannot tell which route paid for the suffix.
+    assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
     assert continued.slot is not None
     assert continued.slot.generated_ids == [812]
     assert continued.sampling_state is not None
@@ -632,6 +640,267 @@ def test_completed_prefix_survives_unaligned_tail_and_lru_residency_is_bounded()
     assert runner._evict_prefix_snapshot(prompt[:512]) is True
     assert second_snapshot.closed is True
     assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_prefix_survives_a_later_requests_capture() -> None:
+    """A retained boundary must outlive the next request's own captures.
+
+    Multi-turn serving only reuses anything if the boundary captured for turn N
+    is still resolvable when turn N+1 arrives. A transient (unretained) snapshot
+    from the current request must be sacrificed first.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=4,
+            kv_pool_low_water_pages=4,
+            kv_pool_high_water_pages=4,
+            kv_pool_chunk_pages=4,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 514))
+    source_request = _request(prompt, max_tokens=2)
+    runner.register_batch((10,), source_request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=10))
+    source = runner._rows[10]
+    assert source.lease is not None
+    source.prefill_tokens_seen = len(prompt)
+    source.lease.session.position = 512
+    assert runner._refresh_prefix_cache(source) is True
+    retained_snapshot = source.lease.session.snapshots[-1]
+    runner._release_row_resources(source, retain_prefix_snapshots=True)
+    runner._rows.pop(10)
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 1
+
+    later_prompt = tuple(range(1, 257))
+    later_request = _request(later_prompt, max_tokens=2)
+    runner.register_batch((11,), later_request, prompt_rows=(later_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=11))
+    later = runner._rows[11]
+    assert later.lease is not None
+    later.prefill_tokens_seen = len(later_prompt)
+    later.lease.session.position = 256
+    assert runner._refresh_prefix_cache(later) is True
+
+    assert retained_snapshot.closed is False, (
+        "the later request's capture evicted the retained snapshot"
+    )
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(prompt[:512]).matched_token_count == 512
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=11))
+    runner._evict_prefix_snapshot(prompt[:512])
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def _retain_boundary(
+    runner: Qwen35GGUFResidentModelRunner,
+    request_id: int,
+    prompt: tuple[int, ...],
+    boundary: int,
+) -> None:
+    """Admit, capture one aligned boundary, and retain it like a finished turn."""
+
+    request = _request(prompt, max_tokens=2, forced_token_id=811)
+    runner.register_batch((request_id,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=request_id))
+    row = runner._rows[request_id]
+    assert row.lease is not None
+    row.prefill_tokens_seen = len(prompt)
+    row.lease.session.position = boundary
+    assert runner._refresh_prefix_cache(row) is True
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(request_id)
+
+
+def test_retained_prefixes_from_two_conversations_coexist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retention must cover the working set, not one boundary.
+
+    Served lanes interleave, so a conversation's next turn arrives after other
+    conversations have captured and retained their own boundaries. A retained
+    budget of one made every conversation miss its second hand-off. The wider
+    working set is opt-in (HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS) because it
+    is a measured regression until the shared-admission contiguity path lands.
+    """
+
+    monkeypatch.setenv(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, str(_PREFIX_RETAINED_SNAPSHOTS_WIDE)
+    )
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first = tuple(range(1, 301))
+    second = tuple(range(1001, 1301))
+    _retain_boundary(runner, 40, first, 256)
+    _retain_boundary(runner, 41, second, 256)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == 2
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(first).matched_token_count == 256
+    assert runner._prefix_cache.match(second).matched_token_count == 256
+
+    for tokens in (first[:256], second[:256]):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_budget_defaults_to_the_pre_fix_effective_value() -> None:
+    """The wider retained working set is opt-in, not the shipped default.
+
+    Enabling a 16-entry retained set today is a measured serving regression
+    (docs/REFACTOR.md), so the default stays at the pre-fix effective budget
+    max(1, capacity): at capacity 1 a second retained boundary evicts the first.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first = tuple(range(1, 301))
+    second = tuple(range(1001, 1301))
+    _retain_boundary(runner, 40, first, 256)
+    _retain_boundary(runner, 41, second, 256)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == 1
+    assert cache["retained_snapshot_evictions_by_reason"] == {"trim_retained": 1}
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(first).matched_token_count == 0
+    assert runner._prefix_cache.match(second).matched_token_count == 256
+
+    assert runner._evict_prefix_snapshot(second[:256]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_reuse_chain_deepens_across_three_turns() -> None:
+    """Turn N+1 must be able to match the deepest boundary turn N retained.
+
+    A cumulative conversation resends its whole history, so the boundary a turn
+    reaches during decode is a prefix of the next turn's prompt. If the chain
+    works, the third turn matches deeper than the first hand-off.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first_prompt = tuple(range(1, 301))
+    reply_one = tuple(811 for _ in range(256))
+
+    def admit(request_id: int, prompt: tuple[int, ...]):
+        request = _request(prompt, max_tokens=2, forced_token_id=811)
+        runner.register_batch((request_id,), request, prompt_rows=(prompt,))
+        runner.reserve_admission(SimpleNamespace(request_id=request_id))
+        return runner._rows[request_id]
+
+    # Turn 1: no reuse, capture the prompt boundary, retain it.
+    first = admit(30, first_prompt)
+    assert first.prefix_fallback_reason == "miss"
+    first.prefill_tokens_seen = len(first_prompt)
+    first.lease.session.position = 256
+    assert runner._refresh_prefix_cache(first) is True
+    runner._release_row_resources(first, retain_prefix_snapshots=True)
+    runner._rows.pop(30)
+
+    # Turn 2: the client resends the transcript including the reply, so the
+    # boundary turn 1 reached during decode is now inside the prompt.
+    second_prompt = (*first_prompt, *reply_one[:212])
+    second = admit(31, second_prompt)
+    assert second.prefix_reused_tokens == 256
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(31,),
+            row_to_request=(31,),
+            token_rows=(second_prompt,),
+        ),
+        commit=True,
+    )
+    assert second.slot is not None
+    second.slot.generated_ids = [811] * 256
+    second.lease.session.position = 768
+    assert runner._refresh_prefix_cache(second) is True
+    runner._release_row_resources(second, retain_prefix_snapshots=True)
+    runner._rows.pop(31)
+
+    # Turn 3: the client adds the next user turn, so the prompt extends past the
+    # boundary turn 2 retained and can reuse it.
+    third_prompt = (*second_prompt, *reply_one, *range(5000, 5010))
+    third = admit(32, third_prompt)
+    assert third.prefix_reused_tokens == 768, (
+        "turn 3 did not reach the boundary turn 2 retained"
+    )
+
+    runner.rollback_admission(SimpleNamespace(request_id=32))
+    for tokens in tuple(runner._prefix_state_snapshots):
+        runner._evict_prefix_snapshot(tokens)
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_prefix_fallback_reasons_are_counted_per_reason() -> None:
+    """The served harness can only see counters, so each reason needs one."""
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    short = tuple(range(1, 101))
+    request = _request(short, max_tokens=2, forced_token_id=811)
+    runner.register_batch((50,), request, prompt_rows=(short,))
+    runner.reserve_admission(SimpleNamespace(request_id=50))
+    row = runner._rows[50]
+    assert row.prefix_fallback_reason == "prompt_too_short"
+    assert runner._prefix_cache_observability()["fallback_reasons"] == {
+        "prompt_too_short": 1
+    }
+
+    runner.rollback_admission(SimpleNamespace(request_id=50))
     runner.close()
 
 
