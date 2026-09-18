@@ -40,9 +40,12 @@ harnesses:
 * ``--cases short,long`` selects a labelled mix of prompt lengths in one load:
   a healthy short request beside the boundary-crossing row that the provider's
   window may refuse, so the provider-ready and provider-refused paths are
-  measured together and split by ``case`` in the summary. ``beyond`` constructs
-  the refused side explicitly (a prompt past the loader's own 1,024-token
-  pruning bound, which needs ``--max-prompt-len`` raised with it).
+  measured together and split by ``case`` in the summary. ``beyond`` selects a
+  prompt past the loader's own 1,024-token pruning bound (raise
+  ``--max-prompt-len`` with it) for the provider-window refusal; note that the
+  head tree's packed paged autoregressive prefill rejects a context of 1,024 or
+  more with ``unsupported_parameter``, so a ``beyond`` prompt only measures the
+  refusal on a server whose prefill path accepts that length.
 * ``--min-prompt-len`` selects the boundary-crossing row (for example 900) that
   the default 4-token floor excludes, so a healthy short request and a row that
   crosses the provider's context window can be measured together.
@@ -1204,8 +1207,9 @@ def main() -> int:
         help=(
             "Comma-separated prompt-length cases selected in one load: any of "
             "short (4-64 tokens), mid (65-511), long (512-1024), or beyond "
-            "(1025-4096, which also needs --max-prompt-len raised) for the row "
-            "the provider's window refuses. Each row is labelled and the "
+            "(1025-4096, which also needs --max-prompt-len raised and a server "
+            "whose autoregressive prefill accepts that context) for the row the "
+            "provider's window refuses. Each row is labelled and the "
             "summary splits by case, so a healthy short request is measured "
             "beside the boundary-crossing row."
         ),
