@@ -1005,3 +1005,45 @@ def test_lease_sized_from_ceiling_covers_the_realized_workspace() -> None:
 
     assert old_lease_pages < workspace_need  # the reported failure
     assert new_lease_pages >= workspace_need
+
+
+def test_mtp_verify_width_packs_rows_inside_one_slot() -> None:
+    """An MTP verify group is K+1 *rows* in one slot, not K+1 slots.
+
+    The lease's slot term follows the packed width, so this is the contract that
+    makes a capacity-sized lease sufficient at C1: the verifier opens one slot
+    block per target row and puts that row's root plus candidate tokens inside
+    it. Four candidate rows at C4 are four slots; the same four candidate rows
+    at C1 are four rows in the single C1 slot.
+    """
+
+    layout = gguf_runner._build_gguf_packed_verify_layout(
+        (
+            gguf_runner._GGUFPackedVerifySlotBlock(
+                input_token_ids=(11, 12, 13, 14),
+                start_position=7,
+            ),
+        ),
+        block_size=4,
+    )
+
+    assert layout.rows == 4  # root plus three candidates
+    assert layout.slot_count == 1
+    assert layout.max_live_count == 11
+    # The C1 lease takes exactly one slot, and the union geometry unions the
+    # realized slot count with the session's packed width.
+    assert gguf_runner.packed_verify_lease_slot_ceiling(1) == layout.slot_count
+
+    four_rows = gguf_runner._build_gguf_packed_verify_layout(
+        tuple(
+            gguf_runner._GGUFPackedVerifySlotBlock(
+                input_token_ids=(11 + slot, 21 + slot, 31 + slot, 41 + slot),
+                start_position=7,
+            )
+            for slot in range(4)
+        ),
+        block_size=4,
+    )
+    assert four_rows.rows == 16
+    assert four_rows.slot_count == 4
+    assert gguf_runner.packed_verify_lease_slot_ceiling(4) == four_rows.slot_count

@@ -667,8 +667,14 @@ class _FakeGlobalPoolSession:
     kv_attention_source = None
     defer_kv_allocation = True
 
-    def __init__(self, slot_id: int) -> None:
+    def __init__(self, slot_id: int, *, max_batch_size: int | None = None) -> None:
         self.slot_id = int(slot_id)
+        # Mirrors the real resident session ABI: the batch owner is built with
+        # the runner's capacity as its packed width, while a slot view carries a
+        # width of one.
+        self.max_batch_size = int(
+            slot_id if max_batch_size is None else max_batch_size
+        )
         # 768-token scratch: 3 pages per request, below the packed workspace's
         # 1024-token (4-page) per-slot union floor.
         self.scratch = SimpleNamespace(max_positions=768)
@@ -680,7 +686,7 @@ class _FakeGlobalPoolSession:
         self._reset_current_slot_only = False
 
     def resident_slot_view(self, index: int):
-        return _FakeGlobalPoolSession(index)
+        return _FakeGlobalPoolSession(index, max_batch_size=1)
 
     def create_global_device_kv_pool(self, *, page_capacity, generation):
         from hipengine.kvcache.device_global import GlobalDeviceKVPool
@@ -759,18 +765,12 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
     # The lease covers the packed union geometry: one page per 256 tokens of the
-    # 768-token session (max(3, 1024/256) = 4 pages per slot) times the union
-    # slot ceiling. That ceiling is read from the generator's resident runner's
-    # ``max_batch_size``, which the real model runner does not expose, so the
-    # shared helper's default slot capacity applies here; see the follow-up on
-    # the unreachable capacity signal.
-    lease_slots = packed_verify_lease_slot_ceiling(
-        getattr(
-            getattr(owner, "_resident_model_runner", None),
-            "max_batch_size",
-            None,
-        )
-    )
+    # 768-token session (max(3, 1024/256) = 4 pages per slot) times the packed
+    # width of the session that owns the workspace. The lease reads that width
+    # from the session itself, so it is the same term the union geometry uses
+    # and cannot fall back to the historical 8-slot floor.
+    lease_slots = packed_verify_lease_slot_ceiling(int(batch_owner.max_batch_size))
+    assert lease_slots == 2
     pages_per_slot = max(
         (768 + 255) // 256,
         _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
@@ -805,15 +805,15 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert runner.kv_pool is None
 
 
-def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:
-    """A C1 pool still leases the packed union slot ceiling, not one slot.
+def test_configure_engine_loop_leases_the_serving_capacity_at_c1() -> None:
+    """A C1 pool leases exactly the packed width the C1 workspace can open.
 
-    The packed union geometry can open more slots than the serving capacity
-    because the MTP verify width alone packs four, so the pool cannot take a
-    one-slot lease. The lease's slot term comes from the generator's resident
-    runner's ``max_batch_size``, which the real model runner does not expose;
-    the shared helper's default slot capacity therefore applies. See the
-    follow-up on that unreachable capacity signal.
+    The packed union geometry unions the realized layout slots with the
+    session's packed width, and every layout the C1 loop can build stays inside
+    that width: the MTP verifier opens one slot per target row, so its four
+    candidate rows are four *rows* inside a single slot. A C1 lease therefore
+    takes one slot instead of the historical 8-slot floor. Measured on the
+    gfx1151 C1 lane, the largest slot count any layout requested was 1.
     """
 
     from hipengine.runtime.qwen35_gguf_runner import (
@@ -836,7 +836,10 @@ def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:
 
     pool = runner.kv_pool
     assert pool is not None
-    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(
+    lease_slots = packed_verify_lease_slot_ceiling(1)
+    assert lease_slots == 1
+    assert lease_slots == int(owner.sessions[0].max_batch_size)
+    expected_lease_pages = lease_slots * max(
         (768 + 255) // 256,
         _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
     )

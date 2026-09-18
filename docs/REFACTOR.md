@@ -1,5 +1,50 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
+
+`hipengine/generation/qwen35_gguf.py` sizes the eager packed-execution workspace
+lease as `workspace_slots * workspace_pages_per_slot`, where the per-slot term is
+`max(ceil(session_scratch.max_positions / 256), 4)` pages. The slot term now
+follows the serving capacity (see
+`worklog/entries/20260918T205735.370215Z-lhl-packed-workspace-lease-capacity-be3814.md`),
+but the per-slot term is still priced from the session's **physical** context,
+not from the longest context a request can actually be admitted at. Measured on
+gfx1151 with an auto-resolved 262144-token session: the C1 lease is 1024 pages
+(16 GiB) while the largest realized union across a 5,469-token prefill and two
+short prompts (one carrying an explicit `speculative_mtp` request, which the
+production plan did not admit) was 5469 tokens (22 pages), and the 8192-token
+pinned configuration reserves 32 pages per slot where that same run's largest
+realized union was also 5469 tokens. This is a reservation, not a leak (every
+page is accounted and pinned at pool creation), so it is a memory-footprint debt
+rather than a correctness bug.
+
+Removal trigger: size the per-slot term from the loop's admission ceiling (the
+context the scheduler will actually admit, `min(session max, server
+max_context_tokens)`), or make the workspace lease grow with the realized union
+the way the global pool already grows against its budget. Either way the change
+must keep the fail-closed property the current sizing buys -- an under-sized
+lease must refuse prefill rather than overwrite a neighbour's pages -- and needs
+its own C1/C4 measurement, because shrinking this term raises the context the
+auto-context resolver selects on the same hardware.
+
+## The capacity estimate prices a one-slot workspace lease while the pool leases the serving capacity (found 2026-09-18)
+
+`qwen35_gguf_resident_breakdown` (`hipengine/runtime/qwen35_gguf_runner.py`)
+computes `workspace_lease_pages = slots * max(pages_per_request, 4)` from its own
+`max_batch_size` argument, and `_resident_capacity_estimate` calls it with
+`max_batch_size=1` because context admission is per request. The pool's lease,
+by contrast, now takes one slot per serving capacity. At C4 on a 262144-token
+session the estimate prices 1024 pages (16 GiB) where the pool leases 4096 pages
+(64 GiB), so the auto-context resolver and any capacity probe built on the same
+breakdown under-report the resident footprint by 48 GiB at that shape.
+
+Removal trigger: give the breakdown a separate `workspace_lease_slots` term
+(default: `max_batch_size`, so single-request pricing is unchanged) and have
+`_resident_capacity_estimate` pass the serving capacity for the lease while
+keeping `max_batch_size=1` for the per-request KV terms. This changes the
+resolved auto context, so it needs the same measurement protocol as the entry
+above before it becomes a default.
+
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19)
 
 - `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
