@@ -5947,6 +5947,8 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_admission_fallbacks = 0
         self._prefix_reused_tokens = 0
         self._prefix_state_clone_bytes = 0
+        self._prefix_phase_ms: dict[str, float] = {}
+        self._prefix_phase_calls: dict[str, int] = {}
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
         self._packed_workspace_release_events = 0
@@ -6690,7 +6692,9 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
             )
         pages = (positions + 255) // 256
+        start = time.perf_counter()
         prefix_source = self._prefix_source_for(row)
+        self._prefix_phase_add("admission_lookup", start)
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
@@ -6700,6 +6704,7 @@ class Qwen35GGUFResidentModelRunner:
             # for a contiguous run and fall back to a private allocation, which
             # the pool always places contiguously, when it cannot be satisfied.
             require_contiguous = len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
+            start = time.perf_counter()
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
@@ -6717,8 +6722,10 @@ class Qwen35GGUFResidentModelRunner:
                 row.prefix_admission_fallback = True
                 row.prefix_fallback_reason = "shared_admission_capacity"
             else:
+                self._prefix_phase_add("admission_pool", start)
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
+                    restore_start = time.perf_counter()
                     if prefix_source.source_row is not None:
                         source_row = prefix_source.source_row
                         assert source_row.lease is not None
@@ -6734,6 +6741,7 @@ class Qwen35GGUFResidentModelRunner:
                                 prefix_source.snapshot,
                             )
                         )
+                    self._prefix_phase_add("admission_restore_state", restore_start)
                 except Exception:
                     if getattr(lease.session, "device_kv_allocation", None) is not None or getattr(
                         lease.session, "allocation", None
@@ -6769,11 +6777,14 @@ class Qwen35GGUFResidentModelRunner:
                 self._prefix_usable_hits += 1
                 self._prefix_reused_tokens += len(matched_tokens)
                 self._prefix_state_clone_bytes += cloned_bytes
+                refresh_start = time.perf_counter()
                 self._refresh_prefix_cache(row)
+                self._prefix_phase_add("admission_refresh", refresh_start)
                 self._sample_kv_hip_memory()
                 return
 
         try:
+            start = time.perf_counter()
             allocation = pool.allocate(
                 row.request_id,
                 pages,
@@ -6801,6 +6812,7 @@ class Qwen35GGUFResidentModelRunner:
         except Exception:
             pool.release(row.request_id, now_seconds=time.monotonic())
             raise
+        self._prefix_phase_add("admission_pool", start)
         if not self._available or self._available[-1] is not lease:
             lease.session.invalidate_device_kv_graphs()
             lease.session.unbind_device_kv_allocation()
@@ -6822,6 +6834,20 @@ class Qwen35GGUFResidentModelRunner:
             and plan.mode is SamplingMode.PROCESSED_ARGMAX
         )
 
+    def _prefix_phase_add(self, name: str, start: float) -> None:
+        """Accumulate one named prefix-cache phase for serving diagnostics.
+
+        The serving path pays for prefix reuse in several distinct places
+        (admission lookup, trie maintenance, snapshot capture, state restore,
+        suffix prefill). Wall-clock per phase is the only way to rank them,
+        because the device work is asynchronous and the host work is not.
+        """
+
+        phases = self._prefix_phase_ms
+        phases[name] = round(float(phases.get(name, 0.0)) + _timing_ms_since(start), 3)
+        calls = self._prefix_phase_calls
+        calls[name] = int(calls.get(name, 0)) + 1
+
     def _prefix_source_for(
         self,
         row: _GGUFResidentLoopRow,
@@ -6837,12 +6863,18 @@ class Qwen35GGUFResidentModelRunner:
             row.prefix_fallback_reason = "prompt_too_short"
             return None
         row.prefix_eligible = True
+        start = time.perf_counter()
         self._flush_all_packed_owners()
+        self._prefix_phase_add("lookup_flush_packed", start)
+        start = time.perf_counter()
         for candidate in tuple(self._rows.values()):
             if candidate.request_id != row.request_id:
                 self._refresh_prefix_cache(candidate)
+        self._prefix_phase_add("lookup_refresh_others", start)
         row.prefix_lookup = True
+        start = time.perf_counter()
         match = cache.match(row.prompt_ids)
+        self._prefix_phase_add("lookup_match", start)
         row.prefix_matched_tokens = int(match.matched_token_count)
         if not match.hit:
             row.prefix_fallback_reason = "miss"
@@ -6851,6 +6883,7 @@ class Qwen35GGUFResidentModelRunner:
             self._prefix_unusable_hits += 1
             row.prefix_fallback_reason = "full_prompt_boundary_requires_suffix"
             return None
+        start = time.perf_counter()
         state = cache.entry_state(match.matched_tokens)
         for request_id in state.owner_request_ids:
             source = self._rows.get(int(request_id))
@@ -6858,13 +6891,17 @@ class Qwen35GGUFResidentModelRunner:
                 continue
             if source.lease is None or source.kv_allocation is None:
                 continue
-            if tuple(self._processed_tokens(source)) != match.matched_tokens:
+            processed_start = time.perf_counter()
+            source_tokens = tuple(self._processed_tokens(source))
+            self._prefix_phase_add("processed_tokens", processed_start)
+            if source_tokens != match.matched_tokens:
                 continue
             session = source.lease.session
             if int(getattr(session, "position", -1)) != match.matched_token_count:
                 continue
             if tuple(source.kv_allocation.block_ids[: match.matched_block_count]) != match.block_ids:
                 continue
+            self._prefix_phase_add("lookup_resolve", start)
             return _GGUFPrefixReuseSource(
                 matched_tokens=match.matched_tokens,
                 block_ids=match.block_ids,
@@ -6900,11 +6937,13 @@ class Qwen35GGUFResidentModelRunner:
             if valid:
                 self._prefix_state_snapshots.pop(match.matched_tokens)
                 self._prefix_state_snapshots[match.matched_tokens] = snapshot_entry
+                self._prefix_phase_add("lookup_resolve", start)
                 return _GGUFPrefixReuseSource(
                     matched_tokens=match.matched_tokens,
                     block_ids=match.block_ids,
                     snapshot=snapshot,
                 )
+        self._prefix_phase_add("lookup_resolve", start)
         self._prefix_unusable_hits += 1
         row.prefix_fallback_reason = "state_source_unavailable"
         return None
@@ -6943,25 +6982,36 @@ class Qwen35GGUFResidentModelRunner:
             return False
         if row.lease is None or row.kv_allocation is None:
             return False
+        phase_start = time.perf_counter()
+        processed_start = time.perf_counter()
         tokens = self._processed_tokens(row)
+        self._prefix_phase_add("processed_tokens", processed_start)
         if not tokens or len(tokens) % 256 != 0:
             # Keep the latest exact aligned boundary live while the request
             # advances through a partial page. Normal completion can then
             # promote that historical snapshot before request ownership drops.
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
+        trie_start = time.perf_counter()
         cache.cancel(row.request_id)
         block_count = len(tokens) // 256
         block_ids = tuple(int(block_id) for block_id in row.kv_allocation.block_ids[:block_count])
         if len(block_ids) != block_count:
+            self._prefix_phase_add("refresh_trie", trie_start)
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
         try:
             cache.insert(row.request_id, tokens, block_ids)
         except ValueError as exc:
+            self._prefix_phase_add("refresh_trie", trie_start)
             if "conflicting block ids" not in str(exc):
                 raise
             self._prefix_unusable_hits += 1
+            self._prefix_phase_add("refresh_conflict", phase_start)
             return False
+        self._prefix_phase_add("refresh_trie", trie_start)
         self._capture_prefix_snapshot(row, tokens=tokens, block_ids=block_ids)
+        self._prefix_phase_add("refresh_total", phase_start)
         return True
 
     def _prefix_cache_observability(self) -> dict[str, Any]:
@@ -7020,6 +7070,8 @@ class Qwen35GGUFResidentModelRunner:
             "snapshot_capture_bytes": int(
                 getattr(self, "_prefix_snapshot_capture_bytes", 0)
             ),
+            "phase_ms": dict(getattr(self, "_prefix_phase_ms", {})),
+            "phase_calls": dict(getattr(self, "_prefix_phase_calls", {})),
             "snapshot_bytes": snapshot_bytes,
             "retained_kv_pages": len(retained_blocks),
             "retained_kv_bytes": retained_kv_bytes,
@@ -7141,7 +7193,10 @@ class Qwen35GGUFResidentModelRunner:
         capture = getattr(session, "capture_prefix_state_snapshot", None)
         if not callable(capture):
             return
+        phase_start = time.perf_counter()
+        clone_start = time.perf_counter()
         snapshot = capture(position=len(tokens))
+        self._prefix_phase_add("capture_clone_state", clone_start)
         if int(getattr(snapshot, "position", -1)) != len(tokens):
             close = getattr(snapshot, "close", None)
             if callable(close):
@@ -7165,9 +7220,12 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_snapshot_capture_bytes += int(
             getattr(snapshot, "nbytes", 0)
         )
+        evict_start = time.perf_counter()
         while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
             oldest = next(iter(self._prefix_state_snapshots))
             self._evict_prefix_snapshot(oldest)
+        self._prefix_phase_add("capture_evict", evict_start)
+        self._prefix_phase_add("capture_total", phase_start)
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
         cache = self._prefix_cache
@@ -8906,6 +8964,7 @@ class Qwen35GGUFResidentModelRunner:
             self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
             self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
             row.prefill_ms += _timing_ms_since(start)
+            self._prefix_phase_add("suffix_prefill", start)
             row.prefill_chunk_count += 1
             self._refresh_prefix_cache_at_prompt_boundary(row, lease)
             if final_chunk:
@@ -8997,6 +9056,7 @@ class Qwen35GGUFResidentModelRunner:
         if not final_chunk:
             self._route_counts["native_incremental_prefill_unsampled_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
+        self._prefix_phase_add("prefill_batched", start)
         row.prefill_chunk_count += 1
         self._refresh_prefix_cache_at_prompt_boundary(row, lease)
         if final_chunk:
