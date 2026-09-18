@@ -1310,6 +1310,19 @@ class Qwen35GGUFMTP2Adapter:
         widths = tuple(getattr(self, "physical_prompt_streaming_widths", ()))
         return not widths or int(request_count) in widths
 
+    def prompt_activation_available(self) -> bool:
+        """Whether a new prompt activation can start on this tick.
+
+        ``begin_prompt_streaming`` mutates provider state, so it admits one
+        activation at a time. A chunked prefill holds that claim from its first
+        chunk to its final one, and a request whose first chunk runs without a
+        sink cannot prime a provider later in its prompt. The scheduler reads
+        this probe to defer a speculative row's first chunk instead of letting
+        it forfeit its draft provider.
+        """
+
+        return self._active_prompt_claims is None
+
     def begin_prompt_streaming(
         self,
         request_ids: Sequence[int],

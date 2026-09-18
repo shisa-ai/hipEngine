@@ -4946,3 +4946,89 @@ def test_ar_commit_is_ignored_for_a_released_or_unknown_row() -> None:
     adapter.note_speculative_ar_commit(99, reason)
 
     assert row.mtp2_ar_step_reasons == {}
+
+
+def test_prompt_activation_available_tracks_the_active_claim() -> None:
+    """The scheduler probe is true exactly while no activation is in flight."""
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._active_prompt_claims = None
+    assert adapter.prompt_activation_available() is True
+
+    adapter._active_prompt_claims = object()
+    assert adapter.prompt_activation_available() is False
+
+
+def test_prefill_activation_ready_defers_only_unstarted_speculative_rows() -> None:
+    """A row forfeits its provider only if its first chunk runs claim-less.
+
+    A row already mid-prompt, a row with no candidate budget, and a
+    prefix-reused row are all ready: none of them needs the prompt sink that the
+    held claim protects.
+    """
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    claim_held = {"value": True}
+    runner._mtp2_adapter = SimpleNamespace(
+        prompt_activation_available=lambda: not claim_held["value"]
+    )
+    runner._mtp2_adapter_resolved = True
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+        )
+        for rid in (1, 2, 3, 4)
+    }
+    rows[2].prefill_tokens_seen = 256
+    rows[3].mtp2_candidate_budget = 0
+    rows[4].prefix_reused_tokens = 128
+    runner._rows = rows
+
+    assert runner.prefill_activation_ready(1) is False
+    assert runner.prefill_activation_ready(2) is True
+    assert runner.prefill_activation_ready(3) is True
+    assert runner.prefill_activation_ready(4) is True
+
+    claim_held["value"] = False
+    assert runner.prefill_activation_ready(1) is True
+
+
+def test_prefill_activation_ready_without_adapter_is_always_ready() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
+    runner._rows = {
+        1: SimpleNamespace(
+            request_id=1,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+        )
+    }
+
+    assert runner.prefill_activation_ready(1) is True
+
+
+def test_prefill_needs_activation_marks_only_unstarted_speculative_rows() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+            slot=None,
+        )
+        for rid in (1, 2, 3, 4)
+    }
+    runner._rows[2].prefill_tokens_seen = 256
+    runner._rows[3].mtp2_candidate_budget = 0
+    runner._rows[4].prefix_reused_tokens = 128
+
+    assert runner.prefill_needs_activation(1) is True
+    assert runner.prefill_needs_activation(2) is False
+    assert runner.prefill_needs_activation(3) is False
+    assert runner.prefill_needs_activation(4) is False

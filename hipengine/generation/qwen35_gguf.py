@@ -8442,6 +8442,50 @@ class Qwen35GGUFResidentModelRunner:
             raise KeyError(f"request_id {rid} is not registered with the GGUF resident runner")
         return self._rows[rid]
 
+    def prefill_activation_ready(self, request_id: int) -> bool:
+        """Whether this row's next prefill chunk may run now.
+
+        A speculative row whose prompt has not started prefill needs the MTP
+        prompt-activation claim before its first chunk, because the sink
+        captures hidden states from prompt position zero. While another row
+        holds that claim (a chunked prefill holds it across ticks), running
+        this row's first chunk would permanently forfeit its draft provider.
+        The scheduler defers the row instead, so a concurrent arrival keeps its
+        MTP eligibility at the cost of a bounded prefill start delay.
+        """
+
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return True
+        probe = getattr(adapter, "prompt_activation_available", None)
+        if not callable(probe) or bool(probe()):
+            return True
+        row = self._row(int(request_id))
+        if row.prefill_tokens_seen > 0 or row.mtp2_candidate_budget <= 0:
+            return True
+        # A prefix-reused row never primes a provider (K0), so it can start
+        # whenever the scheduler picks it.
+        return bool(row.prefix_reused_tokens)
+
+    def prefill_needs_activation(self, request_id: int) -> bool:
+        """Whether this row's next chunk would open the prompt-activation claim.
+
+        Only a row whose prompt has not started prefill needs the claim; a row
+        already carrying a sink is mid-activation and a row without speculative
+        intent never opens one. The scheduler uses this to admit at most one
+        claim-opening row per multi-row prefill item, because the serial prefill
+        path activates each row immediately before its own first chunk and a
+        second claim-opening row in the same item would forfeit its provider.
+        """
+
+        row = self._row(int(request_id))
+        return bool(
+            row.mtp2_candidate_budget > 0
+            and not row.prefix_reused_tokens
+            and row.prefill_tokens_seen == 0
+            and row.slot is None
+        )
+
     def _begin_mtp2_prompt_streaming(
         self,
         rows: Sequence[_GGUFResidentLoopRow],

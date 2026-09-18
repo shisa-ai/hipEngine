@@ -1215,18 +1215,35 @@ class ResidentBatchScheduler:
     def compact(self, order: Sequence[int] | None = None):
         return self.active_batch.compact(order=order)
 
-    def next_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
-        """Emit one legacy FCFS prefill chunk and advance its prompt cursor."""
+    def next_prefill_work(
+        self,
+        *,
+        chunk_size: int,
+        ready: Callable[[int], bool] | None = None,
+    ) -> WorkItem | None:
+        """Emit one legacy FCFS prefill chunk and advance its prompt cursor.
+
+        ``ready`` lets the runner defer a row whose first chunk would forfeit
+        state it cannot recover (an MTP prompt activation held by another
+        request). A deferred row keeps its cursor, so no prompt work is lost.
+        """
 
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         for request_id in self.active_batch.active_request_ids:
+            if ready is not None and not ready(request_id):
+                continue
             request = self.active_batch.requests[request_id]
             if request.remaining_prefill > 0:
                 return self._take_prefill_work(request_id, chunk_size=chunk_size)
         return None
 
-    def next_round_robin_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
+    def next_round_robin_prefill_work(
+        self,
+        *,
+        chunk_size: int,
+        ready: Callable[[int], bool] | None = None,
+    ) -> WorkItem | None:
         """Emit one fair prefill quantum using stable physical-slot rotation."""
 
         if chunk_size <= 0:
@@ -1238,6 +1255,8 @@ class ResidentBatchScheduler:
                 continue
             request = self.active_batch.requests[slot_state.request_id]
             if request.remaining_prefill <= 0:
+                continue
+            if ready is not None and not ready(request.request_id):
                 continue
             self._prefill_round_robin_slot = (slot + 1) % self.capacity
             return self._take_prefill_work(
@@ -1251,22 +1270,49 @@ class ResidentBatchScheduler:
         *,
         chunk_size: int,
         max_rows: int,
+        ready: Callable[[int], bool] | None = None,
+        needs_activation: Callable[[int], bool] | None = None,
     ) -> WorkItem | None:
         """Emit one stable multi-request prefill quantum.
 
         The scheduler advances every selected prompt cursor atomically before
         publication. Runner capability decides whether those rows execute in one
         native prefill call; incompatible/native misses must fall back before
-        this method is selected.
+        this method is selected. ``ready`` excludes rows the runner cannot start
+        this tick, so a deferred row is never advanced by a cursor update it
+        did not execute.
+
+        ``needs_activation`` marks a row whose first chunk opens the runner's
+        single prompt-activation claim. A row that will be prefilled in more
+        than one chunk holds that claim until its prompt is complete, and the
+        serial prefill path activates each row just before its own first chunk,
+        so selecting two such rows in one item would make the second forfeit
+        its provider. At most one is selected per item; the others keep their
+        cursors and are emitted once the claim is free.
         """
 
         if chunk_size <= 0 or max_rows <= 0:
             raise ValueError("chunk_size/max_rows must be positive")
-        selected = tuple(
-            request_id
-            for request_id in self.active_batch.active_request_ids
-            if self.active_batch.requests[request_id].remaining_prefill > 0
-        )[: int(max_rows)]
+        selected: list[int] = []
+        claim_taken = False
+        for request_id in self.active_batch.active_request_ids:
+            request = self.active_batch.requests[request_id]
+            if request.remaining_prefill <= 0:
+                continue
+            if ready is not None and not ready(request_id):
+                continue
+            if (
+                needs_activation is not None
+                and request.remaining_prefill > int(chunk_size)
+                and needs_activation(request_id)
+            ):
+                if claim_taken:
+                    continue
+                claim_taken = True
+            selected.append(request_id)
+            if len(selected) >= int(max_rows):
+                break
+        selected = tuple(selected)
         if not selected:
             return None
         chunks: list[tuple[int, ...]] = []
