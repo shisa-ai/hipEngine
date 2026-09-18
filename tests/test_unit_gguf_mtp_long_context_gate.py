@@ -204,3 +204,60 @@ def test_main_rejects_an_empty_scenario_set(tmp_path) -> None:
                 "",
             )
         )
+
+
+def test_main_rejects_conflicting_graph_requests(tmp_path) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fixture")
+
+    with pytest.raises(SystemExit, match="mutually exclusive"):
+        gate_module.main(
+            (
+                "--model",
+                str(model),
+                "--generation-contexts",
+                "",
+                "--require-target-graph",
+                "--disable-target-graph",
+            )
+        )
+
+
+def test_logit_diagnostics_measure_a_reassociated_candidate() -> None:
+    import numpy as np
+
+    from scripts.gguf_mtp_long_context_gate import _logit_diagnostics
+
+    teacher = np.array(
+        [[4.0, 1.0, -2.0], [2.0, 1.999, 0.25]],
+        dtype=np.float32,
+    )
+    identical = _logit_diagnostics(teacher.copy(), teacher)
+    assert identical["target_logits_compared"] is True
+    assert identical["target_rows"] == 2
+    assert identical["target_top1_matches"] == 2
+    assert identical["target_top1_agreement"] == 1.0
+    assert identical["target_max_abs_logit_delta"] == 0.0
+    assert identical["target_row_kl"] == [0.0, 0.0]
+    assert identical["target_row_kl_max"] == 0.0
+
+    # One row reassociated by a BF16 ULP, one row flipped to the runner-up.
+    candidate = teacher.copy()
+    candidate[0, 0] -= np.float32(0.015625)
+    candidate[1, 1] += np.float32(0.015625)
+    moved = _logit_diagnostics(candidate, teacher)
+    assert moved["target_top1_matches"] == 1
+    assert moved["target_top1_agreement"] == 0.5
+    assert moved["target_max_abs_logit_delta"] == pytest.approx(0.015625, abs=1e-6)
+    assert moved["target_row_kl"][0] > 0.0
+    assert moved["target_row_kl"][1] > moved["target_row_kl"][0]
+    assert moved["target_row_kl_max"] == max(moved["target_row_kl"])
+
+    # An unavailable or mismatched capture reports itself instead of zero.
+    assert _logit_diagnostics(None, teacher)["target_logits_compared"] is False
+    assert (
+        _logit_diagnostics(np.zeros((3, 3), dtype=np.float32), teacher)[
+            "target_logits_compared"
+        ]
+        is False
+    )

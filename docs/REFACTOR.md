@@ -197,23 +197,23 @@ above before it becomes a default.
   (`worklog/entries/20260917T195925.422701Z-lhl-gguf-long-context-eager-staged-attention-2c4ca3.md`,
   `benchmarks/results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json`).
 - Remaining: the staged *linear*-attention chain still takes the row-wise strict
-  route at long context, because it diverges from scalar AR in BF16 at the
-  split-attention boundary. `strict_long_rows` still derives from
-  `_use_gguf_full_attention_split_decode(start_position + rows)` for that
-  decision; once linear rows are per-row exact it can read the same per-row
-  readiness check the full-attention chain uses. This is the dominant blocker
-  for long-context MTP economics: 48 of the 64 layers are linear, and a serving
-  measurement with the batched full-attention chain in place but linear rows
-  still row-wise lands at 0.90x AR at a 945-token prompt and 0.68x at 3,530
-  tokens (Qwen3.8-27B Q4_K_M, gfx1151, budget 3, split-K decode at its default
-  threshold, same server process for both arms), against 1.38x when the
-  split-K threshold is raised so both chains batch
+  route at long context by default, because it diverges from scalar AR in BF16 at
+  the split-attention boundary. It is now reachable behind
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` for production-numerics evaluation
+  (see the row-wise strict dispatch entry above); the default stays row-wise
+  until that evaluation and the task/performance gates pass. This is the
+  dominant blocker for long-context MTP economics: 48 of the 64 layers are
+  linear, and a serving measurement with the batched full-attention chain in
+  place but linear rows still row-wise lands at 0.90x AR at a 945-token prompt
+  and 0.68x at 3,530 tokens (Qwen3.8-27B Q4_K_M, gfx1151, budget 3, split-K
+  decode at its default threshold, same server process for both arms), against
+  1.38x when the split-K threshold is raised so both chains batch
   (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
 - Historical note: the only measured way to reach the batched long-row route
   before this was to raise the split threshold past the request's context (or
   disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
-  tokens. That workaround is no longer needed for full attention, but it is
-  still the only way to batch the linear rows.
+  tokens. That workaround is no longer needed for full attention, and the
+  linear rows now have their own default-off admission instead.
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
@@ -6162,6 +6162,26 @@ should be boring.
 - This is deliberately not the fast long-context route (direct cycle cost
   0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
   context cap.
+- Admission is now explicit and default-off (2026-09-19):
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` (or the backend package capability
+  `GGUF_STAGED_LINEAR_ROWS_LONG`) lets dense linear-attention rows stage above
+  the split threshold, which the row-wise rule above previously forbade. Unset
+  keeps this entry's row-wise route byte-for-byte, so the strict fallback is
+  unchanged. The 2026-09-12 BF16 boundary that motivated the blanket rule
+  (layer 46, max abs 0.015625) does not reproduce on the current dense
+  Q4_K_M path: on the eager route
+  (`scripts/gguf_mtp_long_context_gate.py --disable-target-graph`, gfx1151,
+  Qwen3.8-27B Q4_K_M) every straddle case is exact against the serial-exact
+  teacher with `staged_chain_calls` 48 and `row_wise_attn_calls` 0, while the
+  matched row-wise control is exact as well. The candidate is being evaluated
+  under the production numerical, task, and performance gates before any
+  capability default is set; until then the flag is the only way to reach the
+  batched linear rows at long context.
+- Removal trigger: once the production numerical, task, and performance gates
+  qualify the staged linear route on the admitted (backend, model, quant) cells,
+  read the backend capability directly and delete the env override (or keep it
+  as a documented rollback exactly like `GGUF_AOTRITON_HEAD_MAJOR_KV`). If the
+  candidate fails a gate, delete the flag with the row-wise route unchanged.
 - Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified
   and the eager long path becomes a non-authoritative fallback, re-evaluate
   whether the row-wise serialization can be consolidated into the registered
