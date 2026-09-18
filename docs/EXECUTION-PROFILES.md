@@ -6,8 +6,9 @@ implemented; wider containment classes and per-request group partitioning
 pending; model-plan certification pending**
 Approved: 2026-08-16
 Authority: [`PLAN.md`](PLAN.md) remains the project architecture source of
-truth. This document is the normative policy for arithmetic drift,
-determinism, and batch-composition guarantees.
+truth. This document is the normative policy for control/ownership correctness,
+execution-failure containment, arithmetic drift, determinism, and
+batch-composition guarantees.
 
 ## 1. Why profiles exist
 
@@ -31,10 +32,49 @@ The first is mandatory in every profile. The second is mandatory for retained
 strict and production routes. The third is an explicit reproducibility
 contract rather than a universal serving requirement.
 
-Failure belongs to the first property: a route is not control-correct if one
-request's failure can revoke ownership from requests that did not fail. Section
-4.3 states the containment contract and section 4.4 states how per-request
-eligibility survives group execution.
+Failure belongs to the first property: recovery must preserve ownership and
+valid state outside the affected scope. Section 4.3 states the containment
+contract and section 4.4 separates per-request capability from group scheduling.
+
+### 1.1 Missing evidence is not a runtime failure
+
+An implemented path that satisfies its declared input, resource, and execution
+contracts is presumed runnable. Test it, observe its behavior, and fix failures;
+do not presume it invalid because its exact prompt length, output horizon,
+width, or workload has not appeared in a benchmark. This is a development and
+admission rule, not a claim that untested code is proven correct.
+
+Keep three questions separate:
+
+- **Can it execute?** Check implemented semantics, compatible storage/layout,
+  allocated bounds, ownership, and available resources. Missing code, violated
+  preconditions, and known failures are concrete reasons to reject or select
+  another path; missing benchmark rows alone are not.
+- **What does evaluation show?** Make implemented candidates reachable through
+  the real runner and serving path, with selected variants and fallback reasons
+  observable. Use representative workloads, longer and mixed requests, targeted
+  fault/transition tests, and quality/performance controls to discover behavior.
+  Do not require successful evaluation as a prerequisite for running that
+  evaluation. Preserve focused reproducers for known failures.
+- **What may we claim or promote?** Production arithmetic changes and published
+  quality/performance claims still require the applicable gates in this document.
+  An unmeasured result is not a measured failure or a certified success. Evidence
+  must cover the algorithm and relevant regimes/transitions; it is not an
+  exhaustive allowlist of individual requests or every integer context length.
+
+A restriction must name its concrete cause and scope: an implementation bound,
+unsupported semantics, resource pressure, a schedule transition, or an observed
+failure. A guard that exists only because a case was not tested is an evaluation
+and cleanup task, not a permanent safety boundary. During its removal, provide
+an explicit runnable evaluation path rather than silently returning a fallback.
+A graph-bucket miss may select eager execution for that cycle; it does not by
+itself invalidate later cycles or other requests.
+
+Normal execution of untested code is different from continuation after an actual
+failure has left device or shared state uncertain. The latter requires the
+recovery evidence in section 4.3. This correction changes policy, not runtime
+selection: existing evidence-table and override restrictions are described in
+section 2.9 and are not removed by editing this document.
 
 ## 2. Public profiles
 
@@ -302,8 +342,13 @@ admission. Evidence:
 
 ### 2.9 Serving admission is physical, not shape-scoped
 
-Speculative-MTP serving admission is decided by one exact model-plugin
-evidence row over physical and ownership identity only:
+The implemented speculative-MTP resolver selects one exact model-plugin
+evidence row over physical and ownership identity. This describes the current
+selection mechanism, not proof that every unmatched cell is invalid. Under
+section 1.1, implementation capabilities and concrete failures determine
+runnability; evidence records measured guarantees and promotion decisions.
+Evidence-only restrictions must not prevent evaluation of implemented paths.
+The resolver currently checks:
 
 | Axis | Why it binds |
 | --- | --- |
@@ -340,28 +385,35 @@ A retained row still records the shape envelope its artifact measured, and that
 envelope remains part of the benchmark evidence. What changed is that the
 envelope no longer decides admission.
 
-#### Explicit screening override (operator-only, never evidence)
+#### Implemented explicit screening override
 
-`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets an operator measure a physical
-cell that no retained row qualifies. It is not an admission axis and it does not
-weaken this contract:
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` is the existing mechanism for
+measuring a physical cell that no retained row qualifies. It does not require
+that the experiment pass before it can run:
 
-- It applies only to a request that explicitly asks for speculation
+- It currently applies only to a request that explicitly asks for speculation
   (`speculative_mtp: true`). Automatic intent, and `auto`/`enabled` without an
-explicit request, stay fail-closed exactly as before.
-- It covers qualification gaps only: a missing evidence row, or a mismatch on
-  artifact, backend, target architecture, weight quant, KV storage, KV layout,
-  physical group, resident capacity, or candidate depth. Sampling-mode,
-  artifact-identity, and memory-fit rejections remain fail-closed, because they
-  are correctness boundaries rather than unmeasured cells.
-- Every screening admission is non-automatic by construction, so it cannot
-  widen model policy, and the response reports
-  `qualification: explicit_screening_unqualified_cell`, `unqualified: true`, and
-the original rejection reason in `speculative_mtp`. A screening rate is
-  therefore never readable as a qualified route.
-- Screening measurements are diagnostics. Promoting one requires the ordinary
-  path: a retained evidence row with its numerical, determinism, isolation, and
-task gates.
+  explicit request, retain the existing evidence-based selection. These are
+  implementation restrictions, not a declaration that unmatched paths are bad.
+- It covers qualification gaps: a missing evidence row or an evidence mismatch
+  on artifact, backend, target architecture, quant, KV storage/layout, physical
+  group, capacity, or candidate depth. The chosen implementation must still
+  support the actual inputs and semantics. Content verification, available
+  memory and supported sampling remain independently checked; a summary of one
+  qualification miss must not conceal a failed structural check.
+- Screening eligibility is non-automatic in this implementation, and the
+  response reports `qualification: explicit_screening_unqualified_cell`,
+  `unqualified: true`, and the original rejection reason in `speculative_mtp`.
+  These labels describe evidence status, not a correctness verdict.
+- Record diagnostic measurements, failures and successful checks. They can
+  contribute to the ordinary numerical, determinism, isolation, task and
+  performance evaluation; an incomplete screen must not be presented as a
+  completed production gate.
+
+The longer-term contract is capability-based execution with evidence-backed
+claims and promotion, not an ever-growing benchmark allowlist. Replacing these
+selection restrictions requires implementation and tests; this policy revision
+does not assert that the replacement has landed.
 
 ## 3. Profile is orthogonal to model representation
 
@@ -398,8 +450,8 @@ not acceptable numerical drift.
 | Graph/dispatch metadata | Resolved profile, variant manifest, graph bucket, row maps, and fallback decision match the declared run. |
 | Sampling accounting | Per-request RNG stream/counter, seed ownership, accepted-token count, and speculative transaction accounting are correct. |
 | Lifecycle | Allocation ownership, teardown, reclaim, and stale-pointer protections remain exact and leak-free. |
-| Failure containment | One request's failure ends that request only. A containment claim proves device quiescence and reclaimability for the requests it names; whatever it cannot prove stays fatal and marks the service unhealthy. See section 4.3. |
-| Per-request eligibility | Route, width, and draft state belong to the request. A neighbor's refusal, context limit, or incompatible mode cannot revoke them, and a downgraded request reports its own reason. See section 4.4. |
+| Failure containment | Contain a recoverable fault to the smallest affected ownership scope the runner can establish. Preserve requests outside that scope; if safe continuation cannot be established, mark the service unhealthy and stop. See section 4.3. |
+| Per-request eligibility | Preserve each request's identity, state and implementation capabilities under grouping. Schedule compatible work under explicit resource/fairness/cost policy; report the actual reason for a fallback, not a neighbor's ineligibility. See section 4.4. |
 
 ### 4.1 Numerical values that may differ in production
 
@@ -436,95 +488,124 @@ and compaction.
 
 ### 4.3 Execution failure containment
 
-Containment is a declared contract, not an exception handler. Catching an
-exception does not make the remaining requests safe: a raised `ValueError`
-does not prove that no device work or shared-state mutation preceded it. A
-blanket catch-and-continue therefore fails this contract rather than satisfying
-it.
+Containment is a recovery contract, not an exception handler or a prerequisite
+for running a previously untested workload. After an actual failure, a raised
+`ValueError` does not prove that no device work or shared-state mutation preceded
+it. A blanket catch-and-continue fails this contract.
 
-A runner may end a failed step's own request and keep serving only by returning
-a containment claim that proves both of the following:
+A runner may retire the smallest affected ownership scope it can establish and
+keep serving only when its containment claim establishes both:
 
-- the failed step is quiesced — every device call it launched has completed or
-  reported its own device error; and
-- every request the claim names can be reclaimed.
+- **Quiescence:** all outstanding work that can access the affected resources
+  has completed, including prior queued work and cross-stream dependencies.
+  Reporting a device error alone does not establish safe resource reuse.
+- **Reclaimability:** the named requests can be retired without invalidating
+  survivors. Account for device buffers and host-side leases, reference counts,
+  scheduler records, provider claims and graph references. Cleanup must finish
+  before affected resources are reused.
 
-The claim carries the affected request IDs, the execution phase, the work kind,
-and how far the failed step could have reached device state:
+The affected scope may be one request or a packed/shared ownership group. A
+single triggering request does not imply that all preceding mutations were
+request-local. Naming fewer requests than the failed work item asserts that all
+unnamed rows still hold valid canonical state. The current claim API refuses
+IDs outside the failed work item; if the affected scope cannot be contained
+within it, the service must stop rather than omit affected owners.
+
+The claim records affected IDs, phase, work kind, cause and mutation status.
+Mutation status describes what happened; recovery outcome is a separate
+assertion, not part of the definition of `committed`:
 
 | Mutation | Meaning | Claimable |
 | --- | --- | --- |
-| `none` | The step raised before its first device call. | Yes, once quiescence and reclaimability are proven. |
-| `partial` | Device work started; no canonical commit was claimed. | Only with a runner-specific recovery proof. |
-| `committed` | A canonical commit happened and was restored. | Only with a runner-specific recovery proof. |
-| `unknown` | The runner could not narrow the window. | No. The failure stays fatal. |
+| `none` | The step raised before its first device call; host bookkeeping may still need cleanup. | Yes, once quiescence and reclaimability are established. |
+| `partial` | Device work started; no canonical commit was claimed. | With runner-specific evidence of safe rollback, rebuild or retirement. |
+| `committed` | A canonical commit happened before the failure. | With runner-specific evidence that committed state and emitted output remain consistent, or that safe restoration/retirement is complete. |
+| `unknown` | The runner cannot establish the mutation window. | No. Recovery evidence must first resolve the status; otherwise the failure stays fatal. |
 
-Naming a narrower request set than the failed work item asserts that every
-unnamed request of that item still holds canonical state. A claim that names
-requests outside the failed work item is refused.
-
-The following stay fatal. They must mark the shared service unhealthy instead of
-continuing on state that is not proven:
-
-- device/HIP errors, and any failure a runner cannot narrow to `none` without a
-  recovery proof;
-- phases outside the runner's declared containable set;
-- no reachable device runtime, or a quiescence check that itself fails;
-- a cleanup or rollback whose completion cannot be proven.
+The recovery path must distinguish a recoverable refusal from an unhealthy
+runtime. A classified resource refusal before device mutation can be local;
+an illegal device access, uncertain shared-state mutation, unavailable runtime
+needed for recovery, failed quiescence check, or unprovable cleanup requires a
+controlled stop. Exception type alone is neither a recovery proof nor a
+universal fatal classification. Unimplemented recovery is a concrete limitation
+after a failure, not a reason to reject ordinary execution in advance.
 
 Fatal is a controlled stop, not a silent one. The service reports `ok`,
 `unhealthy`, or `closed`; an unhealthy report names the failing phase, the
-deepest frame, and the affected request IDs when the exception carries them; the
-server's readiness endpoint reports the same state with `ready: false`; and a
-later submission explains why it was refused instead of returning a generic
-engine-closed error. Restart restores serving.
+deepest frame, and affected IDs when known. Readiness reports the same state
+with `ready: false`. Active requests receive a terminal error naming the fatal
+cause, and queued or later submissions explain the refusal instead of returning
+generic memory advice. Restoring a healthy runtime is required before serving
+resumes.
 
-A contained failure must leave survivors intact: unaffected requests keep their
-outputs, ownership, KV, and recurrent state, and a subsequent request succeeds
-without a restart. Diagnostics name the fault instead of generic memory advice:
-a contained failure reaches its own client with the phase, affected request IDs,
-work kind, mutation class, and cause, and a fatal failure reaches every request
-on the service with the reason the service closed.
+Containment preserves survivors' committed output and authoritative ownership,
+positions, KV and recurrent state. At the recovery boundary, compare state
+against a control with the same committed history and schedule. If subsequent
+group width or scheduling changes, future arithmetic follows the declared
+profile: production uses its numerical/task and same-schedule determinism
+gates, not unconditional ID equality to a differently scheduled run.
+`batch_invariant` retains its stronger composition guarantee.
 
-Required coverage for a containment claim:
+Validate the recovery mechanism with:
 
-- a local prefill failure and a local decode failure;
-- a failure inside a packed group;
-- a cleanup failure and a simulated fatal device state;
-- unaffected requests matching their control outputs;
-- a successful request after each recoverable failure;
-- the refusal path, where a claim cannot prove quiescence or reclaimability.
+- local prefill and decode failures, including failures before device launch;
+- a failure inside a packed group and both narrow and group-scoped retirement;
+- cleanup failure, a simulated fatal device state and refused containment;
+- survivors' state/ownership checks and profile-appropriate output controls;
+- a successful subsequent request after recoverable failure;
+- terminal errors carrying phase, affected IDs, work kind, mutation class and
+  cause, with no lost or duplicated committed output.
 
-The resident GGUF runner implements `contain_execution_failure` and claims
-`none` only, for prefill and decode steps, after synchronizing each affected
-row's device runtime. `partial`, `committed`, and `unknown` are declared so that
-a runner can claim them with a proof; no runner claims them yet, and every
-failure in those classes stays fatal.
+This is fault-class and ownership coverage, not an allowlist of every exception
+message or workload permitted to run. Add a reproducer when a new failure is
+observed and repair or scope that failure.
+
+**Implemented scope:** the resident GGUF runner's `contain_execution_failure`
+claims `none` only for prefill/decode, after synchronizing the affected runtimes.
+It conservatively refuses every `HipError`, a missing/failing runtime and later
+mutation windows. That is the current implementation, not a permanent rule
+that every HIP error is unrecoverable. No runner currently claims `partial` or
+`committed`; those need a recovery implementation and its tests. `unknown` is
+never a successful containment claim.
 
 ### 4.4 Per-request eligibility under group execution
 
-An execution group is a property of the schedule, not an ownership unit.
-Eligibility — route, physical width, provider state, draft state — is resolved
-per request, and a group-level check may only take away what a request's own
-eligibility took away:
+Request identity, authoritative state and implementation capabilities belong to
+the request. Physical width and the selected execution route are scheduling
+choices subject to those capabilities. A group may legitimately own shared
+workspaces, graphs and transactions; it must not erase per-request eligibility
+or transfer state between requests.
 
-- a neighbor's context limit, provider refusal, or incompatible verifier mode
-  cannot force a request into a slower route;
-- when a request falls back, the reported reason is that request's own reason,
-  not the group's aggregate refusal;
-- partitioning a group preserves stable slot ownership, and every row executes
-  exactly once per tick through the existing scheduler;
-- survivors keep canonical state and correct output when a peer falls back or
-  fails.
+Resolve each request's supported semantics, provider readiness, storage and
+bounds before combining compatible work. Missing benchmark coverage alone is
+not ineligibility (section 1.1). Then select a valid schedule under declared
+compatibility, resource, fairness and cost policy:
 
-This does not require every request to receive its fastest available route. A
-locally economical decision — AR decode for a request whose own context or mode
-rules out speculation, for example — is correct. What is not correct is an
-unrelated request losing a valid fast path through accidental group coupling.
+- a neighbor's context miss, provider refusal or verifier mode must not be
+  copied into another request's eligibility;
+- consider supported partitioning rather than blindly downgrading the group;
+  partitioning preserves stable slots and executes each selected row once,
+  without duplicated work or starvation through the existing scheduler;
+- a scheduler may choose another valid route, including packed AR instead of
+  costly serial MTP groups, for a concrete compatibility, resource or economic
+  reason. Report that scheduling reason separately from per-request refusal;
+- preserve the original request-local reason when it falls back. A generic
+  group resource miss must not conceal a different cause;
+- a local graph/schedule transition must not permanently revoke eligibility.
+  Re-evaluate subsequent work and use an appropriate fast path when available;
+- survivors retain canonical state and profile-correct execution when a peer
+  falls back or fails.
 
-Current gap: a group-level resource-claim miss still downgrades every row of the
-plan and replaces each row's own reason with the group's. Resolving eligibility
-per request before group capability and resource checks is not implemented.
+This is not a guarantee of every request's fastest standalone route, identical
+latency regardless of neighbors, or MTP at any cost. It forbids accidental
+ineligibility propagation and requires accountable scheduling. Validate it with
+mixed contexts, ready/refused providers, cache hits/misses, modes and live
+membership, measuring both correctness and actual route/latency behavior.
+
+**Implementation gap:** a group-level resource-claim miss can still downgrade
+every row and replace its reason with the group's. Per-request eligibility and
+compatible grouping before those checks remain implementation work; this
+contract does not claim they are already fixed.
 
 ## 5. Arithmetic-source classification
 
@@ -706,9 +787,15 @@ paths must not grow `if profile == ...`, `if backend == ...`, or
 candidate while it is under test, but retained behavior must be available
 through the public profile/variant plan and recorded in logs and artifacts.
 
-Missing or uncertified production variants fail closed to the registered strict
-fallback. Unsupported batch-invariant scenarios either use a certified strict
-fallback or reject clearly; they do not silently run production arithmetic.
+For public profile selection, missing or uncertified production variants retain
+the registered strict fallback. This protects the advertised profile guarantee;
+it does not prohibit explicitly selecting an implemented candidate for the
+evaluation in section 1.1. Record that selection and its evidence status rather
+than presenting it as certified. Routine workload variation within an
+implementation's declared domain does not require a new certificate per shape.
+Unsupported batch-invariant scenarios either use a fallback that preserves the
+requested composition guarantee or reject clearly; they do not silently run
+production arithmetic.
 
 The public selectors are `LLM(..., execution_profile=...)`, server
 `--execution-profile`, and `HIPENGINE_EXECUTION_PROFILE`. Resolution is a
@@ -757,14 +844,21 @@ Every profile-sensitive artifact records:
 - exact command and performance metrics; and
 - whether generated-ID equality is binding or diagnostic for that profile.
 
-Promotion is shape- and backend-qualified. A candidate that fails one width or
-context may be retained only if dispatch excludes that scope and the artifact
-states the exclusion. No benchmark prompt, token ID, or heldout result may be
-hardcoded into selection.
+Promotion evidence names the tested shapes, backend and relevant implementation
+regimes/transitions; it must not be rewritten as an exhaustive request allowlist.
+A concrete failure at one width or context requires a scoped repair or exclusion
+that the artifact explains. Untested points are reported as untested, not failed.
+A focused diagnostic may reproduce a known failure; normal serving must not
+silently select the known-bad path. No benchmark prompt, token ID, or heldout
+result may be hardcoded into selection.
 
 ## 10. Automatic rejection
 
-Reject or fall back to strict on any of the following:
+The following disqualify a production promotion or claim. At runtime, an
+observed failure must trigger the appropriate scoped rejection, repair or safe
+fallback. A fallback after state mutation requires section 4.3 recovery first;
+selecting strict arithmetic cannot repair corrupted ownership or device state.
+Missing evaluation alone does not prohibit running the evaluation.
 
 1. request/slot/token/position/mask/KV/state-ownership mismatch;
 2. state contamination from a neighbor or inactive row;
@@ -773,13 +867,14 @@ Reject or fall back to strict on any of the following:
 5. any binding category/shape/transition threshold failure;
 6. task-level material regression;
 7. missing strict fallback or unrecorded profile/variant provenance;
-8. a performance claim without the same-suite quality packet; or
+8. a claimed performance improvement without the same-suite quality packet;
 9. prompt-, token-, or candidate-specific benchmark gaming;
-10. an execution failure that ends requests which did not fail, closes the
-    service on a recoverable fault, or continues on unproven device or
-    shared-owner state after a failure; or
-11. a group-level decision that revokes a request's route or reports a reason
-    other than that request's own.
+10. terminating requests outside the established affected ownership scope,
+    closing the service despite an established safe recovery, or continuing on
+    uncertain device/shared-owner state after a failure; or
+11. propagating a neighbor's ineligibility into another request, concealing the
+    actual request or scheduling reason, or rejecting an implemented compatible
+    path solely because its exact workload lacks prior benchmark evidence.
 
 A failed threshold is not fixed by relabeling a bug as numerical relaxation.
 Budgets move only through an explicit policy decision backed by calibration
