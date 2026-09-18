@@ -276,18 +276,12 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
         ),
         commit=True,
     )
-    # The reused suffix prefills through the batched packed route, not the
-    # serial step loop; the fake records the batch call as a prefill call.
-    assert continued_session.prefill_calls == [((999,), 256, 257)]
-    assert continued_session.prefill_batch_kwargs == [
-        {
-            "full_prompt_lengths": [257],
-            "return_logits": False,
-            "return_hidden_seeds": False,
-            "sample_output": True,
-        }
-    ]
-    assert continued_session.step_calls == []
+    # A one-token suffix stays on the serial step: a single-row prefill leaves
+    # the bulk schedule (MoE has no rows==1 bulk path), and one token costs one
+    # step either way, so there is no batching win to trade correctness for.
+    assert continued_session.prefill_calls == []
+    assert continued_session.prefill_batch_kwargs == []
+    assert continued_session.step_calls == [(999, 256, 257)]
     assert continued_row.slot is not None
     assert continued_row.slot.generated_ids == [777]
 
@@ -374,16 +368,10 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
         commit=True,
     )
 
-    assert session.prefill_calls == [((999,), 256, 257)]
-    assert session.prefill_batch_kwargs == [
-        {
-            "full_prompt_lengths": [257],
-            "return_logits": True,
-            "return_hidden_seeds": False,
-            "sample_output": True,
-        }
-    ]
-    assert session.step_calls == []
+    # One-token suffix: serial step, not a one-row batched prefill.
+    assert session.prefill_calls == []
+    assert session.prefill_batch_kwargs == []
+    assert session.step_calls == [(999, 256, 257)]
     # The reused-suffix route - batched by default, serial on fallback - must
     # record the phase, or a served run cannot tell which route paid.
     assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
@@ -1181,6 +1169,21 @@ def test_prefix_reuse_falls_back_for_exact_prompt_and_sampled_boundary() -> None
         "cache_resident_bytes": 384,
     }
     runner.rollback_admission(SimpleNamespace(request_id=21))
+
+    # A one-token suffix still reuses the prefix; only the suffix route
+    # changes. It goes through the serial step rather than a one-row batched
+    # prefill, which would leave the bulk schedule (MoE has no rows==1 bulk
+    # path) for no speedup - one token costs one step either way.
+    single_prompt = (*prefix, 998)
+    single_request = _request(single_prompt, max_tokens=2)
+    runner.register_batch((23,), single_request, prompt_rows=(single_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=23))
+    single = runner._rows[23]
+    assert single.prefix_lookup is True
+    assert single.prefix_matched_tokens == 512
+    assert single.prefix_reused_tokens == 512
+    assert single.prefix_fallback_reason is None
+    runner.rollback_admission(SimpleNamespace(request_id=23))
 
     sampled_prompt = (*prefix, 999)
     sampled_request = _request(sampled_prompt, max_tokens=2, temperature=0.7)

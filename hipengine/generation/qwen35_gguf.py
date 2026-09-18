@@ -391,6 +391,22 @@ def _gguf_prefix_batched_suffix_enabled() -> bool:
     }
 
 
+def _gguf_prefix_batched_suffix_chunk_eligible(chunk: tuple[int, ...]) -> bool:
+    """Batch a reused suffix only when it is at least two rows wide.
+
+    A one-row prefill does not take the bulk schedule: MoE has no rows==1 bulk
+    path at all (``_run_post_attention_moe_rows`` refuses it) and the dense
+    projections fall to their registered GEMV decode variants. Running a single
+    suffix token through the batched route would therefore give a hit whose
+    arithmetic differs from the wider chunk the same token sits in on a miss,
+    for no speedup worth having - one token costs one step either way. The
+    serial route handles it, which is also what this shape did before the
+    batched route existed.
+    """
+
+    return len(chunk) >= 2
+
+
 def _gguf_prefix_suffix_segments(
     session_position: int,
     prompt_length: int,
@@ -409,7 +425,11 @@ def _gguf_prefix_suffix_segments(
     end = start + len(chunk)
     if start < boundary < end:
         cut = boundary - start
-        return (chunk[:cut], chunk[cut:])
+        # A one-row segment would leave the bulk prefill schedule (see the
+        # single-token-suffix decline in the admission path), so a split that
+        # would strand a single token is not worth the mid-prefill snapshot.
+        if cut >= 1 and len(chunk) - cut >= 2:
+            return (chunk[:cut], chunk[cut:])
     return (chunk,)
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
@@ -9021,7 +9041,10 @@ class Qwen35GGUFResidentModelRunner:
                     "prefill_batch_native",
                     None,
                 )
-                if _gguf_prefix_batched_suffix_enabled()
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
                 else None
             )
             if callable(prefill_batch):
@@ -9189,7 +9212,10 @@ class Qwen35GGUFResidentModelRunner:
                     "prefill_batch_native",
                     None,
                 )
-                if _gguf_prefix_batched_suffix_enabled()
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
                 else None
             )
             if callable(prefill_batch):

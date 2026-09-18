@@ -32,6 +32,7 @@ from hipengine.core.hip import (
 )
 from hipengine.core.memory import (
     DeviceBuffer,
+    DeviceMemoryArena,
     copy_device_to_host,
     copy_host_to_device,
     copy_host_array_to_device,
@@ -5216,6 +5217,8 @@ class Qwen35GGUFFullStackRunner:
             expert_sidecar=expert_sidecar,
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
+            # Prefill: a one-row chunk must not switch to the decode schedule.
+            force_bulk_rows=True,
         )
         return used_aotriton
 
@@ -8813,6 +8816,8 @@ class Qwen35GGUFFullStackRunner:
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_ffn",
                 gpu_stage_recorder=gpu_stage_recorder,
+                # Prefill: a one-row chunk must not switch to the decode schedule.
+                force_bulk_rows=True,
             )
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -8969,6 +8974,8 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
+            # Prefill: a one-row chunk must not switch to the decode schedule.
+            force_bulk_rows=True,
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -9575,7 +9582,19 @@ class Qwen35GGUFFullStackRunner:
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        force_bulk_rows: bool = False,
     ) -> None:
+        """``force_bulk_rows`` keeps a one-row PREFILL on the bulk schedule.
+
+        The ``rows == 1`` specialisations below exist for decode, where a single
+        row is the natural shape. A prefill chunk that happens to contain one
+        row is a different thing: taking the decode schedule makes a chunk's
+        arithmetic depend on how the prompt was split, so prefilling N tokens as
+        one call and as ``N-1 + 1`` calls disagree. That breaks the contract a
+        prefix-cache hit owes a miss. Prefill callers therefore pass True;
+        decode callers keep the specialised route.
+        """
+
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
@@ -9658,6 +9677,10 @@ class Qwen35GGUFFullStackRunner:
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_post_norm_residual")
         if self.weights.config.is_moe:
+            # MoE has no bulk rows==1 schedule (`_run_post_attention_moe_rows`
+            # refuses rows <= 1), so force_bulk_rows cannot redirect it. A
+            # one-row MoE prefill is avoided upstream instead: the prefix-cache
+            # admission never leaves a single-token suffix.
             if rows == 1:
                 self._run_post_attention_moe_c1(
                     layer_id,
@@ -9696,11 +9719,18 @@ class Qwen35GGUFFullStackRunner:
             if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
-        dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
-            self,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
+        dense_decode_variant = (
+            None
+            if force_bulk_rows
+            # A registered decode variant swaps the fused gate/up SiLU onto the
+            # GEMV decode schedule, which is a different arithmetic route than
+            # the GEMM the same tokens take inside a wider prefill chunk.
+            else _gguf_dense_pair_silu_decode_variant(
+                self,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+            )
         )
         dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
             scratch,
@@ -9811,7 +9841,9 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.hidden_size,
             )
             self._dense_down_residual_decode_c1 = dense_down_decode_c1
-        dense_down_decode_fused = rows == 1 and bool(dense_down_decode_c1)
+        dense_down_decode_fused = (
+            rows == 1 and not force_bulk_rows and bool(dense_down_decode_c1)
+        )
         down_residual_fused = (
             next_norm_weight_ptr is None
             and not f32_residual
@@ -15029,6 +15061,70 @@ def _gguf_device_kv_copy_segments(
     return tuple(segments)
 
 
+class _GGUFPrefixSnapshotArenaPool:
+    """Recycle whole snapshot arenas so a steady-state capture is memcpy-only.
+
+    A capture used to ``malloc`` one buffer per GDN conv and recurrent state -
+    ~54 allocations on a 27-GDN-layer model - plus a device sync, and paid that
+    on every eligible turn whether or not the snapshot was ever reused. The
+    state geometry is identical for every snapshot of a given model, so the
+    arena from an evicted snapshot fits the next capture exactly. Retaining a
+    few makes the common capture zero-allocation; the cost was never the
+    copying.
+    """
+
+    def __init__(self, runtime: HipRuntime, *, max_retained: int = 4) -> None:
+        self.runtime = runtime
+        self.max_retained = max(0, int(max_retained))
+        self._free: dict[int, list[DeviceMemoryArena]] = {}
+        self.acquires = 0
+        self.arena_allocations = 0
+        self.closed = False
+
+    def acquire(self, nbytes: int) -> DeviceMemoryArena:
+        if self.closed:
+            raise RuntimeError("prefix snapshot arena pool is closed")
+        capacity = max(1, int(nbytes))
+        self.acquires += 1
+        bucket = self._free.get(capacity)
+        if bucket:
+            arena = bucket.pop()
+            arena.rewind()
+            return arena
+        self.arena_allocations += 1
+        return DeviceMemoryArena.create(capacity, runtime=self.runtime)
+
+    def release(self, arena: DeviceMemoryArena) -> None:
+        """Take an arena back, or free it when the retention budget is full."""
+
+        if self.closed or arena.closed:
+            if not arena.closed:
+                arena.close()
+            return
+        bucket = self._free.setdefault(int(arena.capacity_bytes), [])
+        if len(bucket) >= self.max_retained:
+            arena.close()
+            return
+        arena.rewind()
+        bucket.append(arena)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        for bucket in self._free.values():
+            for arena in bucket:
+                arena.close()
+        self._free.clear()
+
+    def stats(self) -> dict[str, int]:
+        return {
+            "acquires": int(self.acquires),
+            "arena_allocations": int(self.arena_allocations),
+            "retained_arenas": int(sum(len(b) for b in self._free.values())),
+        }
+
+
 @dataclass
 class Qwen35GGUFPrefixStateSnapshot:
     """Cache-owned device snapshot for one exact GGUF hybrid-state boundary."""
@@ -15043,6 +15139,10 @@ class Qwen35GGUFPrefixStateSnapshot:
     layer_conv_states: tuple[DeviceBuffer | None, ...]
     layer_recurrent_states: tuple[DeviceBuffer | None, ...]
     closed: bool = False
+    # When the state came from one pooled arena, the views are non-owning and
+    # the arena is returned to the pool on close instead of freed per buffer.
+    arena: DeviceMemoryArena | None = None
+    arena_pool: "_GGUFPrefixSnapshotArenaPool | None" = None
 
     @property
     def nbytes(self) -> int:
@@ -15055,9 +15155,19 @@ class Qwen35GGUFPrefixStateSnapshot:
     def close(self) -> None:
         if self.closed:
             return
-        for buffer in reversed((*self.layer_conv_states, *self.layer_recurrent_states)):
-            if buffer is not None:
-                free(buffer, runtime=self.runtime)
+        if self.arena is not None:
+            # Arena-backed: the per-layer buffers are views into one owning
+            # allocation, so freeing them individually would be a double free.
+            if self.arena_pool is not None:
+                self.arena_pool.release(self.arena)
+            else:
+                self.arena.close()
+        else:
+            for buffer in reversed(
+                (*self.layer_conv_states, *self.layer_recurrent_states)
+            ):
+                if buffer is not None:
+                    free(buffer, runtime=self.runtime)
         self.closed = True
 
 
@@ -17111,6 +17221,22 @@ class Qwen35GGUFResidentSession:
         conv_backups: list[DeviceBuffer | None] = []
         recurrent_backups: list[DeviceBuffer | None] = []
         allocated: list[DeviceBuffer] = []
+        # One pooled arena backs every per-layer view: the old path issued two
+        # mallocs per GDN layer (~54 on a 27-layer model) on every eligible
+        # turn, reused or not. Views are carved with the arena's own alignment,
+        # so sizing must account for it rather than summing raw byte counts.
+        pool = self._prefix_snapshot_arena_pool()
+        arena_capacity = 0
+        for conv_state, recurrent_state in zip(
+            self.scratch.layer_conv_states,
+            self.scratch.layer_recurrent_states,
+            strict=True,
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            for nbytes in (int(conv_state.nbytes), int(recurrent_state.nbytes)):
+                arena_capacity += ((nbytes + 4095) // 4096) * 4096
+        arena = pool.acquire(max(4096, arena_capacity))
         try:
             for layer_id, (conv_state, recurrent_state) in enumerate(
                 zip(
@@ -17128,10 +17254,8 @@ class Qwen35GGUFResidentSession:
                     recurrent_backups.append(None)
                     continue
                 assert recurrent_state is not None
-                conv_backup = malloc(conv_state.nbytes, runtime=runtime)
-                allocated.append(conv_backup)
-                recurrent_backup = malloc(recurrent_state.nbytes, runtime=runtime)
-                allocated.append(recurrent_backup)
+                conv_backup = arena.allocate(int(conv_state.nbytes))
+                recurrent_backup = arena.allocate(int(recurrent_state.nbytes))
                 conv_backups.append(conv_backup)
                 recurrent_backups.append(recurrent_backup)
                 runtime.memcpy_async(
@@ -17155,6 +17279,7 @@ class Qwen35GGUFResidentSession:
         except Exception:
             for buffer in reversed(allocated):
                 free(buffer, runtime=runtime)
+            pool.release(arena)
             raise
         return Qwen35GGUFPrefixStateSnapshot(
             runtime=runtime,
@@ -17166,7 +17291,18 @@ class Qwen35GGUFResidentSession:
             backing=allocation.backing,
             layer_conv_states=tuple(conv_backups),
             layer_recurrent_states=tuple(recurrent_backups),
+            arena=arena,
+            arena_pool=pool,
         )
+
+    def _prefix_snapshot_arena_pool(self) -> "_GGUFPrefixSnapshotArenaPool":
+        """Per-session arena pool, created on the first capture."""
+
+        pool = getattr(self, "_gguf_prefix_snapshot_arena_pool", None)
+        if pool is None or pool.closed:
+            pool = _GGUFPrefixSnapshotArenaPool(self.runtime or get_hip_runtime())
+            self._gguf_prefix_snapshot_arena_pool = pool
+        return pool
 
     def clone_prefix_state_from_snapshot(
         self,
