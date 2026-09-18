@@ -1,5 +1,41 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Per-token reused-prefix suffix prefill (found 2026-09-18)
+
+- `hipengine/generation/qwen35_gguf.py` `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk` both take an `if row.prefix_reused_tokens:`
+  branch that prefills the suffix after the matched prefix with one
+  `session.step(token_id)` per token, where the miss path calls the batched
+  prefill. A step costs a decode step, so a hit prefills at **82.1 ms per
+  executed token against 3.3 ms** on the miss rows (24.9x) and 28.9x the TTFT,
+  which made a realistic multi-turn load decode 3.47 tok/s with
+  `--prefix-cache radix` against 46.52 with it off. The route stays default-off
+  and is not promotable until this branch is replaced by the batched entry; the
+  retained 11.8x prefix win is a p256+s1 packet, where the loop costs one step.
+  Evidence:
+  `benchmarks/results/2026-09-18-gfx1151-qwen38-prefix-hit-multiturn-rejected.json`.
+- The branch also has to go before MTP can be admitted on a hit: it is the same
+  per-token processing that a draft-provider checkpoint would need to skip, and
+  measuring the checkpoint against a decode-speed suffix would attribute the
+  suffix's cost to the checkpoint.
+
+## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18)
+
+- `hipengine/generation/qwen35_gguf_mtp2.py` `_open_prompt_streaming_sinks`
+  returns `None` as soon as any row in the group has `prefix_reused_tokens > 0`
+  (`mtp2_prompt_fallback_reason = "prefix_reuse_k0"`), so the provider never
+  receives the prompt's hidden rows and every decode cycle reports
+  `no_provider`: measured 127 events and 0 draft cycles on hit rows against 126
+  of 128 tokens from speculation on the matching miss rows. It is a correct
+  refusal for the current target route (a reused prefix never ran the target in
+  this request, so there are no hidden rows to stream) and a dead end for MTP.
+- Remove it by supplying the provider's missing state instead of refusing: batch
+  the suffix (entry above), then capture the provider's recurrent state at each
+  256-aligned boundary during the catch-up it already performs and restore it on
+  a matching hit. Rebuilding the target's hidden rows for a reused prefix is the
+  rejected alternative, because it re-runs the target over the whole reused
+  prefix.
+
 ## Screening override now spans the plan layer (extended 2026-09-17)
 
 - `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
