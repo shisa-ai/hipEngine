@@ -84,6 +84,7 @@ from hipengine.kvcache import (
     resolve_kv_policy,
     resolve_prefix_cache_mode,
 )
+from hipengine.kvcache.pool import DeviceKVContiguityError
 from hipengine.kernels.backends import (
     backend_package_capability,
     hip_target_arch_environment,
@@ -97,6 +98,7 @@ from hipengine.speculative.accounting import (
 )
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
+    PACKED_AR_PREFILL_CONTEXT_LIMIT,
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
@@ -6692,13 +6694,24 @@ class Qwen35GGUFResidentModelRunner:
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
+            # A shared prefix whose suffix cannot be placed in the same
+            # contiguous run is unreachable for a context that the packed AR
+            # prefill can only serve through a slot-local KV view. Ask the pool
+            # for a contiguous run and fall back to a private allocation, which
+            # the pool always places contiguously, when it cannot be satisfied.
+            require_contiguous = len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
                     prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
+                    require_contiguous=require_contiguous,
                 )
+            except DeviceKVContiguityError:
+                self._prefix_admission_fallbacks += 1
+                row.prefix_admission_fallback = True
+                row.prefix_fallback_reason = "shared_admission_noncontiguous"
             except MemoryError:
                 self._prefix_admission_fallbacks += 1
                 row.prefix_admission_fallback = True
@@ -6765,6 +6778,9 @@ class Qwen35GGUFResidentModelRunner:
                 row.request_id,
                 pages,
                 now_seconds=time.monotonic(),
+                require_contiguous=(
+                    len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
+                ),
             )
         except MemoryError as exc:
             stats = pool.stats

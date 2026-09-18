@@ -8,6 +8,7 @@ from typing import Any
 
 from hipengine.kvcache.global_pool import GlobalKVPoolSet
 from hipengine.kvcache.pool import (
+    DeviceKVContiguityError,
     DeviceKVPoolAllocation,
     DeviceKVPoolStats,
     KVPoolChunk,
@@ -248,7 +249,17 @@ class GlobalDeviceKVPool:
         pages: int,
         *,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
+        """Lease request pages, optionally requiring one contiguous page-id run.
+
+        The long-context packed prefill path can only reach a context at or above
+        the AOTriton slot threshold through a slot-local contiguous KV view, so a
+        caller that will need one asks for a run here. Cached prefix pages are
+        reclaimable and can occupy the only free run, so a failed placement asks
+        for them once before reporting the failure.
+        """
+
         rid = int(request_id)
         count = int(pages)
         if count <= 0:
@@ -258,14 +269,21 @@ class GlobalDeviceKVPool:
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
             lease_id = self._lease_id(rid)
+            pressure_released = False
             while True:
                 try:
                     lease = self.global_pool.allocate(
                         lease_id,
                         private_pages=count,
                         growth_credit_pages=0,
+                        require_contiguous=bool(require_contiguous),
                     )
                     break
+                except DeviceKVContiguityError:
+                    if pressure_released or not callable(self._on_pressure):
+                        raise
+                    pressure_released = True
+                    self._on_pressure(count)
                 except MemoryError:
                     self._ensure_free_pages(count, now_seconds=now_seconds)
             allocation = self._allocation(rid, lease)
@@ -281,6 +299,7 @@ class GlobalDeviceKVPool:
         *,
         suffix_pages: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         rid = int(request_id)
         shared = tuple(int(page_id) for page_id in prefix_block_ids)
@@ -300,6 +319,7 @@ class GlobalDeviceKVPool:
                     private_pages=private,
                     growth_credit_pages=0,
                     shared_page_ids=shared,
+                    require_contiguous=bool(require_contiguous),
                 )
             except MemoryError:
                 self._allocation_failures += 1
@@ -343,6 +363,7 @@ class GlobalDeviceKVPool:
         suffix_pages: int,
         first_divergent_token: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         divergent = int(first_divergent_token)
         if divergent < 0:
@@ -354,6 +375,7 @@ class GlobalDeviceKVPool:
             prefix_block_ids,
             suffix_pages=int(suffix_pages),
             now_seconds=now_seconds,
+            require_contiguous=bool(require_contiguous),
         )
         fork = DeviceKVPoolAllocation(
             request_id=allocation.request_id,
