@@ -1,0 +1,22 @@
+{
+  "kind": "tp2_capacity_probe",
+  "protocol_tier": 1,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "max_sequence_length": 262144,
+  "prompt_length": 128,
+  "decode_tokens": 4,
+  "devices": [
+    0,
+    1
+  ],
+  "fractions": [
+    0.44,
+    0.56
+  ],
+  "vram_used_gib_baseline": {
+    "0": 0.035156,
+    "1": 0.035156
+  },
+  "status": "oom",
+  "error": "HIP error 2: out of memory"
+}

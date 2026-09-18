@@ -105,6 +105,16 @@ def main(argv: list[str] | None = None) -> int:
         "fractions": None if args.fractions is None else list(args.fractions),
     }
     runtime = get_hip_runtime()
+
+    def _device_used_gib(device: int) -> float:
+        with scoped_current_device(runtime, device):
+            free, total = runtime.mem_get_info()
+        return (int(total) - int(free)) / 2**30
+
+    baseline_vram = {int(rank): _device_used_gib(int(rank)) for rank in devices}
+    result["vram_used_gib_baseline"] = {
+        str(rank): round(value, 6) for rank, value in baseline_vram.items()
+    }
     session: MlpTP2GenerationSession | None = None
     try:
         started = time.perf_counter()
@@ -126,17 +136,23 @@ def main(argv: list[str] | None = None) -> int:
             else {str(rank): variants for rank in sorted(session._shard_group.per_rank_ffn)}
         )
 
-        # The resident term is what scales with the declared context; resetting
-        # the high-water mark after the build keeps the model-load peak from
-        # masking the transient peak at small contexts, exactly as the TP1 probe
-        # does.
+        # Two different quantities, deliberately kept apart:
+        # ``current_allocated_bytes`` is hipEngine's own process-wide tracked
+        # counter (it is *not* device-scoped, so every rank reports the same
+        # value), while ``vram_used_gib`` is the device truth from
+        # hipMemGetInfo minus this rank's pre-build baseline. The capacity
+        # question is per rank, so the device number is the one to read; the
+        # tracked total stays for regression comparisons against other probes.
         per_rank: dict[str, Any] = {}
         for rank in devices:
             with scoped_current_device(runtime, rank):
                 per_rank[str(rank)] = {
-                    "resident_gib": round(
+                    "vram_used_gib": round(
+                        _device_used_gib(int(rank)) - baseline_vram[int(rank)], 6
+                    ),
+                    "tracked_allocated_gib_process_wide": round(
                         int(memory_stats().get("current_allocated_bytes", 0)) / 2**30, 6
-                    )
+                    ),
                 }
                 reset_memory_stats()
 
@@ -154,11 +170,12 @@ def main(argv: list[str] | None = None) -> int:
         for rank in devices:
             with scoped_current_device(runtime, rank):
                 peak = int(memory_stats().get("peak_allocated_bytes", 0))
-                resident = int(per_rank[str(rank)]["resident_gib"] * 2**30)
                 per_rank[str(rank)].update(
                     {
-                        "transient_peak_gib": round((peak - resident) / 2**30, 6),
-                        "resident_plus_transient_peak_gib": round(peak / 2**30, 6),
+                        "vram_used_gib_after_decode": round(
+                            _device_used_gib(int(rank)) - baseline_vram[int(rank)], 6
+                        ),
+                        "tracked_peak_gib_process_wide": round(peak / 2**30, 6),
                     }
                 )
         result["per_rank_memory"] = per_rank
