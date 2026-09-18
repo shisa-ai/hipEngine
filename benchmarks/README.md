@@ -508,8 +508,9 @@ source: [worklog entry](../worklog/entries/20260918T180419.254833Z-lhl-prefix-hi
 production profile, Qwen3.8-27B `Q4_K_M` on gfx1151 speculates at one active
 request: **20.0 tok/s against a matched 11.90 tok/s AR baseline (1.68x)** at a
 517-token prompt and **17.8 against 11.75 (1.52x)** at 945, in three runs per
-shape with a CV at or below 0.07% and byte-identical generated text between the
-arms; a 3,530-token prompt declines to AR at the adapter's 1,023-token window.
+shape with a CV at or below 0.07% and identical generated text over the
+client's first 600 characters per row; a 3,530-token prompt declines to AR at
+the adapter's 1,023-token window.
 This corrects the earlier public statement that production-profile requests use
 AR. [c=1 engagement](results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
 
