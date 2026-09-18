@@ -25,6 +25,29 @@ form of the proof. ``fallback_event_counts`` counts non-speculative steps and
 refusals (events) and is never a token count; the token-level attribution for
 the same reasons is ``ar_output_tokens_by_reason`` from the spans.
 
+The arms a routing comparison needs are command-line switches, not separate
+harnesses:
+
+* ``--speculative-mtp on|off`` sends the per-request ``speculative_mtp`` field,
+  so the true autoregressive control is the same load on the same server
+  process with the provider explicitly disabled (never a verifier-derived off
+  row); ``auto`` omits the field and keeps the server policy.
+* ``--min-prompt-len`` selects the boundary-crossing row (for example 900) that
+  the default 4-token floor excludes, so a healthy short request and a row that
+  crosses the provider's context window can be measured together.
+* ``--stagger-ms`` spaces submissions so requests arrive while others decode,
+  which is the changing-occupancy case a single ``pool.map`` burst cannot show.
+* ``--prompt-repeats`` sends every prompt more than once; repeat rows after the
+  first reuse the prompt prefix and exercise the prefix-cache hit path beside
+  the miss path.
+* ``--cancel-count`` aborts the last N requests after their first generated
+  token, so the server's cancel/refill path runs beside completed requests;
+  cancelled rows are reported separately from failures.
+
+The summary reports realized group composition (``groups_by_realized_rows``)
+and a decode rate that excludes prefill (``decode_tokens_per_second_excluding_prefill``),
+because MTP usage alone does not say whether the run was faster.
+
 Usage:
     python3 scripts/sharegpt_mtp_routing_pass.py \
         --server-url http://127.0.0.1:8030 --model qwen3.8-27b-q4km \
@@ -77,6 +100,7 @@ def load_samples(
     output_len: int | None,
     max_prompt_len: int,
     max_total_len: int,
+    min_prompt_len: int = MIN_LEN,
 ) -> list[dict[str, Any]]:
     """Reproduce the vLLM ShareGPT sample set for one benchmark point."""
 
@@ -98,7 +122,7 @@ def load_samples(
         expected = (
             len(tokenizer.encode(completion)) if output_len is None else output_len
         )
-        if prompt_len < MIN_LEN or prompt_len > max_prompt_len:
+        if prompt_len < min_prompt_len or prompt_len > max_prompt_len:
             continue
         if expected < MIN_LEN or prompt_len + expected > max_total_len:
             continue
@@ -125,6 +149,8 @@ def _stream_request(
     max_tokens: int,
     temperature: float | None,
     timeout: float,
+    speculative_mtp: bool | None = None,
+    cancel_after_tokens: int | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -135,6 +161,11 @@ def _stream_request(
     }
     if temperature is not None:
         payload["temperature"] = float(temperature)
+    if speculative_mtp is not None:
+        # The request-level override is the only true-AR control: it makes the
+        # same load on the same server process take the registered strict
+        # fallback instead of a route decision that merely reports "ar".
+        payload["speculative_mtp"] = bool(speculative_mtp)
     request = urllib.request.Request(
         url.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(payload).encode(),
@@ -154,6 +185,7 @@ def _stream_request(
     first_token_ms: float | None = None
     first_answer_ms: float | None = None
     first_thinking_ms: float | None = None
+    cancelled = False
     with urllib.request.urlopen(request, timeout=timeout) as response:
         for raw in response:
             line = raw.decode("utf-8", "replace").strip()
@@ -201,6 +233,19 @@ def _stream_request(
                             int(generated),
                         ]
                     )
+                if (
+                    cancel_after_tokens is not None
+                    and generated is not None
+                    and int(generated) >= int(cancel_after_tokens)
+                ):
+                    # Deliberate client cancellation: close the stream the way
+                    # a disconnected client does, so the server's cancel/refill
+                    # path is exercised. The row is marked cancelled rather
+                    # than failed.
+                    cancelled = True
+                    break
+            if cancelled:
+                break
             if event.get("usage"):
                 usage = event["usage"]
     e2e_ms = (time.perf_counter() - started) * 1000.0
@@ -212,6 +257,7 @@ def _stream_request(
         "first_thinking_ms": first_thinking_ms,
         "first_decode_state_ms": timeline[0][0] if timeline else None,
         "e2e_ms": e2e_ms,
+        "cancelled": cancelled,
         "timeline": timeline,
         "usage": usage,
         "error_body": None if error_body is None else dict(error_body),
@@ -246,6 +292,7 @@ def _error_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str
         "prompt_tokens_local": sample.get("prompt_tokens"),
         "expected_output_tokens": sample.get("expected_output_tokens"),
         "e2e_ms": result.get("e2e_ms"),
+        "cancelled": bool(result.get("cancelled")),
         "error": " ".join(detail),
         "error_code": error.get("code"),
         "error_type": error.get("type"),
@@ -297,6 +344,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "prompt_tokens": usage.get("prompt_tokens"),
         "expected_output_tokens": sample.get("expected_output_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
+        "cancelled": bool(result.get("cancelled")),
         "ttft_ms": result.get("ttft_ms"),
         "first_answer_ms": result.get("first_answer_ms"),
         "first_thinking_ms": result.get("first_thinking_ms"),
@@ -470,6 +518,7 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         reason = row.get("fallback_reason") or row.get("route_decision_reason")
         reasons[str(reason or "unknown")] += 1
     prompt_buckets: dict[str, Counter[str]] = {}
+    group_rows_histogram: dict[str, Counter[str]] = {}
     for row in rows:
         prompt_tokens = int(row.get("prompt_tokens") or row.get("prompt_tokens_local") or 0)
         bucket = (
@@ -506,6 +555,25 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         reason = row.get("fallback_reason")
         if reason in {"prompt_activation_in_flight", "no_provider"}:
             prompt_buckets[bucket][f"primary_{reason}_requests"] += 1
+        # Realized group composition: whether a request that reported a
+        # speculative route was served at width 1 or inside a wider group is
+        # the difference the concurrent-coverage work turns on.
+        realized_rows = row.get("realized_group_rows")
+        group_key = (
+            "unknown"
+            if realized_rows is None
+            else str(int(realized_rows))
+        )
+        group_rows_histogram.setdefault(group_key, Counter())
+        group_rows_histogram[group_key]["requests"] += 1
+        group_rows_histogram[group_key]["completion_tokens"] += int(
+            row.get("completion_tokens") or 0
+        )
+        if row.get("mtp_used"):
+            group_rows_histogram[group_key]["mtp_requests"] += 1
+            group_rows_histogram[group_key]["mtp_output_tokens"] += int(
+                row.get("mtp_output_tokens") or 0
+            )
     ttfts = [float(row["ttft_ms"]) for row in rows if row.get("ttft_ms")]
     answers = [
         float(row["first_answer_ms"])
@@ -541,8 +609,25 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
         if isinstance(attributed, Mapping):
             for reason, count in attributed.items():
                 ar_tokens_by_reason[str(reason)] += int(count or 0)
+    # Per-request decode rate after the first token. This is the quantity a
+    # reader needs to compare MTP against AR per request; the aggregate rate in
+    # ``decode_tokens_per_second`` also carries prefill and queueing, so a
+    # route change that only moves prefill would otherwise look like a decode
+    # change. Concurrent requests overlap, so the median is per request and the
+    # aggregate stays the wall-clock number.
+    per_request_decode: list[float] = []
+    for row in rows:
+        completion = int(row.get("completion_tokens") or 0)
+        e2e = row.get("e2e_ms")
+        ttft = row.get("ttft_ms")
+        if completion <= 0 or e2e is None or ttft is None:
+            continue
+        decode_seconds = (float(e2e) - float(ttft)) / 1000.0
+        if decode_seconds > 0:
+            per_request_decode.append(completion / decode_seconds)
     return {
         "requests": len(rows),
+        "cancelled_requests": sum(1 for row in rows if row.get("cancelled")),
         "mtp_requests": len(used),
         "mtp_request_share": (len(used) / len(rows)) if rows else 0.0,
         "completion_tokens": completion,
@@ -583,6 +668,17 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             bucket: dict(sorted(counts.items()))
             for bucket, counts in sorted(prompt_buckets.items())
         },
+        # Realized physical group width per request, with the MTP share inside
+        # each width. At c>1 this is where a route that is reported as
+        # speculative while its rows run at width 1 shows up.
+        "groups_by_realized_rows": {
+            group: dict(sorted(counts.items()))
+            for group, counts in sorted(group_rows_histogram.items())
+        },
+        "median_decode_tokens_per_second_per_request": (
+            statistics.median(per_request_decode) if per_request_decode else None
+        ),
+        "decode_requests": len(per_request_decode),
         # ttft_ms is time to the first generated token of either channel, which
         # for a thinking reply is a reasoning token.
         "median_ttft_ms": statistics.median(ttfts) if ttfts else None,
@@ -668,11 +764,65 @@ def main() -> int:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-prompt-len", type=int, default=MAX_PROMPT_LEN)
+    parser.add_argument(
+        "--min-prompt-len",
+        type=int,
+        default=MIN_LEN,
+        help=(
+            "Minimum prompt length in tokens. Raise it to select the "
+            "boundary-crossing row that the default 4-token floor excludes."
+        ),
+    )
     parser.add_argument("--max-total-len", type=int, default=MAX_TOTAL_LEN)
     parser.add_argument("--request-timeout", type=float, default=1800.0)
     parser.add_argument("--window", type=int, default=16)
     parser.add_argument("--label", default="sharegpt")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--speculative-mtp",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help=(
+            "Per-request speculative_mtp field: on sends true, off sends false "
+            "(the true-AR control), auto omits it and keeps the server policy."
+        ),
+    )
+    parser.add_argument(
+        "--stagger-ms",
+        type=float,
+        default=0.0,
+        help=(
+            "Delay between submissions so requests arrive while others decode "
+            "(changing occupancy). 0 submits the whole load at once."
+        ),
+    )
+    parser.add_argument(
+        "--prompt-repeats",
+        type=int,
+        default=1,
+        help=(
+            "Send every prompt this many times. Rows after the first reuse the "
+            "prompt prefix, so a server with prefix caching enabled shows the "
+            "hit path beside the miss path."
+        ),
+    )
+    parser.add_argument(
+        "--cancel-count",
+        type=int,
+        default=0,
+        help=(
+            "Cancel this many of the last measured requests after their first "
+            "generated token, so the server's cancel/refill path runs beside "
+            "the completed requests. Cancelled rows are reported separately "
+            "from failures."
+        ),
+    )
+    parser.add_argument(
+        "--cancel-after-tokens",
+        type=int,
+        default=4,
+        help="Generated tokens to wait for before cancelling a request.",
+    )
     parser.add_argument(
         "--warmup",
         type=int,
@@ -680,6 +830,11 @@ def main() -> int:
         help="Requests to run (and discard) before the measured load.",
     )
     args = parser.parse_args()
+    if args.prompt_repeats < 1:
+        parser.error("--prompt-repeats must be positive")
+    if args.cancel_count < 0 or args.cancel_count > args.num_prompts * args.prompt_repeats:
+        parser.error("--cancel-count must be between 0 and the measured load size")
+    speculative_mtp = {"auto": None, "on": True, "off": False}[args.speculative_mtp]
 
     tokenizer = _tokenizer(args.gguf)
     output_len = args.output_len if (args.output_len or 0) > 0 else None
@@ -691,15 +846,29 @@ def main() -> int:
         output_len=output_len,
         max_prompt_len=args.max_prompt_len,
         max_total_len=args.max_total_len,
+        min_prompt_len=args.min_prompt_len,
     )
     warmup, measured = samples[: args.warmup], samples[args.warmup :]
+    # Repeat rows keep the prompt and differ only in arrival order, which is
+    # what a prefix-cache hit is: the same prefix, submitted again.
+    measured = [
+        {**sample, "repeat_index": repeat}
+        for repeat in range(args.prompt_repeats)
+        for sample in measured
+    ]
+    cancel_ids = {
+        id(sample) for sample in measured[len(measured) - args.cancel_count :]
+    }
     print(
         f"[{args.label}] {len(measured)} prompts, concurrency {args.max_concurrency}, "
         f"output_len={output_len or 'dataset'}, "
+        f"speculative_mtp={args.speculative_mtp}, "
+        f"repeats={args.prompt_repeats}, stagger_ms={args.stagger_ms}, "
         f"temperature={args.temperature if args.temperature is not None else 'server-default'}"
     )
 
     def run(sample: Mapping[str, Any]) -> dict[str, Any]:
+        cancel = id(sample) in cancel_ids
         try:
             result = _stream_request(
                 args.server_url,
@@ -708,6 +877,10 @@ def main() -> int:
                 max_tokens=int(sample["expected_output_tokens"]),
                 temperature=args.temperature,
                 timeout=args.request_timeout,
+                speculative_mtp=speculative_mtp,
+                cancel_after_tokens=(
+                    args.cancel_after_tokens if cancel else None
+                ),
             )
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8", "replace")[:400]
@@ -715,9 +888,15 @@ def main() -> int:
                 "source_id": sample.get("source_id"),
                 "prompt_tokens_local": sample.get("prompt_tokens"),
                 "expected_output_tokens": sample.get("expected_output_tokens"),
+                "repeat_index": sample.get("repeat_index", 0),
+                "speculative_mtp_request": args.speculative_mtp,
+                "cancelled": False,
                 "error": f"HTTP {error.code}: {body}",
             }
-        return _request_row(sample, result)
+        row = _request_row(sample, result)
+        row["repeat_index"] = sample.get("repeat_index", 0)
+        row["speculative_mtp_request"] = args.speculative_mtp
+        return row
 
     for sample in warmup:
         run(sample)
@@ -726,10 +905,20 @@ def main() -> int:
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=args.max_concurrency
     ) as pool:
-        rows = list(pool.map(run, measured))
+        if args.stagger_ms > 0:
+            futures = []
+            for sample in measured:
+                futures.append(pool.submit(run, sample))
+                time.sleep(args.stagger_ms / 1000.0)
+            rows = [future.result() for future in futures]
+        else:
+            rows = list(pool.map(run, measured))
     wall = time.perf_counter() - started
 
-    failures = [row for row in rows if row.get("error")]
+    failures = [
+        row for row in rows if row.get("error") and not row.get("cancelled")
+    ]
+    cancelled = [row for row in rows if row.get("cancelled")]
     good = [row for row in rows if not row.get("error")]
     report = {
         "label": args.label,
@@ -740,9 +929,15 @@ def main() -> int:
         "max_concurrency": args.max_concurrency,
         "output_len": output_len,
         "temperature": args.temperature,
+        "speculative_mtp_request": args.speculative_mtp,
+        "prompt_repeats": args.prompt_repeats,
+        "stagger_ms": args.stagger_ms,
+        "min_prompt_len": args.min_prompt_len,
+        "cancel_count": args.cancel_count,
         "seed": args.seed,
         "wall_seconds": wall,
         "failed_requests": len(failures),
+        "cancelled_requests": len(cancelled),
         "summary": summarize(good, window=args.window),
         "rows": rows,
     }
@@ -763,6 +958,16 @@ def main() -> int:
         f"wall={wall:.1f}s"
     )
     print(f"[{args.label}] non-MTP reasons: {json.dumps(summary['non_mtp_reasons'])}")
+    print(
+        f"[{args.label}] groups by realized rows: "
+        f"{json.dumps(summary['groups_by_realized_rows'])}"
+    )
+    if summary.get("median_decode_tokens_per_second_per_request") is not None:
+        print(
+            f"[{args.label}] median per-request decode "
+            f"{summary['median_decode_tokens_per_second_per_request']:.2f} tok/s "
+            f"over {summary['decode_requests']} requests"
+        )
     print(
         f"[{args.label}] refusal cost: events={summary['fallback_event_total']} "
         f"spanned_ar_tokens={summary['ar_tokens_attributed']} "

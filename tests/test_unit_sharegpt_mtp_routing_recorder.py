@@ -276,3 +276,186 @@ def test_summary_separates_event_counts_from_token_attribution() -> None:
     assert summary["ar_output_tokens"] == 2
     assert summary["mtp_output_share"] == 46 / 48
     assert summary["cliff"]["ended_inside_speculation_requests"] == 1
+
+
+def test_request_payload_sends_the_true_ar_override_and_omits_it_for_auto() -> None:
+    """The AR control is a request field, not a route label."""
+
+    module = _module()
+    captured: list[dict] = []
+
+    class _Response:
+        def __enter__(self):
+            return iter([b'data: {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}\n'])
+
+        def __exit__(self, *exc):
+            return False
+
+    def _urlopen(request, timeout=None):
+        captured.append(json.loads(request.data.decode()))
+        return _Response()
+
+    original = module.urllib.request.urlopen
+    module.urllib.request.urlopen = _urlopen
+    try:
+        module._stream_request(
+            "http://127.0.0.1:1",
+            model="m",
+            prompt="p",
+            max_tokens=4,
+            temperature=None,
+            timeout=5.0,
+            speculative_mtp=False,
+        )
+        module._stream_request(
+            "http://127.0.0.1:1",
+            model="m",
+            prompt="p",
+            max_tokens=4,
+            temperature=None,
+            timeout=5.0,
+            speculative_mtp=True,
+        )
+        module._stream_request(
+            "http://127.0.0.1:1",
+            model="m",
+            prompt="p",
+            max_tokens=4,
+            temperature=None,
+            timeout=5.0,
+            speculative_mtp=None,
+        )
+    finally:
+        module.urllib.request.urlopen = original
+
+    assert captured[0]["speculative_mtp"] is False
+    assert captured[1]["speculative_mtp"] is True
+    assert "speculative_mtp" not in captured[2]
+
+
+def test_summary_reports_group_composition_and_per_request_decode_rate() -> None:
+    module = _module()
+    wide = module._request_row({"source_id": 1, "prompt_tokens": 900}, _response())
+    wide["completion_tokens"] = 48
+    wide["mtp_used"] = True
+    wide["mtp_output_tokens"] = 30
+    wide["realized_group_rows"] = 2
+    wide["e2e_ms"] = 1000.0
+    wide["ttft_ms"] = 200.0
+    narrow = module._request_row({"source_id": 2, "prompt_tokens": 900}, _response())
+    narrow["completion_tokens"] = 48
+    narrow["mtp_used"] = False
+    narrow["mtp_output_tokens"] = 0
+    narrow["realized_group_rows"] = 2
+    narrow["e2e_ms"] = 1000.0
+    narrow["ttft_ms"] = 200.0
+
+    summary = module.summarize([wide, narrow])
+
+    groups = summary["groups_by_realized_rows"]
+    assert groups["2"]["requests"] == 2
+    assert groups["2"]["mtp_requests"] == 1
+    assert groups["2"]["mtp_output_tokens"] == 30
+    # 48 tokens in 800 ms after the first token, per request.
+    assert summary["median_decode_tokens_per_second_per_request"] == pytest.approx(60.0)
+    assert summary["decode_requests"] == 2
+
+
+def test_min_prompt_len_selects_the_boundary_crossing_row(monkeypatch) -> None:
+    module = _module()
+    dataset = Path("/tmp/sharegpt-recorder-min-len.json")
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "short",
+                    "conversations": [
+                        {"from": "human", "value": "hello there my friend"},
+                        {"from": "gpt", "value": "hi there my friend"},
+                    ],
+                },
+                {
+                    "id": "long",
+                    "conversations": [
+                        {"from": "human", "value": "word " * 900},
+                        {"from": "gpt", "value": "answer " * 40},
+                    ],
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "_tokenizer",
+        lambda gguf: type(
+            "Tokenizer",
+            (),
+            {"encode": staticmethod(lambda text: list(range(len(text.split()))))},
+        )(),
+    )
+    tokenizer = module._tokenizer(dataset)
+
+    all_samples = module.load_samples(
+        dataset,
+        tokenizer=tokenizer,
+        count=2,
+        seed=0,
+        output_len=None,
+        max_prompt_len=1024,
+        max_total_len=2048,
+        min_prompt_len=4,
+    )
+    long_only = module.load_samples(
+        dataset,
+        tokenizer=tokenizer,
+        count=1,
+        seed=0,
+        output_len=None,
+        max_prompt_len=1024,
+        max_total_len=2048,
+        min_prompt_len=512,
+    )
+
+    assert sorted(sample["source_id"] for sample in all_samples) == ["long", "short"]
+    assert [sample["source_id"] for sample in long_only] == ["long"]
+
+
+def test_cancel_after_tokens_marks_a_deliberate_abort() -> None:
+    """A client cancel is a cancel, not a failure or an empty success row."""
+
+    module = _module()
+    chunks = [
+        b'data: {"choices": [{"delta": {"content": "a"}, "hipengine": {"decode_state": {"generated_tokens": 1}}}]}\n',
+        b'data: {"choices": [{"delta": {"content": "b"}, "hipengine": {"decode_state": {"generated_tokens": 5}}}]}\n',
+        b'data: {"choices": [{"delta": {"content": "c"}, "hipengine": {"decode_state": {"generated_tokens": 9}}}]}\n',
+        b"data: [DONE]\n",
+    ]
+
+    class _Response:
+        def __enter__(self):
+            return iter(chunks)
+
+        def __exit__(self, *exc):
+            return False
+
+    original = module.urllib.request.urlopen
+    module.urllib.request.urlopen = lambda request, timeout=None: _Response()
+    try:
+        result = module._stream_request(
+            "http://127.0.0.1:1",
+            model="m",
+            prompt="p",
+            max_tokens=64,
+            temperature=None,
+            timeout=5.0,
+            cancel_after_tokens=4,
+        )
+    finally:
+        module.urllib.request.urlopen = original
+
+    assert result["cancelled"] is True
+    # The stream was closed after the crossing chunk, so token 9 never arrived.
+    assert [event[1] for event in result["timeline"]] == [1, 5]
+    row = module._request_row({"source_id": 3, "prompt_tokens": 100}, result)
+    assert row["cancelled"] is True
+    assert row["error"].startswith("stream ended without usage")
