@@ -666,6 +666,17 @@ def _run_turn_server(
         fallback_reason = "prompt_too_short"
     else:
         fallback_reason = "no_lookup"
+    # The engine counts why each row declined reuse. When it reports one, that
+    # reason is exact; the derived value above is only a fallback for counters
+    # that carry no per-row reason.
+    engine_reasons = delta.get("fallback_reasons")
+    engine_reason: str | None = None
+    if isinstance(engine_reasons, Mapping) and engine_reasons:
+        engine_reason = max(
+            engine_reasons.items(),
+            key=lambda item: (int(item[1]), str(item[0])),
+        )[0]
+        fallback_reason = str(engine_reason)
     prefix = {
         **delta,
         "mode": str(prefix_after.get("mode", "off")),
@@ -679,6 +690,9 @@ def _run_turn_server(
         "cache_resident_entries": int(prefix_after.get("snapshot_entries", 0) or 0),
         "cache_resident_bytes": int(prefix_after.get("resident_bytes", 0) or 0),
         "fallback_reason": fallback_reason,
+        "engine_fallback_reasons": (
+            dict(engine_reasons) if isinstance(engine_reasons, Mapping) else {}
+        ),
     }
     generated = int(usage.get("completion_tokens", 0) or 0)
     if not generated and decode_state:
