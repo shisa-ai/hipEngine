@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "tp2-c1-bench",
+  "generated_at": "2026-09-18T17:16:03Z",
+  "host": "epyc",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "mode": "tp2",
+  "devices": [
+    0,
+    1
+  ],
+  "prompt_length": 512,
+  "decode_tokens": 128,
+  "max_sequence_length": 2048,
+  "fractions": null,
+  "vram_used_gib_baseline": {
+    "0": 0.035156,
+    "1": 0.035156
+  },
+  "build_seconds": 233.231,
+  "resolved": {
+    "schedule": "graphed",
+    "prefill_schedule": "token-serial",
+    "driver": "compiled",
+    "reduce_mode": "device",
+    "decode_partial_dtype": "bf16",
+    "head_shard": true,
+    "per_rank_ffn": {
+      "0": 8704,
+      "1": 8704
+    },
+    "per_rank_variants": {
+      "0": "dense_dual_local32_bf16_bf16_out",
+      "1": "dense_dual_local32_bf16_bf16_out"
+    }
+  },
+  "memory_after_load": {
+    "0": {
+      "resident_gib": 32.438847,
+      "device": "AMD Radeon Pro W7900",
+      "free_gib_after_load": 22.582031,
+      "total_gib": 44.984375,
+      "vram_used_gib_after_load": 22.402344,
+      "session_vram_gib": 22.367188,
+      "transient_peak_gib": -0.0,
+      "resident_plus_transient_peak_gib": 32.438847,
+      "vram_used_gib_after_decode": 22.425781
+    },
+    "1": {
+      "resident_gib": 32.438847,
+      "device": "AMD Radeon RX 7900 XTX",
+      "free_gib_after_load": 1.582031,
+      "total_gib": 23.984375,
+      "vram_used_gib_after_load": 22.402344,
+      "session_vram_gib": 22.367188,
+      "transient_peak_gib": -0.0,
+      "resident_plus_transient_peak_gib": 32.438847,
+      "vram_used_gib_after_decode": 22.425781
+    }
+  },
+  "generated_tokens": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "generate_seconds": 48.841,
+  "prefill": {
+    "tokens": 512,
+    "total_s": 13.042889107950032,
+    "mean_ms_per_token": 25.474392788964906,
+    "p50_ms_per_token": 25.74274828657508,
+    "tok_per_s": 39.255106423309286
+  },
+  "decode": {
+    "tokens": 128,
+    "total_s": 3.3164504962041974,
+    "mean_ms_per_token": 25.909769501595292,
+    "p50_ms_per_token": 25.905295740813017,
+    "tok_per_s": 38.59548036266509
+  },
+  "prefill_runs": [
+    {
+      "tokens": 512,
+      "total_s": 12.882314761169255,
+      "mean_ms_per_token": 25.1607710179087,
+      "p50_ms_per_token": 25.44596465304494,
+      "tok_per_s": 39.74441002973356
+    },
+    {
+      "tokens": 512,
+      "total_s": 12.966564145870507,
+      "mean_ms_per_token": 25.325320597403334,
+      "p50_ms_per_token": 25.596546474844217,
+      "tok_per_s": 39.48617337948063
+    },
+    {
+      "tokens": 512,
+      "total_s": 13.042889107950032,
+      "mean_ms_per_token": 25.474392788964906,
+      "p50_ms_per_token": 25.74274828657508,
+      "tok_per_s": 39.255106423309286
+    }
+  ],
+  "decode_runs": [
+    {
+      "tokens": 128,
+      "total_s": 3.282312085852027,
+      "mean_ms_per_token": 25.64306317071896,
+      "p50_ms_per_token": 25.625441689044237,
+      "tok_per_s": 38.99690116358134
+    },
+    {
+      "tokens": 128,
+      "total_s": 3.2994863390922546,
+      "mean_ms_per_token": 25.77723702415824,
+      "p50_ms_per_token": 25.771229527890682,
+      "tok_per_s": 38.79391724810566
+    },
+    {
+      "tokens": 128,
+      "total_s": 3.3164504962041974,
+      "mean_ms_per_token": 25.909769501595292,
+      "p50_ms_per_token": 25.905295740813017,
+      "tok_per_s": 38.59548036266509
+    }
+  ],
+  "prefill_tok_per_s_median": 39.48617337948063,
+  "prefill_tok_per_s_samples": [
+    39.255106423309286,
+    39.48617337948063,
+    39.74441002973356
+  ],
+  "decode_tok_per_s_median": 38.79391724810566,
+  "decode_tok_per_s_samples": [
+    38.59548036266509,
+    38.79391724810566,
+    38.99690116358134
+  ],
+  "memory": {
+    "0": {
+      "resident_gib": 32.438847,
+      "device": "AMD Radeon Pro W7900",
+      "free_gib_after_load": 22.582031,
+      "total_gib": 44.984375,
+      "vram_used_gib_after_load": 22.402344,
+      "session_vram_gib": 22.367188,
+      "transient_peak_gib": -0.0,
+      "resident_plus_transient_peak_gib": 32.438847,
+      "vram_used_gib_after_decode": 22.425781
+    },
+    "1": {
+      "resident_gib": 32.438847,
+      "device": "AMD Radeon RX 7900 XTX",
+      "free_gib_after_load": 1.582031,
+      "total_gib": 23.984375,
+      "vram_used_gib_after_load": 22.402344,
+      "session_vram_gib": 22.367188,
+      "transient_peak_gib": -0.0,
+      "resident_plus_transient_peak_gib": 32.438847,
+      "vram_used_gib_after_decode": 22.425781
+    }
+  }
+}
