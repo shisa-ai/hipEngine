@@ -1,6 +1,9 @@
 # Execution Profiles and Numerical Contracts
 
-Status: **approved architecture; evaluator, fail-closed runtime plumbing, and production threshold calibration implemented; model-plan certification pending**
+Status: **approved architecture; evaluator, fail-closed runtime plumbing,
+production threshold calibration, and pre-device execution-failure containment
+implemented; wider containment classes and per-request group partitioning
+pending; model-plan certification pending**
 Approved: 2026-08-16
 Authority: [`PLAN.md`](PLAN.md) remains the project architecture source of
 truth. This document is the normative policy for arithmetic drift,
@@ -27,6 +30,11 @@ Three properties must therefore be named separately:
 The first is mandatory in every profile. The second is mandatory for retained
 strict and production routes. The third is an explicit reproducibility
 contract rather than a universal serving requirement.
+
+Failure belongs to the first property: a route is not control-correct if one
+request's failure can revoke ownership from requests that did not fail. Section
+4.3 states the containment contract and section 4.4 states how per-request
+eligibility survives group execution.
 
 ## 2. Public profiles
 
@@ -390,6 +398,8 @@ not acceptable numerical drift.
 | Graph/dispatch metadata | Resolved profile, variant manifest, graph bucket, row maps, and fallback decision match the declared run. |
 | Sampling accounting | Per-request RNG stream/counter, seed ownership, accepted-token count, and speculative transaction accounting are correct. |
 | Lifecycle | Allocation ownership, teardown, reclaim, and stale-pointer protections remain exact and leak-free. |
+| Failure containment | One request's failure ends that request only. A containment claim proves device quiescence and reclaimability for the requests it names; whatever it cannot prove stays fatal and marks the service unhealthy. See section 4.3. |
+| Per-request eligibility | Route, width, and draft state belong to the request. A neighbor's refusal, context limit, or incompatible mode cannot revoke them, and a downgraded request reports its own reason. See section 4.4. |
 
 ### 4.1 Numerical values that may differ in production
 
@@ -423,6 +433,98 @@ promise isolation:
 
 `batch_invariant` adds equality across widths, slot placements, admission order,
 and compaction.
+
+### 4.3 Execution failure containment
+
+Containment is a declared contract, not an exception handler. Catching an
+exception does not make the remaining requests safe: a raised `ValueError`
+does not prove that no device work or shared-state mutation preceded it. A
+blanket catch-and-continue therefore fails this contract rather than satisfying
+it.
+
+A runner may end a failed step's own request and keep serving only by returning
+a containment claim that proves both of the following:
+
+- the failed step is quiesced — every device call it launched has completed or
+  reported its own device error; and
+- every request the claim names can be reclaimed.
+
+The claim carries the affected request IDs, the execution phase, the work kind,
+and how far the failed step could have reached device state:
+
+| Mutation | Meaning | Claimable |
+| --- | --- | --- |
+| `none` | The step raised before its first device call. | Yes, once quiescence and reclaimability are proven. |
+| `partial` | Device work started; no canonical commit was claimed. | Only with a runner-specific recovery proof. |
+| `committed` | A canonical commit happened and was restored. | Only with a runner-specific recovery proof. |
+| `unknown` | The runner could not narrow the window. | No. The failure stays fatal. |
+
+Naming a narrower request set than the failed work item asserts that every
+unnamed request of that item still holds canonical state. A claim that names
+requests outside the failed work item is refused.
+
+The following stay fatal. They must mark the shared service unhealthy instead of
+continuing on state that is not proven:
+
+- device/HIP errors, and any failure a runner cannot narrow to `none` without a
+  recovery proof;
+- phases outside the runner's declared containable set;
+- no reachable device runtime, or a quiescence check that itself fails;
+- a cleanup or rollback whose completion cannot be proven.
+
+Fatal is a controlled stop, not a silent one. The service reports `ok`,
+`unhealthy`, or `closed`; an unhealthy report names the failing phase, the
+deepest frame, and the affected request IDs when the exception carries them; the
+server's readiness endpoint reports the same state with `ready: false`; and a
+later submission explains why it was refused instead of returning a generic
+engine-closed error. Restart restores serving.
+
+A contained failure must leave survivors intact: unaffected requests keep their
+outputs, ownership, KV, and recurrent state, and a subsequent request succeeds
+without a restart. Diagnostics name the fault instead of generic memory advice:
+a contained failure reaches its own client with the phase, affected request IDs,
+work kind, mutation class, and cause, and a fatal failure reaches every request
+on the service with the reason the service closed.
+
+Required coverage for a containment claim:
+
+- a local prefill failure and a local decode failure;
+- a failure inside a packed group;
+- a cleanup failure and a simulated fatal device state;
+- unaffected requests matching their control outputs;
+- a successful request after each recoverable failure;
+- the refusal path, where a claim cannot prove quiescence or reclaimability.
+
+The resident GGUF runner implements `contain_execution_failure` and claims
+`none` only, for prefill and decode steps, after synchronizing each affected
+row's device runtime. `partial`, `committed`, and `unknown` are declared so that
+a runner can claim them with a proof; no runner claims them yet, and every
+failure in those classes stays fatal.
+
+### 4.4 Per-request eligibility under group execution
+
+An execution group is a property of the schedule, not an ownership unit.
+Eligibility — route, physical width, provider state, draft state — is resolved
+per request, and a group-level check may only take away what a request's own
+eligibility took away:
+
+- a neighbor's context limit, provider refusal, or incompatible verifier mode
+  cannot force a request into a slower route;
+- when a request falls back, the reported reason is that request's own reason,
+  not the group's aggregate refusal;
+- partitioning a group preserves stable slot ownership, and every row executes
+  exactly once per tick through the existing scheduler;
+- survivors keep canonical state and correct output when a peer falls back or
+  fails.
+
+This does not require every request to receive its fastest available route. A
+locally economical decision — AR decode for a request whose own context or mode
+rules out speculation, for example — is correct. What is not correct is an
+unrelated request losing a valid fast path through accidental group coupling.
+
+Current gap: a group-level resource-claim miss still downgrades every row of the
+plan and replaces each row's own reason with the group's. Resolving eligibility
+per request before group capability and resource checks is not implemented.
 
 ## 5. Arithmetic-source classification
 
@@ -672,7 +774,12 @@ Reject or fall back to strict on any of the following:
 6. task-level material regression;
 7. missing strict fallback or unrecorded profile/variant provenance;
 8. a performance claim without the same-suite quality packet; or
-9. prompt-, token-, or candidate-specific benchmark gaming.
+9. prompt-, token-, or candidate-specific benchmark gaming;
+10. an execution failure that ends requests which did not fail, closes the
+    service on a recoverable fault, or continues on unproven device or
+    shared-owner state after a failure; or
+11. a group-level decision that revokes a request's route or reports a reason
+    other than that request's own.
 
 A failed threshold is not fixed by relabeling a bug as numerical relaxation.
 Budgets move only through an explicit policy decision backed by calibration

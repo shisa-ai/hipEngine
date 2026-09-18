@@ -46,7 +46,7 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
 | `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
-| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership semantics, and registry resolution policy. |
+| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and registry resolution policy. |
 | `docs/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |

@@ -701,6 +701,11 @@ At minimum:
 - c4→c3→c2→c1 sparse-slot survival;
 - cancellation of one row while neighbors continue;
 - one newly admitted row while existing rows continue;
+- one row's execution failure while its neighbors keep serving, with the
+  survivors matching their control outputs;
+- a request admitted and completed after a contained failure;
+- the refusal path, where containment cannot be proven and the service reports
+  itself unhealthy instead of continuing;
 - prefill/decode interleaving;
 - standard all-row prompt 512 / decode 128.
 
@@ -708,7 +713,10 @@ A short-horizon token-only suite is supportive evidence, not lifecycle closure.
 Every profile requires exact maps, positions, masks, `KVLiveSpans`, commit/
 rollback destinations, reclaim, and neighbor isolation. Strict/batch-invariant
 add their result-equality contract; production uses strict-teacher numerical
-quality at the transition contexts.
+quality at the transition contexts. Execution-failure containment and its
+required evidence are normative in
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) section 4.3; per-request
+eligibility under group execution is section 4.4.
 
 ### Gate 4 — native execution
 
