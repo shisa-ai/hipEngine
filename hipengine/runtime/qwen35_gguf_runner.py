@@ -2089,6 +2089,40 @@ def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:
         return _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
 
 
+def packed_verify_workspace_lease_pages(
+    max_batch_size: object | None,
+    max_positions: object | None,
+) -> int:
+    """Pages the packed workspace lease must hold to satisfy ``allocate``.
+
+    This is the lease-side twin of ``_packed_verify_union_geometry`` and has to
+    stay arithmetically identical to it. The demand side computes
+    ``union_slots * ceil(union_max_seq / block_size)``, unioning the request
+    with ``packed_verify_lease_slot_ceiling(max_batch_size)`` and with
+    ``_PACKED_VERIFY_MIN_MAX_SEQUENCE``. Sizing the lease from any separately
+    written expression lets the two drift, which is exactly how a lease gets
+    granted that ``_GGUFPackedTargetState.allocate`` then rejects at prefill
+    time ("packed workspace lease holds N pages but the workspace needs M").
+    One helper for both sides makes that mismatch unrepresentable for every
+    geometry the serving loop can request within its capacity.
+
+    Requests ABOVE the capacity ceiling are deliberately not covered: the lease
+    is taken once at pool creation, before any layout exists, so it can only be
+    sized from caps known at that point. ``allocate`` degrades those to a
+    private KV chunk rather than failing closed.
+    """
+
+    slots = packed_verify_lease_slot_ceiling(max_batch_size)
+    try:
+        positions = int(max_positions)
+    except (TypeError, ValueError):
+        positions = _PACKED_VERIFY_MIN_MAX_SEQUENCE
+    positions = max(positions, _PACKED_VERIFY_MIN_MAX_SEQUENCE)
+    # Mirrors ``allocate``'s ``blocks_per_slot`` (block_size defaults to 256).
+    blocks_per_slot = (positions + 255) // 256
+    return slots * blocks_per_slot
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot recurrent state plus policy-shaped packed KV backing."""
@@ -2298,6 +2332,48 @@ class _GGUFPackedTargetState:
                     workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
                     if callable(workspace_pages_fn):
                         lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+                if lease_pages is not None and len(lease_pages) < total_pages:
+                    # 2026-09-19: a short lease degrades to the private KV
+                    # chunk below instead of failing closed.
+                    #
+                    # The lease is sized once at pool creation from the caps
+                    # known then (serving capacity x max(1024, request
+                    # context); see `packed_verify_workspace_lease_pages`).
+                    # The workspace this allocation asks for comes from
+                    # `_packed_verify_union_geometry`, whose slot term is
+                    # `max(requested_slot_count, capacity)` - so any caller
+                    # that packs MORE slots than the serving capacity (an MTP
+                    # verify group is the standing example: it packs its own
+                    # width even at C1) demands pages no pool-creation-time
+                    # lease could have reserved. That is a legitimate geometry,
+                    # not a misconfiguration, and raising here turned it into a
+                    # hard serving failure at prefill time.
+                    #
+                    # Correctness never depended on the lease: the private
+                    # branch allocates the identical geometry, just outside the
+                    # arena. Treating the lease as a best-effort fast path
+                    # removes the whole failure class while keeping the arena
+                    # win whenever the lease does cover the request. The
+                    # shortfall is recorded rather than silently swallowed so
+                    # chronic under-leasing stays visible as a perf defect.
+                    shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", None)
+                    if shortfalls is None:
+                        shortfalls = []
+                        try:
+                            runner._packed_workspace_lease_shortfalls = shortfalls
+                        except AttributeError:
+                            shortfalls = None
+                    if shortfalls is not None:
+                        shortfalls.append(
+                            {
+                                "leased_pages": int(len(lease_pages)),
+                                "needed_pages": int(total_pages),
+                                "slot_count": int(slot_count),
+                                "blocks_per_slot": int(blocks_per_slot),
+                                "max_sequence_length": int(max_sequence_length),
+                            }
+                        )
+                    lease_pages = None
                 if lease_pages is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
@@ -2307,12 +2383,6 @@ class _GGUFPackedTargetState:
                     if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
                         raise RuntimeError(
                             "packed workspace lease has no layout-compatible KV backing"
-                        )
-                    if len(lease_pages) < total_pages:
-                        raise RuntimeError(
-                            f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
-                            f" ({slot_count} slots x {blocks_per_slot} pages/slot,"
-                            f" max_sequence_length={max_sequence_length})"
                         )
                     kv_cache_fields = {
                         "full_key_caches": arena_backing.full_key_caches,

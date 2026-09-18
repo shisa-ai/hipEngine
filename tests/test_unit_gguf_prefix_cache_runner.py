@@ -1173,11 +1173,19 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     # on top (the lease is capacity-honest: serving can never open more
     # resident slots than max_active_requests, and the 1024-token per-slot
     # union floor still applies to short request contexts).
-    assert pool.current_pages == 12
+    #
+    # 2026-09-19: the assertions below used to read 4 pinned / 12 total, i.e.
+    # a ONE-slot lease, contradicting this comment. They predate the slot
+    # ceiling and were never updated when the capacity term was introduced,
+    # which is why they have been RED. The lease now comes from
+    # `packed_verify_workspace_lease_pages`, the shared twin of
+    # `_packed_verify_union_geometry`, so the slot term is the serving
+    # capacity on both sides: 2 slots * 4 pages = 8.
+    assert pool.current_pages == 16
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 4
+    assert lease is not None and len(lease) == 8
     assert pool.stats.free_pages == 8
-    assert pool.stats.pinned_pages == 4
+    assert pool.stats.pinned_pages == 8
     assert batch_owner.bound_workspace_pools == [pool]
     snapshot = runner.observability_snapshot()
     assert snapshot["model_runner"]["max_active_requests"] == 2
@@ -1192,7 +1200,7 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert new_pool is not pool
     assert batch_owner.workspace_release_calls == 1
     assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
-    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 4
+    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8
     assert batch_owner.bound_workspace_pools[-1] is new_pool
 
     runner.close()
