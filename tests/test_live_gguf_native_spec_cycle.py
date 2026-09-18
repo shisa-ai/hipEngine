@@ -1495,6 +1495,128 @@ def test_native_long_context_serializes_dense_ffn_rows(monkeypatch) -> None:
     assert dispatch_states == [False] * 8
 
 
+def test_native_staged_linear_rows_long_is_env_gated(monkeypatch) -> None:
+    """Staged dense linear rows above the split gate need the admission flag.
+
+    Long-context dense linear rows keep the row-wise c1 strict route by
+    default, take the staged chain only under
+    ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG``, and never change short-context
+    or single-row dispatch.
+    """
+
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=16, is_moe=False)
+    )
+    runner.runtime = SimpleNamespace()
+    calls: list[tuple[object, ...]] = []
+
+    def staged(*args, **kwargs):
+        calls.append(("staged", args, kwargs))
+
+    def scalar(*args, **kwargs):
+        calls.append(("scalar", args, kwargs))
+
+    def ffn(*args, **kwargs):
+        calls.append(("ffn", args, kwargs))
+
+    monkeypatch.setattr(
+        runner,
+        "_run_linear_attention_attn_chain_rows_exact",
+        staged,
+        raising=False,
+    )
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", scalar)
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", ffn)
+    monkeypatch.setattr(
+        qgr,
+        "_use_gguf_full_attention_split_decode",
+        lambda context: int(context) >= 1024,
+    )
+    monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
+    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x5000))
+    decode_scratch = SimpleNamespace()
+
+    def run(rows: int, start_position: int) -> None:
+        runner._run_native_attention_bulk_ffn_layer_rows(
+            46,
+            LINEAR_ATTENTION,
+            0x1000,
+            0x2000,
+            scratch,
+            rows=rows,
+            decode_scratch=decode_scratch,
+            start_position=start_position,
+        )
+
+    # Default: one c1 primitive per row, including the FFN.
+    run(4, 1020)
+    assert [call[0] for call in calls] == ["scalar"] * 4 + ["ffn"] * 4
+    assert [call[2]["rows"] for call in calls[4:]] == [1] * 4
+
+    # Admission: one staged chain and one batched FFN across the same rows.
+    calls.clear()
+    monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "1")
+    run(4, 1020)
+    assert [call[0] for call in calls] == ["staged", "ffn"]
+    assert calls[0][2]["rows"] == 4
+    assert calls[0][2]["decode_scratch"] is decode_scratch
+    assert calls[1][2]["rows"] == 4
+
+    # Explicit opt-out restores the strict route.
+    calls.clear()
+    monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "0")
+    run(4, 1020)
+    assert [call[0] for call in calls] == ["scalar"] * 4 + ["ffn"] * 4
+
+    # Admission never changes short-context rows, which already stage ...
+    calls.clear()
+    monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "1")
+    run(4, 16)
+    assert [call[0] for call in calls] == ["staged", "ffn"]
+
+    # ... or single-row decode.
+    calls.clear()
+    run(1, 1020)
+    assert [call[0] for call in calls] == ["scalar", "ffn"]
+
+
+def test_native_staged_linear_rows_long_reads_the_backend_capability(monkeypatch) -> None:
+    """The admission is a backend capability with an explicit env override."""
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
+    monkeypatch.setattr(
+        qgr,
+        "backend_package_capability",
+        lambda backend, name, default=None: (
+            True if name == "GGUF_STAGED_LINEAR_ROWS_LONG" else default
+        ),
+    )
+    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is True
+
+    # An explicit env value wins in either direction.
+    monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "0")
+    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is False
+    monkeypatch.setattr(qgr, "backend_package_capability", lambda *a, **k: False)
+    monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "1")
+    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is True
+
+
+def test_native_staged_linear_rows_long_fails_closed_without_a_backend(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
+    assert qgr._gguf_staged_linear_rows_long_enabled("auto") is False
+
+
 def test_native_full_attention_chain_scheduler_stages_dynamic_dense_rows_once(
     monkeypatch,
 ) -> None:

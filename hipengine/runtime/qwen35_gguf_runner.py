@@ -7814,17 +7814,21 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
-        # The staged linear-attention chain diverges from scalar AR in BF16 at
-        # the split-attention boundary (layer-46 on the retained B3 fixture), so
-        # dense linear rows keep the row-wise strict route at long context. Dense
-        # full-attention rows do not: their staged chain resolves the same
-        # split-K leaf and tiling the row-wise route uses, so they keep batched
-        # projections and a staged FFN across the boundary.
+        # The staged linear-attention chain reassociates BF16 projections
+        # against scalar AR at the split-attention boundary (one BF16 ULP in the
+        # layer-46 output on the retained B3 fixture), so dense linear rows keep
+        # the row-wise c1 route at long context by default. Dense full-attention
+        # rows do not: their staged chain resolves the same split-K leaf and
+        # tiling the row-wise route uses, so they keep batched projections and a
+        # staged FFN across the boundary. ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG``
+        # admits the staged linear chain there for production-numerics
+        # evaluation; the row-wise route stays the registered strict fallback.
         strict_long_rows = (
             rows > 1
             and not bool(self.weights.config.is_moe)
             and layer_type == LINEAR_ATTENTION
             and _use_gguf_full_attention_split_decode(start_position + rows)
+            and not _gguf_staged_linear_rows_long_enabled(self.backend)
         )
         staged_dense_linear = (
             layer_type == LINEAR_ATTENTION
@@ -11228,6 +11232,10 @@ _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT = 512 * 1024 * 1024
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT = 65_792
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
+# Default-off admission for the staged dense linear-attention verifier chain
+# above the split threshold. The row-wise c1 route stays the strict fallback
+# until the production numerical and task gates qualify the staged arithmetic.
+_GGUF_STAGED_LINEAR_ROWS_LONG_ENV = "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG"
 _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS = 16
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # Keep explicit INT8-KV short gates on the exact BF16 decode path. Long-context
@@ -35198,6 +35206,34 @@ def _gguf_full_attention_split_decode_min_context() -> int:
 def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
     threshold = _gguf_full_attention_split_decode_min_context()
     return threshold > 0 and int(active_context) >= threshold
+
+
+def _gguf_staged_linear_rows_long_enabled(backend: str) -> bool:
+    """Whether dense linear-attention verifier rows stage above the split gate.
+
+    Default off: the row-wise c1 route is the strict fallback that keeps
+    selected Conv/GDN state, K/V rows and logits byte-exact against scalar AR.
+    The backend package capability ``GGUF_STAGED_LINEAR_ROWS_LONG`` admits the
+    batched staged chain (projections plus FFN across rows) so its
+    production-numerics envelope can be measured, and
+    ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG`` overrides it in either direction
+    for an explicit rollback. It never changes single-row decode.
+    """
+
+    if _env_value(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV) is not None:
+        return _env_flag(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV, False)
+    try:
+        return bool(
+            backend_package_capability(
+                backend,
+                "GGUF_STAGED_LINEAR_ROWS_LONG",
+                False,
+            )
+        )
+    except ValueError:
+        # An unresolved backend (``auto`` on a partially built runner) declares
+        # no capability, and the row-wise route is the fail-closed choice.
+        return False
 
 
 def _use_gguf_short_full_attention_split_decode(

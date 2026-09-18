@@ -486,6 +486,86 @@ def _kv_rows_equal(left: Any, right: Any, positions: Sequence[int]) -> bool:
     return True
 
 
+def _logit_diagnostics(
+    candidate: Any,
+    teacher: Any,
+) -> dict[str, Any]:
+    """Production-numerics diagnostics beside the gate's exactness verdict.
+
+    The gate's contract stays bit-exact. These rows make a non-exact candidate
+    measurable against the calibrated production envelope (mean/tail KL, top-1
+    agreement) instead of leaving it binary, so a reassociating route can be
+    judged on the profile gate rather than on byte equality.
+    """
+
+    if candidate is None or teacher is None:
+        return {"target_logits_compared": False}
+    candidate = np.asarray(candidate, dtype=np.float64)
+    teacher = np.asarray(teacher, dtype=np.float64)
+    if (
+        candidate.ndim != 2
+        or candidate.shape != teacher.shape
+        or not candidate.size
+        or not np.isfinite(candidate).all()
+        or not np.isfinite(teacher).all()
+    ):
+        return {"target_logits_compared": False}
+    teacher_logp = teacher - np.logaddexp.reduce(teacher, axis=1, keepdims=True)
+    candidate_logp = candidate - np.logaddexp.reduce(candidate, axis=1, keepdims=True)
+    row_kl = np.maximum(
+        np.sum(np.exp(teacher_logp) * (teacher_logp - candidate_logp), axis=1),
+        0.0,
+    )
+    teacher_top1 = np.argmax(teacher, axis=1)
+    candidate_top1 = np.argmax(candidate, axis=1)
+    matches = int(np.count_nonzero(teacher_top1 == candidate_top1))
+    return {
+        "target_logits_compared": True,
+        "target_rows": int(candidate.shape[0]),
+        "target_top1_matches": matches,
+        "target_top1_agreement": float(matches) / float(candidate.shape[0]),
+        "target_max_abs_logit_delta": float(np.max(np.abs(candidate - teacher))),
+        "target_row_kl": [float(value) for value in row_kl],
+        "target_row_kl_mean": float(np.mean(row_kl)),
+        "target_row_kl_max": float(np.max(row_kl)),
+    }
+
+
+@contextmanager
+def _count_linear_route_owners() -> Iterator[dict[str, int]]:
+    """Count staged versus row-wise dense linear-attention owners.
+
+    The counters are the evidence that a candidate arm actually changed the
+    route rather than only its configuration.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    counts = {"staged_chain_calls": 0, "row_wise_attn_calls": 0}
+    original_staged = (
+        Qwen35GGUFFullStackRunner._run_linear_attention_attn_chain_rows_exact
+    )
+    original_row_wise = Qwen35GGUFFullStackRunner._run_linear_attention_attn_only
+
+    def staged(self: Any, *args: Any, **kwargs: Any) -> Any:
+        counts["staged_chain_calls"] += 1
+        return original_staged(self, *args, **kwargs)
+
+    def row_wise(self: Any, *args: Any, **kwargs: Any) -> Any:
+        counts["row_wise_attn_calls"] += 1
+        return original_row_wise(self, *args, **kwargs)
+
+    Qwen35GGUFFullStackRunner._run_linear_attention_attn_chain_rows_exact = staged
+    Qwen35GGUFFullStackRunner._run_linear_attention_attn_only = row_wise
+    try:
+        yield counts
+    finally:
+        Qwen35GGUFFullStackRunner._run_linear_attention_attn_chain_rows_exact = (
+            original_staged
+        )
+        Qwen35GGUFFullStackRunner._run_linear_attention_attn_only = original_row_wise
+
+
 @contextmanager
 def _count_split_k_calls() -> Iterator[list[str]]:
     import hipengine.runtime.qwen35_gguf_runner as runner_module
@@ -524,6 +604,7 @@ def _run_direct_cases(
     max_sequence_length: int,
     require_cached_build: bool,
     require_target_graph: bool = False,
+    allow_graph: bool = True,
     direct_remaining_decode: int | None = None,
     progress: ProgressCallback | None = None,
     on_result: ResultCallback | None = None,
@@ -643,7 +724,7 @@ def _run_direct_cases(
                                 vocab_size=int(native.runner.vocab_size),
                             ),
                         )
-                        with _count_split_k_calls() as split_calls:
+                        with _count_split_k_calls() as split_calls, _count_linear_route_owners() as native_linear_routes:
                             native_prepared = native_verifier.prepare(
                                 batch,
                                 transaction_id=10_000 + len(results),
@@ -656,25 +737,34 @@ def _run_direct_cases(
                                     else int(direct_remaining_decode),
                                 ),
                                 return_logits=not bool(require_target_graph),
+                                allow_graph=bool(allow_graph),
                             )
-                        strict_prepared = strict_verifier.prepare(
-                            batch,
-                            transaction_id=20_000 + len(results),
-                            graph_bucket=strict_verifier.graph_bucket(
-                                ("rf1-strict", case.case_id), batch
-                            ),
-                            remaining_decode=(
-                                case.rows
-                                if direct_remaining_decode is None
-                                else int(direct_remaining_decode),
-                            ),
-                            return_logits=not bool(require_target_graph),
-                        )
+                        with _count_linear_route_owners() as strict_linear_routes:
+                            strict_prepared = strict_verifier.prepare(
+                                batch,
+                                transaction_id=20_000 + len(results),
+                                graph_bucket=strict_verifier.graph_bucket(
+                                    ("rf1-strict", case.case_id), batch
+                                ),
+                                remaining_decode=(
+                                    case.rows
+                                    if direct_remaining_decode is None
+                                    else int(direct_remaining_decode),
+                                ),
+                                return_logits=not bool(require_target_graph),
+                                allow_graph=bool(allow_graph),
+                            )
                         touched_positions = tuple(int(value) for value in batch.positions)
                         result.update(
                             {
                                 "split_k_calls": len(split_calls),
                                 "split_k_kernels": sorted(set(split_calls)),
+                                "native_linear_route_owners": dict(native_linear_routes),
+                                "strict_linear_route_owners": dict(strict_linear_routes),
+                                **_logit_diagnostics(
+                                    native_prepared.target_logits,
+                                    strict_prepared.target_logits,
+                                ),
                                 "target_native_graph_submitted": bool(
                                     native_prepared.native_graph_submitted
                                 ),
@@ -1079,6 +1169,8 @@ def _provenance(model: Path, *, hash_model: bool) -> dict[str, Any]:
         "HIPENGINE_BACKEND",
         "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE",
         "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+        "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG",
+        "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
         "HIPENGINE_REQUIRE_CACHED_BUILD",
     )
     return {
@@ -1146,6 +1238,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Require direct cases to use a native target graph; disables diagnostic logits.",
     )
+    parser.add_argument(
+        "--disable-target-graph",
+        action="store_true",
+        help=(
+            "Force the eager verify route even where a cached native target graph "
+            "would be eligible, so eager chain arithmetic is measured on its own."
+        ),
+    )
     parser.add_argument("--hash-model", action="store_true")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--fail-on-fail", action="store_true")
@@ -1183,6 +1283,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--direct-remaining-decode must be non-negative")
     if bool(args.require_target_graph) and generation_contexts:
         raise SystemExit("--require-target-graph supports direct cases only")
+    if bool(args.require_target_graph) and bool(args.disable_target_graph):
+        raise SystemExit(
+            "--require-target-graph and --disable-target-graph are mutually exclusive"
+        )
     if cycle_ends and not budgets:
         raise SystemExit("--candidate-budgets is required when --cycle-ends is set")
     base_cases = (
@@ -1235,6 +1339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "max_sequence_length": max_sequence_length,
         "require_cached_build": bool(args.require_cached_build),
         "require_target_graph": bool(args.require_target_graph),
+        "disable_target_graph": bool(args.disable_target_graph),
     }
     checkpoint_direct: list[dict[str, Any]] = []
     checkpoint_generation: list[dict[str, Any]] = []
@@ -1295,6 +1400,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_sequence_length=max_sequence_length,
                 require_cached_build=bool(args.require_cached_build),
                 require_target_graph=bool(args.require_target_graph),
+                allow_graph=not bool(args.disable_target_graph),
                 direct_remaining_decode=(
                     None
                     if args.direct_remaining_decode is None
