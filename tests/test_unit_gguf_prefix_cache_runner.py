@@ -67,7 +67,9 @@ class _FakePrefixSession:
         assert int(position) == int(source.position)
         assert self.allocation is not None
         assert source.allocation is not None
-        assert self.allocation.reused_block_ids == source.allocation.block_ids[:1]
+        assert self.allocation.reused_block_ids == source.allocation.block_ids[
+            : int(position) // 256
+        ]
         self.position = int(source.position)
         self.clone_calls.append((int(source.slot_id), int(source.position)))
         return 384
@@ -434,6 +436,68 @@ def test_processed_argmax_radix_miss_captures_aligned_boundaries() -> None:
     runner._release_row_resources(row, retain_prefix_snapshots=True)
     runner._rows.pop(12)
     assert runner._evict_prefix_snapshot(prompt[:512]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_incremental_prefill_captures_only_the_prompt_aligned_boundary() -> None:
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 513))
+    request = _request(prompt, max_tokens=2)
+    runner.register_batch((13,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=13))
+    row = runner._rows[13]
+    assert row.native_greedy is True
+
+    for chunk in (prompt[:256], prompt[256:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(13,),
+                row_to_request=(13,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert row.lease is not None
+    session = row.lease.session
+    assert session.prefill_calls == [(prompt[:256], 0, 256), (prompt[256:], 256, 512)]
+    # One hybrid-state capture per request, at the deepest prompt-aligned
+    # boundary.  Capturing every 256-token chunk clones the full Conv/GDN state
+    # once per chunk and is the measured prefill regression on real multi-turn
+    # traffic; only the deepest boundary is reachable by the next turn.
+    assert session.snapshot_capture_calls == [512]
+    assert tuple(runner._prefix_state_snapshots) == (prompt,)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True
+    assert match.matched_token_count == 512
+
+    # The captured boundary is what a following turn actually reuses.
+    continued_prompt = (*prompt, 900, 901)
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((14,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=14))
+    continued_row = runner._rows[14]
+    assert continued_row.prefix_reused_tokens == 512
+    assert continued_row.prefix_fallback_reason is None
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(13)
+    assert runner._evict_prefix_snapshot(prompt) is True
+    runner.rollback_admission(SimpleNamespace(request_id=14))
     assert runner.kv_pool.stats.refcounted_pages == 0
     runner.close()
 
