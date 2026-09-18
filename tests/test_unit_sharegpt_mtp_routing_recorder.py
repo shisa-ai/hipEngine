@@ -44,6 +44,7 @@ def _response(
     reason="automatic_route",
     refusal="no_provider",
     prompt_tokens=900,
+    timeline=None,
 ):
     mtp: dict = {
         "used": False,
@@ -61,7 +62,7 @@ def _response(
         "first_answer_ms": 120.0,
         "first_thinking_ms": 100.0,
         "e2e_ms": 900.0,
-        "timeline": [[100.0, 1], [200.0, 17], [300.0, 33]],
+        "timeline": timeline or [[100.0, 1], [200.0, 17], [300.0, 33]],
         "usage": {"prompt_tokens": int(prompt_tokens), "completion_tokens": 64},
         "answer_characters": 40,
         "thinking_characters": 200,
@@ -484,17 +485,55 @@ def test_summary_totals_are_not_shadowed_by_the_per_request_decode_loop() -> Non
     assert summary["ar_output_tokens"] == 6
 
 
-def test_inter_token_latency_uses_consecutive_decode_reports() -> None:
+def test_inter_token_latency_survives_a_buffered_commit_burst() -> None:
+    """A speculative cycle's tokens arrive buffered; rate must not be fooled.
+
+    The live c=2 artifact reported a 0.29 ms median because consecutive decode
+    reports inside a cycle are microseconds apart while the wait for the next
+    cycle is reported nowhere. Windowed rate cannot be faked that way.
+    """
+
     module = _module()
-    # 100 ms for 1 token, then 200 ms for 4 tokens (50 ms/token), then a
-    # repeated counter that must not divide by zero.
-    timeline = [[100.0, 1], [300.0, 5], [400.0, 5], [700.0, 8]]
+    # Four cycles of four tokens. Each cycle waits 200 ms and then delivers its
+    # four reports within 0.4 ms of each other: 50 ms of real cost per token.
+    timeline = [[0.0, 0]]
+    now = 0.0
+    tokens = 0
+    for _ in range(4):
+        now += 200.0
+        for _ in range(4):
+            tokens += 1
+            timeline.append([now, tokens])
+            now += 0.1
 
     intervals = module._inter_token_latencies_ms(timeline)
 
-    assert intervals == [50.0, 100.0]
-    assert module._percentile(intervals, 50.0) == pytest.approx(75.0)
-    assert module._percentile(intervals, 100.0) == pytest.approx(100.0)
+    assert intervals
+    assert all(interval == pytest.approx(50.0, abs=5.0) for interval in intervals)
+    assert module._decode_ms_per_token(timeline) == pytest.approx(50.0, abs=1.0)
+
+
+def test_inter_token_latency_exposes_a_stalled_window() -> None:
+    """A stall must move the tail, not vanish into one big interval."""
+
+    module = _module()
+    timeline = [[float(ms), tokens] for ms, tokens in [(0, 0), (100, 16), (200, 32), (5000, 48), (5100, 64)]]
+
+    intervals = module._inter_token_latencies_ms(timeline)
+
+    assert module._percentile(intervals, 100.0) == pytest.approx(4800.0 / 16, abs=1.0)
+    assert max(intervals) > 3 * module._percentile(intervals, 50.0)
+
+
+def test_decode_ms_per_token_uses_the_whole_timeline() -> None:
+    """The aggregate is the honest cross-check on a burst-amortized median."""
+
+    module = _module()
+    timeline = [[100.0, 1], [300.0, 2], [300.4, 3], [300.8, 4], [301.2, 5]]
+
+    assert module._decode_ms_per_token(timeline) == pytest.approx(201.2 / 4)
+    assert module._decode_ms_per_token([]) is None
+    assert module._decode_ms_per_token([[100.0, 1], [200.0, 1]]) is None
 
 
 def test_request_row_reports_itl_and_output_digest() -> None:
@@ -514,12 +553,16 @@ def test_summary_reports_serving_metrics_and_output_identity() -> None:
     module = _module()
     rows = []
     for index, source_id in enumerate(("a", "b")):
-        row = module._request_row({"source_id": source_id, "prompt_tokens": 100}, _response())
+        # 200 ms for 4 committed tokens is 50 ms per token, and it is the
+        # timeline the row's own latency is derived from.
+        row = module._request_row(
+            {"source_id": source_id, "prompt_tokens": 100},
+            _response(timeline=[[200.0, 1], [400.0, 5]]),
+        )
         row["completion_tokens"] = 48
         row["mtp_output_tokens"] = 0
         row["e2e_ms"] = 1000.0 + index * 100.0
         row["ttft_ms"] = 200.0
-        row["timeline"] = [[200.0, 1], [400.0, 5]]
         row["output_sha256"] = "same" if index == 0 else "different"
         rows.append(row)
 
