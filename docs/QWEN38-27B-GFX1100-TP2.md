@@ -1363,6 +1363,55 @@ Three conclusions, and they redirect the campaign:
   marginal rate is close to it, so folding K/V into the Q launch mostly moves
   the same fixed cost rather than removing it.
 
+#### The per-layer launch inventory (2026-09-18)
+
+`scripts/tp2_decode_kernel_inventory.py` runs the production decode step inside
+one ROCTX region bounded by device synchronizations and rolls up a `rocprofv3`
+kernel trace per rank. The per-rank split is verified rather than assumed: one
+probe launch per rank with a distinct element count maps the trace's `Agent_Id`
+to a rank, and an unverifiable mapping is reported as unavailable. Eight decode
+steps on one revision, both ranks:
+
+| quantity | rank 0 (W7900) | rank 1 (RX 7900 XTX) |
+| --- | ---: | ---: |
+| kernel launches per step | 901 | 901 |
+| device copies per step | 132 | 132 |
+| launches per layer | 14.06 | 14.06 |
+| kernel time per step | 19.949 ms | 20.502 ms |
+| small kernels (<10 us mean) | 1.914 ms/step | 1.483 ms/step |
+
+The profiled region wall is 26.367 ms/step against the unprofiled 24.025
+ms/token default-path cell, so kernel time is quoted from the trace while the
+wall stays the e2e measurement.
+
+Two results change the plan, and both are negative for hypotheses the earlier
+sections raised:
+
+- **The norm/residual chain is already fused.** The per-layer trace shows one
+  `gguf_norm_fixed5120_wave256_kernel<true, false>` (the `kAddResidual`
+  instantiation, i.e. `add_rmsnorm`), one `<false, false>` plain input norm and
+  one `gguf_bf16_add_kernel` - 3 launches where a naive reading of the
+  architecture would predict 4 (two norms plus two residual adds). The capture
+  path already calls the runner's resolved `add_rmsnorm` leaf
+  (`_add_norm_kernel`, `tp2_generate.py`), and the remaining add is the
+  exchange epilogue. There is no unfused norm pair to fuse.
+- **The exchange is not on the critical path, and its cost is rank skew being
+  absorbed.** `tp2_dev_spin_add_bf16` on the pacer rank (W7900) is min 3.72 /
+  p50 4.08 / p90 4.36 us per layer, while on the XTX it is min 4.24 / p50 66.18
+  us: the faster rank spends ~62 us per layer waiting for the slower rank's
+  partial. The add itself is ~4 us of 20 KB, so the mean is not work. Removing
+  the exchange would not remove that time; the pacer is rank 0's kernel time plus
+  intra-graph gaps.
+
+What the inventory does locate, per rank per layer, is 14.06 launches:
+~4.75 GEMV projections, 2.75 attention/GDN core kernels, 3 norm/add, 1.5
+f32-weight dense GEMV, 2 exchange (`tp2_dev_publish_flag` + `tp2_dev_spin_add_bf16`)
+and 2.06 device copies. The two remaining launch-count levers are therefore the
+exchange pair and the copies, not the norm chain; the projections that carry the
+bytes are already at their measured bandwidth.
+
+Artifact: `benchmarks/results/2026-09-18-w7900-tp2-decode-kernel-inventory.json`.
+
 The consequence for the plan: the traffic-implied 19.629 ms floor assumes every
 byte moves at the resident route's *blended* rate, and the resident route only
 reaches that rate because 61.7% of its bytes are MLP. The TP2 route's byte mix
