@@ -1,0 +1,96 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: a prefix-cache hit costs 24.9x the prefill per token of a miss and forfeits MTP entirely, so hits have no MTP path to open yet",
+  "date": "2026-09-18",
+  "status": "measured_rejected",
+  "performance_claim": false,
+  "purpose": "Measure the prefix-cache hit rate on a realistic multi-turn load, and the hit path's own cost, to decide whether a prefix hit should be given a path into MTP instead of declining to autoregressive decode.",
+  "model": {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "tree": {"commit": "f46912963", "clean": true},
+  "server": {
+    "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --prefix-cache {off,radix} --metrics prometheus --host 127.0.0.1 --port 8091 --log-level info",
+    "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1"
+  },
+  "workload": {
+    "harness": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 4 --turns 4 --min-prompt-len 256 --max-prompt-len 1200 --max-total-len 2048 --output-len 128 --record-ids --seed 4242 --route-mix off,on",
+    "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "note": "Multi-turn mode: each dataset conversation becomes four growing prompts, so turn t submits the first t user turns and their dataset replies and every turn after the first shares a token-exact prefix with the turn before it. Prompts come from the dataset rather than from the model's own replies so both arms submit byte-identical prompt sequences. --route-mix assigns the arm per conversation, so one server process and one load carry the true-AR control and the MTP arm.",
+    "conversations": 4,
+    "turns": 4,
+    "requests_per_run": 16,
+    "prompt_tokens": [272, 288, 289, 420, 472, 511, 539, 620, 667, 672, 746, 752, 911, 926, 1053, 1098],
+    "output_tokens": 128,
+    "temperature": "server default (greedy)"
+  },
+  "results": {
+    "hit_rate": {
+      "lookups": 16,
+      "hits": 12,
+      "hit_rate": 0.75,
+      "turn_0": "4 of 4 missed",
+      "turns_1_to_3": "12 of 12 hit",
+      "source": "completed_snapshot on every hit",
+      "matched_tokens": [256, 512],
+      "state_clone_bytes_per_hit": 158859264
+    },
+    "cost_of_a_hit": {
+      "prefill_ms_per_executed_token_hit": [81.6, 81.7, 82.0, 82.0, 82.1, 82.1, 82.1, 82.4, 82.5, 82.6, 82.6, 82.8],
+      "prefill_ms_per_executed_token_miss": [2.8, 3.2, 3.4, 12.6],
+      "miss_outlier": "the 12.6 ms/token miss row is the first measured request after server start (lazy graph capture); the other three misses are 2.8-3.4 ms/token",
+      "median_hit_ms_per_token": 82.1,
+      "median_miss_ms_per_token": 3.3,
+      "ratio": 24.9,
+      "source_of_numbers": "the backend's own per-request prefill_ms in the terminal chunk's timing block, divided by the prefix block's executed_prefill_tokens",
+      "ttft_median_hit_ms": 33475,
+      "ttft_median_miss_ms": 1160,
+      "ttft_ratio": 28.9,
+      "decode_itl_ms": {"hit": "83-86 (autoregressive)", "miss_mtp_arm": "34.7-36.6"}
+    },
+    "mtp_on_a_hit": {
+      "prompt_streaming": 0,
+      "prompt_prime_rows": 0,
+      "prompt_carried_bytes": 0,
+      "draft_cycles": 0,
+      "mtp_output_tokens": 0,
+      "no_provider_events": 127,
+      "comparison_miss_row": {
+        "prompt_streaming": 1,
+        "prompt_prime_rows": 420,
+        "prompt_carried_bytes": 10240,
+        "draft_cycles": 42,
+        "mtp_output_tokens": 126,
+        "no_provider_events": 1
+      }
+    },
+    "load_aggregate": {
+      "prefix_cache_off": {"requests": 16, "failures": 0, "wall_seconds": 186.1, "decode_tokens_per_second": 46.52, "median_ttft_ms": 2338},
+      "prefix_cache_radix": {"requests": 16, "failures": 0, "wall_seconds": 590.5, "decode_tokens_per_second": 3.47, "median_ttft_ms": 26702}
+    }
+  },
+  "mechanism": {
+    "suffix_prefill_runs_at_decode_speed": "hipengine/generation/qwen35_gguf.py: _prefill_native_chunk and _prefill_processed_argmax_chunk both take the `if row.prefix_reused_tokens:` branch and process the suffix with one `session.step(token_id)` per token, where the miss path calls the batched prefill. A single-token step costs the same as a decode step (82 ms at ~700 tokens of context), so the reuse path trades a 3.2 ms/token batched prefill for an 82 ms/token decode-shaped loop.",
+    "mtp_declines_at_the_prompt_sink": "hipengine/generation/qwen35_gguf_mtp2.py: _open_prompt_streaming_sinks returns None as soon as any row has prefix_reused_tokens > 0 (mtp2_prompt_fallback_reason = 'prefix_reuse_k0'). The provider therefore never receives the prompt's hidden rows, capability() reports no draft state, and every decode cycle reports no_provider: one event per output token, zero draft cycles.",
+    "why_the_reused_prefix_cannot_supply_hidden_rows": "the draft provider is a stateful recurrent head whose catch-up replays the whole prompt position by position from the target's hidden rows (one row per prompt token). A reused prefix never ran the target in this request, so those rows do not exist; _catch_up_provider raises 'GGUF MTP2 prompt hidden rows do not align' if the array is short.",
+    "the_retained_11_8x_measurement_is_a_one_token_suffix": "docs/CONCURRENCY.md's 249.269 -> 21.188 ms prefix slice is a p256+s1 packet: a one-token suffix makes the per-token loop cost exactly one step, which is the single shape where this implementation's weakness cannot show."
+  },
+  "decision": {
+    "mtp_row_for_hits": "not opened: a hit already costs 24.9x the prefill per token and forfeits MTP, so admitting MTP on a hit would optimize the smaller half of a path that is 13x slower end to end than not using the cache at all",
+    "prerequisite": "batch the reused-prefix suffix through the same prefill entry the miss path uses, so a hit's suffix costs prefill speed instead of decode speed",
+    "then": "the draft checkpoint is the right mechanism for MTP on a hit: capture the provider's recurrent state at each 256-aligned boundary during the catch-up it already performs, and a later request matching that boundary restores it instead of replaying the prompt. Rebuilding the target's hidden rows for a reused prefix (the alternative) re-runs the target over the whole reused prefix, which is the cost reuse exists to remove",
+    "measured_bound": "even a perfect MTP-on-hit would not have rescued this load: decode is 10.4-10.6 s of a 31-70 s request on the hit rows, so the prefill fix is worth ~4x more than the decode fix"
+  },
+  "source": {
+    "worklog_entries": [
+      "worklog/entries/20260918T181500.000000Z-lhl-prefix-hit-multiturn-measurement.md"
+    ],
+    "harness_changes": "scripts/sharegpt_mtp_routing_pass.py: --turns N multi-turn expansion, per-row prefix telemetry from the terminal chunk's diagnostics, per-row backend timing, by_prefix and by_turn summary slices",
+    "tests": "tests/test_unit_sharegpt_mtp_routing_recorder.py"
+  }
+}
