@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "kind": "tp2-mlp-pair-admission",
+  "generated_at": "2026-09-18T14:24:29Z",
+  "host": "epyc",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "layer": 0,
+  "world_size": 2,
+  "hidden": 5120,
+  "ffn": 17408,
+  "fused_variant": "dense_dual_local32_bf16_bf16_out",
+  "uneven_split": {
+    "fractions": [
+      0.417145,
+      0.582855
+    ],
+    "leaves": [
+      "ffn_gate",
+      "ffn_up",
+      "ffn_down"
+    ],
+    "alignment": 256
+  },
+  "plan_context": {
+    "decode_repack": true,
+    "dense_flags": {
+      "dense_q4_qmicro_t16_gate_up": false,
+      "dense_q4_t16": true,
+      "dense_q4_t16_attn_q_08b": false,
+      "dense_q5_qmicro_planar_ssm_out": false,
+      "dense_q5_raw_mmq_ssm_out": true,
+      "dense_q5_t16_h5120": true,
+      "dense_q5_t16_qkv": false,
+      "dense_q5_t16_ssm_out": true,
+      "dense_q5_t16_ssm_out_08b": false,
+      "dense_q6_qmicro_planar": true,
+      "dense_q6_qmicro_planar_excluded_slots": []
+    },
+    "backend": "hip_gfx1100"
+  },
+  "rows": [
+    {
+      "rank": 0,
+      "device": "AMD Radeon Pro W7900",
+      "per_rank_ffn": 7168,
+      "kernel_contract_error": null,
+      "fused_error": null,
+      "fields": {
+        "activated": {
+          "shape_match": true,
+          "bit_identical": true,
+          "bytes": 14336,
+          "differing_elements": 0,
+          "elements": 14336,
+          "max_abs_diff": 0.0,
+          "mean_abs_diff": 0.0,
+          "present_in_both": true
+        },
+        "down_partial": {
+          "shape_match": true,
+          "bit_identical": true,
+          "bytes": 20480,
+          "differing_elements": 0,
+          "elements": 20480,
+          "max_abs_diff": 0.0,
+          "mean_abs_diff": 0.0,
+          "present_in_both": true
+        }
+      },
+      "all_fields_bit_identical": true,
+      "unfused_ms": 105.5631,
+      "fused_ms": 0.3561
+    },
+    {
+      "rank": 1,
+      "device": "AMD Radeon RX 7900 XTX",
+      "per_rank_ffn": 10240,
+      "kernel_contract_error": null,
+      "fused_error": null,
+      "fields": {
+        "activated": {
+          "shape_match": true,
+          "bit_identical": true,
+          "bytes": 20480,
+          "differing_elements": 0,
+          "elements": 20480,
+          "max_abs_diff": 0.0,
+          "mean_abs_diff": 0.0,
+          "present_in_both": true
+        },
+        "down_partial": {
+          "shape_match": true,
+          "bit_identical": true,
+          "bytes": 20480,
+          "differing_elements": 0,
+          "elements": 20480,
+          "max_abs_diff": 0.0,
+          "mean_abs_diff": 0.0,
+          "present_in_both": true
+        }
+      },
+      "all_fields_bit_identical": true,
+      "unfused_ms": 10.1659,
+      "fused_ms": 0.4881
+    }
+  ],
+  "admitted": true,
+  "note": "Admission requires the kernel shape contract to admit the width and every compared field to be bit-identical between the fused candidate and the unfused chain on every rank. Timings are context only."
+}

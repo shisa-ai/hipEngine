@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "tp2-uneven-split-smoke",
+  "generated_at": "2026-09-18T14:39:50Z",
+  "host": "epyc",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "devices": [
+    0,
+    1
+  ],
+  "prompt": "def add(a, b):\n    return a + b\n\nExplain what this function does.",
+  "max_new_tokens": 16,
+  "teacher_rows": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "arms": {
+    "even": {
+      "label": "even",
+      "fractions": null,
+      "per_rank_ffn": {
+        "0": 8704,
+        "1": 8704
+      },
+      "variants": {
+        "0": "dense_dual_local32_bf16_bf16_out",
+        "1": "dense_dual_local32_bf16_bf16_out"
+      },
+      "build_seconds": 235.067,
+      "generate_seconds": 1.096,
+      "tokens": [
+        271,
+        1919,
+        709,
+        4829,
+        1330,
+        5789,
+        11,
+        1510,
+        64,
+        63,
+        321,
+        1510,
+        65,
+        7561,
+        321,
+        4523
+      ],
+      "teacher_logits_shape": [
+        4,
+        248320
+      ]
+    },
+    "uneven": {
+      "label": "uneven",
+      "fractions": [
+        0.417145,
+        0.582855
+      ],
+      "per_rank_ffn": {
+        "0": 7168,
+        "1": 10240
+      },
+      "variants": {
+        "0": "dense_dual_local32_bf16_bf16_out",
+        "1": "dense_dual_local32_bf16_bf16_out"
+      },
+      "build_seconds": 238.924,
+      "generate_seconds": 0.961,
+      "tokens": [
+        271,
+        1919,
+        709,
+        4829,
+        1330,
+        5789,
+        11,
+        1510,
+        64,
+        63,
+        321,
+        1510,
+        65,
+        7561,
+        321,
+        4523
+      ],
+      "teacher_logits_shape": [
+        4,
+        248320
+      ]
+    }
+  },
+  "comparison": {
+    "teacher_logits_shape_match": true,
+    "tokens_identical": true,
+    "max_abs_logit_diff": 0.13418865203857422,
+    "mean_abs_logit_diff": 0.019470617460458542,
+    "top1_agreement": 1.0,
+    "teacher_rows": 4,
+    "passed": true
+  },
+  "note": "A pass requires identical generated tokens, matching logits shape, and top-1 agreement of 1.0 on every teacher-forced row. Logit differences are expected and reported as context: the uneven split regroups the ffn_down summation.",
+  "history_cleanup": {
+    "original_blob": "ba09772d1ed008db1d3f92c742fac4b9169fd0b1",
+    "raw_payloads_removed": [
+      {
+        "path": "/arms/even/teacher_logits",
+        "shape": [
+          4,
+          248320
+        ],
+        "sha256": "50e5e3799b9d5c36449dae0be98603a3119c3b3e629cb5baa5b1f63cd624d0bd"
+      },
+      {
+        "path": "/arms/uneven/teacher_logits",
+        "shape": [
+          4,
+          248320
+        ],
+        "sha256": "bfdce5ebd51d465c813fd310176426da8f8c0255c75bf2751619e686b6500e52"
+      }
+    ],
+    "replay": "Raw payloads are in the offline history recovery archive; recapture to perform new raw-vector comparisons."
+  }
+}

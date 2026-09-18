@@ -271,6 +271,25 @@ def test_dense_policy_admission_ignores_finetune_name_but_rejects_geometry_drift
         out_features=17_408,
     ) == "dense_dual_local32_bf16_bf16_out"
 
+    # The TP2 shard widths resolve through the same allowlist: the even split's
+    # 8_704 and both uneven-split boundaries of the 0.417145/0.582855 solve.
+    for shard_width in (8_704, 7_168, 10_240):
+        assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+            runner,
+            rows=1,
+            in_features=5_120,
+            out_features=shard_width,
+        ) == "dense_dual_local32_bf16_bf16_out"
+
+    # A width the balance solve has not admitted stays unresolved rather than
+    # silently taking a nearby row: the allowlist is exact-shape by design.
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner,
+        rows=1,
+        in_features=5_120,
+        out_features=8_960,
+    ) is None
+
     runner.weights.model_name = "totally-different-name"
     assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.weights.geometry = replace(runner.weights.geometry, head_count=23)

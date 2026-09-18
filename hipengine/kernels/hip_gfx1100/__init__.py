@@ -504,6 +504,20 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         # same gate the TP1 shape used; the launcher still validates the
         # shape before any HIP contact and falls back to the unfused chain.
         (1, 5_120, 8_704): "dense_dual_local32_bf16_bf16_out",
+        # 2026-09-18, TP2 uneven MLP split: an uneven split moves the two ranks
+        # off 8_704 to whatever the balance solve returns, and both ranks then
+        # fell back to the unfused three-launch chain (the resolver reported no
+        # variant for 7_168 or 10_240). The kernel's own contract never excluded
+        # those widths - ``dense_t16_pair_decode_shape_error`` requires only
+        # ``rows == 1``, ``in_features % 256 == 0`` and ``out_features % 16 ==
+        # 0`` - so this is an allowlist gap, not a kernel limit. Both widths are
+        # now measured bit-identical to the unfused chain on both ranks
+        # (``activated`` and the down partial, 0 differing elements) at the
+        # 0.417145/0.582855 split, on the same real layer-0 weights
+        # (benchmarks/results/2026-09-18-w7900-tp2-pair-route-admission-uneven.json).
+        # The launcher still validates the shape before any HIP contact.
+        (1, 5_120, 7_168): "dense_dual_local32_bf16_bf16_out",
+        (1, 5_120, 10_240): "dense_dual_local32_bf16_bf16_out",
     },
     # 2026-09-10, UD impact-list task 5: the UD artifacts carry Q5_K T16
     # ffn gate/up pairs (9 on K_M, 6 on K_S) that decode through the direct
