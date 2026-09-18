@@ -802,7 +802,7 @@ Artifacts:
 - llama.cpp HIP: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json)
 - llama.cpp Vulkan: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json)
 
-## Qwen3.8-27B dense Q4_K_M TP1/TP2 vs llama.cpp RDNA3 fork (W7900 + RX 7900 XTX, 2026-09-19)
+## Qwen3.8-27B dense Q4_K_M TP1/TP2 vs llama.cpp RDNA3 fork (W7900 + RX 7900 XTX, 2026-09-18)
 
 External sanity check of the TP2 route: the same `Qwen3.8-27B-Q4_K_M.gguf`
 (sha256 `7b2aec3b…`), the same host, c=1, 512-token prompt, 128 decode tokens,
@@ -838,9 +838,9 @@ Findings:
   The unexplained per-rank residency is a follow-up audit item.
 
 Artifact:
-[`2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](results/2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
-Per-cell cells: [`2026-09-19-w7900-hipengine-tp2-c1-512.json`](results/2026-09-19-w7900-hipengine-tp2-c1-512.json),
-[`2026-09-19-w7900-tp2-session-tp1-control-c1-512.json`](results/2026-09-19-w7900-tp2-session-tp1-control-c1-512.json).
+[`2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](results/2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
+Per-cell cells: [`2026-09-18-w7900-hipengine-tp2-c1-512.json`](results/2026-09-18-w7900-hipengine-tp2-c1-512.json),
+[`2026-09-18-w7900-tp2-session-tp1-control-c1-512.json`](results/2026-09-18-w7900-tp2-session-tp1-control-c1-512.json).
 
 ## MTP / DFlash Speculative Decode
 
