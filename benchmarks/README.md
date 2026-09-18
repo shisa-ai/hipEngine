@@ -906,7 +906,9 @@ qualification are not claimed.
 [suite horizon](results/2026-09-17-tp2-prefill-schedule-suite-spread.json) ·
 [sustained gate at the declared horizon](results/2026-09-18-tp2-sustained-gate-horizon-42.json) ·
 [decode kernel inventory](results/2026-09-18-w7900-tp2-decode-kernel-inventory.json) ·
-[split balance plan](results/2026-09-18-w7900-tp2-split-balance-plan.json).
+[split balance plan](results/2026-09-18-w7900-tp2-split-balance-plan.json) ·
+[uneven shard width pair-route admission](results/2026-09-18-w7900-tp2-pair-route-admission-uneven.json) ·
+[uneven split end-to-end smoke](results/2026-09-18-w7900-tp2-uneven-split-smoke.json).
 
 **Sustained numerical gate, measured 2026-09-18.** Three arms on one host
 (W7900 rank 0, RX 7900 XTX rank 1), 18 product prompts, 128 teacher-forced
