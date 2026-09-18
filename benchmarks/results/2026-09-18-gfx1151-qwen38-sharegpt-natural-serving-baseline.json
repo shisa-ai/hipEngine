@@ -1,0 +1,380 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M matched AR / shipping-MTP / explicit-MTP serving baseline",
+ "date": "2026-09-18",
+ "status": "measured",
+ "purpose": "Answer whether the shipping speculative-MTP configuration completes a representative ShareGPT workload faster than true autoregressive decoding on the same server process, requests, host, model, and sampling. The earlier evidence rows used a 128-output override and reported speculative coverage; this run reports completed-request throughput, time to first token, inter-token latency, end-to-end latency and output identity on natural (dataset) output lengths.",
+ "model": "Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "kv_storage": "bf16",
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "host": "zbook",
+ "execution_profile": {
+  "requested": "production",
+  "resolved": "production",
+  "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "fell_back_to_strict": false
+ },
+ "server": {
+  "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+  "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1"
+ },
+ "workload": {
+  "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+  "seed": 0,
+  "output_len": "dataset (natural)",
+  "max_total_len": 1024,
+  "note": "One server process per group of arms; identical prompts per lane; one warmup request discarded before every measured arm. The cap128 arms re-run the same six prompts with the 128-token override the earlier passes used."
+ },
+ "arms": [
+  {
+   "label": "interactive-c1-off",
+   "concurrency": 1,
+   "request_speculative_mtp": "off",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 186.7,
+   "completion_tokens": 2194,
+   "decode_tokens_per_second": 11.755,
+   "completed_requests_per_second": 0.03215,
+   "median_ttft_ms": 416.5,
+   "p95_ttft_ms": 1385.0,
+   "median_itl_ms": 83.77,
+   "p95_itl_ms": 84.95,
+   "median_e2e_ms": 18467.8,
+   "p95_e2e_ms": 69215.4,
+   "mtp_requests": 0,
+   "mtp_output_share": 0.0,
+   "groups_by_realized_rows": {
+    "unknown": {
+     "completion_tokens": 2194,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {
+    "unknown": 6
+   },
+   "itl_samples": 2180
+  },
+  {
+   "label": "interactive-c1-auto",
+   "concurrency": 1,
+   "request_speculative_mtp": "auto",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 234.2,
+   "completion_tokens": 2194,
+   "decode_tokens_per_second": 9.369,
+   "completed_requests_per_second": 0.02562,
+   "median_ttft_ms": 517.5,
+   "p95_ttft_ms": 1645.4,
+   "median_itl_ms": 118.9,
+   "p95_itl_ms": 119.95,
+   "median_e2e_ms": 21529.1,
+   "p95_e2e_ms": 90563.1,
+   "mtp_requests": 6,
+   "mtp_output_share": 0.9959,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2194,
+     "mtp_output_tokens": 2185,
+     "mtp_requests": 6,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {},
+   "itl_samples": 2178
+  },
+  {
+   "label": "interactive-c1-on",
+   "concurrency": 1,
+   "request_speculative_mtp": "on",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 236.6,
+   "completion_tokens": 2194,
+   "decode_tokens_per_second": 9.271,
+   "completed_requests_per_second": 0.02535,
+   "median_ttft_ms": 519.2,
+   "p95_ttft_ms": 1694.9,
+   "median_itl_ms": 120.17,
+   "p95_itl_ms": 121.54,
+   "median_e2e_ms": 21840.3,
+   "p95_e2e_ms": 91545.4,
+   "mtp_requests": 6,
+   "mtp_output_share": 0.9959,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2194,
+     "mtp_output_tokens": 2185,
+     "mtp_requests": 6,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {},
+   "itl_samples": 2178
+  },
+  {
+   "label": "loaded-c4-off",
+   "concurrency": 4,
+   "request_speculative_mtp": "off",
+   "prompts": 8,
+   "requests": 8,
+   "failures": 0,
+   "wall_seconds": 119.0,
+   "completion_tokens": 2296,
+   "decode_tokens_per_second": 19.3,
+   "completed_requests_per_second": 0.06725,
+   "median_ttft_ms": 2250.1,
+   "p95_ttft_ms": 3490.2,
+   "median_itl_ms": 252.64,
+   "p95_itl_ms": 431.73,
+   "median_e2e_ms": 56990.8,
+   "p95_e2e_ms": 109165.9,
+   "mtp_requests": 0,
+   "mtp_output_share": 0.0,
+   "groups_by_realized_rows": {
+    "unknown": {
+     "completion_tokens": 2296,
+     "requests": 8
+    }
+   },
+   "non_mtp_reasons": {
+    "unknown": 8
+   },
+   "itl_samples": 2278
+  },
+  {
+   "label": "loaded-c4-auto",
+   "concurrency": 4,
+   "request_speculative_mtp": "auto",
+   "prompts": 8,
+   "requests": 8,
+   "failures": 0,
+   "wall_seconds": 146.2,
+   "completion_tokens": 2296,
+   "decode_tokens_per_second": 15.704,
+   "completed_requests_per_second": 0.05472,
+   "median_ttft_ms": 4071.6,
+   "p95_ttft_ms": 14774.6,
+   "median_itl_ms": 276.48,
+   "p95_itl_ms": 478.83,
+   "median_e2e_ms": 72500.9,
+   "p95_e2e_ms": 135790.4,
+   "mtp_requests": 2,
+   "mtp_output_share": 0.2626,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2296,
+     "mtp_output_tokens": 603,
+     "mtp_requests": 2,
+     "requests": 8
+    }
+   },
+   "non_mtp_reasons": {
+    "no_provider": 6
+   },
+   "itl_samples": 2275
+  },
+  {
+   "label": "loaded-c4-on",
+   "concurrency": 4,
+   "request_speculative_mtp": "on",
+   "prompts": 8,
+   "requests": 8,
+   "failures": 0,
+   "wall_seconds": 135.6,
+   "completion_tokens": 2296,
+   "decode_tokens_per_second": 16.927,
+   "completed_requests_per_second": 0.05898,
+   "median_ttft_ms": 2861.2,
+   "p95_ttft_ms": 4123.5,
+   "median_itl_ms": 277.11,
+   "p95_itl_ms": 483.41,
+   "median_e2e_ms": 65366.2,
+   "p95_e2e_ms": 125117.8,
+   "mtp_requests": 2,
+   "mtp_output_share": 0.2626,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2296,
+     "mtp_output_tokens": 603,
+     "mtp_requests": 2,
+     "requests": 8
+    }
+   },
+   "non_mtp_reasons": {
+    "no_provider": 6
+   },
+   "itl_samples": 2275
+  },
+  {
+   "label": "longprompt-c2-off",
+   "concurrency": 2,
+   "request_speculative_mtp": "off",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 47.1,
+   "completion_tokens": 537,
+   "decode_tokens_per_second": 11.392,
+   "completed_requests_per_second": 0.12728,
+   "median_ttft_ms": 3274.2,
+   "p95_ttft_ms": 4335.3,
+   "median_itl_ms": 170.42,
+   "p95_itl_ms": 191.9,
+   "median_e2e_ms": 10628.6,
+   "p95_e2e_ms": 31852.7,
+   "mtp_requests": 0,
+   "mtp_output_share": 0.0,
+   "groups_by_realized_rows": {
+    "unknown": {
+     "completion_tokens": 537,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {
+    "unknown": 6
+   },
+   "itl_samples": 525
+  },
+  {
+   "label": "longprompt-c2-on",
+   "concurrency": 2,
+   "request_speculative_mtp": "on",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 54.4,
+   "completion_tokens": 537,
+   "decode_tokens_per_second": 9.872,
+   "completed_requests_per_second": 0.1103,
+   "median_ttft_ms": 3990.9,
+   "p95_ttft_ms": 5087.5,
+   "median_itl_ms": 193.43,
+   "p95_itl_ms": 254.13,
+   "median_e2e_ms": 11421.8,
+   "p95_e2e_ms": 36708.3,
+   "mtp_requests": 4,
+   "mtp_output_share": 0.6723,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 537,
+     "mtp_output_tokens": 361,
+     "mtp_requests": 4,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {
+    "no_provider": 2
+   },
+   "itl_samples": 524
+  },
+  {
+   "label": "cap128-c1-off",
+   "concurrency": 1,
+   "request_speculative_mtp": "off",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 67.2,
+   "completion_tokens": 768,
+   "decode_tokens_per_second": 11.434,
+   "completed_requests_per_second": 0.08933,
+   "median_ttft_ms": 403.1,
+   "p95_ttft_ms": 1385.3,
+   "median_itl_ms": 83.92,
+   "p95_itl_ms": 85.01,
+   "median_e2e_ms": 10882.7,
+   "p95_e2e_ms": 11962.4,
+   "mtp_requests": 0,
+   "mtp_output_share": 0.0,
+   "groups_by_realized_rows": {
+    "unknown": {
+     "completion_tokens": 768,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {
+    "unknown": 6
+   },
+   "itl_samples": 753
+  },
+  {
+   "label": "cap128-c1-auto",
+   "concurrency": 1,
+   "request_speculative_mtp": "auto",
+   "prompts": 6,
+   "requests": 6,
+   "failures": 0,
+   "wall_seconds": 75.7,
+   "completion_tokens": 768,
+   "decode_tokens_per_second": 10.14,
+   "completed_requests_per_second": 0.07922,
+   "median_ttft_ms": 517.0,
+   "p95_ttft_ms": 1636.0,
+   "median_itl_ms": 118.83,
+   "p95_itl_ms": 119.82,
+   "median_e2e_ms": 12478.4,
+   "p95_e2e_ms": 13683.4,
+   "mtp_requests": 6,
+   "mtp_output_share": 0.9857,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 768,
+     "mtp_output_tokens": 757,
+     "mtp_requests": 6,
+     "requests": 6
+    }
+   },
+   "non_mtp_reasons": {},
+   "itl_samples": 750
+  }
+ ],
+ "output_identity": {
+  "interactive-c1-off_vs_interactive-c1-auto": {
+   "shared_prompts": 6,
+   "identical_output_sha256": 1,
+   "differing": 5
+  },
+  "interactive-c1-off_vs_interactive-c1-on": {
+   "shared_prompts": 6,
+   "identical_output_sha256": 1,
+   "differing": 5
+  },
+  "loaded-c4-off_vs_loaded-c4-auto": {
+   "shared_prompts": 8,
+   "identical_output_sha256": 6,
+   "differing": 2
+  },
+  "loaded-c4-off_vs_loaded-c4-on": {
+   "shared_prompts": 8,
+   "identical_output_sha256": 6,
+   "differing": 2
+  },
+  "longprompt-c2-off_vs_longprompt-c2-on": {
+   "shared_prompts": 6,
+   "identical_output_sha256": 3,
+   "differing": 3
+  },
+  "cap128-c1-off_vs_cap128-c1-auto": {
+   "shared_prompts": 6,
+   "identical_output_sha256": 0,
+   "differing": 6
+  }
+ },
+ "reading": {
+  "headline": "At the measured commit every speculative arm is slower than its matched AR arm on this workload: -20.3% decode rate at c=1 natural lengths, -18.7% at c=4, -13.3% at c=2 long prompts, and -11.3% at c=1 with the 128-token override. Inter-token latency degrades in the same direction (84 ms -> 119 ms at c=1).",
+  "superseded_by_control": "The slowdown is a regression in the speculative path, not a property of speculative decoding on this workload. On the control tree (f607e3184, 085bdd86b~1) the same six requests with the same flags decode at 23.60 tok/s against 11.79 tok/s for true AR (2.00x), where this tree's automatic arm decodes at 9.37 tok/s. AR is unchanged between the trees (11.79 vs 11.75), so the whole difference is on the MTP side. The control tree is not exact in general: on seven natural prompts, sequential and without prefix reuse, its two arms agree byte-for-byte on five and diverge at tokens 47 and 155 on the other two, so its speed is real but its output identity is not universal. See 2026-09-18-gfx1151-qwen38-mtp-exactness-regression.json.",
+  "acceptance": "Accepted drafts per cycle are 0.10-0.24 on this content at this commit, against 0.44-0.89 recorded for the mtp-bench prompt classes, so a cycle that spends four verifier rows to commit ~1.1-1.25 tokens cannot pay for itself. The exact tree's 2.00x at the same acceptance-free conditions shows the acceptance collapse and the slowdown share the regression's cause.",
+  "concurrency": "At c=4 only 2 of 8 requests ran MTP and 26.3% of tokens were speculative; the provider refuses under contention. The mixed-route coupling run measures the same effect with a true-AR control inside one load.",
+  "identity": "Greedy output is not stable between the arms at this commit: AR and MTP diverge after 5-7 tokens on every prompt tested, including a trivial one. Two AR runs and two MTP runs are each bit-identical, so this is a path difference, not nondeterminism.",
+  "status": "Diagnostic. Not a retained performance claim: it measures a broken speculative route on a superseded commit."
+ },
+ "source": [
+  "worklog/entries/20260918T033000-lhl-sharegpt-natural-serving-baseline.md"
+ ]
+}

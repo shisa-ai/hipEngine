@@ -391,6 +391,26 @@ exact at 2K, 3.6K, and 8K spans, including 32 splits per row at 8K against a
 change: the serving limits above are unchanged.
 [Eager long-context verifier staged chain](results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json).
 
+**Serving status (2026-09-18):** that staged-verifier change also reached
+short-context dense verifier rows, because it replaced the gate that declined the
+staged route whenever the session's context limit was above the 1,024-token
+split threshold. On the current tree the automatic MTP route no longer
+reproduces the autoregressive arm's greedy output: the two agree for 8 output
+tokens and diverge at token 7 for 16 or more, on an ordinary prompt, under both
+the strict and the production execution profile, and the divergent text is
+incoherent where the autoregressive arm's is correct. The same lane that decodes
+**23.60 tok/s against true AR's 11.79 (2.00x)** on the last tree whose control
+prompt was exact decodes **9.37 tok/s against 11.75** here, and true AR is
+unchanged between the two trees. That control tree is not exact in general: its
+two arms are byte-identical on five of seven natural prompts and diverge at
+tokens 47 and 155 on the other two, so the divergence exists on both trees and
+the regression moved it from late and prompt-dependent to immediate and
+universal. Treat the MTP rows above as rates from a tree without the regression,
+not as the current serving rate, and not as a claim that their output was exact. [Exactness regression and exact-tree
+control](results/2026-09-18-gfx1151-qwen38-mtp-exactness-regression.json);
+[matched serving baseline](results/2026-09-18-gfx1151-qwen38-sharegpt-natural-serving-baseline.json);
+[concurrent coupling arm with an in-run AR control](results/2026-09-18-gfx1151-qwen38-mtp-serving-coupling-route-mix.json).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework

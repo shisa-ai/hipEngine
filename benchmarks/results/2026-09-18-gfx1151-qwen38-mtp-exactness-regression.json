@@ -1,0 +1,369 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M: the shipping MTP route's greedy output diverges from AR, and the same commit costs 2.5x of MTP throughput",
+ "date": "2026-09-18",
+ "status": "measured",
+ "performance_claim": false,
+ "purpose": "Localize the divergence between the automatic speculative route and true autoregressive decoding that the matched serving baseline exposed, and separate the speculative path's own cost from the regression's cost by measuring the same lane on the last tree where the arms agreed.",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "host": "zbook",
+ "kv_storage": "bf16",
+ "execution_profile": "production",
+ "server_command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+ "head_commit": "b98f2721ac9b28731c3d4177681d4c451ebbdb78",
+ "control_tree": {
+  "commit": "f607e3184",
+  "how": "git worktree add /tmp/hipengine-bisect <commit>; the same server command and the same client harness"
+ },
+ "exactness_ladder": {
+  "prompt": "Write exactly one short greeting.",
+  "protocol": "non-streaming chat completion, greedy, max_tokens 8/16/32/64, both stream_options settings",
+  "rows": [
+   {
+    "tree": "a2f62c881",
+    "date": "2026-09-12",
+    "budgets": {
+     "8": "exact",
+     "16": "exact",
+     "32": "exact"
+    },
+    "note": "release worktree of the 2026-09-12 gfx1151 headline evidence"
+   },
+   {
+    "tree": "f607e3184",
+    "date": "2026-09-18",
+    "budgets": {
+     "8": "exact",
+     "16": "exact",
+     "32": "exact"
+    },
+    "note": "085bdd86b~1, the commit immediately before the suspect"
+   },
+   {
+    "tree": "085bdd86b",
+    "date": "2026-09-18",
+    "budgets": {
+     "8": "exact",
+     "16": "diverges at token 7",
+     "32": "diverges at token 7"
+    },
+    "note": "perf: stage long-context verifier rows on per-row exact attention leaves"
+   },
+   {
+    "tree": "253beefe3",
+    "date": "2026-09-18",
+    "budgets": {
+     "8": "exact",
+     "16": "diverges at token 7",
+     "32": "diverges at token 7",
+     "64": "diverges at token 7; AR stops at 42 tokens on EOS, MTP does not"
+    },
+    "note": "head; the deferral fix in this commit is bisected out"
+   }
+  ],
+  "observed_ids": {
+   "ar_16": [
+    248068,
+    198,
+    760,
+    1156,
+    6587,
+    728,
+    310,
+    3165,
+    6681,
+    799,
+    2716,
+    40719,
+    13,
+    1061,
+    369,
+    29350
+   ],
+   "mtp_16": [
+    248068,
+    198,
+    760,
+    1156,
+    6587,
+    728,
+    310,
+    958,
+    279,
+    3299,
+    328,
+    71,
+    1,
+    466,
+    328,
+    71
+   ],
+   "decoded_ar": " thinking\\nThe user wants me to write exactly one short greeting. This is straightforward",
+   "decoded_mtp": " thinking\\nThe user wants me to use the word \"h\" or 4"
+  },
+  "determinism": "two AR runs and two MTP runs each produced identical ids (32/32 shared); AR vs MTP shared 5-7 of 32 on three prompts, including 'What is 17 times 3?' where AR answers '17 x 3 = 51' and MTP answers 'about 4 being multiplied by some other number of their data'"
+ },
+ "mechanism": {
+  "commit": "085bdd86b perf: stage long-context verifier rows on per-row exact attention leaves",
+  "change": "The dense staged-verifier gate changed from `not _use_gguf_full_attention_split_decode(attention_context_limit)` to `_staged_full_attention_rows_ready(...)`. With --max-context-tokens 8192 the old condition declined the staged route (8192 is above the 1024 split threshold); the new one accepts it for rows below the threshold, so short-context dense verifier rows moved from the row-wise strict route to the staged batched route.",
+  "corroboration": "The same commit's own comment records that the staged linear-attention chain diverges from scalar AR in BF16 at the split-attention boundary, which is why it kept the row-wise strict route for dense linear rows at long context.",
+  "evidence_gap": "The commit's retained benchmark is a long-context verifier chain, so its own evidence could not observe the short-context route change."
+ },
+ "api_gate": {
+  "command": "python scripts/gguf_mtp_api_gate.py --model Qwen3.8-27B-Q4_K_M.gguf",
+  "result": "passed=False for both the eager and lazy-restart lifecycles at the head commit",
+  "blind_spot": "its exactness cases are 8 tokens; chat_single reports ids_exact=true while 16 tokens diverge"
+ },
+ "control_lane": {
+  "protocol": "same six natural ShareGPT prompts, same server flags, --max-total-len 1024, greedy, one warmup",
+  "head_commit_253beefe3": {
+   "ar": {
+    "requests": 6,
+    "completion_tokens": 2194,
+    "wall_seconds": 186.7,
+    "decode_tokens_per_second": 11.75,
+    "mtp_requests": 0,
+    "mtp_output_share": 0.0,
+    "median_ttft_ms": 416.5,
+    "prompts": [
+     9,
+     24,
+     26,
+     28,
+     333,
+     422
+    ],
+    "outputs": [
+     8,
+     102,
+     195,
+     245,
+     820,
+     824
+    ]
+   },
+   "automatic_mtp": {
+    "requests": 6,
+    "completion_tokens": 2194,
+    "wall_seconds": 234.2,
+    "decode_tokens_per_second": 9.37,
+    "mtp_requests": 6,
+    "mtp_output_share": 0.9959,
+    "median_ttft_ms": 517.5,
+    "prompts": [
+     9,
+     24,
+     26,
+     28,
+     333,
+     422
+    ],
+    "outputs": [
+     8,
+     102,
+     195,
+     245,
+     820,
+     824
+    ]
+   },
+   "explicit_mtp": {
+    "requests": 6,
+    "completion_tokens": 2194,
+    "wall_seconds": 236.6,
+    "decode_tokens_per_second": 9.27,
+    "mtp_requests": 6,
+    "mtp_output_share": 0.9959,
+    "median_ttft_ms": 519.2,
+    "prompts": [
+     9,
+     24,
+     26,
+     28,
+     333,
+     422
+    ],
+    "outputs": [
+     8,
+     102,
+     195,
+     245,
+     820,
+     824
+    ]
+   }
+  },
+  "exact_tree_f607e3184": {
+   "ar": {
+    "requests": 6,
+    "completion_tokens": 2194,
+    "wall_seconds": 186.1,
+    "decode_tokens_per_second": 11.79,
+    "mtp_requests": 0,
+    "mtp_output_share": 0.0,
+    "median_ttft_ms": 415.6,
+    "prompts": [
+     9,
+     24,
+     26,
+     28,
+     333,
+     422
+    ],
+    "outputs": [
+     8,
+     102,
+     195,
+     245,
+     820,
+     824
+    ]
+   },
+   "automatic_mtp": {
+    "requests": 6,
+    "completion_tokens": 2194,
+    "wall_seconds": 93.0,
+    "decode_tokens_per_second": 23.6,
+    "mtp_requests": 6,
+    "mtp_output_share": 0.9968,
+    "median_ttft_ms": 515.6,
+    "prompts": [
+     9,
+     24,
+     26,
+     28,
+     333,
+     422
+    ],
+    "outputs": [
+     8,
+     102,
+     195,
+     245,
+     820,
+     824
+    ]
+   }
+  }
+ },
+ "reading": {
+  "headline": "One commit separates a 2.00x speculative win from a 20% loss. On the control tree the automatic arm decodes 2194 tokens in 93.0 s (23.60 tok/s) against true AR's 186.1 s (11.79 tok/s); at the head the same arm needs 234.2 s (9.37 tok/s) for the same 2194 tokens, and true AR is unchanged (186.7 s, 11.75 tok/s). The control tree is 'the last tree where the control prompt was exact', not an exact tree: see sequential_identity.",
+  "quality": "The head's speculative arm changes generated content on 5 of 6 natural prompts and diverges after 5-7 tokens, with incoherent text where AR's is correct; the control tree is byte-identical on 5 of 7 prompts and diverges at tokens 47 and 155 on the other two. See sequential_identity.",
+  "caveat": "The control tree is a worktree of f607e3184, not the head with a revert. It is the last tree whose arms agreed, and it carries the same serving flags; the comparison is same-host, same-model, same-prompts, same-protocol.",
+  "status": "Diagnostic evidence for a blocker. Not a retained performance claim."
+ },
+ "source": {
+  "artifacts": [
+   "benchmarks/results/2026-09-18-gfx1151-qwen38-sharegpt-natural-serving-baseline.json"
+  ],
+  "raw": [
+   "/tmp/mtp-baseline/ladder.log",
+   "/tmp/mtp-bisect/ladder.log",
+   "/tmp/mtp-bisect2/ladder.log",
+   "/tmp/mtp-bisect3/ladder.log",
+   "/tmp/mtp-baseline/determinism.log",
+   "/tmp/mtp-baseline/text-probe.log",
+   "/tmp/mtp-exact-tree/c1-off.json",
+   "/tmp/mtp-exact-tree/c1-auto.json"
+  ],
+  "harness": "scripts/sharegpt_mtp_routing_pass.py (--speculative-mtp / --route-mix / --record-ids)"
+ },
+ "sequential_identity": {
+  "protocol": "same server and flags, c=1, one request at a time, no repeats, no prefix reuse, greedy, natural output lengths; the AR lane and the automatic lane are two runs of the same seven prompts (AR is deterministic across runs, so the comparison is sound)",
+  "exact_tree_f607e3184": {
+   "identical_prompts": 5,
+   "differing_prompts": 2,
+   "pairs": [
+    {
+     "prompt_tokens": 9,
+     "ar_tokens": 195,
+     "mtp_tokens": 195,
+     "identical": false,
+     "shared_prefix_tokens": 47,
+     "ar_from_divergence": [
+      11669,
+      318,
+      12195,
+      279
+     ],
+     "mtp_from_divergence": [
+      328,
+      11895,
+      1,
+      4924
+     ]
+    },
+    {
+     "prompt_tokens": 24,
+     "ar_tokens": 824,
+     "mtp_tokens": 824,
+     "identical": false,
+     "shared_prefix_tokens": 155,
+     "ar_from_divergence": [
+      1165,
+      1144,
+      310,
+      1432
+     ],
+     "mtp_from_divergence": [
+      561,
+      78588,
+      43,
+      3325
+     ]
+    },
+    {
+     "prompt_tokens": 26,
+     "ar_tokens": 245,
+     "mtp_tokens": 245,
+     "identical": true,
+     "shared_prefix_tokens": 245,
+     "ar_from_divergence": [],
+     "mtp_from_divergence": []
+    },
+    {
+     "prompt_tokens": 688,
+     "ar_tokens": 33,
+     "mtp_tokens": 33,
+     "identical": true,
+     "shared_prefix_tokens": 33,
+     "ar_from_divergence": [],
+     "mtp_from_divergence": []
+    },
+    {
+     "prompt_tokens": 784,
+     "ar_tokens": 10,
+     "mtp_tokens": 10,
+     "identical": true,
+     "shared_prefix_tokens": 10,
+     "ar_from_divergence": [],
+     "mtp_from_divergence": []
+    },
+    {
+     "prompt_tokens": 797,
+     "ar_tokens": 136,
+     "mtp_tokens": 136,
+     "identical": true,
+     "shared_prefix_tokens": 136,
+     "ar_from_divergence": [],
+     "mtp_from_divergence": []
+    },
+    {
+     "prompt_tokens": 833,
+     "ar_tokens": 8,
+     "mtp_tokens": 8,
+     "identical": true,
+     "shared_prefix_tokens": 8,
+     "ar_from_divergence": [],
+     "mtp_from_divergence": []
+    }
+   ]
+  },
+  "reading": "The control tree is not exact in general: it is exact on 5 of 7 natural prompts and diverges at token 47 and token 155 on the other two. The head diverges on 5 of 6 prompts after 5-7 tokens. The two trees therefore differ in degree, not in kind: a residual, prompt-dependent verifier divergence exists on the last tree whose control prompt was exact, and the regression moved it from late and rare to immediate and universal. The early, universal divergence is what makes the head's text incoherent; the late, prompt-dependent one is the shape the production numerical envelope in docs/EXECUTION-PROFILES.md exists to bound and needs the calibrated KL/top-1 evaluation before it is called acceptable."
+ }
+}

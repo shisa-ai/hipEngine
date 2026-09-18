@@ -1,0 +1,256 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M gfx1151: concurrent mixed-route serving coupling arm with an in-run true-AR control",
+ "date": "2026-09-18",
+ "status": "measured",
+ "performance_claim": false,
+ "purpose": "Answer the concurrent-execution question with one load per point: do valid requests retain access to efficient speculative execution when other requests are in flight, and what does the run cost in throughput, latency and output identity? The true-AR control is assigned per request inside the same load (--route-mix off,auto), so arm differences are not cross-run differences.",
+ "model": "Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "kv_storage": "bf16",
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "host": "zbook",
+ "execution_profile": "production",
+ "tree": {
+  "commit": "f607e3184",
+  "why": "085bdd86b~1, the last tree on which the sequential control prompt produced identical greedy output from both arms and where the same lane decodes 2.00x faster than true AR. It is not exact in general: its arms diverge at tokens 47 and 155 on two of seven natural prompts, so this run's identity numbers are read against that baseline, not against zero."
+ },
+ "server": {
+  "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+  "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1"
+ },
+ "workload": {
+  "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+  "seed": 0,
+  "output_len": "dataset (natural)",
+  "max_total_len": 1024,
+  "cases": "short (4-64 prompt tokens) beside long (512-1024), 4 each",
+  "route_mix": "off,auto assigned per request in submission order",
+  "prompt_repeats": 2,
+  "note": "Repeat rows reuse the prompt prefix, so each prompt is served once by each arm across the two repeats; the identity comparison pairs those rows. Two requests per point are cancelled after 4 tokens to run the cancel/refill path beside the completed rows."
+ },
+ "points": {
+  "c2": {
+   "label": "coupling-c2",
+   "concurrency": 2,
+   "wall_seconds": 281.2,
+   "requests": 16,
+   "failures": 0,
+   "cancelled_requests": 2,
+   "decode_tokens_per_second": 16.17,
+   "completed_requests_per_second": 0.0569,
+   "median_ttft_ms": 1806.3,
+   "p95_ttft_ms": 3568.2,
+   "median_itl_ms": 103.5,
+   "p95_itl_ms": 254.3,
+   "mtp_requests": 8,
+   "mtp_output_share": 0.4973,
+   "ar_tokens_by_reason": {
+    "no_provider": 8
+   },
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 2261,
+     "mtp_requests": 8,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "by_route_arm": {
+    "auto": {
+     "requests": 8,
+     "decode_tokens_per_second": 24.4,
+     "median_itl_ms": 109.2,
+     "median_ttft_ms": 2054.8,
+     "mtp_requests": 8,
+     "median_prompt_tokens": 366.0
+    },
+    "off": {
+     "requests": 8,
+     "decode_tokens_per_second": 20.11,
+     "median_itl_ms": 91.8,
+     "median_ttft_ms": 1645.3,
+     "mtp_requests": 0,
+     "median_prompt_tokens": 366.0
+    }
+   },
+   "by_case": {
+    "long": {
+     "requests": 8,
+     "decode_tokens_per_second": 14.14,
+     "median_itl_ms": 75.0,
+     "median_ttft_ms": 2758.0,
+     "median_prompt_tokens": 798.5,
+     "mtp_requests": 4
+    },
+    "short": {
+     "requests": 8,
+     "decode_tokens_per_second": 36.82,
+     "median_itl_ms": 109.2,
+     "median_ttft_ms": 693.9,
+     "median_prompt_tokens": 33.0,
+     "mtp_requests": 4
+    }
+   },
+   "arm_identity": {
+    "compared_prompts": 7,
+    "compared_prompts_with_ids": 7,
+    "differing_prompts": 2,
+    "identical_prompts": 5,
+    "median_shared_prefix_tokens": 155,
+    "min_shared_prefix_tokens": 8
+   },
+   "identity_differences": [
+    {
+     "source_id": "oisxtIk_0",
+     "case": "short",
+     "left_arm": "off",
+     "right_arm": "auto",
+     "left_repeat_index": 0,
+     "right_repeat_index": 1,
+     "tokens": 824,
+     "shared_prefix_tokens": 155
+    },
+    {
+     "source_id": "wfMPLY6_0",
+     "case": "short",
+     "left_arm": "off",
+     "right_arm": "auto",
+     "left_repeat_index": 1,
+     "right_repeat_index": 0,
+     "tokens": 820,
+     "shared_prefix_tokens": 535
+    }
+   ]
+  },
+  "c4": {
+   "label": "coupling-c4",
+   "concurrency": 4,
+   "wall_seconds": 271.1,
+   "requests": 16,
+   "failures": 0,
+   "cancelled_requests": 2,
+   "decode_tokens_per_second": 16.77,
+   "completed_requests_per_second": 0.059,
+   "median_ttft_ms": 3108.2,
+   "p95_ttft_ms": 6767.0,
+   "median_itl_ms": 189.7,
+   "p95_itl_ms": 826.2,
+   "mtp_requests": 8,
+   "mtp_output_share": 0.3976,
+   "ar_tokens_by_reason": {
+    "no_provider": 460
+   },
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 1808,
+     "mtp_requests": 8,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "by_route_arm": {
+    "auto": {
+     "requests": 8,
+     "decode_tokens_per_second": 11.88,
+     "median_itl_ms": 212.7,
+     "median_ttft_ms": 3153.4,
+     "mtp_requests": 8,
+     "median_prompt_tokens": 366.0
+    },
+    "off": {
+     "requests": 8,
+     "decode_tokens_per_second": 12.12,
+     "median_itl_ms": 139.3,
+     "median_ttft_ms": 3034.3,
+     "mtp_requests": 0,
+     "median_prompt_tokens": 366.0
+    }
+   },
+   "by_case": {
+    "long": {
+     "requests": 8,
+     "decode_tokens_per_second": 7.56,
+     "median_itl_ms": 159.0,
+     "median_ttft_ms": 3911.3,
+     "median_prompt_tokens": 798.5,
+     "mtp_requests": 4
+    },
+    "short": {
+     "requests": 8,
+     "decode_tokens_per_second": 21.81,
+     "median_itl_ms": 202.1,
+     "median_ttft_ms": 1320.7,
+     "median_prompt_tokens": 33.0,
+     "mtp_requests": 4
+    }
+   },
+   "arm_identity": {
+    "compared_prompts": 7,
+    "compared_prompts_with_ids": 7,
+    "differing_prompts": 2,
+    "identical_prompts": 5,
+    "median_shared_prefix_tokens": 136,
+    "min_shared_prefix_tokens": 8
+   },
+   "identity_differences": [
+    {
+     "source_id": "oisxtIk_0",
+     "case": "short",
+     "left_arm": "off",
+     "right_arm": "auto",
+     "left_repeat_index": 0,
+     "right_repeat_index": 1,
+     "tokens": 824,
+     "shared_prefix_tokens": 155
+    },
+    {
+     "source_id": "wfMPLY6_0",
+     "case": "short",
+     "left_arm": "off",
+     "right_arm": "auto",
+     "left_repeat_index": 1,
+     "right_repeat_index": 0,
+     "tokens": 820,
+     "shared_prefix_tokens": 63
+    }
+   ]
+  }
+ },
+ "reading": {
+  "grouping": "Every speculative request ran at realized width 1 in both points (groups_by_realized_rows has only the width-1 bucket), so concurrency does not batch speculative rows and a speculative row never shares a verifier group with another row.",
+  "provider_under_contention": "The provider is refused far more often as occupancy rises: 8 non-speculative AR tokens attributed to no_provider at c=2 against 456 at c=4, and the speculative output share falls from 49.7% to 39.8%.",
+  "arm_advantage_erodes": "At c=2 the speculative arm decodes 24.40 tok/s against the in-run AR control's 20.11 (+21%); at c=4 it is 11.88 against 12.12 (-2%), so the advantage is gone at four concurrent rows even on the exact tree.",
+  "latency": "Median time to first token rises 1.6 s -> 3.0 s (AR) and 2.1 s -> 3.2 s (speculative) between c=2 and c=4, and the speculative arm's median inter-token latency at c=4 (213 ms) is worse than its control's (139 ms).",
+  "quality": "Five of seven prompts that both arms served are byte-identical in each point. The two that differ are the same two prompts that differ in the sequential control on this tree, at 155 and 47 tokens there, and at 155 and 535 (c=2) and 155 and 63 (c=4) here. So the difference follows the prompt, not the arm or the occupancy; concurrency only moves where the second one parts. This is a residual verifier divergence, not a concurrency finding.",
+  "status": "Diagnostic on a superseded tree with a known residual divergence. Not a retained performance claim: the head cannot reproduce the rates until the verifier regression is fixed, and the residual divergence needs the production numerical envelope evaluation before either tree's MTP output is called exact."
+ },
+ "source": {
+  "harness": "scripts/sharegpt_mtp_routing_pass.py --cases --route-mix --record-ids",
+  "raw": [
+   "/tmp/mtp-coupling2/coupling-c2.json",
+   "/tmp/mtp-coupling2/coupling-c4.json",
+   "/tmp/mtp-coupling2/pass.txt"
+  ],
+  "related": "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-exactness-regression.json"
+ },
+ "head_commit_when_written": "b98f2721ac9b28731c3d4177681d4c451ebbdb78",
+ "sequential_control": {
+  "protocol": "same tree, c=1, one request at a time, no repeats, no prefix reuse, greedy",
+  "identical_prompts": 5,
+  "differing_prompts": 2,
+  "divergence_positions": [
+   47,
+   155
+  ],
+  "note": "the same two prompts diverge in this coupling run, so its identity result is prompt-driven"
+ }
+}
