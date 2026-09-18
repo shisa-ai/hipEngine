@@ -103,6 +103,237 @@ def test_qwen35_gguf_packed_prefill_returns_per_slot_logits(
     assert plan["host_logits_d2h_bytes"] == 2 * 248320 * np.dtype(np.float32).itemsize
 
 
+@_MODEL_REQUIRED
+@pytest.mark.parametrize(
+    ("boundary", "suffix_tokens"),
+    ((512, 200), (1024, 200)),
+    ids=("paged-sub1024", "paged-crosses-1024-gate"),
+)
+def test_qwen35_gguf_packed_suffix_extend_matches_serial_oracle(
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: int,
+    suffix_tokens: int,
+) -> None:
+    """Batched suffix (\"extend\") prefill from a mid-sequence state is exact.
+
+    A prefix-cache hit restores a session to a 256-aligned boundary and then
+    needs the unmatched suffix prefilled *batched*: attention over the imported
+    prefix KV, GDN slot state seeded from the restored state, positions offset
+    by the boundary. The serial ``session.step()`` loop - today's fallback
+    route at ~34 ms/token - is the oracle. The 1024-token case crosses
+    ``PACKED_AR_PREFILL_CONTEXT_LIMIT``, which currently refuses the paged
+    route with NotImplementedError.
+    """
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+    total = boundary + suffix_tokens
+    rng = np.random.RandomState(20260918)
+    prompt = rng.randint(16, 248000, size=total).tolist()
+
+    with Qwen35GGUFResidentSession(
+        MODEL,
+        max_sequence_length=total + 64,
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as oracle:
+        assert oracle.runner is not None
+        with Qwen35GGUFResidentSession(
+            MODEL,
+            shared_runner=oracle.runner,
+            max_sequence_length=total + 64,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as subject:
+            oracle.prefill(prompt[:boundary], return_logits=False)
+            subject.prefill(prompt[:boundary], return_logits=False)
+            assert int(oracle.position) == int(subject.position) == boundary
+
+            serial_result = None
+            for index, token_id in enumerate(prompt[boundary:]):
+                serial_result = oracle.step(
+                    int(token_id), return_logits=index == suffix_tokens - 1
+                )
+            assert serial_result is not None
+            assert int(oracle.position) == total
+
+            extended = subject.prefill_batch_native(
+                [prompt[boundary:]],
+                sessions=[subject],
+                full_prompt_lengths=[total],
+                return_logits=True,
+            )
+            assert len(extended) == 1 and extended[0] is not None
+            packed_result = extended[0]
+            assert int(subject.position) == total
+
+            assert int(packed_result.token_id) == int(serial_result.token_id)
+            assert (
+                _kl_divergence(
+                    serial_result.logits.reshape(-1),
+                    packed_result.logits.reshape(-1),
+                )
+                <= 0.05
+            )
+            # Decode continuation: the state left behind by the suffix prefill
+            # (GDN recurrent state and appended KV) must drive the same token
+            # stream, not just the same last-row logits.
+            oracle_tokens = _greedy_continuation(oracle, int(serial_result.token_id), 8)
+            packed_tokens = _greedy_continuation(subject, int(packed_result.token_id), 8)
+            assert packed_tokens == oracle_tokens
+
+
+def _greedy_continuation(session, first_token_id: int, steps: int) -> list[int]:
+    tokens: list[int] = []
+    token = int(first_token_id)
+    for _ in range(steps):
+        result = session.step(token, return_logits=False)
+        token = int(result.token_id)
+        tokens.append(token)
+    return tokens
+
+
+@_MODEL_REQUIRED
+@pytest.mark.parametrize("verify_capture", ("0", "1"), ids=("no-gdn-capture", "gdn-capture"))
+@pytest.mark.parametrize(
+    ("boundary", "suffix_tokens"),
+    ((512, 200), (1024, 200), (2048, 200), (4096, 200)),
+    ids=("paged-712", "paged-1224", "paged-2248", "paged-4296"),
+)
+def test_qwen35_gguf_packed_suffix_extend_shared_prefix_matches_serial_oracle(
+    monkeypatch: pytest.MonkeyPatch,
+    verify_capture: str,
+    boundary: int,
+    suffix_tokens: int,
+) -> None:
+    """Batched suffix extend over a *shared* prefix matches the serial oracle.
+
+    This is the true prefix-cache hit shape: the subject session binds a pool
+    allocation whose prefix pages are shared with the source request and whose
+    suffix pages sit behind a spacer, so the block table is non-contiguous and
+    the slot-local (contiguous-slab AOTriton) route cannot represent it. The
+    packed paged route must import the prefix KV, seed GDN state from
+    ``clone_prefix_state_from``, and prefill the suffix in one batched call.
+    The ``gdn-capture`` arm pins the generation layer's shipped configuration
+    (``HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`` wraps every packed prefill
+    call there).
+    """
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", verify_capture)
+    total = boundary + suffix_tokens
+    rng = np.random.RandomState(20260918)
+    prompt = rng.randint(16, 248000, size=total).tolist()
+    prefix_pages = boundary // 256
+    request_pages = (total + 8 + 255) // 256
+    pool_pages = 2 * request_pages + 2
+
+    with Qwen35GGUFResidentSession(
+        MODEL,
+        max_sequence_length=total + 64,
+        defer_kv_allocation=True,
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as oracle:
+        assert oracle.runner is not None
+        with Qwen35GGUFResidentSession(
+            MODEL,
+            shared_runner=oracle.runner,
+            max_sequence_length=total + 64,
+            defer_kv_allocation=True,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as subject:
+            pool = oracle.create_device_kv_pool(
+                initial_pages=pool_pages,
+                low_water_pages=pool_pages,
+                high_water_pages=pool_pages,
+                chunk_pages=pool_pages,
+                idle_grace_seconds=0.0,
+            )
+            try:
+                oracle_allocation = pool.allocate(
+                    9001, request_pages, now_seconds=1.0
+                )
+                oracle.bind_device_kv_allocation(pool, oracle_allocation)
+                # A spacer allocation forces the subject's suffix pages away
+                # from the shared prefix, so the subject's block table has a
+                # gap like any pool-placed shared admission.
+                spacer_allocation = pool.allocate(9002, 1, now_seconds=1.0)
+                subject_allocation = pool.admit_with_shared_prefix(
+                    9003,
+                    oracle_allocation.block_ids[:prefix_pages],
+                    suffix_pages=request_pages - prefix_pages,
+                    now_seconds=1.0,
+                )
+                assert tuple(subject_allocation.block_ids) != tuple(
+                    range(
+                        subject_allocation.block_ids[0],
+                        subject_allocation.block_ids[0]
+                        + len(subject_allocation.block_ids),
+                    )
+                ), "test requires a non-contiguous shared-prefix allocation"
+                subject.bind_device_kv_allocation(pool, subject_allocation)
+
+                oracle.prefill(prompt[:boundary], return_logits=False)
+                assert int(oracle.position) == boundary
+                cloned_bytes = subject.clone_prefix_state_from(
+                    oracle, position=boundary
+                )
+                assert cloned_bytes > 0
+                assert int(subject.position) == boundary
+
+                serial_result = None
+                for index, token_id in enumerate(prompt[boundary:]):
+                    serial_result = oracle.step(
+                        int(token_id), return_logits=index == suffix_tokens - 1
+                    )
+                assert serial_result is not None
+                assert int(oracle.position) == total
+
+                extended = subject.prefill_batch_native(
+                    [prompt[boundary:]],
+                    sessions=[subject],
+                    full_prompt_lengths=[total],
+                    return_logits=True,
+                )
+                assert len(extended) == 1 and extended[0] is not None
+                packed_result = extended[0]
+                assert int(subject.position) == total
+                plan = dict(getattr(subject, "last_packed_prefill_plan", {}))
+                assert plan.get("device_kv_nonidentity_scatter") is True, (
+                    "the shared-prefix suffix must run on the paged route"
+                )
+
+                assert int(packed_result.token_id) == int(serial_result.token_id)
+                assert (
+                    _kl_divergence(
+                        serial_result.logits.reshape(-1),
+                        packed_result.logits.reshape(-1),
+                    )
+                    <= 0.05
+                )
+                # Decode continuation: the state left behind by the suffix
+                # prefill (GDN recurrent state and appended KV) must drive the
+                # same token stream, not just the same last-row logits.
+                oracle_tokens = _greedy_continuation(
+                    oracle, int(serial_result.token_id), 8
+                )
+                packed_tokens = _greedy_continuation(
+                    subject, int(packed_result.token_id), 8
+                )
+                assert packed_tokens == oracle_tokens
+            finally:
+                subject.unbind_device_kv_allocation()
+                oracle.unbind_device_kv_allocation()
+                for request_id in (9003, 9002, 9001):
+                    try:
+                        pool.release(request_id, now_seconds=2.0)
+                    except KeyError:
+                        pass
+                pool.close()
+
+
 def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
     ref = reference_logits.astype(np.float64, copy=False)
     cand = candidate_logits.astype(np.float64, copy=False)
@@ -221,3 +452,169 @@ def test_qwen35_gguf_packed_ar_prefill_decode_runs_without_verify_capture(
         for p, s in zip(packed_logits, scalar_logits, strict=True)
     )
     assert dec_tokens == scalar_dec
+
+
+@_MODEL_REQUIRED
+@pytest.mark.parametrize(
+    ("boundary", "suffix"),
+    (
+        (256, 2),
+        (256, 200),
+        (1024, 50),
+        (1024, 200),
+        (1024, 1024),
+        (1536, 300),
+    ),
+)
+def test_batched_suffix_extend_is_bit_exact_against_recompute(
+    boundary: int, suffix: int
+) -> None:
+    """A prefix-cache HIT must return exactly what a MISS would have returned.
+
+    This is the contract prefix caching actually owes its users: enabling the
+    cache must not change the answer. It is deliberately NOT a comparison
+    against a serial ``session.step`` reference - the engine's own default
+    prefill is batched, and batched-versus-serial GDN arithmetic differs by
+    ~5e-3 relative L2 whether or not any prefix is reused (measured at
+    ``start_position == 0`` too). Holding a reused suffix to serial
+    bit-equality would therefore impose a standard the engine does not meet
+    for any prompt it prefills.
+
+    Two shapes are excluded because they diverge on clean HEAD as well - they
+    are pre-existing split-prefill properties, not reuse defects, and they are
+    pinned separately below:
+      * a single-token suffix (``rows == 1`` selects decode-shaped kernels),
+      * a total context above 2048.
+    """
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    total = boundary + suffix
+    assert total <= 2048, "shapes above 2048 total are covered by the boundary pin"
+    rng = np.random.RandomState(20260919)
+    prompt = rng.randint(16, 140000, size=total).tolist()
+
+    with Qwen35GGUFResidentSession(
+        MODEL,
+        max_sequence_length=total + 64,
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as owner:
+        assert owner.runner is not None
+
+        def arm(split: bool) -> tuple[int, list[np.ndarray]]:
+            with Qwen35GGUFResidentSession(
+                MODEL,
+                shared_runner=owner.runner,
+                max_sequence_length=total + 64,
+                use_wmma_prefill=True,
+                use_gemv_decode=True,
+            ) as session:
+                if split:
+                    session.prefill_batch_native(
+                        [prompt[:boundary]],
+                        sessions=[session],
+                        full_prompt_lengths=[boundary],
+                        return_logits=False,
+                    )
+                    result = session.prefill_batch_native(
+                        [prompt[boundary:]],
+                        sessions=[session],
+                        full_prompt_lengths=[total],
+                        return_logits=True,
+                    )
+                else:
+                    result = session.prefill_batch_native(
+                        [prompt],
+                        sessions=[session],
+                        full_prompt_lengths=[total],
+                        return_logits=True,
+                    )
+                assert len(result) == 1 and result[0] is not None
+                first = int(result[0].token_id)
+                logits = []
+                token = first
+                for _ in range(6):
+                    step = session.step(token, return_logits=True)
+                    logits.append(np.asarray(step.logits).reshape(-1).copy())
+                    token = int(step.token_id)
+                return first, logits
+
+        miss_first, miss_logits = arm(split=False)
+        hit_first, hit_logits = arm(split=True)
+
+    assert hit_first == miss_first
+    for index, (miss_row, hit_row) in enumerate(
+        zip(miss_logits, hit_logits, strict=True)
+    ):
+        assert np.array_equal(miss_row, hit_row), (
+            f"reuse diverged from recompute at continuation row {index}"
+        )
+
+
+@_MODEL_REQUIRED
+def test_split_prefill_divergence_boundaries_are_unchanged() -> None:
+    """Pin the two shapes where split prefill differs from a single call.
+
+    Both reproduce identically on clean HEAD (d01ec1b51), so they are
+    pre-existing properties of chunked prefill rather than prefix-cache
+    defects. They are pinned so that a future change to either boundary is a
+    deliberate, visible decision instead of a silent drift:
+
+      * ``suffix == 1``: a one-row prefill selects ``rows == 1`` decode-shaped
+        kernels, whose arithmetic differs from the bulk prefill route.
+      * ``total > 2048``: splitting anywhere diverges from one call; measured
+        against a serial reference the single call is the closer of the two.
+
+    If a fix lands for either, this test should fail and be replaced by
+    coverage in ``test_batched_suffix_extend_is_bit_exact_against_recompute``.
+    """
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    rng = np.random.RandomState(20260919)
+
+    def diverges(boundary: int, suffix: int) -> bool:
+        total = boundary + suffix
+        prompt = rng.randint(16, 140000, size=total).tolist()
+        with Qwen35GGUFResidentSession(
+            MODEL,
+            max_sequence_length=total + 64,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as owner:
+            assert owner.runner is not None
+
+            def arm(split: bool) -> np.ndarray:
+                with Qwen35GGUFResidentSession(
+                    MODEL,
+                    shared_runner=owner.runner,
+                    max_sequence_length=total + 64,
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                ) as session:
+                    if split:
+                        session.prefill_batch_native(
+                            [prompt[:boundary]],
+                            sessions=[session],
+                            full_prompt_lengths=[boundary],
+                            return_logits=False,
+                        )
+                        result = session.prefill_batch_native(
+                            [prompt[boundary:]],
+                            sessions=[session],
+                            full_prompt_lengths=[total],
+                            return_logits=True,
+                        )
+                    else:
+                        result = session.prefill_batch_native(
+                            [prompt],
+                            sessions=[session],
+                            full_prompt_lengths=[total],
+                            return_logits=True,
+                        )
+                    return np.asarray(result[0].logits).reshape(-1).copy()
+
+            return not np.array_equal(arm(split=False), arm(split=True))
+
+    assert diverges(256, 1), "single-token-suffix divergence disappeared"
+    assert diverges(1024, 1028), "above-2048 split divergence disappeared"
+    assert not diverges(1024, 1024), "at-2048 split must still be bit-exact"

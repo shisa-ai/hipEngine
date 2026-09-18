@@ -36,6 +36,7 @@ class _FakePrefixSession:
         self.allocation = None
         self.pool = None
         self.prefill_calls: list[tuple[tuple[int, ...], int, int]] = []
+        self.prefill_batch_kwargs: list[dict] = []
         self.step_calls: list[tuple[int, int, int]] = []
         self.clone_calls: list[tuple[int, int]] = []
         self.snapshot_capture_calls: list[int] = []
@@ -124,6 +125,7 @@ class _FakePrefixSession:
         start = int(self.position)
         self.position += len(prompt)
         self.prefill_calls.append((prompt, start, int(self.position)))
+        self.prefill_batch_kwargs.append(dict(kwargs))
         return [self._result(return_logits=bool(kwargs.get("return_logits", False)))]
 
     def step(self, token_id: int, *, return_logits: bool):
@@ -274,8 +276,18 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
         ),
         commit=True,
     )
-    assert continued_session.prefill_calls == []
-    assert continued_session.step_calls == [(999, 256, 257)]
+    # The reused suffix prefills through the batched packed route, not the
+    # serial step loop; the fake records the batch call as a prefill call.
+    assert continued_session.prefill_calls == [((999,), 256, 257)]
+    assert continued_session.prefill_batch_kwargs == [
+        {
+            "full_prompt_lengths": [257],
+            "return_logits": False,
+            "return_hidden_seeds": False,
+            "sample_output": True,
+        }
+    ]
+    assert continued_session.step_calls == []
     assert continued_row.slot is not None
     assert continued_row.slot.generated_ids == [777]
 
@@ -362,10 +374,18 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
         commit=True,
     )
 
-    assert session.prefill_calls == []
-    assert session.step_calls == [(999, 256, 257)]
-    # Both reused-suffix routes run the serial per-token loop; both must record the
-    # phase, or a served run cannot tell which route paid for the suffix.
+    assert session.prefill_calls == [((999,), 256, 257)]
+    assert session.prefill_batch_kwargs == [
+        {
+            "full_prompt_lengths": [257],
+            "return_logits": True,
+            "return_hidden_seeds": False,
+            "sample_output": True,
+        }
+    ]
+    assert session.step_calls == []
+    # The reused-suffix route - batched by default, serial on fallback - must
+    # record the phase, or a served run cannot tell which route paid.
     assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
     assert continued.slot is not None
     assert continued.slot.generated_ids == [812]
@@ -386,6 +406,130 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
     assert runner.kv_pool.refcount(shared_block) == 1
     assert runner._evict_prefix_snapshot(prefix) is True
     assert runner.kv_pool.refcount(shared_block) == 0
+    runner.close()
+
+
+def test_reused_suffix_prefill_falls_back_to_serial_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0 restores the serial suffix loop."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX", "0")
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=6,
+            kv_pool_low_water_pages=6,
+            kv_pool_high_water_pages=6,
+            kv_pool_chunk_pages=6,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=3)
+    runner.register_batch((1,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    source_row = runner._rows[1]
+    assert source_row.lease is not None
+    source_row.prefill_tokens_seen = len(prefix)
+    source_row.lease.session.position = len(prefix)
+    runner._refresh_prefix_cache(source_row)
+
+    continued_prompt = (*prefix, 999)
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((2,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    continued_row = runner._rows[2]
+    assert continued_row.lease is not None
+    continued_session = continued_row.lease.session
+    assert continued_row.prefix_reused_tokens == 256
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(2,),
+            row_to_request=(2,),
+            token_rows=(continued_prompt,),
+        ),
+        commit=True,
+    )
+    assert continued_session.prefill_calls == []
+    assert continued_session.step_calls == [(999, 256, 257)]
+    assert continued_row.slot is not None
+    assert continued_row.slot.generated_ids == [777]
+    assert runner._fallback_reasons["prefix_batched_suffix_unavailable"] == 1
+    assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.rollback_admission(SimpleNamespace(request_id=2))
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_batched_reused_suffix_splits_at_an_interior_prompt_boundary() -> None:
+    """A suffix crossing the deepest prompt boundary captures it mid-prefill.
+
+    The snapshot is only capturable while the session sits exactly on the
+    boundary, so the batched suffix must run as two segments with the capture
+    in between: [reused, boundary) then [boundary, prompt_end).
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=3)
+    runner.register_batch((1,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    source_row = runner._rows[1]
+    assert source_row.lease is not None
+    source_row.prefill_tokens_seen = len(prefix)
+    source_row.lease.session.position = len(prefix)
+    runner._refresh_prefix_cache(source_row)
+
+    # 600-token prompt: reuse 256, suffix 344, deepest prompt boundary 512 sits
+    # inside the suffix (256 < 512 < 600).
+    continued_prompt = tuple(range(1, 601))
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((2,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    continued_row = runner._rows[2]
+    assert continued_row.lease is not None
+    continued_session = continued_row.lease.session
+    assert continued_row.prefix_reused_tokens == 256
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(2,),
+            row_to_request=(2,),
+            token_rows=(continued_prompt,),
+        ),
+        commit=True,
+    )
+    assert continued_session.prefill_calls == [
+        (continued_prompt[256:512], 256, 512),
+        (continued_prompt[512:], 512, 600),
+    ]
+    assert continued_session.step_calls == []
+    # The capture fired between the two segments, at the exact boundary.
+    assert continued_session.snapshot_capture_calls == [512]
+    assert continued_row.slot is not None
+    assert continued_row.slot.generated_ids == [777]
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.rollback_admission(SimpleNamespace(request_id=2))
     runner.close()
 
 

@@ -84,7 +84,6 @@ from hipengine.kvcache import (
     resolve_kv_policy,
     resolve_prefix_cache_mode,
 )
-from hipengine.kvcache.pool import DeviceKVContiguityError
 from hipengine.kernels.backends import (
     backend_package_capability,
     hip_target_arch_environment,
@@ -371,6 +370,47 @@ def _gguf_prefix_retained_state_bytes_limit() -> int:
         _PREFIX_RETAINED_STATE_BYTES_LIMIT,
         minimum=1 << 20,
     )
+
+
+_GGUF_PREFIX_BATCHED_SUFFIX_ENV = "HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX"
+
+
+def _gguf_prefix_batched_suffix_enabled() -> bool:
+    """Batched reused-suffix (\"extend\") prefill; the serial loop is the fallback.
+
+    Default on: the packed paged prefill route accepts restored mid-sequence
+    state at any context length. ``HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0``
+    restores the serial ``session.step()`` suffix loop for rollback/bisection.
+    """
+
+    return os.environ.get(_GGUF_PREFIX_BATCHED_SUFFIX_ENV, "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _gguf_prefix_suffix_segments(
+    session_position: int,
+    prompt_length: int,
+    chunk: tuple[int, ...],
+) -> tuple[tuple[int, ...], ...]:
+    """Split one reused-suffix chunk at the deepest prompt-aligned boundary.
+
+    A boundary snapshot is only capturable while the session sits exactly on
+    it, so a batched suffix prefill that would cross the deepest 256-aligned
+    prompt boundary in one call runs as two batched segments with the capture
+    in between.
+    """
+
+    boundary = (int(prompt_length) // 256) * 256
+    start = int(session_position)
+    end = start + len(chunk)
+    if start < boundary < end:
+        cut = boundary - start
+        return (chunk[:cut], chunk[cut:])
+    return (chunk,)
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
@@ -6741,12 +6781,13 @@ class Qwen35GGUFResidentModelRunner:
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
-            # A shared prefix whose suffix cannot be placed in the same
-            # contiguous run is unreachable for a context that the packed AR
-            # prefill can only serve through a slot-local KV view. Ask the pool
-            # for a contiguous run and fall back to a private allocation, which
-            # the pool always places contiguously, when it cannot be satisfied.
-            require_contiguous = len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
+            # A shared-prefix hit prefills its suffix through the packed paged
+            # route, which walks the block table and therefore accepts any
+            # page placement at any context length. Contiguity is required only
+            # by the private-miss slot-local (AOTriton) prefill at or above
+            # PACKED_AR_PREFILL_CONTEXT_LIMIT, so the shared admission never
+            # asks for it - asking would convert hits into full-prefill
+            # refusals whenever the retained prefix pins a fragmented run.
             start = time.perf_counter()
             try:
                 allocation = pool.admit_with_shared_prefix(
@@ -6754,11 +6795,7 @@ class Qwen35GGUFResidentModelRunner:
                     prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
-                    require_contiguous=require_contiguous,
-                )
-            except DeviceKVContiguityError:
-                self._note_prefix_admission_fallback(
-                    row, "shared_admission_noncontiguous"
+                    require_contiguous=False,
                 )
             except MemoryError:
                 self._note_prefix_admission_fallback(
@@ -8978,20 +9015,71 @@ class Qwen35GGUFResidentModelRunner:
 
         if row.prefix_reused_tokens:
             start = time.perf_counter()
-            for index, token_id in enumerate(chunk):
-                result = session.step(
-                    int(token_id),
-                    return_logits=bool(final_chunk and index == len(chunk) - 1),
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
                 )
-                if int(session.position) == final_prefix_boundary:
-                    self._refresh_prefix_cache(row)
-            self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
-            self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
-            self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
-            self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
-            row.prefill_ms += _timing_ms_since(start)
-            self._prefix_phase_add("suffix_prefill", start)
-            row.prefill_chunk_count += 1
+                if _gguf_prefix_batched_suffix_enabled()
+                else None
+            )
+            if callable(prefill_batch):
+                segments = _gguf_prefix_suffix_segments(
+                    int(getattr(session, "position", 0)),
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                native_compact_prefill = True
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    want_output = bool(final_chunk and last_segment)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output,
+                            return_hidden_seeds=False,
+                            sample_output=want_output,
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_batched_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_batched_suffix_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            else:
+                for index, token_id in enumerate(chunk):
+                    result = session.step(
+                        int(token_id),
+                        return_logits=bool(final_chunk and index == len(chunk) - 1),
+                    )
+                    if int(session.position) == final_prefix_boundary:
+                        self._refresh_prefix_cache(row)
+                self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
+                self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
         else:
             if not final_chunk or chunk != row.prompt_ids:
                 raise RuntimeError(
@@ -9094,13 +9182,68 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         if row.prefix_reused_tokens:
             start = time.perf_counter()
+            session = lease.session
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
+                )
+                if _gguf_prefix_batched_suffix_enabled()
+                else None
+            )
+            if callable(prefill_batch):
+                segments = _gguf_prefix_suffix_segments(
+                    int(getattr(session, "position", 0)),
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                result = None
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=False,
+                            return_hidden_seeds=False,
+                            sample_output=bool(final_chunk and last_segment),
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+                if final_chunk:
+                    self._finish_native_prefill(
+                        row,
+                        result,
+                        native_compact_prefill=True,
+                    )
+                return
             result = None
             for token_id in chunk:
-                result = lease.session.step(int(token_id), return_logits=False)
+                result = session.step(int(token_id), return_logits=False)
             if result is None:
                 raise RuntimeError("GGUF shared-prefix suffix chunk must be non-empty")
             self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
             self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+            self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
             row.prefill_ms += _timing_ms_since(start)
             self._prefix_phase_add("suffix_prefill", start)
             row.prefill_chunk_count += 1
