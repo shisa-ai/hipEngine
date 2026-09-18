@@ -115,7 +115,8 @@ def test_prefix_counter_delta_differences_nested_counters() -> None:
 
     assert delta["reused_tokens"] == 1024
     assert delta["stats"] == {"hits": 1, "misses": 1}
-    assert delta["snapshot_entries"] == 1
+    # snapshot_entries is a gauge: the turn reports the level, not the step.
+    assert delta["snapshot_entries"] == 5
     # Non-numeric fields report the current value, not a difference.
     assert delta["mode"] == "radix"
 
@@ -623,6 +624,113 @@ def test_finish_details_explain_a_suppressed_stream() -> None:
         "cache_action": "append_none",
     }
     assert record["output_tokens"] == 24
+
+
+def test_prefix_counter_delta_differences_counters_and_copies_gauges() -> None:
+    from scripts.prefix_cache_multiturn_bench import _prefix_counter_delta
+
+    before = {
+        "mode": "radix",
+        "snapshot_entries": 1,
+        "snapshot_limit": 1,
+        "retained_snapshot_entries": 1,
+        "snapshot_bytes": 66846720,
+        "resident_bytes": 87818240,
+        "snapshot_captures": 7,
+        "state_clone_bytes": 0,
+        "stats": {"hits": 2, "misses": 5},
+    }
+    after = {
+        "mode": "radix",
+        "snapshot_entries": 1,
+        "snapshot_limit": 1,
+        "retained_snapshot_entries": 0,
+        "snapshot_bytes": 66846720,
+        "resident_bytes": 66846720,
+        "snapshot_captures": 9,
+        "state_clone_bytes": 66846720,
+        "stats": {"hits": 3, "misses": 5},
+    }
+
+    delta = _prefix_counter_delta(before, after)
+
+    # Counters are per-turn work.
+    assert delta["snapshot_captures"] == 2
+    assert delta["state_clone_bytes"] == 66846720
+    assert delta["stats"] == {"hits": 1, "misses": 0}
+    # Gauges are levels: an unchanged level must not read as zero.
+    assert delta["snapshot_entries"] == 1
+    assert delta["snapshot_limit"] == 1
+    assert delta["snapshot_bytes"] == 66846720
+    assert delta["resident_bytes"] == 66846720
+    assert delta["retained_snapshot_entries"] == 0
+
+
+def test_common_prefix_len_counts_shared_tokens_only() -> None:
+    from scripts.prefix_cache_multiturn_bench import _common_prefix_len
+
+    assert _common_prefix_len([1, 2, 3], [1, 2, 3]) == 3
+    assert _common_prefix_len([1, 2, 3], [1, 2, 9]) == 2
+    assert _common_prefix_len([1, 2, 3], [9, 2, 3]) == 0
+    assert _common_prefix_len([], [1, 2]) == 0
+    # A cumulative client resends the previous prompt verbatim: the LCP is the
+    # whole previous prompt, not the new one.
+    assert _common_prefix_len([1, 2, 3], [1, 2, 3, 4, 5]) == 3
+
+
+def test_lane_records_prompt_lcp_against_the_previous_turn(monkeypatch: Any) -> None:
+    """The lane loop records how much of the previous prompt is resent."""
+
+    from scripts import prefix_cache_multiturn_bench as bench
+
+    prompts = {"one": [1, 2, 3], "one plus": [1, 2, 3, 4], "diverged": [1, 9, 3, 4]}
+    monkeypatch.setattr(
+        bench,
+        "_render_messages",
+        lambda messages, **kwargs: str(messages[-1]["content"]),
+    )
+
+    class _TokenizingLLM:
+        def tokenize(self, text: str) -> list[int]:
+            return list(prompts[text])
+
+    def run_turn(**kwargs: Any) -> dict[str, Any]:
+        return {
+            "render_ms": 1.0,
+            "wall_ms": 10.0,
+            "ttft_ms": 5.0,
+            "prefill_ms": 1.0,
+            "decode_ms": 1.0,
+            "prompt_tokens": 3,
+            "generator_prompt_tokens": 3,
+            "output_tokens": 1,
+            "gtt_bytes_before": None,
+            "gtt_bytes_after": None,
+            "text": "reply",
+            "prefix": {},
+        }
+
+    lane = {
+        "kind": "sharegpt",
+        "system": "sys",
+        "user_turns": ["one", "one plus", "diverged"],
+        "max_tokens": 4,
+    }
+    result = bench._run_lane(
+        _TokenizingLLM(),  # type: ignore[arg-type]
+        engine=None,
+        lane_id="lane",
+        lane=lane,
+        turn_limit=None,
+        run_turn=run_turn,
+    )
+
+    turns = result.turns
+    assert "prompt_lcp_tokens" not in turns[0]
+    assert turns[1]["prompt_lcp_tokens"] == 3
+    assert turns[1]["prompt_lcp_reusable_tokens"] == 0
+    assert turns[2]["prompt_lcp_tokens"] == 1
+    assert turns[2]["previous_prompt_tokens"] == 4
 
 
 def test_artifact_prefix_telemetry_is_json_serializable() -> None:
