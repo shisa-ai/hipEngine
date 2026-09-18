@@ -459,3 +459,75 @@ def test_cancel_after_tokens_marks_a_deliberate_abort() -> None:
     row = module._request_row({"source_id": 3, "prompt_tokens": 100}, result)
     assert row["cancelled"] is True
     assert row["error"].startswith("stream ended without usage")
+
+
+def test_summary_totals_are_not_shadowed_by_the_per_request_decode_loop() -> None:
+    """Three rows of 48 tokens are 144, not the last row's 48."""
+
+    module = _module()
+    rows = []
+    for index, source_id in enumerate(("a", "b", "c")):
+        row = module._request_row({"source_id": source_id, "prompt_tokens": 100}, _response())
+        row["completion_tokens"] = 48
+        row["mtp_output_tokens"] = 46
+        row["ar_output_tokens"] = 2
+        row["mtp_used"] = True
+        row["e2e_ms"] = 1000.0 + index
+        row["ttft_ms"] = 200.0
+        rows.append(row)
+
+    summary = module.summarize(rows)
+
+    assert summary["completion_tokens"] == 144
+    assert summary["mtp_output_tokens"] == 138
+    assert summary["mtp_output_share"] == pytest.approx(138 / 144)
+    assert summary["ar_output_tokens"] == 6
+
+
+def test_inter_token_latency_uses_consecutive_decode_reports() -> None:
+    module = _module()
+    # 100 ms for 1 token, then 200 ms for 4 tokens (50 ms/token), then a
+    # repeated counter that must not divide by zero.
+    timeline = [[100.0, 1], [300.0, 5], [400.0, 5], [700.0, 8]]
+
+    intervals = module._inter_token_latencies_ms(timeline)
+
+    assert intervals == [50.0, 100.0]
+    assert module._percentile(intervals, 50.0) == pytest.approx(75.0)
+    assert module._percentile(intervals, 100.0) == pytest.approx(100.0)
+
+
+def test_request_row_reports_itl_and_output_digest() -> None:
+    module = _module()
+    result = _response()
+    result["output_sha256"] = "deadbeef"
+    result["timeline"] = [[100.0, 1], [300.0, 5]]
+
+    row = module._request_row({"source_id": 4, "prompt_tokens": 100}, result)
+
+    assert row["itl_median_ms"] == pytest.approx(50.0)
+    assert row["itl_samples"] == 1
+    assert row["output_sha256"] == "deadbeef"
+
+
+def test_summary_reports_serving_metrics_and_output_identity() -> None:
+    module = _module()
+    rows = []
+    for index, source_id in enumerate(("a", "b")):
+        row = module._request_row({"source_id": source_id, "prompt_tokens": 100}, _response())
+        row["completion_tokens"] = 48
+        row["mtp_output_tokens"] = 0
+        row["e2e_ms"] = 1000.0 + index * 100.0
+        row["ttft_ms"] = 200.0
+        row["timeline"] = [[200.0, 1], [400.0, 5]]
+        row["output_sha256"] = "same" if index == 0 else "different"
+        rows.append(row)
+
+    summary = module.summarize(rows)
+
+    assert summary["median_e2e_ms"] == pytest.approx(1050.0)
+    assert summary["p95_e2e_ms"] == pytest.approx(1095.0)
+    assert summary["median_itl_ms"] == pytest.approx(50.0)
+    assert summary["itl_samples"] == 2
+    assert summary["output_hashes"] == {"different": 1, "same": 1}
+    assert summary["duplicate_output_hashes"] == 0
