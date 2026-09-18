@@ -531,3 +531,147 @@ def test_summary_reports_serving_metrics_and_output_identity() -> None:
     assert summary["itl_samples"] == 2
     assert summary["output_hashes"] == {"different": 1, "same": 1}
     assert summary["duplicate_output_hashes"] == 0
+
+
+def test_case_mix_selects_a_short_row_beside_a_boundary_crossing_row() -> None:
+    """One load must be able to hold both sides of the provider's window."""
+
+    module = _module()
+    dataset = Path("/tmp/sharegpt-recorder-case-mix.json")
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "short",
+                    "conversations": [
+                        {"from": "human", "value": "a " * 10},
+                        {"from": "gpt", "value": "b " * 10},
+                    ],
+                },
+                {
+                    "id": "mid",
+                    "conversations": [
+                        {"from": "human", "value": "a " * 200},
+                        {"from": "gpt", "value": "b " * 10},
+                    ],
+                },
+                {
+                    "id": "long",
+                    "conversations": [
+                        {"from": "human", "value": "a " * 700},
+                        {"from": "gpt", "value": "b " * 10},
+                    ],
+                },
+            ]
+        )
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(
+            module,
+            "_tokenizer",
+            lambda gguf: type(
+                "Tokenizer",
+                (),
+                {"encode": staticmethod(lambda text: list(range(len(text.split()))))},
+            )(),
+        )
+        tokenizer = module._tokenizer(dataset)
+        samples = module.load_samples(
+            dataset,
+            tokenizer=tokenizer,
+            count=2,
+            seed=0,
+            output_len=None,
+            max_prompt_len=1024,
+            max_total_len=2048,
+            cases=["short", "long"],
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert [(sample["source_id"], sample["case"]) for sample in samples] == [
+        ("short", "short"),
+        ("long", "long"),
+    ]
+
+
+def test_summary_splits_by_arm_and_case_and_reports_identity() -> None:
+    """The reviewer's matrix: two arms and two cases in one load, one report."""
+
+    module = _module()
+
+    def row(arm, case, ids, sha, *, mtp=False):
+        return {
+            "source_id": f"{case}-prompt",
+            "case": case,
+            "route_arm": arm,
+            "repeat_index": 0,
+            "prompt_tokens": 600 if case == "long" else 20,
+            "completion_tokens": 32,
+            "ttft_ms": 500.0,
+            "e2e_ms": 4000.0,
+            "itl_median_ms": 90.0,
+            "output_sha256": sha,
+            "generated_token_ids": ids,
+            "mtp_used": mtp,
+            "mtp_output_tokens": 20 if mtp else 0,
+            "fallback_reason": None if mtp else "automatic_route_ar",
+            "timeline": [[0.0, 1], [90.0, 33]],
+        }
+
+    rows = [
+        row("off", "short", [1, 2, 3, 4], "sha-ar-short"),
+        row("auto", "short", [1, 2, 3, 4], "sha-ar-short", mtp=True),
+        row("off", "long", [1, 2, 3, 4], "sha-ar-long"),
+        row("auto", "long", [1, 2, 9, 4], "sha-mtp-long", mtp=True),
+    ]
+    summary = module.summarize(rows)
+
+    assert set(summary["by_route_arm"]) == {"off", "auto"}
+    assert set(summary["by_case"]) == {"short", "long"}
+    assert summary["by_route_arm"]["off"]["mtp_requests"] == 0
+    assert summary["by_route_arm"]["auto"]["mtp_requests"] == 2
+    assert summary["by_case"]["long"]["median_prompt_tokens"] == 600
+    assert summary["by_case"]["short"]["median_prompt_tokens"] == 20
+
+    identity = summary["arm_identity"]
+    assert identity["compared_prompts"] == 2
+    assert identity["identical_prompts"] == 1
+    assert identity["differing_prompts"] == 1
+    assert identity["min_shared_prefix_tokens"] == 2
+    assert identity["differing"][0]["case"] == "long"
+    assert identity["differing"][0]["left_arm"] == "off"
+    assert identity["differing"][0]["right_arm"] == "auto"
+    json.dumps(summary)
+
+
+def test_arm_identity_falls_back_to_the_digest_without_token_ids() -> None:
+    module = _module()
+    rows = [
+        {
+            "source_id": "p",
+            "case": None,
+            "route_arm": "off",
+            "repeat_index": 0,
+            "completion_tokens": 8,
+            "e2e_ms": 100.0,
+            "output_sha256": "same",
+            "generated_token_ids": None,
+        },
+        {
+            "source_id": "p",
+            "case": None,
+            "route_arm": "auto",
+            "repeat_index": 0,
+            "completion_tokens": 8,
+            "e2e_ms": 100.0,
+            "output_sha256": "same",
+            "generated_token_ids": None,
+        },
+    ]
+    identity = module.summarize(rows)["arm_identity"]
+    assert identity["compared_prompts"] == 1
+    assert identity["compared_prompts_with_ids"] == 0
+    assert identity["identical_prompts"] == 1
+    assert identity["median_shared_prefix_tokens"] is None

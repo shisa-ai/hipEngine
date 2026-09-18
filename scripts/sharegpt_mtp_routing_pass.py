@@ -32,6 +32,15 @@ harnesses:
   so the true autoregressive control is the same load on the same server
   process with the provider explicitly disabled (never a verifier-derived off
   row); ``auto`` omits the field and keeps the server policy.
+* ``--route-mix off,auto`` assigns the arm per request inside one measured load,
+  cycling in submission order, so the true-AR control and the speculative arm
+  run concurrently under the same occupancy, thermal and cache conditions
+  instead of in two separate runs. Every row carries its requested arm in
+  ``route_arm``, and the summary reports each arm separately.
+* ``--cases short,long`` selects a labelled mix of prompt lengths in one load:
+  a healthy short request beside the boundary-crossing row that the provider's
+  window may refuse, so the provider-ready and provider-refused paths are
+  measured together and split by ``case`` in the summary.
 * ``--min-prompt-len`` selects the boundary-crossing row (for example 900) that
   the default 4-token floor excludes, so a healthy short request and a row that
   crosses the provider's context window can be measured together.
@@ -43,6 +52,11 @@ harnesses:
 * ``--cancel-count`` aborts the last N requests after their first generated
   token, so the server's cancel/refill path runs beside completed requests;
   cancelled rows are reported separately from failures.
+* ``--record-ids`` keeps the generated token ids per row (about 4 bytes per
+  token) and reports ``arm_identity``: for every prompt served by more than one
+  arm, whether the arms produced identical ids and how many leading tokens they
+  share. That is the quality gate for a speculative route, measured in the same
+  run rather than inferred from two artifacts.
 
 The summary reports realized group composition (``groups_by_realized_rows``),
 a decode rate that excludes prefill (``decode_tokens_per_second_excluding_prefill``),
@@ -60,6 +74,14 @@ Usage:
         --gguf /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
         --num-prompts 24 --max-concurrency 1 --output-len 128 \
         --label c1-len128 --out /tmp/sharegpt-c1-len128.json
+
+    # True-AR control beside the speculative arm, same load, same process:
+    python3 scripts/sharegpt_mtp_routing_pass.py \
+        --server-url http://127.0.0.1:8030 \
+        --dataset /home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json \
+        --num-prompts 8 --max-concurrency 1 --output-len 0 \
+        --route-mix off,auto --cases short,long --record-ids \
+        --label c1-control --out /tmp/sharegpt-c1-control.json
 """
 
 from __future__ import annotations
@@ -88,6 +110,14 @@ DEFAULT_GGUF = Path("/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 MIN_LEN = 4
 MAX_PROMPT_LEN = 1024
 MAX_TOTAL_LEN = 2048
+# Named prompt-length cases for ``--cases``. ``short`` is the healthy request a
+# provider serves immediately; ``long`` is the boundary-crossing row whose
+# prefill may still be priming the provider when decode starts.
+CASE_BOUNDS: dict[str, tuple[int, int]] = {
+    "short": (MIN_LEN, 64),
+    "mid": (65, 511),
+    "long": (512, MAX_PROMPT_LEN),
+}
 
 
 def _tokenizer(gguf: Path):
@@ -107,8 +137,15 @@ def load_samples(
     max_prompt_len: int,
     max_total_len: int,
     min_prompt_len: int = MIN_LEN,
+    cases: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
-    """Reproduce the vLLM ShareGPT sample set for one benchmark point."""
+    """Reproduce the vLLM ShareGPT sample set for one benchmark point.
+
+    With ``cases`` the count is split evenly across the named prompt-length
+    cases (``short``/``mid``/``long``) and every row is labelled with its case,
+    so one load can hold a healthy short request beside a boundary-crossing
+    row. Without it the selection is the original single-window sample.
+    """
 
     with dataset.open(encoding="utf-8") as handle:
         rows = json.load(handle)
@@ -118,10 +155,8 @@ def load_samples(
         if isinstance(row.get("conversations"), list) and len(row["conversations"]) >= 2
     ]
     random.Random(seed).shuffle(rows)
-    samples: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     for row in rows:
-        if len(samples) >= count:
-            break
         prompt = str(row["conversations"][0].get("value") or "")
         completion = str(row["conversations"][1].get("value") or "")
         prompt_len = len(tokenizer.encode(prompt))
@@ -132,7 +167,7 @@ def load_samples(
             continue
         if expected < MIN_LEN or prompt_len + expected > max_total_len:
             continue
-        samples.append(
+        candidates.append(
             {
                 "source_id": row.get("id"),
                 "prompt": prompt,
@@ -140,10 +175,25 @@ def load_samples(
                 "expected_output_tokens": expected,
             }
         )
-    if len(samples) < count:
-        raise SystemExit(
-            f"dataset produced {len(samples)} valid rows, need {count}"
-        )
+    if not cases:
+        samples = candidates[:count]
+        if len(samples) < count:
+            raise SystemExit(f"dataset produced {len(samples)} valid rows, need {count}")
+        return samples
+    samples = []
+    per_case = -(-count // len(cases))
+    for case in cases:
+        low, high = CASE_BOUNDS[case]
+        selected = [
+            candidate
+            for candidate in candidates
+            if low <= int(candidate["prompt_tokens"]) <= high
+        ][:per_case]
+        if len(selected) < per_case:
+            raise SystemExit(
+                f"case {case!r} produced {len(selected)} valid rows, need {per_case}"
+            )
+        samples.extend({**candidate, "case": case} for candidate in selected)
     return samples
 
 
@@ -281,6 +331,12 @@ def _stream_request(
         "speculative_mtp": extension.get("speculative_mtp"),
         "generation_shape": extension.get("generation_shape"),
         "routing": extension.get("routing"),
+        # The greedy token stream, when the server reports it. Two arms of the
+        # same prompt can then be compared for identity inside one run instead
+        # of by digest across two artifacts.
+        "generated_token_ids": [
+            int(value) for value in (extension.get("generated_token_ids") or [])
+        ],
     }
 
 def _inter_token_latencies_ms(timeline: Any) -> list[float]:
@@ -342,6 +398,8 @@ def _error_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str
     )
     return {
         "source_id": sample.get("source_id"),
+        "case": sample.get("case"),
+        "route_arm": sample.get("route_arm"),
         "prompt_tokens_local": sample.get("prompt_tokens"),
         "expected_output_tokens": sample.get("expected_output_tokens"),
         "e2e_ms": result.get("e2e_ms"),
@@ -394,6 +452,8 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
     itl = _inter_token_latencies_ms(result.get("timeline"))
     return {
         "source_id": sample.get("source_id"),
+        "case": sample.get("case"),
+        "route_arm": sample.get("route_arm"),
         "prompt_tokens_local": sample.get("prompt_tokens"),
         "prompt_tokens": usage.get("prompt_tokens"),
         "expected_output_tokens": sample.get("expected_output_tokens"),
@@ -410,6 +470,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "itl_p95_ms": _percentile(itl, 95.0),
         "itl_samples": len(itl),
         "output_sha256": result.get("output_sha256"),
+        "generated_token_ids": result.get("generated_token_ids") or None,
         "answer_characters": result.get("answer_characters"),
         "thinking_characters": result.get("thinking_characters"),
         "route": shape.get("route"),
@@ -566,6 +627,137 @@ def _cliff(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[str, 
         ),
         "detail": measured,
     }
+
+
+def _serving_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Serving metrics for one slice of a run (one arm, one case, or a group).
+
+    Throughput here is per-slice wall time, so a slice measured inside a run
+    that also served other slices reads as a rate, not as a share of the run.
+    """
+
+    completed = [row for row in rows if not row.get("error")]
+    wall = max((float(row.get("e2e_ms") or 0.0) for row in completed), default=0.0)
+    tokens = sum(int(row.get("completion_tokens") or 0) for row in completed)
+    itl = [
+        float(row["itl_median_ms"])
+        for row in completed
+        if row.get("itl_median_ms") is not None
+    ]
+    ttft = [float(row["ttft_ms"]) for row in completed if row.get("ttft_ms")]
+    return {
+        "requests": len(rows),
+        "completed_requests": len(completed),
+        "failed_requests": sum(1 for row in rows if row.get("error")),
+        "cancelled_requests": sum(1 for row in rows if row.get("cancelled")),
+        "completion_tokens": tokens,
+        "mtp_requests": sum(1 for row in completed if row.get("mtp_used")),
+        "mtp_output_tokens": sum(
+            int(row.get("mtp_output_tokens") or 0) for row in completed
+        ),
+        "prompt_tokens": sum(
+            int(row.get("prompt_tokens") or row.get("prompt_tokens_local") or 0)
+            for row in completed
+        ),
+        "median_prompt_tokens": (
+            statistics.median(
+                [
+                    int(row.get("prompt_tokens") or row.get("prompt_tokens_local") or 0)
+                    for row in completed
+                ]
+            )
+            if completed
+            else None
+        ),
+        "max_e2e_ms": wall or None,
+        "decode_tokens_per_second": tokens / (wall / 1000.0) if wall else None,
+        "completed_requests_per_second": len(completed) / (wall / 1000.0) if wall else None,
+        "median_itl_ms": statistics.median(itl) if itl else None,
+        "median_ttft_ms": statistics.median(ttft) if ttft else None,
+        "p95_ttft_ms": _percentile(ttft, 95.0),
+    }
+
+
+def _arm_identity(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Compare the arms' greedy output for the prompts more than one arm served.
+
+    The speculative route is a verifier: for the same prompt it must reproduce
+    the autoregressive arm's tokens. A differing pair is a quality failure and
+    is reported as one, with the shared-prefix length that localizes where the
+    two streams part.
+    """
+
+    by_prompt: dict[tuple[Any, Any, Any], dict[str, Mapping[str, Any]]] = {}
+    for row in rows:
+        if row.get("error") or not row.get("route_arm"):
+            continue
+        key = (row.get("source_id"), row.get("case"), row.get("repeat_index"))
+        by_prompt.setdefault(key, {})[str(row["route_arm"])] = row
+    pairs: list[dict[str, Any]] = []
+    for key, arms in sorted(by_prompt.items(), key=lambda item: str(item[0])):
+        if len(arms) < 2:
+            continue
+        # The reference is the true-AR arm when the load carries one, so every
+        # pair reads as "does the speculative arm reproduce the control".
+        reference = "off" if "off" in arms else sorted(arms)[0]
+        for name in sorted(arms):
+            if name == reference:
+                continue
+            left, right = arms[reference], arms[name]
+            left_name, right_name = reference, name
+            left_ids = [int(value) for value in (left.get("generated_token_ids") or [])]
+            right_ids = [int(value) for value in (right.get("generated_token_ids") or [])]
+            shared = 0
+            for a, b in zip(left_ids, right_ids):
+                if a != b:
+                    break
+                shared += 1
+            pairs.append(
+                {
+                    "source_id": key[0],
+                    "case": key[1],
+                    "repeat_index": key[2],
+                    "left_arm": left_name,
+                    "right_arm": right_name,
+                    "left_tokens": len(left_ids),
+                    "right_tokens": len(right_ids),
+                    "ids_available": bool(left_ids and right_ids),
+                    "shared_prefix_tokens": shared,
+                    "identical": (
+                        left_ids == right_ids
+                        if left_ids and right_ids
+                        else left.get("output_sha256") == right.get("output_sha256")
+                    ),
+                }
+            )
+    compared = [pair for pair in pairs if pair["ids_available"]]
+    return {
+        "compared_prompts": len(pairs),
+        "compared_prompts_with_ids": len(compared),
+        "identical_prompts": sum(1 for pair in pairs if pair["identical"]),
+        "differing_prompts": sum(1 for pair in pairs if not pair["identical"]),
+        "median_shared_prefix_tokens": (
+            statistics.median([pair["shared_prefix_tokens"] for pair in compared])
+            if compared
+            else None
+        ),
+        "min_shared_prefix_tokens": (
+            min(pair["shared_prefix_tokens"] for pair in compared) if compared else None
+        ),
+        "differing": [pair for pair in pairs if not pair["identical"]],
+    }
+
+
+def _group_rows(
+    rows: Sequence[Mapping[str, Any]], field: str
+) -> dict[str, list[Mapping[str, Any]]]:
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        value = row.get(field)
+        if value is None:
+            continue
+        groups.setdefault(str(value), []).append(row)
+    return groups
 
 
 def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[str, Any]:
@@ -748,6 +940,18 @@ def summarize(rows: Sequence[Mapping[str, Any]], *, window: int = 16) -> dict[st
             group: dict(sorted(counts.items()))
             for group, counts in sorted(group_rows_histogram.items())
         },
+        # Per-slice serving metrics: one entry per requested arm and one per
+        # prompt-length case, so the true-AR control and the boundary-crossing
+        # row are readable without re-deriving them from the row list.
+        "by_route_arm": {
+            str(arm): _serving_metrics(group)
+            for arm, group in sorted(_group_rows(rows, "route_arm").items())
+        },
+        "by_case": {
+            str(case): _serving_metrics(group)
+            for case, group in sorted(_group_rows(rows, "case").items())
+        },
+        "arm_identity": _arm_identity(rows),
         "median_decode_tokens_per_second_per_request": (
             statistics.median(per_request_decode) if per_request_decode else None
         ),
@@ -828,6 +1032,10 @@ def _fmt_ms(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.0f} ms"
 
 
+def _fmt_rate(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f} tok/s"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-url", required=True)
@@ -873,7 +1081,38 @@ def main() -> int:
         default="auto",
         help=(
             "Per-request speculative_mtp field: on sends true, off sends false "
-            "(the true-AR control), auto omits it and keeps the server policy."
+            "(the true-AR control), auto omits it and keeps the server policy. "
+            "--route-mix overrides this per request inside one run."
+        ),
+    )
+    parser.add_argument(
+        "--route-mix",
+        default=None,
+        help=(
+            "Comma-separated arms assigned per request in submission order, "
+            "for example 'off,auto'. The true-AR control and the speculative "
+            "arm then run in one load under the same conditions, instead of in "
+            "two runs on two servers."
+        ),
+    )
+    parser.add_argument(
+        "--cases",
+        default=None,
+        help=(
+            "Comma-separated prompt-length cases selected in one load: any of "
+            "short (4-64 tokens), mid (65-511), long (512-1024). Each row is "
+            "labelled and the summary splits by case, so a healthy short "
+            "request is measured beside the boundary-crossing row."
+        ),
+    )
+    parser.add_argument(
+        "--record-ids",
+        action="store_true",
+        help=(
+            "Keep the generated token ids on every row and report "
+            "arm_identity: whether the arms produced identical greedy output "
+            "for the prompts more than one arm served, and the shared-prefix "
+            "length where they differ."
         ),
     )
     parser.add_argument(
@@ -923,6 +1162,18 @@ def main() -> int:
         parser.error("--prompt-repeats must be positive")
     if args.cancel_count < 0 or args.cancel_count > args.num_prompts * args.prompt_repeats:
         parser.error("--cancel-count must be between 0 and the measured load size")
+    route_mix: list[str] = []
+    if args.route_mix:
+        route_mix = [arm.strip() for arm in args.route_mix.split(",") if arm.strip()]
+        invalid = [arm for arm in route_mix if arm not in {"auto", "on", "off"}]
+        if invalid:
+            parser.error(f"--route-mix has unknown arms: {invalid}")
+    cases: list[str] = []
+    if args.cases:
+        cases = [case.strip() for case in args.cases.split(",") if case.strip()]
+        invalid = [case for case in cases if case not in CASE_BOUNDS]
+        if invalid:
+            parser.error(f"--cases has unknown cases: {invalid}")
     speculative_mtp = {"auto": None, "on": True, "off": False}[args.speculative_mtp]
 
     tokenizer = _tokenizer(args.gguf)
@@ -936,6 +1187,7 @@ def main() -> int:
         max_prompt_len=args.max_prompt_len,
         max_total_len=args.max_total_len,
         min_prompt_len=args.min_prompt_len,
+        cases=cases,
     )
     warmup, measured = samples[: args.warmup], samples[args.warmup :]
     # Repeat rows keep the prompt and differ only in arrival order, which is
@@ -945,6 +1197,13 @@ def main() -> int:
         for repeat in range(args.prompt_repeats)
         for sample in measured
     ]
+    # Assign the arm per request, cycling in submission order. A mix makes the
+    # true-AR control and the speculative arm part of one load: same process,
+    # same occupancy history, same cache state.
+    for index, sample in enumerate(measured):
+        sample["route_arm"] = (
+            route_mix[index % len(route_mix)] if route_mix else args.speculative_mtp
+        )
     cancel_ids = {
         id(sample) for sample in measured[len(measured) - args.cancel_count :]
     }
@@ -952,12 +1211,15 @@ def main() -> int:
         f"[{args.label}] {len(measured)} prompts, concurrency {args.max_concurrency}, "
         f"output_len={output_len or 'dataset'}, "
         f"speculative_mtp={args.speculative_mtp}, "
+        f"route_mix={args.route_mix or '-'}, cases={args.cases or '-'}, "
         f"repeats={args.prompt_repeats}, stagger_ms={args.stagger_ms}, "
         f"temperature={args.temperature if args.temperature is not None else 'server-default'}"
     )
 
     def run(sample: Mapping[str, Any]) -> dict[str, Any]:
         cancel = id(sample) in cancel_ids
+        arm = str(sample.get("route_arm") or args.speculative_mtp)
+        arm_value = {"auto": None, "on": True, "off": False}[arm]
         try:
             result = _stream_request(
                 args.server_url,
@@ -966,7 +1228,7 @@ def main() -> int:
                 max_tokens=int(sample["expected_output_tokens"]),
                 temperature=args.temperature,
                 timeout=args.request_timeout,
-                speculative_mtp=speculative_mtp,
+                speculative_mtp=arm_value,
                 cancel_after_tokens=(
                     args.cancel_after_tokens if cancel else None
                 ),
@@ -975,16 +1237,22 @@ def main() -> int:
             body = error.read().decode("utf-8", "replace")[:400]
             return {
                 "source_id": sample.get("source_id"),
+                "case": sample.get("case"),
+                "route_arm": sample.get("route_arm"),
                 "prompt_tokens_local": sample.get("prompt_tokens"),
                 "expected_output_tokens": sample.get("expected_output_tokens"),
                 "repeat_index": sample.get("repeat_index", 0),
-                "speculative_mtp_request": args.speculative_mtp,
+                "speculative_mtp_request": arm,
                 "cancelled": False,
                 "error": f"HTTP {error.code}: {body}",
             }
         row = _request_row(sample, result)
         row["repeat_index"] = sample.get("repeat_index", 0)
-        row["speculative_mtp_request"] = args.speculative_mtp
+        row["speculative_mtp_request"] = arm
+        if not args.record_ids:
+            # Ids are ~4 bytes per token; a 24-prompt suite is small but the
+            # per-chunk timelines are not, so keep them opt-in.
+            row.pop("generated_token_ids", None)
         return row
 
     for sample in warmup:
@@ -1019,6 +1287,9 @@ def main() -> int:
         "output_len": output_len,
         "temperature": args.temperature,
         "speculative_mtp_request": args.speculative_mtp,
+        "route_mix": route_mix or None,
+        "cases": cases or None,
+        "record_ids": bool(args.record_ids),
         "prompt_repeats": args.prompt_repeats,
         "stagger_ms": args.stagger_ms,
         "min_prompt_len": args.min_prompt_len,
