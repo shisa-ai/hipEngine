@@ -1716,6 +1716,14 @@ class Qwen35GGUFMTP2Adapter:
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            print(
+                f"[prefill-debug] rid={rid} registered={rid in self._intents} "
+                f"hidden_seeds={getattr(result, 'hidden_seeds', None) is not None} "
+                f"budget={getattr(self.owner._row(rid), 'mtp2_candidate_budget', None)}",
+                file=sys.stderr,
+                flush=True,
+            )
         if rid not in self._intents:
             return
         if (
@@ -1895,7 +1903,23 @@ class Qwen35GGUFMTP2Adapter:
     def _sampled_route_request(self, request_id: int) -> bool:
         """Return whether this request's due cycle must use the sampled route."""
 
-        if not self._sampled_route_qualified():
+        _qualified = self._sampled_route_qualified()
+        import os as _os
+        if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+            _row = self.owner._row(int(request_id))
+            _params = getattr(_row, "sampling_request", None) or getattr(_row, "request", None)
+            print(
+                f"[route-debug] rid={request_id} qualified={_qualified} "
+                f"row={type(_row).__name__ if _row is not None else None} "
+                f"native_greedy={getattr(_row, 'native_greedy', None)} "
+                f"native_sampler={getattr(_row, 'native_sampler', None)} "
+                f"params={type(_params).__name__ if _params is not None else None} "
+                f"mode={None if _params is None else speculative_sampling_mode(_params)}",
+                file=_sys.stderr,
+                flush=True,
+            )
+        if not _qualified:
             return False
         row = self.owner._row(int(request_id))
         if row is None or bool(getattr(row, "native_sampler", False)):
@@ -1913,6 +1937,15 @@ class Qwen35GGUFMTP2Adapter:
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
         physical_max_requests = self._max_physical_requests()
+        import os as _os
+        if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+            print(
+                f"[cap-debug] enabled={self.enabled} max_width={physical_max_requests} "
+                f"semantics={[(s.request_id, s.sampling_mode) for s in semantics]}",
+                file=_sys.stderr,
+                flush=True,
+            )
         if not self.enabled or not (
             1 <= len(semantics) <= physical_max_requests
         ):
@@ -1976,6 +2009,22 @@ class Qwen35GGUFMTP2Adapter:
                     and rid not in self._prompt_hidden_rows
                 )
             ):
+                if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+                    import sys as _sys
+
+                    print(
+                        f"[cap-silent-none] rid={rid} "
+                        f"sampled_route={self._sampled_route_request(rid)} "
+                        f"native_greedy={row.native_greedy} "
+                        f"first_token_emitted={row.first_token_emitted} "
+                        f"lease={row.lease is not None} "
+                        f"budget={getattr(row, 'mtp2_candidate_budget', None)} "
+                        f"intent={rid in self._intents} "
+                        f"state={rid in self._states} "
+                        f"prompt_hidden={rid in self._prompt_hidden_rows}",
+                        file=_sys.stderr,
+                        flush=True,
+                    )
                 return None
             target = row.lease.session
             if not self._target_profile_supported(target):
@@ -3126,7 +3175,16 @@ class Qwen35GGUFMTP2Adapter:
                     transaction_id=transaction_id,
                     remaining_decode=remaining,
                 )
-                prepared = replace(prepared, summary=summary)
+                # The prepared object is the open transaction's identity, so the
+                # recomputed summary is written onto it; a copy is refused by
+                # the verifier's own commit/rollback identity check.
+                adopt = getattr(state.verifier, "adopt_accept_summary", None)
+                if not callable(adopt):
+                    raise RuntimeError(
+                        "sampled MTP route requires a verifier that adopts a "
+                        "recomputed accept summary"
+                    )
+                prepared = adopt(prepared, summary)
             commit_plan = TargetCommitPlan(
                 transaction_id=transaction_id,
                 request_ids=summary.request_ids,
@@ -5173,6 +5231,13 @@ class Qwen35GGUFMTP2Adapter:
         """Fall back to AR only while every target cursor is still canonical."""
 
         reason = f"{type(error).__name__}:{error}"
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            print(
+                f"[cycle-failure] ids={tuple(plan.speculative_request_ids)} "
+                f"reason={reason}",
+                file=sys.stderr,
+                flush=True,
+            )
         rows = tuple(
             self.owner._row(int(request_id))
             for request_id in plan.speculative_request_ids
