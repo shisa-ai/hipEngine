@@ -1958,6 +1958,12 @@ def _packed_prefill_requires_slot_local_full_attention(
     )
 
 
+# Context length at or above which the packed paged AR prefill path can only reach
+# the sequence through a slot-local contiguous KV view. Sessions whose device KV
+# allocation has a page gap must fall back to a private contiguous allocation.
+PACKED_AR_PREFILL_CONTEXT_LIMIT = 1024
+
+
 def _validate_packed_ar_prefill_context(
     layout: _GGUFPackedVerifyLayout,
     *,
@@ -1965,7 +1971,7 @@ def _validate_packed_ar_prefill_context(
 ) -> None:
     """Keep long contexts on the per-session full-attention cache path."""
 
-    if int(layout.max_live_count) >= 1024 and not slot_local_full_prefill:
+    if int(layout.max_live_count) >= PACKED_AR_PREFILL_CONTEXT_LIMIT and not slot_local_full_prefill:
         raise NotImplementedError(
             "packed paged AR prefill currently requires context < 1024"
         )
