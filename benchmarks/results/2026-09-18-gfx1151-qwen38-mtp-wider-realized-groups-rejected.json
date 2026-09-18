@@ -1,0 +1,230 @@
+{
+ "title": "Qwen3.8-27B Q4_K_M on gfx1151: wider realized MTP groups are not a throughput lever at c>=4, and the width-2 path does not execute when the evidence admits it",
+ "date": "2026-09-18",
+ "status": "measured_rejected",
+ "performance_claim": false,
+ "purpose": "Answer whether qualifying wider realized MTP groups (and partitioning mixed K/K0 groups) raises serving throughput on the fixed verifier, with a true-AR control inside the same load.",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+ "backend": "hip_gfx1151",
+ "kv_storage": "bf16",
+ "execution_profile": "production",
+ "tree": {
+  "commit": "4edc9c273",
+  "note": "first tree on which the MTP verifier reproduces true AR again; the concurrent lanes were re-measured here because the retained concurrent rows came from the control tree."
+ },
+ "server": {
+  "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3",
+  "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1"
+ },
+ "workload": {
+  "harness": "scripts/sharegpt_mtp_routing_pass.py --cases short,long --route-mix off,auto --record-ids",
+  "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+  "num_prompts": 8,
+  "output_len": "dataset (natural)",
+  "max_total_len": 1024,
+  "stagger_ms": 400,
+  "prompt_repeats": 2,
+  "cancel_count": 2,
+  "note": "the same load serves the true-AR control in-run: --route-mix assigns the arm per request in submission order."
+ },
+ "postfix_baseline": {
+  "c2": {
+   "wall_seconds": 280.7,
+   "by_route_arm": {
+    "auto": {
+     "completion_tokens": 2271,
+     "decode_tokens_per_second": 24.01,
+     "median_itl_ms": 110.2,
+     "mtp_requests": 8,
+     "mtp_output_tokens": 2261
+    },
+    "off": {
+     "completion_tokens": 2276,
+     "decode_tokens_per_second": 20.14,
+     "median_itl_ms": 91.5,
+     "mtp_requests": 0,
+     "mtp_output_tokens": 0
+    }
+   },
+   "mtp_output_share": 0.4973,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 2261,
+     "mtp_requests": 8,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "accepted_per_cycle": 2.06,
+   "coverage": null,
+   "refusal": null
+  },
+  "c4": {
+   "wall_seconds": 270.6,
+   "by_route_arm": {
+    "auto": {
+     "completion_tokens": 2271,
+     "decode_tokens_per_second": 12.06,
+     "median_itl_ms": 208.4,
+     "mtp_requests": 8,
+     "mtp_output_tokens": 1816
+    },
+    "off": {
+     "completion_tokens": 2276,
+     "decode_tokens_per_second": 12.14,
+     "median_itl_ms": 141.0,
+     "mtp_requests": 0,
+     "mtp_output_tokens": 0
+    }
+   },
+   "mtp_output_share": 0.3994,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 1816,
+     "mtp_requests": 8,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "accepted_per_cycle": 2.1,
+   "coverage": null,
+   "refusal": null
+  },
+  "control_tree_f607e3184": {
+   "c2": {
+    "auto_tok_s": 24.4,
+    "ar_tok_s": 20.11,
+    "ratio": 1.21
+   },
+   "c4": {
+    "auto_tok_s": 11.88,
+    "ar_tok_s": 12.12,
+    "ratio": 0.98
+   },
+   "note": "from benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-serving-coupling-route-mix.json"
+  },
+  "reading": "The fix restores the concurrent lane as well: c=2 is +19.2% over its in-run AR control with 99%+ coverage on every speculative row, and c=4 lands at parity (-0.7%) with 8 of 8 rows at realized width 1. The reviewed c=2 premise (2 of 3 rows never entering speculation, 31.9% share) does not reproduce on this tree: it was measured through the broken verifier."
+ },
+ "width2_experiment": {
+  "change": "temporary local edit: max_realized_group_rows=2 on the promoted automatic width-1 evidence row (qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3), which is the knob that lets a due group of two form",
+  "c2": {
+   "wall_seconds": 280.9,
+   "by_route_arm": {
+    "auto": {
+     "completion_tokens": 2271,
+     "decode_tokens_per_second": 25.12,
+     "median_itl_ms": 107.7,
+     "mtp_requests": 8,
+     "mtp_output_tokens": 2261
+    },
+    "off": {
+     "completion_tokens": 2276,
+     "decode_tokens_per_second": 20.13,
+     "median_itl_ms": 91.5,
+     "mtp_requests": 0,
+     "mtp_output_tokens": 0
+    }
+   },
+   "mtp_output_share": 0.4973,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 2261,
+     "mtp_requests": 8,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "accepted_per_cycle": 2.06,
+   "coverage": null,
+   "refusal": null
+  },
+  "c4": {
+   "wall_seconds": 248.6,
+   "by_route_arm": {
+    "auto": {
+     "completion_tokens": 2271,
+     "decode_tokens_per_second": 13.48,
+     "median_itl_ms": 193.6,
+     "mtp_requests": 7,
+     "mtp_output_tokens": 1219
+    },
+    "off": {
+     "completion_tokens": 2276,
+     "decode_tokens_per_second": 13.75,
+     "median_itl_ms": 185.9,
+     "mtp_requests": 0,
+     "mtp_output_tokens": 0
+    }
+   },
+   "mtp_output_share": 0.2681,
+   "groups_by_realized_rows": {
+    "1": {
+     "completion_tokens": 2271,
+     "mtp_output_tokens": 1219,
+     "mtp_requests": 7,
+     "requests": 8
+    },
+    "unknown": {
+     "completion_tokens": 2276,
+     "requests": 8
+    }
+   },
+   "accepted_per_cycle": 1.99,
+   "coverage": null,
+   "refusal": null
+  },
+  "observed": {
+   "no_width2_group_formed": "groups_by_realized_rows contains only the width-1 bucket in both lanes, and the per-row cycle counts are identical to the baseline at c=2",
+   "c4_worse": "13.48 against 13.75 tok/s (-2.0%) where the baseline measured 12.06 against 12.14 (-0.7%); no_provider events rise 448 -> 1050 and MTP output tokens fall 1816 -> 1219",
+   "row_level": "the 820-token speculative row lost its route entirely: 0 cycles and 819 autoregressive steps (coverage 0.728 -> 0.000) after a single precommit_failure_ar_fallback, while its peer's numbers are unchanged"
+  },
+  "in_process_probe": {
+   "script": "/tmp/width2-probe.py",
+   "finding": "with max_realized_group_rows=2 the adapter reports partition_max_requests((a,b))=2, capability(semantics_2) is not None, the 2-row plan is all-positive-K and claims_fit is True, so the claims contract is not what blocks a width-2 cycle; with the shipped bound of 1, capability is None at width 2",
+   "reading": "the width-2 plan is admissible, so the blocker is in the engine/state lifecycle: a refused or failed singleton leaves the row without a verifier and it then reports no_provider for the rest of its life"
+  }
+ },
+ "cost_model": {
+  "c4_row_pairs": "same prompt served by both arms at c=4: 824-token row 148.2 s speculative against 187.5 s AR (+26% for the speculative row); 820-token row 188.3 s speculative against 83.1 s AR (-56%, the row that lost its route)",
+  "median_itl": "c=4 speculative rows 208.4 ms against AR rows 141.1 ms; c=2 speculative 110.2 ms against AR 91.5 ms",
+  "accepted_per_cycle": "2.06 at c=2 and 2.10 at c=4",
+  "reading": "A speculative cycle at c=4 costs about 2.2 autoregressive steps while emitting about 2.1 tokens, so the lane can only reach parity even when every row keeps its route. Pairing two rows into one cycle would need the 2-row verify to cost what the 1-row verify costs to change that, and the retained 2026-08-29 measurement of exactly that cell (production C2/K3 after the faster AR rebase) reports 1.0517x overall with mixed Japanese/English at 0.9056x, which is why its automatic promotion was withdrawn then."
+ },
+ "decision": {
+  "promotion": "not promoted: the width-2 automatic cell fails the retained gates (1.0517x aggregate, one category below 1.0) and the current tree adds no evidence that changes it",
+  "c4_lane": "the c>=4 lane stays AR-favorable on this model, quant, and host; the fail-closed behavior is the correct default until a speculative cycle costs less than it does now",
+  "next_levers": [
+   "defect: a mixed due group whose wider subset cannot form is planned all-K0 (engine_loop._maybe_run_speculative_cycle replans with claims_fit=False), which is the group-wide split the review named; fixing it needs either a qualified width >=2 or an explicit decision about serial singleton cycles",
+   "defect: after one recoverable precommit_failure_ar_fallback the request can lose its provider state and report no_provider for the rest of its life (820-token row: 0 cycles, 819 AR steps); it is latent on the shipped bound and reachable as soon as a wider group is admitted",
+   "the c=4 win, if any, is in the cycle's own cost (verify + commit/rollback + draft forward), not in grouping"
+  ]
+ },
+ "source": {
+  "raw": [
+   "/tmp/mtp-coupling3/coupling-c2.json",
+   "/tmp/mtp-coupling3/coupling-c4.json",
+   "/tmp/mtp-pairing1/coupling-c2.json",
+   "/tmp/mtp-pairing1/coupling-c4.json",
+   "/tmp/width2-probe.py"
+  ],
+  "worklog": "worklog/entries/20260918T081822.398203Z-lhl-mtp-wider-realized-groups-67eab9.md",
+  "related": "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-verifier-ar-identity-fix.json"
+ }
+}
