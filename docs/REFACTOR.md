@@ -178,6 +178,33 @@
 - Removal scope: this entry, once the gate grows a production arm that builds
   its reference with the candidate's own route.
 
+## Grown KV pool cannot bind an allocation spanning two chunks (found 2026-09-19)
+
+- The KV-pool growth path had never been exercised until a retained-snapshot
+  prefix-cache run pinned enough pages to force it. Three defects surfaced in a
+  row; the first two are fixed:
+  * the `before_grow` / `on_pressure` callbacks dereferenced
+    `self._resident_batch_owner` bare, while every other reader in the file
+    guards with `getattr`. A session that owns its own pool never has the
+    attribute, so the first grow/pressure event raised `AttributeError`. Fixed,
+    with `test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner`.
+  * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,
+    so `old_tables = pointer_tables` raised `UnboundLocalError` the first time
+    the pool actually grew. Fixed.
+  * **Still open:** after growth the pool holds several backing chunks, but
+    `GlobalDeviceKVPool` reports `chunk_start_block_id=0` and
+    `Qwen35GGUFKVChunkBacking.validate_bound_blocks` checks
+    `block_id - start_block_id < pages` against a single chunk. An allocation
+    whose pages land beyond the first chunk fails to bind with `GGUF KV
+    allocation is outside its backing chunk`. Either the allocator must keep a
+    request inside one chunk, or the backing must present the grown page range
+    (the indirection tables `grow_storage` rebuilds already cover every page,
+    so the second is closer to the intended design).
+- Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. The
+  default retained budget does not grow the pool and the A/B runs clean.
+- Removal scope: this entry, once an allocation spanning grown chunks binds.
+
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 
 - `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several

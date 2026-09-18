@@ -18001,7 +18001,10 @@ class Qwen35GGUFResidentSession:
         ) -> tuple[dict[str, tuple[int, ...]], dict[str, int]]:
             """Append device pages and rebuild indirection tables atomically."""
 
-            nonlocal descriptor_generation
+            # `pointer_tables` is rebound below, which without this declaration
+            # makes it a local and turns the `old_tables = pointer_tables` read
+            # into an UnboundLocalError the first time the pool actually grows.
+            nonlocal descriptor_generation, pointer_tables
             count = int(pages)
             start = int(start_block_id)
             if count <= 0 or start < 0:
@@ -18106,15 +18109,26 @@ class Qwen35GGUFResidentSession:
             metadata_descriptor_pointer=int(descriptor.ptr),
             close_storage=close_storage,
             grow_storage=grow_storage,
-            before_grow=lambda: self._resident_batch_owner._invalidate_live_packed_decode_graphs()
-            if self._resident_batch_owner is not None
-            else None,
+            # `_resident_batch_owner` is only ever assigned onto the per-slot
+            # views a resident batch owner creates, so a session that owns its
+            # own pool never has the attribute at all. Every other reader in
+            # this file already guards with getattr; these two callbacks did
+            # not, and raised AttributeError the first time the pool hit a grow
+            # or pressure event on such a session - which a prefix-cache run
+            # reaches as soon as retained snapshots pin enough pages.
+            before_grow=lambda: (
+                owner._invalidate_live_packed_decode_graphs()
+                if (owner := getattr(self, "_resident_batch_owner", None)) is not None
+                else None
+            ),
             max_pages=max_pages,
             growth_chunk_pages=growth_chunk_pages,
             on_pressure=(
-                lambda required: self._resident_batch_owner.evict_prefix_cache_for_pressure(required)
-                if self._resident_batch_owner is not None
-                else None
+                lambda required: (
+                    owner.evict_prefix_cache_for_pressure(required)
+                    if (owner := getattr(self, "_resident_batch_owner", None)) is not None
+                    else None
+                )
             ),
         )
 

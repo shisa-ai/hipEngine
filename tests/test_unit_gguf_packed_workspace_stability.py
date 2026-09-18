@@ -1134,3 +1134,42 @@ def test_sufficient_lease_still_prefers_the_arena(monkeypatch) -> None:
 
     assert state.kv_backing_kind == "pool_lease"
     assert getattr(runner, "_packed_workspace_lease_shortfalls", []) == []
+
+
+def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> None:
+    """A pool-owning session has no ``_resident_batch_owner`` and must not raise.
+
+    The attribute is only ever assigned onto the per-slot views a resident batch
+    owner creates. A session that owns its own device KV pool never has it, so
+    the grow/pressure callbacks have to read it defensively. They did not, and a
+    prefix-cache run raised ``AttributeError: 'Qwen35GGUFResidentSession' object
+    has no attribute '_resident_batch_owner'`` from
+    ``GlobalDeviceKVPool._ensure_free_pages`` the moment retained snapshots
+    pinned enough pages to trigger pressure.
+    """
+
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    assert not hasattr(session, "_resident_batch_owner")
+
+    before_grow = lambda: (  # noqa: E731 - mirrors the callback shape under test
+        owner._invalidate_live_packed_decode_graphs()
+        if (owner := getattr(session, "_resident_batch_owner", None)) is not None
+        else None
+    )
+    on_pressure = lambda required: (  # noqa: E731
+        owner.evict_prefix_cache_for_pressure(required)
+        if (owner := getattr(session, "_resident_batch_owner", None)) is not None
+        else None
+    )
+    assert before_grow() is None
+    assert on_pressure(8) is None
+
+    # With an owner attached the callbacks delegate.
+    calls: list[object] = []
+    session._resident_batch_owner = SimpleNamespace(
+        _invalidate_live_packed_decode_graphs=lambda: calls.append("invalidate"),
+        evict_prefix_cache_for_pressure=lambda required: calls.append(("evict", required)),
+    )
+    before_grow()
+    on_pressure(8)
+    assert calls == ["invalidate", ("evict", 8)]
