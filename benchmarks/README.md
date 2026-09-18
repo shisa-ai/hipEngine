@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-19**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -295,30 +295,30 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 ## Current default notes
 
-**Prefix caching stays off.** `hipengine serve --prefix-cache radix` reuses
-completed prompt prefixes at 256-token granularity. Measured on `zbook`/gfx1151
-with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14 multi-turn lanes and three turns each,
-served through the OpenAI-compatible API with one engine per arm and a mirrored
-off/radix/radix/off order: radix reuses 26,112 of 84,330 prompt tokens (6 hits
-of 22 lookups) but costs **+24.7% request wall time (about 20% lower output
-rate)** after correcting for a symmetric ~9% position drift. The sparse hit rate
-is a retention defect rather than a property of the traffic: every missed
-eligible turn resent a verbatim prefix of at least 2,048 tokens, the engine
-reported a radix trie `miss` (never an unusable source, with `unusable_hits: 0`),
-and each conversation produced at most one hit because the snapshot limit of 1
-makes a request's own second capture evict the retained entry that just served
-it (33 captures, 32 evictions). Reuse only pays above a reuse ratio of roughly
-19 reused tokens per unmatched token: a cumulative coding lane that reuses 8,192
-tokens against a 183-token suffix gains **TTFT -58% and wall -41%**, while lanes
-that reuse 2,048 tokens against a ~190-token suffix lose **TTFT +37% to +74% and
-wall +18% to +41%**. Zero-reuse chat and coding turns are near neutral; the
-agentic tool-call lanes regress consistently (+80% wall) but abort as
-`invalid_tool_call` after ~26 tokens. The reuse path is the cause: a reused
-request prefills its unmatched suffix one token at a time at **34.0 ms/token**
-against **1.8 ms/token** for a batched full prefill. The flag stays available for
-experiments.
-[Measurements](results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-server-multiturn-ab.json);
-[retention diagnosis](results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json).
+**Prefix caching now pays, and is still off by default.** `hipengine serve
+--prefix-cache radix` reuses completed prompt prefixes at 256-token
+granularity. Measured on `zbook`/gfx1151 with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14
+multi-turn lanes and three turns each through the in-process resident loop:
+radix resolves 16 of 27 lookups and reuses 42,496 of 87,582 prompt tokens, and
+now runs **18.6% faster in wall time (351.5 s to 286.0 s, output rate 16.93 to
+20.81 tok/s, +22.9%)**. The coding lanes carry the win — cumulative coding
+**-38.8% wall** (10.09 to 16.49 tok/s) and fixture coding **-20.0% wall** (10.13
+to 12.67 tok/s) — while the ShareGPT lanes are flat (+1.2%) because their
+prompts are 30-685 tokens and most turns return `prompt_too_short` before any
+lookup. The same command and lanes previously measured **+6.4% wall**, so the
+sign of the result changed rather than its magnitude drifting: a reused request
+used to prefill its unmatched suffix one token at a time at **34.0 ms/token**,
+and now prefills it batched with the rest of the prompt.
+
+It stays off by default for one reason: enabling it can change the answer. A
+cache hit reproduces a cache miss bit-for-bit up to 2,048 tokens of total
+context, verified across all four mtp-bench prompt categories, but above that
+the vendored AOTriton prefill kernel's accumulation depends on the query-window
+shape, so a hit and a miss can select different tokens. That bound is a
+pre-existing property of split prefill, not of the cache, and it is pinned by
+`test_split_prefill_divergence_boundaries_are_unchanged`.
+[Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json);
+[off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-baseline-off.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
