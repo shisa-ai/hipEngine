@@ -424,6 +424,18 @@ control](results/2026-09-18-gfx1151-qwen38-mtp-exactness-regression.json);
 [matched serving baseline](results/2026-09-18-gfx1151-qwen38-sharegpt-natural-serving-baseline.json);
 [concurrent coupling arm with an in-run AR control](results/2026-09-18-gfx1151-qwen38-mtp-serving-coupling-route-mix.json).
 
+**Concurrency (2026-09-18):** on the fixed tree the same coupling protocol
+measures **24.01 tok/s for the automatic route against 20.14 for true AR
+(+19.2%) at c=2** with every speculative row at 99%+ coverage, and **12.06
+against 12.14 (-0.7%) at c=4** with every speculative row at realized width 1.
+The c=4 lane is AR-favorable on this model, quant, and host: a speculative cycle
+there costs about 2.2 autoregressive steps (median ITL 208.4 against 141.1 ms)
+while emitting about 2.1 tokens, so pairing rows cannot flip the sign, and the
+retained measurement of the wider cell after the faster AR rebase is 1.0517x with
+one category below 1.0. Wider realized groups therefore stay closed, and the
+width-2 automatic promotion is rejected on this evidence. [Wider realized groups
+rejected](results/2026-09-18-gfx1151-qwen38-mtp-wider-realized-groups-rejected.json).
+
 TimesFM 2.5 200M GPU decode (batch 8, context 8192, horizon 512) — **two
 physical Strix Halo `gfx1151` hosts, recorded as separate lanes**: **0.082 s**
 on the power-limited **HP ZBook Ultra G1a** and **0.062 s** on the **Framework
