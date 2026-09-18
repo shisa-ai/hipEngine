@@ -297,15 +297,21 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 **Prefix caching stays off.** `hipengine serve --prefix-cache radix` reuses
 completed prompt prefixes at 256-token granularity. Measured on `zbook`/gfx1151
-with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14 multi-turn lanes and three turns each, one
-repetition per mode: radix resolves 16 of 27 lookups and reuses 42,496 of
-87,582 prompt tokens, but request wall time is **6.4% higher overall** — 8.3%
-lower on cumulative coding lanes, unchanged on fixture coding lanes, and 22.7%
-higher on ShareGPT chat. The reuse path is the cause: a reused request prefills
-its unmatched suffix one token at a time at **34.0 ms/token** against
-**1.8 ms/token** for a batched full prefill, so reuse pays only when the suffix
-is short relative to the reused prefix. The flag stays available for
-experiments. [Measurements](results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json).
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14 multi-turn lanes and three turns each,
+served through the OpenAI-compatible API with one engine per arm and a mirrored
+off/radix/radix/off order: radix reuses 26,112 of 84,330 prompt tokens (6 hits
+of 22 lookups) but costs **+24.7% request wall time (about 20% lower output
+rate)** after correcting for a symmetric ~9% position drift. Reuse only pays
+above a reuse ratio of roughly 19 reused tokens per unmatched token: a
+cumulative coding lane that reuses 8,192 tokens against a 183-token suffix gains
+**TTFT -58% and wall -41%**, while lanes that reuse 2,048 tokens against a
+~190-token suffix lose **TTFT +37% to +74% and wall +18% to +41%**. Zero-reuse
+chat and coding turns are near neutral; the agentic tool-call lanes regress
+consistently (+80% wall) but abort as `invalid_tool_call` after ~26 tokens. The
+reuse path is the cause: a reused request prefills its unmatched suffix one
+token at a time at **34.0 ms/token** against **1.8 ms/token** for a batched full
+prefill. The flag stays available for experiments.
+[Measurements](results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-server-multiturn-ab.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
