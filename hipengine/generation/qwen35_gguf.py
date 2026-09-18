@@ -5938,6 +5938,8 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_snapshot_limit = max(1, int(capacity))
         self._prefix_snapshot_hits = 0
         self._prefix_snapshot_evictions = 0
+        self._prefix_snapshot_captures = 0
+        self._prefix_snapshot_capture_bytes = 0
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
         self._prefix_admission_fallbacks = 0
@@ -6905,6 +6907,20 @@ class Qwen35GGUFResidentModelRunner:
             return ()
         return tuple(known[:position])
 
+    def _prefix_prompt_boundary(self, row: _GGUFResidentLoopRow) -> int:
+        """Deepest 256-token boundary at or before the end of this row's prompt.
+
+        This is the one boundary a following turn can reach: a cumulative
+        client resends the whole transcript, and a client that rebuilds the
+        transcript from its own normalized assistant/tool text still starts
+        with the previous prompt verbatim.  Boundaries below it are superseded
+        by it for both styles.
+        """
+
+        if self._prefix_cache is None:
+            return 0
+        return (len(row.prompt_ids) // 256) * 256
+
     def _refresh_prefix_cache(self, row: _GGUFResidentLoopRow) -> bool:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
@@ -6981,6 +6997,12 @@ class Qwen35GGUFResidentModelRunner:
             "snapshot_hits": int(getattr(self, "_prefix_snapshot_hits", 0)),
             "snapshot_evictions": int(
                 getattr(self, "_prefix_snapshot_evictions", 0)
+            ),
+            "snapshot_captures": int(
+                getattr(self, "_prefix_snapshot_captures", 0)
+            ),
+            "snapshot_capture_bytes": int(
+                getattr(self, "_prefix_snapshot_capture_bytes", 0)
             ),
             "snapshot_bytes": snapshot_bytes,
             "retained_kv_pages": len(retained_blocks),
@@ -7063,6 +7085,27 @@ class Qwen35GGUFResidentModelRunner:
                 diagnostics["kv_layout"] = copy.deepcopy(dict(payload))
         return diagnostics
 
+    def _refresh_prefix_cache_at_prompt_boundary(
+        self,
+        row: _GGUFResidentLoopRow,
+        lease: _GGUFResidentSessionLease,
+    ) -> bool:
+        """Capture the single reusable boundary of this request.
+
+        Each captured boundary clones the full hybrid Conv/GDN state and
+        synchronizes the device.  Capturing every 256-token prefill chunk
+        therefore costs one full state clone per chunk while only the deepest
+        prompt-aligned boundary is reachable by the next turn, so the chunked
+        greedy prefill path captures exactly that one.
+        """
+
+        boundary = self._prefix_prompt_boundary(row)
+        if boundary <= 0:
+            return False
+        if boundary != int(getattr(lease.session, "position", -1)):
+            return False
+        return self._refresh_prefix_cache(row)
+
     def _capture_prefix_snapshot(
         self,
         row: _GGUFResidentLoopRow,
@@ -7101,6 +7144,10 @@ class Qwen35GGUFResidentModelRunner:
             block_ids=block_ids,
             snapshot=snapshot,
             owner_request_id=int(row.request_id),
+        )
+        self._prefix_snapshot_captures += 1
+        self._prefix_snapshot_capture_bytes += int(
+            getattr(snapshot, "nbytes", 0)
         )
         while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
             oldest = next(iter(self._prefix_state_snapshots))
@@ -8844,7 +8891,7 @@ class Qwen35GGUFResidentModelRunner:
             self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
             row.prefill_ms += _timing_ms_since(start)
             row.prefill_chunk_count += 1
-            self._refresh_prefix_cache(row)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
             if final_chunk:
                 self._finish_native_prefill(
                     row,
@@ -8935,7 +8982,7 @@ class Qwen35GGUFResidentModelRunner:
             self._route_counts["native_incremental_prefill_unsampled_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
-        self._refresh_prefix_cache(row)
+        self._refresh_prefix_cache_at_prompt_boundary(row, lease)
         if final_chunk:
             self._finish_native_prefill(
                 row,
