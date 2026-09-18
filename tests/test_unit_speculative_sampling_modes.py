@@ -420,3 +420,29 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
         route(_serving_engine("greedy_fast"), greedy, explicit=None)
         == _SPECULATIVE_MTP_AUTO_ROUTE
     )
+
+
+def test_no_shipped_evidence_row_advertises_the_sampled_mode() -> None:
+    """The sampled route's switch is an evidence row, and no shipped row sets it.
+
+    Serving that route was measured and rejected: with the row in place the
+    route engages (99% of output tokens from speculative cycles) and decodes at
+    0.47x of its in-load true-AR control, because a sampled cycle costs 5.3x the
+    same draft chain's greedy cycle. The default therefore stays autoregressive
+    for every temperature request until a device-side sampled accept exists. A
+    row that re-advertises the mode without that measurement is a regression in
+    the shipped default, not a tuning choice.
+    """
+
+    from hipengine.models import qwen35
+
+    tables = {
+        name: value
+        for name, value in vars(qwen35).items()
+        if name.endswith("_MTP_SERVING_EVIDENCE")
+    }
+    assert tables, "the model plugin's serving evidence tables must be importable"
+    for name, table in tables.items():
+        assert table, name
+        for row in table:
+            assert "sampled" not in tuple(row.sampling_modes), (name, row.evidence_key)
