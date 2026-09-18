@@ -336,3 +336,87 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
     )
     assert _adapter(plugin_evidence=(), row=greedy)._sampled_route_request(1) is False
     del Qwen35GGUFMTP2Adapter
+
+
+def _server_config(**overrides):
+    from hipengine.server.api import ServerConfig
+
+    values = {"model": "test-model", "speculative_mtp_serving": "auto"}
+    values.update(overrides)
+    return ServerConfig(**values)
+
+
+def _serving_engine(*modes: str):
+    """An engine that advertises exactly the sampling modes its rows declare."""
+
+    return SimpleNamespace(
+        supports_speculative_mtp=True,
+        generate_speculative_mtp_detailed=lambda *args, **kwargs: None,
+        speculative_mtp_sampling_modes=tuple(modes),
+        speculative_mtp_serving_capability={
+            "admitted": True,
+            "automatic_eligible": True,
+        },
+    )
+
+
+def _serving_request(speculative_mtp=True):
+    return SimpleNamespace(speculative_mtp=speculative_mtp)
+
+
+def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
+    """The server's route choice is the sampled route's outermost gate.
+
+    A temperature request carries sampling blockers, and a request with blockers
+    used to be sent to K0 before the model-plugin resolver ran, so the route
+    could not be reached in serving at all. It now keeps typed intent exactly
+    when the artifact's own evidence lists the sampled mode, and the shipped
+    table lists it for no artifact.
+    """
+
+    from hipengine.server.api import (
+        _SPECULATIVE_MTP_AUTO_ROUTE,
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        _SPECULATIVE_MTP_K0_ROUTE,
+        _speculative_mtp_route_for_request,
+    )
+
+    sampled = _params(temperature=0.7)
+    unservable = _params(temperature=0.7, logprobs=True)
+    greedy = _params()
+
+    def route(engine, sampling, *, explicit=True, mode="auto"):
+        return _speculative_mtp_route_for_request(
+            _server_config(speculative_mtp_serving=mode),
+            _serving_request(explicit),
+            engine=engine,
+            sampling=sampling,
+        )
+
+    # A row listing the sampled mode admits the request to the route.
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), sampled)
+        == _SPECULATIVE_MTP_BATCH_ROUTE
+    )
+    # Shipped behavior: no row lists the sampled mode, so a temperature request
+    # still ends at K0 before provider mutation.
+    assert route(_serving_engine("greedy_fast"), sampled) == _SPECULATIVE_MTP_K0_ROUTE
+    # A blocker the sampled route refuses stays K0 even with the row.
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), unservable)
+        == _SPECULATIVE_MTP_K0_ROUTE
+    )
+    # Automatic mode selects the automatic route rather than the explicit one.
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), sampled, explicit=None)
+        == _SPECULATIVE_MTP_AUTO_ROUTE
+    )
+    # Greedy requests keep their own route with or without the sampled row.
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), greedy, explicit=None)
+        == _SPECULATIVE_MTP_AUTO_ROUTE
+    )
+    assert (
+        route(_serving_engine("greedy_fast"), greedy, explicit=None)
+        == _SPECULATIVE_MTP_AUTO_ROUTE
+    )
