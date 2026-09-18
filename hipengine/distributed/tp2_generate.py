@@ -994,11 +994,16 @@ class MlpTP2GenerationSession:
         eos_token_id: int | None = None,
         capture_logits: bool = False,
     ) -> GenerationResult:
-        """Greedy-generate tokens after a token-by-token TP2/TP1 prefill.
+        """Greedy-generate tokens after a TP2/TP1 prefill.
 
         Each call is a fresh sequence: every rank's scratch state (KV spans,
         GDN conv/recurrent state) is zeroed first, so back-to-back calls on
         one session never inherit the previous call's state.
+
+        When the session was built with ``bulk_prefill=True`` the prompt is
+        consumed by the rank-local bulk prefill candidate in one shot and the
+        loop below starts at the first decode position; otherwise the prompt is
+        walked token by token, which is the committed schedule.
         """
 
         self._require_live()
@@ -1020,7 +1025,26 @@ class MlpTP2GenerationSession:
         next_token: int | None = None
         total_positions = len(prompt) + int(max_new_tokens)
         self._ensure_graph_schedule()
-        for position in range(total_positions):
+        first_decode_position = 0
+        if self.bulk_prefill_enabled:
+            # One shot for the whole prompt. ``bulk_prefill`` zeroes state,
+            # captures/warms the decode schedule and writes the prompt's KV and
+            # GDN state, so the decode loop below continues from it exactly as
+            # it would from a token-serial prefill. The whole prompt is one
+            # prefill step in the trace, which is what a rate measured from
+            # ``step_traces`` must see.
+            started = time.perf_counter()
+            bulk_logits = self.bulk_prefill(prompt)
+            traces.append(
+                StepTrace(
+                    kind="prefill",
+                    position=len(prompt) - 1,
+                    total_s=time.perf_counter() - started,
+                )
+            )
+            next_token = int(np.argmax(np.asarray(bulk_logits[-1]).reshape(-1)))
+            first_decode_position = len(prompt)
+        for position in range(first_decode_position, total_positions):
             if position < len(prompt):
                 token_id = prompt[position]
                 kind = "prefill"

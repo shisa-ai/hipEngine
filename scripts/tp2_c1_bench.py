@@ -55,16 +55,25 @@ def _parse_fractions(text: str | None) -> tuple[float, ...] | None:
         raise SystemExit(f"--fractions is not numeric: {text!r}") from error
 
 
-def _rate(times: list[float]) -> dict[str, float] | None:
+def _rate(times: list[float], *, tokens: int | None = None) -> dict[str, float] | None:
+    """Rate for a list of step walls.
+
+    ``tokens`` overrides the step count. A token-serial prefill emits one step
+    per prompt position, so the count and the token count coincide; the bulk
+    prefill candidate consumes the whole prompt in a single step, and scoring
+    that step as one token understates it by the prompt length.
+    """
+
     if not times:
         return None
     total = float(sum(times))
+    count = int(tokens) if tokens is not None else len(times)
     return {
-        "tokens": len(times),
+        "tokens": count,
         "total_s": total,
-        "mean_ms_per_token": 1000.0 * total / len(times),
+        "mean_ms_per_token": 1000.0 * total / count,
         "p50_ms_per_token": 1000.0 * statistics.median(times),
-        "tok_per_s": len(times) / total if total > 0 else 0.0,
+        "tok_per_s": count / total if total > 0 else 0.0,
     }
 
 
@@ -76,6 +85,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-tokens", type=int, default=128)
     parser.add_argument("--fractions", type=_parse_fractions, default=None)
+    parser.add_argument(
+        "--bulk-prefill",
+        action="store_true",
+        help="tp2 only: drive prefill through the rank-local bulk prefill "
+        "candidate instead of the committed token-serial route",
+    )
+    parser.add_argument(
+        "--bulk-prefill-rows",
+        type=int,
+        default=None,
+        help="tp2 only: bulk prefill workspace rows (default: the session's "
+        "max sequence length, which is what dominates its resident memory)",
+    )
     parser.add_argument("--max-sequence-length", type=int, default=None)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument(
@@ -135,6 +157,12 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             max_sequence_length=context,
             uneven_split=(args.fractions if args.mode == "tp2" else None),
+            bulk_prefill=bool(args.bulk_prefill) and args.mode == "tp2",
+            bulk_prefill_rows=(
+                int(args.bulk_prefill_rows)
+                if args.bulk_prefill_rows is not None and args.mode == "tp2"
+                else None
+            ),
         )
         result["build_seconds"] = round(time.perf_counter() - started, 3)
         group = getattr(session, "_shard_group", None)
@@ -192,7 +220,10 @@ def main(argv: list[str] | None = None) -> int:
                 max_new_tokens=int(args.decode_tokens),
             )
             prefill_runs.append(
-                _rate([t.total_s for t in generation.step_traces if t.kind == "prefill"])
+                _rate(
+                    [t.total_s for t in generation.step_traces if t.kind == "prefill"],
+                    tokens=len(prompt_ids),
+                )
             )
             decode_runs.append(
                 _rate([t.total_s for t in generation.step_traces if t.kind == "decode"])
