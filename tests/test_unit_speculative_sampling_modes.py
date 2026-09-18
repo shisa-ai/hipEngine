@@ -291,3 +291,48 @@ def test_the_server_module_imports_the_serving_mode_vocabulary() -> None:
 
     assert server_api.speculative_serving_sampling_mode is speculative_serving_sampling_mode
     assert callable(supports_sampled_speculative_mtp)
+
+
+def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
+    """The capability's row eligibility is the guard the route rides on.
+
+    A temperature row is not `native_greedy`, which used to end the capability
+    before any sampled check ran - the route could never be reached in serving.
+    The guard now admits a row exactly when `_sampled_route_request` says so, and
+    that answer is itself gated on the evidence row.
+    """
+
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    params = _params(temperature=0.7)
+    row = SimpleNamespace(
+        native_greedy=False,
+        native_sampler=False,
+        sampling_request=params,
+        request=params,
+        sampling_state=SimpleNamespace(),
+    )
+    adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
+    assert adapter._sampled_route_request(1) is True
+
+    # A device-sampler row cannot use the host accept rule.
+    device_row = SimpleNamespace(
+        native_greedy=False,
+        native_sampler=True,
+        sampling_request=params,
+        request=params,
+        sampling_state=None,
+    )
+    assert _adapter(plugin_evidence=(_evidence_row(),), row=device_row)._sampled_route_request(1) is False
+    # No evidence row: the route stays closed even for a temperature row.
+    assert _adapter(plugin_evidence=(), row=row)._sampled_route_request(1) is False
+    # Greedy rows keep their own route.
+    greedy = SimpleNamespace(
+        native_greedy=True,
+        native_sampler=False,
+        sampling_request=_params(),
+        request=_params(),
+        sampling_state=None,
+    )
+    assert _adapter(plugin_evidence=(), row=greedy)._sampled_route_request(1) is False
+    del Qwen35GGUFMTP2Adapter

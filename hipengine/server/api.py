@@ -68,6 +68,7 @@ from hipengine.generation import (
     relax_thinking_budget_for_mtp,
     speculative_mtp_sampling_blockers,
     speculative_serving_sampling_mode,
+    supports_sampled_speculative_mtp,
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
@@ -11494,6 +11495,24 @@ def _engine_speculative_mtp_serving_capability(
     return deepcopy(dict(payload))
 
 
+def _engine_supports_sampled_mtp(engine: Any | None) -> bool:
+    """Whether immutable model-plugin evidence admits the sampled accept route.
+
+    The sampled route is qualified per artifact by an evidence row, so a request
+    that only the sampled rule can serve keeps typed speculative intent exactly
+    when such a row admits it; otherwise it falls to K0 before provider mutation,
+    which is the shipped behavior for every temperature request today.
+    """
+
+    modes = getattr(engine, "speculative_mtp_sampling_modes", None)
+    if modes is None:
+        return False
+    try:
+        return "sampled" in {str(mode) for mode in tuple(modes)}
+    except TypeError:
+        return False
+
+
 def _engine_supports_default_mtp(engine: Any | None) -> bool:
     """Whether immutable model-plugin evidence admits automatic MTP."""
 
@@ -13219,9 +13238,14 @@ def _speculative_mtp_route_for_request(
         # thinking budget stays a hard blocker and MTP falls back to AR.
         sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = speculative_mtp_sampling_blockers(sampling)
-    if blockers:
+    if blockers and not (
+        supports_sampled_speculative_mtp(sampling)
+        and _engine_supports_sampled_mtp(engine)
+    ):
+        # Only an artifact whose evidence admits the sampled route keeps typed
+        # intent for a request the argmax route cannot serve.
         return _SPECULATIVE_MTP_K0_ROUTE
-    if not supports_speculative_mtp_sampling(sampling):
+    if not blockers and not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:
         return _SPECULATIVE_MTP_BATCH_ROUTE
