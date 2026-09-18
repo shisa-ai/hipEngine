@@ -1378,6 +1378,50 @@ def test_bulk_prefill_reuses_weights_without_double_free(env) -> None:
     assert bulk.closed == 1
 
 
+def test_generate_consumes_the_prompt_through_bulk_prefill(env) -> None:
+    """The product path must use the bulk candidate, not just the harness.
+
+    ``bulk_prefill`` was reachable from ``teacher_forced_logits`` and the
+    diagnostic scripts only, so a session built with ``bulk_prefill=True``
+    still walked the prompt token by token in ``generate``: the flag bought a
+    second resident weight set and no schedule change. One prefill trace with
+    the last prompt position is what a rate measured from ``step_traces``
+    needs, and the last bulk row is what seeds the first decoded token.
+    """
+
+    session = _bulk_session(env, rows=4)
+    bulk_rows = np.zeros((4, VOCAB), dtype="<f4")
+    bulk_rows[3, 7] = 5.0
+    env["injected_rows"].append(np.ascontiguousarray(bulk_rows).reshape(-1))
+    env["queue_logits"]([2, 3])
+    result = session.generate([11, 12, 13, 14], max_new_tokens=2)
+    assert [trace.kind for trace in result.step_traces] == [
+        "prefill",
+        "decode",
+        "decode",
+    ]
+    assert result.step_traces[0].position == 3
+    assert result.token_ids == (7, 2)
+    session.close()
+
+
+def test_generate_keeps_the_token_serial_prefill_when_bulk_is_off(env) -> None:
+    """The contrast: without the flag every prompt position is its own step."""
+
+    session = _session(env)
+    env["queue_logits"]([2, 3, 4, 5, 6])
+    result = session.generate([11, 12, 13, 14], max_new_tokens=1)
+    assert [trace.kind for trace in result.step_traces] == [
+        "prefill",
+        "prefill",
+        "prefill",
+        "prefill",
+        "decode",
+    ]
+    assert [trace.position for trace in result.step_traces] == [0, 1, 2, 3, 4]
+    session.close()
+
+
 def test_bulk_prefill_is_repeatable_and_resets_state(env) -> None:
     session = _bulk_session(env, rows=4)
     env["injected_rows"].extend(
