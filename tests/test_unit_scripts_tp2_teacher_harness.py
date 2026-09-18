@@ -788,9 +788,11 @@ class _FakeRuntime:
 
 
 class _FakeCoverageSession:
-    def __init__(self, devices, mode, *, nonfinite=False, differ_teachers=False):
+    def __init__(self, devices, mode, *, nonfinite=False, differ_teachers=False,
+                 bulk_prefill=False):
         self.devices = tuple(devices)
         self.mode = mode
+        self.bulk_prefill_requested = bool(bulk_prefill)
         self.schedule = "eager"
         self.driver = "compiled"
         self.reduce_mode = "host"
@@ -841,21 +843,41 @@ def _fake_suite():
     return rows
 
 
-def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True, differ_teachers=False):
+def _patch_coverage(coverage, monkeypatch, *, nonfinite=False, complete=True,
+                    differ_teachers=False, built=None):
     suite = _fake_suite()
     monkeypatch.setattr(coverage, "load_prompt_suite", lambda: suite)
     monkeypatch.setattr(
         coverage, "full_suite_ids", lambda: {r["id"] for r in suite} if complete else set()
     )
     monkeypatch.setattr(coverage, "_load_tokenizer", lambda: _FakeTokenizer())
-    monkeypatch.setattr(
-        coverage,
-        "_session_factory",
-        lambda model, *, devices, mode, shard_fractions=None: _FakeCoverageSession(
-            devices, mode, nonfinite=nonfinite, differ_teachers=differ_teachers
-        ),
-    )
+    def _make(model, *, devices, mode, shard_fractions=None, bulk_prefill=False):
+        session = _FakeCoverageSession(
+            devices, mode, nonfinite=nonfinite, differ_teachers=differ_teachers,
+            bulk_prefill=bulk_prefill,
+        )
+        if built is not None:
+            built.append(session)
+        return session
+    monkeypatch.setattr(coverage, "_session_factory", _make)
     monkeypatch.setattr(coverage, "_git_dirty", lambda: False)
+
+
+def test_coverage_bulk_prefill_flag_reaches_only_the_tp2_arm(coverage, monkeypatch, tmp_path, capsys):
+    built: list = []
+    _patch_coverage(coverage, monkeypatch, built=built)
+    out = tmp_path / "artifact.json"
+    code = coverage.main([
+        "--json", str(out), "--model-hash", "none", "--repeat-tp2", "3",
+        "--tp2-bulk-prefill",
+    ])
+    capsys.readouterr()
+    assert code == 0
+    assert [s.mode for s in built] == ["tp1", "tp1", "tp2"]
+    assert built[-1].bulk_prefill_requested is True
+    assert all(not s.bulk_prefill_requested for s in built[:-1]), (
+        "the tp1 controls are the comparison basis and must stay token-serial"
+    )
 
 
 def test_coverage_main_passes_with_consistent_fake_arms(coverage, monkeypatch, tmp_path, capsys):

@@ -1,0 +1,273 @@
+{
+  "all_passed": false,
+  "command": "scripts/tp2_bulk_prefill_diagnostic.py --smoke-rows 12 --json /tmp/tp2-bulk-postresidency-smoke.json --compare-serial",
+  "host": "epyc",
+  "kind": "tp2_bulk_prefill_diagnostic",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "production_gate": {
+    "max_kl": 0.05,
+    "mean_kl": 0.001,
+    "p95_kl": 0.005,
+    "p99_kl": 0.02,
+    "top1_agreement": 0.99
+  },
+  "prompts": {
+    "heldout_mixed_summary": {
+      "bulk_argmax": [
+        247359,
+        57750,
+        65377,
+        148638,
+        64700,
+        198,
+        148638,
+        213105,
+        192485,
+        159656,
+        28452,
+        95990
+      ],
+      "bulk_vs_serial_metrics": {
+        "flipped_rows": 0,
+        "gate": {
+          "failures": [],
+          "passed": true,
+          "top1_bar": 0.97
+        },
+        "max_kl": 0.0004805359566855728,
+        "mean_kl": 0.00014417077544087213,
+        "p95_kl": 0.0003842565473354905,
+        "p99_kl": 0.0004612800748155565,
+        "rows": 12,
+        "top1_agreement": 1.0
+      },
+      "category": "mixed_ja_en",
+      "decode_steps": 12,
+      "finite": true,
+      "heldout": true,
+      "logits_sha256": "a81772090065095ddfe2fbbe0818aae4a32adac6763e46fbc4b66886a73216a3",
+      "metrics": {
+        "flipped_rows": 1,
+        "gate": {
+          "failures": [
+            "top1_agreement 0.916667 < 0.97"
+          ],
+          "passed": false,
+          "top1_bar": 0.97
+        },
+        "max_kl": 0.0004542735824911029,
+        "mean_kl": 0.00011620207997197103,
+        "p95_kl": 0.0004093318588626488,
+        "p99_kl": 0.00044528523776541214,
+        "rows": 12,
+        "top1_agreement": 0.9166666666666666
+      },
+      "prompt_tokens": 52,
+      "seconds": 0.5878436649218202,
+      "serial_argmax": [
+        247359,
+        57750,
+        65377,
+        148638,
+        64700,
+        198,
+        148638,
+        213105,
+        192485,
+        159656,
+        28452,
+        95990
+      ],
+      "serial_sha256": "7ac0e098b4733e0ec1c6a0de0cef8f53e5dd8c444b822073f452cb274aec9ee6",
+      "status": "fail",
+      "teacher_argmax": [
+        247359,
+        57750,
+        65377,
+        148638,
+        64700,
+        198,
+        148638,
+        213105,
+        192485,
+        159656,
+        196726,
+        95990
+      ],
+      "vocab": 248320
+    },
+    "mixed_ja_en_translate": {
+      "bulk_argmax": [
+        21874,
+        20858,
+        64700,
+        198,
+        2381,
+        1727,
+        1936,
+        579,
+        4722,
+        11,
+        279,
+        5077
+      ],
+      "bulk_vs_serial_metrics": {
+        "flipped_rows": 0,
+        "gate": {
+          "failures": [],
+          "passed": true,
+          "top1_bar": 0.97
+        },
+        "max_kl": 0.00024303843815880234,
+        "mean_kl": 3.2526221217045265e-05,
+        "p95_kl": 0.00014214634811638045,
+        "p99_kl": 0.0002228600201503181,
+        "rows": 12,
+        "top1_agreement": 1.0
+      },
+      "category": "mixed_ja_en",
+      "decode_steps": 12,
+      "finite": true,
+      "heldout": false,
+      "logits_sha256": "f59a5908b8e4ad1fa5679c6f3728095a8329841a9751bc5c5205f05228bb745a",
+      "metrics": {
+        "flipped_rows": 0,
+        "gate": {
+          "failures": [],
+          "passed": true,
+          "top1_bar": 0.97
+        },
+        "max_kl": 0.0003715580131817142,
+        "mean_kl": 7.171067727610056e-05,
+        "p95_kl": 0.00023812395333616188,
+        "p99_kl": 0.00034487120121260394,
+        "rows": 12,
+        "top1_agreement": 1.0
+      },
+      "prompt_tokens": 64,
+      "seconds": 0.6324662528932095,
+      "serial_argmax": [
+        21874,
+        20858,
+        64700,
+        198,
+        2381,
+        1727,
+        1936,
+        579,
+        4722,
+        11,
+        279,
+        5077
+      ],
+      "serial_sha256": "47f1a85445f5558c3125b5b194721fe5e64cad8c65d6c97bb655f450917a7a6a",
+      "status": "pass",
+      "teacher_argmax": [
+        21874,
+        20858,
+        64700,
+        198,
+        2381,
+        1727,
+        1936,
+        579,
+        4722,
+        11,
+        279,
+        5077
+      ],
+      "vocab": 248320
+    }
+  },
+  "protocol": "prefill(prompt) then forced decode (matches the teacher capture)",
+  "reference": "/home/lhl/.cache/hipengine/tp2-d128-baseline/quality-tp1-d0.json",
+  "reference_arm": "tp1-d0",
+  "resolve_log": {
+    "entries": 450,
+    "leaves": [
+      {
+        "calls": 3,
+        "layer": "dense_gemv",
+        "quant": "f32",
+        "variant": "bf16_hidden_bf16_out"
+      },
+      {
+        "calls": 5,
+        "layer": "linear",
+        "quant": "gguf_q4_k_t16_v1",
+        "variant": "dense_single_local32_bf16_bf16_out"
+      },
+      {
+        "calls": 12,
+        "layer": "linear",
+        "quant": "gguf_q4_k_t16_v1",
+        "variant": "t16_wmma_prefill_bf16_bf16_out"
+      },
+      {
+        "calls": 1,
+        "layer": "linear",
+        "quant": "gguf_q5_k_t16_v1",
+        "variant": "dense_single_local32_bf16_bf16_out"
+      },
+      {
+        "calls": 2,
+        "layer": "linear",
+        "quant": "gguf_q5_k_t16_v1",
+        "variant": "t16_wmma_prefill_bf16_bf16_out"
+      },
+      {
+        "calls": 2,
+        "layer": "linear",
+        "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+        "variant": "t16_gemv_decode_bf16_bf16_out"
+      },
+      {
+        "calls": 3,
+        "layer": "linear",
+        "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+        "variant": "t16_gemv_decode_bf16_f32_out"
+      },
+      {
+        "calls": 6,
+        "layer": "linear",
+        "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+        "variant": "t16_wmma_prefill_bf16_bf16_out"
+      },
+      {
+        "calls": 96,
+        "layer": "linear_pair",
+        "quant": "gguf_q4_k_t16_v1",
+        "variant": "dense_unequal_dual_wmma_prefill_bf16_bf16_out"
+      },
+      {
+        "calls": 32,
+        "layer": "linear_pair",
+        "quant": "gguf_q4_k_t16_v1",
+        "variant": "narrow_col4_pair_bf16_bf16_out"
+      },
+      {
+        "calls": 32,
+        "layer": "linear_pair",
+        "quant": "gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1",
+        "variant": "narrow_col4_planar_pair_bf16_bf16_out"
+      },
+      {
+        "calls": 256,
+        "layer": "linear_pair_silu",
+        "quant": "gguf_q4_k_t16_v1",
+        "variant": "dense_dual_local32_bf16_bf16_out"
+      }
+    ]
+  },
+  "route": {
+    "bulk_prefill": true,
+    "bulk_prefill_rows": 200,
+    "decode_partial_dtype": "bf16",
+    "head_shard": true,
+    "mode": "tp2",
+    "reduce_mode": "session-default",
+    "schedule": "graphed"
+  },
+  "seconds": 167.29965019226074,
+  "smoke_rows": 12
+}
