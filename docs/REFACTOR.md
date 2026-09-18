@@ -1,5 +1,42 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Prefix snapshot eviction destroys the retained entry it just served (found 2026-09-18)
+
+- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >
+  self._prefix_snapshot_limit: self._evict_prefix_snapshot(next(iter(...)))`,
+  which takes the oldest entry whether or not it is retained. The resident loop's
+  limit is 1 (`snapshot_limit: 1` in the 2026-09-18 gfx1151 serving run), and one
+  request captures twice: once at its decode boundary and once at its completion
+  prompt boundary (`_refresh_prefix_cache_at_prompt_boundary`). The second
+  capture therefore always evicts the entry that served the current request,
+  releasing its pool pin and its `cache.release_entry`. The next request finds an
+  empty trie and reports the engine reason `miss`.
+- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):
+  33 captures, 32 evictions, 6 hits, `unusable_hits: 0`. Every lane with reusable
+  content hits **at most once**, on the turn after its first capture. Every
+  missed eligible turn had at least 2048 tokens of verbatim resent prefix
+  (`prompt_lcp_reusable_tokens`), so the tokens were matchable; the failure is
+  retention, not structure. Artifact:
+  `benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json`.
+- Fix direction: make the trim prefer unretained entries and never evict a
+  retained entry while an unretained one exists, and size the retained working
+  set from the pool rather than from the loop capacity. RED test target: with
+  `_prefix_snapshot_limit == 1`, capture for request A, promote it, capture for
+  request B, then assert A's entry is still resolvable.
+
+## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
+
+- `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`
+  before any lookup. Every ShareGPT conversation in the serving suite is under
+  that size (30-685 prompt tokens, four turns above 256), so 19 of 41 turns never
+  consult the cache and 0 of 8 lookups hit. Multi-turn chat traffic is exactly
+  the shape this cache exists for.
+- Fix direction: separate the floor from the block size. A lookup can match zero
+  full blocks cheaply and still be worth attempting for a 400-token prompt with a
+  256-token prefix; the current constant conflates "too short to have any block"
+  with "not worth a trie probe". Decide the floor from measured probe cost, not
+  from `block_size_tokens`, and re-measure the ShareGPT lanes.
+
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 
 - `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several

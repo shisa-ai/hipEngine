@@ -304,6 +304,16 @@ def _run_turn(
     }
 
 
+def _common_prefix_len(left: Sequence[int], right: Sequence[int]) -> int:
+    """Length of the longest common token prefix of two token id sequences."""
+
+    limit = min(len(left), len(right))
+    shared = 0
+    while shared < limit and left[shared] == right[shared]:
+        shared += 1
+    return shared
+
+
 def _run_lane(
     llm: LLM,
     *,
@@ -318,6 +328,44 @@ def _run_lane(
     if run_turn is None:
         def run_turn(**kwargs: Any) -> dict[str, Any]:
             return _run_turn(llm, engine=engine, **kwargs)
+
+    previous_prompt_tokens: tuple[int, ...] | None = None
+
+    def observe_prompt(
+        messages: Sequence[Mapping[str, Any]],
+        tools: Sequence[Mapping[str, Any]] | None,
+        max_tokens: int,
+        record: dict[str, Any],
+    ) -> None:
+        """Record how much of the previous prompt this turn resends verbatim.
+
+        A cumulative client re-sends the whole transcript, so the longest
+        common token prefix with the previous turn is the most a prefix cache
+        could reuse. Comparing it with what the cache actually matched
+        separates a structural divergence (the transcript re-renders to
+        different tokens) from a policy or retention limit (the tokens match
+        but no usable entry exists).
+        """
+
+        nonlocal previous_prompt_tokens
+        prompt = _render_messages(
+            messages, engine=engine, tools=tools, max_tokens=max_tokens
+        )
+        tokenize = getattr(llm, "tokenize", None)
+        if not callable(tokenize):
+            return
+        try:
+            current = tuple(int(token) for token in tokenize(prompt))
+        except Exception:  # pragma: no cover - tokenizer diagnostic only
+            return
+        record["prompt_tokens_local"] = len(current)
+        if previous_prompt_tokens is not None:
+            shared = _common_prefix_len(previous_prompt_tokens, current)
+            record["prompt_lcp_tokens"] = shared
+            record["prompt_lcp_reusable_tokens"] = (shared // 256) * 256
+            record["previous_prompt_tokens"] = len(previous_prompt_tokens)
+        previous_prompt_tokens = current
+
     if kind == "sharegpt":
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": str(lane["system"])}
@@ -335,6 +383,7 @@ def _run_lane(
             record.update(
                 {"lane_id": lane_id, "lane_kind": kind, "turn_index": index}
             )
+            observe_prompt(messages, None, int(lane["max_tokens"]), record)
             result.turns.append(record)
             messages.append({"role": "assistant", "content": record["text"]})
         return result
@@ -363,6 +412,7 @@ def _run_lane(
             record.update(
                 {"lane_id": lane_id, "lane_kind": kind, "turn_index": index}
             )
+            observe_prompt(messages, tools, int(lane["max_tokens"]), record)
             result.turns.append(record)
         return result
 
@@ -383,6 +433,7 @@ def _run_lane(
             max_tokens=int(lane["max_tokens"]),
         )
         record.update({"lane_id": lane_id, "lane_kind": kind, "turn_index": index})
+        observe_prompt(messages, None, int(lane["max_tokens"]), record)
         result.turns.append(record)
         messages.append({"role": "assistant", "content": record["text"]})
     return result
@@ -403,24 +454,49 @@ def _server_prefix_counters(client: Any) -> dict[str, Any]:
     return dict(block) if isinstance(block, Mapping) else {}
 
 
+# Prefix-cache fields that are gauges (a level, not a running total). Differencing
+# them across a turn reports 0 whenever the level is unchanged, which reads as
+# "no snapshots" instead of "one snapshot". They are copied from the
+# after-turn snapshot instead.
+_PREFIX_GAUGE_FIELDS = frozenset(
+    {
+        "block_size_tokens",
+        "snapshot_entries",
+        "snapshot_limit",
+        "retained_snapshot_entries",
+        "snapshot_bytes",
+        "retained_kv_pages",
+        "retained_kv_bytes",
+        "resident_bytes",
+        "resident_limit_bytes",
+    }
+)
+
+
 def _prefix_counter_delta(
-    before: Mapping[str, Any], after: Mapping[str, Any]
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    *,
+    gauges: frozenset[str] = _PREFIX_GAUGE_FIELDS,
 ) -> dict[str, Any]:
     """Per-turn prefix telemetry as the difference of two aggregate snapshots.
 
     The API exposes prefix-cache counters in aggregate, not per request, so one
     sequential turn is attributed by differencing the counters around it. Nested
     counters (the radix trie's hit/miss statistics) are differenced per key.
+    Gauge fields are copied from ``after`` because a level is not a total.
     """
 
     delta: dict[str, Any] = {}
     for key, value in after.items():
         previous = before.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if key in gauges:
+            delta[key] = value
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
             delta[key] = value - previous if isinstance(previous, (int, float)) else value
         elif isinstance(value, Mapping):
             prior = previous if isinstance(previous, Mapping) else {}
-            delta[key] = _prefix_counter_delta(prior, value)
+            delta[key] = _prefix_counter_delta(prior, value, gauges=gauges)
         else:
             delta[key] = value
     return delta
