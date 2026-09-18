@@ -518,6 +518,16 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         # The launcher still validates the shape before any HIP contact.
         (1, 5_120, 7_168): "dense_dual_local32_bf16_bf16_out",
         (1, 5_120, 10_240): "dense_dual_local32_bf16_bf16_out",
+        # 2026-09-18, TP2 uneven MLP split, retained 0.44/0.56 boundary: the
+        # balance solve's optimum (7_168/10_240) breaches the production
+        # max-KL ceiling on a single tail row, and the tail is not monotone in
+        # the move - 0.43 fails worse (0.1006) than 0.417 (0.0699) while 0.44
+        # passes at 0.0141 with 100% top-1. The 0.44 boundary is the retained
+        # opt-in split, so its widths need the fused route too: both are
+        # measured bit-identical to the unfused chain on both ranks
+        # (benchmarks/results/2026-09-18-w7900-tp2-pair-route-admission-044.json).
+        (1, 5_120, 7_680): "dense_dual_local32_bf16_bf16_out",
+        (1, 5_120, 9_728): "dense_dual_local32_bf16_bf16_out",
     },
     # 2026-09-10, UD impact-list task 5: the UD artifacts carry Q5_K T16
     # ffn gate/up pairs (9 on K_M, 6 on K_S) that decode through the direct

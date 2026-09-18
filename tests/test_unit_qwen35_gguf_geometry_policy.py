@@ -272,8 +272,10 @@ def test_dense_policy_admission_ignores_finetune_name_but_rejects_geometry_drift
     ) == "dense_dual_local32_bf16_bf16_out"
 
     # The TP2 shard widths resolve through the same allowlist: the even split's
-    # 8_704 and both uneven-split boundaries of the 0.417145/0.582855 solve.
-    for shard_width in (8_704, 7_168, 10_240):
+    # 8_704, the balance solve's optimum (7_168/10_240, which breaches the
+    # production max-KL ceiling and stays opt-in), and the retained 0.44/0.56
+    # boundary (7_680/9_728).
+    for shard_width in (8_704, 7_168, 10_240, 7_680, 9_728):
         assert gguf_runner._gguf_dense_pair_silu_decode_variant(
             runner,
             rows=1,
