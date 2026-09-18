@@ -802,6 +802,46 @@ Artifacts:
 - llama.cpp HIP: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json)
 - llama.cpp Vulkan: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json)
 
+## Qwen3.8-27B dense Q4_K_M TP1/TP2 vs llama.cpp RDNA3 fork (W7900 + RX 7900 XTX, 2026-09-19)
+
+External sanity check of the TP2 route: the same `Qwen3.8-27B-Q4_K_M.gguf`
+(sha256 `7b2aec3b…`), the same host, c=1, 512-token prompt, 128 decode tokens,
+f16 KV, no speculative decoding, ROCm 7.2.4 / gfx1100. llama.cpp rows are
+`llama-bench -r 3` medians from the `llama.cpp-rdna3-opt` RDNA3 fork at build
+`15995a1` (TP=2 adds `-sm tensor` plus its internal q8 allreduce and P2P
+flags); hipEngine TP1 is the production `Qwen35GGUFResidentSession` bulk-prefill
+route and TP2 is `MlpTP2GenerationSession`.
+
+| Route | Prefill tok/s | Decode tok/s | Device memory |
+| --- | ---: | ---: | ---: |
+| llama.cpp TP=1 (W7900) | 941.8 | 30.44 | 15.38 GiB |
+| hipEngine TP1 (W7900) | 875.8 (-7.0%) | 30.76 (+1.1%) | 17.70 GiB (+15.1%) |
+| llama.cpp TP=2 `-sm tensor` | 1474.6 (+56.6%) | 41.30 (+35.7%) | 7.75 GiB/rank (-49.6%) |
+| hipEngine TP2 | 39.5 (-95.5% vs own TP1) | 38.8 (+26.1% vs own TP1) | 22.37 GiB/rank (+26.4% vs own TP1) |
+
+Findings:
+
+- Single-card is at parity: prefill within 7%, decode within 1%, memory within
+  15% of a purpose-tuned RDNA3 fork.
+- TP2 decode is at parity: 38.8 tok/s against llama.cpp's 41.3 tok/s tensor
+  split, and 1.26x hipEngine's own single-card decode.
+- TP2 prefill is the dominant gap and is a known registered fallback, not a
+  mystery: the session drives prefill token-by-token, so it lands at 0.045x its
+  own bulk-prefill route while llama.cpp's tensor split *gains* 1.57x over its
+  TP=1. The rank-local bulk TP2 prefill plan in
+  [`docs/QWEN38-27B-GFX1100-TP2.md`](../docs/QWEN38-27B-GFX1100-TP2.md)
+  addresses exactly this cell.
+- TP2 does not reduce per-rank residency: 22.37 GiB/rank against the shard
+  manifest's planned 7.83 GiB of resident weights per rank, while llama.cpp's
+  tensor split halves per-rank weights to 7.49 GiB. On the 24 GiB RX 7900 XTX
+  rank that leaves 1.58 GiB free after load, which bounds the capacity ladder.
+  The unexplained per-rank residency is a follow-up audit item.
+
+Artifact:
+[`2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](results/2026-09-19-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
+Per-cell cells: [`2026-09-19-w7900-hipengine-tp2-c1-512.json`](results/2026-09-19-w7900-hipengine-tp2-c1-512.json),
+[`2026-09-19-w7900-tp2-session-tp1-control-c1-512.json`](results/2026-09-19-w7900-tp2-session-tp1-control-c1-512.json).
+
 ## MTP / DFlash Speculative Decode
 
 ### Qwen3.8-27B DFlash2 GGUF campaign (2026-08-19) — diagnostic / not promoted

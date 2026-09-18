@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "tp2-c1-bench",
+  "generated_at": "2026-09-18T17:13:22Z",
+  "host": "epyc",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "mode": "tp1",
+  "devices": [
+    0
+  ],
+  "prompt_length": 512,
+  "decode_tokens": 128,
+  "max_sequence_length": 2048,
+  "fractions": null,
+  "vram_used_gib_baseline": {
+    "0": 0.035156
+  },
+  "build_seconds": 78.883,
+  "resolved": {
+    "schedule": "eager",
+    "prefill_schedule": "token-serial",
+    "driver": "compiled",
+    "reduce_mode": "host",
+    "decode_partial_dtype": "bf16",
+    "head_shard": false,
+    "per_rank_ffn": null
+  },
+  "memory_after_load": {
+    "0": {
+      "resident_gib": 17.19131,
+      "device": "AMD Radeon Pro W7900",
+      "free_gib_after_load": 27.287109,
+      "total_gib": 44.984375,
+      "vram_used_gib_after_load": 17.697266,
+      "session_vram_gib": 17.66211,
+      "transient_peak_gib": 0.0,
+      "resident_plus_transient_peak_gib": 17.19131,
+      "vram_used_gib_after_decode": 17.71875
+    }
+  },
+  "generated_tokens": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "generate_seconds": 64.381,
+  "prefill": {
+    "tokens": 512,
+    "total_s": 17.050608176738024,
+    "mean_ms_per_token": 33.30196909519145,
+    "p50_ms_per_token": 33.31685299053788,
+    "tok_per_s": 30.028254399659275
+  },
+  "decode": {
+    "tokens": 128,
+    "total_s": 4.4505304880440235,
+    "mean_ms_per_token": 34.769769437843934,
+    "p50_ms_per_token": 34.76656740531325,
+    "tok_per_s": 28.76061636783778
+  },
+  "prefill_runs": [
+    {
+      "tokens": 512,
+      "total_s": 16.930608146823943,
+      "mean_ms_per_token": 33.06759403676551,
+      "p50_ms_per_token": 33.0873541533947,
+      "tok_per_s": 30.241087358462515
+    },
+    {
+      "tokens": 512,
+      "total_s": 17.00824426021427,
+      "mean_ms_per_token": 33.219227070730994,
+      "p50_ms_per_token": 33.24978705495596,
+      "tok_per_s": 30.10304839034278
+    },
+    {
+      "tokens": 512,
+      "total_s": 17.050608176738024,
+      "mean_ms_per_token": 33.30196909519145,
+      "p50_ms_per_token": 33.31685299053788,
+      "tok_per_s": 30.028254399659275
+    }
+  ],
+  "decode_runs": [
+    {
+      "tokens": 128,
+      "total_s": 4.42872781585902,
+      "mean_ms_per_token": 34.59943606139859,
+      "p50_ms_per_token": 34.59971025586128,
+      "tok_per_s": 28.90220517540937
+    },
+    {
+      "tokens": 128,
+      "total_s": 4.448764653876424,
+      "mean_ms_per_token": 34.75597385840956,
+      "p50_ms_per_token": 34.74468272179365,
+      "tok_per_s": 28.772032228872213
+    },
+    {
+      "tokens": 128,
+      "total_s": 4.4505304880440235,
+      "mean_ms_per_token": 34.769769437843934,
+      "p50_ms_per_token": 34.76656740531325,
+      "tok_per_s": 28.76061636783778
+    }
+  ],
+  "prefill_tok_per_s_median": 30.10304839034278,
+  "prefill_tok_per_s_samples": [
+    30.028254399659275,
+    30.10304839034278,
+    30.241087358462515
+  ],
+  "decode_tok_per_s_median": 28.772032228872213,
+  "decode_tok_per_s_samples": [
+    28.76061636783778,
+    28.772032228872213,
+    28.90220517540937
+  ],
+  "memory": {
+    "0": {
+      "resident_gib": 17.19131,
+      "device": "AMD Radeon Pro W7900",
+      "free_gib_after_load": 27.287109,
+      "total_gib": 44.984375,
+      "vram_used_gib_after_load": 17.697266,
+      "session_vram_gib": 17.66211,
+      "transient_peak_gib": 0.0,
+      "resident_plus_transient_peak_gib": 17.19131,
+      "vram_used_gib_after_decode": 17.71875
+    }
+  }
+}

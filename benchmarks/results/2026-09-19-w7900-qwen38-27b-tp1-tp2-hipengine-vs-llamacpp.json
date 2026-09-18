@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "cross_engine_tp_comparison",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-09-19",
+  "host": "epyc",
+  "hardware": [
+    "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+    "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+  ],
+  "rocm": "7.2.4",
+  "backend": "hip_gfx1100",
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_filename": "Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "protocol": {
+    "concurrency": 1,
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "max_sequence_length": 2048,
+    "speculative_decoding": false,
+    "kv_dtype": "f16",
+    "note": "Identical GGUF file and identical host for every row. llama.cpp rows use llama-bench -r 3 (median of 3); hipEngine rows use the production resident session with one warmup generation plus 3 measured generations, reported as the median. Memory for llama.cpp is the loader's own per-device buffer report (model + KV + recurrent state + compute); memory for hipEngine is the device-accurate per-rank VRAM delta measured after load via hipMemGetInfo, which was validated to be device-scoped in this session."
+  },
+  "commands": {
+    "llamacpp_tp1": "llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 99 -p 512 -n 128 -r 3 -fa 0 (HIP_VISIBLE_DEVICES=0, llama.cpp-rdna3-opt @ 15995a1, build-rocm-gfx1100)",
+    "llamacpp_tp2": "same with HIP_VISIBLE_DEVICES=0,1 -sm tensor and GGML_CUDA_ALLREDUCE=internal GGML_CUDA_AR_WIRE=q8_0 GGML_CUDA_AR_Q8_THRESHOLD=1048576 GGML_CUDA_AR_FUSED_RESIDUAL=1 GGML_CUDA_AR_P2P=1",
+    "llamacpp_memory": "llama-cli -m <model> -ngl 99 -c 2048 -p hello -n 4 -st --verbose (loader buffer report)",
+    "hipengine_tp1": "python3 scripts/qwen35_gguf_bench.py --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --runs 3 (Qwen35GGUFResidentSession, bulk prefill)",
+    "hipengine_tp2": "python3 scripts/tp2_c1_bench.py --mode tp2 --devices 0,1 --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --repeats 3",
+    "hipengine_tp2_session_tp1_control": "python3 scripts/tp2_c1_bench.py --mode tp1 --devices 0 --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --repeats 3"
+  },
+  "rows": [
+    {
+      "engine": "llama.cpp-rdna3-opt",
+      "revision": "15995a1 (build 1)",
+      "parallelism": 1,
+      "devices": [
+        "AMD Radeon Pro W7900"
+      ],
+      "prefill_tok_per_s": 941.79,
+      "prefill_spread": 0.54,
+      "decode_tok_per_s": 30.44,
+      "decode_spread": 0.07,
+      "weights_gib": 14.99,
+      "kv_gib": 0.125,
+      "recurrent_state_gib": 0.146,
+      "compute_gib": 0.121,
+      "device_total_gib": 15.38,
+      "memory_source": "llama.cpp loader buffer report (ROCm0)"
+    },
+    {
+      "engine": "hipengine",
+      "revision": "999f3be6c",
+      "parallelism": 1,
+      "devices": [
+        "AMD Radeon Pro W7900"
+      ],
+      "session": "Qwen35GGUFResidentSession (bulk prefill, production route)",
+      "prefill_tok_per_s": 875.84,
+      "prefill_samples": [
+        878.41,
+        875.84,
+        871.81
+      ],
+      "decode_tok_per_s": 30.76,
+      "decode_samples": [
+        30.84,
+        30.76,
+        30.7
+      ],
+      "device_vram_gib": 17.7,
+      "tracked_resident_gib": 16.66,
+      "memory_source": "per-device hipMemGetInfo delta after load"
+    },
+    {
+      "engine": "llama.cpp-rdna3-opt",
+      "revision": "15995a1 (build 1)",
+      "parallelism": 2,
+      "devices": [
+        "AMD Radeon Pro W7900",
+        "AMD Radeon RX 7900 XTX"
+      ],
+      "prefill_tok_per_s": 1474.6,
+      "prefill_spread": 7.49,
+      "decode_tok_per_s": 41.3,
+      "decode_spread": 0.48,
+      "per_rank_weights_gib": 7.49,
+      "per_rank_kv_gib": 0.063,
+      "per_rank_recurrent_state_gib": 0.073,
+      "per_rank_compute_gib": 0.121,
+      "per_rank_total_gib": 7.75,
+      "memory_source": "llama.cpp loader buffer report (Meta() device = per-rank value; confirmed by KV 128->64 MiB and recurrent state 149.62->74.81 MiB halving between TP=1 and TP=2)"
+    },
+    {
+      "engine": "hipengine",
+      "revision": "999f3be6c",
+      "parallelism": 2,
+      "devices": [
+        "AMD Radeon Pro W7900",
+        "AMD Radeon RX 7900 XTX"
+      ],
+      "session": "MlpTP2GenerationSession",
+      "prefill_tok_per_s": 39.49,
+      "prefill_samples": [
+        39.26,
+        39.49,
+        39.6
+      ],
+      "decode_tok_per_s": 38.79,
+      "decode_samples": [
+        38.6,
+        38.79,
+        38.97
+      ],
+      "per_rank_vram_gib": 22.37,
+      "per_rank_tracked_resident_gib": 32.44,
+      "free_gib_after_load_rank1_xtx": 1.58,
+      "memory_source": "per-device hipMemGetInfo delta after load",
+      "planned_per_rank_weight_gib_from_manifest": 7.83
+    },
+    {
+      "engine": "hipengine",
+      "revision": "999f3be6c",
+      "parallelism": 1,
+      "devices": [
+        "AMD Radeon Pro W7900"
+      ],
+      "session": "MlpTP2GenerationSession mode=tp1 (session-family control, token-serial prefill, not the production single-card route)",
+      "prefill_tok_per_s": 30.1,
+      "decode_tok_per_s": 28.77,
+      "device_vram_gib": 17.66,
+      "memory_source": "per-device hipMemGetInfo delta after load"
+    }
+  ],
+  "derived": {
+    "tp1_prefill_ratio_hipengine_over_llamacpp": 0.93,
+    "tp1_decode_ratio_hipengine_over_llamacpp": 1.011,
+    "tp1_memory_ratio_hipengine_over_llamacpp": 1.151,
+    "tp2_prefill_ratio_hipengine_over_llamacpp": 0.027,
+    "tp2_decode_ratio_hipengine_over_llamacpp": 0.939,
+    "tp2_memory_ratio_hipengine_over_llamacpp": 2.886,
+    "llamacpp_tp2_prefill_speedup_vs_tp1": 1.566,
+    "llamacpp_tp2_decode_speedup_vs_tp1": 1.357,
+    "llamacpp_tp2_memory_ratio_vs_tp1": 0.504,
+    "hipengine_tp2_prefill_ratio_vs_tp1": 0.045,
+    "hipengine_tp2_decode_ratio_vs_tp1": 1.261,
+    "hipengine_tp2_memory_ratio_vs_tp1": 1.264
+  },
+  "findings": [
+    "Single-card parity: hipEngine prefill is within 7% and decode within 1.1% of a purpose-tuned RDNA3 llama.cpp fork at the same 512/128 c=1 protocol, at 15% more device memory.",
+    "TP2 decode parity: hipEngine TP2 decode (38.79 tok/s) is within 6% of llama.cpp tensor-split decode (41.30 tok/s) and is 1.26x its own single-card decode.",
+    "TP2 prefill is the dominant gap: hipEngine TP2 prefill is 39.49 tok/s, 0.045x its own single-card bulk-prefill route and 0.027x llama.cpp's tensor-split prefill. llama.cpp's TP2 prefill scales (1.57x vs its TP1); hipEngine's regresses by 22x. The cause is documented in docs/QWEN38-27B-GFX1100-TP2.md: the TP2 session drives prefill token-by-token and the rank-local bulk prefill plan is not implemented yet.",
+    "TP2 does not reduce per-rank residency: hipEngine TP2 uses 22.37 GiB per rank, 1.26x its own single-card footprint, while llama.cpp's tensor split halves per-rank weights to 7.49 GiB (7.75 GiB total per rank). The manifest plans 7.83 GiB of resident weights per rank, so ~14.5 GiB per rank is unexplained by the shard plan and needs a follow-up residency audit.",
+    "Capacity consequence: after a TP2 load the 24 GiB RX 7900 XTX rank has 1.58 GiB free, which bounds context growth and explains the tight capacity ladder observed in the 2026-09-18 TP2 artifacts."
+  ],
+  "next_actions": [
+    "Implement the rank-local bulk TP2 prefill plan (docs/QWEN38-27B-GFX1100-TP2.md, P1/P2) and re-measure this exact protocol; the prefill cell is where TP2 is currently unusable for long prompts.",
+    "Audit TP2 per-rank residency against the shard manifest: identify the ~14.5 GiB per rank that is not planned resident weight, then decide whether the full-model materialization should be released after shard binding."
+  ],
+  "artifacts": {
+    "hipengine_tp1_cell": "benchmarks/results/2026-09-19-w7900-hipengine-tp1-c1-512.json",
+    "hipengine_tp2_cell": "benchmarks/results/2026-09-19-w7900-hipengine-tp2-c1-512.json",
+    "llamacpp_raw_log": "/tmp/kendex-pi-bg/bg-84-1789749606956.log (llama-bench tp1/tp2, 3 reps)",
+    "llamacpp_memory_log": "/tmp/kendex-pi-bg/bg-86-1789750539948.log (llama-cli --verbose buffer report)"
+  }
+}
