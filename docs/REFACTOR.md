@@ -1,5 +1,32 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18)
+
+- `_prefill_native_chunk` has two routes for a chunk: a batched call through
+  `prefill_batch_native`, and a serial loop that calls `session.step()` once per
+  token. A row with `prefix_reused_tokens` takes the serial loop and never
+  reaches the batched route. Measured cost on `zbook`/`gfx1151`: **34.0 ms per
+  suffix token** (31.5-34.5 across all 16 hit turns of the prefix-cache A/B),
+  against **1.8 ms/token** for the batched full prefill it replaces. That single
+  route is why the measured A/B is net-negative (+6.4% wall overall, ShareGPT
+  +22.7%) even though reuse resolves 16 of 27 lookups.
+- Removal scope: the serial loop in `_prefill_native_chunk` and the
+  `prefix_c1_suffix_prefill_chunks` / `prefix_c1_suffix_prefill_tokens` counters
+  that only it feeds, once a reused row can take the batched route.
+- Two things must be settled before that removal, and neither is a performance
+  question. `_disable_incremental_prefill` fails closed for a reused row
+  (`RuntimeError: GGUF shared-prefix admission requires incremental prefill
+  support`) because its fallback re-prefills the whole prompt, which would write
+  into the shared prefix pages; a batched route for reused rows needs the serial
+  loop kept as the decline path instead. And `_finish_native_prefill`'s
+  `native_compact_prefill` differs by route (`False` from the serial loop,
+  `True` from the batched one), so the reused route must pass the value its
+  downstream decode expects. Verify both against the byte-exact gfx1100 prefix
+  gate (`scripts/gguf_prefix_reuse_gate.py`) and generated-ID equality against a
+  cache-off arm before promoting.
+- Keep the invariant while it lives: a reused row's prefix pages are shared with
+  another request, so no fallback may write them.
+
 ## Screening override now spans the plan layer (extended 2026-09-17)
 
 - `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
