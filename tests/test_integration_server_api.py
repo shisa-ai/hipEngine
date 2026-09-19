@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    EngineServiceClosed,
     FinishDetails,
     GenerationAdmissionRejected,
     GenerationCancellationToken,
@@ -2410,6 +2411,141 @@ def test_api_error_taxonomy_table_matches_capabilities_manifest() -> None:
         assert api_table[code]["status_code"] == item["status_code"]
         assert api_table[code]["retryable"] == item["retryable"]
         assert api_table[code]["current_emission"]
+
+
+def test_closed_engine_service_answers_with_a_typed_unavailable_error() -> None:
+    """The 2026-09-18 bodyless 500: a closed service must name itself.
+
+    The resident service closed after a fatal packed-prefill failure, and the
+    next requests hit ``EngineServiceClosed`` while the server prepared their
+    resident context. That exception escaped the endpoint and Starlette answered
+    with a plain-text ``Internal Server Error``: no ``error.code``, no message,
+    and nothing the client could tell apart from a truncation.
+    """
+
+    closed_message = (
+        "engine service is closed after a fatal execution failure "
+        "(NotImplementedError: packed paged AR prefill currently requires "
+        "context < 1024)"
+    )
+
+    class ClosedServiceFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise EngineServiceClosed(closed_message)
+
+    fake = ClosedServiceFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["type"] == "server_error"
+    assert body["error"]["message"] == closed_message
+    assert body["error"]["hipengine"]["retryable"] is True
+    assert body["error"]["hipengine"]["exception_type"] == "EngineServiceClosed"
+
+
+def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event() -> None:
+    """A service that closes after the first chunk still names itself."""
+
+    class ClosingStreamFakeLLM(FakeLLM):
+        def stream(self, prompt, sampling_params):
+            yield "partial"
+            raise EngineServiceClosed(
+                "engine service is closed after a fatal execution failure "
+                "(RuntimeError: device fault)"
+            )
+
+    fake = ClosingStreamFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with client.stream(
+        "POST",
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hi",
+            "max_tokens": 4,
+            "stream": True,
+        },
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in body.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+    errors = [event["error"] for event in events if isinstance(event.get("error"), dict)]
+    assert errors, body
+    assert errors[-1]["code"] == "engine_unavailable"
+    assert errors[-1]["hipengine"]["status_code"] == 503
+    assert errors[-1]["hipengine"]["retryable"] is True
+
+
+def test_unexpected_server_fault_answers_with_the_openai_error_shape() -> None:
+    """Any escaped fault keeps a JSON body and a code instead of a bare 500."""
+
+    class ExplodingFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise RuntimeError("resident workspace bookkeeping exploded")
+
+    fake = ExplodingFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "internal_error"
+    assert body["error"]["type"] == "server_error"
+    assert "resident workspace bookkeeping exploded" in body["error"]["message"]
+    assert body["error"]["hipengine"]["retryable"] is False
+    assert body["error"]["hipengine"]["exception_type"] == "RuntimeError"
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
