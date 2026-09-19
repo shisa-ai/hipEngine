@@ -108,7 +108,27 @@ def _merge_extension(target: dict[str, Any], update: Mapping[str, Any]) -> None:
             target[key] = value
 
 
-def route_summary(extension: Mapping[str, Any]) -> dict:
+# Keys of ``route_summary``'s output that a stored prompt row keeps. The row is
+# what a later reader (or a category rollup) sees, so acceptance belongs here
+# beside coverage: a rate without the acceptance it ran at cannot be compared
+# across arms or categories.
+ROUTE_ROW_KEYS = (
+    "effective_route",
+    "decision_reason",
+    "mtp_used",
+    "speculative_cycles",
+    "accepted_draft_tokens",
+    "rejected_draft_tokens",
+    "mtp_output_tokens",
+    "ar_output_tokens",
+    "mtp_coverage",
+    "fallback_event_counts",
+)
+
+
+def route_summary(
+    extension: Mapping[str, Any], usage: Mapping[str, Any] | None = None
+) -> dict:
     """The routing and MTP accounting a served row reports about itself.
 
     A serving rate is only comparable across arms if the row says which route
@@ -116,12 +136,21 @@ def route_summary(extension: Mapping[str, Any]) -> dict:
     harness records the same fields the ShareGPT recorder reads rather than
     inferring coverage from the arm's intent. Streaming and non-streaming
     responses carry the same accounting under slightly different keys, so both
-    channels are read.
+    channels are read. Accepted and rejected draft counts live in the usage
+    block (``completion_tokens_details``), which is a sibling of the extension,
+    so it is passed in beside it.
     """
     route = (extension.get("generation_shape") or {}).get("route_decision") or {}
     mtp = extension.get("speculative_mtp") or {}
     accounting = mtp.get("output_accounting") or {}
     token_accounting = extension.get("token_accounting") or {}
+    details = (usage or {}).get("completion_tokens_details") or {}
+    accepted = mtp.get("accepted_draft_tokens")
+    if accepted is None:
+        accepted = details.get("accepted_prediction_tokens")
+    rejected = mtp.get("rejected_draft_tokens")
+    if rejected is None:
+        rejected = details.get("rejected_prediction_tokens")
     return {
         "effective_route": (
             route.get("effective_route")
@@ -131,6 +160,8 @@ def route_summary(extension: Mapping[str, Any]) -> dict:
         "decision_reason": route.get("decision_reason") or mtp.get("decision_reason"),
         "mtp_used": bool(mtp.get("used")),
         "speculative_cycles": mtp.get("draft_cycles") or mtp.get("speculative_cycles"),
+        "accepted_draft_tokens": accepted,
+        "rejected_draft_tokens": rejected,
         "mtp_output_tokens": accounting.get("mtp_output_tokens")
         or mtp.get("mtp_output_tokens"),
         "ar_output_tokens": accounting.get("ar_output_tokens")
@@ -194,7 +225,7 @@ def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
         "finish_reason": choice.get("finish_reason"),
         "text": message.get("content") or "",
         "reasoning_chars": len(message.get("reasoning_content") or ""),
-        **route_summary(body.get("hipengine") or {}),
+        **route_summary(body.get("hipengine") or {}, body.get("usage")),
     }
 
 
@@ -276,7 +307,7 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
         "decode_tok_s": ((completion - 1) / decode_s) if decode_s else None,
         "prefill_tok_s": (usage.get("prompt_tokens") / ttft) if ttft else None,
         "text": "".join(text),
-        **route_summary(extension),
+        **route_summary(extension, usage),
     }
 
 
@@ -369,11 +400,7 @@ def measure(
         "prompt_tokens": runs[0]["prompt_tokens"],
         "completion_tokens": runs[0]["completion_tokens"],
         "identity": identity,
-        "route": {k: runs[0][k] for k in (
-            "effective_route", "decision_reason", "mtp_used", "speculative_cycles",
-            "mtp_output_tokens", "ar_output_tokens", "mtp_coverage",
-            "fallback_event_counts",
-        )},
+        "route": {k: runs[0][k] for k in ROUTE_ROW_KEYS},
         "decode_tok_s_median": statistics.median([r["decode_tok_s"] for r in runs]),
         "decode_tok_s_cv": cv([r["decode_tok_s"] for r in runs]),
         "prefill_tok_s_median": statistics.median([r["prefill_tok_s"] for r in runs]),
