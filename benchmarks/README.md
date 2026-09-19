@@ -320,9 +320,10 @@ a property of split prefill rather than of the cache, and it is pinned by
 `test_split_prefill_divergence_boundaries_are_unchanged`.
 
 The wide retained working set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`)
-stays opt-in: it pins enough pages to grow the KV pool, and growth still faults
-a session that was bound before it (`docs/REFACTOR.md`). The default retained
-budget does not grow the pool.
+stays opt-in because it is slower, not because it is unsafe: it resolves 18 of
+27 lookups against the default's 16 but costs **+9.5% wall** against the
+default's -18.6%, since the extra pinned pages push the pool into growth and
+eviction while the cumulative coding lane regresses 47%.
 [Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json);
 [off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-baseline-off.json).
 

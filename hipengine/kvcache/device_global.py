@@ -39,7 +39,12 @@ class GlobalDeviceKVPool:
         pointer_table_pointers: Mapping[str, int],
         metadata_descriptor_pointer: int,
         close_storage: Callable[[], None],
-        grow_storage: Callable[[int, int], tuple[Mapping[str, Sequence[int]], Mapping[str, int]]] | None = None,
+        grow_storage: Callable[
+            [int, int],
+            tuple[Mapping[str, Sequence[int]], Mapping[str, int]]
+            | tuple[Mapping[str, Sequence[int]], Mapping[str, int], Any],
+        ]
+        | None = None,
         before_grow: Callable[[], None] | None = None,
         max_pages: int | None = None,
         growth_chunk_pages: int | None = None,
@@ -77,6 +82,12 @@ class GlobalDeviceKVPool:
         )
         self.idle_grace_seconds = 0.0
         self._backing = backing
+        # Storage chunks in page-id order: (start_page, page_count, backing).
+        # Growth appends a chunk with its own device buffers, and consumers
+        # address a chunk from its own base, so an allocation must not span two.
+        self._chunks: list[tuple[int, int, Any]] = [
+            (0, int(self.global_pool.page_capacity), backing)
+        ]
         self._close_storage = close_storage
         self._grow_storage = grow_storage
         self._before_grow = before_grow
@@ -272,10 +283,9 @@ class GlobalDeviceKVPool:
             pressure_released = False
             while True:
                 try:
-                    lease = self.global_pool.allocate(
+                    lease = self._allocate_within_one_chunk(
                         lease_id,
                         private_pages=count,
-                        growth_credit_pages=0,
                         require_contiguous=bool(require_contiguous),
                     )
                     break
@@ -312,14 +322,18 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            self._ensure_free_pages(private, now_seconds=now_seconds)
+            # Growth appends a NEW chunk, and a shared admission has to place its
+            # suffix in the chunk that already holds the prefix, so growing can
+            # never satisfy this path - it would only enlarge the pool for good.
+            # Eviction can, because it frees pages inside existing chunks.
+            if self.global_pool.free_pages < private and callable(self._on_pressure):
+                self._on_pressure(private - self.global_pool.free_pages)
             try:
-                lease = self.global_pool.allocate(
+                lease = self._allocate_within_one_chunk(
                     self._lease_id(rid),
                     private_pages=private,
-                    growth_credit_pages=0,
-                    shared_page_ids=shared,
                     require_contiguous=bool(require_contiguous),
+                    shared_page_ids=shared,
                 )
             except MemoryError:
                 self._allocation_failures += 1
@@ -462,9 +476,27 @@ class GlobalDeviceKVPool:
             try:
                 if callable(self._before_grow):
                     self._before_grow()
-                appended = grow_storage(count, int(self.global_pool.page_capacity))
-                plane_pointers, pointer_tables = appended
+                chunk_start = int(self.global_pool.page_capacity)
+                appended = grow_storage(count, chunk_start)
+                # A provider may return its new chunk's backing as a third
+                # element; without it the pool cannot confine allocations to the
+                # appended chunk and growth stays unusable for consumers that
+                # address one chunk at a time.
+                if len(appended) == 3:
+                    plane_pointers, pointer_tables, chunk_backing = appended
+                else:
+                    plane_pointers, pointer_tables = appended
+                    chunk_backing = None
                 self.global_pool.append_pages(plane_pointers, pointer_tables)
+                added = int(self.global_pool.page_capacity) - chunk_start
+                if added > 0:
+                    self._chunks.append(
+                        (
+                            chunk_start,
+                            added,
+                            self._backing if chunk_backing is None else chunk_backing,
+                        )
+                    )
             except MemoryError:
                 self._allocation_failures += 1
                 raise
@@ -497,14 +529,81 @@ class GlobalDeviceKVPool:
     def _lease_id(request_id: int) -> str:
         return f"request:{int(request_id)}"
 
+    def _allocate_within_one_chunk(
+        self,
+        lease_id: str,
+        *,
+        private_pages: int,
+        require_contiguous: bool,
+        shared_page_ids: tuple[int, ...] = (),
+    ) -> Any:
+        """Lease pages from a single storage chunk.
+
+        Every consumer of this pool addresses KV as ``chunk_base + page *
+        page_stride`` with the page id taken straight from the block table, so an
+        allocation whose pages straddle two appended chunks indexes past the end
+        of the first one. Before this confinement a grown pool produced exactly
+        that: a GPU memory fault inside the paged-KV write kernel.
+
+        With one chunk this is the previous behaviour. With several, the chunk
+        holding any shared pages is required; otherwise chunks are tried in
+        page-id order and the last failure is reported, so a caller still sees
+        ``MemoryError`` (which admission turns into a clean rejection) or
+        ``DeviceKVContiguityError`` rather than an unbindable placement.
+        """
+
+        if len(self._chunks) == 1:
+            return self.global_pool.allocate(
+                lease_id,
+                private_pages=int(private_pages),
+                growth_credit_pages=0,
+                shared_page_ids=shared_page_ids,
+                require_contiguous=bool(require_contiguous),
+            )
+        if shared_page_ids:
+            owning = self._chunk_for_page(int(shared_page_ids[0]))
+            if any(
+                self._chunk_for_page(int(page_id)) is not owning
+                for page_id in shared_page_ids
+            ):
+                raise MemoryError("shared KV prefix pages span two storage chunks")
+            candidates = [owning]
+        else:
+            candidates = list(self._chunks)
+        failure: BaseException | None = None
+        for start, page_count, _chunk_backing in candidates:
+            try:
+                return self.global_pool.allocate(
+                    lease_id,
+                    private_pages=int(private_pages),
+                    growth_credit_pages=0,
+                    shared_page_ids=shared_page_ids,
+                    require_contiguous=bool(require_contiguous),
+                    within_page_range=(int(start), int(start) + int(page_count)),
+                )
+            except (MemoryError, DeviceKVContiguityError) as exc:
+                failure = exc
+        assert failure is not None
+        raise failure
+
+    def _chunk_for_page(self, page_id: int) -> tuple[int, int, Any]:
+        for chunk in self._chunks:
+            start, page_count, _ = chunk
+            if start <= int(page_id) < start + int(page_count):
+                return chunk
+        raise ValueError(f"KV page {int(page_id)} is outside every storage chunk")
+
     def _allocation(self, request_id: int, lease: Any) -> DeviceKVPoolAllocation:
         block_ids = tuple(int(page_id) for page_id in lease.logical_page_ids)
+        # Confinement guarantees one chunk owns every page, so the first page
+        # names the chunk whose buffers the consumer must bind.
+        chunk_start, _chunk_pages, chunk_backing = self._chunk_for_page(block_ids[0])
         return DeviceKVPoolAllocation(
             request_id=int(request_id),
             block_ids=block_ids,
             pointers=tuple(self.pointer_for(page_id) for page_id in block_ids),
-            chunk_start_block_id=0,
-            backing=self._backing,
+            chunk_start_block_id=int(chunk_start),
+            backing=chunk_backing,
             reused_block_ids=tuple(int(page_id) for page_id in lease.shared_page_ids),
             allocated_block_ids=tuple(int(page_id) for page_id in lease.private_page_ids),
             # Growth appends backing chunks while keeping page ids stable, so
