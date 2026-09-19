@@ -103,6 +103,7 @@ class GlobalDeviceKVPool:
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._workspace_leases: dict[str, tuple[int, ...]] = {}
+        self._private_workspace_reservations: dict[object, int] = {}
         self._pin_counts: dict[int, int] = {}
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
@@ -130,6 +131,41 @@ class GlobalDeviceKVPool:
     @property
     def budget_bytes(self) -> int | None:
         return None if self._max_pages is None else self._max_pages * self.page_bytes
+
+    @property
+    def private_workspace_bytes(self) -> int:
+        with self._lock:
+            return sum(self._private_workspace_reservations.values())
+
+    @property
+    def accounted_bytes(self) -> int:
+        """Allocated arena plus reserved private KV payload, including idle pages."""
+        with self._lock:
+            return self.current_pages * self.page_bytes + self.private_workspace_bytes
+
+    def reserve_private_workspace(self, nbytes: int) -> object:
+        """Charge private KV before allocation; retain the charge until buffers free."""
+        count = int(nbytes)
+        if count <= 0:
+            raise ValueError("private workspace bytes must be positive")
+        with self._lock:
+            self._require_open()
+            self._check_byte_budget(count)
+            token = object()
+            self._private_workspace_reservations[token] = count
+            return token
+
+    def release_private_workspace(self, token: object) -> None:
+        with self._lock:
+            del self._private_workspace_reservations[token]
+
+    def _check_byte_budget(self, additional_bytes: int) -> None:
+        budget = self.budget_bytes
+        if budget is not None and self.accounted_bytes + additional_bytes > budget:
+            raise MemoryError(
+                "arena and private workspace KV exceed the pool budget: "
+                f"{self.accounted_bytes} + {additional_bytes} > {budget} bytes"
+            )
 
     @property
     def allocations(self) -> dict[int, DeviceKVPoolAllocation]:
@@ -361,7 +397,10 @@ class GlobalDeviceKVPool:
             self._growth_chunk_pages, missing
         )
         if self._max_pages is not None:
-            target = min(target, self._max_pages)
+            target = min(
+                target,
+                (self.budget_bytes - self.private_workspace_bytes) // self.page_bytes,
+            )
         if target <= self.global_pool.page_capacity:
             self._allocation_failures += 1
             raise MemoryError(
@@ -474,6 +513,7 @@ class GlobalDeviceKVPool:
         with self._lock:
             self._require_open()
             try:
+                self._check_byte_budget(count * self.page_bytes)
                 if callable(self._before_grow):
                     self._before_grow()
                 chunk_start = int(self.global_pool.page_capacity)
@@ -512,6 +552,8 @@ class GlobalDeviceKVPool:
                 raise RuntimeError(
                     "cannot close global device KV pool with live request allocations"
                 )
+            if self._private_workspace_reservations:
+                raise RuntimeError("cannot close global device KV pool with private workspace")
             snapshot = self.global_pool.snapshot()
             if int(snapshot["free_pages"]) != int(snapshot["page_capacity"]):
                 raise RuntimeError(

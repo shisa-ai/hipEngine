@@ -339,3 +339,48 @@ def test_global_device_pool_shared_admission_rejects_a_gapped_run_when_required(
     pool.release(1)
     pool.release_blocks(source.block_ids)
     pool.close()
+
+
+def test_private_workspace_shares_budget_with_arena_growth() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 5
+    grown = []
+
+    def grow(pages, start):
+        grown.append(pages)
+        return ({role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+                 for role in ("layer0.key", "layer0.value")},
+                {"layer0.key": 0xE000, "layer0.value": 0xF000})
+
+    pool._grow_storage = grow
+    token = pool.reserve_private_workspace(2 * pool.page_bytes)
+    assert pool.private_workspace_bytes == 256
+    assert pool.accounted_bytes == 512
+    with pytest.raises(MemoryError, match="budget"):
+        pool.grow(2)
+    assert grown == []
+    pool._growth_chunk_pages = 8
+    pool.allocate(1, 2)
+    pool.allocate(2, 1)  # automatic growth clamps to the remaining shared budget
+    assert grown == [1]
+    assert pool.accounted_bytes == pool.budget_bytes
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(1)
+    pool.release(1)
+    pool.release(2)
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+    pool.release_private_workspace(token)
+    assert pool.private_workspace_bytes == 0
+    pool.grow(2)
+    pool.close()
+
+
+def test_private_workspace_counts_allocated_arena_not_only_live_pages() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 2
+    assert pool.stats.free_pages == 2
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(128)
+    assert pool.private_workspace_bytes == 0
+    pool.close()

@@ -802,6 +802,8 @@ def _fake_kv_pool(layout, pages):
     )
     return SimpleNamespace(
         workspace_pages=lambda key: tuple(pages),
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
         backing=backing,
     )
 
@@ -1200,3 +1202,77 @@ def test_bound_blocks_validate_against_pool_capacity_after_growth() -> None:
         validate((0, 128), start_block_id=0, page_capacity=128)
     with pytest.raises(ValueError, match="outside its pool page range"):
         validate((1,), start_block_id=4, page_capacity=128)
+
+
+@pytest.mark.parametrize("fail_at", [*range(1, 17), None, "budget"])
+def test_private_workspace_budget_and_buffer_lifecycle(monkeypatch, fail_at):
+    from dataclasses import replace
+
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    _install_fake_device(monkeypatch)
+    runner = _allocator_fake_runner()
+
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(runner.weights.config, layout)
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes, backend_fingerprint="test", generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300}, metadata_descriptor_pointer=400,
+        close_storage=lambda: None, max_pages=2 if fail_at == "budget" else 20,
+    )
+    pool.lease_workspace("qwen35_gguf_packed_execution", 2)
+    live = set()
+    real_malloc = gguf_runner.malloc
+    calls = 0
+
+    def malloc(nbytes, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == fail_at:
+            raise MemoryError("injected allocation failure")
+        buffer = real_malloc(nbytes, **kwargs)
+        live.add(buffer.ptr)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", malloc)
+    monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: live.remove(buffer.ptr))
+
+    def allocate():
+        return gguf_runner._GGUFPackedTargetState.allocate(
+            runner, slot_count=1, max_sequence_length=1024,
+            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+        )
+
+    if fail_at is None:
+        state = allocate()
+        assert state.kv_backing_kind == "private"
+        assert pool.private_workspace_bytes == 4 * page_bytes
+        assert pool.accounted_bytes == 6 * page_bytes
+        owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+        owner._packed_verify_state = state
+        owner._packed_verify_scratch = None
+        owner._free_packed_verify_workspace(runtime=SimpleNamespace())
+        owner._free_packed_verify_workspace(runtime=SimpleNamespace())
+    else:
+        with pytest.raises(MemoryError, match="budget" if fail_at == "budget" else "injected"):
+            allocate()
+        if fail_at == "budget":
+            assert calls == 4  # recurrent state only; no private KV was allocated
+    assert live == set()
+    assert pool.private_workspace_bytes == 0
+    pool.release_workspace("qwen35_gguf_packed_execution")
+    pool.close()
+
+
+def test_explicit_pool_budget_rejects_initial_overcommit_without_hip_query():
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.runner = _allocator_fake_runner()
+    session.scratch = SimpleNamespace()
+    session.runtime = SimpleNamespace()
+    session._device_kv_layout = _int8_kv_layout()
+    session.kv_pool_memory_budget_mib = 1
+    with pytest.raises(MemoryError, match="budget"):
+        session.create_global_device_kv_pool(page_capacity=20, generation=1)
