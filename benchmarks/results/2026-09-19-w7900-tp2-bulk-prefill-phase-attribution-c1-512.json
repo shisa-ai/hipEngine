@@ -1,0 +1,98 @@
+{
+ "schema": 1,
+ "kind": "tp2_prefill_phase_attribution",
+ "generated_at": "2026-09-19T09:49:26Z",
+ "host": "epyc",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "devices": [
+  0,
+  1
+ ],
+ "fractions": null,
+ "prompt_tokens": 512,
+ "repeats": 3,
+ "layer_count": 64,
+ "wall_ms": 540.4272377490997,
+ "wall_ms_samples": [
+  540.427,
+  542.049,
+  541.553
+ ],
+ "prefill_tok_per_s": 947.399,
+ "exchange_host_wall_ms_per_prefill": 770.061,
+ "exchange_host_samples": 320,
+ "mlp_parts": {
+  "0": {
+   "mlp_chain": 185.4197,
+   "mlp_exchange": 76.3382,
+   "mlp_cast": 47.8019,
+   "mlp_residual": 2.0998
+  },
+  "1": {
+   "mlp_chain": 174.1156,
+   "mlp_exchange": 109.6142,
+   "mlp_cast": 47.772,
+   "mlp_residual": 1.7782
+  }
+ },
+ "phases": {
+  "0": {
+   "attention": 224.8544,
+   "norm_residual": 2.7667,
+   "mlp": 311.9631,
+   "mlp_chain": 185.4197,
+   "mlp_exchange": 76.3382,
+   "mlp_cast": 47.8019,
+   "mlp_residual": 2.0998,
+   "tail": 1.124
+  },
+  "1": {
+   "attention": 203.8353,
+   "norm_residual": 2.2245,
+   "mlp": 333.5563,
+   "mlp_chain": 174.1156,
+   "mlp_exchange": 109.6142,
+   "mlp_cast": 47.772,
+   "mlp_residual": 1.7782,
+   "tail": 1.1255
+  }
+ },
+ "totals": {
+  "0": {
+   "phase_sum_ms": 540.7082,
+   "unaccounted_ms": -0.2809,
+   "share_of_wall": 1.0005
+  },
+  "1": {
+   "phase_sum_ms": 540.7416,
+   "unaccounted_ms": -0.3143,
+   "share_of_wall": 1.0006
+  }
+ },
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+ ],
+ "command": "python3 scripts/tp2_prefill_phase_attribution.py --prompt-tokens 512 --repeats 3",
+ "finding": {
+  "summary": "Phase attribution of the bulk prefill: the sharded MLP exchange plus its f32->bf16 cast costs 1.94 ms/layer, which consumes 67% of the 2.90 ms/layer the MLP sharding saves. Replicated attention/GDN is 42% of the wall and the shard chain 34%.",
+  "per_layer_ms": {
+   "attention": 3.51,
+   "norm_residual": 0.043,
+   "mlp_chain": 2.9,
+   "mlp_exchange": 1.19,
+   "mlp_cast": 0.75,
+   "mlp_residual": 0.033
+  },
+  "model_check": "attention + norm + chain + exch + cast, x64 layers = 537 ms against a measured 540 ms wall; the same model for the single-card route (full 2x chain, no exchange) gives 599 ms against its measured 574.8 ms",
+  "sharding_economics": "halving the MLP saves 2.90 ms/layer; exchange+cast costs 1.94 ms/layer; net 0.96 ms/layer, so TP2 leads TP1 by only 6% measured",
+  "levers": {
+   "exchange_and_cast": "23% of the wall; the cost is PCIe traffic, 10.5 MB D2H plus a 10.5 MB zero-copy read of the f32 payload from pinned host memory for the cast",
+   "replicated_attention_gdn": "42% of the wall, halving it would save 21%",
+   "shard_chain": "34% of the wall"
+  },
+  "target": "a batched device-side reduction (the decode route already has a rows=1 peer-spin device exchange with bit-identical gates) removes the host sum, the f32 PCIe read-back and the cast kernel"
+ }
+}
