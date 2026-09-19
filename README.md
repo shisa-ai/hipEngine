@@ -96,8 +96,8 @@ The benchmark summary below is synchronized from the [benchmark report](benchmar
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Measured tokens/s on each named host. **Prompt processing** measures input;
 **text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Dashes indicate unmeasured results; context limits come
-from separate capacity tests.
+qualified scopes. Dashes are unmeasured; context limits come from capacity
+tests.
 
 ### Performance
 
@@ -110,9 +110,8 @@ from separate capacity tests.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled.
-Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
-**1.63x versus its matched 24.36 tok/s AR**, not the INT8 column.
+Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
+**1.63x** its matched 24.36 tok/s AR, not the INT8 column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
@@ -131,13 +130,11 @@ not the 512/128 generation column.
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
-host (8.6x the official torch reference there) and **0.062 s** on a Framework
-Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
-host power/thermal headroom, not a code change.
+host (8.6x the official torch reference) and **0.062 s** on a Framework Desktop
+host — the same GPU on two machines, so the gap is thermal headroom.
 
-**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x** prefill,
-**1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs torch 2.81%; **RTF 0.35**
-(decode 21.4 tok/s).
+**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x**
+prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35**.
 [Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-e2e-rtf.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
@@ -159,15 +156,31 @@ In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 rout
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-The full 262,144-token context needs a predicted 24.8 GiB and does not fit.
-The direct-INT8 route shown here failed 9 of 11 quality prompts and is not a
-default. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+Direct-INT8 failed 9 of 11 quality prompts and is not a default.
+[Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+
+### Prefix caching
+
+Multi-turn conversations resend the whole transcript, so hipEngine reuses the
+KV pages and hybrid state of any 256-token-aligned prefix a later request
+repeats. On by default; `--prefix-cache off` disables it. Reuse returns the
+same tokens as full recomputation up to 2,048 tokens of context; above that
+attention accumulates in a different order, so a cached turn can differ by one
+BF16 unit in the last place and occasionally pick a different token.
+Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
+three turns, reusing 42,496 of 87,582 prompt tokens:
+
+| Lane | Cache off | Cache on | Wall time |
+| --- | ---: | ---: | ---: |
+| Coding, transcript resent | 10.09 tok/s | **16.49** tok/s | **-38.8%** |
+| Coding, transcript rebuilt | 10.13 tok/s | **12.67** tok/s | **-20.0%** |
+| Chat (ShareGPT) | 29.50 tok/s | 29.15 tok/s | +1.2% |
+| All lanes | 16.93 tok/s | **20.81** tok/s | **-18.6%** |
 
 ### Serving several requests at once
 
 Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
-on the W7900, measured September 4, 2026 under one server protocol.
-The peers use F16 KV where hipEngine uses BF16.
+on the W7900, September 4, 2026. Peers use F16 KV where hipEngine uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -175,18 +188,6 @@ The peers use F16 KV where hipEngine uses BF16.
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 
-Direct engine measurements, September 6, 2026, same card and model,
-512-token prompts and 128 outputs per request. They precede the shared-pool
-changes; memory figures are not current serving estimates:
-
-| Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text generation (total) | 29.6 | 54.0 | 75.2 | 92.3 | 105.9 | 117.6 | 123.9 | **131.3** |
-| Prompt processing (total) | **678.8** | 368.9 | 362.6 | 380.0 | 378.3 | 403.6 | 385.3 | 376.6 |
-| Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
-
-Eight requests need about 25 GiB (32 GB or larger card); 24 GB shapes
-are not qualified for concurrency yet.
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 202.038 at four). Where speculative
 decoding runs automatically in production it is scoped to a qualified shape:

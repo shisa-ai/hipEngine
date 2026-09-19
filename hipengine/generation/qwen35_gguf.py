@@ -78,6 +78,7 @@ from hipengine.models.kv_capabilities import (
     model_artifact_identity,
     resolve_kv_capability,
 )
+from hipengine.kvcache.pool import DeviceKVContiguityError
 from hipengine.kvcache import (
     FixedPagedKVPolicy,
     RadixCache,
@@ -97,19 +98,20 @@ from hipengine.speculative.accounting import (
 )
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
+    PACKED_AR_PREFILL_CONTEXT_LIMIT,
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
     _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
-    _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_gapped_slot_local_fast_route_available,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
     _qualified_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
     estimate_qwen35_gguf_kv_capacity,
-    packed_verify_lease_slot_ceiling,
+    packed_verify_workspace_lease_pages,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -337,6 +339,149 @@ _GGUF_AR_NATIVE_MAX_SLOTS = 8
 # multiplier: the shared pool grows against its independent device budget.
 # Pass --max-active-requests to change how many requests may be in flight.
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+
+# A retained prefix snapshot holds one full hybrid Conv/GDN state clone (~64 MiB
+# for a 35B-A3B checkpoint) plus its KV pages. Retained boundaries are the
+# cross-request working set: a conversation's next turn can only match a boundary
+# that survived every intervening request's captures. The default count budget is
+# the pre-fix effective value, max(1, capacity); a wider working set is opt-in
+# because enabling it today is a measured regression (docs/REFACTOR.md). The
+# 14-lane serving protocol needs 16 retained entries — one conversation's
+# boundary must survive 13 intervening captures — and the byte budget bounds the
+# state the wide set pins.
+_PREFIX_RETAINED_STATE_BYTES_LIMIT = 1 << 30
+_PREFIX_RETAINED_SNAPSHOTS_WIDE = 16
+_GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
+_GGUF_PREFIX_RETAINED_STATE_BYTES_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES"
+
+
+def _gguf_prefix_retained_snapshot_limit(capacity: int) -> int:
+    """Retained-snapshot count budget: pre-fix effective default, opt-in wider."""
+
+    default = max(1, int(capacity))
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, default, minimum=default
+    )
+
+
+def _gguf_prefix_retained_state_bytes_limit() -> int:
+    """State-byte ceiling for the retained snapshot working set."""
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV,
+        _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+        minimum=1 << 20,
+    )
+
+
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV = "HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX"
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT = 512
+
+
+def _gguf_prefix_gapped_suffix_max_tokens() -> int:
+    """Largest suffix worth prefilling through a gapped hit on the slow route.
+
+    Placement decides the route. A contiguous shared allocation keeps the
+    slot-local prefill; a gapped one used to drop to the packed paged route,
+    which was far slower per token and got worse as context grows (measured
+    on Qwen3.5-0.8B against the full prefill the hit replaces: 2048+768 cost
+    1.07x the miss, 4096+768 1.22x, while 2048+512 cost 0.63x and 4096+512
+    0.87x). Past that the cheaper answer was to decline the hit and let the
+    request take the fast private prefill.
+
+    The gapped gather route changed the cost side: a gapped BF16 slot whose
+    head-major KV buffers are admitted gathers into the same dense buffers
+    the contiguous route uses and pays the same AOTriton attention cost, so
+    the guard no longer applies to it (any suffix length wins). The budget
+    below only binds when that fast gapped route is unavailable for the
+    lease's backend/config - the gather kill-switch, a backend without
+    head-major KV, or a context beyond the validated head-major allocation
+    class - where the old paged-route costs still hold.
+
+    A contiguous hit is never subject to this: it uses the same route the miss
+    would have used, so it wins at any suffix length.
+    """
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV,
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT,
+        minimum=0,
+    )
+
+
+def _gguf_prefix_gapped_fast_route_available(lease: Any, context_tokens: int) -> bool:
+    """Whether a gapped hit on this lease gathers onto the fast slot-local route."""
+
+    session = getattr(lease, "session", None)
+    runner = getattr(session, "runner", None)
+    if runner is None:
+        return False
+    return _gguf_gapped_slot_local_fast_route_available(
+        backend=str(getattr(runner, "backend", "")),
+        context_tokens=int(context_tokens),
+        kv_width=int(getattr(runner, "kv_width", 0)),
+    )
+
+
+_GGUF_PREFIX_BATCHED_SUFFIX_ENV = "HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX"
+
+
+def _gguf_prefix_batched_suffix_enabled() -> bool:
+    """Batched reused-suffix (\"extend\") prefill; the serial loop is the fallback.
+
+    Default on: the packed paged prefill route accepts restored mid-sequence
+    state at any context length. ``HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0``
+    restores the serial ``session.step()`` suffix loop for rollback/bisection.
+    """
+
+    return os.environ.get(_GGUF_PREFIX_BATCHED_SUFFIX_ENV, "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _gguf_prefix_batched_suffix_chunk_eligible(chunk: tuple[int, ...]) -> bool:
+    """Batch a reused suffix only when it is at least two rows wide.
+
+    A one-row prefill does not take the bulk schedule: MoE has no rows==1 bulk
+    path at all (``_run_post_attention_moe_rows`` refuses it) and the dense
+    projections fall to their registered GEMV decode variants. Running a single
+    suffix token through the batched route would therefore give a hit whose
+    arithmetic differs from the wider chunk the same token sits in on a miss,
+    for no speedup worth having - one token costs one step either way. The
+    serial route handles it, which is also what this shape did before the
+    batched route existed.
+    """
+
+    return len(chunk) >= 2
+
+
+def _gguf_prefix_suffix_segments(
+    session_position: int,
+    prompt_length: int,
+    chunk: tuple[int, ...],
+) -> tuple[tuple[int, ...], ...]:
+    """Split one reused-suffix chunk at the deepest prompt-aligned boundary.
+
+    A boundary snapshot is only capturable while the session sits exactly on
+    it, so a batched suffix prefill that would cross the deepest 256-aligned
+    prompt boundary in one call runs as two batched segments with the capture
+    in between.
+    """
+
+    boundary = (int(prompt_length) // 256) * 256
+    start = int(session_position)
+    end = start + len(chunk)
+    if start < boundary < end:
+        cut = boundary - start
+        # A one-row segment would leave the bulk prefill schedule (see the
+        # single-token-suffix decline in the admission path), so a split that
+        # would strand a single token is not worth the mid-prefill snapshot.
+        if cut >= 1 and len(chunk) - cut >= 2:
+            return (chunk[:cut], chunk[cut:])
+    return (chunk,)
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
@@ -5936,13 +6081,31 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_cache: RadixCache | None = None
         self._prefix_state_snapshots: dict[tuple[int, ...], _GGUFPrefixSnapshotEntry] = {}
         self._prefix_snapshot_limit = max(1, int(capacity))
+        # Retained snapshots are the durable, cross-request working set; transient
+        # ones are the current request's captures. They are trimmed separately so
+        # a request's own capture can never evict the boundary that served it.
+        # The retained count defaults to the pre-fix effective budget; the wider
+        # working set is opt-in (docs/REFACTOR.md records the regression).
+        self._prefix_retained_limit = _gguf_prefix_retained_snapshot_limit(capacity)
+        self._prefix_retained_state_bytes_limit = (
+            _gguf_prefix_retained_state_bytes_limit()
+        )
+        self._prefix_retained_evictions_by_reason: dict[str, int] = {}
+        self._prefix_snapshot_promotions = 0
         self._prefix_snapshot_hits = 0
         self._prefix_snapshot_evictions = 0
+        self._prefix_snapshot_captures = 0
+        self._prefix_snapshot_capture_bytes = 0
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
+        self._prefix_contiguous_admissions = 0
+        self._prefix_gapped_admissions = 0
         self._prefix_admission_fallbacks = 0
+        self._prefix_fallback_reasons: dict[str, int] = {}
         self._prefix_reused_tokens = 0
         self._prefix_state_clone_bytes = 0
+        self._prefix_phase_ms: dict[str, float] = {}
+        self._prefix_phase_calls: dict[str, int] = {}
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
         self._packed_workspace_release_events = 0
@@ -6381,7 +6544,6 @@ class Qwen35GGUFResidentModelRunner:
             "kv_pool_memory_budget_mib",
             getattr(config, "kv_pool_memory_budget_mib", None),
         )
-        max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None
@@ -6399,37 +6561,37 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the capacity-
-            # honest union-geometry ceiling (serving-capacity slots x
-            # max(1024, request context) tokens). The serving loop cannot
-            # open more resident slots than ``self.capacity``, so the lease
-            # follows it instead of the historical 8-slot floor; admission
-            # accounting still sees every pinned page and the workspace
-            # never grows.
-            workspace_pages_per_slot = max(
-                max_pages_per_request,
-                _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
-            )
-            # Workspace is an execution scratch budget, not one full-context
-            # KV reservation per admitted request.  Multi-row execution grows
-            # or falls back to request-owned storage when this shared floor is
-            # insufficient.
+            # Eager packed-execution workspace lease. This is an execution
+            # scratch budget, not a full-context KV reservation per admitted
+            # request: multi-row execution grows or falls back to
+            # request-owned storage when this shared floor is insufficient.
             #
-            # The slot term must match the union geometry the allocation uses
-            # (`packed_verify_lease_slot_ceiling`): the workspace unions the
-            # realized layout slots with the serving capacity, so a one-slot
-            # lease is short as soon as the loop packs a verify group. At an
-            # 8192-token session that was 32 leased pages against a 4-slot x
-            # 9-page workspace (36), and at 1024 it was 4 against 16 - both
-            # failed closed at prefill time instead of serving.
-            workspace_slots = packed_verify_lease_slot_ceiling(
-                getattr(
-                    getattr(self, "_resident_model_runner", None),
-                    "max_batch_size",
-                    None,
-                )
+            # Both terms come from `packed_verify_workspace_lease_pages`, the
+            # shared twin of `_packed_verify_union_geometry`, so the lease and
+            # the allocation's demand cannot be written differently again.
+            # That drift is what this fixes (2026-09-19):
+            #   * The capacity argument read `self._resident_model_runner`, a
+            #     field of Qwen35GGUFBringupGenerator that never exists on this
+            #     runner. The getattr always yielded None, so the ceiling
+            #     silently fell back to the historical 8-slot floor and every
+            #     server over-pinned the pages it could actually touch. The two
+            #     configure_engine_loop_leases_* tests had been RED on this
+            #     since the capacity term was introduced.
+            #   * The per-slot term was `max(max_pages_per_request, 4)`, equal
+            #     to the demand side's `ceil(max(max_positions, 1024)/256)`
+            #     only by coincidence of how scratch.max_positions rounds.
+            #
+            # `self.capacity` is the right cap: it is exactly what this runner
+            # passes as `max_batch_size` when it builds the packed batch owner,
+            # so the demand side's ceiling resolves to the identical value.
+            # A caller that packs MORE slots than capacity (an MTP verify group
+            # at C1) is a legitimate geometry no pool-creation-time lease can
+            # cover; `_GGUFPackedTargetState.allocate` degrades those to a
+            # private KV chunk instead of failing closed.
+            workspace_pages = packed_verify_workspace_lease_pages(
+                int(self.capacity),
+                int(scratch.max_positions),
             )
-            workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache
             # COW scatter), packed batch decode above one resident slot, and
@@ -6686,24 +6848,70 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
             )
         pages = (positions + 255) // 256
+        start = time.perf_counter()
         prefix_source = self._prefix_source_for(row)
+        self._prefix_phase_add("admission_lookup", start)
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
+            # Placement decides which prefill route the hit gets, and the two
+            # are not close. A gapped block table has no contiguous base row, so
+            # `prefill_batch_native` drops to the packed paged route and imports
+            # the session's history into the packed planes; a contiguous run
+            # keeps the slot-local AOTriton route. Measured on Qwen3.5-0.8B, the
+            # paged route does the same attention work about 2.5x slower, which
+            # is what pushes a hit's break-even down to a suffix of roughly 12%
+            # of the prompt.
+            #
+            # So ask for contiguity first and accept a gapped placement rather
+            # than refusing: a slower hit still beats re-prefilling the whole
+            # prompt. Requiring contiguity outright (the earlier policy) turned
+            # fragmented placements into full-prefill misses, and never asking
+            # (the policy this replaces) put every hit on the slow route.
+            start = time.perf_counter()
+            allocation = None
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
                     prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
+                    require_contiguous=True,
                 )
-            except MemoryError:
-                self._prefix_admission_fallbacks += 1
-                row.prefix_admission_fallback = True
-                row.prefix_fallback_reason = "shared_admission_capacity"
-            else:
+                self._prefix_contiguous_admissions += 1
+            except (DeviceKVContiguityError, MemoryError):
+                suffix_tokens = len(row.prompt_ids) - len(matched_tokens)
+                if (
+                    suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens()
+                    and not _gguf_prefix_gapped_fast_route_available(lease, positions)
+                ):
+                    # Only a gapped placement is available and the suffix is
+                    # long enough that the slow paged route costs more than
+                    # the full prefill it would replace. The fast gapped
+                    # gather route is unavailable for this lease, so declining
+                    # the hit is still the cheaper answer.
+                    self._note_prefix_admission_fallback(
+                        row, "gapped_suffix_exceeds_paged_budget"
+                    )
+                else:
+                    try:
+                        allocation = pool.admit_with_shared_prefix(
+                            row.request_id,
+                            prefix_source.block_ids,
+                            suffix_pages=pages - prefix_pages,
+                            now_seconds=time.monotonic(),
+                            require_contiguous=False,
+                        )
+                        self._prefix_gapped_admissions += 1
+                    except MemoryError:
+                        self._note_prefix_admission_fallback(
+                            row, "shared_admission_capacity"
+                        )
+            if allocation is not None:
+                self._prefix_phase_add("admission_pool", start)
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
+                    restore_start = time.perf_counter()
                     if prefix_source.source_row is not None:
                         source_row = prefix_source.source_row
                         assert source_row.lease is not None
@@ -6719,6 +6927,7 @@ class Qwen35GGUFResidentModelRunner:
                                 prefix_source.snapshot,
                             )
                         )
+                    self._prefix_phase_add("admission_restore_state", restore_start)
                 except Exception:
                     if getattr(lease.session, "device_kv_allocation", None) is not None or getattr(
                         lease.session, "allocation", None
@@ -6754,15 +6963,21 @@ class Qwen35GGUFResidentModelRunner:
                 self._prefix_usable_hits += 1
                 self._prefix_reused_tokens += len(matched_tokens)
                 self._prefix_state_clone_bytes += cloned_bytes
+                refresh_start = time.perf_counter()
                 self._refresh_prefix_cache(row)
+                self._prefix_phase_add("admission_refresh", refresh_start)
                 self._sample_kv_hip_memory()
                 return
 
         try:
+            start = time.perf_counter()
             allocation = pool.allocate(
                 row.request_id,
                 pages,
                 now_seconds=time.monotonic(),
+                require_contiguous=(
+                    len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
+                ),
             )
         except MemoryError as exc:
             stats = pool.stats
@@ -6783,6 +6998,7 @@ class Qwen35GGUFResidentModelRunner:
         except Exception:
             pool.release(row.request_id, now_seconds=time.monotonic())
             raise
+        self._prefix_phase_add("admission_pool", start)
         if not self._available or self._available[-1] is not lease:
             lease.session.invalidate_device_kv_graphs()
             lease.session.unbind_device_kv_allocation()
@@ -6804,35 +7020,56 @@ class Qwen35GGUFResidentModelRunner:
             and plan.mode is SamplingMode.PROCESSED_ARGMAX
         )
 
+    def _prefix_phase_add(self, name: str, start: float) -> None:
+        """Accumulate one named prefix-cache phase for serving diagnostics.
+
+        The serving path pays for prefix reuse in several distinct places
+        (admission lookup, trie maintenance, snapshot capture, state restore,
+        suffix prefill). Wall-clock per phase is the only way to rank them,
+        because the device work is asynchronous and the host work is not.
+        """
+
+        phases = self._prefix_phase_ms
+        phases[name] = round(float(phases.get(name, 0.0)) + _timing_ms_since(start), 3)
+        calls = self._prefix_phase_calls
+        calls[name] = int(calls.get(name, 0)) + 1
+
     def _prefix_source_for(
         self,
         row: _GGUFResidentLoopRow,
     ) -> _GGUFPrefixReuseSource | None:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
-            row.prefix_fallback_reason = "cache_off"
+            self._note_prefix_fallback(row, "cache_off")
             return None
         if not self._prefix_reuse_supported(row):
-            row.prefix_fallback_reason = "sampling_unsupported"
+            self._note_prefix_fallback(row, "sampling_unsupported")
             return None
         if len(row.prompt_ids) <= 256:
-            row.prefix_fallback_reason = "prompt_too_short"
+            self._note_prefix_fallback(row, "prompt_too_short")
             return None
         row.prefix_eligible = True
+        start = time.perf_counter()
         self._flush_all_packed_owners()
+        self._prefix_phase_add("lookup_flush_packed", start)
+        start = time.perf_counter()
         for candidate in tuple(self._rows.values()):
             if candidate.request_id != row.request_id:
                 self._refresh_prefix_cache(candidate)
+        self._prefix_phase_add("lookup_refresh_others", start)
         row.prefix_lookup = True
+        start = time.perf_counter()
         match = cache.match(row.prompt_ids)
+        self._prefix_phase_add("lookup_match", start)
         row.prefix_matched_tokens = int(match.matched_token_count)
         if not match.hit:
-            row.prefix_fallback_reason = "miss"
+            self._note_prefix_fallback(row, "miss")
             return None
         if match.matched_token_count >= len(row.prompt_ids):
             self._prefix_unusable_hits += 1
-            row.prefix_fallback_reason = "full_prompt_boundary_requires_suffix"
+            self._note_prefix_fallback(row, "full_prompt_boundary_requires_suffix")
             return None
+        start = time.perf_counter()
         state = cache.entry_state(match.matched_tokens)
         for request_id in state.owner_request_ids:
             source = self._rows.get(int(request_id))
@@ -6840,13 +7077,17 @@ class Qwen35GGUFResidentModelRunner:
                 continue
             if source.lease is None or source.kv_allocation is None:
                 continue
-            if tuple(self._processed_tokens(source)) != match.matched_tokens:
+            processed_start = time.perf_counter()
+            source_tokens = tuple(self._processed_tokens(source))
+            self._prefix_phase_add("processed_tokens", processed_start)
+            if source_tokens != match.matched_tokens:
                 continue
             session = source.lease.session
             if int(getattr(session, "position", -1)) != match.matched_token_count:
                 continue
             if tuple(source.kv_allocation.block_ids[: match.matched_block_count]) != match.block_ids:
                 continue
+            self._prefix_phase_add("lookup_resolve", start)
             return _GGUFPrefixReuseSource(
                 matched_tokens=match.matched_tokens,
                 block_ids=match.block_ids,
@@ -6882,13 +7123,15 @@ class Qwen35GGUFResidentModelRunner:
             if valid:
                 self._prefix_state_snapshots.pop(match.matched_tokens)
                 self._prefix_state_snapshots[match.matched_tokens] = snapshot_entry
+                self._prefix_phase_add("lookup_resolve", start)
                 return _GGUFPrefixReuseSource(
                     matched_tokens=match.matched_tokens,
                     block_ids=match.block_ids,
                     snapshot=snapshot,
                 )
+        self._prefix_phase_add("lookup_resolve", start)
         self._prefix_unusable_hits += 1
-        row.prefix_fallback_reason = "state_source_unavailable"
+        self._note_prefix_fallback(row, "state_source_unavailable")
         return None
 
     @staticmethod
@@ -6905,31 +7148,56 @@ class Qwen35GGUFResidentModelRunner:
             return ()
         return tuple(known[:position])
 
+    def _prefix_prompt_boundary(self, row: _GGUFResidentLoopRow) -> int:
+        """Deepest 256-token boundary at or before the end of this row's prompt.
+
+        This is the one boundary a following turn can reach: a cumulative
+        client resends the whole transcript, and a client that rebuilds the
+        transcript from its own normalized assistant/tool text still starts
+        with the previous prompt verbatim.  Boundaries below it are superseded
+        by it for both styles.
+        """
+
+        if self._prefix_cache is None:
+            return 0
+        return (len(row.prompt_ids) // 256) * 256
+
     def _refresh_prefix_cache(self, row: _GGUFResidentLoopRow) -> bool:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
             return False
         if row.lease is None or row.kv_allocation is None:
             return False
+        phase_start = time.perf_counter()
+        processed_start = time.perf_counter()
         tokens = self._processed_tokens(row)
+        self._prefix_phase_add("processed_tokens", processed_start)
         if not tokens or len(tokens) % 256 != 0:
             # Keep the latest exact aligned boundary live while the request
             # advances through a partial page. Normal completion can then
             # promote that historical snapshot before request ownership drops.
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
+        trie_start = time.perf_counter()
         cache.cancel(row.request_id)
         block_count = len(tokens) // 256
         block_ids = tuple(int(block_id) for block_id in row.kv_allocation.block_ids[:block_count])
         if len(block_ids) != block_count:
+            self._prefix_phase_add("refresh_trie", trie_start)
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
         try:
             cache.insert(row.request_id, tokens, block_ids)
         except ValueError as exc:
+            self._prefix_phase_add("refresh_trie", trie_start)
             if "conflicting block ids" not in str(exc):
                 raise
             self._prefix_unusable_hits += 1
+            self._prefix_phase_add("refresh_conflict", phase_start)
             return False
+        self._prefix_phase_add("refresh_trie", trie_start)
         self._capture_prefix_snapshot(row, tokens=tokens, block_ids=block_ids)
+        self._prefix_phase_add("refresh_total", phase_start)
         return True
 
     def _prefix_cache_observability(self) -> dict[str, Any]:
@@ -6966,8 +7234,17 @@ class Qwen35GGUFResidentModelRunner:
             "stats": None if cache is None else cache.stats.to_json_dict(),
             "usable_hits": int(getattr(self, "_prefix_usable_hits", 0)),
             "unusable_hits": int(getattr(self, "_prefix_unusable_hits", 0)),
+            # Which prefill route the hits got: a contiguous run keeps the
+            # slot-local AOTriton route, a gapped one falls to packed paged.
+            "contiguous_admissions": int(
+                getattr(self, "_prefix_contiguous_admissions", 0)
+            ),
+            "gapped_admissions": int(getattr(self, "_prefix_gapped_admissions", 0)),
             "admission_fallbacks": int(
                 getattr(self, "_prefix_admission_fallbacks", 0)
+            ),
+            "fallback_reasons": dict(
+                getattr(self, "_prefix_fallback_reasons", {})
             ),
             "reused_tokens": int(getattr(self, "_prefix_reused_tokens", 0)),
             "state_clone_bytes": int(
@@ -6977,11 +7254,45 @@ class Qwen35GGUFResidentModelRunner:
             "snapshot_limit": int(
                 getattr(self, "_prefix_snapshot_limit", getattr(self, "capacity", 0))
             ),
+            "retained_snapshot_limit": int(
+                getattr(
+                    self,
+                    "_prefix_retained_limit",
+                    getattr(self, "_prefix_snapshot_limit", 0),
+                )
+            ),
+            "retained_snapshot_state_limit_bytes": int(
+                getattr(
+                    self,
+                    "_prefix_retained_state_bytes_limit",
+                    _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+                )
+            ),
+            "retained_snapshot_state_bytes": int(
+                sum(
+                    int(getattr(entry.snapshot, "nbytes", 0))
+                    for entry in retained_entries
+                )
+            ),
+            "retained_snapshot_evictions_by_reason": dict(
+                getattr(self, "_prefix_retained_evictions_by_reason", {})
+            ),
+            "snapshot_promotions": int(
+                getattr(self, "_prefix_snapshot_promotions", 0)
+            ),
             "retained_snapshot_entries": len(retained_entries),
             "snapshot_hits": int(getattr(self, "_prefix_snapshot_hits", 0)),
             "snapshot_evictions": int(
                 getattr(self, "_prefix_snapshot_evictions", 0)
             ),
+            "snapshot_captures": int(
+                getattr(self, "_prefix_snapshot_captures", 0)
+            ),
+            "snapshot_capture_bytes": int(
+                getattr(self, "_prefix_snapshot_capture_bytes", 0)
+            ),
+            "phase_ms": dict(getattr(self, "_prefix_phase_ms", {})),
+            "phase_calls": dict(getattr(self, "_prefix_phase_calls", {})),
             "snapshot_bytes": snapshot_bytes,
             "retained_kv_pages": len(retained_blocks),
             "retained_kv_bytes": retained_kv_bytes,
@@ -7063,6 +7374,27 @@ class Qwen35GGUFResidentModelRunner:
                 diagnostics["kv_layout"] = copy.deepcopy(dict(payload))
         return diagnostics
 
+    def _refresh_prefix_cache_at_prompt_boundary(
+        self,
+        row: _GGUFResidentLoopRow,
+        lease: _GGUFResidentSessionLease,
+    ) -> bool:
+        """Capture the single reusable boundary of this request.
+
+        Each captured boundary clones the full hybrid Conv/GDN state and
+        synchronizes the device.  Capturing every 256-token prefill chunk
+        therefore costs one full state clone per chunk while only the deepest
+        prompt-aligned boundary is reachable by the next turn, so the chunked
+        greedy prefill path captures exactly that one.
+        """
+
+        boundary = self._prefix_prompt_boundary(row)
+        if boundary <= 0:
+            return False
+        if boundary != int(getattr(lease.session, "position", -1)):
+            return False
+        return self._refresh_prefix_cache(row)
+
     def _capture_prefix_snapshot(
         self,
         row: _GGUFResidentLoopRow,
@@ -7082,7 +7414,10 @@ class Qwen35GGUFResidentModelRunner:
         capture = getattr(session, "capture_prefix_state_snapshot", None)
         if not callable(capture):
             return
+        phase_start = time.perf_counter()
+        clone_start = time.perf_counter()
         snapshot = capture(position=len(tokens))
+        self._prefix_phase_add("capture_clone_state", clone_start)
         if int(getattr(snapshot, "position", -1)) != len(tokens):
             close = getattr(snapshot, "close", None)
             if callable(close):
@@ -7095,16 +7430,57 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
         for prior_tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == row.request_id:
-                self._evict_prefix_snapshot(prior_tokens)
+                self._evict_prefix_snapshot(prior_tokens, reason="superseded_by_row")
         self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
             tokens=tokens,
             block_ids=block_ids,
             snapshot=snapshot,
             owner_request_id=int(row.request_id),
         )
-        while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
-            oldest = next(iter(self._prefix_state_snapshots))
-            self._evict_prefix_snapshot(oldest)
+        self._prefix_snapshot_captures += 1
+        self._prefix_snapshot_capture_bytes += int(
+            getattr(snapshot, "nbytes", 0)
+        )
+        evict_start = time.perf_counter()
+        self._trim_prefix_snapshots()
+        self._prefix_phase_add("capture_evict", evict_start)
+        self._prefix_phase_add("capture_total", phase_start)
+
+    def _trim_prefix_snapshots(self) -> None:
+        """Bound transient and retained snapshots independently.
+
+        A transient snapshot belongs to the request that captured it and can be
+        dropped freely. A retained one is the durable boundary another request
+        may still match, so the transient trim must never take it: doing so made
+        a request's own second capture evict the entry that had just served it
+        and limited reuse to one hand-off per conversation.
+        """
+
+        transient = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if not entry.retained
+        ]
+        while len(transient) > self._prefix_snapshot_limit:
+            self._evict_prefix_snapshot(transient.pop(0), reason="trim_transient")
+        retained = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if entry.retained
+        ]
+        retained_bytes = sum(
+            int(getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0))
+            for tokens in retained
+        )
+        while retained and (
+            len(retained) > self._prefix_retained_limit
+            or retained_bytes > self._prefix_retained_state_bytes_limit
+        ):
+            tokens = retained.pop(0)
+            retained_bytes -= int(
+                getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0)
+            )
+            self._evict_prefix_snapshot(tokens, reason="trim_retained")
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
         cache = self._prefix_cache
@@ -7121,25 +7497,53 @@ class Qwen35GGUFResidentModelRunner:
                 for block_id in allocation.block_ids[: len(entry.block_ids)]
             )
             if prefix != entry.block_ids:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_mismatch")
                 continue
             pool.retain_blocks(entry.block_ids)
             try:
                 cache.retain_entry(tokens, entry.block_ids)
             except Exception:
                 pool.release_blocks(entry.block_ids)
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_failed")
                 raise
             entry.owner_request_id = None
             entry.retained = True
+            self._prefix_snapshot_promotions += 1
+        self._trim_prefix_snapshots()
 
     def _drop_prefix_snapshots_for_row(self, request_id: int) -> None:
         rid = int(request_id)
         for tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == rid:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="row_released")
 
-    def _evict_prefix_snapshot(self, tokens: Sequence[int]) -> bool:
+    def _note_prefix_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str | None
+    ) -> None:
+        """Record why one row could not reuse a prefix, per reason.
+
+        The served harness only sees process-wide counters, so a fallback that
+        is not counted here is invisible in a serving artifact.
+        """
+
+        row.prefix_fallback_reason = reason
+        if reason:
+            counts = self._prefix_fallback_reasons
+            counts[reason] = int(counts.get(reason, 0)) + 1
+
+    def _note_prefix_admission_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str
+    ) -> None:
+        self._prefix_admission_fallbacks += 1
+        row.prefix_admission_fallback = True
+        self._note_prefix_fallback(row, reason)
+
+    def _evict_prefix_snapshot(
+        self,
+        tokens: Sequence[int],
+        *,
+        reason: str = "unspecified",
+    ) -> bool:
         token_tuple = tuple(int(token) for token in tokens)
         entry = self._prefix_state_snapshots.pop(token_tuple, None)
         if entry is None:
@@ -7155,11 +7559,14 @@ class Qwen35GGUFResidentModelRunner:
         if callable(close):
             close()
         self._prefix_snapshot_evictions += 1
+        if entry.retained:
+            by_reason = self._prefix_retained_evictions_by_reason
+            by_reason[reason] = int(by_reason.get(reason, 0)) + 1
         return True
 
     def _clear_prefix_snapshots(self) -> None:
         for tokens in tuple(self._prefix_state_snapshots):
-            self._evict_prefix_snapshot(tokens)
+            self._evict_prefix_snapshot(tokens, reason="clear")
 
     def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
         """Release reclaimable prefix pages before device-pool growth."""
@@ -7170,7 +7577,7 @@ class Qwen35GGUFResidentModelRunner:
             if not entry.retained:
                 continue
             pages = len(tuple(entry.block_ids))
-            if self._evict_prefix_snapshot(tokens):
+            if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
                 released += pages
             if released >= needed:
                 break
@@ -8720,19 +9127,74 @@ class Qwen35GGUFResidentModelRunner:
 
         if row.prefix_reused_tokens:
             start = time.perf_counter()
-            for index, token_id in enumerate(chunk):
-                result = session.step(
-                    int(token_id),
-                    return_logits=bool(final_chunk and index == len(chunk) - 1),
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
                 )
-                if int(session.position) == final_prefix_boundary:
-                    self._refresh_prefix_cache(row)
-            self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
-            self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
-            self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
-            self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
-            row.prefill_ms += _timing_ms_since(start)
-            row.prefill_chunk_count += 1
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
+                else None
+            )
+            if callable(prefill_batch):
+                segments = _gguf_prefix_suffix_segments(
+                    int(getattr(session, "position", 0)),
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                native_compact_prefill = True
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    want_output = bool(final_chunk and last_segment)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output,
+                            return_hidden_seeds=False,
+                            sample_output=want_output,
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_batched_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_batched_suffix_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            else:
+                for index, token_id in enumerate(chunk):
+                    result = session.step(
+                        int(token_id),
+                        return_logits=bool(final_chunk and index == len(chunk) - 1),
+                    )
+                    if int(session.position) == final_prefix_boundary:
+                        self._refresh_prefix_cache(row)
+                self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
+                self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
         else:
             if not final_chunk or chunk != row.prompt_ids:
                 raise RuntimeError(
@@ -8835,16 +9297,75 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         if row.prefix_reused_tokens:
             start = time.perf_counter()
+            session = lease.session
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
+                )
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
+                else None
+            )
+            if callable(prefill_batch):
+                segments = _gguf_prefix_suffix_segments(
+                    int(getattr(session, "position", 0)),
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                result = None
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=False,
+                            return_hidden_seeds=False,
+                            sample_output=bool(final_chunk and last_segment),
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+                if final_chunk:
+                    self._finish_native_prefill(
+                        row,
+                        result,
+                        native_compact_prefill=True,
+                    )
+                return
             result = None
             for token_id in chunk:
-                result = lease.session.step(int(token_id), return_logits=False)
+                result = session.step(int(token_id), return_logits=False)
             if result is None:
                 raise RuntimeError("GGUF shared-prefix suffix chunk must be non-empty")
             self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
             self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+            self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
             row.prefill_ms += _timing_ms_since(start)
+            self._prefix_phase_add("suffix_prefill", start)
             row.prefill_chunk_count += 1
-            self._refresh_prefix_cache(row)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
             if final_chunk:
                 self._finish_native_prefill(
                     row,
@@ -8934,8 +9455,9 @@ class Qwen35GGUFResidentModelRunner:
         if not final_chunk:
             self._route_counts["native_incremental_prefill_unsampled_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
+        self._prefix_phase_add("prefill_batched", start)
         row.prefill_chunk_count += 1
-        self._refresh_prefix_cache(row)
+        self._refresh_prefix_cache_at_prompt_boundary(row, lease)
         if final_chunk:
             self._finish_native_prefill(
                 row,

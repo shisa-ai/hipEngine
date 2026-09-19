@@ -1,0 +1,502 @@
+{
+  "schema": 1,
+  "kind": "gguf_active_prefix_reuse_correctness_gate",
+  "created_at": "2026-09-18T16:04:34.142488+00:00",
+  "status": "passed",
+  "passed": true,
+  "correctness_claim": true,
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "workload": {
+    "prefix_token_id": 9707,
+    "prefix_tokens": 1024,
+    "suffix_token_id": 9708,
+    "suffix_tokens": 200,
+    "teacher_forced_steps": 4,
+    "max_sequence_length": 2048,
+    "sampling": "greedy_top1_then_reference_teacher_forced",
+    "kv_dtype": "bf16",
+    "source_lifecycle": "active",
+    "processor_forced_token_ids": []
+  },
+  "production_route": {
+    "prefix_cache_mode": "radix",
+    "requested_sampler_mode": "greedy_fast",
+    "candidate_sampler_mode": "greedy_fast",
+    "sampler_route_exact": true,
+    "full_vocab_logits_d2h": null,
+    "logits_d2h_bytes": null,
+    "prefix_reused_tokens": 1024,
+    "prefix_source_request_id": 1001,
+    "prefix_state_clone_bytes": 66846720,
+    "prefix_snapshot_hit": false,
+    "source_block_ids": [
+      24,
+      25,
+      26,
+      27,
+      28
+    ],
+    "continuation_block_ids": [
+      24,
+      25,
+      26,
+      27,
+      29
+    ],
+    "continuation_reused_block_ids": [
+      24,
+      25,
+      26,
+      27
+    ],
+    "oracle_block_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "metadata_exact": true
+  },
+  "prefill_oracle": {
+    "route": "private_active_source_then_c1_teacher_forced_suffix",
+    "source_predicted_token_id": 9707,
+    "semantic_source_predicted_token_id": 9707,
+    "candidate_predicted_token_id": 9708,
+    "reference_predicted_token_id": 9708,
+    "output_exact": true,
+    "clone_boundary_exact": true,
+    "clone_boundary_mismatches": [],
+    "semantic_boundary_exact": true,
+    "semantic_boundary_mismatches": [],
+    "initial_state_exact": true,
+    "initial_state_mismatches": [],
+    "source_immutable": true,
+    "source_immutability_applicable": true,
+    "source_immutability_mismatches": [],
+    "one_shot_bulk_diagnostic": {
+      "applicable": true,
+      "skipped_reason": null,
+      "predicted_token_id": 9708,
+      "output_exact": true,
+      "state_exact": false,
+      "state_mismatch_summary": {
+        "count": 80,
+        "component_counts": {
+          "kv.key": 10,
+          "kv.value": 10,
+          "linear.conv": 30,
+          "linear.recurrent": 30
+        },
+        "first": {
+          "component": "linear",
+          "layer": 0,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 131072,
+            "blake2b_128": "4fce089c49ffe5fb2603dddc3df1ce96"
+          },
+          "reference": {
+            "nbytes": 131072,
+            "blake2b_128": "1df4c527257e826f76c704acd242fbcb"
+          }
+        }
+      },
+      "gating": false
+    },
+    "scheduler_chunk_diagnostic": {
+      "predicted_token_id": 9708,
+      "output_exact": true,
+      "boundary_state_mismatch_summary": {
+        "count": 0,
+        "component_counts": {},
+        "first": null
+      },
+      "final_state_mismatch_summary": {
+        "count": 80,
+        "component_counts": {
+          "kv.key": 10,
+          "kv.value": 10,
+          "linear.conv": 30,
+          "linear.recurrent": 30
+        },
+        "first": {
+          "component": "linear",
+          "layer": 0,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 131072,
+            "blake2b_128": "4fce089c49ffe5fb2603dddc3df1ce96"
+          },
+          "reference": {
+            "nbytes": 131072,
+            "blake2b_128": "1df4c527257e826f76c704acd242fbcb"
+          }
+        }
+      },
+      "gating": false
+    }
+  },
+  "teacher_forced": {
+    "forced_token_ids": [
+      9708,
+      9708,
+      9708,
+      9708
+    ],
+    "candidate_predicted_token_ids": [
+      9708,
+      9708,
+      9708,
+      9708,
+      9708
+    ],
+    "reference_predicted_token_ids": [
+      9708,
+      9708,
+      9708,
+      9708,
+      9708
+    ],
+    "candidate_response_token_ids": [
+      9708,
+      9708,
+      9708,
+      9708,
+      9708
+    ],
+    "reference_response_token_ids": [
+      9708,
+      9708,
+      9708,
+      9708,
+      9708
+    ],
+    "trajectory_exact": true,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "gate_passed": true,
+    "final_state_exact": true,
+    "final_state_mismatches": []
+  },
+  "lifecycle": {
+    "source_lifecycle": "active",
+    "source_released_before_continuation_admission": false,
+    "source_session_reset": true,
+    "source_refcount_before_release": 2,
+    "source_refcount_after_release": 1,
+    "shared_refcount_after_admission": 2,
+    "shared_refcount_after_continuation_release": 0,
+    "snapshot_evicted": false,
+    "final_refcounted_pages": 24,
+    "final_pinned_pages": 24,
+    "workspace_lease_pages": 24,
+    "final_request_refcounted_pages": 0,
+    "exact": true
+  },
+  "memory_accounting": {
+    "page_bytes": 5242880,
+    "reused_pages": 4,
+    "saved_live_bytes": 20971520,
+    "pool_before_final_release": {
+      "current_pages": 152,
+      "current_bytes": 796917760,
+      "high_water_observed_pages": 30,
+      "high_water_observed_bytes": 157286400,
+      "free_pages": 123,
+      "refcounted_pages": 29,
+      "pinned_pages": 24,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 4,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "retired_pages": 0,
+      "retired_bytes": 0
+    },
+    "pool_after_continuation_release": {
+      "current_pages": 152,
+      "current_bytes": 796917760,
+      "high_water_observed_pages": 30,
+      "high_water_observed_bytes": 157286400,
+      "free_pages": 128,
+      "refcounted_pages": 24,
+      "pinned_pages": 24,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 4,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "retired_pages": 0,
+      "retired_bytes": 0
+    },
+    "pool_after_snapshot_eviction": {
+      "current_pages": 152,
+      "current_bytes": 796917760,
+      "high_water_observed_pages": 30,
+      "high_water_observed_bytes": 157286400,
+      "free_pages": 128,
+      "refcounted_pages": 24,
+      "pinned_pages": 24,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 4,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "retired_pages": 0,
+      "retired_bytes": 0
+    },
+    "timing_claim": false
+  },
+  "observability": {
+    "model_runner": {
+      "capacity": 3,
+      "max_active_requests": 3,
+      "max_context_tokens": 2048,
+      "active_request_ids": [
+        1001,
+        1002
+      ],
+      "active_requests": 2,
+      "available_sessions": 1,
+      "packed_workspace_current_bytes": 1143072880,
+      "packed_workspace_owner_sessions": 2,
+      "packed_workspace_leased_pool_bytes": 125829120,
+      "packed_kv_workspace_lease_skipped": false,
+      "packed_workspace_note": "current_bytes is owner-deduplicated unique allocation bytes (shared slot views report their workspace once, split-growth owners included); leased_pool_bytes counts the pool-plane pages pinned by workspace leases - a different accounting domain, never a substitute for either",
+      "prefill_transients": {
+        "oracle_owner_bytes": 0,
+        "oracle_owner_counts": [
+          0,
+          0
+        ],
+        "oracle_owner_count_total": 0,
+        "oracle_observed_peak_bytes": 0,
+        "oracle_observed_peak_owners": 0,
+        "oracle_capacity_positions": [
+          2048,
+          38912
+        ],
+        "hidden_and_bulk_owner_bytes": 206187560,
+        "int8_prefill_lifetime_plan_modes": [
+          "bf16",
+          "bf16"
+        ],
+        "last_packed_executor_routes": [
+          "None",
+          "None"
+        ],
+        "last_packed_executor_modes": [
+          "None",
+          "None"
+        ],
+        "kv_attention_sources": [
+          "bf16",
+          "bf16"
+        ],
+        "oracle_per_layer_flags": [
+          false,
+          false
+        ],
+        "note": "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair total (unique buffers); oracle_capacity_positions is per-session pool-backed sizing, not prompt length; lifetime_plan_modes is the legacy plan while last_packed_executor_routes + oracle_per_layer report what actually ran"
+      },
+      "packed_workspace_release_events": 0,
+      "packed_workspace_released_bytes": 0,
+      "kv_layout_audits": [
+        {
+          "pool_contract": "global_generation2",
+          "pool_storage_layout": "global-arbitrary-pages:g2",
+          "storage_dtype": "bf16",
+          "storage_layout": "uniform",
+          "scale_dtype": "fp16",
+          "scale_granularity": "per_token_head",
+          "kv_attention_source": "bf16",
+          "request_pages": 5,
+          "request_capacity_tokens": 1280,
+          "request_block_ids": [
+            24,
+            25,
+            26,
+            27,
+            29
+          ],
+          "one_backing_chunk": true,
+          "contiguous_in_backing": false,
+          "persistent_int8_payload_bytes": 0,
+          "persistent_bf16_payload_bytes": 26214400,
+          "persistent_scale_bytes": 0,
+          "persistent_bf16_mirror_bytes": 0,
+          "persistent_total_bytes": 26214400
+        }
+      ],
+      "persistent_int8_payload_bytes": 0,
+      "persistent_bf16_payload_bytes": 26214400,
+      "persistent_scale_bytes": 0,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_kv_total_bytes": 26214400
+    },
+    "kv_pool": {
+      "current_pages": 152,
+      "current_bytes": 796917760,
+      "high_water_observed_pages": 30,
+      "high_water_observed_bytes": 157286400,
+      "free_pages": 123,
+      "refcounted_pages": 29,
+      "pinned_pages": 24,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 4,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "retired_pages": 0,
+      "retired_bytes": 0,
+      "max_pages": 19834,
+      "budget_bytes": 103987281920
+    },
+    "prefix_cache": {
+      "mode": "radix",
+      "block_size_tokens": 256,
+      "stats": {
+        "entries": 4,
+        "live_requests": 1,
+        "hits": 1,
+        "misses": 1,
+        "partial_block_misses": 0
+      },
+      "usable_hits": 1,
+      "unusable_hits": 0,
+      "admission_fallbacks": 0,
+      "fallback_reasons": {
+        "miss": 1
+      },
+      "reused_tokens": 1024,
+      "state_clone_bytes": 66846720,
+      "snapshot_entries": 0,
+      "snapshot_limit": 3,
+      "retained_snapshot_limit": 3,
+      "retained_snapshot_state_limit_bytes": 1073741824,
+      "retained_snapshot_state_bytes": 0,
+      "retained_snapshot_evictions_by_reason": {},
+      "snapshot_promotions": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_hits": 0,
+      "snapshot_evictions": 1,
+      "snapshot_captures": 1,
+      "snapshot_capture_bytes": 66846720,
+      "phase_ms": {
+        "lookup_flush_packed": 0.02,
+        "lookup_refresh_others": 0.478,
+        "lookup_match": 0.199,
+        "admission_lookup": 0.896,
+        "admission_pool": 1.941,
+        "processed_tokens": 0.219,
+        "refresh_trie": 1.67,
+        "capture_clone_state": 6.868,
+        "capture_evict": 0.01,
+        "capture_total": 6.93,
+        "refresh_total": 8.825,
+        "lookup_resolve": 0.146,
+        "admission_restore_state": 0.262,
+        "admission_refresh": 0.337,
+        "suffix_prefill": 6774.367
+      },
+      "phase_calls": {
+        "lookup_flush_packed": 2,
+        "lookup_refresh_others": 2,
+        "lookup_match": 2,
+        "admission_lookup": 2,
+        "admission_pool": 2,
+        "processed_tokens": 4,
+        "refresh_trie": 3,
+        "capture_clone_state": 1,
+        "capture_evict": 1,
+        "capture_total": 1,
+        "refresh_total": 3,
+        "lookup_resolve": 1,
+        "admission_restore_state": 1,
+        "admission_refresh": 1,
+        "suffix_prefill": 1
+      },
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 103987281920
+    },
+    "graph_buckets": {
+      "entries": 0,
+      "captures_total": 0,
+      "hits_total": 0,
+      "replays_total": 0,
+      "invalidations_total": 0,
+      "buckets": {}
+    },
+    "routes": {
+      "counts": {
+        "native_full_prefill_rows": 1,
+        "native_full_prefill_groups": 0,
+        "native_incremental_prefill_chunks": 0,
+        "native_incremental_prefill_unsampled_chunks": 0,
+        "native_packed_decode_steps": 0,
+        "native_packed_graph_captures": 0,
+        "native_packed_graph_replays": 0,
+        "native_c1_decode_steps": 0,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_row_launches": 0,
+        "host_sampler_requests": 0,
+        "serial_decode_fallback_steps": 0,
+        "serial_c1_row_steps": 0,
+        "resident_fallback_requests": 0
+      },
+      "physical_width_decode_steps": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0
+      },
+      "fallback_reasons": {
+        "prefix_batched_suffix_unavailable": 1
+      },
+      "last_execution_manifest": {},
+      "last_physical_group_plan": {},
+      "recent_completed": []
+    }
+  },
+  "notes": [
+    "Every Conv/GDN byte and logical block-table-ordered live BF16 K/V byte is compared.",
+    "The gating oracle independently rebuilds the active source and consumes the suffix through exact c1 steps.",
+    "One-shot bulk and private scheduler-chunk output/state remain non-gating row-shape diagnostics.",
+    "The live source is reclaimed before teacher-forced survivor decode.",
+    "Saved live bytes are allocator accounting, not a process-wide peak-memory claim.",
+    "No timing from this correctness run is a performance claim."
+  ],
+  "command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_prefix_reuse_gate.py --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --json /tmp/claude-1000/-home-lhl-hipEngine-main/efcf7fea-ce8b-45c1-8719-ca6b54b077bc/scratchpad/gate/arm2_serial.json",
+  "environment": {
+    "HIPENGINE_COMPILER_VERSION_FILE": null,
+    "HIPENGINE_GGUF_DECODE_REPACK": null,
+    "HIPENGINE_GGUF_WMMA_PREFILL": null,
+    "HIPENGINE_GGUF_GEMV_DECODE": null,
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": null,
+    "HIP_VISIBLE_DEVICES": null
+  }
+}

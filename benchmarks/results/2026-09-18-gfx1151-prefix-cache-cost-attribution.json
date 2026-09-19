@@ -1,0 +1,1319 @@
+{
+ "created_at": "2026-09-18T10:00:00Z",
+ "hardware": "gfx1151 (Radeon 8060S)",
+ "host": "zbook",
+ "kind": "prefix-cache-cost-attribution",
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m"
+ },
+ "phase_table": {
+  "admission_lookup": {
+   "hit_median_ms": 0.89,
+   "miss_median_ms": 0.51
+  },
+  "admission_pool": {
+   "hit_median_ms": 0.08,
+   "miss_median_ms": 1.79
+  },
+  "admission_refresh": {
+   "hit_median_ms": 0.63,
+   "miss_median_ms": 0.0
+  },
+  "admission_restore_state": {
+   "hit_median_ms": 1.23,
+   "miss_median_ms": 0.0
+  },
+  "capture_clone_state": {
+   "hit_median_ms": 135.02,
+   "miss_median_ms": 375.27
+  },
+  "capture_evict": {
+   "hit_median_ms": 1.61,
+   "miss_median_ms": 6.43
+  },
+  "capture_total": {
+   "hit_median_ms": 138.82,
+   "miss_median_ms": 379.27
+  },
+  "lookup_flush_packed": {
+   "hit_median_ms": 0.01,
+   "miss_median_ms": 0.01
+  },
+  "lookup_match": {
+   "hit_median_ms": 0.61,
+   "miss_median_ms": 0.49
+  },
+  "lookup_refresh_others": {
+   "hit_median_ms": 0.0,
+   "miss_median_ms": 0.0
+  },
+  "lookup_resolve": {
+   "hit_median_ms": 0.25,
+   "miss_median_ms": 0.0
+  },
+  "processed_tokens": {
+   "hit_median_ms": 14.15,
+   "miss_median_ms": 19.56
+  },
+  "refresh_total": {
+   "hit_median_ms": 141.14,
+   "miss_median_ms": 385.21
+  },
+  "refresh_trie": {
+   "hit_median_ms": 1.9,
+   "miss_median_ms": 7.24
+  },
+  "refresh_unaligned": {
+   "hit_median_ms": 15.21,
+   "miss_median_ms": 20.54
+  },
+  "suffix_prefill": {
+   "hit_median_ms": 3120.97,
+   "miss_median_ms": 0.0
+  }
+ },
+ "protocol": {
+  "caveat": "engine phase_ms numbers are unprofiled; rocprof call counts are exact but its per-call durations are profiler-inflated. The two profiled arms ran while other jobs shared the host, so their wall deltas are not quoted; only counts and kernel families are.",
+  "phase_arm": "python3 scripts/prefix_cache_multiturn_bench.py --transport server --lane-kinds code --repetitions 1 --turn-limit 3 --warmup-turns 1 --agentic-workloads small_repo growing_history medium_repo --code-tokens 128 --max-sequence-length 12288 --modes radix --json /tmp/prefix-t4/radix-phases.json",
+  "rocprof": "rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --output-format csv -d <dir> -- python3 scripts/prefix_cache_multiturn_bench.py --transport server --lane-kinds code --agentic-workloads small_repo --repetitions 1 --turn-limit 2 --warmup-turns 1 --code-tokens 128 --max-sequence-length 12288 --modes radix|off --json <arm>.json",
+  "rocprof_env": "HIPENGINE_COMPILER_VERSION_FILE=<hipcc --version output> HIPENGINE_REQUIRE_CACHED_BUILD=1"
+ },
+ "ranked_cost": [
+  {
+   "cost": "6.2-6.9 s per hit turn on the greedy cumulative route (33.8-35.3 ms per suffix token over 189/183/196 suffix tokens); +329,029 dispatches over the 4 profiled requests (~1,679 per suffix token) against ~0.4 ms/token for the batched prefill kernels. The sampled fixture route reuses the same volume with no suffix_prefill phase at all.",
+   "evidence": "suffix_prefill phase + dispatch delta",
+   "path": "_prefill_native_chunk serial c1 suffix loop (reused rows)",
+   "rank": 1
+  },
+  {
+   "cost": "0.18-0.38 s per capture, paid on every eligible turn including misses; +161 hipMalloc calls over the run (~54 per capture, ~3.2 ms each)",
+   "evidence": "capture_clone_state phase + hipMalloc/hipDeviceSynchronize counts",
+   "path": "_capture_prefix_snapshot -> session.capture_prefix_state_snapshot (malloc storm + D2D + device sync)",
+   "rank": 2
+  },
+  {
+   "cost": "0.04-0.11 s per turn across ~128 calls (0.15-0.5 ms per call)",
+   "evidence": "processed_tokens / refresh_unaligned phases",
+   "path": "_processed_tokens tuple build + _refresh_prefix_cache per-step aligned probe",
+   "rank": 3
+  },
+  {
+   "cost": "1.2-1.5 ms per hit (D2D copies only, ~25 us each, no malloc)",
+   "evidence": "admission_restore_state phase",
+   "path": "clone_prefix_state_from_snapshot (state restore on hit)",
+   "rank": 4
+  },
+  {
+   "cost": "0.1-1.8 ms per turn - negligible",
+   "evidence": "admission_lookup phase",
+   "path": "_prefix_source_for admission lookup (flush packed owners + refresh every other row + trie match + resolve)",
+   "rank": 5
+  },
+  {
+   "cost": "0.1-4.8 ms per turn - negligible",
+   "evidence": "admission_pool phase",
+   "path": "KV pool admission (admit_with_shared_prefix / allocate)",
+   "rank": 6
+  },
+  {
+   "cost": "42,949,672,960 bytes leased at configure time; not per-request, but retained prefix pages must stay contiguous against it",
+   "evidence": "model_runner.packed_workspace_leased_pool_bytes",
+   "path": "packed workspace lease (one-time, mode independent)",
+   "rank": 7
+  }
+ ],
+ "rocprof": {
+  "hip_api": {
+   "off": {
+    "hipDeviceGetName": {
+     "calls": 1,
+     "mean_us": 1.7,
+     "total_ms": 0.0
+    },
+    "hipDeviceSynchronize": {
+     "calls": 39,
+     "mean_us": 175318.9,
+     "total_ms": 6837.4
+    },
+    "hipFree": {
+     "calls": 2204,
+     "mean_us": 154.7,
+     "total_ms": 340.9
+    },
+    "hipGetDevice": {
+     "calls": 201,
+     "mean_us": 498.4,
+     "total_ms": 100.2
+    },
+    "hipGetDevicePropertiesR0600": {
+     "calls": 2,
+     "mean_us": 475.4,
+     "total_ms": 1.0
+    },
+    "hipGetLastError": {
+     "calls": 296677,
+     "mean_us": 0.0,
+     "total_ms": 12.0
+    },
+    "hipLaunchKernel": {
+     "calls": 296677,
+     "mean_us": 15.2,
+     "total_ms": 4517.1
+    },
+    "hipMalloc": {
+     "calls": 2204,
+     "mean_us": 3671.1,
+     "total_ms": 8091.1
+    },
+    "hipMemGetInfo": {
+     "calls": 496,
+     "mean_us": 24.8,
+     "total_ms": 12.3
+    },
+    "hipMemcpy": {
+     "calls": 1817,
+     "mean_us": 5714.8,
+     "total_ms": 10383.7
+    },
+    "hipMemcpyAsync": {
+     "calls": 2686,
+     "mean_us": 20.0,
+     "total_ms": 53.8
+    },
+    "hipMemset": {
+     "calls": 2720,
+     "mean_us": 18.7,
+     "total_ms": 50.9
+    },
+    "hipMemsetAsync": {
+     "calls": 200,
+     "mean_us": 24.6,
+     "total_ms": 4.9
+    },
+    "hipModuleGetFunction": {
+     "calls": 4,
+     "mean_us": 5.4,
+     "total_ms": 0.0
+    },
+    "hipModuleLaunchKernel": {
+     "calls": 200,
+     "mean_us": 20.1,
+     "total_ms": 4.0
+    },
+    "hipModuleLoadDataEx": {
+     "calls": 4,
+     "mean_us": 12784.7,
+     "total_ms": 51.1
+    },
+    "hipModuleUnload": {
+     "calls": 4,
+     "mean_us": 6779.1,
+     "total_ms": 27.1
+    },
+    "hipStreamGetDevice": {
+     "calls": 400,
+     "mean_us": 0.6,
+     "total_ms": 0.2
+    }
+   },
+   "radix": {
+    "hipDeviceGetName": {
+     "calls": 1,
+     "mean_us": 1.9,
+     "total_ms": 0.0
+    },
+    "hipDeviceSynchronize": {
+     "calls": 32,
+     "mean_us": 105251.0,
+     "total_ms": 3368.0
+    },
+    "hipFree": {
+     "calls": 2365,
+     "mean_us": 151.7,
+     "total_ms": 358.8
+    },
+    "hipGetDevice": {
+     "calls": 111,
+     "mean_us": 1092.9,
+     "total_ms": 121.3
+    },
+    "hipGetDevicePropertiesR0600": {
+     "calls": 2,
+     "mean_us": 414.0,
+     "total_ms": 0.8
+    },
+    "hipGetLastError": {
+     "calls": 626933,
+     "mean_us": 0.1,
+     "total_ms": 37.8
+    },
+    "hipLaunchKernel": {
+     "calls": 626933,
+     "mean_us": 18.5,
+     "total_ms": 11612.8
+    },
+    "hipMalloc": {
+     "calls": 2365,
+     "mean_us": 3244.4,
+     "total_ms": 7673.0
+    },
+    "hipMemGetInfo": {
+     "calls": 496,
+     "mean_us": 6.0,
+     "total_ms": 3.0
+    },
+    "hipMemcpy": {
+     "calls": 2268,
+     "mean_us": 4861.4,
+     "total_ms": 11025.6
+    },
+    "hipMemcpyAsync": {
+     "calls": 1963,
+     "mean_us": 25.3,
+     "total_ms": 49.6
+    },
+    "hipMemset": {
+     "calls": 1940,
+     "mean_us": 20.6,
+     "total_ms": 39.9
+    },
+    "hipMemsetAsync": {
+     "calls": 110,
+     "mean_us": 30.5,
+     "total_ms": 3.4
+    },
+    "hipModuleGetFunction": {
+     "calls": 4,
+     "mean_us": 5.9,
+     "total_ms": 0.0
+    },
+    "hipModuleLaunchKernel": {
+     "calls": 110,
+     "mean_us": 18.7,
+     "total_ms": 2.1
+    },
+    "hipModuleLoadDataEx": {
+     "calls": 4,
+     "mean_us": 15660.3,
+     "total_ms": 62.6
+    },
+    "hipModuleUnload": {
+     "calls": 4,
+     "mean_us": 21187.1,
+     "total_ms": 84.7
+    },
+    "hipStreamGetDevice": {
+     "calls": 220,
+     "mean_us": 1.8,
+     "total_ms": 0.4
+    }
+   }
+  },
+  "kernel_families": {
+   "off": {
+    "device_ms": 23956.8,
+    "dispatches": 303609,
+    "top": [
+     {
+      "device_ms": 3769.3,
+      "dispatches": 880,
+      "kernel": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_c"
+     },
+     {
+      "device_ms": 2861.6,
+      "dispatches": 814,
+      "kernel": "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_k"
+     },
+     {
+      "device_ms": 2668.4,
+      "dispatches": 2920,
+      "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32"
+     },
+     {
+      "device_ms": 1928.3,
+      "dispatches": 540,
+      "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_decode_order_exact"
+     },
+     {
+      "device_ms": 1867.3,
+      "dispatches": 12930,
+      "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned s"
+     },
+     {
+      "device_ms": 1314.9,
+      "dispatches": 17240,
+      "kernel": "void (anonymous namespace)::q4_k_t16_selected_dual_silu_direct_gemv_ke"
+     },
+     {
+      "device_ms": 873.5,
+      "dispatches": 437,
+      "kernel": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, float"
+     },
+     {
+      "device_ms": 796.9,
+      "dispatches": 15947,
+      "kernel": "void (anonymous namespace)::q5_k_qmicro_t16_selected_gemv_kernel<unsig"
+     }
+    ]
+   },
+   "radix": {
+    "device_ms": 28959.1,
+    "dispatches": 632638,
+    "top": [
+     {
+      "device_ms": 4186.4,
+      "dispatches": 29250,
+      "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned s"
+     },
+     {
+      "device_ms": 2690.2,
+      "dispatches": 39000,
+      "kernel": "void (anonymous namespace)::q4_k_t16_selected_dual_silu_direct_gemv_ke"
+     },
+     {
+      "device_ms": 2411.9,
+      "dispatches": 520,
+      "kernel": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_c"
+     },
+     {
+      "device_ms": 1927.9,
+      "dispatches": 978,
+      "kernel": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, float"
+     },
+     {
+      "device_ms": 1852.4,
+      "dispatches": 481,
+      "kernel": "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_k"
+     },
+     {
+      "device_ms": 1735.0,
+      "dispatches": 1570,
+      "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32"
+     },
+     {
+      "device_ms": 1636.4,
+      "dispatches": 36075,
+      "kernel": "void (anonymous namespace)::q5_k_qmicro_t16_selected_gemv_kernel<unsig"
+     },
+     {
+      "device_ms": 1490.7,
+      "dispatches": 29250,
+      "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<float, unsigned short"
+     }
+    ]
+   }
+  }
+ },
+ "route_cost": {
+  "batched_prefill_wmma_device_ms": {
+   "off_arm": [
+    {
+     "device_ms": 2668.4,
+     "dispatches": 2920,
+     "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32"
+    }
+   ],
+   "radix_arm": [
+    {
+     "device_ms": 1735.0,
+     "dispatches": 1570,
+     "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32"
+    }
+   ]
+  },
+  "c1_suffix_ms_per_token": [
+   33.82,
+   34.11,
+   35.27,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "c1_suffix_prefill_ms_per_hit_turn": [
+   6391.6,
+   6241.9,
+   6912.3,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "c1_suffix_tokens": [
+   189,
+   183,
+   196,
+   172,
+   187,
+   189
+  ],
+  "dispatch_delta": 329029,
+  "dispatch_delta_note": "196 = the profiled radix arm's one hit turn suffix (prompt 2244 - reused 2048). The phase arm's per-token rates come from the three greedy cumulative lanes.",
+  "dispatch_delta_per_suffix_token": 1678.7,
+  "greedy_hit_turns": [
+   {
+    "lane": "cumulative-growing_history",
+    "reused": 2048,
+    "suffix_prefill_ms": 6391.606,
+    "suffix_tokens": 189,
+    "turn": 1,
+    "wall_ms": 11964.5
+   },
+   {
+    "lane": "cumulative-medium_repo",
+    "reused": 8192,
+    "suffix_prefill_ms": 6241.948,
+    "suffix_tokens": 183,
+    "turn": 1,
+    "wall_ms": 13253.1
+   },
+   {
+    "lane": "cumulative-small_repo",
+    "reused": 2048,
+    "suffix_prefill_ms": 6912.252,
+    "suffix_tokens": 196,
+    "turn": 1,
+    "wall_ms": 14504.3
+   }
+  ],
+  "off_arm_prompt_tokens": [
+   2094,
+   2244,
+   2558,
+   2654
+  ],
+  "sampled_lane_observation": {
+   "fixture_hit_turns": [
+    {
+     "lane": "fixture-growing_history",
+     "reused": 2560,
+     "suffix_prefill_ms": 0.0,
+     "suffix_tokens": 172,
+     "turn": 2,
+     "wall_ms": 11122.0
+    },
+    {
+     "lane": "fixture-medium_repo",
+     "reused": 8704,
+     "suffix_prefill_ms": 0.0,
+     "suffix_tokens": 187,
+     "turn": 2,
+     "wall_ms": 8603.5
+    },
+    {
+     "lane": "fixture-small_repo",
+     "reused": 2560,
+     "suffix_prefill_ms": 0.0,
+     "suffix_tokens": 189,
+     "turn": 2,
+     "wall_ms": 12633.3
+    }
+   ],
+   "note": "The three fixture lanes (sampled/processed_argmax) reused 2560/8704/2560 tokens with 172-189 token suffixes and recorded NO suffix_prefill phase, with turn walls 3-5 s lower than the greedy lanes' equivalent hits. Their rows still report native_compact_prefill=False, so they prefill the suffix through a different route. Identifying that route is the first step of the fix."
+  }
+ },
+ "schema": 1,
+ "turns": [
+  {
+   "hit": false,
+   "lane": "cumulative-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127
+   },
+   "phase_ms": {
+    "admission_lookup": 0.101,
+    "admission_pool": 1.769,
+    "capture_clone_state": 380.73,
+    "capture_evict": 0.001,
+    "capture_total": 381.277,
+    "lookup_flush_packed": 0.006,
+    "lookup_match": 0.08,
+    "lookup_refresh_others": 0.003,
+    "processed_tokens": 20.586,
+    "refresh_total": 386.662,
+    "refresh_trie": 4.455,
+    "refresh_unaligned": 21.233
+   },
+   "prompt_tokens": 2088,
+   "reused_tokens": 0,
+   "ttft_ms": 5882.2,
+   "turn": 0,
+   "wall_ms": 11028.7
+  },
+  {
+   "hit": true,
+   "lane": "cumulative-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 128,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 126,
+    "suffix_prefill": 1
+   },
+   "phase_ms": {
+    "admission_lookup": 0.428,
+    "admission_pool": 0.083,
+    "admission_refresh": 0.489,
+    "admission_restore_state": 1.187,
+    "capture_clone_state": 179.681,
+    "capture_evict": 1.93,
+    "capture_total": 181.848,
+    "lookup_flush_packed": 0.008,
+    "lookup_match": 0.214,
+    "lookup_refresh_others": 0.002,
+    "lookup_resolve": 0.177,
+    "processed_tokens": 21.651,
+    "refresh_total": 184.169,
+    "refresh_trie": 1.997,
+    "refresh_unaligned": 22.608,
+    "suffix_prefill": 6391.606
+   },
+   "prompt_tokens": 2237,
+   "reused_tokens": 2048,
+   "ttft_ms": 6567.6,
+   "turn": 1,
+   "wall_ms": 11964.5
+  },
+  {
+   "hit": false,
+   "lane": "cumulative-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.27,
+    "admission_pool": 2.034,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 262.968,
+    "capture_evict": 1.169,
+    "capture_total": 264.281,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.251,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 26.334,
+    "refresh_total": 266.948,
+    "refresh_trie": 2.225,
+    "refresh_unaligned": 27.306,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2389,
+   "reused_tokens": 0,
+   "ttft_ms": 4956.9,
+   "turn": 2,
+   "wall_ms": 10297.0
+  },
+  {
+   "hit": false,
+   "lane": "cumulative-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.421,
+    "admission_pool": 1.854,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 338.072,
+    "capture_evict": 3.001,
+    "capture_total": 341.5,
+    "lookup_flush_packed": 0.004,
+    "lookup_match": 0.404,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 63.796,
+    "refresh_total": 355.794,
+    "refresh_trie": 12.427,
+    "refresh_unaligned": 63.521,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 8234,
+   "reused_tokens": 0,
+   "ttft_ms": 25561.7,
+   "turn": 0,
+   "wall_ms": 31067.2
+  },
+  {
+   "hit": true,
+   "lane": "cumulative-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 128,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 126,
+    "suffix_prefill": 1
+   },
+   "phase_ms": {
+    "admission_lookup": 1.826,
+    "admission_pool": 0.147,
+    "admission_refresh": 2.079,
+    "admission_restore_state": 1.543,
+    "capture_clone_state": 266.744,
+    "capture_evict": 2.675,
+    "capture_total": 269.56,
+    "lookup_flush_packed": 0.03,
+    "lookup_match": 1.006,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.734,
+    "processed_tokens": 48.55,
+    "refresh_total": 277.687,
+    "refresh_trie": 7.096,
+    "refresh_unaligned": 49.21,
+    "suffix_prefill": 6241.948
+   },
+   "prompt_tokens": 8375,
+   "reused_tokens": 8192,
+   "ttft_ms": 6363.0,
+   "turn": 1,
+   "wall_ms": 13253.1
+  },
+  {
+   "hit": false,
+   "lane": "cumulative-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 1.543,
+    "admission_pool": 2.201,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 257.096,
+    "capture_evict": 3.171,
+    "capture_total": 260.534,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 1.517,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 56.161,
+    "refresh_total": 278.359,
+    "refresh_trie": 15.094,
+    "refresh_unaligned": 55.067,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 8530,
+   "reused_tokens": 0,
+   "ttft_ms": 17779.1,
+   "turn": 2,
+   "wall_ms": 23982.4
+  },
+  {
+   "hit": false,
+   "lane": "cumulative-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.285,
+    "admission_pool": 1.344,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 333.279,
+    "capture_evict": 3.374,
+    "capture_total": 336.81,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.259,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 18.539,
+    "refresh_total": 338.733,
+    "refresh_trie": 1.603,
+    "refresh_unaligned": 19.839,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2094,
+   "reused_tokens": 0,
+   "ttft_ms": 3922.0,
+   "turn": 0,
+   "wall_ms": 10890.9
+  },
+  {
+   "hit": true,
+   "lane": "cumulative-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 128,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 126,
+    "suffix_prefill": 1
+   },
+   "phase_ms": {
+    "admission_lookup": 0.441,
+    "admission_pool": 0.068,
+    "admission_refresh": 0.502,
+    "admission_restore_state": 1.155,
+    "capture_clone_state": 296.716,
+    "capture_evict": 1.281,
+    "capture_total": 298.081,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.234,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.183,
+    "processed_tokens": 17.653,
+    "refresh_total": 299.407,
+    "refresh_trie": 1.054,
+    "refresh_unaligned": 19.131,
+    "suffix_prefill": 6912.252
+   },
+   "prompt_tokens": 2244,
+   "reused_tokens": 2048,
+   "ttft_ms": 7223.2,
+   "turn": 1,
+   "wall_ms": 14504.3
+  },
+  {
+   "hit": false,
+   "lane": "cumulative-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 128,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 127,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.291,
+    "admission_pool": 4.78,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 369.82,
+    "capture_evict": 7.089,
+    "capture_total": 377.272,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.268,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 20.678,
+    "refresh_total": 383.768,
+    "refresh_trie": 5.491,
+    "refresh_unaligned": 21.565,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2372,
+   "reused_tokens": 0,
+   "ttft_ms": 5672.8,
+   "turn": 2,
+   "wall_ms": 12297.2
+  },
+  {
+   "hit": false,
+   "lane": "fixture-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 2,
+    "capture_evict": 2,
+    "capture_total": 2,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 27,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 25,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.118,
+    "admission_pool": 0.313,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 1414.728,
+    "capture_evict": 6.094,
+    "capture_total": 1427.558,
+    "lookup_flush_packed": 0.004,
+    "lookup_match": 0.1,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 3.956,
+    "refresh_total": 1439.252,
+    "refresh_trie": 10.428,
+    "refresh_unaligned": 3.296,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2552,
+   "reused_tokens": 0,
+   "ttft_ms": null,
+   "turn": 0,
+   "wall_ms": 15602.1
+  },
+  {
+   "hit": false,
+   "lane": "fixture-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 103,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 102,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.828,
+    "admission_pool": 0.437,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 1118.097,
+    "capture_evict": 8.406,
+    "capture_total": 1126.961,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.77,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 13.115,
+    "refresh_total": 1134.46,
+    "refresh_trie": 6.244,
+    "refresh_unaligned": 13.302,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2643,
+   "reused_tokens": 0,
+   "ttft_ms": null,
+   "turn": 1,
+   "wall_ms": 14880.9
+  },
+  {
+   "hit": true,
+   "lane": "fixture-growing_history",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 0,
+    "capture_evict": 0,
+    "capture_total": 0,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 62,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 61,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.792,
+    "admission_pool": 0.068,
+    "admission_refresh": 0.65,
+    "admission_restore_state": 1.274,
+    "capture_clone_state": 0.0,
+    "capture_evict": 0.0,
+    "capture_total": 0.0,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.502,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.264,
+    "processed_tokens": 7.897,
+    "refresh_total": 0.647,
+    "refresh_trie": 0.545,
+    "refresh_unaligned": 8.434,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2732,
+   "reused_tokens": 2560,
+   "ttft_ms": null,
+   "turn": 2,
+   "wall_ms": 11122.0
+  },
+  {
+   "hit": false,
+   "lane": "fixture-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 2,
+    "capture_evict": 2,
+    "capture_total": 2,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 28,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 26,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.959,
+    "admission_pool": 0.382,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 1200.53,
+    "capture_evict": 8.384,
+    "capture_total": 1215.814,
+    "lookup_flush_packed": 0.006,
+    "lookup_match": 0.935,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 10.362,
+    "refresh_total": 1244.886,
+    "refresh_trie": 26.765,
+    "refresh_unaligned": 8.736,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 8698,
+   "reused_tokens": 0,
+   "ttft_ms": null,
+   "turn": 0,
+   "wall_ms": 27011.3
+  },
+  {
+   "hit": false,
+   "lane": "fixture-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 129,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 128,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 1.545,
+    "admission_pool": 1.936,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 424.805,
+    "capture_evict": 6.758,
+    "capture_total": 432.118,
+    "lookup_flush_packed": 0.006,
+    "lookup_match": 1.524,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 41.14,
+    "refresh_total": 451.006,
+    "refresh_trie": 17.069,
+    "refresh_unaligned": 41.012,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 8792,
+   "reused_tokens": 0,
+   "ttft_ms": 26874.4,
+   "turn": 1,
+   "wall_ms": 26889.6
+  },
+  {
+   "hit": true,
+   "lane": "fixture-medium_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 0,
+    "capture_evict": 0,
+    "capture_total": 0,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 27,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 26,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 2.345,
+    "admission_pool": 0.089,
+    "admission_refresh": 2.129,
+    "admission_restore_state": 1.578,
+    "capture_clone_state": 0.0,
+    "capture_evict": 0.0,
+    "capture_total": 0.0,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 1.531,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.782,
+    "processed_tokens": 8.784,
+    "refresh_total": 2.123,
+    "refresh_trie": 1.816,
+    "refresh_unaligned": 8.787,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 8891,
+   "reused_tokens": 8704,
+   "ttft_ms": null,
+   "turn": 2,
+   "wall_ms": 8603.5
+  },
+  {
+   "hit": false,
+   "lane": "fixture-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 2,
+    "capture_evict": 2,
+    "capture_total": 2,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 28,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 26,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.599,
+    "admission_pool": 0.419,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 552.992,
+    "capture_evict": 7.295,
+    "capture_total": 564.75,
+    "lookup_flush_packed": 0.006,
+    "lookup_match": 0.575,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 4.629,
+    "refresh_total": 574.645,
+    "refresh_trie": 7.779,
+    "refresh_unaligned": 3.669,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2558,
+   "reused_tokens": 0,
+   "ttft_ms": null,
+   "turn": 0,
+   "wall_ms": 14956.2
+  },
+  {
+   "hit": false,
+   "lane": "fixture-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 0,
+    "admission_restore_state": 0,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 0,
+    "processed_tokens": 83,
+    "refresh_total": 1,
+    "refresh_trie": 1,
+    "refresh_unaligned": 82,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.66,
+    "admission_pool": 1.817,
+    "admission_refresh": 0.0,
+    "admission_restore_state": 0.0,
+    "capture_clone_state": 250.96,
+    "capture_evict": 9.1,
+    "capture_total": 260.23,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.643,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.0,
+    "processed_tokens": 10.977,
+    "refresh_total": 268.404,
+    "refresh_trie": 6.709,
+    "refresh_unaligned": 10.81,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2654,
+   "reused_tokens": 0,
+   "ttft_ms": null,
+   "turn": 1,
+   "wall_ms": 12904.6
+  },
+  {
+   "hit": true,
+   "lane": "fixture-small_repo",
+   "phase_calls": {
+    "admission_lookup": 1,
+    "admission_pool": 1,
+    "admission_refresh": 1,
+    "admission_restore_state": 1,
+    "capture_clone_state": 1,
+    "capture_evict": 1,
+    "capture_total": 1,
+    "lookup_flush_packed": 1,
+    "lookup_match": 1,
+    "lookup_refresh_others": 1,
+    "lookup_resolve": 1,
+    "processed_tokens": 85,
+    "refresh_total": 2,
+    "refresh_trie": 2,
+    "refresh_unaligned": 83,
+    "suffix_prefill": 0
+   },
+   "phase_ms": {
+    "admission_lookup": 0.982,
+    "admission_pool": 0.068,
+    "admission_refresh": 0.615,
+    "admission_restore_state": 1.062,
+    "capture_clone_state": 90.353,
+    "capture_evict": 5.394,
+    "capture_total": 95.8,
+    "lookup_flush_packed": 0.005,
+    "lookup_match": 0.72,
+    "lookup_refresh_others": 0.001,
+    "lookup_resolve": 0.236,
+    "processed_tokens": 10.657,
+    "refresh_total": 98.112,
+    "refresh_trie": 1.992,
+    "refresh_unaligned": 11.294,
+    "suffix_prefill": 0.0
+   },
+   "prompt_tokens": 2749,
+   "reused_tokens": 2560,
+   "ttft_ms": null,
+   "turn": 2,
+   "wall_ms": 12633.3
+  }
+ ]
+}
