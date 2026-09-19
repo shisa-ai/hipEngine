@@ -8341,11 +8341,28 @@ spans for spans carrying the session's real chunk-local block table, the paged
 KV write / native fallback / head-major gather all walk it, and AOTriton reads
 the same gathered dense head-major buffers the contiguous route uses.
 
+The gather buffers are demand-sized per session
+(`_gguf_gapped_slot_head_major_scratch`): resident sessions built at a model's
+full context class (e.g. 262,144 positions) exceed the validated 64K head-major
+allocation class, so `_ensure_bulk_prefill_workspace`'s capacity-sized pair is
+never allocated there. The first gapped slot-local prefill instead grows one
+bucketed pair (4,096-token buckets) sized to the context the session actually
+prefills, capped by the same validated token/byte class limits, and a context
+past the class keeps the native spans fallback.
+
+The forced AOTriton slots survive the gather route: the engine loop slices long
+prompts into 256-row prefill chunks, below the 512-token AOTriton threshold,
+and contiguous slots cross it via `aotriton_min_tokens=1`. Clearing the force
+for gapped slabs (the old packed-route behavior) stranded every gapped chunk
+on the native kernel and reproduced the original 104 s lane inside the served
+bench; keeping it makes gapped chunks pay contiguous cost.
+
 Removal scope: the flag, the `gapped_slot_local_gather` branch in
-`_prefill_batch_native_single_slab`, and the fast-route condition that keeps
-`HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` binding only when the gather is
-unavailable - once the gather route holds through a full `--suite all`
-milestone plus the served multi-turn A/B on both the gfx1151 zbook and a W7900
-host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled there. gfx1100 still lacks the
-head-major capability, so its gapped slots keep the native spans fallback and
-the suffix guard until that backend validates head-major KV.
+`_prefill_batch_native_single_slab`, the demand-sized gather buffers, and the
+fast-route condition that keeps `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`
+binding only when the gather is unavailable - once the gather route holds
+through a full `--suite all` milestone plus the served multi-turn A/B on both
+the gfx1151 zbook and a W7900 host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled
+there. gfx1100 still lacks the head-major capability, so its gapped slots keep
+the native spans fallback and the suffix guard until that backend validates
+head-major KV.

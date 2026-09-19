@@ -15052,39 +15052,95 @@ def _gguf_gapped_gather_prefill_enabled() -> bool:
 def _gguf_gapped_slot_local_fast_route_available(
     *,
     backend: str,
-    max_positions: int,
+    context_tokens: int,
     kv_width: int,
 ) -> bool:
-    """Whether gapped slots gather onto the fast AOTriton route for this config.
+    """Whether a gapped prefill of this size gathers onto the fast route.
 
-    Mirrors ``_try_allocate_gguf_aotriton_head_major_kv_scratch``: the gather
-    needs the env flag, the backend's head-major KV capability, and head-major
-    buffers within the validated token/byte allocation class. When any check
-    fails, a gapped slot falls back to the native paged prefill kernel and the
-    admission cost guard keeps protecting long suffixes (see
-    ``hipengine/generation/qwen35_gguf.py``).
+    The gather needs the env flag, the backend's head-major KV capability, and
+    a head-major buffer within the validated token/byte allocation class
+    (buffers are demand-sized per session, so only the request's own context
+    has to fit the class). When any check fails, a gapped slot falls back to
+    the native paged prefill kernel and the admission cost guard keeps
+    protecting long suffixes (see ``hipengine/generation/qwen35_gguf.py``).
     """
 
     if not _gguf_gapped_gather_prefill_enabled():
         return False
     if not _gguf_aotriton_head_major_kv_enabled(str(backend)):
         return False
-    max_positions = int(max_positions)
+    context_tokens = int(context_tokens)
     kv_width = int(kv_width)
-    if max_positions <= 0 or kv_width <= 0:
+    if context_tokens <= 0 or kv_width <= 0:
         return False
     max_tokens = _env_int(
         _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
         _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
     )
-    if max_tokens <= 0 or max_positions > max_tokens:
+    if max_tokens <= 0 or context_tokens > max_tokens:
         return False
-    per_buffer_bytes = max_positions * kv_width * DType.BF16.itemsize
+    per_buffer_bytes = context_tokens * kv_width * DType.BF16.itemsize
     max_bytes = _env_int(
         _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
         _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
     )
     return max_bytes > 0 and 2 * per_buffer_bytes <= max_bytes
+
+
+def _gguf_gapped_slot_head_major_scratch(
+    session: object,
+    layer_scratch,
+    *,
+    context_tokens: int,
+    kv_width: int,
+    runtime: HipRuntime,
+):
+    """Admit demand-sized head-major gather buffers for one gapped slot.
+
+    Resident sessions at a model's full context class (262,144 positions and
+    up) exceed the validated head-major allocation class, so their bulk
+    workspace carries no head-major buffers and the scratch's own admission is
+    False. The gather instead grows one per-session pair here, bucketed to the
+    context the session actually prefills and capped by the same validated
+    class limits; a context past the class keeps the native spans fallback.
+    """
+
+    if bool(getattr(layer_scratch, "head_major_kv_admitted", False)):
+        return layer_scratch
+    context_tokens = int(context_tokens)
+    kv_width = int(kv_width)
+    if not _gguf_gapped_slot_local_fast_route_available(
+        backend=str(getattr(getattr(session, "runner", None), "backend", "")),
+        context_tokens=context_tokens,
+        kv_width=kv_width,
+    ):
+        return layer_scratch
+    bucket = 4096
+    capacity = ((context_tokens + bucket - 1) // bucket) * bucket
+    cached = getattr(session, "_gapped_head_major_cache", None)
+    if cached is not None and int(cached[0]) >= capacity:
+        key_buffer, value_buffer = cached[1], cached[2]
+    else:
+        per_buffer_bytes = capacity * kv_width * DType.BF16.itemsize
+        key_buffer = None
+        try:
+            key_buffer = malloc(per_buffer_bytes, runtime=runtime)
+            value_buffer = malloc(per_buffer_bytes, runtime=runtime)
+        except (HipError, MemoryError):
+            if key_buffer is not None:
+                free(key_buffer, runtime=runtime)
+            return layer_scratch
+        if cached is not None:
+            free(cached[2], runtime=runtime)
+            free(cached[1], runtime=runtime)
+        session._gapped_head_major_cache = (capacity, key_buffer, value_buffer)  # type: ignore[attr-defined]
+    return replace(
+        layer_scratch,
+        head_major_key_cache=key_buffer,
+        head_major_value_cache=value_buffer,
+        head_major_kv_capacity=int(capacity),
+        head_major_kv_admitted=True,
+    )
 
 
 def _gguf_gapped_slot_local_prefill_admitted(
@@ -15801,6 +15857,13 @@ class Qwen35GGUFResidentSession:
     # (rows, blocks) INT32 device buffer. Rebuilt only when the bound
     # allocation or the bulk-scratch row capacity changes.
     _gapped_slot_block_table_cache: tuple[tuple[tuple[int, ...], int, int], DeviceBuffer] | None = field(default=None, init=False)
+    # Demand-sized head-major K/V pair for the same gather path. Resident
+    # sessions built at a model's full context class (e.g. 262,144 positions)
+    # exceed the validated 64K head-major allocation class, so the bulk
+    # workspace has no head-major buffers; the gather instead grows one pair
+    # here, bucketed to the contexts the session actually prefills and capped
+    # by the same validated class limits.
+    _gapped_head_major_cache: tuple[int, DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False)
     # Monotonic while-live peaks of the oracle owners, sampled in
     # prefill_batch_native's finally before the release (see the comment
     # there): scrape-based polling cannot observe these buffers mid-call.
@@ -17114,6 +17177,7 @@ class Qwen35GGUFResidentSession:
         view._device_kv_graph_handles = {}
         view._int8_prefill_oracle_buffers = {}
         view._gapped_slot_block_table_cache = None
+        view._gapped_head_major_cache = None
         view._linear_state_snapshot_backups = ()
         # Packed prefill/verify may grow slot-local result buffers after this
         # view is created. Never inherit the owner's pointers: the owner closes
@@ -19740,6 +19804,11 @@ class Qwen35GGUFResidentSession:
         if self._gapped_slot_block_table_cache is not None:
             free(self._gapped_slot_block_table_cache[1], runtime=runtime)
             self._gapped_slot_block_table_cache = None
+        if self._gapped_head_major_cache is not None:
+            _capacity, gapped_key, gapped_value = self._gapped_head_major_cache
+            free(gapped_value, runtime=runtime)
+            free(gapped_key, runtime=runtime)
+            self._gapped_head_major_cache = None
 
     def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
@@ -24709,9 +24778,12 @@ class Qwen35GGUFResidentSession:
             # spans are swapped for the session's real chunk-local block
             # table, the KV write and the head-major gather walk it, and
             # AOTriton reads the gathered dense head-major buffers exactly
-            # as the contiguous route does.
+            # as the contiguous route does. The forced AOTriton slots must
+            # survive here: the engine loop slices long prompts into 256-row
+            # chunks, below the 512-token AOTriton threshold, and contiguous
+            # slots cross it via ``aotriton_min_tokens=1``; clearing the force
+            # would strand every gapped chunk on the native kernel.
             slot_local_full_prefill = True
-            force_aotriton_slots.clear()
         elif direct_int8_prefill:
             # The c1 correctness route keeps one transient BF16 oracle but uses
             # the scheduler's physical page table. Shifted rows therefore stay
@@ -24888,6 +24960,13 @@ class Qwen35GGUFResidentSession:
                                         device=slot_scratch.positions_tensor.device,
                                         runtime=runtime,
                                     ),
+                                )
+                                layer_scratch = _gguf_gapped_slot_head_major_scratch(
+                                    session,
+                                    layer_scratch,
+                                    context_tokens=end_position,
+                                    kv_width=int(self.runner.kv_width),
+                                    runtime=runtime,
                                 )
                             else:
                                 layer_scratch = _gguf_slot_local_prefill_cache_views(

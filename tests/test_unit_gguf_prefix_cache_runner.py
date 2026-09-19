@@ -1521,7 +1521,7 @@ def test_gapped_placement_takes_a_long_suffix_when_the_gather_route_is_fast(
     monkeypatch.setattr(
         qwen35_gguf_generation,
         "_gguf_prefix_gapped_fast_route_available",
-        lambda lease: True,
+        lambda lease, context_tokens: True,
     )
     from hipengine.kvcache.pool import DeviceKVContiguityError
 

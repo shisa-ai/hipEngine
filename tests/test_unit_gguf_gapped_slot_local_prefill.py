@@ -123,6 +123,27 @@ def test_gapped_bf16_slab_admits_the_gather_route() -> None:
     )
 
 
+def test_fast_route_checks_the_request_context_not_resident_capacity() -> None:
+    """Demand-sized gather buffers admit any resident class up to the 64K cap."""
+
+    available = dict(backend="hip_gfx1151", kv_width=512)
+    # A 262,144-position resident class is fine: buffers are sized to the
+    # request's own context.
+    assert (
+        gguf_runner._gguf_gapped_slot_local_fast_route_available(
+            context_tokens=12_288, **available
+        )
+        is True
+    )
+    # Past the validated head-major allocation class the fast route is gone.
+    assert (
+        gguf_runner._gguf_gapped_slot_local_fast_route_available(
+            context_tokens=100_000, **available
+        )
+        is False
+    )
+
+
 def test_gapped_slab_falls_back_when_the_kill_switch_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
