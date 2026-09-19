@@ -33,6 +33,16 @@ from hipengine.generation.registry import (
 from hipengine.speculative.streaming import trim_speculative_output
 
 
+class EngineServiceClosed(RuntimeError):
+    """A closed or unhealthy engine service cannot accept further work.
+
+    The message names the fatal cause the service recorded, so a caller can
+    report an unavailable runtime instead of its own request fault. The server
+    maps this to a typed ``engine_unavailable`` response; a plain ``RuntimeError``
+    would reach the client as an unnamed internal error.
+    """
+
+
 @dataclass(slots=True)
 class _CommandResponse:
     ready: threading.Event = field(default_factory=threading.Event)
@@ -298,7 +308,7 @@ class EngineService:
             "request_ids": None if request_ids is None else [int(v) for v in request_ids],
         }
 
-    def _closed_service_error(self) -> RuntimeError:
+    def _closed_service_error(self) -> EngineServiceClosed:
         """Name the reason a closed service cannot accept work."""
 
         message = "engine service is closed"
@@ -310,7 +320,7 @@ class EngineService:
             )
             if unhealthy.get("location"):
                 message += f" at {unhealthy['location']}"
-        return RuntimeError(message)
+        return EngineServiceClosed(message)
 
     @property
     def supports_controlled_streaming(self) -> bool:

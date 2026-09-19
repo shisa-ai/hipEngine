@@ -52,7 +52,11 @@ from hipengine.generation.deadline import (
     raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
-from hipengine.generation.engine_service import EngineService, EngineServiceHandle
+from hipengine.generation.engine_service import (
+    EngineService,
+    EngineServiceClosed,
+    EngineServiceHandle,
+)
 from hipengine.generation.engine_loop import (
     PREFILL_DECODE_POLICIES,
     EngineLoopConfig,
@@ -197,6 +201,7 @@ __all__ = [
     "EngineLoopRunner",
     "EngineOutput",
     "EngineService",
+    "EngineServiceClosed",
     "EngineServiceHandle",
     "ExecutionCompatibilityKey",
     "ExecutionPlan",

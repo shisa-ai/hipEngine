@@ -47,6 +47,7 @@ from starlette.concurrency import run_in_threadpool
 from hipengine import LLM, SamplingParams
 from hipengine.generation import (
     DecodeState,
+    EngineServiceClosed,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GenerationAdmissionRejected,
@@ -722,6 +723,27 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "emitted": True,
         "description": "The server admission queue or chat-session cap is full.",
+    },
+    "engine_unavailable": {
+        "status_code": 503,
+        "retryable": True,
+        "emitted": True,
+        "description": (
+            "The resident engine service is closed or unhealthy and cannot "
+            "accept work. The message names the fatal cause the service "
+            "recorded; /ready reports the same state as unhealthy. Restart the "
+            "server to restore serving."
+        ),
+    },
+    "internal_error": {
+        "status_code": 500,
+        "retryable": False,
+        "emitted": True,
+        "description": (
+            "An unexpected server fault escaped request handling. The payload "
+            "still carries a message and a code, so a client never receives a "
+            "bodyless or non-JSON 500."
+        ),
     },
     "execution_failed": {
         "status_code": 500,
@@ -5487,6 +5509,65 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             content={"error": error_payload},
         )
 
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Answer an escaped fault with the OpenAI error shape, never a bare 500.
+
+        Starlette routes a handler registered for ``Exception`` through
+        ``ServerErrorMiddleware``, which sends this response and then re-raises,
+        so the traceback still reaches the server log. Before this handler
+        existed, a fault that escaped an endpoint (for example the
+        engine-closed ``RuntimeError`` a request hits while the resident
+        service is unhealthy) was answered with Starlette's plain-text
+        ``Internal Server Error``: no ``error.code``, no message, and nothing a
+        client could distinguish from a truncation.
+        """
+
+        service_closed = isinstance(exc, EngineServiceClosed)
+        status_code = 503 if service_closed else 500
+        code = "engine_unavailable" if service_closed else "internal_error"
+        message = (
+            str(exc)
+            if service_closed
+            else f"unhandled server error: {type(exc).__name__}: {exc}"
+        )
+        _LOGGER.exception(
+            "UNHANDLED_ERROR: %s %s status=%d code=%s exception=%s",
+            request.method,
+            _request_target(request),
+            status_code,
+            code,
+            type(exc).__name__,
+        )
+        _log_request_failure(
+            request,
+            status_code=status_code,
+            code=code,
+            param=None,
+            message=message,
+        )
+        metrics = getattr(app.state, "hipengine_server_metrics", None)
+        if metrics is not None:
+            metrics.record_failure()
+        error_payload = _error_payload(
+            message=message,
+            error_type="server_error",
+            code=code,
+            param=None,
+            status_code=status_code,
+            extra={"hipengine": {"exception_type": type(exc).__name__}},
+        )
+        await _maybe_write_replay_artifact(
+            config,
+            request,
+            error_payload,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={"error": error_payload},
+        )
+
     def sampling_params(
         request: CompletionRequest | ChatCompletionRequest,
         prompts: Sequence[PromptInput],
@@ -5755,6 +5836,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise _request_cancelled_error(exc.finish_details) from exc
         except GenerationExecutionFailed as exc:
             raise _execution_failed_error(exc) from exc
+        except EngineServiceClosed as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            raise _engine_unavailable_error(exc) from exc
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
@@ -6199,6 +6283,36 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="invalid_request",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
+            yield "data: [DONE]\n\n"
+            return
+        except EngineServiceClosed as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+            )
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -8328,6 +8442,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
+        except EngineServiceClosed as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
@@ -8858,6 +8994,36 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="invalid_request",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
+            yield "data: [DONE]\n\n"
+            return
+        except EngineServiceClosed as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+            )
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -12102,6 +12268,22 @@ def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] |
         code="deadline_exceeded",
         param="timeout_ms",
         finish_details=details,
+    )
+
+
+def _engine_unavailable_error(exc: EngineServiceClosed) -> OpenAIHTTPError:
+    """Report a closed resident service as an availability failure.
+
+    A closed or unhealthy engine service cannot accept work for any request, so
+    this is not the request's fault: the client can retry once the service is
+    healthy again. The message names the fatal cause the service recorded.
+    """
+
+    return OpenAIHTTPError(
+        503,
+        str(exc),
+        error_type="server_error",
+        code="engine_unavailable",
     )
 
 
