@@ -87,6 +87,7 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
 )
 from hipengine.speculative.mtp import MtpProposalContext
+from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
 from hipengine.speculative.ngram_mod import (
     NgramModConfig,
     NgramModProposal,
@@ -959,6 +960,15 @@ class Qwen35GGUFMTP2Adapter:
             int, SpeculativeMTPStaticEligibility
         ] = {}
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
+        # Prefix-checkpoint capture. The store is built lazily on the first
+        # capture, and both halves of the key come from the runner: the block
+        # size decides which boundary is worth taking, and the block ids are
+        # what a later lookup validates. With no capacity or no key provider the
+        # capture is off, which is the default until the runner wires them.
+        self.prefix_checkpoint_capacity: int = 0
+        self.prefix_checkpoint_block_size: int = 0
+        self.prefix_checkpoint_key: Any = None
+        self._prefix_checkpoint_store_instance: PrefixCheckpointStore | None = None
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._prompt_streaming_norm_buffers: dict[int, DeviceBuffer] = {}
@@ -6149,6 +6159,7 @@ class Qwen35GGUFMTP2Adapter:
         hidden_size = int(provider.executor.hidden_size)
         if rows.shape != (len(tuple(prompt_ids)), hidden_size):
             raise ValueError("GGUF MTP2 prompt hidden rows do not align")
+        boundary = self._prefix_checkpoint_boundary(len(tuple(prompt_ids)))
         hidden_buffer = malloc(hidden_size * DType.BF16.itemsize, runtime=target.runtime)
         try:
             zero_bits = np.zeros((hidden_size,), dtype=np.uint16)
@@ -6179,6 +6190,18 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                     return_logits=False,
                 )
+                if boundary and position + 1 == boundary:
+                    # The cursor is at the boundary now, so this is the one
+                    # iteration that can snapshot it.
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        prompt_ids,
+                        rows,
+                        boundary,
+                        hidden_buffer,
+                        target,
+                    )
             final_hidden_bits = np.ascontiguousarray(
                 float_array_to_bf16_bits(rows[-1]),
                 dtype=np.uint16,
@@ -6193,6 +6216,105 @@ class Qwen35GGUFMTP2Adapter:
         except Exception:
             free(hidden_buffer, runtime=target.runtime)
             raise
+
+    def _prefix_checkpoint_boundary(self, prompt_length: int) -> int:
+        """Return the block-aligned prefix length to checkpoint, or 0 for none.
+
+        The prefix cache only matches whole blocks, so a checkpoint taken at the
+        prompt's end would never be looked up: the reusable prefix stops at the
+        last full block. The block size belongs to the runner (it is the radix
+        cache's), so this returns 0 -- capture disabled -- until the runner
+        publishes it, which keeps the default behavior unchanged.
+        """
+
+        block = int(getattr(self, "prefix_checkpoint_block_size", 0) or 0)
+        if block <= 0:
+            return 0
+        return (int(prompt_length) // block) * block
+
+    def _prefix_checkpoint_store(self, provider: Any) -> PrefixCheckpointStore | None:
+        """Return the capture store, or None when capture is not configured.
+
+        Built on first use because the release callback belongs to the
+        provider's executor, which owns the buffers the store holds. A
+        provider whose executor cannot release a checkpoint does not get a
+        store at all rather than one that would leak.
+        """
+
+        capacity = int(getattr(self, "prefix_checkpoint_capacity", 0) or 0)
+        if capacity <= 0:
+            return None
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            return store
+        release = getattr(provider.executor, "release_prefix_state", None)
+        if not callable(release):
+            return None
+        store = PrefixCheckpointStore(capacity=capacity, release=release)
+        self._prefix_checkpoint_store_instance = store
+        return store
+
+    def _capture_prefix_checkpoint(
+        self,
+        provider: Any,
+        request_id: int,
+        prompt_ids: Sequence[int],
+        rows: np.ndarray,
+        boundary: int,
+        hidden_buffer: DeviceBuffer,
+        target: Any,
+    ) -> None:
+        """Store provider state at a block-aligned prefix boundary.
+
+        Called on the walk iteration whose ``run_step`` brings the cursor to
+        ``boundary``. The boundary hidden row is ``rows[boundary - 1]`` -- the
+        row that produces the token *after* the prefix, which is what a restore
+        hands the first draft step -- so it is staged into the step buffer here
+        and the snapshot takes its own copy.
+
+        A capture that cannot be taken is skipped, never raised: the checkpoint
+        is an optimization, and a request must not fail because its prefix could
+        not be cached. A later turn then simply misses and decodes
+        autoregressively, which is today's behavior for every prefix hit.
+        """
+
+        store = self._prefix_checkpoint_store(provider)
+        if store is None:
+            return
+        key_provider = getattr(self, "prefix_checkpoint_key", None)
+        if not callable(key_provider):
+            return
+        try:
+            block_ids = key_provider(int(request_id))
+        except Exception:
+            return
+        if not block_ids:
+            return
+        hidden_size = int(provider.executor.hidden_size)
+        boundary_bits = np.ascontiguousarray(
+            float_array_to_bf16_bits(rows[boundary - 1]),
+            dtype=np.uint16,
+        )
+        copy_host_to_device(
+            DeviceBuffer(hidden_buffer.ptr, boundary_bits.nbytes),
+            host_array_ptr(boundary_bits),
+            boundary_bits.nbytes,
+            runtime=target.runtime,
+        )
+        snapshot = getattr(provider.executor, "snapshot_prefix_state", None)
+        if not callable(snapshot):
+            return
+        try:
+            checkpoint = snapshot(
+                int(request_id),
+                prefix_len=int(boundary),
+                boundary_hidden=DeviceBuffer(
+                    hidden_buffer.ptr, hidden_size * DType.BF16.itemsize
+                ),
+            )
+        except Exception:
+            return
+        store.put(tuple(prompt_ids[:boundary]), tuple(block_ids), checkpoint)
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)

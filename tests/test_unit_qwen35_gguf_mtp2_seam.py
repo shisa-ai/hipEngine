@@ -5761,3 +5761,182 @@ def test_prompt_activation_contention_preserves_speculative_intent() -> None:
     assert adapter._prompt_streaming_sinks == {}
     assert adapter._streaming_refused_requests == {rid}
     assert row.mtp2_candidate_budget == 3
+
+
+class _PrefixCaptureExecutor:
+    """Executor double that records the walk, the snapshot, and the staged rows."""
+
+    hidden_size = 4
+
+    def __init__(self) -> None:
+        self.positions: list[int] = []
+        self.log: list[tuple[str, int]] = []
+        self.snapshots: list[tuple[int, int, int | None]] = []
+        self.staged: list[np.ndarray] = []
+        self.released: list[object] = []
+        self.raise_on_snapshot = False
+
+    def run_step(self, request_id, token, position, hidden, *, return_logits):
+        self.positions.append(int(position))
+        self.log.append(("step", int(position)))
+
+    def snapshot_prefix_state(self, request_id, *, prefix_len, boundary_hidden=None):
+        if self.raise_on_snapshot:
+            raise RuntimeError("snapshot refused")
+        self.log.append(("snapshot", int(prefix_len)))
+        self.snapshots.append(
+            (
+                int(request_id),
+                int(prefix_len),
+                None if boundary_hidden is None else int(boundary_hidden.ptr),
+            )
+        )
+        return f"blob:{int(prefix_len)}"
+
+    def release_prefix_state(self, checkpoint):
+        self.released.append(checkpoint)
+
+
+def _prefix_capture_adapter(monkeypatch, executor, *, capacity=2, block_size=4):
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: DeviceBuffer(0x1000, 8),
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
+
+    def _record_copy(destination, source_ptr, nbytes, **kwargs):
+        executor.staged.append(
+            np.frombuffer(
+                ctypes.string_at(int(source_ptr), int(nbytes)), dtype=np.uint16
+            ).copy()
+        )
+
+    monkeypatch.setattr(mtp2_module, "copy_host_to_device", _record_copy)
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._prompt_hidden_rows = {}
+    adapter.prefix_checkpoint_capacity = capacity
+    adapter.prefix_checkpoint_block_size = block_size
+    adapter.prefix_checkpoint_key = lambda request_id: (11, 12)
+    adapter._prefix_checkpoint_store_instance = None
+    return adapter
+
+
+def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
+    monkeypatch,
+) -> None:
+    """One capture per walk, at the last full block, with the boundary row.
+
+    The cache matches whole blocks, so the checkpoint has to describe the
+    block-aligned prefix rather than the prompt's end: for a 10-token prompt and
+    a 4-token block that is 8 tokens, taken on the iteration whose run_step
+    brings the cursor there.
+    """
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    prompt_ids = tuple(range(100, 110))
+    provider = SimpleNamespace(executor=executor)
+    target = SimpleNamespace(runtime=SimpleNamespace())
+
+    buffer = adapter._catch_up_provider(
+        provider, 7, prompt_ids, rows, target
+    )
+
+    assert buffer.ptr == 0x1000
+    assert executor.positions == list(range(10))
+    assert executor.snapshots == [(7, 8, 0x1000)]
+    # The capture happens on the iteration whose step brings the cursor to the
+    # boundary, before the remaining prompt steps: that is what makes the
+    # recurrent state current at exactly prefix_len.
+    assert executor.log[7] == ("step", 7)
+    assert executor.log[8] == ("snapshot", 8)
+    assert executor.log[9:] == [("step", 8), ("step", 9)]
+    # The staged row immediately before the snapshot is the boundary hidden row:
+    # the row that produces the token after the prefix, which is what a restore
+    # hands the first draft step.
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    expected = np.ascontiguousarray(
+        float_array_to_bf16_bits(rows[7]), dtype=np.uint16
+    )
+    # Twelve copies: the ten walk steps, the capture's own boundary copy at
+    # index 8 (the walk staged rows[6] at index 7), and the final root-buffer
+    # copy of rows[9] that the first draft step consumes.
+    assert len(executor.staged) == 12
+    assert np.array_equal(executor.staged[8], expected)
+
+    store = adapter._prefix_checkpoint_store_instance
+    assert store is not None
+    assert store.get(prompt_ids[:8], (11, 12)) == "blob:8"
+    # A later request whose blocks moved on cannot use the checkpoint.
+    assert store.get(prompt_ids[:8], (99,)) is None
+
+
+def test_prefix_checkpoint_capture_is_off_until_the_runner_configures_it(
+    monkeypatch,
+) -> None:
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor, capacity=0)
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    provider = SimpleNamespace(executor=executor)
+
+    adapter._catch_up_provider(
+        provider, 7, tuple(range(100, 110)), rows, SimpleNamespace(runtime=SimpleNamespace())
+    )
+
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is None
+
+    sized = _PrefixCaptureExecutor()
+    unaligned = _prefix_capture_adapter(monkeypatch, sized, block_size=0)
+    unaligned._catch_up_provider(
+        SimpleNamespace(executor=sized),
+        7,
+        tuple(range(100, 110)),
+        rows,
+        SimpleNamespace(runtime=SimpleNamespace()),
+    )
+    assert sized.snapshots == []
+
+
+def test_prefix_checkpoint_capture_skips_without_a_key_or_a_snapshot_route(
+    monkeypatch,
+) -> None:
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    provider = SimpleNamespace(executor=executor)
+    target = SimpleNamespace(runtime=SimpleNamespace())
+
+    adapter.prefix_checkpoint_key = lambda request_id: None
+    adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
+    assert executor.snapshots == []
+
+    adapter.prefix_checkpoint_key = lambda request_id: (11, 12)
+    executor.raise_on_snapshot = True
+    adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is not None
+    assert len(adapter._prefix_checkpoint_store_instance) == 0
+
+
+def test_prefix_checkpoint_capture_needs_an_executor_that_can_release(monkeypatch) -> None:
+    """A provider that cannot release a checkpoint gets no store at all."""
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    executor.release_prefix_state = None
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+
+    adapter._catch_up_provider(
+        SimpleNamespace(executor=executor),
+        7,
+        tuple(range(100, 110)),
+        rows,
+        SimpleNamespace(runtime=SimpleNamespace()),
+    )
+
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is None
