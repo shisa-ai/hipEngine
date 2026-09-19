@@ -8945,6 +8945,63 @@ def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
     assert fake.mtp_calls == []
 
 
+@pytest.mark.parametrize(
+    "payload,token_map,blocker",
+    [
+        ({"stop": ["\n\n"]}, {"one": [1], "\n\n": [5, 6]}, "stop_token_sequences"),
+        ({"stop": ["<eos>"]}, {"one": [1], "<eos>": [9]}, "stop_token_ids"),
+        ({"stop": ["zzz"]}, {"one": [1]}, None),
+        ({"min_tokens": 2, "eos_token_id": 9}, None, "min_tokens"),
+        ({"eos_token_id": 9}, None, "eos_token_id"),
+        ({"temperature": 0.4, "eos_token_id": 9}, None, "eos_token_id"),
+        ({"ignore_eos": True}, None, "ignore_eos"),
+        ({"suppress_token_ids": [7]}, None, "suppress_token_ids"),
+    ],
+)
+def test_explicit_mtp_keeps_stop_semantics_on_the_autoregressive_route(
+    payload: dict[str, object], token_map: dict[str, list[int]] | None, blocker: str | None
+) -> None:
+    """An explicit MTP request whose finish rule MTP cannot reproduce stays AR.
+
+    The cycle commit implements one finish rule -- EOS on the last visible token
+    of a greedy chain.  Token stops, multi-token stops, an EOS finish policy,
+    and the min-token floor that couples to it are therefore advertised
+    blockers, and the response has to name the blocker it hit rather than
+    silently serving a different finish rule.  A stop string the tokenizer
+    cannot lower stays a text-level post-trim, which does not change the
+    runtime finish rule, so that request keeps MTP.
+    """
+
+    fake = SpeculativeMTPFakeLLM(token_map=token_map)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "one", "max_tokens": 3, "speculative_mtp": True}
+        | payload,
+    )
+
+    assert response.status_code == 200
+    shape = response.json()["hipengine"]["generation_shape"]
+    if blocker is None:
+        assert shape["route"] == "speculative_mtp"
+        assert fake.mtp_calls
+        return
+    decision = shape["route_decision"]
+    assert decision["selected_route"] == "default"
+    assert decision["reason"] == "unsupported_sampling_k0"
+    assert blocker in decision["sampling_blockers"]
+    assert fake.mtp_calls == []
+
+
 def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sampling() -> None:
     fake = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
     app = create_app(

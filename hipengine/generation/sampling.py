@@ -826,24 +826,31 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "presence_penalty",
     "frequency_penalty",
     "suppress_token_ids",
-    "min_tokens",
-    "stop_token_ids",
-    "stop_token_sequences",
-    "eos_token_id",
     "ignore_eos",
 )
-"""MTP blockers the sampled route serves exactly.
+"""MTP blockers the sampled route serves exactly: the sampling law.
 
-Each of these is either position-independent (temperature, top-k/top-p, bias,
-EOS id) or history-dependent in a way the sampled route reproduces by processing
-every verified row against its own drafted prefix and observing only the
-committed tokens back into the row's live state. The route's binding contract is
-``docs/EXECUTION-PROFILES.md``: the emitted tokens must be distributed exactly as
-the autoregressive sampler's, which ``hipengine/speculative/sampling.py``
-establishes for these processors.
+``hipengine/speculative/sampling.py`` requires the caller to apply the request's
+sampler pipeline (bias, penalties, suppression, temperature, top-k, top-p,
+min-p) to each verified row before the coupled accept, and the induced-law gate
+measures exactly that set (824/824 comparisons, max total variation 4.5e-16).
+Those fields therefore change *which token is selected*, and the sampled route
+reproduces the selection. ``ignore_eos`` is a finish-rule relaxation the cycle
+commit already honors: a row that ignores EOS cannot finish on EOS on either
+route.
+
+This set is the sampling law and nothing else. Every field that changes
+*post-accept finish behavior* stays a blocker below, because the cycle commit
+implements one finish rule -- EOS on the last visible token of a greedy chain --
+and not the autoregressive finish rule (EOS, token stops, multi-token stops,
+and the min-token EOS floor that couples them).
 """
 
 SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
+    "min_tokens",
+    "eos_token_id",
+    "stop_token_ids",
+    "stop_token_sequences",
     "logprobs",
     "top_logprobs",
     "forced_tokens_pending",
@@ -855,12 +862,19 @@ SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
 )
 """MTP blockers the sampled route deliberately refuses.
 
-These need response metadata (logprobs), a caller-level override outside the
-sampling law (forced tokens, forced sequence completion), or per-token hooks that
-consume sampler queues or tokenizer text (JSON-object close forcing, tool-call
-constraints, the host thinking budget). A request carrying one of them stays on
-the autoregressive route rather than being served by a route that would report
-the wrong law or the wrong metadata.
+Two families. The finish-rule fields (``min_tokens``, ``eos_token_id``,
+``stop_token_ids``, ``stop_token_sequences``) are refused because the route
+reproduces the sampler's *selection* but not its *finish* rule: a stochastic
+accept has no greedy-chain bound, so a stop token or EOS can land mid-cycle and
+the commit path would publish the tokens after it. ``min_tokens`` is refused
+with them because the floor is an EOS-suppression processor, so it is only
+observable through the EOS finish rule it depends on. The rest need response
+metadata (logprobs), a caller-level override outside the sampling law (forced
+tokens, forced sequence completion), or per-token hooks that consume sampler
+queues or tokenizer text (JSON-object close forcing, tool-call constraints, the
+host thinking budget). A request carrying one of them stays on the
+autoregressive route rather than being served by a route that would report the
+wrong finish or the wrong metadata.
 """
 
 
