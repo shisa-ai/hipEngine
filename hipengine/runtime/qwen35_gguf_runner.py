@@ -15337,6 +15337,166 @@ class _ExternalDMSDevicePrefillCollector:
         self._closed = True
 
 
+def build_t16_f16_rocblas_prefill_owner(
+    runner: object,
+    scratch: object,
+    *,
+    request_rows: int,
+    compiler_version: str | None,
+    require_cached: bool,
+    use_owner: bool | None = None,
+    library: object | None = None,
+    rocblas: object | None = None,
+) -> tuple[object | None, object | None, object | None]:
+    """Build the source-F16 prefill owner over an explicit scratch.
+
+    Returns ``(owner, library, rocblas)``. ``owner`` is ``None`` when the
+    calibrated policy does not admit this geometry, which is a normal outcome:
+    the caller keeps the exact T16 owner in that case. ``library`` and
+    ``rocblas`` are returned so a caller can cache them across passes instead of
+    rebuilding the JIT module and the rocBLAS handle every layer.
+
+    This is module-level rather than a method so a TP2 rank can build an owner
+    over its **own** three-plane scratch and its **own** rocBLAS handle without
+    standing up a whole resident session per rank. A handle is bound to the
+    device current at load, so it is not safe to share one across ranks.
+    """
+
+    if use_owner is False or scratch is None:
+        return None, library, rocblas
+    policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
+    if policy is None:
+        return None, library, rocblas
+    q6_shape_tiles = {
+        (int(rows), int(shape[0]), int(shape[1])): int(tile)
+        for shape, row_policy in policy.get(
+            "gguf_q6_k_t16_qmicro_planar_v1", {}
+        ).items()
+        for rows, tile in row_policy.items()
+        if int(rows) <= int(scratch.rows)
+    }
+    q4_shape_tiles = {
+        (int(rows), int(shape[0]), int(shape[1])): int(tile)
+        for shape, row_policy in policy.get(
+            "gguf_q4_k_t16_v1", {}
+        ).items()
+        for rows, tile in row_policy.items()
+        if int(rows) <= int(scratch.rows)
+    }
+    q5_shape_tiles = {
+        (int(rows), int(shape[0]), int(shape[1])): int(tile)
+        for shape, row_policy in policy.get("gguf_q5_k_t16_v1", {}).items()
+        for rows, tile in row_policy.items()
+        if int(rows) <= int(scratch.rows)
+    }
+    raw_pair_only_policies = policy.get(
+        "pair_only_second_operand_policies", {}
+    )
+    current_request_rows = (
+        int(scratch.rows) if request_rows is None else int(request_rows)
+    )
+    if current_request_rows <= 0:
+        raise ValueError("source-F16 request rows must be positive")
+    if current_request_rows > int(scratch.rows):
+        # Source-F16 arithmetic is admitted by complete request shape, not
+        # by an implementation chunk that happens to fit this scratch.
+        # Long chunked requests therefore retain the exact T16 owner.
+        return None, library, rocblas
+    pair_only_policies = {
+        key: MappingProxyType(
+            {
+                interval: spec
+                for interval, spec in intervals.items()
+                if interval[0] <= current_request_rows <= interval[1]
+            }
+        )
+        for key, intervals in raw_pair_only_policies.items()
+        if any(
+            interval[0] <= current_request_rows <= interval[1]
+            for interval in intervals
+        )
+    }
+    all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
+    if not all_shape_tiles:
+        return None, library, rocblas
+    if library is None:
+        library = (
+            build_gguf_q6_k_f16_rocblas_prefill(
+                load=True,
+                compiler_version=compiler_version,
+                require_cached=require_cached,
+            )
+        )
+    if rocblas is None:
+        rocblas = Rocblas.load()
+        # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
+        # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
+        # this route remains inside hipEngine's existing tracked arena.
+        rocblas.set_workspace(0, 0)
+    solution_version_prefix = str(
+        backend_package_capability(
+            runner.backend,
+            "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+            "",
+        )
+    )
+    raw_solution_indices = backend_package_capability(
+        runner.backend,
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+        {},
+    )
+    solution_indices = (
+        {
+            tuple(int(value) for value in shape): int(index)
+            for shape, index in raw_solution_indices.items()
+            if isinstance(shape, tuple) and len(shape) == 3
+        }
+        if isinstance(raw_solution_indices, Mapping)
+        and solution_version_prefix
+        and rocblas.version_string().startswith(
+            solution_version_prefix
+        )
+        else {}
+    )
+    owner = Q6T16F16RocblasPrefillSession(
+        min_rows=min(shape[0] for shape in all_shape_tiles),
+        max_rows=max(shape[0] for shape in all_shape_tiles),
+        x_f16_ptr=int(scratch.q6_f16_x.ptr),
+        x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
+        weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
+        weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
+        out_f16_ptr=int(scratch.q6_f16_out.ptr),
+        out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
+        tile_out_features_by_shape=q6_shape_tiles,
+        q4_tile_out_features_by_shape=q4_shape_tiles,
+        q5_tile_out_features_by_shape=q5_shape_tiles,
+        q4_x_inplace_shapes=frozenset(
+            shape
+            for shape in q4_shape_tiles
+            if shape[1:] in {(17_408, 5_120), (6_144, 5_120)}
+        ),
+        q5_x_inplace_shapes=frozenset(q5_shape_tiles),
+        x_inplace_shapes=frozenset(
+            shape
+            for shape in q6_shape_tiles
+            if shape[1:] == (17_408, 5_120)
+        ),
+        max_rows_by_quant_shape=policy.get(
+            "max_rows_by_quant_shape", {}
+        ),
+        linear_variant_intervals_by_quant=policy.get(
+            "linear_variant_intervals_by_quant", {}
+        ),
+        pair_only_second_operand_policies=pair_only_policies,
+        dequant_library=library,
+        cast_library=runner._cast_library(),
+        rocblas=rocblas,
+        solution_indices_by_gemm_shape=solution_indices,
+    )
+    return owner, library, rocblas
+
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -19446,146 +19606,43 @@ class Qwen35GGUFResidentSession:
             free(self._int8_prefill_retained_block_table, runtime=runtime)
             self._int8_prefill_retained_block_table = None
 
-    def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
-        """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
+    def _q6_f16_rocblas_prefill_context(
+        self, *, request_rows: int | None = None, scratch: object | None = None
+    ):
+        """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context.
+
+        ``scratch`` overrides this session's own bulk-prefill workspace. A TP2
+        rank passes the three-plane
+        :func:`allocate_t16_f16_rocblas_prefill_planes` object instead of a full
+        resident scratch, so the owner reads that rank's own planes rather than
+        the whole 16-buffer workspace.
+        """
 
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
-        if self._bulk_prefill_scratch is None:
-            self._ensure_bulk_prefill_workspace()
-        if self.use_q6_f16_rocblas_prefill is False:
-            return q6_t16_f16_rocblas_prefill_session(None)
-        policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
-        if policy is None:
-            return q6_t16_f16_rocblas_prefill_session(None)
-        scratch = self._bulk_prefill_scratch
-        q6_shape_tiles = {
-            (int(rows), int(shape[0]), int(shape[1])): int(tile)
-            for shape, row_policy in policy.get(
-                "gguf_q6_k_t16_qmicro_planar_v1", {}
-            ).items()
-            for rows, tile in row_policy.items()
-            if int(rows) <= int(scratch.rows)
-        }
-        q4_shape_tiles = {
-            (int(rows), int(shape[0]), int(shape[1])): int(tile)
-            for shape, row_policy in policy.get(
-                "gguf_q4_k_t16_v1", {}
-            ).items()
-            for rows, tile in row_policy.items()
-            if int(rows) <= int(scratch.rows)
-        }
-        q5_shape_tiles = {
-            (int(rows), int(shape[0]), int(shape[1])): int(tile)
-            for shape, row_policy in policy.get("gguf_q5_k_t16_v1", {}).items()
-            for rows, tile in row_policy.items()
-            if int(rows) <= int(scratch.rows)
-        }
-        raw_pair_only_policies = policy.get(
-            "pair_only_second_operand_policies", {}
-        )
+        if scratch is None:
+            if self._bulk_prefill_scratch is None:
+                self._ensure_bulk_prefill_workspace()
+            scratch = self._bulk_prefill_scratch
         current_request_rows = (
             int(scratch.rows) if request_rows is None else int(request_rows)
         )
-        if current_request_rows <= 0:
-            raise ValueError("source-F16 request rows must be positive")
-        if current_request_rows > int(scratch.rows):
-            # Source-F16 arithmetic is admitted by complete request shape, not
-            # by an implementation chunk that happens to fit this scratch.
-            # Long chunked requests therefore retain the exact T16 owner.
-            return q6_t16_f16_rocblas_prefill_session(None)
-        pair_only_policies = {
-            key: MappingProxyType(
-                {
-                    interval: spec
-                    for interval, spec in intervals.items()
-                    if interval[0] <= current_request_rows <= interval[1]
-                }
-            )
-            for key, intervals in raw_pair_only_policies.items()
-            if any(
-                interval[0] <= current_request_rows <= interval[1]
-                for interval in intervals
-            )
-        }
-        all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
-        if not all_shape_tiles:
-            return q6_t16_f16_rocblas_prefill_session(None)
-        if self._q6_f16_rocblas_prefill_library is None:
-            self._q6_f16_rocblas_prefill_library = (
-                build_gguf_q6_k_f16_rocblas_prefill(
-                    load=True,
-                    compiler_version=self.compiler_version,
-                    require_cached=self.require_cached_build,
-                )
-            )
-        if self._q6_f16_rocblas is None:
-            self._q6_f16_rocblas = Rocblas.load()
-            # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
-            # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
-            # this route remains inside hipEngine's existing tracked arena.
-            self._q6_f16_rocblas.set_workspace(0, 0)
-        solution_version_prefix = str(
-            backend_package_capability(
-                self.runner.backend,
-                "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
-                "",
-            )
-        )
-        raw_solution_indices = backend_package_capability(
-            self.runner.backend,
-            "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
-            {},
-        )
-        solution_indices = (
-            {
-                tuple(int(value) for value in shape): int(index)
-                for shape, index in raw_solution_indices.items()
-                if isinstance(shape, tuple) and len(shape) == 3
-            }
-            if isinstance(raw_solution_indices, Mapping)
-            and solution_version_prefix
-            and self._q6_f16_rocblas.version_string().startswith(
-                solution_version_prefix
-            )
-            else {}
-        )
-        owner = Q6T16F16RocblasPrefillSession(
-            min_rows=min(shape[0] for shape in all_shape_tiles),
-            max_rows=max(shape[0] for shape in all_shape_tiles),
-            x_f16_ptr=int(scratch.q6_f16_x.ptr),
-            x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
-            weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
-            weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
-            out_f16_ptr=int(scratch.q6_f16_out.ptr),
-            out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
-            tile_out_features_by_shape=q6_shape_tiles,
-            q4_tile_out_features_by_shape=q4_shape_tiles,
-            q5_tile_out_features_by_shape=q5_shape_tiles,
-            q4_x_inplace_shapes=frozenset(
-                shape
-                for shape in q4_shape_tiles
-                if shape[1:] in {(17_408, 5_120), (6_144, 5_120)}
-            ),
-            q5_x_inplace_shapes=frozenset(q5_shape_tiles),
-            x_inplace_shapes=frozenset(
-                shape
-                for shape in q6_shape_tiles
-                if shape[1:] == (17_408, 5_120)
-            ),
-            max_rows_by_quant_shape=policy.get(
-                "max_rows_by_quant_shape", {}
-            ),
-            linear_variant_intervals_by_quant=policy.get(
-                "linear_variant_intervals_by_quant", {}
-            ),
-            pair_only_second_operand_policies=pair_only_policies,
-            dequant_library=self._q6_f16_rocblas_prefill_library,
-            cast_library=self.runner._cast_library(),
+        owner, library, rocblas = build_t16_f16_rocblas_prefill_owner(
+            self.runner,
+            scratch,
+            request_rows=current_request_rows,
+            compiler_version=self.compiler_version,
+            require_cached=self.require_cached_build,
+            use_owner=self.use_q6_f16_rocblas_prefill,
+            library=self._q6_f16_rocblas_prefill_library,
             rocblas=self._q6_f16_rocblas,
-            solution_indices_by_gemm_shape=solution_indices,
         )
+        # Cache the handle and the JIT module for the next pass; rebuilding
+        # either per layer would dominate the pass it is meant to accelerate.
+        self._q6_f16_rocblas_prefill_library = library
+        self._q6_f16_rocblas = rocblas
         return q6_t16_f16_rocblas_prefill_session(owner)
+
 
     def _ensure_prefill_f16_staging_buffer(self):
         """Return this resident session's shared bounded staging allocation."""
@@ -31606,6 +31663,109 @@ def _gguf_verify_hidden_scratch_row_start(
         return 0
     return start
 
+
+@dataclass(frozen=True)
+class _T16F16RocblasPrefillPlanes:
+    """The three source-F16 planes the rocBLAS prefill owner needs, and nothing else.
+
+    ``_GGUFFullAttentionPrefillScratch`` carries 16 buffers because the resident
+    single-card prefill needs them. The f16-rocBLAS owner needs exactly three:
+    the staged activations, one weight plane reused per GEMM, and the F16 output.
+    A TP2 rank that installs the owner should not pay for the other thirteen, so
+    this carries the same field names the owner reads while allocating only what
+    it reads. Measured cost is 48 MiB/rank at rows=512 against 461 MiB/rank for a
+    full resident session (118 MiB of it scratch).
+    """
+
+    rows: int
+    q6_f16_x: object
+    q6_f16_weight: object
+    q6_f16_out: object
+    buffers: tuple[object, ...] = ()
+
+    def release(self, *, runtime: object | None = None) -> None:
+        for buffer in self.buffers:
+            try:
+                free(buffer, runtime=runtime)
+            except Exception:  # noqa: BLE001 - release must not mask a result
+                pass
+
+
+def allocate_t16_f16_rocblas_prefill_planes(
+    runner: object,
+    *,
+    rows: int,
+    runtime: object | None = None,
+) -> _T16F16RocblasPrefillPlanes | None:
+    """Allocate the rocBLAS prefill owner's planes, or ``None`` if not admitted.
+
+    Returns ``None`` rather than raising when the calibrated policy does not
+    admit this geometry: the caller's contract is to keep the exact T16 owner in
+    that case, so absence is a normal outcome, not an error.
+    """
+
+    rows = int(rows)
+    if rows <= 0:
+        raise ValueError("source-F16 plane rows must be positive")
+    if not hasattr(runner, "hidden_size"):
+        raise TypeError(
+            "allocate_t16_f16_rocblas_prefill_planes takes a runner, not a resident "
+            f"session; got {type(runner).__name__}. Pass resident.runner instead - the "
+            "calibrated policy is a property of the runner, and asking a session for it "
+            "returns None, which would silently disable the owner."
+        )
+    policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
+    if policy is None:
+        return None
+    # Sizing is deliberately unfiltered by rows, matching
+    # ``_GGUFFullAttentionPrefillScratch.allocate``: the weight plane must hold
+    # the largest GEMM the owner can be asked to run, and the owner applies its
+    # own rows filter. A smaller plane here would be a buffer overrun, not a
+    # saving.
+    shape_policies = tuple(
+        (shape, row_policy)
+        for quant, quant_policy in policy.items()
+        if quant
+        not in {
+            "linear_variant_intervals_by_quant",
+            "max_rows_by_quant_shape",
+            "pair_only_second_operand_policies",
+        }
+        for shape, row_policy in quant_policy.items()
+    )
+    if not shape_policies:
+        return None
+    weight_rows = max(
+        int(tile) * int(shape[0])
+        for shape, row_policy in shape_policies
+        for tile in row_policy.values()
+    )
+    out_features = max(
+        int(tile) for _shape, row_policy in shape_policies for tile in row_policy.values()
+    )
+    hidden_size = int(runner.hidden_size)
+    allocations: list[object] = []
+    try:
+        x_plane = malloc(rows * hidden_size * DType.FP16.itemsize, runtime=runtime)
+        allocations.append(x_plane)
+        weight_plane = malloc(weight_rows * DType.FP16.itemsize, runtime=runtime)
+        allocations.append(weight_plane)
+        out_plane = malloc(rows * out_features * DType.FP16.itemsize, runtime=runtime)
+        allocations.append(out_plane)
+    except BaseException:
+        for buffer in allocations:
+            try:
+                free(buffer, runtime=runtime)
+            except Exception:  # noqa: BLE001
+                pass
+        raise
+    return _T16F16RocblasPrefillPlanes(
+        rows=rows,
+        q6_f16_x=x_plane,
+        q6_f16_weight=weight_plane,
+        q6_f16_out=out_plane,
+        buffers=tuple(allocations),
+    )
 
 @dataclass(frozen=True)
 class _GGUFFullAttentionPrefillScratch:

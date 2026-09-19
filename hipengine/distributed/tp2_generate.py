@@ -88,8 +88,11 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFFullAttentionPrefillScratch,
     _gguf_dense_pair_silu_decode_variant,
     _gguf_norm_residual_decode_kernel,
+    allocate_t16_f16_rocblas_prefill_planes,
+    build_t16_f16_rocblas_prefill_owner,
     resident_prefill_dispatch_session,
 )
+from hipengine.runtime.gguf_linear import q6_t16_f16_rocblas_prefill_session
 
 
 class TP2GroupError(RuntimeError):
@@ -177,6 +180,7 @@ class MlpTP2GenerationSession:
         bulk_prefill_rows: int | None = None,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
+        use_t16_f16_rocblas_prefill: bool | None = None,
         decode_partial_dtype: str = "bf16",
         uneven_split: Any = None,
     ) -> None:
@@ -303,6 +307,27 @@ class MlpTP2GenerationSession:
             else bool(use_wmma_prefill)
         )
         self.use_gemv_decode = True if use_gemv_decode is None else bool(use_gemv_decode)
+        # The source-F16 rocBLAS prefill owner, built over per-rank planes.
+        #
+        # **Default off, and this is a gate failure, not caution.** The owner is
+        # a real +3.97% on the 512-token prefill (490.0 -> 471.3 ms, four paired
+        # same-session deltas all the same sign), but it changes the attention
+        # path's arithmetic from int8 WMMA to source-F16 rocBLAS, and on the
+        # heldout prompt it moves the wrong way: mean_kl 0.06998 -> 0.09288,
+        # max_kl 3.7705 -> 4.2241, top-1 0.9375 -> 0.921875. Both arms fail the
+        # gate, so this is not a regression against a passing baseline - it is a
+        # candidate that does not repair one. Do not promote it on speed alone;
+        # the route's own numerical blocker has to clear first, and this owner
+        # must then re-pass against whatever fixes it.
+        self.use_t16_f16_rocblas_prefill = (
+            False
+            if use_t16_f16_rocblas_prefill is None
+            else bool(use_t16_f16_rocblas_prefill)
+        )
+        self._rank_f16_rocblas_planes: dict[int, Any] = {}
+        self._rank_f16_rocblas_library: dict[int, Any] = {}
+        self._rank_f16_rocblas: dict[int, Any] = {}
+        self._rank_f16_rocblas_ready: dict[int, bool] = {}
 
         self.runtime = get_hip_runtime()
         if self.runtime.device_count() < len(self.devices):
@@ -782,6 +807,11 @@ class MlpTP2GenerationSession:
                         runtime=self.runtime,
                         stream=self._rank_stream(device),
                     )
+            # Allocate each rank's source-F16 planes once, before the layer
+            # loop, so the per-layer owner build is a lookup rather than an
+            # allocation. Done under each rank's device scope because the planes
+            # are device memory.
+            self._ensure_rank_f16_rocblas_planes(rows)
             self._run_bulk_prefill_layers(rows)
             logits = self._finish_bulk_prefill(rows, project_rows=logits_rows)
         except Exception as error:
@@ -811,6 +841,96 @@ class MlpTP2GenerationSession:
             group.finish_device_group()
         self._bulk_final_hidden = dict(src)
 
+    def _ensure_rank_f16_rocblas_planes(self, rows: int) -> None:
+        """Allocate each rank's three-plane source-F16 scratch, once per geometry.
+
+        Each rank gets its own planes on its own device. If the calibrated
+        policy does not admit this geometry the rank is marked not-ready and
+        keeps the exact T16 owner; that is recorded rather than raised.
+
+        Planes are sized by row count and the owner's admission filter compares
+        against ``planes.rows``, so a pass with more rows than the cached planes
+        must re-allocate. Caching on device alone would make the first pass's row
+        count permanent: a session warmed at 64 rows would silently keep the
+        exact T16 owner for every later 512-row pass, losing the route with no
+        error to notice.
+        """
+
+        rows = int(rows)
+        for device in self.devices:
+            cached = self._rank_f16_rocblas_planes.get(device)
+            if device in self._rank_f16_rocblas_ready and cached is not None:
+                if int(getattr(cached, "rows", 0)) >= rows:
+                    continue
+                # The new planes supersede the old, so release before replacing.
+                with scoped_current_device(self.runtime, device):
+                    cached.release(runtime=self.runtime)
+                self._rank_f16_rocblas_planes.pop(device, None)
+                self._rank_f16_rocblas_ready.pop(device, None)
+            with scoped_current_device(self.runtime, device):
+                try:
+                    planes = allocate_t16_f16_rocblas_prefill_planes(
+                        self._runners[device],
+                        rows=rows,
+                        runtime=self.runtime,
+                    )
+                except Exception:  # noqa: BLE001 - fallback is the contract
+                    planes = None
+            self._rank_f16_rocblas_planes[device] = planes
+            self._rank_f16_rocblas_ready[device] = planes is not None
+
+    def _release_rank_f16_rocblas_planes(self) -> None:
+        for device, planes in self._rank_f16_rocblas_planes.items():
+            if planes is None:
+                continue
+            with scoped_current_device(self.runtime, device):
+                planes.release(runtime=self.runtime)
+        self._rank_f16_rocblas_planes.clear()
+        self._rank_f16_rocblas_library.clear()
+        self._rank_f16_rocblas.clear()
+        self._rank_f16_rocblas_ready.clear()
+
+    def _rank_f16_rocblas_owner_context(self, device: int, rows: int):
+        """Enter this rank's own source-F16 prefill owner, or the exact T16 owner.
+
+        The owner is the same object the single-card route installs, built over
+        **this rank's** three-plane scratch and **this rank's** rocBLAS handle.
+        Both are per-rank on purpose: a rocBLAS handle is bound to the device
+        that was current when it was loaded, and the planes hold staged
+        activations, so one rank's context must never wrap another rank's work
+        (doing that makes rank 1 read rank 0's planes and faults the GPU with
+        ``Memory access fault ... Page not present``).
+
+        Falling back is normal, not an error. When the calibrated policy does
+        not admit this geometry, or the caller disabled the owner, this yields
+        the exact T16 owner - the same kernels the route ran before this owner
+        existed. The fallback is the registered strict path, not a degraded one.
+        """
+
+        if not self.use_t16_f16_rocblas_prefill:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        runner = self._runners[device]
+        if not self._rank_f16_rocblas_ready.get(device, False):
+            return q6_t16_f16_rocblas_prefill_session(None)
+        planes = self._rank_f16_rocblas_planes.get(device)
+        if planes is None or int(rows) > int(planes.rows):
+            # Source-F16 arithmetic is admitted by complete request shape, not
+            # by a chunk that happens to fit this rank's planes.
+            return q6_t16_f16_rocblas_prefill_session(None)
+        owner, library, rocblas = build_t16_f16_rocblas_prefill_owner(
+            runner,
+            planes,
+            request_rows=int(rows),
+            compiler_version=runner.compiler_version,
+            require_cached=runner.require_cached_build,
+            use_owner=None,
+            library=self._rank_f16_rocblas_library.get(device),
+            rocblas=self._rank_f16_rocblas.get(device),
+        )
+        self._rank_f16_rocblas_library[device] = library
+        self._rank_f16_rocblas[device] = rocblas
+        return q6_t16_f16_rocblas_prefill_session(owner)
+
     def _bulk_attention_layer(
         self,
         layer_id: int,
@@ -833,6 +953,9 @@ class MlpTP2GenerationSession:
                     use_wmma_prefill=self.use_wmma_prefill,
                     use_gemv_decode=self.use_gemv_decode,
                 ),
+                # This rank's own source-F16 owner. Falls back to the exact T16
+                # owner when the policy does not admit this geometry.
+                self._rank_f16_rocblas_owner_context(device, rows),
             ):
                 if layer_type == LINEAR_ATTENTION:
                     runner._run_linear_attention_prefill_attn_rows(
@@ -1940,6 +2063,7 @@ class MlpTP2GenerationSession:
                 pass
             self._device_exchange = None
         if self._bulk_shard_group is not None or self._bulk_rows:
+            self._release_rank_f16_rocblas_planes()
             self._release_bulk_prefill_workspace()
         if self._shard_group is not None:
             self._shard_group.close()

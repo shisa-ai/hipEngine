@@ -101,6 +101,7 @@ def _build_session(
     bulk: bool = True,
     decode_partial_dtype: str = "bf16",
     reduce_mode: str | None = None,
+    t16_f16_rocblas_prefill: bool | None = None,
 ):
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 
@@ -112,6 +113,8 @@ def _build_session(
         )
     if reduce_mode is not None:
         kwargs["reduce_mode"] = reduce_mode
+    if t16_f16_rocblas_prefill is not None:
+        kwargs["use_t16_f16_rocblas_prefill"] = t16_f16_rocblas_prefill
     return MlpTP2GenerationSession(
         MODEL,
         devices=(0, 1),
@@ -193,6 +196,25 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--pad-prompt-tokens",
+        type=int,
+        default=0,
+        help=(
+            "extend each prompt to this many tokens by repeating its last token; "
+            "use >=512 to exercise the source-F16 prefill owner, which the "
+            "suite's 52-64 token prompts do not reach"
+        ),
+    )
+    parser.add_argument(
+        "--t16-f16-rocblas-prefill",
+        default=None,
+        choices=("default", "on", "off"),
+        help=(
+            "source-F16 rocBLAS prefill owner on the TP2 attention path; "
+            "'default' uses the session default, 'off' is the exact T16 fallback"
+        ),
+    )
+    parser.add_argument(
         "--compare-serial",
         action="store_true",
         help="also run the token-serial TP2 prefill on the same session",
@@ -209,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
         help="optional directory to dump each prompt's raw logits as .npy",
     )
     args = parser.parse_args(argv)
+    if args.t16_f16_rocblas_prefill is not None:
+        args.t16_f16_rocblas_prefill = args.t16_f16_rocblas_prefill != "off"
 
     reference, arrays = _load_reference(Path(args.reference))
     ids = list(reference["suite"]["ids"])
@@ -263,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             bulk=not args.serial_only,
             decode_partial_dtype=args.decode_partial_dtype,
             reduce_mode=args.reduce_mode,
+            t16_f16_rocblas_prefill=args.t16_f16_rocblas_prefill,
         )
         # Match the saved capture: build the decode schedule before running any
         # trajectory, so the decode replays the captured graphs and the bulk
@@ -271,6 +296,13 @@ def main(argv: list[str] | None = None) -> int:
         for prompt_id in targets:
             index = by_id[prompt_id]
             prompt = [int(t) for t in prompts[index]]
+            if args.pad_prompt_tokens > len(prompt):
+                # Extend the prompt so the pass reaches a row count the
+                # source-F16 policy actually admits (its smallest is 512). The
+                # suite prompts are 52-64 tokens, so without this the owner
+                # falls back and the gate says nothing about it.
+                pad_id = int(prompt[-1])
+                prompt = prompt + [pad_id] * (args.pad_prompt_tokens - len(prompt))
             forced = [int(t) for t in forced_inputs[index]]
             teacher = np.asarray(arrays[index])
             if args.smoke_rows > 0:
