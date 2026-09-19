@@ -1300,11 +1300,7 @@ class _FakeGlobalPoolOwner:
 
 
 def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
-    from hipengine.runtime.qwen35_gguf_runner import (
-        _GGUF_PACKED_WORKSPACE_LEASE_KEY,
-        _PACKED_VERIFY_MIN_MAX_SEQUENCE,
-        packed_verify_lease_slot_ceiling,
-    )
+    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
 
     owner = _FakeGlobalPoolOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)
@@ -1320,19 +1316,8 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
 
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
-    # capacity=2 requests * 3 pages/request = 6 request pages; the packed
-    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages
-    # on top (the lease is capacity-honest: serving can never open more
-    # resident slots than max_active_requests, and the 1024-token per-slot
-    # union floor still applies to short request contexts).
-    #
-    # 2026-09-19: the assertions below used to read 4 pinned / 12 total, i.e.
-    # a ONE-slot lease, contradicting this comment. They predate the slot
-    # ceiling and were never updated when the capacity term was introduced,
-    # which is why they have been RED. The lease now comes from
-    # `packed_verify_workspace_lease_pages`, the shared twin of
-    # `_packed_verify_union_geometry`, so the slot term is the serving
-    # capacity on both sides: 2 slots * 4 pages = 8.
+    # Eight request pages plus two serving slots * four workspace pages.
+    # Wider physical verifier layouts use separately budgeted private KV.
     assert pool.current_pages == 16
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
     assert lease is not None and len(lease) == 8
@@ -1367,8 +1352,8 @@ def test_configure_engine_loop_leases_the_capacity_workspace_at_c1() -> None:
     _PACKED_VERIFY_MIN_MAX_SEQUENCE/256) pages. An above-capacity geometry
     (an MTP verify group packs four physical slots at C1) is deliberately
     not covered by the pool-creation-time lease: ``_GGUFPackedTargetState``
-    degrades such allocations to a private KV chunk instead of failing
-    closed, so the capacity-sized lease is correct rather than short.
+    uses private KV charged against the pool budget. The lease is an eager
+    reservation, not an upper bound on total workspace demand.
     """
 
     from hipengine.runtime.qwen35_gguf_runner import (
@@ -1411,7 +1396,7 @@ def test_configure_engine_loop_leases_the_capacity_workspace_at_c1() -> None:
 
 
 def test_packed_verify_union_geometry_is_capacity_honest() -> None:
-    """The union geometry caps workspace slots at the real serving capacity."""
+    """Serving capacity supplies a floor; wider physical layouts still fit."""
 
     from types import SimpleNamespace
 
@@ -1449,6 +1434,10 @@ def test_packed_verify_union_geometry_is_capacity_honest() -> None:
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(4)
     assert union_slots == 4
     assert union_segments == 4
+
+    # Physical verifier layouts may be wider than the serving capacity.
+    union_slots, _, _, union_segments = geometry(1, slot_count=4)
+    assert union_slots == union_segments == 4
 
     # Absent serving caps keep the historical 8-slot fallback.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(None)
@@ -1587,4 +1576,28 @@ def test_gapped_placement_takes_a_long_suffix_when_the_gather_route_is_fast(
     assert long_row.prefix_fallback_reason is None
     assert runner._prefix_gapped_admissions >= 1
     runner.rollback_admission(SimpleNamespace(request_id=71))
+    runner.close()
+
+
+def test_workspace_telemetry_separates_private_kv_and_request_pins():
+    from hipengine.generation.engine_loop import EngineLoopConfig
+
+    owner = _FakeGlobalPoolOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner._reserve_sessions()
+    runner.configure_engine_loop(EngineLoopConfig(
+        max_active_requests=1, kv_pool_initial_pages=8, kv_pool_low_water_pages=8,
+    ))
+    pool = runner.kv_pool
+    allocation = pool.allocate(99, 1)
+    pool.pin(allocation.block_ids)
+    token = pool.reserve_private_workspace(4 * pool.page_bytes)
+    snapshot = runner.kv_pool_memory_snapshot()
+    assert snapshot["private_workspace_kv_bytes"] == 4 * pool.page_bytes
+    assert snapshot["accounted_kv_bytes"] == 16 * pool.page_bytes
+    model = runner.observability_snapshot()["model_runner"]
+    assert model["packed_workspace_leased_pool_bytes"] == 4 * pool.page_bytes
+    pool.release_private_workspace(token)
+    pool.unpin(allocation.block_ids)
+    pool.release(99)
     runner.close()

@@ -6252,10 +6252,17 @@ class Qwen35GGUFResidentModelRunner:
         sessions = self._resident_sessions()
         self._observe_graph_handles(sessions)
         pool = self._kv_pool
+        workspace_pages_fn = getattr(pool, "workspace_pages", None)
+        workspace_lease = (
+            workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if callable(workspace_pages_fn) else None
+        )
         pool_stats = None if pool is None else pool.stats.to_json_dict()
         if pool_stats is not None:
             pool_stats["max_pages"] = getattr(pool, "max_pages", None)
             pool_stats["budget_bytes"] = getattr(pool, "budget_bytes", None)
+            pool_stats["private_workspace_bytes"] = int(getattr(pool, "private_workspace_bytes", 0))
+            pool_stats["accounted_bytes"] = int(getattr(pool, "accounted_bytes", pool_stats["current_bytes"]))
         active_entries: Counter[str] = Counter()
         for handle in self._graph_handles_for_sessions(sessions):
             if bool(getattr(handle, "closed", False)):
@@ -6299,9 +6306,7 @@ class Qwen35GGUFResidentModelRunner:
                 "packed_workspace_current_bytes": workspace_owner_bytes,
                 "packed_workspace_owner_sessions": workspace_sessions,
                 "packed_workspace_leased_pool_bytes": (
-                    int(pool_stats.get("pinned_pages", 0)) * pool_page_bytes
-                    if pool_stats is not None
-                    else 0
+                    len(workspace_lease or ()) * pool_page_bytes
                 ),
                 "packed_kv_workspace_lease_skipped": bool(
                     getattr(self, "_packed_kv_workspace_lease_skipped", False)
@@ -6471,6 +6476,13 @@ class Qwen35GGUFResidentModelRunner:
             ),
             "dynamic_pool": pool_stats,
             "packed_workspace_backing": workspace_backing,
+            "private_workspace_kv_bytes": (
+                0 if pool is None else int(getattr(pool, "private_workspace_bytes", 0))
+            ),
+            "accounted_kv_bytes": (
+                0 if pool is None else int(getattr(pool, "accounted_bytes", pool_stats["current_bytes"]))
+            ),
+            "kv_budget_bytes": None if pool is None else getattr(pool, "budget_bytes", None),
             "packed_workspace_lease_pages": (
                 0 if workspace_lease is None else len(workspace_lease)
             ),
@@ -6566,28 +6578,10 @@ class Qwen35GGUFResidentModelRunner:
             # request: multi-row execution grows or falls back to
             # request-owned storage when this shared floor is insufficient.
             #
-            # Both terms come from `packed_verify_workspace_lease_pages`, the
-            # shared twin of `_packed_verify_union_geometry`, so the lease and
-            # the allocation's demand cannot be written differently again.
-            # That drift is what this fixes (2026-09-19):
-            #   * The capacity argument read `self._resident_model_runner`, a
-            #     field of Qwen35GGUFBringupGenerator that never exists on this
-            #     runner. The getattr always yielded None, so the ceiling
-            #     silently fell back to the historical 8-slot floor and every
-            #     server over-pinned the pages it could actually touch. The two
-            #     configure_engine_loop_leases_* tests had been RED on this
-            #     since the capacity term was introduced.
-            #   * The per-slot term was `max(max_pages_per_request, 4)`, equal
-            #     to the demand side's `ceil(max(max_positions, 1024)/256)`
-            #     only by coincidence of how scratch.max_positions rounds.
-            #
-            # `self.capacity` is the right cap: it is exactly what this runner
-            # passes as `max_batch_size` when it builds the packed batch owner,
-            # so the demand side's ceiling resolves to the identical value.
-            # A caller that packs MORE slots than capacity (an MTP verify group
-            # at C1) is a legitimate geometry no pool-creation-time lease can
-            # cover; `_GGUFPackedTargetState.allocate` degrades those to a
-            # private KV chunk instead of failing closed.
+            # Use the same serving capacity and context floor as the packed
+            # batch owner. Physical verifier slots may exceed serving capacity;
+            # private fallback KV is charged against the same pool budget in
+            # addition to this arena reservation.
             workspace_pages = packed_verify_workspace_lease_pages(
                 int(self.capacity),
                 int(scratch.max_positions),

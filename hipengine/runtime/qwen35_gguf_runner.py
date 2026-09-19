@@ -2063,14 +2063,11 @@ _GGUF_PACKED_WORKSPACE_LEASE_KEY = "qwen35_gguf_packed_execution"
 
 
 def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:
-    """Slot count the packed workspace lease must cover.
+    """Serving-capacity floor used by the lease and packed workspace geometry.
 
-    ``_packed_verify_union_geometry`` unions the realized layout slots with the
-    serving capacity, so the workspace can pack more than one slot even for a
-    single request (the MTP verify width alone packs four). The pool lease is
-    taken once at pool creation, before any layout exists, so it has to be
-    sized from this ceiling; a one-slot lease is short as soon as the loop
-    packs a verify group and the allocation then fails closed at prefill time.
+    Physical verifier layouts may request more slots. Those allocations use
+    budgeted private KV when the eager arena lease is insufficient. An absent
+    or invalid capacity retains the historical eight-slot fallback.
     """
 
     try:
@@ -2083,23 +2080,11 @@ def packed_verify_workspace_lease_pages(
     max_batch_size: object | None,
     max_positions: object | None,
 ) -> int:
-    """Pages the packed workspace lease must hold to satisfy ``allocate``.
+    """Eager KV pages for capacity-bounded layouts and the context floor.
 
-    This is the lease-side twin of ``_packed_verify_union_geometry`` and has to
-    stay arithmetically identical to it. The demand side computes
-    ``union_slots * ceil(union_max_seq / block_size)``, unioning the request
-    with ``packed_verify_lease_slot_ceiling(max_batch_size)`` and with
-    ``_PACKED_VERIFY_MIN_MAX_SEQUENCE``. Sizing the lease from any separately
-    written expression lets the two drift, which is exactly how a lease gets
-    granted that ``_GGUFPackedTargetState.allocate`` then rejects at prefill
-    time ("packed workspace lease holds N pages but the workspace needs M").
-    One helper for both sides makes that mismatch unrepresentable for every
-    geometry the serving loop can request within its capacity.
-
-    Requests ABOVE the capacity ceiling are deliberately not covered: the lease
-    is taken once at pool creation, before any layout exists, so it can only be
-    sized from caps known at that point. ``allocate`` degrades those to a
-    private KV chunk rather than failing closed.
+    The union geometry may exceed this reservation in slots or context, or
+    retain a previously larger geometry. Allocation then falls back to private
+    KV charged against the same pool budget; a short lease alone is not fatal.
     """
 
     slots = packed_verify_lease_slot_ceiling(max_batch_size)
@@ -2140,6 +2125,8 @@ class _GGUFPackedTargetState:
     # "private" = owned chunk allocated by this state; "pool_lease" = planes
     # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
     kv_backing_kind: str = "private"
+    private_workspace_pool: object | None = None
+    private_workspace_token: object | None = None
 
     def __post_init__(self) -> None:
         if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
@@ -2260,14 +2247,14 @@ class _GGUFPackedTargetState:
         layer_recurrent_states: list[object | None] = []
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
+        private_workspace_token = None
         try:
             for layer_type in cfg.layer_types:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
+                    state_buffers.append(conv_state)
                     recurrent_state = buf(recurrent_state_nbytes)
-                    # Track both buffers before any runtime call so a memset
-                    # failure cannot leak the pair.
-                    state_buffers.extend((conv_state, recurrent_state))
+                    state_buffers.append(recurrent_state)
                     memset = getattr(runtime, "memset", None)
                     if callable(memset):
                         memset(conv_state.ptr, 0, conv_state.nbytes)
@@ -2323,29 +2310,9 @@ class _GGUFPackedTargetState:
                     if callable(workspace_pages_fn):
                         lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
                 if lease_pages is not None and len(lease_pages) < total_pages:
-                    # 2026-09-19: a short lease degrades to the private KV
-                    # chunk below instead of failing closed.
-                    #
-                    # The lease is sized once at pool creation from the caps
-                    # known then (serving capacity x max(1024, request
-                    # context); see `packed_verify_workspace_lease_pages`).
-                    # The workspace this allocation asks for comes from
-                    # `_packed_verify_union_geometry`, whose slot term is
-                    # `max(requested_slot_count, capacity)` - so any caller
-                    # that packs MORE slots than the serving capacity (an MTP
-                    # verify group is the standing example: it packs its own
-                    # width even at C1) demands pages no pool-creation-time
-                    # lease could have reserved. That is a legitimate geometry,
-                    # not a misconfiguration, and raising here turned it into a
-                    # hard serving failure at prefill time.
-                    #
-                    # Correctness never depended on the lease: the private
-                    # branch allocates the identical geometry, just outside the
-                    # arena. Treating the lease as a best-effort fast path
-                    # removes the whole failure class while keeping the arena
-                    # win whenever the lease does cover the request. The
-                    # shortfall is recorded rather than silently swallowed so
-                    # chronic under-leasing stays visible as a perf defect.
+                    # Physical verifier width or context can exceed the eager
+                    # serving-capacity lease. Private KV uses the same geometry
+                    # and is charged in full in addition to the pinned arena.
                     shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", None)
                     if shortfalls is None:
                         shortfalls = []
@@ -2388,6 +2355,10 @@ class _GGUFPackedTargetState:
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
+                    if kv_pool is not None:
+                        private_workspace_token = kv_pool.reserve_private_workspace(
+                            total_pages * _qwen35_gguf_kv_page_bytes(cfg, kv_layout)
+                        )
                     kv_backing = _allocate_qwen35_gguf_kv_chunk(
                         runner,
                         runtime=runtime,
@@ -2401,6 +2372,8 @@ class _GGUFPackedTargetState:
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
+            if private_workspace_token is not None:
+                kv_pool.release_private_workspace(private_workspace_token)
             raise
         if kv_cache_fields is None:
             kv_cache_fields = {
@@ -2425,6 +2398,8 @@ class _GGUFPackedTargetState:
             buffers=owned_buffers,
             page_ids=page_ids,
             kv_backing_kind=backing_kind,
+            private_workspace_pool=kv_pool if private_workspace_token is not None else None,
+            private_workspace_token=private_workspace_token,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -14770,15 +14745,17 @@ def _allocate_qwen35_gguf_kv_chunk(
                 else key_dtype
             )
             key_cache = malloc(payload_elements * key_dtype.itemsize, runtime=runtime)
+            buffers.append(key_cache)
             value_cache = malloc(payload_elements * value_dtype.itemsize, runtime=runtime)
-            buffers.extend((key_cache, value_cache))
+            buffers.append(value_cache)
             key_caches.append(key_cache)
             value_caches.append(value_cache)
             if layer_id in mirror_layers:
                 mirror_nbytes = payload_elements * DType.BF16.itemsize
                 mirror_key = malloc(mirror_nbytes, runtime=runtime)
+                buffers.append(mirror_key)
                 mirror_value = malloc(mirror_nbytes, runtime=runtime)
-                buffers.extend((mirror_key, mirror_value))
+                buffers.append(mirror_value)
                 mirror_key_caches.append(mirror_key)
                 mirror_value_caches.append(mirror_value)
             else:
@@ -14786,8 +14763,9 @@ def _allocate_qwen35_gguf_kv_chunk(
                 mirror_value_caches.append(None)
             if layer_storage == DType.INT8_PER_TOKEN_HEAD:
                 k_scale = malloc(scale_nbytes, runtime=runtime)
+                buffers.append(k_scale)
                 v_scale = malloc(scale_nbytes, runtime=runtime)
-                buffers.extend((k_scale, v_scale))
+                buffers.append(v_scale)
                 k_scale_caches.append(k_scale)
                 v_scale_caches.append(v_scale)
                 scale_metadata.append(
@@ -18198,28 +18176,27 @@ class Qwen35GGUFResidentSession:
             layout = _qwen35_gguf_session_kv_chunk_layout(self)
             self._device_kv_layout = layout
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
-        max_pages = capacity
-        mem_get_info = getattr(runtime, "mem_get_info", None)
-        if callable(mem_get_info):
-            try:
-                free_bytes, _total_bytes = mem_get_info()
-                configured_budget_mib = getattr(
-                    self,
-                    "kv_pool_memory_budget_mib",
-                    None,
+        configured_budget_mib = getattr(self, "kv_pool_memory_budget_mib", None)
+        if configured_budget_mib is not None:
+            # Explicit ceilings apply even when HIP memory telemetry is absent.
+            max_pages = int(configured_budget_mib) * 1024**2 // page_bytes
+            if max_pages < capacity:
+                raise MemoryError(
+                    "initial arena and workspace lease exceed the KV pool budget: "
+                    f"{capacity * page_bytes} > {int(configured_budget_mib) * 1024**2} bytes"
                 )
-                if configured_budget_mib is not None:
-                    max_pages = max(
-                        capacity,
-                        int(configured_budget_mib) * 1024**2 // page_bytes,
-                    )
+        else:
+            max_pages = capacity
+            mem_get_info = getattr(runtime, "mem_get_info", None)
+            if callable(mem_get_info):
+                try:
+                    free_bytes, _total_bytes = mem_get_info()
+                except Exception:
+                    pass
                 else:
-                    max_pages = max(
-                        capacity,
-                        int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes),
-                    )
-            except Exception:
-                max_pages = capacity
+                    max_pages = int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes)
+                    if max_pages < capacity:
+                        raise MemoryError("initial KV pool exceeds available memory after reserve")
         growth_chunk_pages = max(1, min(128, max_pages - capacity))
         backing = _allocate_qwen35_gguf_kv_chunk(
             self.runner,
@@ -27253,6 +27230,10 @@ class Qwen35GGUFResidentSession:
             for buffer in reversed(self._packed_verify_state.buffers):
                 if buffer is not None:
                     free(buffer, runtime=runtime)
+            pool = getattr(self._packed_verify_state, "private_workspace_pool", None)
+            token = getattr(self._packed_verify_state, "private_workspace_token", None)
+            if token is not None:
+                pool.release_private_workspace(token)
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
@@ -27341,21 +27322,18 @@ class Qwen35GGUFResidentSession:
         rows: int,
         max_sequence_length: int,
     ) -> tuple[int, int, int, int]:
-        """Union the request with current holdings and serving caps.
+        """Union requested geometry with current holdings and capacity floors.
 
-        The workspace is sized once to the union of every geometry the serving
-        loop can request (prefill chunk width, physical packed width, the
-        1024-token context cap) so prefill/decode interleaving never frees or
-        reallocates buffers mid-tick.
+        The serving-slot and 1024-token context floors avoid reallocating for
+        smaller prefill/decode shapes. Wider physical layouts or longer
+        contexts can still require growth.
         """
 
         state = self._packed_verify_state
         scratch = self._packed_verify_scratch
-        # Capacity-honest workspace ceiling: the serving loop can never open
-        # more resident slots than max_active_requests (MTP serving widths and
-        # packed group layouts are both bounded by it), so the workspace
-        # follows the real cap instead of the historical 8-slot floor. Absent
-        # or invalid caps keep the historical fallback.
+        # Serving capacity is a floor, not a physical verifier-width ceiling.
+        # Wider requested or retained geometry wins below; its KV may require
+        # budgeted private backing instead of the eager arena lease.
         capacity = packed_verify_lease_slot_ceiling(
             getattr(self, "max_batch_size", None)
         )

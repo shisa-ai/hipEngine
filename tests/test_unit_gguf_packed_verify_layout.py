@@ -2679,7 +2679,11 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
     assert all(buffer in state.buffers for buffer in state.full_key_caches)
 
     allocated.clear()
-    leaseless_pool = SimpleNamespace(workspace_pages=lambda key: None)
+    leaseless_pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+    )
     state2 = _GGUFPackedTargetState.allocate(
         _lease_test_runner(),
         slot_count=2,
@@ -2711,6 +2715,8 @@ def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> Non
     small_pool = SimpleNamespace(
         backing=backing,
         workspace_pages=lambda key: (1, 2),
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
     )
     reached_private: list[int] = []
 
