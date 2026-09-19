@@ -910,12 +910,20 @@ qualification are not claimed.
 [uneven shard width pair-route admission](results/2026-09-18-w7900-tp2-pair-route-admission-uneven.json) ·
 [uneven split end-to-end smoke](results/2026-09-18-w7900-tp2-uneven-split-smoke.json).
 
-**TP2 prefill route, measured 2026-09-18.** The rank-local bulk prefill
+**TP2 prefill route, measured 2026-09-19.** The rank-local bulk prefill
 candidate is now consumed by `MlpTP2GenerationSession.generate`, not only by the
-diagnostics, and its workspace is sized to the prompt on first use instead of to
-the session capacity. On the same host, model, 512-token prompt, 128 decode
-tokens and c=1 session: **39.1 -> 459.7 tok/s prefill (11.8x)** with decode
-unchanged (38.36 -> 38.94) and per-rank VRAM **12.43 -> 15.39 GiB**. Pinning the
+diagnostics, its workspace is sized to the prompt on first use instead of to the
+session capacity, and it projects the head for the last prompt row only instead
+of for all of them. On the same host, model, 512-token prompt, 128 decode tokens
+and c=1 session: **39.3 -> 922.1 tok/s prefill (23.5x)** with decode unchanged
+(38.35 -> 38.79) and per-rank VRAM **12.43 -> 15.39 GiB**. For reference at the
+same shape: the single-card resident bulk prefill route is 875.8 tok/s, llama.cpp
+TP=1 is 941.8 and llama.cpp's TP=2 tensor split is 1474.6. The head projection
+was 46% of the route's kernel time, because picking the next token needs the last
+row and nothing else - the single-card and token-serial routes both project one
+row, while the bulk path was projecting all 512 and reading 508 MB per rank back
+for logits nothing read; the last row of the all-rows projection and the single
+row of the last-row projection are bit-identical. Pinning the
 old capacity-sized workspace instead costs 22.55 GiB per rank and measures
 384.5 tok/s, so prompt-sizing is both leaner and faster. The production
 arm-vs-control gate over the full 18-prompt suite passes with the candidate
