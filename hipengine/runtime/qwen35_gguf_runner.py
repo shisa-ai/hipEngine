@@ -14452,6 +14452,31 @@ def _gguf_kv_attention_source(layout: Qwen35GGUFKVChunkLayout) -> str:
     return "bf16_mirror"
 
 
+def _validate_bound_blocks_against_capacity(
+    block_ids: tuple[int, ...],
+    *,
+    start_block_id: int,
+    page_capacity: int,
+) -> None:
+    """Validate request-local page ids against a whole pool's page range.
+
+    The per-chunk check in ``Qwen35GGUFKVChunkBacking.validate_bound_blocks``
+    is right for a pool that hands out one contiguous chunk. A pool that grows
+    by appending chunks keeps page ids stable and reaches every page through
+    its pointer tables, so its allocations must be validated against the pool
+    capacity instead.
+    """
+
+    blocks = tuple(int(block_id) for block_id in block_ids)
+    if not blocks:
+        raise ValueError("bound GGUF KV allocation must contain pages")
+    if len(set(blocks)) != len(blocks):
+        raise ValueError("bound GGUF KV allocation pages must be unique")
+    local_pages = tuple(block_id - int(start_block_id) for block_id in blocks)
+    if any(local_page < 0 or local_page >= int(page_capacity) for local_page in local_pages):
+        raise ValueError("GGUF KV allocation is outside its pool page range")
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFKVChunkBacking:
     """Payload and scale backing for one contiguous chunk of logical KV pages."""
@@ -17162,7 +17187,19 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF device KV allocation exceeds the session block-table capacity")
         if int(allocation.chunk_start_block_id) != int(backing.start_block_id):
             raise ValueError("GGUF device KV allocation backing identity mismatch")
-        backing.validate_bound_blocks(allocation.block_ids)
+        pool_capacity = getattr(allocation, "pool_page_capacity", None)
+        if pool_capacity is None:
+            backing.validate_bound_blocks(allocation.block_ids)
+        else:
+            # Pointer-table pool: growth appends backing chunks while keeping
+            # page ids stable, so the first chunk's page count is not the bound.
+            # Validating against it rejected every allocation whose pages landed
+            # past the first chunk once the pool had grown.
+            _validate_bound_blocks_against_capacity(
+                allocation.block_ids,
+                start_block_id=int(backing.start_block_id),
+                page_capacity=int(pool_capacity),
+            )
         local_block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
         local_block_table[: len(allocation.block_ids)] = np.asarray(
             [

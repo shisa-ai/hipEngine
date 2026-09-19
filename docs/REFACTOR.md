@@ -191,18 +191,34 @@
   * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,
     so `old_tables = pointer_tables` raised `UnboundLocalError` the first time
     the pool actually grew. Fixed.
-  * **Still open:** after growth the pool holds several backing chunks, but
-    `GlobalDeviceKVPool` reports `chunk_start_block_id=0` and
-    `Qwen35GGUFKVChunkBacking.validate_bound_blocks` checks
-    `block_id - start_block_id < pages` against a single chunk. An allocation
-    whose pages land beyond the first chunk fails to bind with `GGUF KV
-    allocation is outside its backing chunk`. Either the allocator must keep a
-    request inside one chunk, or the backing must present the grown page range
-    (the indirection tables `grow_storage` rebuilds already cover every page,
-    so the second is closer to the intended design).
+  * bind-time validation checked `block_id - start_block_id < backing.pages`
+    against the first chunk, so any allocation whose pages landed past it was
+    rejected with `GGUF KV allocation is outside its backing chunk`. The
+    backing genuinely describes one chunk (its metadata and buffer sizes are
+    validated against `pages`), so the bound moved instead: allocations now
+    carry `pool_page_capacity` and a pointer-table pool validates against it.
+    Fixed, with `test_bound_blocks_validate_against_pool_capacity_after_growth`.
+  * **Still open, and it is the blocker:** `grow_storage` publishes new pointer
+    tables and then frees the old ones, but a session bound before the growth
+    still holds the freed table pointers in its scratch. `before_grow` only
+    invalidates decode graphs. The next paged-KV write faults the GPU
+    (`HSA_STATUS_ERROR_MEMORY_FAULT` in
+    `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel`, page not
+    present). Growth has to republish the table pointers into every bound
+    session, or defer the free until no session can hold them.
+- Exposure: eviction runs before growth - `_ensure_free_pages` calls
+  `_on_pressure` (which evicts prefix-cache entries) first and only grows when
+  that cannot free enough - and at `max_pages` growth is refused with
+  `MemoryError` rather than attempted. So the fault needs sustained pressure
+  plus headroom. `kv_pool_high_water_pages` defaults to `None`, which is
+  unbounded headroom; setting it bounds the pool and keeps the pool on the
+  eviction path. The pool never shrinks: `GlobalDeviceKVPool.shrink_idle` is a
+  stub returning 0, so grown capacity is held for the pool's lifetime.
 - Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
-  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. The
-  default retained budget does not grow the pool and the A/B runs clean.
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B; it now
+  reaches six lanes before the memory fault. The default retained budget does
+  not grow the pool and the A/B runs clean, which is why the wide retained set
+  stays opt-in.
 - Removal scope: this entry, once an allocation spanning grown chunks binds.
 
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
