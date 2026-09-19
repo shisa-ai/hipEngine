@@ -514,6 +514,21 @@ the adapter's 1,023-token window.
 This corrects the earlier public statement that production-profile requests use
 AR. [c=1 engagement](results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
 
+**c=1 engagement re-verified (2026-09-19):** the same client, protocol and host
+at `b25740a50`, with one `auto`-policy server load serving all three arms,
+measure **20.08 tok/s for the explicit request against 11.98 for the in-load AR
+control at a 517-token prompt (1.676x)** and **17.98 against 11.83 (1.521x)** at
+945, with the no-field default within 0.05% of the explicit request and every CV
+at or below 0.09%. A non-streaming route probe confirms engagement rather than
+inferring it from the rate: the 517- and 945-token shapes report
+`effective_route=speculative_mtp` with 55 and 23 cycles at 0.442 and 0.818
+acceptance, while 3,530 tokens still declines inside the adapter's 1,023-token
+window (selected `speculative_mtp`, effective `default`,
+`decision_reason=backend_k0_fallback`). The arms' first 600 generated characters
+are byte-identical on all three shapes. The topline row above is unchanged
+because this run reproduces it.
+[c=1 engagement recheck](results/2026-09-19-gfx1151-qwen38-mtp-c1-engagement-recheck.json).
+
 **Realized groups and the width cells (2026-09-19):** the width policy's C5-C8
 question is answered by what the server actually executes. Across 36 measured
 points -- 8-prompt ShareGPT loads with four 17-34-token and four 696-841-token
