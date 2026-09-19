@@ -252,6 +252,87 @@ def test_packed_c1_evidence_roundtrip_and_legacy_default(monkeypatch) -> None:
     assert wider.fingerprint != eligibility.fingerprint
 
 
+def _streaming_finish_adapter(monkeypatch, *, capacity: int, consumed: int, total: int):
+    """An adapter whose prompt sink reports ``consumed`` of ``total`` rows."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=capacity,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    row = adapter.owner._row(7)
+    row.prompt_ids = (1, 2)
+    adapter.owner._row = lambda rid: row
+    buffer = SimpleNamespace(ptr=0x7000, nbytes=8)
+    finished = []
+    closed = []
+    adapter._prompt_streaming_sinks[7] = SimpleNamespace(
+        consumed_rows=consumed,
+        total_rows=total,
+        take_final_pending_buffer=lambda: buffer,
+        close=lambda: closed.append(7),
+        finish=lambda **kwargs: finished.append(kwargs),
+    )
+    adapter._prompt_streaming_group_keys[7] = "test"
+    adapter._provider_groups["test"] = SimpleNamespace(
+        provider=SimpleNamespace(
+            executor=SimpleNamespace(),
+            release_request=lambda *args, **kwargs: None,
+        ),
+        provider_pool_key="test",
+        request_ids={7},
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "Qwen35GGUFTransactionalVerifier",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
+    # The abort path releases an emptied provider group through the generator.
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        _release_mtp_draft_runner=lambda *args, **kwargs: None,
+    )
+    return adapter, row, buffer, finished
+
+
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_prompt_finish_closes_a_sink_the_prefill_left_open(monkeypatch, capacity) -> None:
+    """The completing prompt closes the sink, not the prefill call that ended it.
+
+    A reused-prefix suffix is prefilled in chunks, so the call that consumes the
+    last row does not own the whole timeline and must not be the only thing that
+    can finish it.
+    """
+
+    adapter, row, buffer, finished = _streaming_finish_adapter(
+        monkeypatch, capacity=capacity, consumed=2, total=2
+    )
+    adapter.finish_prompt_streaming((7,), success=True)
+    assert finished == [{"request_id": 7, "total_rows": 2, "stream": 0}]
+    assert adapter._states[7].root_hidden_buffer is buffer
+    assert row.mtp2_prompt_streaming is True
+
+
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_prompt_finish_refuses_a_sink_that_missed_rows(monkeypatch, capacity) -> None:
+    """A sink that never saw every row falls back to AR instead of failing.
+
+    Priming a provider from a timeline with holes in it would corrupt it
+    silently; a request must never fail because MTP could not be primed.
+    """
+
+    adapter, row, _buffer, finished = _streaming_finish_adapter(
+        monkeypatch, capacity=capacity, consumed=1, total=2
+    )
+    adapter.finish_prompt_streaming((7,), success=True)
+    assert finished == []
+    assert row.mtp2_prompt_fallback_reason == "prompt_stream_incomplete_k0"
+    assert 7 not in adapter._states
+    assert 7 not in adapter._prompt_streaming_sinks
+    assert adapter._active_prompt_claims is None
+
+
 @pytest.mark.parametrize("capacity", [1, 2, 8])
 def test_packed_c1_requires_evidence_owned_target(capacity) -> None:
     adapter = _adapter(

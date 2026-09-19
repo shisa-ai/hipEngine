@@ -1738,6 +1738,20 @@ class Qwen35GGUFMTP2Adapter:
             self._prompt_streaming_sinks.get(request_id) for request_id in ids
         )
 
+    def _prompt_streaming_sink_is_incomplete(self, sink: Any) -> bool:
+        """Whether a prompt sink is missing rows it was built to consume.
+
+        A sink that does not report its progress (a lightweight test double, or
+        an executor that streams without a timeline) is treated as complete: the
+        adapter only refuses a row it can prove is missing rows.
+        """
+
+        consumed = getattr(sink, "consumed_rows", None)
+        total = getattr(sink, "total_rows", None)
+        if consumed is None or total is None:
+            return False
+        return int(consumed) != int(total)
+
     def finish_prompt_streaming(
         self,
         request_ids: Sequence[int],
@@ -1756,6 +1770,27 @@ class Qwen35GGUFMTP2Adapter:
         if not success:
             self._abort_prompt_streaming(ids, stream=int(stream))
             return
+        # A chunked prefill route can end a prompt without every row reaching the
+        # sink (a tail chunk on a route with no hidden-row source, for example).
+        # Priming from a timeline with holes in it would silently corrupt the
+        # provider, so such a request falls back to autoregressive decoding with
+        # the refusal recorded instead of failing.
+        incomplete = tuple(
+            request_id
+            for request_id in ids
+            if self._prompt_streaming_sink_is_incomplete(
+                self._prompt_streaming_sinks[request_id]
+            )
+        )
+        if incomplete:
+            for request_id in incomplete:
+                self.owner._row(request_id).mtp2_prompt_fallback_reason = (
+                    "prompt_stream_incomplete_k0"
+                )
+            self._abort_prompt_streaming(incomplete, stream=int(stream))
+            ids = tuple(value for value in ids if value not in incomplete)
+            if not ids:
+                return
         buffers: dict[int, DeviceBuffer] = {}
         try:
             for request_id in ids:
@@ -1766,6 +1801,17 @@ class Qwen35GGUFMTP2Adapter:
                 finish = getattr(group.provider.executor, "finish_prompt_priming", None)
                 if callable(finish):
                     finish(request_id, stream=int(stream), synchronize=False)
+                # The prefill call that consumed the last row is not necessarily
+                # the one that owns the whole timeline (a reused-prefix suffix is
+                # prefilled in chunks), so the sink is closed here, where the
+                # prompt is known to be complete.
+                close_sink = getattr(sink, "finish", None)
+                if callable(close_sink):
+                    close_sink(
+                        request_id=int(request_id),
+                        total_rows=int(getattr(sink, "total_rows", 0)),
+                        stream=int(stream),
+                    )
                 buffers[request_id] = sink.take_final_pending_buffer()
             pending_states: dict[int, _MTP2RequestState] = {}
             for request_id in ids:
