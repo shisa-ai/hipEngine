@@ -78,6 +78,7 @@ from hipengine.models.kv_capabilities import (
     model_artifact_identity,
     resolve_kv_capability,
 )
+from hipengine.kvcache.pool import DeviceKVContiguityError
 from hipengine.kvcache import (
     FixedPagedKVPolicy,
     RadixCache,
@@ -369,6 +370,33 @@ def _gguf_prefix_retained_state_bytes_limit() -> int:
         _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV,
         _PREFIX_RETAINED_STATE_BYTES_LIMIT,
         minimum=1 << 20,
+    )
+
+
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV = "HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX"
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT = 512
+
+
+def _gguf_prefix_gapped_suffix_max_tokens() -> int:
+    """Largest suffix worth prefilling through a gapped (paged) hit.
+
+    Placement decides the route. A contiguous shared allocation keeps the
+    slot-local prefill; a gapped one drops to the packed paged route, which is
+    far slower per token and gets worse as context grows. Measured on
+    Qwen3.5-0.8B against the full prefill the hit replaces, a gapped hit wins
+    below roughly 600-700 suffix tokens and loses above it at both 2048 and
+    4096 token boundaries (2048+768 costs 1.07x the miss, 4096+768 1.22x, while
+    2048+512 costs 0.63x and 4096+512 0.87x). Past that the cheaper answer is to
+    decline the hit and let the request take the fast private prefill.
+
+    A contiguous hit is never subject to this: it uses the same route the miss
+    would have used, so it wins at any suffix length.
+    """
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV,
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT,
+        minimum=0,
     )
 
 
@@ -6047,6 +6075,8 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_snapshot_capture_bytes = 0
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
+        self._prefix_contiguous_admissions = 0
+        self._prefix_gapped_admissions = 0
         self._prefix_admission_fallbacks = 0
         self._prefix_fallback_reasons: dict[str, int] = {}
         self._prefix_reused_tokens = 0
@@ -6801,27 +6831,55 @@ class Qwen35GGUFResidentModelRunner:
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
-            # A shared-prefix hit prefills its suffix through the packed paged
-            # route, which walks the block table and therefore accepts any
-            # page placement at any context length. Contiguity is required only
-            # by the private-miss slot-local (AOTriton) prefill at or above
-            # PACKED_AR_PREFILL_CONTEXT_LIMIT, so the shared admission never
-            # asks for it - asking would convert hits into full-prefill
-            # refusals whenever the retained prefix pins a fragmented run.
+            # Placement decides which prefill route the hit gets, and the two
+            # are not close. A gapped block table has no contiguous base row, so
+            # `prefill_batch_native` drops to the packed paged route and imports
+            # the session's history into the packed planes; a contiguous run
+            # keeps the slot-local AOTriton route. Measured on Qwen3.5-0.8B, the
+            # paged route does the same attention work about 2.5x slower, which
+            # is what pushes a hit's break-even down to a suffix of roughly 12%
+            # of the prompt.
+            #
+            # So ask for contiguity first and accept a gapped placement rather
+            # than refusing: a slower hit still beats re-prefilling the whole
+            # prompt. Requiring contiguity outright (the earlier policy) turned
+            # fragmented placements into full-prefill misses, and never asking
+            # (the policy this replaces) put every hit on the slow route.
             start = time.perf_counter()
+            allocation = None
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
                     prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
-                    require_contiguous=False,
+                    require_contiguous=True,
                 )
-            except MemoryError:
-                self._note_prefix_admission_fallback(
-                    row, "shared_admission_capacity"
-                )
-            else:
+                self._prefix_contiguous_admissions += 1
+            except (DeviceKVContiguityError, MemoryError):
+                suffix_tokens = len(row.prompt_ids) - len(matched_tokens)
+                if suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens():
+                    # Only a gapped placement is available and the suffix is
+                    # long enough that the paged route costs more than the full
+                    # prefill it would replace.
+                    self._note_prefix_admission_fallback(
+                        row, "gapped_suffix_exceeds_paged_budget"
+                    )
+                else:
+                    try:
+                        allocation = pool.admit_with_shared_prefix(
+                            row.request_id,
+                            prefix_source.block_ids,
+                            suffix_pages=pages - prefix_pages,
+                            now_seconds=time.monotonic(),
+                            require_contiguous=False,
+                        )
+                        self._prefix_gapped_admissions += 1
+                    except MemoryError:
+                        self._note_prefix_admission_fallback(
+                            row, "shared_admission_capacity"
+                        )
+            if allocation is not None:
                 self._prefix_phase_add("admission_pool", start)
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
@@ -7148,6 +7206,12 @@ class Qwen35GGUFResidentModelRunner:
             "stats": None if cache is None else cache.stats.to_json_dict(),
             "usable_hits": int(getattr(self, "_prefix_usable_hits", 0)),
             "unusable_hits": int(getattr(self, "_prefix_unusable_hits", 0)),
+            # Which prefill route the hits got: a contiguous run keeps the
+            # slot-local AOTriton route, a gapped one falls to packed paged.
+            "contiguous_admissions": int(
+                getattr(self, "_prefix_contiguous_admissions", 0)
+            ),
+            "gapped_admissions": int(getattr(self, "_prefix_gapped_admissions", 0)),
             "admission_fallbacks": int(
                 getattr(self, "_prefix_admission_fallbacks", 0)
             ),

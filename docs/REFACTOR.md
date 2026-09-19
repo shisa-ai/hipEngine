@@ -223,14 +223,45 @@
   eviction path. The pool never shrinks: `GlobalDeviceKVPool.shrink_idle` is a
   stub returning 0, so grown capacity is held for the pool's lifetime.
 - Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
-  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm now
-  completes. It is still not a good setting: it resolves 18 of 27 lookups
-  against 16, and costs **+9.5% wall** against the default retention's -18.6%,
-  because the extra pinned pages push the pool into growth and pressure while
-  the cumulative coding lane regresses 47%. The wide retained set stays opt-in
-  on those grounds rather than on the crash.
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm
+  completes, and after the placement cost model below it measures **-11.0%
+  wall** where it first measured +9.5%. The default retention is still better
+  (-18.6%), so the wide set stays opt-in, but it is no longer harmful.
 - Removal scope: this entry, once `shrink_idle` returns grown capacity. It is a
   stub returning 0, so a pool that grows stays grown for its lifetime.
+
+## Placement decides the prefill route, and the routes are far apart (found 2026-09-19)
+
+- A shared-prefix allocation whose pages are contiguous keeps the slot-local
+  prefill route. A gapped one makes `_gguf_device_kv_contiguous_base_row`
+  return None, `slot_local_full_prefill` false, and the suffix prefills through
+  the packed paged route. Measured on Qwen3.5-0.8B with the source deliberately
+  held so placement is gapped, an 8234-token prompt reusing 2048: the paged
+  suffix costs **6.5 ms/token against 0.39 ms/token** for the full prefill it
+  replaces, one call or twenty-five - chunking is not the driver, and stubbing
+  the whole-history KV import changes it by 0.1%, so the cost is in the paged
+  prefill compute itself.
+- That single ratio explained the served regression. At
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`, pinned retained pages fragment
+  the arena, 8 of 18 admissions were gapped, and one lane spent **114 s**
+  prefilling a 6,186-token suffix that a plain miss does in ~15 s. Phase
+  attribution: `suffix_prefill` 5.8 s at the default retention against
+  **125-135 s** at retained 16.
+- Two changes, both measured: admission asks for a contiguous placement first
+  and accepts a gapped one rather than refusing (15 of 16 hits are contiguous
+  at the default retention, so most hits already took the fast route by the
+  allocator's adjacency preference - this makes it explicit); and a gapped
+  placement is only accepted when the suffix is at most
+  `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens, default 512. Past that the
+  hit is declined into the full prefill it would have replaced. Crossover
+  measured at 2048 and 4096 token boundaries: a gapped hit costs 0.63x and
+  0.87x the miss at a 512-token suffix and 1.07x and 1.22x at 768.
+- Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`
+  down from 134.9 s to 6.8 s; the default retention is unchanged at -18.6%.
+- Removal scope: the threshold and the decline path, once the paged prefill
+  route is no longer several times slower per token than the slot-local one.
+  Fixing that is the real prize - it would make every hit pay and let the
+  retained working set grow.
 
 ## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
 
