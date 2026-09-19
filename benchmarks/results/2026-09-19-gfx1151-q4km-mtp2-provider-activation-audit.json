@@ -1,0 +1,186 @@
+{
+  "backend": "gguf",
+  "commands": {
+    "couple": "python scripts/sharegpt_mtp_routing_pass.py --server-url http://127.0.0.1:8081 --model <served> --dataset /home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json --gguf /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --num-prompts 8 --max-concurrency <c> --seed 373 --record-ids --label couple-c<c> --out /tmp/task13/couple-c<c>.json --cases short,long --max-total-len 1024 --route-mix off,auto",
+    "pair": "python scripts/sharegpt_mtp_routing_pass.py --server-url http://127.0.0.1:8081 --model <served> --dataset /home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json --gguf /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --num-prompts 8 --max-concurrency <c> --seed 373 --record-ids --label pair-c<c> --out /tmp/task13/pair-c<c>.json --cases long,mid --min-prompt-len 300 --max-prompt-len 1023 --max-total-len 2048 --output-len 0 --route-mix off,auto",
+    "script": "/tmp/task13/baseline.sh (session-local; lanes pair-c2, pair-c4, couple-c2, couple-c4)",
+    "server": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP2_OUTPUT_SPANS=1 python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --host 127.0.0.1 --port 8081"
+  },
+  "couple_c4_auto_rows": [
+    {
+      "completion_tokens": 658,
+      "fallback_event_counts": {
+        "no_provider": 208
+      },
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 450,
+      "policy_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "prompt_tokens": 20,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 159
+      }
+    },
+    {
+      "completion_tokens": 208,
+      "fallback_event_counts": {
+        "no_provider": 207
+      },
+      "fallback_reason": "no_provider",
+      "first_fallback_position": 0,
+      "mtp_output_tokens": 0,
+      "policy_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "prompt_tokens": 17,
+      "selected_depth_histogram": {}
+    },
+    {
+      "completion_tokens": 10,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 8,
+      "policy_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "prompt_tokens": 947,
+      "selected_depth_histogram": {
+        "3": 2
+      }
+    },
+    {
+      "completion_tokens": 24,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 23,
+      "policy_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "prompt_tokens": 644,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 6
+      }
+    }
+  ],
+  "dataset": "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+  "date": "2026-09-19",
+  "findings": {
+    "deferral_wait": "pair-c2: one auto row (prompt 742) reports 8248 ms TTFT while an off-arm row with a longer prompt (947) reports 4381 ms",
+    "group_poisoning": "couple-c4: all four auto rows report planner reason no_provider; one row (prompt 17, 208 generated tokens) never gets a provider, 207 no_provider events, 0 MTP tokens, selected_depth_histogram {} while its twin (prompt 20) serves 159 cycles at depth 3 and loses the other 208 to the shared group",
+    "groups_by_realized_rows": {
+      "1": "all lanes: every realized speculative group is one row"
+    },
+    "protocol_caveat": "per-arm decode_tokens_per_second is not comparable under --route-mix: arms serve different prompts (auto 224 vs AR 1025 completion tokens in pair-c4); a matched protocol needs --prompt-repeats 2 with an odd --num-prompts",
+    "provider_activation_used": "96.9-99.4% of speculative-arm output tokens come from MTP at c=2 and c=4",
+    "row_reason_visibility": "specdec2_mtp2_prompt_fallback_reason is null on all four rows and has no consumer in-tree; the harness summary reports the planner's per-cycle reason instead"
+  },
+  "gpu": "AMD Radeon Pro W7900 (gfx1100, RDNA3)",
+  "harness": "scripts/sharegpt_mtp_routing_pass.py",
+  "host": "gfx1151-lhl",
+  "kind": "diagnostic",
+  "lanes": {
+    "couple-c2": {
+      "auto": {
+        "median_ttft_ms": 1916,
+        "mtp_share": 0.994,
+        "p95_ttft_ms": 3006,
+        "requests": 4
+      },
+      "cases": [
+        "short",
+        "long"
+      ],
+      "max_concurrency": 2,
+      "max_total_len": 1024,
+      "off": {
+        "median_ttft_ms": 1644,
+        "p95_ttft_ms": 2377,
+        "requests": 4
+      },
+      "wall_seconds": 144.3
+    },
+    "couple-c4": {
+      "auto": {
+        "median_ttft_ms": 1886,
+        "mtp_share": 0.534,
+        "p95_ttft_ms": 3059,
+        "requests": 4
+      },
+      "cases": [
+        "short",
+        "long"
+      ],
+      "max_concurrency": 4,
+      "max_total_len": 1024,
+      "off": {
+        "median_ttft_ms": 1999,
+        "p95_ttft_ms": 2665,
+        "requests": 4
+      },
+      "wall_seconds": 102.5
+    },
+    "pair-c2": {
+      "auto": {
+        "median_ttft_ms": 3114,
+        "mtp_share": 0.969,
+        "p95_ttft_ms": 7663,
+        "requests": 4
+      },
+      "cases": [
+        "long",
+        "mid"
+      ],
+      "max_concurrency": 2,
+      "max_total_len": 2048,
+      "off": {
+        "median_ttft_ms": 3308,
+        "p95_ttft_ms": 8328,
+        "requests": 4
+      },
+      "wall_seconds": 84.1
+    },
+    "pair-c4": {
+      "auto": {
+        "median_ttft_ms": 8579,
+        "mtp_share": 0.969,
+        "p95_ttft_ms": 14507,
+        "requests": 4
+      },
+      "cases": [
+        "long",
+        "mid"
+      ],
+      "max_concurrency": 4,
+      "max_total_len": 2048,
+      "off": {
+        "median_ttft_ms": 8851,
+        "p95_ttft_ms": 13266,
+        "requests": 4
+      },
+      "wall_seconds": 72.9
+    }
+  },
+  "max_total_len": 2048,
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "port": 8081,
+  "profile": "production",
+  "rejected_candidates": [
+    {
+      "name": "concurrent-width cap",
+      "what": "refuse a second concurrent speculative row when the admitted cell width is 1",
+      "why_rejected": "the measured 97-99% share shows concurrent speculative rows interleave successfully; the cap would forfeit it to save the deferral wait"
+    },
+    {
+      "name": "refusal-report helper zeroing mtp2_candidate_budget",
+      "what": "zero the effective budget on the four refusal paths that keep it",
+      "why_rejected": "test_mtp2_physical_prompt_streaming_is_rejected_before_provider_open documents that a refused row keeps its requested depth so the response reports intent separately from realized execution"
+    }
+  ],
+  "seed": 373,
+  "server": "scripts/serve_qwen35_gguf_mtp.sh (port 8080)",
+  "server_env": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP2_OUTPUT_SPANS=1 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2",
+  "server_flags": "--model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --host 127.0.0.1 --port 8081",
+  "target_verify_mode": "native"
+}
