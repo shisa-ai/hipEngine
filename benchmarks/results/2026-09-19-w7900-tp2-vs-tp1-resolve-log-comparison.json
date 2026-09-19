@@ -1,0 +1,39 @@
+{
+ "schema": 1,
+ "kind": "tp2_vs_tp1_resolve_log_comparison",
+ "status": "diagnostic_inconclusive",
+ "performance_claim": false,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "motivation": "The TP1 reference capture records no resolve log, so the bulk prefill's dispatch decisions could not be diffed against it. Producing that log was the cheapest way to test the variant-mismatch hypothesis for the gate failure.",
+ "probes": {
+  "tp1": {
+   "command": "HIP_VISIBLE_DEVICES=0 python3 /tmp/tp1_resolve_probe.py",
+   "session": "create_resident_control(model, capacity=200), teacher_forced_logits(64) + generate(8)",
+   "leaves": {
+    "dense_dual_local32_bf16_bf16_out": 64,
+    "dense_dual_wmma_prefill_row64_bf16_bf16_out": 128,
+    "dense_unequal_dual_wmma_prefill_bf16_bf16_out": 48,
+    "narrow_col4_pair_bf16_bf16_out": 8,
+    "narrow_col4_planar_pair_bf16_bf16_out": 8,
+    "t16_wmma_prefill_bf16_bf16_out(q6_k)": 3
+   }
+  },
+  "tp2": {
+   "command": "scripts/tp2_bulk_prefill_diagnostic.py --reduce-mode device",
+   "leaves": {
+    "dense_gemv/f32": 3,
+    "linear/gguf_q4_k_t16_v1": 12,
+    "linear/gguf_q5_k_t16_v1": 2,
+    "linear/gguf_q6_k_t16_qmicro_planar_v1": 6,
+    "linear_pair/gguf_q4_k_t16_v1": 32,
+    "linear_pair/gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1": 32,
+    "linear_pair_silu/gguf_q4_k_t16_v1": 256
+   }
+  }
+ },
+ "observation": "`dense_dual_wmma_prefill_row64_bf16_bf16_out` is resolved 128 times by the TP1 route and does not appear anywhere in the TP2 route's 450-entry log. Both routes resolve `dense_dual_local32_bf16_bf16_out` for the decode phase, so that leaf is shared and is not the difference.",
+ "confound_that_blocks_the_conclusion": "The two probes did not run at the same row count or over the same prompts: the TP1 probe used capacity 200 with a 64-token prompt, while the TP2 diagnostic used its bulk capacity over two prompts. A row-dependent dispatch would produce exactly this leaf difference with no mismatch at all, and the TP2 route's dominant prefill kernel in the phase attribution (`gguf_q4_t16_dense_wmma_prefill_shared_b`, 41.8% of the wall) does not correspond to any TP1 leaf either. The comparison therefore does not establish a variant mismatch.",
+ "next_step": "Re-run both probes at one declared row count over the same prompt, then diff the leaf sets. Only a like-for-like diff can decide whether the bulk prefill's attention divergence is a dispatch difference or a kernel-level one."
+}
