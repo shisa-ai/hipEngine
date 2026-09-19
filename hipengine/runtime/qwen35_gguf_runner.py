@@ -20698,7 +20698,11 @@ class Qwen35GGUFResidentSession:
                 )
             self._position += 1
         assert hidden_ptr is not None
-        if target_hidden_chunk_sink is not None:
+        if (
+            target_hidden_chunk_sink is not None
+            # Partial timelines stay open for the next call or the adapter.
+            and int(len(token_ids)) == int(target_hidden_chunk_sink.total_rows)
+        ):
             target_hidden_chunk_sink.finish(
                 request_id=int(target_hidden_request_id),
                 total_rows=len(token_ids),
@@ -21248,7 +21252,12 @@ class Qwen35GGUFResidentSession:
                     )
                 last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
 
-            if target_hidden_chunk_sink is not None:
+            if (
+                target_hidden_chunk_sink is not None
+                # A call that covers only part of a sink's timeline leaves it
+                # open: the adapter closes it once the prompt is complete.
+                and int(rows) == int(target_hidden_chunk_sink.total_rows)
+            ):
                 target_hidden_chunk_sink.finish(
                     request_id=int(target_hidden_request_id),
                     total_rows=rows,
