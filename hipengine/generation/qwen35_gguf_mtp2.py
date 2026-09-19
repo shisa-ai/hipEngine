@@ -41,6 +41,7 @@ from hipengine.speculative.accounting import (
     PRIMING_SOURCE_ABSENT,
     PRIMING_SOURCE_BUFFERED,
     PRIMING_SOURCE_LIVE,
+    PRIMING_SOURCE_RESTORED,
     PROVIDER_ABSENT,
     PROVIDER_DECLINED,
     PROVIDER_PROMPT_BUFFERED,
@@ -2340,10 +2341,16 @@ class Qwen35GGUFMTP2Adapter:
         rid = int(request_id)
         if rid in self._states:
             return PRIMING_SOURCE_LIVE, None
+        row = self.owner._row(rid)
+        reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+        if reused > 0:
+            # A prefix-cache hit is prefilled only after the reused prefix, so
+            # its provider state cannot come from prompt rows at all: it comes
+            # from the checkpoint a previous turn captured at this boundary.
+            return self._restored_priming_source(row, rid, reused)
         buffered = self._prompt_hidden_rows.get(rid)
         if buffered is None:
             return PRIMING_SOURCE_ABSENT, "provider_state_absent"
-        row = self.owner._row(rid)
         prompt_ids = tuple(getattr(row, "prompt_ids", ()) or ())
         shape = getattr(buffered, "shape", None)
         if (
@@ -2362,6 +2369,64 @@ class Qwen35GGUFMTP2Adapter:
         if generated > 1:
             return PRIMING_SOURCE_BUFFERED, "prompt_buffer_stale_k0"
         return PRIMING_SOURCE_BUFFERED, None
+
+    def _restored_priming_source(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+    ) -> tuple[str, str | None]:
+        """Classify a prefix-cache hit row's restored-checkpoint source.
+
+        The checkpoint is content, not ownership: it is keyed by the token
+        prefix and validated against the row's current block ids, so a hit whose
+        ids have moved is a miss rather than a restore into the wrong blocks.
+        The currency rule is the same one the buffered source carries -- a
+        restore lands the provider at the boundary, which is the row's current
+        position only while the row has generated at most that first token.
+        """
+
+        checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+        if checkpoint is None:
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_absent_k0"
+        slot = getattr(row, "slot", None)
+        generated = (
+            len(tuple(getattr(slot, "generated_ids", ()) or ()))
+            if slot is not None
+            else 0
+        )
+        if generated > 1:
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_stale_k0"
+        # The checkpoint is complete and current, but the engine half that
+        # feeds a hit row's suffix to the sink is not wired yet, so naming this
+        # valid would publish a readiness the row does not have. 2a removes
+        # this reason (see docs/REFACTOR.md).
+        return PRIMING_SOURCE_RESTORED, "restored_checkpoint_suffix_unavailable_k0"
+
+    def _lookup_prefix_checkpoint(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+    ) -> Any | None:
+        """Return the validated checkpoint for this row's reused prefix, if any."""
+
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is None:
+            return None
+        key_provider = getattr(self, "prefix_checkpoint_key", None)
+        if not callable(key_provider):
+            return None
+        prompt_ids = tuple(getattr(row, "prompt_ids", ()) or ())
+        if len(prompt_ids) < int(reused):
+            return None
+        try:
+            block_ids = key_provider(int(request_id), int(reused))
+        except Exception:
+            return None
+        if not block_ids:
+            return None
+        return store.get(prompt_ids[: int(reused)], tuple(block_ids))
 
     def _note_capability_readiness(
         self,
