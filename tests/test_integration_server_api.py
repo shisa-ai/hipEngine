@@ -29,6 +29,7 @@ from hipengine.generation import (
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PreparedPromptInput,
     TokenLogprob,
 )
 from hipengine.generation.sampling import (
@@ -180,6 +181,33 @@ def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:
     engine = SimpleNamespace(_text_generator=generator)
 
     assert _prepared_context_tokens(engine) == 8192
+
+
+def test_mtp_circuit_breaker_scope_buckets_by_prompt_context_tokens() -> None:
+    """The breaker's context bucket follows the request, not the engine."""
+
+    engine = SimpleNamespace(
+        model_id="model",
+        _resolved_backend="hip_gfx1151",
+        resolved_execution_profile="strict",
+    )
+    breaker = _MTPCircuitBreaker(threshold=2)
+
+    assert breaker.scope(engine, ((7,) * 300,)) == (
+        "model",
+        "hip_gfx1151",
+        "strict",
+        "512",
+    )
+    assert breaker.scope(engine, ((7,) * 4096,))[3] == "4096"
+    assert breaker.scope(
+        engine,
+        (PreparedPromptInput(source_text="x", token_ids=(7,) * 1000),),
+    )[3] == "1024"
+    # Text prompts are not tokenized here, so counting characters would put
+    # unrelated requests in one bucket. They stay scope-unknown instead.
+    assert breaker.scope(engine, ("a text prompt",))[3] == "unknown"
+    assert breaker.scope(engine, ())[3] == "unknown"
 
 
 def _api_error_taxonomy_table() -> dict[str, dict[str, Any]]:
@@ -5124,14 +5152,22 @@ def test_mtp_circuit_breaker_opens_by_scope_and_restart_resets() -> None:
     assert restarted.is_open(scope) is False
 
 
-def test_generation_batcher_mtp_breaker_fails_before_third_backend_launch() -> None:
-    class FailingMTP(SpeculativeMTPFakeLLM):
-        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
-            self.mtp_calls.append((tuple(prompts), sampling_params))
-            raise RuntimeError("injected MTP runtime failure")
+class FailingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """MTP route that always raises, so the scope breaker opens from real failures."""
 
+    def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+        self.mtp_calls.append((tuple(str(prompt) for prompt in prompts), sampling_params))
+        raise RuntimeError("injected MTP runtime failure")
+
+    def stream_speculative_mtp_detailed(self, prompts, sampling_params):
+        self.mtp_calls.append((tuple(str(prompt) for prompt in prompts), sampling_params))
+        raise RuntimeError("injected MTP runtime failure")
+        yield  # pragma: no cover - makes this a generator, like the real streamer
+
+
+def test_generation_batcher_open_mtp_breaker_serves_ar_without_a_third_launch() -> None:
     async def run() -> None:
-        fake = FailingMTP()
+        fake = FailingSpeculativeMTPFakeLLM()
         breaker = _MTPCircuitBreaker(threshold=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
@@ -5145,18 +5181,122 @@ def test_generation_batcher_mtp_breaker_fails_before_third_backend_launch() -> N
                     SamplingParams(max_tokens=2),
                     route="speculative_mtp",
                 )
-        with pytest.raises(OpenAIHTTPError) as excinfo:
-            await batcher.submit(
-                ("prompt",),
-                SamplingParams(max_tokens=2),
-                route="speculative_mtp",
-            )
-        assert excinfo.value.status_code == 503
-        assert excinfo.value.code == "mtp_circuit_breaker_open"
+        # An open scope breaker is the same condition as an operator rollback:
+        # MTP cannot run, and AR is the exact fallback. Serving the request beats
+        # a 503 that withholds a completion AR could have produced.
+        outputs = await batcher.submit(
+            ("prompt",),
+            SamplingParams(max_tokens=2),
+            route="speculative_mtp",
+        )
+
+        assert outputs == ["generated:prompt"]
         assert len(fake.mtp_calls) == 2
+        assert len(fake.calls) == 1
         assert fake.mtp_circuit_breaker_state["state"] == "open"
 
     asyncio.run(run())
+
+
+def test_open_mtp_breaker_serves_ar_and_reports_the_breaker_state() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    breaker = app.state.hipengine_mtp_circuit_breaker
+    scope = breaker.scope(fake, ("hello",))
+    for index in range(breaker.threshold):
+        breaker.record_failure(scope, RuntimeError(f"injected {index}"))
+    assert breaker.is_open(scope) is True
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "temperature": 0.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    shape = body["hipengine"]["generation_shape"]
+    assert shape["route"] == "default"
+    assert shape["route_decision"]["reason"] == "mtp_circuit_breaker_open"
+    assert shape["route_decision"]["circuit_breaker"]["state"] == "open"
+    assert body["choices"][0]["text"] == "generated:hello"
+    assert body["hipengine"]["speculative_mtp"] == {
+        "effective_route": "default",
+        "used": False,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "mtp_circuit_breaker_open",
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+    }
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
+def test_open_mtp_breaker_serves_ar_for_streaming_requests(endpoint: str) -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    breaker = app.state.hipengine_mtp_circuit_breaker
+    scope = breaker.scope(fake, ("hello",))
+    for index in range(breaker.threshold):
+        breaker.record_failure(scope, RuntimeError(f"injected {index}"))
+    payload = {
+        "model": "fake-model",
+        "max_tokens": 3,
+        "temperature": 0.0,
+        "stream": True,
+        "stream_options": {"include_usage": True, "include_hipengine": True},
+        "speculative_mtp": True,
+    }
+    if endpoint.endswith("chat/completions"):
+        payload["messages"] = [{"role": "user", "content": "hello"}]
+    else:
+        payload["prompt"] = "hello"
+
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(item.get("error") for item in payloads)
+    done = next(
+        item["choices"][0]
+        for item in payloads
+        if item.get("choices") and item["choices"][0].get("finish_reason") is not None
+    )
+    shape = done["hipengine"]["generation_shape"]
+    assert shape["route"] == "default"
+    assert shape["route_decision"]["reason"] == "mtp_circuit_breaker_open"
+    assert shape["route_decision"]["circuit_breaker"]["state"] == "open"
+    assert done["hipengine"]["speculative_mtp"]["effective_route"] == "default"
+    assert (
+        done["hipengine"]["speculative_mtp"]["decision_reason"]
+        == "mtp_circuit_breaker_open"
+    )
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
 
 
 def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None:
@@ -5186,6 +5326,9 @@ def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None
     assert rollback.json()["circuit_breaker"]["state"] == "operator_disabled"
     assert after.json()["hipengine"]["generation_shape"]["route"] == "default"
     assert after.json()["hipengine"]["generation_shape"]["route_decision"]["reason"] == "mtp_operator_rollback"
+    assert after.json()["hipengine"]["generation_shape"]["route_decision"]["circuit_breaker"][
+        "state"
+    ] == "operator_disabled"
     assert len(fake.mtp_calls) == 1
     assert len(fake.calls) == 1
 

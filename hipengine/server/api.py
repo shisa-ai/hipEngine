@@ -2202,6 +2202,61 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _mtp_unavailable_route_fallback(
+    route: str,
+    *,
+    requested_route: str,
+    route_decision: Mapping[str, Any] | None,
+    breaker: "_MTPCircuitBreaker | None",
+    engine: Any,
+    prompts: Sequence[PromptInput],
+    group_rows: int,
+    output_horizon_tokens: int,
+) -> tuple[str, dict[str, Any] | None]:
+    """Report an unavailable MTP route instead of failing the request.
+
+    An open scope breaker and an operator rollback are the same condition: the
+    promoted MTP route cannot run for this scope.  Both degrade the request to
+    AR, which is the exact fallback for every admitted MTP scope (the promoted
+    route emits the same greedy tokens), and both say so in the response's
+    route decision.  A 503 would instead withhold a completion AR could have
+    produced and leave the client to rediscover the downgrade itself.
+
+    ``route`` is the realized route and ``requested_route`` the one the client
+    asked for; only a realized MTP route is inspected, so a request that
+    already resolved to AR keeps its decision untouched.
+    """
+
+    if str(route) not in {
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        _SPECULATIVE_MTP_AUTO_ROUTE,
+        _SPECULATIVE_MTP_K0_ROUTE,
+    }:
+        return str(route), None if route_decision is None else dict(route_decision)
+    if breaker is None:
+        return str(route), None if route_decision is None else dict(route_decision)
+    if breaker.operator_disabled:
+        reason = "mtp_operator_rollback"
+        evidence = "operator_runtime_rollback"
+    else:
+        scope = breaker.scope(engine, prompts)
+        if not breaker.is_open(scope):
+            return str(route), None if route_decision is None else dict(route_decision)
+        reason = "mtp_circuit_breaker_open"
+        evidence = "circuit_breaker_scope_open"
+    breaker.attach(engine)
+    return _SPECULATIVE_MTP_DEFAULT_ROUTE, {
+        "requested_route": str(requested_route),
+        "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        "reason": reason,
+        "realized_group_rows": int(group_rows),
+        "output_horizon_tokens": int(output_horizon_tokens),
+        "exact_default_required": True,
+        "evidence": evidence,
+        "circuit_breaker": breaker.snapshot(),
+    }
+
+
 def _serving_plan_route_decision(
     plan: Mapping[str, Any],
     *,
@@ -2771,6 +2826,22 @@ def _log_stream_failure(
     )
 
 
+def _prompt_context_tokens(prompt: PromptInput) -> int | None:
+    """Exact prompt token count when the request is already tokenized.
+
+    Text prompts are not tokenized here: counting their characters would put
+    unrelated requests in one bucket, so they stay scope-unknown.
+    """
+
+    if isinstance(prompt, (str, bytes, bytearray, Mapping)):
+        return None
+    try:
+        length = len(prompt)  # type: ignore[arg-type]
+    except TypeError:
+        return None
+    return int(length) if int(length) > 0 else None
+
+
 class _MTPCircuitBreaker:
     """Restart-scoped protection for repeated MTP backend/runtime failures."""
 
@@ -2797,7 +2868,7 @@ class _MTPCircuitBreaker:
         profile = str(getattr(engine, "resolved_execution_profile", None) or "strict")
         lengths = [
             int(length)
-            for length in (_prepared_context_tokens(prompt) for prompt in prompts)
+            for length in (_prompt_context_tokens(prompt) for prompt in prompts)
             if length is not None and int(length) > 0
         ]
         context_bucket = (
@@ -3546,12 +3617,25 @@ class _GenerationBatcher:
                 self._active_items[id(item)] = item
         try:
             if len(group) == 1 and group[0].stream_queue is not None:
-                if len(group[0].prompts) == 1:
-                    await self._stream_single(group[0])
-                    return
+                stream_item = group[0]
                 engine = self._engine_factory()
+                stream_route, stream_decision = _mtp_unavailable_route_fallback(
+                    stream_item.route,
+                    requested_route=stream_item.route,
+                    route_decision=stream_item.route_decision,
+                    breaker=self._mtp_circuit_breaker,
+                    engine=engine,
+                    prompts=stream_item.prompts,
+                    group_rows=len(stream_item.prompts),
+                    output_horizon_tokens=int(stream_item.sampling.max_tokens),
+                )
+                stream_item.route = stream_route
+                stream_item.route_decision = stream_decision
+                if len(stream_item.prompts) == 1:
+                    await self._stream_single(stream_item, engine=engine)
+                    return
                 if _engine_supports_stream_many(engine):
-                    await self._stream_many(group[0], engine)
+                    await self._stream_many(stream_item, engine)
                     return
             prompts: list[PromptInput] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
@@ -3583,21 +3667,16 @@ class _GenerationBatcher:
                 precomputed_decision=precomputed_decision,
             )
             breaker = self._mtp_circuit_breaker
-            if (
-                route == _SPECULATIVE_MTP_BATCH_ROUTE
-                and breaker is not None
-                and breaker.operator_disabled
-            ):
-                route = _SPECULATIVE_MTP_DEFAULT_ROUTE
-                route_decision = {
-                    "requested_route": requested_route,
-                    "selected_route": route,
-                    "reason": "mtp_operator_rollback",
-                    "realized_group_rows": len(prompts),
-                    "output_horizon_tokens": int(group_sampling.max_tokens),
-                    "exact_default_required": True,
-                    "evidence": "operator_runtime_rollback",
-                }
+            route, route_decision = _mtp_unavailable_route_fallback(
+                route,
+                requested_route=requested_route,
+                route_decision=route_decision,
+                breaker=breaker,
+                engine=self._engine_factory(),
+                prompts=tuple(prompts),
+                group_rows=len(prompts),
+                output_horizon_tokens=int(group_sampling.max_tokens),
+            )
             route_cap = self._route_request_cap(requested_route)
             group_sampling = _sampling_for_realized_generation_route(
                 group_sampling,
@@ -3664,26 +3743,24 @@ class _GenerationBatcher:
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
+        # ``_run_group`` resolves an unavailable MTP route (operator rollback or
+        # an open scope breaker) to AR before dispatch and reports the decision
+        # to the client.  Re-checking here keeps the breaker authoritative if a
+        # future caller ever dispatches the batch route directly: the request
+        # degrades to AR instead of launching a route the breaker closed.
+        route, _ = _mtp_unavailable_route_fallback(
+            route,
+            requested_route=route,
+            route_decision=None,
+            breaker=self._mtp_circuit_breaker,
+            engine=engine,
+            prompts=prompts,
+            group_rows=len(prompts),
+            output_horizon_tokens=int(sampling.max_tokens),
+        )
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
-            if breaker is not None and scope is not None and breaker.is_open(scope):
-                breaker.attach(engine)
-                raise OpenAIHTTPError(
-                    503,
-                    "speculative_mtp circuit breaker is open for this scope",
-                    error_type="service_unavailable",
-                    code="mtp_circuit_breaker_open",
-                    param="speculative_mtp",
-                    extra={
-                        "hipengine": {
-                            "speculative_mtp": {
-                                "decision_reason": "mtp_circuit_breaker_open",
-                                "circuit_breaker": breaker.snapshot(),
-                            }
-                        }
-                    },
-                )
             # The raw-argmax MTP verifier is exact only for the greedy fast
             # path.  Under the hint thinking policy, host-sampler thinking
             # enforcement is relaxed (prompt hints stay) so thinking requests
@@ -5829,12 +5906,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    requested_generation_route = generation_route
                     generation_route, generation_route_decision = (
                         _resolve_realized_generation_route(
                             generation_route,
                             group_rows=1,
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
+                        )
+                    )
+                    # Streaming reports the route in the done chunk instead of
+                    # through the batcher's batch shape, so an unavailable MTP
+                    # route has to be resolved here to be reported truthfully.
+                    generation_route, generation_route_decision = (
+                        _mtp_unavailable_route_fallback(
+                            generation_route,
+                            requested_route=requested_generation_route,
+                            route_decision=generation_route_decision,
+                            breaker=app.state.hipengine_mtp_circuit_breaker,
+                            engine=engine,
+                            prompts=(generation_prompt,),
+                            group_rows=1,
+                            output_horizon_tokens=int(sampling.max_tokens),
                         )
                     )
                     await ensure_resident_context(
@@ -8386,12 +8479,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    requested_generation_route = generation_route
                     generation_route, generation_route_decision = (
                         _resolve_realized_generation_route(
                             generation_route,
                             group_rows=1,
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
+                        )
+                    )
+                    # Streaming reports the route in the done chunk instead of
+                    # through the batcher's batch shape, so an unavailable MTP
+                    # route has to be resolved here to be reported truthfully.
+                    generation_route, generation_route_decision = (
+                        _mtp_unavailable_route_fallback(
+                            generation_route,
+                            requested_route=requested_generation_route,
+                            route_decision=generation_route_decision,
+                            breaker=app.state.hipengine_mtp_circuit_breaker,
+                            engine=engine,
+                            prompts=(generation_prompt,),
+                            group_rows=1,
+                            output_horizon_tokens=int(sampling.max_tokens),
                         )
                     )
                     await ensure_resident_context(
