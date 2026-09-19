@@ -155,9 +155,17 @@ reported as hidden physical concurrency. Capabilities report the Generation-2
 frontier ceiling separately from the admitted plan's `resident_capacity=1` and
 `realized_group_rows=1`. Capabilities also expose the
 restart-scoped circuit breaker. Repeated backend/runtime failures open one
-model/backend/profile/context scope; request cancellation and deadline errors do
-not count. `POST /v1/hipengine/speculative_mtp/rollback` disables MTP for all new
-requests without racing in-flight cycles, and restart resets the state.
+model/backend/profile/context scope, where the context bucket is the realized
+prompt length rounded up to 256 tokens; request cancellation and deadline
+errors do not count. `POST /v1/hipengine/speculative_mtp/rollback` disables MTP
+for all new requests without racing in-flight cycles, and restart resets the
+state. An open scope and an operator rollback both resolve the request to AR
+rather than failing it, because AR is the exact fallback for every admitted MTP
+scope. The response reports the substitution instead of hiding it:
+`generation_shape.route="default"`, `generation_shape.route_decision.reason`
+(`mtp_circuit_breaker_open` or `mtp_operator_rollback`) with the breaker
+snapshot, and `speculative_mtp.effective_route="default"` plus the matching
+`speculative_mtp.decision_reason`.
 
 **MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement
