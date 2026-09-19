@@ -2214,6 +2214,127 @@ def test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens() -> Non
     assert tuple(session.position for session in sessions) == (3, 4)
 
 
+def test_model_runner_rebuilds_postcommit_targets_on_the_strict_route_when_packed_refuses() -> None:
+    """A packed shape refusal must not fail a cycle that already committed.
+
+    The rebuild runs after the cycle published tokens to the client stream, so
+    a ``NotImplementedError`` here used to end a live response with
+    ``unsupported_parameter``. The rows must instead rebuild on the registered
+    strict per-session route with the same tokens and cursors.
+    """
+
+    calls: list[tuple] = []
+
+    class Session:
+        def __init__(self, next_token: int) -> None:
+            self.position = 99
+            self.next_token = int(next_token)
+
+        def reset(self) -> None:
+            calls.append("reset")
+            self.position = 0
+
+        def prefill(self, tokens, *, return_logits=False):
+            calls.append(("prefill", tuple(tokens), bool(return_logits)))
+            self.position = len(tokens)
+            return SimpleNamespace(token_id=self.next_token)
+
+    sessions = (Session(102), Session(202))
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=sessions[0]),
+        ),
+        20: SimpleNamespace(
+            request_id=20,
+            prompt_ids=(3, 4, 5),
+            slot=SimpleNamespace(
+                generated_ids=[201, 202],
+                prev_token=202,
+                seq_position=4,
+            ),
+            lease=SimpleNamespace(session=sessions[1]),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append("prefill_batch_native")
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: calls.append(
+        ("flush", tuple(row.request_id for row in selected))
+    )
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10, 20))
+
+    assert runner.restore_speculative_target_rows(plan) is True
+    assert calls[0] == ("flush", (10, 20))
+    assert calls[1:3] == ["reset", "reset"]
+    assert calls[3:] == [
+        "prefill_batch_native",
+        ("prefill", (1, 2, 101), False),
+        ("prefill", (3, 4, 5, 201), False),
+    ]
+    assert tuple(session.position for session in sessions) == (3, 4)
+
+
+def test_model_runner_postcommit_rebuild_stays_fail_closed_for_block_table_sessions() -> None:
+    """Only the block-table-aware route can serve those sessions, so refuse."""
+
+    calls: list[str] = []
+
+    class Session:
+        kv_attention_source = "int8_direct"
+        position = 0
+
+        def reset(self) -> None:
+            calls.append("reset")
+
+        def prefill(self, tokens, *, return_logits=False):
+            calls.append("prefill")
+            return SimpleNamespace(token_id=1)
+
+    session = Session()
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=session),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: None
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10,))
+
+    assert runner.restore_speculative_target_rows(plan) is False
+    assert calls == ["reset"]
+
+
 def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> None:
     session = SimpleNamespace(position=5, reset=lambda: None)
     row = SimpleNamespace(

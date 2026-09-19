@@ -7565,14 +7565,31 @@ class Qwen35GGUFResidentModelRunner:
         prefill_batch = getattr(owner, "prefill_batch_native", None)
         if not callable(prefill_batch):
             return False
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            results = prefill_batch(
-                token_rows,
-                sessions=sessions,
-                full_prompt_lengths=[len(tokens) for tokens in token_rows],
-                return_logits=False,
-                return_hidden_seeds=False,
-            )
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    token_rows,
+                    sessions=sessions,
+                    full_prompt_lengths=[len(tokens) for tokens in token_rows],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                )
+        except NotImplementedError:
+            # This rebuild runs after the cycle already published committed
+            # tokens, so a shape refusal from the packed route must not end a
+            # live stream with unsupported_parameter. Rebuild every row on the
+            # registered strict per-session route (the same tokens, the same
+            # cursors the caller asserts below) and keep sessions that only the
+            # block-table-aware route can represent fail-closed.
+            if any(
+                _gguf_single_row_block_table_prefill_required(session)
+                for session in sessions
+            ):
+                return False
+            results = [
+                session.prefill(tokens, return_logits=False)
+                for session, tokens in zip(sessions, token_rows, strict=True)
+            ]
         result_rows = () if results is None else tuple(results)
         if len(result_rows) != len(concrete):
             raise RuntimeError(
@@ -8008,10 +8025,22 @@ class Qwen35GGUFResidentModelRunner:
         self._execution_speculative_plan = plan
         self._execution_committed_request_ids.clear()
 
+    def _execution_stepped(self) -> set[int]:
+        """Return the stepped-row set, materializing it for lightweight runners."""
+
+        stepped = getattr(self, "_execution_stepped_request_ids", None)
+        if stepped is None:
+            # Scheduling tests build runners with ``__new__`` and never run the
+            # dataclass initializer, so the containment sets are absent until
+            # the first step marks a row.
+            stepped = set()
+            self._execution_stepped_request_ids = stepped
+        return stepped
+
     def _mark_execution_stepped(self, request_ids) -> None:
         """Record that these rows' device state may already have advanced."""
 
-        self._execution_stepped_request_ids.update(
+        self._execution_stepped().update(
             int(request_id) for request_id in request_ids
         )
 
@@ -8768,6 +8797,7 @@ class Qwen35GGUFResidentModelRunner:
                 if streaming
                 else {}
             )
+            packed_prefill_declined = False
             try:
                 with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                     results = prefill_batch(
@@ -8790,6 +8820,30 @@ class Qwen35GGUFResidentModelRunner:
                         ),
                         **streaming_kwargs,
                     )
+            except NotImplementedError:
+                # A packed-route refusal is a shape limit, not a request
+                # failure. The row may already own committed prompt chunks (a
+                # declined incremental prefill resets the session and replays
+                # the whole prompt here), so ending the response with an
+                # unsupported_parameter error is both late and wrong: finish
+                # the prompt on the registered strict per-session route and
+                # keep decoding autoregressively. Sessions whose KV layout only
+                # the block-table-aware route can represent still fail closed.
+                self._finish_mtp2_prompt_streaming(
+                    (row,),
+                    streaming_sinks,
+                    success=False,
+                )
+                if _gguf_single_row_block_table_prefill_required(lease.session):
+                    raise
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "packed_prefill_unsupported_k0"
+                self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+                row.prefill_ms = 0.0
+                row.prefill_chunk_count = 0
+                result = lease.session.prefill(row.prompt_ids, return_logits=False)
+                results = [result]
+                packed_prefill_declined = True
             except Exception:
                 self._finish_mtp2_prompt_streaming(
                     (row,),
@@ -8808,7 +8862,7 @@ class Qwen35GGUFResidentModelRunner:
                     "shifted dynamic GGUF prefill did not return exactly one result"
                 )
             result = result_list[0]
-            native_compact_prefill = True
+            native_compact_prefill = not packed_prefill_declined
         self._route_counts["native_full_prefill_rows"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
