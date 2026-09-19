@@ -1,0 +1,1852 @@
+{
+ "title": "The promoted staged linear-attention route is inert below the 1,023-token graph cap and 1.65x the shipping route above it on natural ShareGPT prompts",
+ "date": "2026-09-19",
+ "status": "retained",
+ "kind": "route-comparison",
+ "purpose": "Compare the promoted staged dense linear-attention verifier route against the shipping row-wise route on natural (unpadded) ShareGPT prompts at concurrency 1 and 4, and state which owner served each speculative cycle, what each guard actually costs, and where the speculative stream stops reproducing the autoregressive stream. Every load carries the explicit no-MTP autoregressive control and the speculative arm in one server process with `--route-mix off,auto`; the matched lanes use `--prompt-repeats` so both arms serve the same prompts.",
+ "model": "Qwen3.8-27B-Q4_K_M.gguf (qwen3.8-27b-q4km, general.file_type=MOSTLY_Q4_K_M)",
+ "hardware": "AMD Radeon 8060S (gfx1151, Strix Halo), ROCm SDK from /home/lhl/miniforge3/envs/therock",
+ "physical_host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "cpu": "AMD RYZEN AI MAX+ 395",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "target_arch": "gfx1151",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "accelerator-performance",
+  "hip_version": "7.15.26333-0000000",
+  "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+ },
+ "execution_profile": "production: bf16 KV, native verify mode, candidate budget 3, full-attention split-K decode at its default 1024-token threshold, HIPENGINE_MTP2_OUTPUT_SPANS=1 for the per-span attribution proof",
+ "commit": "902887d4b",
+ "protocol": {
+  "dataset": "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+  "dataset_prompts": "natural, unmodified; no padding to a token target",
+  "route_mix": "off,auto (per request, cycling in submission order)",
+  "prompt_repeats": {
+   "phase1": 1,
+   "phase2_matched": 2,
+   "phase3_triple": 3
+  },
+  "note_on_repeats": "The arm is assigned by submission-index parity over the flattened [repeat 0 rows..., repeat 1 rows...] list, so an even --num-prompts gives each prompt the same arm in both repeats and `--prompt-repeats 2` compares nothing. The matched lanes therefore use an odd prompt count (11). `--prompt-repeats 3` with an odd prompt count gives a prompt whose first submission is the autoregressive arm the arms off, auto, off, which yields both an arrival-order control (two rows of the same prompt on the same arm) and the arm comparison.",
+  "prefix_cache": "off (server default); every row reports prefix_mode=off and prefix_hit=false",
+  "temperature": 0.0,
+  "max_context_tokens": 8192,
+  "adapter_window": {
+   "default": 1023,
+   "raised": 8192,
+   "used_for": "the natural-long lanes, which are otherwise refused long-context MTP"
+  },
+  "server_env": {
+   "HIPENGINE_MTP2_OUTPUT_SPANS": "1",
+   "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS": "8192 on the natural-long lanes only",
+   "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG": "0 for the shipping route, unset for the promoted route",
+   "HIPENGINE_GGUF_MTP_VERIFY_MODE": "native (default) except the serial_exact lane"
+  },
+  "server_command_common": [
+   "/home/lhl/miniforge3/envs/vllm/bin/python",
+   "-m",
+   "hipengine.server",
+   "--model",
+   "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+   "--backend",
+   "hip_gfx1151",
+   "--max-context-tokens",
+   "8192",
+   "--kv-storage",
+   "bf16",
+   "--speculative-mtp-serving",
+   "enabled",
+   "--speculative-candidate-budget",
+   "3",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8081"
+  ],
+  "harness_command_common": [
+   "/home/lhl/miniforge3/envs/vllm/bin/python",
+   "scripts/sharegpt_mtp_routing_pass.py",
+   "--server-url",
+   "http://127.0.0.1:8081",
+   "--dataset",
+   "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+   "--gguf",
+   "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+   "--route-mix",
+   "off,auto",
+   "--record-ids"
+  ]
+ },
+ "route_ownership": {
+  "below_the_1023_token_graph_cap": "The cached native target graph replays the whole target step. Gate evidence at cycle ends 1,016-1,032 records target_native_graph_submitted=true with split_k_calls=0 against required_split_count=4, target_row_kl_max 5.2e-05 to 3.5e-04 and target_top1_agreement 1.0 (worklog 20260919T044255...-graph-route-band-divergence and benchmarks/results/2026-09-19-gfx1151-qwen38-staged-linear-rows-long-verifier-route.json). The dense linear-attention chain is never called, so the row-wise and staged routes are the same route there; the matched c=1 short lanes measure 23.62 against 23.54 tok/s.",
+  "above_the_graph_cap": "The graph refuses with SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS (hipengine/runtime/gguf_native_spec_cycle.py) and the eager chain serves the cycle: the staged chain on the promoted route (native_linear_route_owners staged_chain_calls=48, row_wise_attn_calls=0 per gate case) or the row-wise c1 chain on the shipping route (strict_linear_route_owners row_wise_attn_calls=192, staged_chain_calls=0).",
+  "observed_in_serving": {
+   "A-c1-natural": "296 of 307 fallback events are target_graph_context_bucket_miss and all 296 belong to the single row whose context crosses 1,023 (first fallback at output token 378 of 674, prompt 645); the other eleven speculative rows record only their single admission event",
+   "long_lanes": "prompts at 1,075-1,929 tokens record one admission event and no per-cycle graph refusal, so their cycles ran eager from the first cycle"
+  }
+ },
+ "performance": {
+  "phase1_unmatched": {
+   "A-c1-natural": {
+    "off": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 1529,
+     "decode_tokens_per_second_median": 10.95,
+     "decode_tokens_per_second_median_excluding_prefill": 12.216,
+     "aggregate_decode_tokens_per_second": 48.757,
+     "prompt_tokens_median": 278.0,
+     "prompt_tokens_min": 15,
+     "prompt_tokens_max": 841,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 12
+    },
+    "auto": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 4375,
+     "decode_tokens_per_second_median": 23.265,
+     "decode_tokens_per_second_median_excluding_prefill": 25.199,
+     "aggregate_decode_tokens_per_second": 105.418,
+     "prompt_tokens_median": 59.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 696,
+     "speculative_cycles": 1388,
+     "mtp_output_tokens": 4063,
+     "acceptance_accepted_over_cycles_times_budget": 0.6424,
+     "fallback_event_total": 307,
+     "fallback_reasons": [
+      "no_provider",
+      "target_graph_context_bucket_miss"
+     ],
+     "graph_context_bucket_miss_events": 295,
+     "attribution_reconciled": 12
+    },
+    "ratio_auto_over_off_median": 2.1247
+   },
+   "A-c4-natural": {
+    "off": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 1529,
+     "decode_tokens_per_second_median": 3.259,
+     "decode_tokens_per_second_median_excluding_prefill": 3.751,
+     "aggregate_decode_tokens_per_second": 18.432,
+     "prompt_tokens_median": 278.0,
+     "prompt_tokens_min": 15,
+     "prompt_tokens_max": 841,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 12
+    },
+    "auto": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 4375,
+     "decode_tokens_per_second_median": 5.849,
+     "decode_tokens_per_second_median_excluding_prefill": 5.947,
+     "aggregate_decode_tokens_per_second": 27.232,
+     "prompt_tokens_median": 59.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 696,
+     "speculative_cycles": 1057,
+     "mtp_output_tokens": 3138,
+     "acceptance_accepted_over_cycles_times_budget": 0.6563,
+     "fallback_event_total": 1231,
+     "fallback_reasons": [
+      "no_provider",
+      "target_graph_context_bucket_miss"
+     ],
+     "graph_context_bucket_miss_events": 151,
+     "attribution_reconciled": 12
+    },
+    "ratio_auto_over_off_median": 1.7947
+   },
+   "B-c1-natural": {
+    "off": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 1529,
+     "decode_tokens_per_second_median": 10.994,
+     "decode_tokens_per_second_median_excluding_prefill": 12.256,
+     "aggregate_decode_tokens_per_second": 48.956,
+     "prompt_tokens_median": 278.0,
+     "prompt_tokens_min": 15,
+     "prompt_tokens_max": 841,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 12
+    },
+    "auto": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 4375,
+     "decode_tokens_per_second_median": 23.477,
+     "decode_tokens_per_second_median_excluding_prefill": 25.35,
+     "aggregate_decode_tokens_per_second": 106.054,
+     "prompt_tokens_median": 59.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 696,
+     "speculative_cycles": 1388,
+     "mtp_output_tokens": 4063,
+     "acceptance_accepted_over_cycles_times_budget": 0.6424,
+     "fallback_event_total": 307,
+     "fallback_reasons": [
+      "no_provider",
+      "target_graph_context_bucket_miss"
+     ],
+     "graph_context_bucket_miss_events": 295,
+     "attribution_reconciled": 12
+    },
+    "ratio_auto_over_off_median": 2.1354
+   },
+   "B-c4-natural": {
+    "off": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 1529,
+     "decode_tokens_per_second_median": 3.266,
+     "decode_tokens_per_second_median_excluding_prefill": 4.772,
+     "aggregate_decode_tokens_per_second": 18.469,
+     "prompt_tokens_median": 278.0,
+     "prompt_tokens_min": 15,
+     "prompt_tokens_max": 841,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 12
+    },
+    "auto": {
+     "requests": 12,
+     "failed_requests": 0,
+     "completion_tokens": 4375,
+     "decode_tokens_per_second_median": 5.903,
+     "decode_tokens_per_second_median_excluding_prefill": 6.002,
+     "aggregate_decode_tokens_per_second": 27.269,
+     "prompt_tokens_median": 59.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 696,
+     "speculative_cycles": 1075,
+     "mtp_output_tokens": 3185,
+     "acceptance_accepted_over_cycles_times_budget": 0.6543,
+     "fallback_event_total": 1183,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 135,
+     "attribution_reconciled": 12
+    },
+    "ratio_auto_over_off_median": 1.8074
+   }
+  },
+  "phase2_matched": {
+   "A-c1-matched": {
+    "off": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 12.024,
+     "decode_tokens_per_second_median_excluding_prefill": 12.228,
+     "aggregate_decode_tokens_per_second": 42.954,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "auto": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 23.619,
+     "decode_tokens_per_second_median_excluding_prefill": 28.134,
+     "aggregate_decode_tokens_per_second": 83.117,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 970,
+     "mtp_output_tokens": 2912,
+     "acceptance_accepted_over_cycles_times_budget": 0.6674,
+     "fallback_event_total": 11,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "ratio_auto_over_off_median": 1.9643
+   },
+   "A-c4-matched": {
+    "off": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 4.623,
+     "decode_tokens_per_second_median_excluding_prefill": 4.628,
+     "aggregate_decode_tokens_per_second": 16.422,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "auto": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 3.906,
+     "decode_tokens_per_second_median_excluding_prefill": 3.91,
+     "aggregate_decode_tokens_per_second": 13.875,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 733,
+     "mtp_output_tokens": 2242,
+     "acceptance_accepted_over_cycles_times_budget": 0.6862,
+     "fallback_event_total": 679,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "ratio_auto_over_off_median": 0.8449
+   },
+   "B-c1-matched": {
+    "off": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 12.021,
+     "decode_tokens_per_second_median_excluding_prefill": 12.219,
+     "aggregate_decode_tokens_per_second": 42.915,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "auto": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 23.541,
+     "decode_tokens_per_second_median_excluding_prefill": 28.102,
+     "aggregate_decode_tokens_per_second": 82.893,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 970,
+     "mtp_output_tokens": 2912,
+     "acceptance_accepted_over_cycles_times_budget": 0.6674,
+     "fallback_event_total": 11,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "ratio_auto_over_off_median": 1.9583
+   },
+   "B-c4-matched": {
+    "off": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 4.628,
+     "decode_tokens_per_second_median_excluding_prefill": 4.632,
+     "aggregate_decode_tokens_per_second": 16.438,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "auto": {
+     "requests": 11,
+     "failed_requests": 0,
+     "completion_tokens": 2927,
+     "decode_tokens_per_second_median": 3.932,
+     "decode_tokens_per_second_median_excluding_prefill": 3.936,
+     "aggregate_decode_tokens_per_second": 13.967,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 718,
+     "mtp_output_tokens": 2208,
+     "acceptance_accepted_over_cycles_times_budget": 0.6917,
+     "fallback_event_total": 713,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 11
+    },
+    "ratio_auto_over_off_median": 0.8496
+   },
+   "A-long": {
+    "off": {
+     "requests": 8,
+     "failed_requests": 0,
+     "completion_tokens": 954,
+     "decode_tokens_per_second_median": 8.757,
+     "decode_tokens_per_second_median_excluding_prefill": 11.967,
+     "aggregate_decode_tokens_per_second": 32.712,
+     "prompt_tokens_median": 958.0,
+     "prompt_tokens_min": 742,
+     "prompt_tokens_max": 1630,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 8
+    },
+    "auto": {
+     "requests": 8,
+     "failed_requests": 0,
+     "completion_tokens": 2142,
+     "decode_tokens_per_second_median": 9.332,
+     "decode_tokens_per_second_median_excluding_prefill": 14.034,
+     "aggregate_decode_tokens_per_second": 45.693,
+     "prompt_tokens_median": 974.0,
+     "prompt_tokens_min": 608,
+     "prompt_tokens_max": 1929,
+     "speculative_cycles": 695,
+     "mtp_output_tokens": 2130,
+     "acceptance_accepted_over_cycles_times_budget": 0.6882,
+     "fallback_event_total": 8,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 8
+    },
+    "ratio_auto_over_off_median": 1.0657
+   },
+   "B-long": {
+    "off": {
+     "requests": 8,
+     "failed_requests": 0,
+     "completion_tokens": 954,
+     "decode_tokens_per_second_median": 8.749,
+     "decode_tokens_per_second_median_excluding_prefill": 11.963,
+     "aggregate_decode_tokens_per_second": 32.684,
+     "prompt_tokens_median": 958.0,
+     "prompt_tokens_min": 742,
+     "prompt_tokens_max": 1630,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 8
+    },
+    "auto": {
+     "requests": 8,
+     "failed_requests": 0,
+     "completion_tokens": 2142,
+     "decode_tokens_per_second_median": 15.394,
+     "decode_tokens_per_second_median_excluding_prefill": 25.36,
+     "aggregate_decode_tokens_per_second": 79.167,
+     "prompt_tokens_median": 974.0,
+     "prompt_tokens_min": 608,
+     "prompt_tokens_max": 1929,
+     "speculative_cycles": 695,
+     "mtp_output_tokens": 2130,
+     "acceptance_accepted_over_cycles_times_budget": 0.6882,
+     "fallback_event_total": 8,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 8
+    },
+    "ratio_auto_over_off_median": 1.7595
+   }
+  },
+  "phase3_triple": {
+   "Anative-triple": {
+    "off": {
+     "requests": 14,
+     "failed_requests": 0,
+     "completion_tokens": 2968,
+     "decode_tokens_per_second_median": 11.543,
+     "decode_tokens_per_second_median_excluding_prefill": 12.236,
+     "aggregate_decode_tokens_per_second": 43.556,
+     "prompt_tokens_median": 125.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 14
+    },
+    "auto": {
+     "requests": 13,
+     "failed_requests": 0,
+     "completion_tokens": 4277,
+     "decode_tokens_per_second_median": 23.554,
+     "decode_tokens_per_second_median_excluding_prefill": 26.313,
+     "aggregate_decode_tokens_per_second": 120.97,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 1410,
+     "mtp_output_tokens": 4260,
+     "acceptance_accepted_over_cycles_times_budget": 0.6738,
+     "fallback_event_total": 13,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 13
+    },
+    "ratio_auto_over_off_median": 2.0405
+   },
+   "Aserial-triple": {
+    "off": {
+     "requests": 14,
+     "failed_requests": 0,
+     "completion_tokens": 2968,
+     "decode_tokens_per_second_median": 11.54,
+     "decode_tokens_per_second_median_excluding_prefill": 12.232,
+     "aggregate_decode_tokens_per_second": 43.55,
+     "prompt_tokens_median": 125.5,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 14
+    },
+    "auto": {
+     "requests": 13,
+     "failed_requests": 0,
+     "completion_tokens": 4277,
+     "decode_tokens_per_second_median": 8.074,
+     "decode_tokens_per_second_median_excluding_prefill": 8.948,
+     "aggregate_decode_tokens_per_second": 41.91,
+     "prompt_tokens_median": 36,
+     "prompt_tokens_min": 17,
+     "prompt_tokens_max": 430,
+     "speculative_cycles": 1401,
+     "mtp_output_tokens": 4259,
+     "acceptance_accepted_over_cycles_times_budget": 0.68,
+     "fallback_event_total": 13,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 13
+    },
+    "ratio_auto_over_off_median": 0.6997
+   },
+   "Blong-triple": {
+    "off": {
+     "requests": 14,
+     "failed_requests": 0,
+     "completion_tokens": 2482,
+     "decode_tokens_per_second_median": 9.672,
+     "decode_tokens_per_second_median_excluding_prefill": 11.752,
+     "aggregate_decode_tokens_per_second": 64.321,
+     "prompt_tokens_median": 1265.5,
+     "prompt_tokens_min": 1075,
+     "prompt_tokens_max": 1929,
+     "speculative_cycles": 0,
+     "mtp_output_tokens": 0,
+     "acceptance_accepted_over_cycles_times_budget": null,
+     "fallback_event_total": 0,
+     "fallback_reasons": [
+      "None"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 14
+    },
+    "auto": {
+     "requests": 13,
+     "failed_requests": 0,
+     "completion_tokens": 2522,
+     "decode_tokens_per_second_median": 14.906,
+     "decode_tokens_per_second_median_excluding_prefill": 24.667,
+     "aggregate_decode_tokens_per_second": 117.406,
+     "prompt_tokens_median": 1279,
+     "prompt_tokens_min": 1075,
+     "prompt_tokens_max": 1929,
+     "speculative_cycles": 828,
+     "mtp_output_tokens": 2505,
+     "acceptance_accepted_over_cycles_times_budget": 0.6751,
+     "fallback_event_total": 13,
+     "fallback_reasons": [
+      "no_provider"
+     ],
+     "graph_context_bucket_miss_events": 0,
+     "attribution_reconciled": 13
+    },
+    "ratio_auto_over_off_median": 1.5411
+   }
+  },
+  "headline": {
+   "natural_short_c1_shipping_route_auto_over_ar": 1.9643,
+   "natural_short_c1_promoted_route_auto_over_ar": 1.9583,
+   "natural_short_c4_shipping_route_auto_over_ar": 0.8449,
+   "natural_short_c4_promoted_route_auto_over_ar": 0.8496,
+   "natural_long_c1_shipping_route_auto_over_ar": 1.0657,
+   "natural_long_c1_promoted_route_auto_over_ar": 1.7595,
+   "promoted_over_shipping_natural_long_median": 1.6496,
+   "promoted_over_shipping_natural_long_excluding_prefill": 1.807
+  }
+ },
+ "identity": {
+  "phase2_matched_pairs": {
+   "A-c1-matched": {
+    "compared_prompts": 11,
+    "identical_prompts": 7,
+    "differing_prompts": 4,
+    "min_shared_prefix_tokens": 8,
+    "median_shared_prefix_tokens": 86,
+    "differing": [
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 426,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 426,
+      "shared_prefix_tokens": 78,
+      "source_id": "9Wx58Dq_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 195,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 195,
+      "shared_prefix_tokens": 47,
+      "source_id": "OVDuwvd_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 824,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 824,
+      "shared_prefix_tokens": 155,
+      "source_id": "oisxtIk_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 820,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 820,
+      "shared_prefix_tokens": 778,
+      "source_id": "wfMPLY6_0"
+     }
+    ]
+   },
+   "A-c4-matched": {
+    "compared_prompts": 11,
+    "identical_prompts": 7,
+    "differing_prompts": 4,
+    "min_shared_prefix_tokens": 8,
+    "median_shared_prefix_tokens": 102,
+    "differing": [
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 426,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 426,
+      "shared_prefix_tokens": 309,
+      "source_id": "9Wx58Dq_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 195,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 195,
+      "shared_prefix_tokens": 47,
+      "source_id": "OVDuwvd_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 824,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 824,
+      "shared_prefix_tokens": 155,
+      "source_id": "oisxtIk_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 820,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 820,
+      "shared_prefix_tokens": 467,
+      "source_id": "wfMPLY6_0"
+     }
+    ]
+   },
+   "B-c1-matched": {
+    "compared_prompts": 11,
+    "identical_prompts": 7,
+    "differing_prompts": 4,
+    "min_shared_prefix_tokens": 8,
+    "median_shared_prefix_tokens": 86,
+    "differing": [
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 426,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 426,
+      "shared_prefix_tokens": 78,
+      "source_id": "9Wx58Dq_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 195,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 195,
+      "shared_prefix_tokens": 47,
+      "source_id": "OVDuwvd_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 824,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 824,
+      "shared_prefix_tokens": 155,
+      "source_id": "oisxtIk_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 820,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 820,
+      "shared_prefix_tokens": 778,
+      "source_id": "wfMPLY6_0"
+     }
+    ]
+   },
+   "B-c4-matched": {
+    "compared_prompts": 11,
+    "identical_prompts": 7,
+    "differing_prompts": 4,
+    "min_shared_prefix_tokens": 8,
+    "median_shared_prefix_tokens": 102,
+    "differing": [
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 426,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 426,
+      "shared_prefix_tokens": 325,
+      "source_id": "9Wx58Dq_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 195,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 195,
+      "shared_prefix_tokens": 47,
+      "source_id": "OVDuwvd_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 824,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 824,
+      "shared_prefix_tokens": 155,
+      "source_id": "oisxtIk_0"
+     },
+     {
+      "case": null,
+      "identical": false,
+      "ids_available": true,
+      "left_arm": "off",
+      "left_repeat_index": 1,
+      "left_tokens": 820,
+      "right_arm": "auto",
+      "right_repeat_index": 0,
+      "right_tokens": 820,
+      "shared_prefix_tokens": 492,
+      "source_id": "wfMPLY6_0"
+     }
+    ]
+   },
+   "A-long": {
+    "compared_prompts": 0,
+    "identical_prompts": 0,
+    "differing_prompts": 0,
+    "min_shared_prefix_tokens": null,
+    "median_shared_prefix_tokens": null,
+    "differing": []
+   },
+   "B-long": {
+    "compared_prompts": 0,
+    "identical_prompts": 0,
+    "differing_prompts": 0,
+    "min_shared_prefix_tokens": null,
+    "median_shared_prefix_tokens": null,
+    "differing": []
+   }
+  },
+  "phase3_arrival_control_and_arm_pairs": {
+   "Anative-triple": {
+    "prompts": 9,
+    "same_arm_repeats_identical": 9,
+    "arm_pair_identical": 6,
+    "arm_pair_differing": [
+     {
+      "source_id": "OVDuwvd_0",
+      "prompt_tokens": 17,
+      "output_tokens": 195,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 195,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 47,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "oisxtIk_0",
+      "prompt_tokens": 32,
+      "output_tokens": 824,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 824,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 155,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "wfMPLY6_0",
+      "prompt_tokens": 36,
+      "output_tokens": 820,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 820,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 778,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     }
+    ],
+    "min_arm_pair_shared_prefix_tokens": 8,
+    "pairs": [
+     {
+      "source_id": "5uAx1JP_32",
+      "prompt_tokens": 34,
+      "output_tokens": 245,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 245,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 245,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "CZaiQM7_0",
+      "prompt_tokens": 215,
+      "output_tokens": 79,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 79,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 79,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "IdI90Mo_0",
+      "prompt_tokens": 20,
+      "output_tokens": 119,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 119,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 119,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "NCXh9wK_31",
+      "prompt_tokens": 336,
+      "output_tokens": 23,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 23,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 23,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "OVDuwvd_0",
+      "prompt_tokens": 17,
+      "output_tokens": 195,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 195,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 47,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "iMT3Zgo_11",
+      "prompt_tokens": 430,
+      "output_tokens": 8,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 8,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 8,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "oisxtIk_0",
+      "prompt_tokens": 32,
+      "output_tokens": 824,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 824,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 155,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "wfMPLY6_0",
+      "prompt_tokens": 36,
+      "output_tokens": 820,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 820,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 778,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "xVYFjJS_69",
+      "prompt_tokens": 341,
+      "output_tokens": 102,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 102,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 102,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     }
+    ]
+   },
+   "Aserial-triple": {
+    "prompts": 9,
+    "same_arm_repeats_identical": 9,
+    "arm_pair_identical": 9,
+    "arm_pair_differing": [],
+    "min_arm_pair_shared_prefix_tokens": 8,
+    "pairs": [
+     {
+      "source_id": "5uAx1JP_32",
+      "prompt_tokens": 34,
+      "output_tokens": 245,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 245,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 245,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "CZaiQM7_0",
+      "prompt_tokens": 215,
+      "output_tokens": 79,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 79,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 79,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "IdI90Mo_0",
+      "prompt_tokens": 20,
+      "output_tokens": 119,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 119,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 119,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "NCXh9wK_31",
+      "prompt_tokens": 336,
+      "output_tokens": 23,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 23,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 23,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "OVDuwvd_0",
+      "prompt_tokens": 17,
+      "output_tokens": 195,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 195,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 195,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "iMT3Zgo_11",
+      "prompt_tokens": 430,
+      "output_tokens": 8,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 8,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 8,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "oisxtIk_0",
+      "prompt_tokens": 32,
+      "output_tokens": 824,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 824,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 824,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "wfMPLY6_0",
+      "prompt_tokens": 36,
+      "output_tokens": 820,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 820,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 820,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "xVYFjJS_69",
+      "prompt_tokens": 341,
+      "output_tokens": 102,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 102,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 102,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     }
+    ]
+   },
+   "Blong-triple": {
+    "prompts": 9,
+    "same_arm_repeats_identical": 9,
+    "arm_pair_identical": 8,
+    "arm_pair_differing": [
+     {
+      "source_id": "x9DOEVF_0",
+      "prompt_tokens": 1241,
+      "output_tokens": 305,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 305,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 157,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     }
+    ],
+    "min_arm_pair_shared_prefix_tokens": 29,
+    "pairs": [
+     {
+      "source_id": "9AF8UZV_0",
+      "prompt_tokens": 1384,
+      "output_tokens": 29,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 29,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 29,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "AW1woLQ_0",
+      "prompt_tokens": 1279,
+      "output_tokens": 416,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 416,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 416,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "CSi9W7V_52",
+      "prompt_tokens": 1252,
+      "output_tokens": 168,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 168,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 168,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "GqsktNY_0",
+      "prompt_tokens": 1161,
+      "output_tokens": 67,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 67,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 67,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "HJPJneT_10",
+      "prompt_tokens": 1630,
+      "output_tokens": 274,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 274,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 274,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "aaHGOPi_0",
+      "prompt_tokens": 1075,
+      "output_tokens": 139,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 139,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 139,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "eKF80Yv_42",
+      "prompt_tokens": 1929,
+      "output_tokens": 115,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 115,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 115,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "qQXm766_0",
+      "prompt_tokens": 1690,
+      "output_tokens": 155,
+      "repeated_arm": "auto",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 155,
+      "arm_pair_identical": true,
+      "arm_pair_shared_prefix_tokens": 155,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     },
+     {
+      "source_id": "x9DOEVF_0",
+      "prompt_tokens": 1241,
+      "output_tokens": 305,
+      "repeated_arm": "off",
+      "same_arm_repeats_identical": true,
+      "same_arm_shared_prefix_tokens": 305,
+      "arm_pair_identical": false,
+      "arm_pair_shared_prefix_tokens": 157,
+      "prefix_hit": false,
+      "prefix_mode": "off"
+     }
+    ]
+   }
+  }
+ },
+ "kernel_trace": {
+  "question": "Which device kernels serve a speculative cycle on the promoted route above the split threshold?",
+  "protocol": "scripts/gguf_mtp_long_context_gate.py --cycle-ends 3530 --candidate-budgets 3 --generation-contexts \"\" --disable-target-graph, run once unprofiled to build the JIT cache and once under rocprofv3 --kernel-trace --output-format csv with HIPENGINE_REQUIRE_CACHED_BUILD=1 and HIPENGINE_COMPILER_VERSION_FILE pinned; rolled up with scripts/gguf_kernel_family_rocprof_summary.py.",
+  "gate_passed_under_profiler": true,
+  "profiled_wall_seconds": 208.3,
+  "device_total_ms": 157189.3,
+  "launches": 46222,
+  "note": "The run includes a 3,530-token prefill, so the largest total_ms families are prefill kernels; the row-shaped families below are the per-cycle speculative work.",
+  "decode_and_linear_attention_families": [
+   {
+    "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+    "launches": 480,
+    "total_ms": 1352.57,
+    "mean_us": 2817.86,
+    "median_us": 3175.04
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+    "launches": 480,
+    "total_ms": 1154.94,
+    "mean_us": 2406.14,
+    "median_us": 2797.21
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+    "launches": 1856,
+    "total_ms": 943.6,
+    "mean_us": 508.41,
+    "median_us": 509.72
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+    "launches": 480,
+    "total_ms": 531.73,
+    "mean_us": 1107.78,
+    "median_us": 1249.77
+   },
+   {
+    "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+    "launches": 1440,
+    "total_ms": 523.61,
+    "mean_us": 363.61,
+    "median_us": 584.56
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "launches": 2320,
+    "total_ms": 270.21,
+    "mean_us": 116.47,
+    "median_us": 118.7
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+    "launches": 928,
+    "total_ms": 212.09,
+    "mean_us": 228.55,
+    "median_us": 227.63
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+    "launches": 480,
+    "total_ms": 196.99,
+    "mean_us": 410.4,
+    "median_us": 478.78
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+    "launches": 320,
+    "total_ms": 161.63,
+    "mean_us": 505.11,
+    "median_us": 511.68
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+    "launches": 272,
+    "total_ms": 79.55,
+    "mean_us": 292.45,
+    "median_us": 162.97
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "launches": 512,
+    "total_ms": 58.55,
+    "mean_us": 114.36,
+    "median_us": 122.79
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+    "launches": 1392,
+    "total_ms": 32.45,
+    "mean_us": 23.31,
+    "median_us": 23.28
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, false>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float const*, float*, float*, float const*, float*, long, long, long, long, long)",
+    "launches": 1392,
+    "total_ms": 18.94,
+    "mean_us": 13.6,
+    "median_us": 13.59
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+    "launches": 240,
+    "total_ms": 13.96,
+    "mean_us": 58.18,
+    "median_us": 58.15
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+    "launches": 480,
+    "total_ms": 1.43,
+    "mean_us": 2.97,
+    "median_us": 2.97
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+    "launches": 240,
+    "total_ms": 1.32,
+    "mean_us": 5.51,
+    "median_us": 5.53
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+    "launches": 272,
+    "total_ms": 0.99,
+    "mean_us": 3.65,
+    "median_us": 2.77
+   },
+   {
+    "kernel": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+    "launches": 43,
+    "total_ms": 0.06,
+    "mean_us": 1.5,
+    "median_us": 1.4
+   }
+  ],
+  "warm_run_passed": true
+ },
+ "guards": [
+  {
+   "guard": "The speculative stream reproduces the autoregressive stream token for token",
+   "classification": "transition requirement, satisfied by the registered strict control and knowingly relaxed by the default native verify path",
+   "evidence": "Under HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact the arm pair is identical on 9/9 natural prompts and the arrival-order control is identical on 9/9. Under the default native mode the arm pair is identical on 6/9 short prompts and 8/9 natural long (graph-refusing, eager) prompts, with the arrival-order control identical on 9/9 and 9/9, so the difference is the verify arithmetic and not submission order.",
+   "cost_of_the_strict_control": "On the same load serial_exact decodes 8.074 tok/s against 23.554 tok/s for native and 11.54 tok/s for the autoregressive control, i.e. token exactness costs 2.9x throughput and lands below plain decoding.",
+   "divergence_shape": "Every divergence is a single token where the two continuations are semantically equivalent (for example 'It should include common configurations like:' against 'It should include common plugins and configurations'), and the output lengths match.",
+   "documented": "docs/ENVS.md documents the native mode as having occasional token differences and serial_exact as token-exact but not faster."
+  },
+  {
+   "guard": "Every speculative cycle is served by the cached native target graph below the split threshold",
+   "classification": "physical limit of the retained short graph bucket (1,023 tokens) plus a schedule requirement",
+   "evidence": "Gate cycle ends 1,016-1,032 submit the graph with split_k_calls=0 against a required 4 and stay inside the production numerical envelope (KL 5.2e-05 to 3.5e-04, top-1 agreement 1.0) while failing the gate's byte-exactness binding; in serving, 10 of 11 speculative rows in A-c1-natural record no per-cycle graph refusal at all."
+  },
+  {
+   "guard": "Long-context speculation above the 1,023-token adapter window",
+   "classification": "transition requirement, refused by default and raised for these measurements",
+   "evidence": "Every natural-long row sets HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192; the default refusal is unchanged."
+  },
+  {
+   "guard": "Speculation beats autoregressive decoding at concurrency 4",
+   "classification": "known failure: not satisfied on short natural prompts",
+   "evidence": "Matched c=4 short lanes measure 3.906 tok/s speculative against 4.623 tok/s autoregressive on the shipping route (0.8449x) and 3.932 against 4.628 (0.8496x) on the promoted route, identical because both routes are graph-served below the cap; aggregate throughput is 13.875 against 16.422 tok/s."
+  },
+  {
+   "guard": "Absolute task quality on the task packet",
+   "classification": "not established, route-neutral",
+   "evidence": "The task packet records output_ids_exact=true and gpu_accept_match_cpu=true for every task while task_score_passed=false with selected_choice=null against an expected choice letter: the scored output equals the teacher's and the packet's answer extraction found no choice, so the absolute score is not evidence for or against this route."
+  }
+ ],
+ "caveats": [
+  "Natural ShareGPT prompts are not the retained benchmark protocol; the retained category-suite rows are benchmarks/results/2026-09-19-gfx1151-qwen38-staged-linear-rows-long-verifier-route.json, and this packet adds the natural-prompt route comparison and the guard classification rather than replacing them.",
+  "The natural-long lanes raise HIPENGINE_MTP2_MAX_CONTEXT_TOKENS to 8192, so they measure the route with the adapter window raised and not the default long-context refusal.",
+  "gfx1100 (W7900) has no measurement in this packet.",
+  "The verify-mode lanes use 9 prompts and the matched lanes 11; the divergence rate is a property of natural prompts with near-tie continuations and is reported as a rate, not as a per-prompt guarantee.",
+  "The c=4 lanes are staggered 250 ms; they measure one occupancy history, not the whole composition space.",
+  "No kernel trace is included for the eager route in this packet; the owner counters and split_k_kernels name the kernels that served each cycle."
+ ],
+ "sources": {
+  "phase1": {
+   "A-c1-natural": {
+    "out": "/tmp/task9/A-c1-natural.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "24",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0"
+    ],
+    "server_env": "shipping route: HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0; promoted route: unset"
+   },
+   "A-c4-natural": {
+    "out": "/tmp/task9/A-c4-natural.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "24",
+     "--max-concurrency",
+     "4",
+     "--output-len",
+     "0",
+     "--stagger-ms",
+     "250"
+    ],
+    "server_env": "shipping route: HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0; promoted route: unset"
+   },
+   "B-c1-natural": {
+    "out": "/tmp/task9/B-c1-natural.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "24",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0"
+    ],
+    "server_env": "shipping route: HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0; promoted route: unset"
+   },
+   "B-c4-natural": {
+    "out": "/tmp/task9/B-c4-natural.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "24",
+     "--max-concurrency",
+     "4",
+     "--output-len",
+     "0",
+     "--stagger-ms",
+     "250"
+    ],
+    "server_env": "shipping route: HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0; promoted route: unset"
+   }
+  },
+  "phase2": {
+   "A-c1-matched": {
+    "out": "/tmp/task9/A-c1-matched.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "11",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "2"
+    ]
+   },
+   "A-c4-matched": {
+    "out": "/tmp/task9/A-c4-matched.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "11",
+     "--max-concurrency",
+     "4",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "2",
+     "--stagger-ms",
+     "250"
+    ]
+   },
+   "B-c1-matched": {
+    "out": "/tmp/task9/B-c1-matched.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "11",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "2"
+    ]
+   },
+   "B-c4-matched": {
+    "out": "/tmp/task9/B-c4-matched.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "11",
+     "--max-concurrency",
+     "4",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "2",
+     "--stagger-ms",
+     "250"
+    ]
+   },
+   "A-long": {
+    "out": "/tmp/task9/A-long.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "15",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--cases",
+     "long,beyond",
+     "--max-prompt-len",
+     "4096"
+    ]
+   },
+   "B-long": {
+    "out": "/tmp/task9/B-long.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "15",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--cases",
+     "long,beyond",
+     "--max-prompt-len",
+     "4096"
+    ]
+   }
+  },
+  "phase3": {
+   "Anative-triple": {
+    "out": "/tmp/task9/Anative-triple.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "9",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "3"
+    ],
+    "server_env": "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0, HIPENGINE_GGUF_MTP_VERIFY_MODE=native"
+   },
+   "Aserial-triple": {
+    "out": "/tmp/task9/Aserial-triple.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "9",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "3"
+    ],
+    "server_env": "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0, HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact"
+   },
+   "Blong-triple": {
+    "out": "/tmp/task9/Blong-triple.json",
+    "command": [
+     "/home/lhl/miniforge3/envs/vllm/bin/python",
+     "scripts/sharegpt_mtp_routing_pass.py",
+     "--server-url",
+     "http://127.0.0.1:8081",
+     "--dataset",
+     "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json",
+     "--gguf",
+     "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+     "--route-mix",
+     "off,auto",
+     "--record-ids",
+     "--num-prompts",
+     "9",
+     "--max-concurrency",
+     "1",
+     "--output-len",
+     "0",
+     "--prompt-repeats",
+     "3",
+     "--cases",
+     "beyond",
+     "--max-prompt-len",
+     "4096"
+    ],
+    "server_env": "promoted route, HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192, native verify mode"
+   }
+  },
+  "graph_and_owner_evidence": [
+   "benchmarks/results/2026-09-19-gfx1151-qwen38-staged-linear-rows-long-verifier-route.json",
+   "worklog/entries/20260919T044255.860244Z-lhl-graph-route-band-divergence-c4e2d9.md",
+   "worklog/entries/20260918T235100.743824Z-lhl-staged-linear-rows-long-default-447f0a.md"
+  ]
+ }
+}
