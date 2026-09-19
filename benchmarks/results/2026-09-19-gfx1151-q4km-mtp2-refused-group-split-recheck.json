@@ -1,0 +1,248 @@
+{
+  "arms": {
+    "group_k0_default": {
+      "off_arm": [
+        {
+          "completion_tokens": 1194,
+          "decode_tokens_per_second": 10.807142007576816,
+          "fallback_event_counts": null,
+          "label": "couple-c4-fix-r1",
+          "median_ttft_ms": 5664.619178511202,
+          "mtp_output_tokens": 0,
+          "mtp_share": 0.0,
+          "p95_ttft_ms": 8574.916043342091
+        },
+        {
+          "completion_tokens": 1194,
+          "decode_tokens_per_second": 11.615056711044366,
+          "fallback_event_counts": null,
+          "label": "couple-c4-fix-r2",
+          "median_ttft_ms": 1862.8984889946878,
+          "mtp_output_tokens": 0,
+          "mtp_share": 0.0,
+          "p95_ttft_ms": 2639.219728531316
+        }
+      ],
+      "runs": [
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 8.780639316919265,
+          "fallback_event_counts": null,
+          "label": "couple-c4",
+          "median_ttft_ms": 1885.8222290873528,
+          "mtp_output_tokens": 481,
+          "mtp_share": 0.5344,
+          "p95_ttft_ms": 3058.870056224987
+        },
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 8.147899213148232,
+          "fallback_event_counts": null,
+          "label": "couple-c4-fix-r1",
+          "median_ttft_ms": 5848.77555584535,
+          "mtp_output_tokens": 481,
+          "mtp_share": 0.5344,
+          "p95_ttft_ms": 8899.07932409551
+        },
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 8.756962573587534,
+          "fallback_event_counts": null,
+          "label": "couple-c4-fix-r2",
+          "median_ttft_ms": 1881.106627639383,
+          "mtp_output_tokens": 481,
+          "mtp_share": 0.5344,
+          "p95_ttft_ms": 3074.3888506432995
+        },
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 8.13864348943773,
+          "fallback_event_counts": null,
+          "label": "couple-c4-trace2",
+          "median_ttft_ms": 5901.638712035492,
+          "mtp_output_tokens": 481,
+          "mtp_share": 0.5344,
+          "p95_ttft_ms": 8676.003401190974
+        }
+      ],
+      "server_env": "HIPENGINE_MTP2_OUTPUT_SPANS=1"
+    },
+    "split_refused_groups": {
+      "off_arm": [
+        {
+          "completion_tokens": 1194,
+          "decode_tokens_per_second": 9.623148148124736,
+          "fallback_event_counts": null,
+          "label": "couple-c4-split-r1",
+          "median_ttft_ms": 5824.523967457935,
+          "mtp_output_tokens": 0,
+          "mtp_share": 0.0,
+          "p95_ttft_ms": 9659.943996160291
+        },
+        {
+          "completion_tokens": 1194,
+          "decode_tokens_per_second": 10.25878613822058,
+          "fallback_event_counts": null,
+          "label": "couple-c4-split-r2",
+          "median_ttft_ms": 2337.729468010366,
+          "mtp_output_tokens": 0,
+          "mtp_share": 0.0,
+          "p95_ttft_ms": 2728.8748510880396
+        }
+      ],
+      "runs": [
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 7.25491548816882,
+          "fallback_event_counts": null,
+          "label": "couple-c4-split-r1",
+          "median_ttft_ms": 6459.408987080678,
+          "mtp_output_tokens": 895,
+          "mtp_share": 0.9944,
+          "p95_ttft_ms": 9794.481594627723
+        },
+        {
+          "completion_tokens": 900,
+          "decode_tokens_per_second": 7.734088832336272,
+          "fallback_event_counts": null,
+          "label": "couple-c4-split-r2",
+          "median_ttft_ms": 2455.1387685351074,
+          "mtp_output_tokens": 895,
+          "mtp_share": 0.9944,
+          "p95_ttft_ms": 3052.3139979690313
+        }
+      ],
+      "server_env": "HIPENGINE_MTP2_OUTPUT_SPANS=1 HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS=1"
+    }
+  },
+  "backend": "hip_gfx1151",
+  "conclusion": "No code change. The group-wide K0 is the cheaper route on the current tree, so the provider activation a refused row pays is not recoverable by splitting the group. The remaining cost found by the audit is the deferral wait in the pair lane (one row at 8248 ms against an AR row with a longer prompt at 4381 ms), whose fix is priming the provider at the first admitted cycle from retained prompt hidden rows.",
+  "date": "2026-09-19",
+  "execution_profile": "production",
+  "findings": {
+    "acceptance_criteria": "The refused row's TTFT in the default route (967 ms) matches the AR arm's short rows (1255 ms and 967 ms), so the task's TTFT criterion holds; the 'every refused row reports its own planner reason' criterion does not: the response reports the plan's no_provider, not the row's activation reason.",
+    "activation_is_used": "Pair lanes (c=2 and c=4, 8 rows) keep 96.9-99.4% of the speculative arm's output tokens in MTP with TTFT at parity with the AR arm, and every realized group is one row: the provider activation is used wherever a cycle is admitted.",
+    "group_k0_is_by_design": "engine_loop._maybe_run_speculative_cycle plans a refused or mixed due group K0 as a whole; the adapter's capability declines any group wider than the static bound (decline traces: 'width 2/3/4 exceeds static group bound 1'), and the split route is behind HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS (default off).",
+    "lane_variance": "This lane's TTFT varies run to run (median 1881 ms to 5849 ms for the same default configuration), so only MTP share and per-token rate are used as discriminators; per-arm decode_tokens_per_second is not comparable across arms because --route-mix assigns arms to different prompts.",
+    "provider_less_poisoning_refuted": "An activation trace on the fixed tree (begin/finish/drop per request) shows the two short same-tick rows activating together and both receiving provider state (finish state rid=3 prime_rows=20, rid=5 prime_rows=17), so the 417 no_provider events come from the mixed-group K0 plan, not from a missing provider. In one earlier run one row's state was released immediately after activation (drop rid=5 disable=False); it did not reproduce and is recorded as an open item.",
+    "split_route_recheck": "The split route raises the speculative arm's MTP share from 0.534 to 0.994 (+86%) but lowers its decode rate in both paired runs (-17.2% and -5.1%) and also lowers the co-resident AR arm's rate (-17.1% and -5.1%), reproducing the 2026-09-18 rejection: the extra provider cycles cost more than the AR batch decode they replace."
+  },
+  "gpu": "AMD Radeon Pro W7900 (gfx1100, RDNA3)",
+  "harness": "scripts/sharegpt_mtp_routing_pass.py",
+  "host": "gfx1151-lhl",
+  "kind": "diagnostic",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "paired_rows_default": [
+    {
+      "completion_tokens": 658,
+      "fallback_event_total": 208,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 450,
+      "prompt_tokens": 20,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 165
+      },
+      "source_id": "BeBwNbo_0",
+      "ttft_ms": 776.8462137319148
+    },
+    {
+      "completion_tokens": 208,
+      "fallback_event_total": 207,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": 0,
+      "mtp_output_tokens": 0,
+      "prompt_tokens": 17,
+      "selected_depth_histogram": {},
+      "source_id": "tXu9B1A_20",
+      "ttft_ms": 966.924887150526
+    },
+    {
+      "completion_tokens": 10,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 8,
+      "prompt_tokens": 947,
+      "selected_depth_histogram": {
+        "3": 2
+      },
+      "source_id": "0KNKWZl_15",
+      "ttft_ms": 3123.6418769694865
+    },
+    {
+      "completion_tokens": 24,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 23,
+      "prompt_tokens": 644,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 6
+      },
+      "source_id": "HGEkePW_55",
+      "ttft_ms": 2795.28836812824
+    }
+  ],
+  "paired_rows_split": [
+    {
+      "completion_tokens": 658,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 657,
+      "prompt_tokens": 20,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 239
+      },
+      "source_id": "BeBwNbo_0",
+      "ttft_ms": 2120.0727270916104
+    },
+    {
+      "completion_tokens": 208,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 207,
+      "prompt_tokens": 17,
+      "selected_depth_histogram": {
+        "3": 72
+      },
+      "source_id": "tXu9B1A_20",
+      "ttft_ms": 2119.2297437228262
+    },
+    {
+      "completion_tokens": 10,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 8,
+      "prompt_tokens": 947,
+      "selected_depth_histogram": {
+        "3": 2
+      },
+      "source_id": "0KNKWZl_15",
+      "ttft_ms": 3098.5685605555773
+    },
+    {
+      "completion_tokens": 24,
+      "fallback_event_total": 1,
+      "fallback_reason": "no_provider",
+      "first_fallback_position": null,
+      "mtp_output_tokens": 23,
+      "prompt_tokens": 644,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 6
+      },
+      "source_id": "HGEkePW_55",
+      "ttft_ms": 2790.2048099786043
+    }
+  ],
+  "protocol": "couple lane, --cases short,long --max-total-len 1024 --route-mix off,auto, --num-prompts 8 --max-concurrency 4 --seed 373 --record-ids; one production-profile server per arm on port 8081",
+  "question": "Task #13: a row that carries speculative intent and cannot be served in its due group pays provider activation during prefill and decodes autoregressively afterwards. Is the group-wide K0 cheaper than serving each capable row in its own provider cycle?",
+  "speculative_serving": "auto (candidate budget 3)"
+}
