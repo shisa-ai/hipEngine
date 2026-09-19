@@ -282,9 +282,10 @@ class MlpShardRank:
 
         ``rows`` selects a batched (prefill) chain: the same sharded weights
         and the same full-hidden partial, launched as a GEMM over ``rows``
-        rows instead of a single-row GEMV. Batched prefill always uses the
-        unfused gate/up/SiLU/down chain; the fused decode candidate is a
-        single-row route.
+        rows instead of a single-row GEMV. Batched prefill attempts the fused
+        gate/up+SiLU pair and falls back to the unfused three-launch chain when
+        the prefill admission declines the shape, so the unfused chain remains
+        the registered strict fallback at batched rows.
 
         The gate/up+SiLU route: an explicitly passed ``fused`` wins; by
         default the rank runs the fused pair when its construction-time
@@ -304,8 +305,6 @@ class MlpShardRank:
             self._require_batched_route(rows)
         if fused is None:
             fused = self.mlp_decode_variant is not None
-        if rows > 1:
-            fused = False
         if fused and fused_variant is None:
             fused_variant = self.mlp_decode_variant
         if fused and fused_variant is None:
@@ -336,11 +335,20 @@ class MlpShardRank:
                     runtime=runtime,
                 )
                 if not launched:
-                    raise RuntimeError(
-                        f"the fused pair+SiLU candidate did not launch at "
-                        f"({rows}, {self.hidden}, {self.per_rank_ffn})"
-                    )
-            else:
+                    if rows > 1:
+                        # A batched fused pair is an attempt, not a requirement:
+                        # the prefill admission admits only some widths, and the
+                        # unfused chain below is the registered strict fallback
+                        # the fused owner is bit-identical to. A single-row
+                        # candidate that declines is a real error, because there
+                        # the fused route *was* resolved for this exact shape.
+                        fused = False
+                    else:
+                        raise RuntimeError(
+                            f"the fused pair+SiLU candidate did not launch at "
+                            f"({rows}, {self.hidden}, {self.per_rank_ffn})"
+                        )
+            if not fused:
                 launch_gguf_linear(
                     self._weights["ffn_gate"],
                     self.x_ptr,

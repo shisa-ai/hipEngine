@@ -3500,7 +3500,7 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    assert len(expected) == 25
+    assert len(expected) == 26
 
     ledger_path = (
         Path(__file__).resolve().parents[1]

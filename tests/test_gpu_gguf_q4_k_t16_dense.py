@@ -1181,6 +1181,79 @@ def test_bulk_row48_promotion_is_backend_qualified(monkeypatch, backend, rows) -
     assert key.variant == f"dense_dual_wmma_prefill_row{tile}_bf16_bf16_out"
 
 
+@pytest.mark.parametrize("rows", [33, 48, 64, 128, 256, 512])
+def test_sharded_pair_silu_width_is_admitted_per_backend(rows: int) -> None:
+    """The TP2 shard width reaches the fused prefill ladder on gfx1100 only.
+
+    A sharded rank activates ``ffn_size // ranks`` (8_704), which the predicate
+    could not reach while it compared ``out_features`` against the unsharded
+    FFN width exactly - so the rank-local bulk prefill fell back to the unfused
+    chain. The widening is a shape admission and therefore backend-scoped: a
+    backend that has not measured it keeps the single validated width rather
+    than inheriting another backend's evidence.
+
+    Rows 33+ only. Below ``_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS`` this predicate is
+    not the admission at all - rows<=32 reach the fused owner through the
+    physical-rowtile path instead, which this widening does not touch.
+    """
+
+    from types import SimpleNamespace
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.runtime import gguf_linear as module
+
+    def _dispatch(backend: str):
+        return SimpleNamespace(
+            key=KernelKey(backend, "linear", "gguf_q4_k_t16_v1", "default"),
+            abi="t16",
+        )
+
+    def _resolve(backend: str, out_features: int):
+        load_backend_kernel_package(backend)
+        dispatch = _dispatch(backend)
+        return module._q4_t16_dual_wmma_silu_dispatch(
+            dispatch, dispatch, rows=rows, in_features=5_120,
+            out_features=out_features,
+        )
+
+    key = _resolve("hip_gfx1100", 8_704)
+    assert key is not None, "the measured shard width must reach the ladder"
+    assert key.layer == "linear_pair_silu"
+    # The ladder names the band's own tile, and every band is bit-identical to
+    # the unfused chain at this width, so the existing bands are reused as-is.
+    tile = 48 if rows <= 48 else 64 if rows <= 64 else 128 if rows <= 128 else None
+    expected = (
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+        if tile is None
+        else f"dense_dual_wmma_prefill_row{tile}_bf16_bf16_out"
+    )
+    assert key.variant == expected
+
+    # A backend without the capability fails closed to the validated width.
+    assert _resolve("hip_gfx1151", 8_704) is None
+    # The unsharded width stays admitted everywhere.
+    assert _resolve("hip_gfx1151", 17_408) is not None
+    # A width nobody measured stays out, on both backends.
+    assert _resolve("hip_gfx1100", 17_152) is None
+    assert _resolve("hip_gfx1151", 17_152) is None
+
+
+def test_sharded_pair_silu_width_capability_defaults_fail_closed() -> None:
+    """An unreadable or absent capability must not widen the admission."""
+
+    from hipengine.runtime.gguf_linear import (
+        _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES,
+        _q4_t16_dual_silu_prefill_out_features,
+    )
+
+    # A backend that never publishes the name resolves to the one width the
+    # ladder was built and validated on.
+    assert _q4_t16_dual_silu_prefill_out_features("hip_gfx1151") == frozenset(
+        {_PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES}
+    )
+    assert 8_704 in _q4_t16_dual_silu_prefill_out_features("hip_gfx1100")
+
+
 def test_q4_t16_physical_r32_pair_silu_selects_two_wave_fused_owner(
     monkeypatch,
 ) -> None:
@@ -2263,9 +2336,10 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape(
 ) -> None:
     """Fused dual+SiLU prefill must equal the unfused chain at the dispatched shape.
 
-    ``_q4_t16_dual_wmma_silu_dispatch`` only admits (5120 -> 17408), so fixture
-    parity at tiny shapes cannot qualify the row gate by itself: tile counts and
-    the shared-x epilogue are shape dependent.
+    The predicate admits the unsharded FFN width (5120 -> 17408) and, since the
+    TP2 shard widening, the shard width (5120 -> 8704). Fixture parity at tiny
+    shapes cannot qualify the row gate by itself: tile counts and the shared-x
+    epilogue are shape dependent.
     """
 
     assert candidate is not None
@@ -2359,6 +2433,116 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape(
         copy_device_to_host(
             host_array_ptr(actual_bits), actual_dev, runtime=runtime
         )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_bits, expected_bits)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("rows", "variant"),
+    [
+        # Every band the ladder names, at the width a TP2 shard rank activates
+        # (17_408 // 2). The expected variant is the band's own tile, because
+        # each one measured fastest inside its band at this width.
+        (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (48, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (64, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+        (128, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+        (256, "dense_dual_wmma_prefill_bf16_bf16_out"),
+        (512, "dense_dual_wmma_prefill_bf16_bf16_out"),
+    ],
+)
+def test_q4_t16_sharded_pair_silu_matches_unfused_chain(
+    rows: int,
+    variant: str,
+) -> None:
+    """The fused prefill pair is bit-exact at the sharded FFN width.
+
+    The TP2 rank-local bulk prefill activates ``ffn_size // ranks`` per rank, so
+    the fused owner has to be exact there too before the shard chain may take
+    it. The control is the same unfused chain the shard chain runs: two t16
+    WMMA prefill singles plus a separate SiLU-multiply.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+        build_paro_silu,
+        silu_mul_separate_out_bf16,
+    )
+    from hipengine.kernels.registry import resolve as _resolve
+
+    runtime = get_hip_runtime()
+    in_features = 5_120
+    out_features = 8_704  # 17_408 // 2, the even-split shard width
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=1, axis=0).copy()
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(8704 + rows)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    expected_bits = np.zeros((rows, out_features), dtype=np.uint16)
+    actual_bits = np.zeros_like(expected_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        gate_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        up_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        expected_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        actual_dev = malloc(actual_bits.nbytes, runtime=runtime)
+        buffers.extend(
+            (x_dev, tiles_a_dev, tiles_b_dev, gate_dev, up_dev, expected_dev, actual_dev)
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(tiles_a_dev, host_array_ptr(tiles_a), runtime=runtime)
+        copy_host_to_device(tiles_b_dev, host_array_ptr(tiles_b), runtime=runtime)
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        for tiles_dev, out_dev in ((tiles_a_dev, gate_dev), (tiles_b_dev, up_dev)):
+            gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+                x_dev.ptr,
+                tiles_dev.ptr,
+                out_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            gate_dev.ptr,
+            up_dev.ptr,
+            expected_dev.ptr,
+            rows,
+            out_features,
+            library=build_paro_silu(load=True),
+            runtime=runtime,
+        )
+        candidate = _resolve(
+            backend="hip_gfx1100",
+            layer="linear_pair_silu",
+            quant="gguf_q4_k_t16_v1",
+            variant=variant,
+        )
+        candidate(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            actual_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(expected_bits), expected_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(actual_bits), actual_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)

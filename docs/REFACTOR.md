@@ -7905,3 +7905,28 @@ near-tie rows: post-fix the heldout fails against **both** TP1 references
 (teacher 0.261, token-serial 0.182) while the saved prompt is inside the
 envelope against token-serial (max 0.0259) and outside it against the resident
 teacher (0.167). Do not relax the envelope.
+
+**The sharded pair admission buys nothing until the exchange stops being a
+rendezvous (2026-09-19).** `GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES` now admits the
+TP2 even-split shard width (5_120 -> 8_704) to the dense Q4T16 gate/up+SiLU
+prefill owner, and `MlpShardRank.forward_partial` attempts that pair at batched
+rows with the unfused chain as its fallback. The pair is bit-identical to the
+unfused chain at every row band the ladder names and faster in isolation in every
+band (row48 2.08x, row64 1.81x, row128 1.67x, generic 1.27x at rows=512), and it
+replaces three launches per layer per rank with one — but the product-path wall
+does not move: paired same-session A/B at 512 rows with `logits_rows=1` measured
+492.8 -> 493.5 ms (-0.14%). The sharded MLP phase is rendezvous-bound, so the
+~30 ms of chain work removed per prefill is absorbed as extra wait at the
+per-layer peer exchange instead of shortening the wall. The saving is real and
+visible whenever the wall is not sync-bound (the same A/B with the full row head
+projection reads +3.16%, all four paired deltas positive), which is what makes
+this refactor debt rather than a rejected idea.
+
+Re-evaluate when either changes: (a) the exchange stops being a per-layer
+rendezvous (a batched or overlapped reduction would let chain work reach the
+wall), or (b) the MLP phase is no longer straggler-bound — today rank 1 carries
+168.7 ms of chain against rank 0's 189.5 ms while rank 1 waits 111.5 ms at the
+exchange against rank 0's 64.6 ms, so the wait is absorbing a genuine imbalance.
+If neither changes, this admission can be withdrawn without losing throughput:
+delete the `8_704` entry, and `forward_partial`'s batched attempt falls back to
+the unfused chain exactly as before.

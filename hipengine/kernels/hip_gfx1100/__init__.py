@@ -700,6 +700,32 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # Bulk Q4 gate/up+SiLU row48 is qualified on this backend only.
 GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
+# Activated widths the dense Q4T16 gate/up+SiLU prefill owner admits. The
+# unsharded H5120 FFN width (17_408) is the shape the ladder was built and
+# validated on. 8_704 is the TP2 even-split MLP shard width (17_408 // 2), which
+# the ladder could not reach because its predicate compared out_features against
+# 17_408 exactly, so a sharded rank's batched prefill ran two t16 WMMA prefill
+# singles plus a separate SiLU-multiply instead.
+#
+# Measured bit-identical to that unfused chain at every row band the ladder
+# names (33/48/64/128/256/512, real synthetic Q4_K tiles at in_features=5_120,
+# out_features=8_704), and faster in isolation in every band - row48 2.08x,
+# row64 1.81x, row128 1.67x, generic 1.27x at rows=512 against the shared_b
+# singles the chain actually runs. It also replaces three launches per layer per
+# rank with one.
+#
+# It is NOT a wall-clock win, and this admission should not be read as one. On
+# the product path the TP2 bulk prefill is unchanged by it: paired same-session
+# A/B at 512 rows / logits_rows=1 measured 492.8 -> 493.5 ms (-0.14%, paired
+# deltas +4.32/-0.27/-0.07/-0.22%), and the phase attribution's mlp_chain span
+# is flat at 189.5 vs 189.7 ms. The sharded MLP phase is rendezvous-bound: the
+# per-layer peer exchange carries a fixed sync latency, so the ~30 ms of chain
+# work this removes is absorbed as extra wait rather than shortened wall. The
+# saving does appear when the wall is not sync-bound (same A/B with the full
+# row head projection: +3.16%, all four paired deltas positive). Retained as an
+# exact, strictly-less-work owner; the wall effect needs the exchange structure
+# to change first (docs/REFACTOR.md).
+GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES = frozenset({17_408, 8_704})
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
 # avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling
 # over one 16-row tile each (bit-exact to the parent at EVERY row 1-36 on all
@@ -1637,6 +1663,7 @@ __all__ = [
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
     "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
+    "GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",

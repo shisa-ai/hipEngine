@@ -2,9 +2,10 @@
 
 No device and no model file: a fake runtime records allocations and D2D copies,
 and the linear/SiLU launchers are recorded. These tests pin the batched-prefill
-contract (row-sized buffers, active-row tracking, rows*hidden input copies,
-unfused GEMM for rows>1, unchanged single-row fused decode, and a preflight
-that refuses an unsupported batched quant/dtype route before launch).
+contract (row-sized buffers, active-row tracking, rows*hidden input copies, the
+fused-pair attempt at batched rows with the unfused GEMM as its fallback,
+unchanged single-row fused decode, and a preflight that refuses an unsupported
+batched quant/dtype route before launch).
 """
 import numpy as np
 import pytest
@@ -93,7 +94,7 @@ def _rank(runtime, *, rows=1, mlp_decode_variant=None, weights=None):
     )
 
 
-def _record_launchers(monkeypatch):
+def _record_launchers(monkeypatch, *, pair_launches: bool = True):
     launches = []
 
     def fake_linear(weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
@@ -102,8 +103,10 @@ def _record_launchers(monkeypatch):
                          "output_dtype": kwargs.get("output_dtype")})
 
     def fake_pair(a, b, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
-        launches.append({"kind": "pair", "rows": rows, "use_gemv_decode": kwargs.get("use_gemv_decode")})
-        return True
+        launches.append({"kind": "pair", "rows": rows, "in": in_features,
+                         "out": out_features,
+                         "use_gemv_decode": kwargs.get("use_gemv_decode")})
+        return pair_launches
 
     def fake_silu(gate_ptr, up_ptr, out_ptr, rows, features, **kwargs):
         launches.append({"kind": "silu", "rows": rows, "features": features})
@@ -159,10 +162,59 @@ def test_write_input_from_device_defaults_to_active_rows():
     assert rank.active_rows == 1
 
 
-def test_batched_forward_uses_unfused_gemm_with_rows(monkeypatch):
+def test_batched_forward_attempts_the_fused_pair_when_a_variant_is_set(monkeypatch):
+    """A batched rank with an admitted variant runs the fused pair.
+
+    The fused prefill owner is bit-identical to the unfused chain and faster in
+    every row band, so batched rows attempt it; the decline path is covered by
+    the fallback test below.
+    """
+
     runtime = FakeRuntime()
     launches = _record_launchers(monkeypatch)
     rank = _rank(runtime, rows=4, mlp_decode_variant="dense_dual_local32_bf16_bf16_out")
+    rank.write_input_from_device(0x1, rows=4)
+    ptr = rank.forward_partial(rows=4)
+    assert ptr == rank.down_partial_ptr
+    kinds = [entry["kind"] for entry in launches]
+    assert kinds == ["pair", "linear"]
+    assert all(entry["rows"] == 4 for entry in launches)
+    pair = next(entry for entry in launches if entry["kind"] == "pair")
+    assert pair["use_gemv_decode"] is False
+    assert launches[-1]["output_dtype"] == "f32"
+
+
+def test_batched_forward_falls_back_to_the_unfused_chain_when_the_pair_declines(
+    monkeypatch,
+):
+    """A declined batched pair falls back instead of failing.
+
+    Only some widths are admitted, so at batched rows the fused pair is an
+    attempt. The unfused chain is the registered strict fallback the fused owner
+    is bit-identical to, and it must keep the same rows and dtype contract.
+    """
+
+    runtime = FakeRuntime()
+    launches = _record_launchers(monkeypatch, pair_launches=False)
+    rank = _rank(runtime, rows=4, mlp_decode_variant="dense_dual_local32_bf16_bf16_out")
+    rank.write_input_from_device(0x1, rows=4)
+    ptr = rank.forward_partial(rows=4)
+    assert ptr == rank.down_partial_ptr
+    kinds = [entry["kind"] for entry in launches]
+    assert kinds == ["pair", "linear", "linear", "silu", "linear"]
+    linears = [entry for entry in launches if entry["kind"] == "linear"]
+    assert all(entry["rows"] == 4 for entry in linears)
+    assert all(entry["use_gemv_decode"] is False for entry in linears)
+    assert launches[-1]["output_dtype"] == "f32"
+
+
+def test_batched_forward_uses_unfused_gemm_without_an_admitted_variant(monkeypatch):
+    """A rank the policy does not admit keeps the unfused chain, and never
+    guesses a fused variant for batched rows."""
+
+    runtime = FakeRuntime()
+    launches = _record_launchers(monkeypatch)
+    rank = _rank(runtime, rows=4)
     rank.write_input_from_device(0x1, rows=4)
     ptr = rank.forward_partial(rows=4)
     assert ptr == rank.down_partial_ptr
@@ -172,6 +224,18 @@ def test_batched_forward_uses_unfused_gemm_with_rows(monkeypatch):
     linears = [entry for entry in launches if entry["kind"] == "linear"]
     assert all(entry["use_gemv_decode"] is False for entry in linears)
     assert launches[-1]["output_dtype"] == "f32"
+
+
+def test_single_row_pair_decline_is_still_an_error(monkeypatch):
+    """The fallback is batched-only: at one row the fused route *was* resolved
+    for this exact shape, so a decline is a real error rather than a shape the
+    admission excludes."""
+
+    runtime = FakeRuntime()
+    _record_launchers(monkeypatch, pair_launches=False)
+    rank = _rank(runtime, rows=1, mlp_decode_variant="dense_dual_local32_bf16_bf16_out")
+    with pytest.raises(RuntimeError, match="did not launch"):
+        rank.forward_partial()
 
 
 def test_forward_rejects_an_active_row_mismatch_before_launch(monkeypatch):
