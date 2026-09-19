@@ -1382,6 +1382,45 @@ reachable only at rows 2-4, and together they cover about 0.15% of decode, so no
 number in the tables above moves.
 [`dense rowtile qualification`](results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json).
 
+#### Long-context speculation
+
+Speculative decoding on this file was bounded twice. The draft adapter refuses
+MTP at its 1,023-token context window, and the verifier independently dropped
+its 48 dense linear-attention layers to a per-row scalar route once the span
+crossed the 1,024-token split-K threshold, which cost more than the drafts
+saved. The verifier's bound is gone: the batched staged chain is byte-exact
+against the serial-exact teacher on the eager route at every straddle band
+measured - 19 cases at cycle ends 1,020-1,028, 13 at 3,528-3,532 and 3 at 8,192 -
+with the staged owner confirmed by route counters (48 staged calls, 0 row-wise
+calls per case), and the matched row-wise control is exact as well (13 of 13 at
+3,528-3,532 with 192 row-wise calls). It is now the default on `gfx1151` for
+plain `Q4_K_M`-stamped artifacts; other file types, preset (UD) artifacts and
+`gfx1100` keep the row-wise strict route, which stays reachable everywhere
+through `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0`.
+
+One server process per arm, a true no-MTP control selected by the request's own
+`speculative_mtp` field, BF16 KV, candidate budget 3, and the adapter's context
+window raised to 8,192 tokens (see below):
+
+| Prompt tokens | True AR | MTP, staged route | MTP, row-wise route |
+| ---: | ---: | ---: | ---: |
+| 672 | 11.99 | **24.22 (2.019x)** | 24.20 (2.016x) |
+| 877 | 11.93 | **16.33 (1.369x)** | 16.33 (1.366x) |
+| 3,055 | 11.21 | **18.25 (1.630x)** | 8.00 (0.713x) |
+
+The first two shapes stay below the split threshold, where both routes run the
+same arithmetic, so they are the control that the arms differ only in route. At
+3,055 tokens the staged route is **2.28x** the row-wise route and turns a loss
+into a win. The full mtp-bench category suite and the category heldouts at the
+same long shape pass their true-AR identity gate - **10 of 10** canonical prompts
+across `code`/`general_en`/`general_ja`/`mixed_ja_en` and **8 of 8** heldouts
+match the AR arm's generated ids token for token over the 32-token probe - at
+**1.42x-2.55x (median 1.864x)** and **1.35x-2.21x (median 1.828x)** respectively,
+with 98.4-99.2% of output tokens from speculative cycles. The adapter's 1,023-token window is a
+separate, still-unpromoted bound: it refuses long-context speculation by
+default, so these long-shape rows need `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` set.
+[Evidence](results/2026-09-19-gfx1151-qwen38-staged-linear-rows-long-verifier-route.json).
+
 #### ShareGPT serving at one, four and eight concurrent requests
 
 A real workload through the OpenAI server: vLLM's ShareGPT loader and pruning

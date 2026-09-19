@@ -1598,6 +1598,20 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # real-Uvicorn serving A/B admit FP16 recurrent-state storage for dense Q4_K_S.
 # The environment remains an explicit rollback: =0 restores FP32 storage.
 GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
+# Dense linear-attention verifier rows above the full-attention split threshold
+# stage the batched projection/head-norm/rotary/KV-write/output-projection chain
+# instead of the per-row scalar c1 owner. The staged chain reassociates BF16
+# projections, so the default binds the loader-qualified plain artifact identity
+# (a UD/unknown-manifest preset never inherits it) and the file types whose
+# eager-route teacher parity, straddle-band and task packets were measured:
+# Qwen3.8-27B Q4_K_M on 2026-09-19 is byte-exact against the serial-exact
+# teacher at the 1024/3530/8192 straddles with the staged owner confirmed by
+# route counters, and the committed long-context task packet binds task,
+# AR-id and eager-ownership equality at a 4,096-token context. The row-wise c1
+# route remains the registered strict fallback behind
+# ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0``. Other file types keep the
+# row-wise route until their own packet is measured.
+GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_m"})
 # Default AOTriton ON for gfx1151. An earlier 2026-08-20 slice measurement
 # (64..2048) claimed native causal_gqa_gate_bf16 was ~2-5% faster with no
 # crossover, which set this to False; but the native full-attention path scales
@@ -3516,6 +3530,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY",
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
+    "GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",

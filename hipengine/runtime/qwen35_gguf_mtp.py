@@ -1758,6 +1758,7 @@ class Qwen35GGUFMTPDecodeSession:
         verifier: Qwen35GGUFTransactionalVerifier | None = None,
         owns_verifier: bool = True,
         draft_hidden_variant: str = "pre_output_norm",
+        allow_graph: bool = True,
     ) -> None:
         if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError(
@@ -1771,6 +1772,12 @@ class Qwen35GGUFMTPDecodeSession:
         self.draft_provider = draft_provider
         self.candidate_budget = int(candidate_budget)
         self.quant = selected_quant
+        # The cached native target graph is a different arithmetic route from
+        # the eager chain, and a caller that measures the eager route (the RF1
+        # long-context task packet binds eager cycle ownership) has to be able
+        # to refuse graph substitution instead of depending on the graph being
+        # ineligible at that context.
+        self.allow_graph = bool(allow_graph)
         self.draft_hidden_policy = Qwen35GGUFDraftHiddenPolicy(
             target_hidden_variant=str(draft_hidden_variant)
         )
@@ -2055,6 +2062,7 @@ class Qwen35GGUFMTPDecodeSession:
                     remaining_decode=(remaining,),
                     return_logits=return_cycle_logits,
                     device_proposal=device_proposal,
+                    allow_graph=bool(self.allow_graph),
                 )
                 verify_seconds += time.perf_counter() - verify_started
                 lifecycle_phase("after_target_prepare")

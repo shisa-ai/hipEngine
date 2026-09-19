@@ -44,12 +44,28 @@ def _median(values: Sequence[float | None]) -> float | None:
     return statistics.median(present) if present else None
 
 
+def _flat_ids(value: Any) -> list[int]:
+    """One choice's generated ids from either recorded shape.
+
+    The API reports ids per choice, so an artifact recorded before the pair
+    harness flattened the single-choice form carries ``[[...]]``. Both shapes
+    describe the same sequence and are compared as one.
+    """
+    if not isinstance(value, list) or not value:
+        return []
+    if all(isinstance(item, list) for item in value):
+        if len(value) != 1:
+            raise SystemExit("multi-choice identity rows are not comparable as one sequence")
+        return list(value[0])
+    return list(value)
+
+
 def _identity(first: Mapping[str, Any] | None, second: Mapping[str, Any] | None) -> dict:
     """Cross-arm greedy identity for one row pair."""
     first = first or {}
     second = second or {}
-    first_ids = list(first.get("generated_ids") or [])
-    second_ids = list(second.get("generated_ids") or [])
+    first_ids = _flat_ids(first.get("generated_ids"))
+    second_ids = _flat_ids(second.get("generated_ids"))
     divergence = None
     for index, (left, right) in enumerate(zip(first_ids, second_ids)):
         if left != right:

@@ -252,6 +252,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 candidate_budget=int(args.candidate_budget),
                 quant="gguf_q4_k_m",
                 target_verify_mode="native",
+                allow_graph=not bool(args.disable_target_graph),
             ) as decoder:
                 for index, task in enumerate(tasks):
                     task_id = str(task["id"])
@@ -342,6 +343,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "candidate_budget": int(args.candidate_budget),
             "max_sequence_length": max_sequence_length,
             "require_cached_build": bool(args.require_cached_build),
+            "disable_target_graph": bool(args.disable_target_graph),
         },
         "rows": rows,
         "memory": memory_stats(),
@@ -376,6 +378,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--candidate-budget", type=int, default=3)
     parser.add_argument("--max-sequence-length", type=int, default=65544)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--disable-target-graph",
+        action="store_true",
+        help=(
+            "Force the eager verifier. The binding requires every cycle to be "
+            "eager, and a cycle that submits the cached native target graph is "
+            "a different arithmetic route, so a packet that measures the eager "
+            "chain has to disable graph eligibility rather than hope the graph "
+            "is refused at this context."
+        ),
+    )
     parser.add_argument("--hash-model", action="store_true")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--fail-on-fail", action="store_true")
