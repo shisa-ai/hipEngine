@@ -333,6 +333,43 @@ class _MTP2RequestState:
     device_chain_prepare_error: str | None = None
 
 
+class _DeviceSampledAcceptPlan:
+    """Draws staged for one device sampled accept, with stream settlement.
+
+    The device walk consumes one uniform per acceptance test and then one for
+    the residual or bonus sample, all from the row's own host sampler stream.
+    The plan stages ``rows + 1`` draws (an upper bound), and ``settle`` rewinds
+    the stream to the pre-draw snapshot and re-advances it by exactly the draws
+    the device consumed, so the row's stream stays aligned with the
+    autoregressive route.
+    """
+
+    def __init__(self, *, state: Any, temperature: float, rows: int) -> None:
+        import copy as _copy
+
+        self.state = state
+        self.temperature = float(temperature)
+        self.rows = int(rows)
+        self.snapshot = _copy.deepcopy(state._rng.bit_generator.state)
+        self.draws = np.asarray(
+            [float(state.random_unit()) for _ in range(self.rows)],
+            dtype=np.float32,
+        )
+
+    def state_tuple(self) -> tuple[float, np.ndarray]:
+        return (self.temperature, self.draws)
+
+    def settle(self, accepted: int) -> None:
+        """Leave the stream where the host accept would have left it."""
+
+        import copy as _copy
+
+        consumed = max(0, int(accepted)) + 1
+        self.state._rng.bit_generator.state = _copy.deepcopy(self.snapshot)
+        for _ in range(consumed):
+            self.state.random_unit()
+
+
 @dataclass(frozen=True, slots=True)
 class _PhysicalAcceptPending:
     batch: TargetVerifyBatch
@@ -1797,6 +1834,15 @@ class Qwen35GGUFMTP2Adapter:
                             (int(token_id), *((0,) * budget)),
                             request_id=rid,
                         )
+                        if self._sampled_route_request(rid):
+                            # A sampled row needs its own captured accept
+                            # variant; warm it here so the first hot cycle is a
+                            # cache hit rather than a capture under load.
+                            prepare_target(
+                                (int(token_id), *((0,) * budget)),
+                                request_id=rid,
+                                sampled_accept=True,
+                            )
                     for bucket_budget in range(1, budget + 1):
                         draft = DraftBatch(
                             request_ids=(rid,),
@@ -1958,6 +2004,52 @@ class Qwen35GGUFMTP2Adapter:
         if params is None:
             return False
         return speculative_sampling_mode(params) == "sampled"
+
+    def _device_sampled_accept_plan(
+        self,
+        request_id: int,
+        target: Any,
+        candidate_budget: int,
+    ) -> "_DeviceSampledAcceptPlan | None":
+        """Return a device sampled-accept plan for this row, or None.
+
+        The device accept reads the resident verifier's device logits and
+        applies no logits processors, so it serves only a row whose sampler is
+        the host stream, whose parameters need no processors, and whose prompt
+        constraints are inactive. Everything else keeps the host accept route.
+        """
+
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        row = self.owner._row(int(request_id))
+        if row is None or bool(getattr(row, "native_sampler", False)):
+            return None
+        state = getattr(row, "sampling_state", None)
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if state is None or params is None:
+            return None
+        if speculative_sampling_mode(params) != "sampled":
+            return None
+        if _needs_processors(params):
+            return None
+        if getattr(state, "tool_call_constraint_state", None) is not None:
+            return None
+        if getattr(state, "_json_object_constraint", None) is not None:
+            return None
+        if bool(getattr(state, "has_forced_tokens", False)):
+            return None
+        temperature = float(getattr(params, "temperature", 0.0))
+        if not temperature > 0.0:
+            return None
+        budget = int(candidate_budget)
+        graph_name = f"_native_spec_b{budget}_target_graph_n2_sampled"
+        if getattr(target, graph_name, None) is None:
+            return None
+        return _DeviceSampledAcceptPlan(
+            state=state,
+            temperature=temperature,
+            rows=budget + 1,
+        )
 
     def capability(
         self,
@@ -2823,6 +2915,7 @@ class Qwen35GGUFMTP2Adapter:
             proposal_started = time.perf_counter()
             device_draft = None
             device_proposal = None
+            sampled_device_plan = None
             ngram_proposal = None
             ngram_candidate_rows: tuple[tuple[int, ...], ...] = ()
             ngram_selection = self._try_ngram_proposal(
@@ -2853,7 +2946,20 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 )
                 sampled_route = self._sampled_route_request(ids[0])
-                if not sampled_route and target_device_ready and callable(launch_device):
+                sampled_device_state = None
+                if sampled_route:
+                    sampled_device_plan = self._device_sampled_accept_plan(
+                        ids[0],
+                        targets[0],
+                        budgets[0],
+                    )
+                    if sampled_device_plan is not None:
+                        sampled_device_state = sampled_device_plan.state_tuple()
+                if (
+                    (not sampled_route or sampled_device_state is not None)
+                    and target_device_ready
+                    and callable(launch_device)
+                ):
                     device_proposal = launch_device(
                         context,
                         candidate_budget=budgets[0],
@@ -3162,8 +3268,13 @@ class Qwen35GGUFMTP2Adapter:
                 transaction_id=transaction_id,
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
-                return_logits=sampled_route,
-                device_proposal=None if sampled_route else device_proposal,
+                return_logits=sampled_route and sampled_device_plan is None,
+                device_proposal=(
+                    device_proposal
+                    if sampled_device_plan is not None or not sampled_route
+                    else None
+                ),
+                sampled_accept=sampled_device_state,
                 qualification_oracle=bool(
                     getattr(
                         self,
@@ -3172,7 +3283,7 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 ),
                 allow_graph=(
-                    not sampled_route
+                    (not sampled_route or sampled_device_plan is not None)
                     and int(batch.candidate_count) == int(self.candidate_budget)
                 ),
             )
@@ -3195,7 +3306,10 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             summary = prepared.summary
-            if sampled_route:
+            device_sampled_commit = bool(
+                getattr(prepared, "native_device_accept_commit", False)
+            )
+            if sampled_route and not device_sampled_commit:
                 summary = self._sampled_accept_summary(
                     row,
                     prepared,
@@ -3296,6 +3410,11 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 for emitted in output_ids:
                     sampling_state.observe(int(emitted))
+                if sampled_device_plan is not None:
+                    # The device consumed the draws the plan staged; rewind and
+                    # re-advance by exactly that many so the row's stream sits
+                    # where the host accept would have left it.
+                    sampled_device_plan.settle(int(accepted))
             slot.generated_ids.extend(output_ids)
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)

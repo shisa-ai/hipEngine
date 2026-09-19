@@ -32,47 +32,7 @@ from hipengine.speculative.sampling import (
     sampled_accept_from_distributions,
 )
 
-__all__ = [
-    "row_prefix_states",
-    "sampled_accept_summary",
-    "sampled_accept_uniform",
-]
-
-_MASK64 = (1 << 64) - 1
-_SPLITMIX_INC = 0x9E3779B97F4A7C15
-_SPLITMIX_MUL1 = 0xBF58476D1CE4E5B9
-_SPLITMIX_MUL2 = 0x94D049BB133111EB
-
-
-def _splitmix64(value: int) -> int:
-    z = (value + _SPLITMIX_INC) & _MASK64
-    z = ((z ^ (z >> 30)) * _SPLITMIX_MUL1) & _MASK64
-    z = ((z ^ (z >> 27)) * _SPLITMIX_MUL2) & _MASK64
-    return (z ^ (z >> 31)) & _MASK64
-
-
-def sampled_accept_uniform(
-    seed: int,
-    step_index: int,
-    row: int,
-    slot: int,
-) -> float:
-    """Return the device sampled-accept draw for one (row, step, slot).
-
-    This mirrors ``sampled_uniform01`` in
-    ``hipengine/kernels/hip_gfx1100/speculative/sampled_accept.hip`` exactly, so
-    a host replay can reconstruct the uniforms the device accept used: slot 0 is
-    the acceptance test and slot 1 the residual or bonus sample, in the host
-    oracle's draw order.
-    """
-
-    row_component = (((int(row) + 1) & _MASK64) * _SPLITMIX_MUL1) & _MASK64
-    step_component = (((int(step_index) + 1) & _MASK64) * _SPLITMIX_INC) & _MASK64
-    slot_component = (((int(slot) + 1) & _MASK64) * _SPLITMIX_MUL2) & _MASK64
-    bits = _splitmix64(
-        (int(seed) ^ row_component ^ step_component ^ slot_component) & _MASK64
-    )
-    return float((bits >> 11) * (1.0 / 9007199254740992.0))
+__all__ = ["row_prefix_states", "sampled_accept_summary"]
 
 
 def row_prefix_states(

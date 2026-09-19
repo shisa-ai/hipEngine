@@ -31,34 +31,11 @@ namespace {
 
 constexpr float kNegInf = -3.4028234663852886e+38F;
 
-__device__ inline uint64_t sampled_splitmix64(uint64_t value) {
-  uint64_t z = value + 0x9E3779B97F4A7C15ull;
-  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
-  z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
-  return z ^ (z >> 31);
-}
-
-// One uniform per (seed, step, row, slot) from the same counter-based stream the
-// native row sampler uses, so a row's sampled accept draws are reproducible from
-// its seed and step index. Slot 0 is the acceptance test, slot 1 the residual or
-// bonus sample, in the host oracle's draw order.
-__device__ inline float sampled_uniform01(
-    uint64_t row_seed,
-    uint64_t step_index,
-    int64_t row,
-    int64_t slot) {
-  const uint64_t row_component =
-      (static_cast<uint64_t>(row) + 1ull) * 0xBF58476D1CE4E5B9ull;
-  const uint64_t step_component =
-      (step_index + 1ull) * 0x9E3779B97F4A7C15ull;
-  const uint64_t slot_component =
-      (static_cast<uint64_t>(slot) + 1ull) * 0x94D049BB133111EBull;
-  const uint64_t bits = sampled_splitmix64(
-      row_seed ^ row_component ^ step_component ^ slot_component);
-  const double unit =
-      static_cast<double>(bits >> 11) * (1.0 / 9007199254740992.0);
-  return static_cast<float>(unit);
-}
+// Draws are supplied by the caller as a per-request block of ``rows + 1``
+// uniforms and consumed in walk order: one per acceptance test, then one for
+// the residual or bonus sample. The request's own sampler stream produces them
+// on the host, so a sampled accept consumes exactly the draws the
+// autoregressive route would have consumed at that step, in the same order.
 
 __device__ inline bool sampled_row_belongs_to_root(
     const int32_t* __restrict__ parent_rows,
@@ -217,8 +194,7 @@ __global__ void sampled_accept_chain_i32_kernel(
     const float* __restrict__ temperatures,
     const float* __restrict__ row_max,
     const float* __restrict__ row_inv_sum,
-    const uint64_t* __restrict__ row_seeds,
-    const uint64_t* __restrict__ step_indices,
+    const float* __restrict__ draws,
     const int32_t* __restrict__ token_ids,
     const int32_t* __restrict__ positions,
     const int32_t* __restrict__ parent_rows,
@@ -250,8 +226,8 @@ __global__ void sampled_accept_chain_i32_kernel(
   }
 
   const int64_t root_row = request_index;
-  const uint64_t row_seed = row_seeds[request_index];
-  const uint64_t step_index = step_indices[request_index];
+  const float* __restrict__ request_draws = draws + request_index * (rows + 1);
+  int64_t draw_cursor = 0;
   int64_t row = root_row;
   int32_t accepted = 0;
   int32_t max_depth = 0;
@@ -309,8 +285,8 @@ __global__ void sampled_accept_chain_i32_kernel(
         row,
         token_id,
         vocab_size);
-    const float accept_uniform =
-        sampled_uniform01(row_seed, step_index, row, 0);
+    const float accept_uniform = request_draws[draw_cursor];
+    ++draw_cursor;
     if (accept_uniform < alpha) {
       row = matched_child;
       ++accepted;
@@ -323,7 +299,7 @@ __global__ void sampled_accept_chain_i32_kernel(
       continue;
     }
     // Rejection: the residual is this row's law with the drafted token removed,
-    // renormalized, drawn with the second uniform of the same step.
+    // renormalized, drawn with the next uniform of the same walk.
     emitted = sampled_draw_from_row(
         processed_logits,
         temperatures,
@@ -332,7 +308,7 @@ __global__ void sampled_accept_chain_i32_kernel(
         row,
         vocab_size,
         token_id,
-        sampled_uniform01(row_seed, step_index, row, 1),
+        request_draws[draw_cursor],
         1.0f - alpha);
     break;
   }
@@ -350,7 +326,7 @@ __global__ void sampled_accept_chain_i32_kernel(
           row,
           vocab_size,
           -1,
-          sampled_uniform01(row_seed, step_index, row, 1),
+          request_draws[draw_cursor],
           1.0f);
     }
   }
@@ -420,8 +396,7 @@ extern "C" int hipengine_sampled_accept_chain_i32(
     const float* temperatures,
     const float* row_max,
     const float* row_inv_sum,
-    const uint64_t* row_seeds,
-    const uint64_t* step_indices,
+    const float* draws,
     const int32_t* token_ids,
     const int32_t* positions,
     const int32_t* parent_rows,
@@ -448,7 +423,7 @@ extern "C" int hipengine_sampled_accept_chain_i32(
     int64_t vocab_size,
     hipStream_t stream) {
   if (processed_logits == nullptr || temperatures == nullptr || row_max == nullptr ||
-      row_inv_sum == nullptr || row_seeds == nullptr || step_indices == nullptr ||
+      row_inv_sum == nullptr || draws == nullptr ||
       token_ids == nullptr || positions == nullptr || parent_rows == nullptr ||
       draft_depths == nullptr || active_mask == nullptr || accepted_counts == nullptr ||
       commit_rows == nullptr || commit_tokens == nullptr || commit_positions == nullptr ||
@@ -468,8 +443,7 @@ extern "C" int hipengine_sampled_accept_chain_i32(
       temperatures,
       row_max,
       row_inv_sum,
-      row_seeds,
-      step_indices,
+      draws,
       token_ids,
       positions,
       parent_rows,

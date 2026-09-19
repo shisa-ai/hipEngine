@@ -120,8 +120,7 @@ def sampled_accept_chain_i32(
     temperatures_f32_ptr: int,
     row_max_f32_ptr: int,
     row_inv_sum_f32_ptr: int,
-    row_seeds_u64_ptr: int,
-    step_indices_u64_ptr: int,
+    draws_f32_ptr: int,
     token_ids_i32_ptr: int,
     positions_i32_ptr: int,
     parent_rows_i32_ptr: int,
@@ -174,7 +173,7 @@ def sampled_accept_chain_i32(
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_CHAIN)
     fn.argtypes = [
-        *([ctypes.c_void_p] * 25),
+        *([ctypes.c_void_p] * 24),
         ctypes.c_int32,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -188,8 +187,7 @@ def sampled_accept_chain_i32(
         ctypes.c_void_p(temperatures_f32_ptr),
         ctypes.c_void_p(row_max_f32_ptr),
         ctypes.c_void_p(row_inv_sum_f32_ptr),
-        ctypes.c_void_p(row_seeds_u64_ptr),
-        ctypes.c_void_p(step_indices_u64_ptr),
+        ctypes.c_void_p(draws_f32_ptr),
         ctypes.c_void_p(token_ids_i32_ptr),
         ctypes.c_void_p(positions_i32_ptr),
         ctypes.c_void_p(parent_rows_i32_ptr),
