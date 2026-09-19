@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
 from dataclasses import dataclass, replace
 import time
 from typing import Any, Callable, Sequence
@@ -241,6 +244,19 @@ class _StreamingNextNPromptSink:
         """Append one contiguous target-hidden chunk to the draft timeline."""
 
         self._validate_owner(request_id)
+        if not getattr(self, "_traced_first_consume", False):
+            self._traced_first_consume = True
+            try:
+                if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+                    print(
+                        "[mtp2-prompt-sink] first consume "
+                        f"request={int(request_id)} chunk_start={int(chunk_start)} "
+                        f"rows={int(rows)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            except Exception:
+                pass
         if self._closed:
             raise RuntimeError("streaming NextN prompt sink is closed")
         if self._failed:

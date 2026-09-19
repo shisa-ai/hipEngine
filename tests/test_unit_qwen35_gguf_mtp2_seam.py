@@ -5780,6 +5780,14 @@ class _PrefixCaptureExecutor:
         self.positions.append(int(position))
         self.log.append(("step", int(position)))
 
+    def advance_state_batch_only(self, request_ids, token_ids, positions, hidden):
+        for position in positions:
+            self.log.append(("step", int(position)))
+        self.batch_steps = getattr(self, "batch_steps", [])
+        self.batch_steps.append(
+            (tuple(int(item) for item in request_ids), tuple(int(p) for p in positions))
+        )
+
     def snapshot_prefix_state(self, request_id, *, prefix_len, boundary_hidden=None):
         if self.raise_on_snapshot:
             raise RuntimeError("snapshot refused")
@@ -5817,7 +5825,7 @@ def _prefix_capture_adapter(monkeypatch, executor, *, capacity=2, block_size=4):
     adapter._prompt_hidden_rows = {}
     adapter.prefix_checkpoint_capacity = capacity
     adapter.prefix_checkpoint_block_size = block_size
-    adapter.prefix_checkpoint_key = lambda request_id: (11, 12)
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (11, 12)
     adapter._prefix_checkpoint_store_instance = None
     return adapter
 
@@ -5835,6 +5843,10 @@ def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
 
     executor = _PrefixCaptureExecutor()
     adapter = _prefix_capture_adapter(monkeypatch, executor)
+    key_calls: list[tuple[int, int]] = []
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (
+        key_calls.append((int(request_id), int(prefix_len))) or (11, 12)
+    )
     rows = np.arange(40, dtype=np.float32).reshape(10, 4)
     prompt_ids = tuple(range(100, 110))
     provider = SimpleNamespace(executor=executor)
@@ -5866,6 +5878,11 @@ def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
     # copy of rows[9] that the first draft step consumes.
     assert len(executor.staged) == 12
     assert np.array_equal(executor.staged[8], expected)
+
+    # The key is asked for the boundary prefix, not the whole prompt: a later
+    # turn matches a shorter prefix, and ids past the match would fail a
+    # validation that should have succeeded.
+    assert key_calls == [(7, 8)]
 
     store = adapter._prefix_checkpoint_store_instance
     assert store is not None
@@ -5910,11 +5927,11 @@ def test_prefix_checkpoint_capture_skips_without_a_key_or_a_snapshot_route(
     provider = SimpleNamespace(executor=executor)
     target = SimpleNamespace(runtime=SimpleNamespace())
 
-    adapter.prefix_checkpoint_key = lambda request_id: None
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: None
     adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
     assert executor.snapshots == []
 
-    adapter.prefix_checkpoint_key = lambda request_id: (11, 12)
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (11, 12)
     executor.raise_on_snapshot = True
     adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
     assert executor.snapshots == []
@@ -5940,3 +5957,103 @@ def test_prefix_checkpoint_capture_needs_an_executor_that_can_release(monkeypatc
 
     assert executor.snapshots == []
     assert adapter._prefix_checkpoint_store_instance is None
+
+
+def test_runner_publishes_the_prefix_capture_key_for_the_boundary_prefix(
+    monkeypatch,
+) -> None:
+    """The runner answers with the ids covering the prefix, not the allocation.
+
+    A later turn matches a shorter prefix than the row it arrived on, so ids
+    past the match would fail a validation that should have succeeded.
+    """
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = {
+        7: SimpleNamespace(
+            kv_allocation=SimpleNamespace(block_ids=[41, 42, 43, 44, 45])
+        )
+    }
+    runner._row = lambda request_id: runner._rows.get(int(request_id))
+
+    assert runner._prefix_checkpoint_block_ids(7, 768) == (41, 42, 43)
+    assert runner._prefix_checkpoint_block_ids(7, 256) == (41,)
+    # A prefix below one block has no ids to validate against.
+    assert runner._prefix_checkpoint_block_ids(7, 128) is None
+    # A prefix longer than the allocation cannot be validated either.
+    assert runner._prefix_checkpoint_block_ids(7, 256 * 6) is None
+    # An unknown request, or one whose allocation is gone, is not an error.
+    assert runner._prefix_checkpoint_block_ids(99, 512) is None
+    runner._rows[8] = SimpleNamespace(kv_allocation=None)
+    assert runner._prefix_checkpoint_block_ids(8, 512) is None
+
+
+def test_runner_capture_configuration_is_off_by_default(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_checkpoint_block_ids = lambda request_id, prefix_len: (1,)
+    adapter = SimpleNamespace()
+
+    monkeypatch.delenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", raising=False)
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_block_size == 256
+    assert adapter.prefix_checkpoint_key is None
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "4")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity == 4
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "not-a-number")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_key is None
+
+
+def test_batch_catch_up_captures_each_row_at_its_own_boundary(monkeypatch) -> None:
+    """Two rows of different lengths capture at different positions.
+
+    The batch walk packs its active rows into the front of the shared buffer, so
+    the slice a row is staged into is its offset within the active set rather
+    than its own index. Getting that wrong would snapshot one row's boundary
+    hidden row into another row's slice.
+    """
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    key_calls: list[tuple[int, int]] = []
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (
+        key_calls.append((int(request_id), int(prefix_len))) or (request_id,)
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: DeviceBuffer(0x5000, 16),
+    )
+    # Row 7 has 3 tokens (no full block), row 8 has 6 (one full block at 4).
+    hidden = {
+        7: np.arange(12, dtype=np.float32).reshape(3, 4),
+        8: np.arange(24, dtype=np.float32).reshape(6, 4),
+    }
+    adapter._prompt_hidden_rows = hidden
+    provider = SimpleNamespace(executor=executor)
+    rows = (
+        SimpleNamespace(prompt_ids=(10, 11, 12)),
+        SimpleNamespace(prompt_ids=(20, 21, 22, 23, 24, 25)),
+    )
+    targets = (SimpleNamespace(runtime=SimpleNamespace()),) * 2
+
+    roots = adapter._catch_up_provider_batch(provider, (7, 8), rows, targets)
+
+    assert set(roots) == {7, 8}
+    # Only row 8 has a block-aligned prefix, and it is captured once, at 4.
+    assert key_calls == [(8, 4)]
+    assert executor.snapshots == [(8, 4, 0x5000)]
+    assert executor.log.index(("snapshot", 4)) == executor.log.index(("step", 3)) + 1
+    store = adapter._prefix_checkpoint_store_instance
+    assert store is not None
+    assert store.get((20, 21, 22, 23), (8,)) == "blob:4"
+    assert store.get((10, 11, 12), (7,)) is None
