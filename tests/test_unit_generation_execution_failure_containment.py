@@ -618,6 +618,10 @@ class _ContainmentOwner:
     backend = "hip_gfx1151"
     target_arch = "gfx1151"
     _prepared_max_sequence_length = 1024
+    # The runner asks whether an MTP adapter exists before it will let a
+    # reused-prefix row open a prompt sink; this owner has none.
+    supports_speculative_mtp = False
+    model_plugin = SimpleNamespace()
     tokenizer = SimpleNamespace(
         eos_token_id=None,
         decode=lambda tokens, **kwargs: "".join(str(token) for token in tokens),

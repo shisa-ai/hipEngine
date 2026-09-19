@@ -1517,9 +1517,23 @@ class Qwen35GGUFMTP2Adapter:
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
             return None
-        if any(row.lease is None or int(row.prefix_reused_tokens) > 0 for row in rows):
+        # A reused prefix has no prompt rows to prime from, so such a row is
+        # refused unless a checkpoint captured at that boundary can be restored
+        # and its suffix streamed -- see _restore_prefix_checkpoint_for_streaming.
+        restorable = set(self.restorable_prefix_rows(rows))
+        if any(
+            row.lease is None
+            or (
+                int(row.prefix_reused_tokens) > 0
+                and int(row.request_id) not in restorable
+            )
+            for row in rows
+        ):
             for row in rows:
-                if int(getattr(row, "prefix_reused_tokens", 0)) > 0:
+                if (
+                    int(getattr(row, "prefix_reused_tokens", 0)) > 0
+                    and int(row.request_id) not in restorable
+                ):
                     row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
             return None
         targets = tuple(row.lease.session for row in rows)
@@ -1705,13 +1719,44 @@ class Qwen35GGUFMTP2Adapter:
                         target,
                     )
 
+                # A prefix-cache hit is prefilled only after the reused prefix,
+                # so its provider state comes from the checkpoint a previous turn
+                # captured at that boundary: restore it, then stream the suffix
+                # the target is about to run. The sink feeds tokens[0] against
+                # the row it carries, so the suffix sink starts at the boundary
+                # with the checkpoint's boundary row as the carried row.
+                sink_tokens = row.prompt_ids
+                sink_start_position = 0
+                sink_initial_hidden = None
+                reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+                if reused > 0:
+                    restored = self._restore_prefix_checkpoint_for_streaming(
+                        row,
+                        int(request_id),
+                        reused,
+                        provider=group.provider,
+                        hidden_size=int(hidden_size),
+                    )
+                    if restored is None:
+                        # The checkpoint is absent, stale, or cannot be put back
+                        # into a provider slot. The row's reason is already
+                        # recorded; it decodes autoregressively like every hit
+                        # row does today instead of failing its request.
+                        self._free_prompt_streaming_norm_buffer(
+                            int(request_id),
+                            target=target,
+                        )
+                        continue
+                    sink_tokens, sink_start_position, sink_initial_hidden = restored
                 sink = _StreamingNextNPromptSink(
                     request_id=request_id,
-                    prompt_tokens=row.prompt_ids,
+                    prompt_tokens=sink_tokens,
                     hidden_size=hidden_size,
                     executor=group.provider.executor,
                     runtime=target.runtime,
                     checkpoint=checkpoint,
+                    start_position=int(sink_start_position),
+                    initial_hidden=sink_initial_hidden,
                     transform_hidden_rows=transform_hidden_rows,
                     prefix_capture=(
                         capture_streamed_prefix
@@ -2443,11 +2488,81 @@ class Qwen35GGUFMTP2Adapter:
         )
         if generated > 1:
             return PRIMING_SOURCE_RESTORED, "restored_checkpoint_stale_k0"
-        # The checkpoint is complete and current, but the engine half that
-        # feeds a hit row's suffix to the sink is not wired yet, so naming this
-        # valid would publish a readiness the row does not have. 2a removes
-        # this reason (see docs/REFACTOR.md).
-        return PRIMING_SOURCE_RESTORED, "restored_checkpoint_suffix_unavailable_k0"
+        if checkpoint.boundary_hidden is None:
+            # A restore without the boundary row cannot hand the first draft
+            # step the row it consumes, so the row is served autoregressively.
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_hidden_absent_k0"
+        # The checkpoint is complete and current, and the sink that streams the
+        # row's suffix is built from it at activation (see
+        # _restore_prefix_checkpoint_for_streaming), so the row can prime.
+        return PRIMING_SOURCE_RESTORED, None
+
+    def restorable_prefix_rows(self, rows: Any) -> tuple[int, ...]:
+        """Request ids whose reused prefix has a checkpoint that can be restored.
+
+        A pure query: it validates the checkpoint the same way priming does
+        without restoring or consuming anything, so the runner can decide
+        whether a hit row may claim a provider before it opens a sink.
+        """
+
+        restorable: list[int] = []
+        for row in rows:
+            reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+            if reused <= 0:
+                continue
+            request_id = int(row.request_id)
+            checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+            if checkpoint is None or checkpoint.boundary_hidden is None:
+                continue
+            restorable.append(request_id)
+        return tuple(restorable)
+
+    def _restore_prefix_checkpoint_for_streaming(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+        *,
+        provider: Any,
+        hidden_size: int,
+    ) -> tuple[tuple[int, ...], int, Any] | None:
+        """Restore a hit row's checkpoint and return its warm sink inputs.
+
+        Returns ``(suffix_tokens, start_position, initial_hidden)`` for the sink
+        that will stream the suffix the target is about to prefill, or ``None``
+        after recording why the row cannot be primed. A restore that cannot be
+        performed is never raised: the checkpoint is an optimization, and a
+        request must not fail because its prefix could not be put back.
+        """
+
+        checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+        if checkpoint is None:
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_absent_k0"
+            return None
+        if checkpoint.boundary_hidden is None:
+            # Without the boundary row there is nothing for the first draft step
+            # to consume, so the restored provider would draft from a position
+            # the walk never reached.
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_hidden_absent_k0"
+            return None
+        restore = getattr(provider.executor, "restore_prefix_state", None)
+        if not callable(restore):
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_unrestorable_k0"
+            return None
+        try:
+            restore(checkpoint, int(request_id))
+        except Exception:
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_restore_failed_k0"
+            return None
+        prompt_ids = tuple(int(token) for token in row.prompt_ids)
+        prefix_len = int(checkpoint.prefix_len)
+        initial_hidden = Tensor.from_handle(
+            int(checkpoint.boundary_hidden.ptr),
+            (1, int(hidden_size)),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        return prompt_ids[prefix_len:], prefix_len, initial_hidden
 
     def _lookup_prefix_checkpoint(
         self,
