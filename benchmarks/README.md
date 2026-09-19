@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-17**
+Last updated: **2026-09-19**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -75,8 +75,8 @@ The root README exports this compact retained summary verbatim.
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Measured tokens/s on each named host. **Prompt processing** measures input;
 **text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Dashes indicate unmeasured results; context limits come
-from separate capacity tests.
+qualified scopes. Dashes are unmeasured; context limits come from capacity
+tests.
 
 ### Performance
 
@@ -89,9 +89,8 @@ from separate capacity tests.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled.
-Qwen3.8 MTP: legacy BF16/K3, one request, 24 outputs;
-**1.63x versus its matched 24.36 tok/s AR**, not the INT8 column.
+Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
+**1.63x** its matched 24.36 tok/s AR, not the INT8 column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
@@ -110,13 +109,11 @@ not the 512/128 generation column.
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
-host (8.6x the official torch reference there) and **0.062 s** on a Framework
-Desktop host — the same `gfx1151` GPU on two physical machines, so the gap is
-host power/thermal headroom, not a code change.
+host (8.6x the official torch reference) and **0.062 s** on a Framework Desktop
+host — the same GPU on two machines, so the gap is thermal headroom.
 
-**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x** prefill,
-**1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs torch 2.81%; **RTF 0.35**
-(decode 21.4 tok/s).
+**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x**
+prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35**.
 [Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-e2e-rtf.json).
 
 #### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
@@ -138,15 +135,31 @@ In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 rout
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-The full 262,144-token context needs a predicted 24.8 GiB and does not fit.
-The direct-INT8 route shown here failed 9 of 11 quality prompts and is not a
-default. [Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+Direct-INT8 failed 9 of 11 quality prompts and is not a default.
+[Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+
+### Prefix caching
+
+Multi-turn conversations resend the whole transcript, so hipEngine reuses the
+KV pages and hybrid state of any 256-token-aligned prefix a later request
+repeats. On by default; `--prefix-cache off` disables it. Reuse returns the
+same tokens as full recomputation up to 2,048 tokens of context; above that
+attention accumulates in a different order, so a cached turn can differ by one
+BF16 unit in the last place and occasionally pick a different token.
+Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
+three turns, reusing 42,496 of 87,582 prompt tokens:
+
+| Lane | Cache off | Cache on | Wall time |
+| --- | ---: | ---: | ---: |
+| Coding, transcript resent | 10.09 tok/s | **16.49** tok/s | **-38.8%** |
+| Coding, transcript rebuilt | 10.13 tok/s | **12.67** tok/s | **-20.0%** |
+| Chat (ShareGPT) | 29.50 tok/s | 29.15 tok/s | +1.2% |
+| All lanes | 16.93 tok/s | **20.81** tok/s | **-18.6%** |
 
 ### Serving several requests at once
 
 Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
-on the W7900, measured September 4, 2026 under one server protocol.
-The peers use F16 KV where hipEngine uses BF16.
+on the W7900, September 4, 2026. Peers use F16 KV where hipEngine uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -154,18 +167,6 @@ The peers use F16 KV where hipEngine uses BF16.
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 
-Direct engine measurements, September 6, 2026, same card and model,
-512-token prompts and 128 outputs per request. They precede the shared-pool
-changes; memory figures are not current serving estimates:
-
-| Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text generation (total) | 29.6 | 54.0 | 75.2 | 92.3 | 105.9 | 117.6 | 123.9 | **131.3** |
-| Prompt processing (total) | **678.8** | 368.9 | 362.6 | 380.0 | 378.3 | 403.6 | 385.3 | 376.6 |
-| Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
-
-Eight requests need about 25 GiB (32 GB or larger card); 24 GB shapes
-are not qualified for concurrency yet.
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 202.038 at four). Where speculative
 decoding runs automatically in production it is scoped to a qualified shape:
@@ -294,6 +295,50 @@ whole-process memory percentage, throughput gain or proven context maximum.
 [72K pass / 74K-75K OOM evidence](results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json); [dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
+
+**Prefix caching is on by default.** `hipengine serve --prefix-cache off`
+disables it. Radix reuses completed prompt prefixes at 256-token
+granularity. Measured on `zbook`/gfx1151 with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14
+multi-turn lanes and three turns each through the in-process resident loop:
+radix resolves 16 of 27 lookups and reuses 42,496 of 87,582 prompt tokens, and
+now runs **18.6% faster in wall time (351.5 s to 286.0 s, output rate 16.93 to
+20.81 tok/s, +22.9%)**. The coding lanes carry the win — cumulative coding
+**-38.8% wall** (10.09 to 16.49 tok/s) and fixture coding **-20.0% wall** (10.13
+to 12.67 tok/s) — while the ShareGPT lanes are flat (+1.2%) because their
+prompts are 30-685 tokens and most turns return `prompt_too_short` before any
+lookup. The same command and lanes previously measured **+6.4% wall**, so the
+sign of the result changed rather than its magnitude drifting: a reused request
+used to prefill its unmatched suffix one token at a time at **34.0 ms/token**,
+and now prefills it batched with the rest of the prompt.
+
+One caveat travels with it: a cache hit reproduces a cache miss bit-for-bit up
+to 2,048 tokens of total context, verified across all four mtp-bench prompt
+categories, but above that the vendored AOTriton prefill kernel's accumulation
+depends on the query-window shape, so a hit and a miss can differ by one BF16
+unit in the last place and occasionally select a different token. That bound is
+a property of split prefill rather than of the cache, and it is pinned by
+`test_split_prefill_divergence_boundaries_are_unchanged`.
+
+Placement no longer decides which prefill route a cache hit gets. A gapped
+device-KV placement used to fall to the packed paged route at roughly 6.5
+ms/token against 0.39 ms/token for the slot-local prefill it displaced; a
+gapped BF16 slot now keeps the slot-local AOTriton prefill by swapping its
+identity spans for its real block table and gathering its pages into dense
+head-major buffers with the existing block-table copy, so every hit pays
+contiguous cost at any suffix length (a forced-gapped 35B suffix prefill
+measures 8.3 s against 8.2 s contiguous; the packed paged route measured
+134.5 s for the same shape). `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` still
+defaults to 512 but binds only where the gather route is unavailable - the
+`HIPENGINE_GGUF_GAPPED_GATHER` kill-switch, a backend without head-major KV
+(gfx1100 today), or a context beyond the validated 64K head-major allocation
+class. The wide retained working set
+(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) therefore measures **-20.1%
+wall against -18.4% for the default retention** (21.58 vs 21.12 tok/s, 18/27
+vs 16/27 lookups hit, worst single-turn prefill 15.1 s), making it the
+strongest configuration measured rather than a guarded opt-in.
+[Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-retained16.json);
+[default retention](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-default.json);
+[off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-baseline-off.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default

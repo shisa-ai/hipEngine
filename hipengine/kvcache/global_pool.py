@@ -10,6 +10,15 @@ from typing import Any
 
 from hipengine.core import Device
 from hipengine.kvcache.backend import KVPlaneView, KVStorageView
+from hipengine.kvcache.pool import DeviceKVContiguityError
+
+
+def _contiguous_run(page_ids: tuple[int, ...]) -> tuple[int, ...]:
+    """Return the single contiguous run starting at the first page id."""
+
+    if not page_ids:
+        return ()
+    return tuple(range(int(page_ids[0]), int(page_ids[0]) + len(page_ids)))
 
 
 class KVPageState(str, Enum):
@@ -257,7 +266,18 @@ class GlobalKVPoolSet:
         private_pages: int,
         growth_credit_pages: int,
         shared_page_ids: tuple[int, ...] = (),
+        require_contiguous: bool = False,
+        within_page_range: tuple[int, int] | None = None,
     ) -> GlobalPageLease:
+        """Lease private and shared pages, optionally requiring one contiguous run.
+
+        ``require_contiguous`` rejects a placement whose shared-plus-private page
+        ids leave a gap. The long-context packed prefill path reaches a context at
+        or above the AOTriton slot threshold only through a slot-local contiguous
+        KV view, so a caller that will need one asks here and falls back to a
+        private allocation when the placement cannot satisfy it.
+        """
+
         identifier = _identifier(lease_id, "lease_id")
         private_count = _non_negative(private_pages, "private_pages")
         credit_count = _non_negative(growth_credit_pages, "growth_credit_pages")
@@ -271,8 +291,26 @@ class GlobalKVPoolSet:
                 page = self._get_page(page_id)
                 if page.credit_owner_id is not None or page.state is KVPageState.FREE:
                     raise ValueError(f"KV page {page_id} is not shareable")
-            acquired = self._take_free(private_count + credit_count)
+            if within_page_range is not None:
+                low, high = int(within_page_range[0]), int(within_page_range[1])
+                if any(not (low <= page_id < high) for page_id in shared):
+                    raise MemoryError(
+                        "shared KV pages fall outside the requested page range"
+                    )
+            acquired = self._select_free(
+                private_count + credit_count,
+                after=(shared[-1] if shared else None),
+                require_contiguous=bool(require_contiguous),
+                within=within_page_range,
+            )
             private = acquired[:private_count]
+            if require_contiguous and (*shared, *private) != _contiguous_run(
+                (*shared, *private)
+            ):
+                raise DeviceKVContiguityError(
+                    "global KV pool cannot place a contiguous shared-plus-private run"
+                )
+            self._free_page_ids.difference_update(acquired)
             credits = acquired[private_count:]
             lease = _Lease(identifier, list(private), list(shared), list(credits))
             self._leases[identifier] = lease
@@ -499,14 +537,78 @@ class GlobalKVPoolSet:
                     raise AssertionError(f"KV lease {lease.lease_id} contains duplicate pages")
 
     def _take_free(self, count: int) -> tuple[int, ...]:
-        if count > len(self._free_page_ids):
-            raise MemoryError(
-                f"global KV page pool cannot allocate {count} pages with "
-                f"{len(self._free_page_ids)} free"
-            )
-        selected = tuple(sorted(self._free_page_ids)[:count])
+        selected = self._select_free(count)
         self._free_page_ids.difference_update(selected)
         return selected
+
+    def _select_free(
+        self,
+        count: int,
+        *,
+        after: int | None = None,
+        require_contiguous: bool = False,
+        within: tuple[int, int] | None = None,
+    ) -> tuple[int, ...]:
+        """Choose free pages without claiming them.
+
+        Continuing a shared prefix in place keeps a shared admission one contiguous
+        run and keeps the request inside a single raw-cache window. The lowest-free
+        fallback preserves the previous placement policy. ``require_contiguous``
+        selects only from a single free run and reports a placement failure when the
+        pool has enough pages but no run of the requested size.
+
+        ``within`` restricts the choice to a half-open page-id range. A pool that
+        grew by appending storage chunks addresses each chunk from its own base, so
+        a caller whose kernels index one chunk asks for pages from one chunk.
+        """
+
+        candidates = self._free_page_ids
+        if within is not None:
+            low, high = int(within[0]), int(within[1])
+            candidates = {
+                page_id for page_id in self._free_page_ids if low <= page_id < high
+            }
+        if count > len(candidates):
+            raise MemoryError(
+                f"global KV page pool cannot allocate {count} pages with "
+                f"{len(candidates)} free"
+            )
+        if count <= 0:
+            return ()
+        if after is not None:
+            adjacent = tuple(range(int(after) + 1, int(after) + 1 + count))
+            if all(page_id in candidates for page_id in adjacent):
+                return adjacent
+        if require_contiguous:
+            run = self._find_free_run(count, candidates=candidates)
+            if run is None:
+                raise DeviceKVContiguityError(
+                    f"global KV page pool has {len(candidates)} free pages "
+                    f"but no contiguous run of {count}"
+                )
+            return run
+        return tuple(sorted(candidates)[:count])
+
+    def _find_free_run(
+        self,
+        count: int,
+        *,
+        candidates: set[int] | None = None,
+    ) -> tuple[int, ...] | None:
+        """Return the lowest free run of ``count`` consecutive page ids, if any."""
+
+        pool = self._free_page_ids if candidates is None else candidates
+        run: list[int] = []
+        previous: int | None = None
+        for page_id in sorted(pool):
+            if previous is None or page_id == previous + 1:
+                run.append(page_id)
+            else:
+                run = [page_id]
+            if len(run) == count:
+                return tuple(run)
+            previous = page_id
+        return None
 
     def _maybe_free(self, page: _Page) -> None:
         if page.state is KVPageState.FREE:

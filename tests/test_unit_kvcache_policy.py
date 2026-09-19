@@ -23,8 +23,10 @@ from hipengine.kvcache import (
     KVTransaction,
     RadixCache,
     resolve_kv_policy,
+    PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
+from hipengine.kvcache.pool import DeviceKVContiguityError
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
@@ -120,7 +122,11 @@ def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
 
 
 def test_radix_cache_hits_full_blocks_and_misses_partial_edges() -> None:
-    assert resolve_prefix_cache_mode(None) == "off"
+    # Prefix reuse is the default; an unset mode resolves to it, and "off" is
+    # the explicit opt-out.
+    assert resolve_prefix_cache_mode(None) == PREFIX_CACHE_DEFAULT == "radix"
+    assert resolve_prefix_cache_mode("") == "radix"
+    assert resolve_prefix_cache_mode("off") == "off"
     assert resolve_prefix_cache_mode("RADIX") == "radix"
     with pytest.raises(ValueError, match="prefix cache"):
         resolve_prefix_cache_mode("tree")
@@ -975,3 +981,57 @@ def test_fixed_paged_policy_reclaims_reservations() -> None:
     assert reservation.request_id == 77
     with pytest.raises(KeyError):
         policy.admission_cap(77)
+
+
+def test_device_chunked_kv_pool_shared_admission_contiguity_contract() -> None:
+    """The legacy chunked pool keeps the same contiguous-run admission contract."""
+
+    def build() -> DeviceChunkedKVPool:
+        return DeviceChunkedKVPool(
+            page_bytes=4096,
+            initial_pages=8,
+            low_water_pages=8,
+            high_water_pages=8,
+            chunk_pages=8,
+            allocate_chunk=lambda start, pages: {
+                "ptr": 0xB0000000 + int(start) * 4096,
+                "pages": int(pages),
+            },
+            free_chunk=lambda backing: None,
+            page_pointer=lambda backing, local_page: int(backing["ptr"])
+            + int(local_page) * 4096,
+        )
+
+    # Pages directly after the prefix are free, so the suffix continues the run
+    # instead of taking the lowest free pages below the prefix.
+    pool = build()
+    pool.allocate(10, 4, now_seconds=1.0)
+    source = pool.allocate(20, 2, now_seconds=1.0)
+    pool.release(10, now_seconds=1.0)
+    shared = pool.admit_with_shared_prefix(
+        30,
+        source.block_ids,
+        suffix_pages=2,
+        require_contiguous=True,
+    )
+    assert source.block_ids == (4, 5)
+    assert shared.block_ids == (4, 5, 6, 7)
+    pool.release(30)
+    pool.release(20)
+
+    # With the run after the prefix held, the requirement declines the reuse
+    # rather than returning an allocation with a page gap.
+    pool = build()
+    pool.allocate(10, 2, now_seconds=1.0)
+    source = pool.allocate(20, 2, now_seconds=1.0)
+    pool.allocate(40, 2, now_seconds=1.0)
+    with pytest.raises(DeviceKVContiguityError, match="contiguous prefix-plus-suffix run"):
+        pool.admit_with_shared_prefix(
+            30,
+            source.block_ids,
+            suffix_pages=2,
+            require_contiguous=True,
+        )
+    assert pool.stats.free_pages == 2
+    fallback = pool.admit_with_shared_prefix(30, source.block_ids, suffix_pages=2)
+    assert fallback.block_ids == (2, 3, 6, 7)

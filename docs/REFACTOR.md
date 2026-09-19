@@ -1,5 +1,330 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Prefix snapshot eviction destroys the retained entry it just served (found 2026-09-18)
+
+- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >
+  self._prefix_snapshot_limit: self._evict_prefix_snapshot(next(iter(...)))`,
+  which takes the oldest entry whether or not it is retained. The resident loop's
+  limit is 1 (`snapshot_limit: 1` in the 2026-09-18 gfx1151 serving run), and one
+  request captures twice: once at its decode boundary and once at its completion
+  prompt boundary (`_refresh_prefix_cache_at_prompt_boundary`). The second
+  capture therefore always evicts the entry that served the current request,
+  releasing its pool pin and its `cache.release_entry`. The next request finds an
+  empty trie and reports the engine reason `miss`.
+- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):
+  33 captures, 32 evictions, 6 hits, `unusable_hits: 0`. Every lane with reusable
+  content hits **at most once**, on the turn after its first capture. Every
+  missed eligible turn had at least 2048 tokens of verbatim resent prefix
+  (`prompt_lcp_reusable_tokens`), so the tokens were matchable; the failure is
+  retention, not structure. Artifact:
+  `benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json`.
+- Fix direction: make the trim prefer unretained entries and never evict a
+  retained entry while an unretained one exists, and size the retained working
+  set for several conversations rather than for the loop capacity. RED test
+  target: with `_prefix_snapshot_limit == 1`, capture for request A, promote it,
+  capture for request B, then assert A's entry is still resolvable.
+- Fixed 2026-09-18: transient and retained entries are now trimmed by separate
+  budgets (`_prefix_snapshot_limit` for the current request's captures,
+  `_prefix_retained_limit` plus a 1 GiB state-byte ceiling for retained ones).
+  `_prefix_retained_evictions_by_reason` and `retained_snapshot_state_bytes`
+  expose both budgets through `/ready`.
+- The retained count defaults to the pre-fix effective budget
+  `max(1, capacity)`: the wider working set is opt-in via
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` (16 covers the 14-lane serving
+  protocol, where a conversation's next turn arrives after up to 13 other lanes
+  have captured and retained their own boundaries) and
+  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). Enabling the
+  wide set today is a measured regression (docs/REFACTOR.md cost table: +11%
+  cumulative-medium_repo, +308% fixture-medium_repo) because every hit pays the
+  serial suffix prefill and, at >=1024 tokens, the contiguity gate converts hits
+  into full-prefill refusals. Promote the wide set to default only after the
+  batched suffix prefill and the paged >=1024 prefill land. The 16/1 GiB values
+  are not derived from a measured working-set distribution; re-derive them from
+  a served lane trace before claiming the retained budget is optimal.
+
+## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
+
+- `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`
+  before any lookup. Every ShareGPT conversation in the serving suite is under
+  that size (30-685 prompt tokens, four turns above 256), so 19 of 41 turns never
+  consult the cache and 0 of 8 lookups hit. Multi-turn chat traffic is exactly
+  the shape this cache exists for.
+- Fix direction: separate the floor from the block size. A lookup can match zero
+  full blocks cheaply and still be worth attempting for a 400-token prompt with a
+  256-token prefix; the current constant conflates "too short to have any block"
+  with "not worth a trie probe". Decide the floor from measured probe cost, not
+  from `block_size_tokens`, and re-measure the ShareGPT lanes.
+
+## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18)
+
+- `capture_prefix_state_snapshot` allocates two device buffers per linear-state
+  layer, copies the Conv/GDN state into them with `memcpy_async`, and calls
+  `device_synchronize`. `_evict_prefix_snapshot` frees them again. Measured on
+  gfx1151 with rocprofv3 over 4 served requests: **+161 `hipMalloc` and +161
+  `hipFree` calls** (~54 per capture) at **~3.2 ms per malloc**, against state
+  copies of **~25 us each**. The engine's own phase counter puts a capture at
+  **0.18-0.38 s** on the greedy route and up to **1.4 s** on the sampled route,
+  and the prompt-boundary refresh pays it on **every eligible turn, hit or miss**.
+- Fix direction: hold the snapshot buffers in a per-session pool sized to the
+  largest capture (the state size is fixed by the model) instead of malloc/free
+  per capture, and drop the `device_synchronize` to a stream sync when the
+  capture is already on the request's stream. RED test target: capture, evict,
+  capture again and assert the second capture performs no allocation.
+- Evidence: `benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json`
+  (`rocprof.hip_api.radix.hipMalloc`, `ranked_cost[1]`).
+
+## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
+
+- The greedy cumulative lanes prefill a reused row's suffix through
+  `_prefill_native_chunk`'s serial loop, one `session.step()` per token: measured
+  **33.8-35.3 ms per suffix token** (6.2-6.9 s on a hit turn) with **~1,679 extra
+  kernel dispatches per token** against **~0.4 ms/token** for the batched prefill
+  kernels.
+- **Corrected 2026-09-18 (same day): there is no cheap second route.**
+  `_prefill_processed_argmax_chunk`'s reused branch also calls `session.step()`
+  once per token; it simply never recorded the `suffix_prefill` phase (it bumped
+  `processed_argmax_prefix_c1_suffix_*` route counters instead), so the fixture
+  lanes looked like they skipped the serial loop. The phase counter is now
+  recorded on both routes. The sampled lanes' 3-5 s lower walls are therefore not
+  explained by the missing phase and still need per-phase re-attribution against
+  the same lane prompts.
+- **Resolved 2026-09-18 (same day, later): the batched route exists and was
+  gated by policy, not capability.** The packed AR prefill accepts non-zero
+  start positions (`_GGUFPackedVerifySlotBlock.start_position`), seeds per-slot
+  GDN state from the restored session (`_sync_packed_decode_initial_state`),
+  imports prefix KV through page-aligned D2D segments, and commits the suffix
+  back through the session block table. The only blocker was
+  `_validate_packed_ar_prefill_context` refusing `max_live_count >= 1024` on
+  the paged route (a 2026-07-20 policy gate from 84fd737a3, never numerically
+  qualified past 1024 because the slot-local AOTriton route took over there).
+  The gate is removed; the reused branch of both `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk` now prefills the suffix batched, with the
+  serial loop kept as the opt-in fallback
+  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`). Fixture evidence (Qwen3.5-0.8B,
+  18 GDN + 6 full-attention layers): shared-prefix batched extend matches the
+  serial oracle token-for-token with KL <= 0.05 and identical 8-step decode
+  continuations at total contexts 712/1224/2248/4296, with and without
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`.
+- Historical note: the mid-day correction ("there is no cheap second route")
+  was right about the sampled route's missing phase counter and wrong about
+  the batched route's reach; the audit entry
+  `worklog/entries/20260918T142514.675878Z-pi-prefix-cache-batched-suffix-audit-73980d.md`
+  records the mechanism.
+
+## Split prefill diverges from a single call (found 2026-09-19)
+
+- Prefilling a prompt in two `prefill_batch_native` calls does not always equal
+  prefilling it in one. Two shapes diverge, measured on the Qwen3.5-0.8B
+  fixture and reproduced identically on Qwen3.6-35B-A3B across all four
+  mtp-bench categories:
+  * `rows == 1` - a one-token chunk selects decode-shaped kernels
+    (`dense_down_decode_fused`, the rows==1 projection routes), whose
+    arithmetic differs from the bulk prefill path. **Closed for the prefix
+    cache on 2026-09-19**: a one-token reused suffix now takes the serial step
+    (`_gguf_prefix_batched_suffix_chunk_eligible`), so a hit never emits a
+    one-row prefill, and prefill callers pass `force_bulk_rows` to
+    `_run_post_attention_ffn_rows` to keep a one-row prefill off the dense GEMV
+    decode variants. MoE cannot be redirected the same way -
+    `_run_post_attention_moe_rows` refuses `rows <= 1` - so the raw
+    `prefill_batch_native` API still exposes the shape and the pin covers it.
+  * total context above 2048 - splitting anywhere diverges from one call.
+    **Root cause located 2026-09-19**: per-layer capture shows the first
+    divergent layer is the first `full_attention` layer (layer 3 on
+    Qwen3.5-0.8B, max|d| 1.953e-03, BF16-ULP scale) while every preceding
+    `linear_attention` layer is bit-identical, so the effect is in full
+    attention, not GDN. Splits at different boundaries agree with each other
+    and only the single call differs, which places it in query-window handling
+    once one call carries more than 2048 query rows. Capping the query window
+    would make misses match hits but measured *worse* against a serial
+    reference (kl_mean 2.37e-2 single call versus 1.59e-1 split), so that trade
+    was rejected. The
+    threshold is absolute, not relative to `max_sequence_length` (verified with
+    the session capacity held at 4096), and is independent of the split point:
+    at total 2148 the split result is identical for boundaries 1024, 1792,
+    1920 and 2048, and differs from the single call in all four.
+- **This is not a prefix-cache defect.** The probe uses one session and two
+  direct prefill calls - no pool sharing, no snapshot restore, no cache. Both
+  families reproduce on clean HEAD (d01ec1b51) to three significant figures.
+  The batched reused-suffix extend inherits them because a cache hit takes the
+  split path; it does not cause them.
+- Which side is right: against a serial autoregressive reference at total 2052,
+  the single call is closer (kl_mean 2.37e-2, top-1 100%) than the split
+  (kl_mean 1.59e-1, top-1 91.7%). So the >2048 split path is a real accuracy
+  gap, not a neutral re-association.
+- Pinned by `test_split_prefill_divergence_boundaries_are_unchanged` in
+  `tests/test_live_qwen35_gguf_chunked_prefill.py`, which also asserts that
+  total 2048 is still bit-exact. Fixing either family should break that test;
+  replace it with coverage in
+  `test_batched_suffix_extend_is_bit_exact_against_recompute`.
+- Removal scope: the pin, once both families are fixed and every shape is
+  covered by the bit-exact contract test.
+
+## Strict prefix gate cannot bind a batched candidate (found 2026-09-19)
+
+- `scripts/gguf_prefix_reuse_gate.py` builds its reference by consuming the
+  suffix through serial `session.step` calls, then compares GDN state bytes
+  (`initial_state_exact` / `final_state_exact`). Only a serial candidate can
+  satisfy that, so the gate reports `failed` for the batched reused-suffix
+  route on every arm while `output_exact`, `trajectory_exact`, top-1 and the
+  lifecycle checks all pass.
+- Batched-versus-serial GDN state differs by ~5e-3 relative L2 at
+  `start_position == 0` as well, so this is a property of batched prefill, not
+  of reuse. Treat the gate as the strict oracle for the serial fallback
+  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`, which passes it outright) and gate
+  the batched route on HIT == MISS bit-equality instead.
+- The gate now accepts `--prompt-file` / `--prompt-category` so its numerical
+  checks can run on real tokenized suite text; its default repeated-token-id
+  prompt produces degenerate logits that make KL unrepresentative.
+- Removal scope: this entry, once the gate grows a production arm that builds
+  its reference with the candidate's own route.
+
+## Grown KV pool could not serve an allocation spanning two chunks (found and fixed 2026-09-19)
+
+- The KV-pool growth path had never been exercised until a retained-snapshot
+  prefix-cache run pinned enough pages to force it. Three defects surfaced in a
+  row; the first two are fixed:
+  * the `before_grow` / `on_pressure` callbacks dereferenced
+    `self._resident_batch_owner` bare, while every other reader in the file
+    guards with `getattr`. A session that owns its own pool never has the
+    attribute, so the first grow/pressure event raised `AttributeError`. Fixed,
+    with `test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner`.
+  * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,
+    so `old_tables = pointer_tables` raised `UnboundLocalError` the first time
+    the pool actually grew. Fixed.
+  * bind-time validation checked `block_id - start_block_id < backing.pages`
+    against the first chunk, so any allocation whose pages landed past it was
+    rejected with `GGUF KV allocation is outside its backing chunk`. The
+    backing genuinely describes one chunk (its metadata and buffer sizes are
+    validated against `pages`), so the bound moved instead: allocations now
+    carry `pool_page_capacity` and a pointer-table pool validates against it.
+    Fixed, with `test_bound_blocks_validate_against_pool_capacity_after_growth`.
+  * the GPU memory fault in
+    `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel` was **not**
+    stale pointer tables, as first recorded here. `bind_device_kv_allocation`
+    gives the session the backing chunk's cache buffers while the block table
+    carries global page ids, and every KV kernel addresses a chunk as
+    `base + page * stride`. A grown pool handed out allocations whose pages sat
+    in the appended chunk, so the write indexed past the end of the first one.
+    Fixed by confining an allocation to one chunk: `_select_free` takes a page
+    range, `GlobalDeviceKVPool` tracks `(start, pages, backing)` per chunk and
+    reports the chunk that owns the allocation. `grow_storage` returns its new
+    chunk's backing as a third element (two-element returns still work).
+  * a shared-prefix admission must place its suffix in the chunk that holds the
+    prefix, and growth appends a separate chunk, so growth can never satisfy
+    that path - it now asks eviction instead and declines with `MemoryError`
+    when the prefix's chunk is full. Admission turns that into the existing
+    private-allocation fallback, so the request is still served.
+- Exposure: eviction runs before growth - `_ensure_free_pages` calls
+  `_on_pressure` (which evicts prefix-cache entries) first and only grows when
+  that cannot free enough - and at `max_pages` growth is refused with
+  `MemoryError` rather than attempted. So the fault needs sustained pressure
+  plus headroom. `kv_pool_high_water_pages` defaults to `None`, which is
+  unbounded headroom; setting it bounds the pool and keeps the pool on the
+  eviction path. The pool never shrinks: `GlobalDeviceKVPool.shrink_idle` is a
+  stub returning 0, so grown capacity is held for the pool's lifetime.
+- Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm
+  completes, and after the placement cost model below it measures **-11.0%
+  wall** where it first measured +9.5%. The default retention is still better
+  (-18.6%), so the wide set stays opt-in, but it is no longer harmful.
+- Removal scope: this entry, once `shrink_idle` returns grown capacity. It is a
+  stub returning 0, so a pool that grows stays grown for its lifetime.
+
+## Placement decides the prefill route, and the routes are far apart (found 2026-09-19)
+
+- A shared-prefix allocation whose pages are contiguous keeps the slot-local
+  prefill route. A gapped one makes `_gguf_device_kv_contiguous_base_row`
+  return None, `slot_local_full_prefill` false, and the suffix prefills through
+  the packed paged route. Measured on Qwen3.5-0.8B with the source deliberately
+  held so placement is gapped, an 8234-token prompt reusing 2048: the paged
+  suffix costs **6.5 ms/token against 0.39 ms/token** for the full prefill it
+  replaces, one call or twenty-five - chunking is not the driver, and stubbing
+  the whole-history KV import changes it by 0.1%, so the cost is in the paged
+  prefill compute itself.
+- That single ratio explained the served regression. At
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`, pinned retained pages fragment
+  the arena, 8 of 18 admissions were gapped, and one lane spent **114 s**
+  prefilling a 6,186-token suffix that a plain miss does in ~15 s. Phase
+  attribution: `suffix_prefill` 5.8 s at the default retention against
+  **125-135 s** at retained 16.
+- Two changes, both measured: admission asks for a contiguous placement first
+  and accepts a gapped one rather than refusing (15 of 16 hits are contiguous
+  at the default retention, so most hits already took the fast route by the
+  allocator's adjacency preference - this makes it explicit); and a gapped
+  placement is only accepted when the suffix is at most
+  `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens, default 512. Past that the
+  hit is declined into the full prefill it would have replaced. Crossover
+  measured at 2048 and 4096 token boundaries: a gapped hit costs 0.63x and
+  0.87x the miss at a 512-token suffix and 1.07x and 1.22x at 768.
+- Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`
+  down from 134.9 s to 6.8 s; the default retention is unchanged at -18.6%.
+- **Update 2026-09-19 (gapped gather route):** the cost model's premise is now
+  gone where the gather route serves. A gapped BF16 slot swaps its identity
+  spans for its real chunk-local block table and runs the same AOTriton
+  attention over gathered head-major buffers the contiguous route uses, so a
+  gapped hit pays contiguous cost at any suffix length (the 35B lane's forced
+  gapped suffix prefill went 134,511 ms -> 8,306 ms against 8,226 ms
+  contiguous). The suffix budget now binds only when the fast gapped route is
+  unavailable - `HIPENGINE_GGUF_GAPPED_GATHER=0`, a backend without
+  head-major KV, or a context beyond the validated head-major allocation
+  class - where the paged-route costs above still hold. Removal scope below
+  is unchanged for those populations.
+- Removal scope: the threshold and the decline path, once the paged prefill
+  route is no longer several times slower per token than the slot-local one
+  on every backend (gfx1100 still lacks `GGUF_AOTRITON_HEAD_MAJOR_KV`, so its
+  gapped slots still take the native paged fallback and keep the guard).
+  Fixing that is the real prize - it would make every hit pay and let the
+  retained working set grow.
+
+## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
+
+- `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several
+  arms in one process with per-arm teardown. A third arm (a second `radix` arm)
+  faulted the GPU at lane `fixture-small_repo`:
+  `HSA_STATUS_ERROR_EXCEPTION` followed by `Memory access fault by GPU node-1 ...
+  Reason: Page not present or supervisor privilege`. Two arms (`off`, then
+  `radix`) complete normally with GTT back to 173 MiB after teardown, so the
+  fault needs a second cache-enabled engine in the same process.
+- Removal scope: the `--allow-multi-mode` flag and the per-arm teardown path,
+  once either the underlying reuse-after-close defect is fixed or the harness
+  always runs one arm per process (`--merge` already supports that, and the
+  2026-09-18 served A/B used it).
+- Until then the served A/B runs one arm per process and merges the artifacts;
+  the flag keeps the fault in its help text so the next caller is warned.
+- Not yet diagnosed: whether the fault is stale device pointers from a closed
+  prefix-cache engine or allocator fragmentation across two 64 GiB loads. A
+  minimal reproduction (two `radix` arms, one lane) is the first step.
+
+## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
+
+- `_prefill_native_chunk` has two routes for a chunk: a batched call through
+  `prefill_batch_native`, and a serial loop that calls `session.step()` once per
+  token. A row with `prefix_reused_tokens` takes the serial loop and never
+  reaches the batched route. Measured cost on `zbook`/`gfx1151`: **34.0 ms per
+  suffix token** (31.5-34.5 across all 16 hit turns of the prefix-cache A/B),
+  against **1.8 ms/token** for the batched full prefill it replaces. That single
+  route is why the measured A/B is net-negative (+6.4% wall overall, ShareGPT
+  +22.7%) even though reuse resolves 16 of 27 lookups.
+- **Resolved 2026-09-18:** the reused branch of both reused-suffix routes now
+  prefills batched via `prefill_batch_native` (the <1024 paged-prefill policy
+  gate was the only blocker; see the resolution note in "Reused-suffix prefill
+  has two routes and only one is slow" above). Shared-prefix admission no longer
+  asks for a contiguous suffix run: the paged route walks the block table, so
+  `shared_admission_noncontiguous` cannot fire. The serial loop remains as the
+  decline path for `_disable_incremental_prefill` (which fails closed for reused
+  rows by design) and as the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0` rollback.
+- Removal scope: the serial loop in `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk`, the `prefix_c1_suffix_prefill_chunks` /
+  `prefix_c1_suffix_prefill_tokens` / `processed_argmax_prefix_c1_suffix_*`
+  counters that only it feeds, and the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX`
+  flag, once the served multi-turn A/B re-measurement with the wide retained
+  set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) shows the batched route
+  holding exactness and the win in production shapes, and the
+  `scripts/gguf_prefix_reuse_gate.py` gate passes at >=1024 total context on
+  gfx1151 and gfx1100.
+- The invariant stands while the loop lives: a reused row's prefix pages are
+  shared with another request, so no fallback may write them.
+
 ## Screening override now spans the plan layer (extended 2026-09-17)
 
 - `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
@@ -8004,3 +8329,40 @@ Related, and separately owed: the serving evidence row for this cell is
 request admitted while it is alone is later batched into a wider decode group and
 silently realizes `effective_route="default"`. The wider realized widths need
 their own measured evidence rows before MTP can be admitted at c>1.
+
+## `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)
+
+Default **on**. A gapped device-KV placement used to drop the whole packed
+prefill slab onto the native three-pass paged prefill kernel (~34x per-launch
+vs AOTriton on gfx1151; the 35B regression lane measured 134,511 ms vs 8,226 ms
+for the same 6,144-token suffix). With the flag on, a gapped BF16 slot keeps the
+slot-local executor: `_gguf_gapped_slot_local_prefill_scratch` swaps its identity
+spans for spans carrying the session's real chunk-local block table, the paged
+KV write / native fallback / head-major gather all walk it, and AOTriton reads
+the same gathered dense head-major buffers the contiguous route uses.
+
+The gather buffers are demand-sized per session
+(`_gguf_gapped_slot_head_major_scratch`): resident sessions built at a model's
+full context class (e.g. 262,144 positions) exceed the validated 64K head-major
+allocation class, so `_ensure_bulk_prefill_workspace`'s capacity-sized pair is
+never allocated there. The first gapped slot-local prefill instead grows one
+bucketed pair (4,096-token buckets) sized to the context the session actually
+prefills, capped by the same validated token/byte class limits, and a context
+past the class keeps the native spans fallback.
+
+The forced AOTriton slots survive the gather route: the engine loop slices long
+prompts into 256-row prefill chunks, below the 512-token AOTriton threshold,
+and contiguous slots cross it via `aotriton_min_tokens=1`. Clearing the force
+for gapped slabs (the old packed-route behavior) stranded every gapped chunk
+on the native kernel and reproduced the original 104 s lane inside the served
+bench; keeping it makes gapped chunks pay contiguous cost.
+
+Removal scope: the flag, the `gapped_slot_local_gather` branch in
+`_prefill_batch_native_single_slab`, the demand-sized gather buffers, and the
+fast-route condition that keeps `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`
+binding only when the gather is unavailable - once the gather route holds
+through a full `--suite all` milestone plus the served multi-turn A/B on both
+the gfx1151 zbook and a W7900 host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled
+there. gfx1100 still lacks the head-major capability, so its gapped slots keep
+the native spans fallback and the suffix guard until that backend validates
+head-major KV.

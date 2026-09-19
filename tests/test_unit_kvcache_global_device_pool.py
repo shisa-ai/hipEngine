@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kvcache.device_global import GlobalDeviceKVPool
+from hipengine.kvcache.pool import DeviceKVContiguityError
 
 
 def _pool(*, pages: int = 6):
@@ -123,6 +124,7 @@ def test_global_device_pool_grows_on_pressure_with_graph_invalidation() -> None:
                 "layer0.value": (0x4200, 0x4300),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -166,6 +168,7 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
                 "layer0.value": tuple(0x4200 + index * 0x100 for index in range(pages)),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -188,13 +191,31 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
     pool.retain_blocks(source.block_ids)
     pool.release(1)
 
-    reused = pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
-    assert reused.reused_block_ids == source.block_ids
-    assert len(reused.allocated_block_ids) == 2
+    # The prefix sits in the first storage chunk, which has one page left. A
+    # two-page suffix cannot join it there, and growth cannot help: it appends a
+    # separate chunk, and every KV kernel addresses one chunk from its own base,
+    # so a prefix and suffix split across chunks would index past the first one.
+    # The admission declines instead and the caller falls back to a private
+    # allocation, which is confined to one chunk as a whole and may use the
+    # appended one.
+    with pytest.raises(MemoryError):
+        pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
+    assert grown == []
+    assert pool.stats.prefix_reused_pages == 0
+
+    private = pool.allocate(3, 2)
     assert grown == [2]
+    assert private.chunk_start_block_id == 3
+
+    # A suffix that does fit beside its prefix still reuses it.
+    reused = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=1)
+    assert reused.reused_block_ids == source.block_ids
+    assert len(reused.allocated_block_ids) == 1
+    assert reused.chunk_start_block_id == 0
     assert pool.stats.prefix_reused_pages == 2
 
-    pool.release(2)
+    pool.release(3)
+    pool.release(4)
     pool.release_blocks(source.block_ids)
     pool.close()
 
@@ -260,4 +281,61 @@ def test_global_device_pool_workspace_lease_exhaustion_and_missing_release() -> 
     with pytest.raises(KeyError, match="second-workspace"):
         pool.release_workspace("second-workspace")
     pool.release_workspace("packed-ar")
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_continues_the_prefix_run() -> None:
+    """A shared suffix continues the prefix instead of taking the lowest free pages."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 4)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(1)
+
+    shared = pool.admit_with_shared_prefix(
+        3,
+        source.block_ids,
+        suffix_pages=2,
+        require_contiguous=True,
+    )
+
+    assert source.block_ids == (4, 5)
+    assert shared.block_ids == (4, 5, 6, 7)
+    assert shared.reused_block_ids == (4, 5)
+    assert shared.allocated_block_ids == (6, 7)
+    pool.release(3)
+    pool.release(2)
+    pool.release_blocks(source.block_ids)
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_rejects_a_gapped_run_when_required() -> None:
+    """A contiguous requirement declines the reuse instead of returning a gapped lease."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 2)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(2)
+    pool.allocate(3, 2)
+
+    with pytest.raises(DeviceKVContiguityError, match="contiguous shared-plus-private run"):
+        pool.admit_with_shared_prefix(
+            4,
+            source.block_ids,
+            suffix_pages=2,
+            require_contiguous=True,
+        )
+
+    # A declined admission leaves the pool conserved and the same pages reusable.
+    assert pool.stats.free_pages == 2
+    assert pool.refcount(source.block_ids[0]) == 1
+    shared = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=2)
+    assert shared.block_ids == (2, 3, 6, 7)
+    assert pool.stats.prefix_reuse_events == 1
+    pool.release(4)
+    pool.release(3)
+    pool.release(1)
+    pool.release_blocks(source.block_ids)
     pool.close()
