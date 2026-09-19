@@ -1,0 +1,99 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: the sampled (temperature > 0) MTP route with a device accept beats its in-load true-AR control",
+  "date": "2026-09-19",
+  "status": "measured_accepted",
+  "performance_claim": true,
+  "purpose": "Measure whether the sampled-acceptance MTP route, now committing the coupled accept on the device from the verifier's own logits, is a serving win for a real temperature request, against a true-AR control assigned per request inside the same load.",
+  "model": {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "tree": {
+    "commit": "da6c124d0",
+    "uncommitted_at_measurement": "none: the sampled warm-outside-capacity fix and the cap4 evidence row's 'sampled' mode are committed with this artifact.",
+    "note": "the route needed four repairs to reach a device accept: the plan had to ride the request state across the propose/execute seam, the N2 capture had to bind its sampled library and resolve the argmax accept kernel for both topologies, the adapter had to read the planner's resolved sampling mode instead of the row's raw request, and the sampled accept variant had to be warmed outside the capacity-1 warmup (its only capture site, skipped at the server's resident capacity of 4)."
+  },
+  "server": {
+    "command": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --host 127.0.0.1 --port 8092 --log-level info",
+    "telemetry": "HIPENGINE_MTP2_OUTPUT_SPANS=1",
+    "debug_traces": "HIPENGINE_DEBUG_SAMPLED_ROUTE=1 was on for this point; its prints are stderr-only and were not measured against a trace-off point."
+  },
+  "workload": {
+    "harness": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 4 --min-prompt-len 64 --max-prompt-len 900 --max-total-len 2048 --output-len 128 --record-ids --seed 4242 --temperature 0.7 --route-mix off,off,on,on",
+    "dataset": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "note": "the same load serves the true-AR control in-run: --route-mix assigns the arm per request in submission order, so both arms see the same prompts, lengths, and server process. Two requests per arm, prompt tokens 371 and 626 for the control, 279 and 787 for the sampled arm.",
+    "temperature": 0.7,
+    "output_len": 128,
+    "median_prompt_tokens": 498.5
+  },
+  "results": {
+    "sampled_mtp": {
+      "requests": 2,
+      "failed_requests": 0,
+      "completion_tokens": 256,
+      "decode_tokens_per_second": 26.052,
+      "median_itl_ms": 36.364,
+      "median_itl_window_ms": 0.147,
+      "median_ttft_ms": 4073.434,
+      "p95_ttft_ms": 5158.591,
+      "mtp_requests": 2,
+      "mtp_output_tokens": 253,
+      "mtp_output_share": 0.4941
+    },
+    "ar_control": {
+      "requests": 2,
+      "failed_requests": 0,
+      "completion_tokens": 256,
+      "decode_tokens_per_second": 13.73,
+      "median_itl_ms": 132.099,
+      "median_itl_window_ms": 132.866,
+      "median_ttft_ms": 1713.359,
+      "p95_ttft_ms": 1967.469,
+      "mtp_requests": 0
+    },
+    "ratio": {
+      "decode_tokens_per_second": 1.897,
+      "median_itl_ms": 3.633,
+      "ttft_ratio": 2.378
+    },
+    "greedy_control_same_process": {
+      "harness": "--num-prompts 2 --temperature 0.0 --route-mix on --output-len 32",
+      "requests": 2,
+      "decode_tokens_per_second": 10.299,
+      "median_itl_ms": 30.414,
+      "mtp_requests": 2,
+      "mtp_output_share": 0.96875
+    }
+  },
+  "cost_model": {
+    "before": "a sampled cycle ran allow_graph=False with no device proposal and computed the accept on the host from one full-vocabulary logits row per verified prefix: 266-277 ms median ITL, 6.4-6.5 tok/s, 0.47x of its in-load control.",
+    "after": "the same row keeps the N2 target graph with the sampled accept/commit variant, so the cycle commits on device: 36 ms median ITL, 26.05 tok/s, 1.90x of its in-load control.",
+    "acceptance_is_not_the_limit": "253 of 256 output tokens came from speculative cycles on the sampled arm (the harness's coverage accounting), so the route is not token-starved.",
+    "cause_of_the_gain": "median ITL fell 3.6x while acceptance was unchanged; the graph path is only reachable when the device plan exists (allow_graph is gated on it), so the gain is the device accept, not a change in draft quality."
+  },
+  "correctness": {
+    "induced_law": "the device chain walk is compared against the host law oracle in tests/test_gpu_sampled_accept_chain.py and the distribution gate in tests/test_unit_mtp_sampled_accept_distribution_gate.py (824/824 induced-law comparisons, max total variation 4.5e-16, per the retained gate).",
+    "seam_guard": "tests/test_unit_qwen35_gguf_mtp2_c1_physical.py::test_sampled_accept_plan_rides_the_request_state_between_phases pins the plan's propose/execute handoff (RED at 3db16a0d2).",
+    "stream_alignment": "the device walk consumes draws staged from the row's own host sampler stream and the plan rewinds and re-advances it by exactly the consumed count, so the row's stream stays aligned with the autoregressive route."
+  },
+  "decision": {
+    "promotion": "retained: the production cap4 c1 evidence row advertises the sampled mode, so a temperature request at that key takes the sampled MTP route by default.",
+    "scope": "c=1, realized_group_rows=1, resident_capacity=4, candidate budget 3, bf16 KV, uniform layout, gfx1151, production profile, one server process, seed 4242, 2 requests per arm. Wider lanes (c>=2) still inherit the one-row policy cell and are not covered here.",
+    "next_lever": "the sampled arm's TTFT is 2.4x the control's (4073 ms vs 1713 ms) because the sampled row's prefill is not the packed path; that is the next lever, not the cycle cost."
+  },
+  "source": {
+    "worklog_entries": [
+      "worklog/entries/20260918T170509.092615Z-lhl-sampled-mtp-serving-rejected-0d9d27.md"
+    ],
+    "commits": [
+      "2a017c3b0",
+      "3db16a0d2",
+      "da6c124d0"
+    ]
+  }
+}

@@ -450,16 +450,22 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
 
-def test_no_shipped_evidence_row_advertises_the_sampled_mode() -> None:
-    """The sampled route's switch is an evidence row, and no shipped row sets it.
+def test_only_the_measured_evidence_row_advertises_the_sampled_mode() -> None:
+    """The sampled route's switch is an evidence row, and exactly one sets it.
 
-    Serving that route was measured and rejected: with the row in place the
-    route engages (99% of output tokens from speculative cycles) and decodes at
-    0.47x of its in-load true-AR control, because a sampled cycle costs 5.3x the
-    same draft chain's greedy cycle. The default therefore stays autoregressive
-    for every temperature request until a device-side sampled accept exists. A
-    row that re-advertises the mode without that measurement is a regression in
-    the shipped default, not a tuning choice.
+    Serving that route used to be measured and rejected: with the row in place
+    the route engaged and decoded at 0.47x of its in-load true-AR control,
+    because the accept decision was computed on the host from one
+    full-vocabulary logits row per verified prefix. The route now commits the
+    coupled accept on the device from the verifier's own logits, and the same
+    protocol measures 26.05 tok/s against its 13.73 tok/s in-load control
+    (1.90x), so the production cap4 c1 row advertises the mode and a temperature
+    request at that key is served by it by default.
+
+    A second row that re-advertises the mode without its own measurement is a
+    regression in the shipped default, not a tuning choice: the sampled accept
+    needs a captured graph variant, the warm predicate and the plan's stream
+    alignment, and each of those was qualified on this key.
     """
 
     from hipengine.models import qwen35
@@ -470,10 +476,19 @@ def test_no_shipped_evidence_row_advertises_the_sampled_mode() -> None:
         if name.endswith("_MTP_SERVING_EVIDENCE")
     }
     assert tables, "the model plugin's serving evidence tables must be importable"
-    for name, table in tables.items():
-        assert table, name
-        for row in table:
-            assert "sampled" not in tuple(row.sampling_modes), (name, row.evidence_key)
+    advertising = [
+        (name, row.evidence_key)
+        for name, table in tables.items()
+        for row in table
+        if "sampled" in tuple(row.sampling_modes)
+    ]
+    assert advertising == [
+        (
+            "_QWEN38_Q4KM_MTP_SERVING_EVIDENCE",
+            "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
+        )
+    ], advertising
+
 
 # ------------------------------------------------------------- guard totality
 

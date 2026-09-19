@@ -8235,14 +8235,21 @@ visible token is the row's EOS, and a stochastic accept has no
 Moving them back to servable requires a finish-rule gate, not just the
 induced-law gate.
 
-**Sampled-route debug traces (env-gated, added 2026-09-18).**
-`HIPENGINE_DEBUG_SAMPLED_ROUTE` gates five stderr traces that named every gate on
-this route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and
+**Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
+`HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this
+route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and
 `[prefill-debug]` in `hipengine/generation/qwen35_gguf_mtp2.py`,
-`[cycle-failure]` in the same file's `recover_cycle_failure`, and
-`[plan-debug]` in `hipengine/generation/engine_loop.py`. They cost one
-`os.environ` lookup per call when the variable is unset and print nothing. Remove
-them, or replace them with a documented diagnostic, when the device-side sampled
-accept lands or the route is abandoned; they exist because the route's refusal
-chain was otherwise invisible (a silent `None` from the capability and a
-contained cycle exception that no log line reported).
+`[cycle-failure]` in the same file's `recover_cycle_failure`, `[plan-debug]` in
+`hipengine/generation/engine_loop.py`, and `[sampled-plan]` in
+`_device_sampled_accept_plan` (six refusal sites: row/sampler shape, host state,
+planner mode, logits processors, tool-call and json constraints, forced tokens,
+temperature, and the missing captured graph with its warmup error). They cost one
+`os.environ` lookup per call when the variable is unset and print nothing.
+
+The device-side sampled accept landed on 2026-09-19 and the route now serves by
+default at the cap4 c1 key, so the original removal trigger is met; they are kept
+because they were decisive twice in that unit (a contained cycle exception
+planned `no_provider` for every row, and a warmup skipped at capacity > 1 left
+every sampled cycle without its graph) and the route's c>=2 admission cell is
+still open. Remove them, or replace them with a documented diagnostic, once the
+sampled route's admission cell is widened and measured.
