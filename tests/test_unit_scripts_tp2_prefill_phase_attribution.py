@@ -147,12 +147,19 @@ def test_recording_is_gated_so_warmup_does_not_consume_slots() -> None:
     recorder.devices = (0,)
     recorder.enabled = False
     recorder.layer_index = 0
+    recorder._host_stamps = {}
     # ``session`` is deliberately absent: while disabled, ``_record`` must
     # return before touching it (or a warmup would need a live session).
     recorder._record(0, attribution.SLOT_LAYER_START)
 
     recorded: list[int] = []
-    recorder._record_all = lambda slot: recorded.append(slot) if recorder.enabled else None
+    # Faithful to the real gating: while disabled the boundary returns before
+    # touching host stamps or events, so a warmup cannot consume a slot.
+    def stub(index: int) -> None:
+        if recorder.enabled:
+            recorded.append(index)
+
+    recorder._boundary_at = stub
 
     # Disabled: no events, and the layer counter must not advance, or the
     # first recorded layer would start at the wrong stride.
@@ -169,3 +176,70 @@ def test_recording_is_gated_so_warmup_does_not_consume_slots() -> None:
     # The next layer's events land one full stride later.
     recorder._enter_attention()
     assert recorded == [attribution.SLOTS_PER_LAYER + attribution.SLOT_LAYER_START]
+
+
+def test_boundary_records_one_host_stamp_and_one_event_per_rank() -> None:
+    """A boundary is crossed once, so it carries one host stamp for both ranks.
+
+    The host timeline is what separates device execution from an enqueue
+    bubble, so a boundary that stamped per rank would double-count the host's
+    time and make a phase look host-bound when it is not.
+    """
+
+    recorder = attribution.PhaseRecorder.__new__(attribution.PhaseRecorder)
+    recorder.devices = (0, 1)
+    recorder.enabled = True
+    recorder.layer_index = 3
+    recorder._host_stamps = {}
+    events: list[tuple[int, int]] = []
+    recorder._record = lambda device, index: events.append((device, index))
+
+    recorder._boundary(attribution.SLOT_CHAIN_START)
+
+    index = 3 * attribution.SLOTS_PER_LAYER + attribution.SLOT_CHAIN_START
+    assert sorted(events) == [(0, index), (1, index)]
+    assert list(recorder._host_stamps) == [index]
+
+
+def test_headline_repeat_pairs_its_own_wall_with_its_own_spans() -> None:
+    """The headline must not mix one repetition's wall with another's spans.
+
+    Taking ``min(walls)`` for the wall while selecting spans from the worst
+    repetition reports percentages and an unaccounted remainder for an
+    execution that never happened. The pairing is the fix, so it is pinned.
+    """
+
+    devices = (0,)
+    spans = {name: 1.0 for name in attribution.PHASES}
+    # Two repetitions with different walls and deliberately different spans.
+    slow = attribution._rank_record(devices, 200.0, {"spans": {0: dict(spans)}}, {n: 1.0 for n in attribution.PHASES})
+    fast_spans = {name: 2.0 for name in attribution.PHASES}
+    fast = attribution._rank_record(devices, 100.0, {"spans": {0: dict(fast_spans)}}, {n: 2.0 for n in attribution.PHASES})
+    records = [slow, fast]
+
+    headline_index = min(range(len(records)), key=lambda index: records[index]["wall_ms"])
+    headline = records[headline_index]
+
+    assert headline["wall_ms"] == 100.0
+    # The spans must be the fast repetition's own, not the slow one's.
+    assert headline["phases"]["0"]["attention"] == 2.0
+    assert headline["host_phases"]["attention"] == 2.0
+    # And the derived totals must be consistent with that same execution.
+    assert headline["totals"]["0"]["phase_sum_ms"] == 2.0 * len(attribution.TOP_LEVEL_PHASES)
+    assert headline["totals"]["0"]["unaccounted_ms"] == round(
+        100.0 - 2.0 * len(attribution.TOP_LEVEL_PHASES), 4
+    )
+
+
+def test_instrumentation_overhead_is_signed_as_added_latency() -> None:
+    """Overhead is how much *longer* the instrumented run took.
+
+    The first version subtracted the other way round and reported the
+    instrumentation as making the run faster.
+    """
+
+    uninstrumented_min = 488.5
+    instrumented = 491.1
+    overhead_ms = instrumented - uninstrumented_min
+    assert overhead_ms > 0.0
+    assert round(100.0 * overhead_ms / uninstrumented_min, 2) == 0.53
