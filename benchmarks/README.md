@@ -319,11 +319,17 @@ unit in the last place and occasionally select a different token. That bound is
 a property of split prefill rather than of the cache, and it is pinned by
 `test_split_prefill_divergence_boundaries_are_unchanged`.
 
-The wide retained working set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`)
-stays opt-in because it is slower, not because it is unsafe: it resolves 18 of
-27 lookups against the default's 16 but costs **+9.5% wall** against the
-default's -18.6%, since the extra pinned pages push the pool into growth and
-eviction while the cumulative coding lane regresses 47%.
+Placement decides which prefill route a hit gets, and the routes are far
+apart: a contiguous shared allocation keeps the fast slot-local prefill, while
+a gapped one falls to the packed paged route at roughly 6.5 ms/token against
+0.39 ms/token for the full prefill it replaces. Admission therefore asks for a
+contiguous placement first, and accepts a gapped one only when the suffix is at
+most `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens (default 512), declining
+into the full prefill past that. The wide retained working set
+(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) fragments the page arena enough
+to make 8 of 18 placements gapped; with the cost model it measures **-11.0%
+wall** where it previously measured +9.5%, and it stays opt-in only because the
+default retention is better still.
 [Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json);
 [off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-baseline-off.json).
 

@@ -1432,3 +1432,73 @@ def test_packed_verify_union_geometry_is_capacity_honest() -> None:
     # Absent serving caps keep the historical 8-slot fallback.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(None)
     assert union_slots == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+
+
+def test_gapped_placement_declines_a_hit_whose_suffix_exceeds_the_paged_budget(
+    monkeypatch,
+) -> None:
+    """Placement decides the route, so a gapped hit is only worth a short suffix.
+
+    A contiguous shared allocation keeps the fast slot-local prefill. A gapped
+    one drops to the packed paged route, which is far slower per token, so past
+    a few hundred suffix tokens the full prefill the hit would replace is the
+    cheaper answer. Declining there is what turns a wide retained working set
+    from a regression into a win.
+    """
+
+    from hipengine.kvcache.pool import DeviceKVContiguityError
+
+    # Small budget so the shapes fit the fixture's resident capacity; the
+    # default is 512 tokens, measured against the full prefill a hit replaces.
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX", "64")
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2)
+    runner.register_batch((60,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=60))
+    source = runner._rows[60]
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    pool = runner.kv_pool
+    real_admit = pool.admit_with_shared_prefix
+
+    def only_gapped(*args, **kwargs):
+        if kwargs.get("require_contiguous"):
+            raise DeviceKVContiguityError("no contiguous run for the test")
+        return real_admit(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "admit_with_shared_prefix", only_gapped)
+
+    # A long suffix is declined: the paged route would cost more than the miss.
+    long_prompt = (*prefix, *range(9000, 9000 + 128))
+    runner.register_batch((61,), _request(long_prompt, max_tokens=2), prompt_rows=(long_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=61))
+    long_row = runner._rows[61]
+    assert long_row.prefix_matched_tokens == 512
+    assert long_row.prefix_reused_tokens == 0
+    assert long_row.prefix_fallback_reason == "gapped_suffix_exceeds_paged_budget"
+    runner.rollback_admission(SimpleNamespace(request_id=61))
+
+    # A short suffix still takes the gapped hit.
+    short_prompt = (*prefix, *range(9000, 9000 + 32))
+    runner.register_batch((62,), _request(short_prompt, max_tokens=2), prompt_rows=(short_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=62))
+    short_row = runner._rows[62]
+    assert short_row.prefix_reused_tokens == 512
+    assert short_row.prefix_fallback_reason is None
+    assert runner._prefix_gapped_admissions >= 1
+    runner.rollback_admission(SimpleNamespace(request_id=62))
+    runner.close()
