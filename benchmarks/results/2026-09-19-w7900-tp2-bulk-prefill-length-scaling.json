@@ -1,0 +1,190 @@
+{
+ "schema": 1,
+ "kind": "tp2_bulk_prefill_length_scaling",
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "concurrency": 1,
+  "decode_tokens": 16,
+  "speculative_decoding": false,
+  "kv_dtype": "f16",
+  "route": "bulk-tp2 (rank-local bulk prefill, logits_rows=1)",
+  "note": "Prefill rate only. The 512-token cell is the retained last-row-head run at 128 decode tokens; the other cells use 16 decode tokens, which does not enter the prefill measurement."
+ },
+ "command": "python3 scripts/tp2_c1_bench.py --mode tp2 --devices 0,1 --bulk-prefill --prompt-length N --decode-tokens 16 --max-sequence-length 4096 --repeats 4",
+ "cells": [
+  {
+   "prompt_tokens": 256,
+   "prefill_tok_per_s_median": 787.097929664413,
+   "prefill_tok_per_s_samples": [
+    777.4251741917403,
+    786.0004222210931,
+    787.097929664413,
+    797.1881009895483
+   ],
+   "prefill_p50_ms": 325.69957058876753,
+   "decode_tok_per_s_median": 39.35981128627539,
+   "bulk_prefill_workspace_rows": 256,
+   "memory_after_load": {
+    "0": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon Pro W7900",
+     "free_gib_after_load": 32.457031,
+     "total_gib": 44.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 0.357411,
+     "resident_plus_transient_peak_gib": 13.334225,
+     "vram_used_gib_after_decode": 14.373047
+    },
+    "1": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon RX 7900 XTX",
+     "free_gib_after_load": 11.457031,
+     "total_gib": 23.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 0.357411,
+     "resident_plus_transient_peak_gib": 13.334225,
+     "vram_used_gib_after_decode": 14.373047
+    }
+   }
+  },
+  {
+   "prompt_tokens": 512,
+   "prefill_tok_per_s_median": 922.0966971471236,
+   "prefill_tok_per_s_samples": [
+    909.0312941597896,
+    910.0125296317885,
+    921.9828120675134,
+    922.0966971471236,
+    922.8466957497419,
+    923.9398644817489
+   ],
+   "prefill_p50_ms": 563.2369350641966,
+   "decode_tok_per_s_median": 39.01923766575315,
+   "bulk_prefill_workspace_rows": 512,
+   "memory_after_load": {
+    "0": {
+     "resident_gib": 12.724491,
+     "device": "AMD Radeon Pro W7900",
+     "free_gib_after_load": 32.582031,
+     "total_gib": 44.984375,
+     "vram_used_gib_after_load": 12.402344,
+     "session_vram_gib": 12.367188,
+     "transient_peak_gib": 0.637178,
+     "resident_plus_transient_peak_gib": 13.361669,
+     "vram_used_gib_after_decode": 15.39209
+    },
+    "1": {
+     "resident_gib": 12.724491,
+     "device": "AMD Radeon RX 7900 XTX",
+     "free_gib_after_load": 11.582031,
+     "total_gib": 23.984375,
+     "vram_used_gib_after_load": 12.402344,
+     "session_vram_gib": 12.367188,
+     "transient_peak_gib": 0.637178,
+     "resident_plus_transient_peak_gib": 13.361669,
+     "vram_used_gib_after_decode": 15.39209
+    }
+   }
+  },
+  {
+   "prompt_tokens": 1024,
+   "prefill_tok_per_s_median": 964.7005819978378,
+   "prefill_tok_per_s_samples": [
+    961.8571230845739,
+    964.0422596374996,
+    964.7005819978378,
+    968.1547344094708
+   ],
+   "prefill_p50_ms": 1061.4692466333508,
+   "decode_tok_per_s_median": 39.127985846766805,
+   "bulk_prefill_workspace_rows": 1024,
+   "memory_after_load": {
+    "0": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon Pro W7900",
+     "free_gib_after_load": 32.457031,
+     "total_gib": 44.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 1.216874,
+     "resident_plus_transient_peak_gib": 14.193688,
+     "vram_used_gib_after_decode": 17.80957
+    },
+    "1": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon RX 7900 XTX",
+     "free_gib_after_load": 11.457031,
+     "total_gib": 23.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 1.216874,
+     "resident_plus_transient_peak_gib": 14.193688,
+     "vram_used_gib_after_decode": 17.80957
+    }
+   }
+  },
+  {
+   "prompt_tokens": 2048,
+   "prefill_tok_per_s_median": 947.8903925178726,
+   "prefill_tok_per_s_samples": [
+    943.4101632290136,
+    944.5329357101621,
+    947.8903925178726,
+    950.0159203107528
+   ],
+   "prefill_p50_ms": 2170.8479300141335,
+   "decode_tok_per_s_median": 37.319585683841595,
+   "bulk_prefill_workspace_rows": 2048,
+   "memory_after_load": {
+    "0": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon Pro W7900",
+     "free_gib_after_load": 32.457031,
+     "total_gib": 44.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 2.433688,
+     "resident_plus_transient_peak_gib": 15.410502,
+     "vram_used_gib_after_decode": 22.676758
+    },
+    "1": {
+     "resident_gib": 12.976814,
+     "device": "AMD Radeon RX 7900 XTX",
+     "free_gib_after_load": 11.457031,
+     "total_gib": 23.984375,
+     "vram_used_gib_after_load": 12.527344,
+     "session_vram_gib": 12.492188,
+     "transient_peak_gib": 2.433688,
+     "resident_plus_transient_peak_gib": 15.410502,
+     "vram_used_gib_after_decode": 22.676758
+    }
+   }
+  }
+ ],
+ "finding": {
+  "summary": "Prefill rate saturates near 950-965 tok/s rather than rising with prompt length, so the remaining gap to llama.cpp's TP=2 tensor split is per-token throughput, not per-prefill fixed cost.",
+  "marginal_ms_per_token": {
+   "256_to_512": 0.896,
+   "512_to_1024": 0.989,
+   "1024_to_2048": 1.074
+  },
+  "per_rank_efficiency": {
+   "tp2_work_share_of_single_card": 0.616,
+   "tp2_wall_share_of_single_card": 0.949,
+   "ratio": 0.65,
+   "basis": "Work share derived from the pre-fix bulk-prefill kernel inventory (sharded quantized matmuls 42.6%, replicated GDN/attention 7.4%, exchange casts 5.5% of profiled kernel time) by halving the sharded fraction; wall share is measured 555 ms (TP2, 512 tokens) vs 585 ms (single-card resident bulk prefill, 875.8 tok/s). Profiled durations are inflated, so the work share is an estimate and the direction is what carries.",
+   "implied_if_recovered_tok_per_s": 1420
+  }
+ }
+}

@@ -115,7 +115,7 @@ tokens, f16 KV, no speculative decoding, measured against the
 | llama.cpp TP=1 (W7900) | 941.8 | 30.44 | 15.38 GiB |
 | hipEngine TP1 (W7900, bulk prefill) | 875.8 | 30.76 | 17.70 GiB |
 | llama.cpp TP=2 `-sm tensor` | 1474.6 | 41.30 | 7.75 GiB/rank |
-| hipEngine TP2 | 39.5 | 38.8 | 22.37 GiB/rank |
+| hipEngine TP2 | 922.1 | 38.8 | 15.39 GiB/rank |
 
 Decode is at parity with the fork's tensor split (38.8 vs 41.3 tok/s) and
 single-card prefill/decode are within 7%/1%. The residency gap in this table was
@@ -123,13 +123,31 @@ closed later the same day: each TP2 rank was building a full runner and then
 adding its shard, so it held an MLP copy it never read. A manifest-derived slot
 allowlist now omits those leaves and the same cells measure **12.402 GiB per rank
 (even split) and 11.650 / 12.840 GiB (0.44/0.56 split)** instead of 22.37 GiB,
-leaving the 24 GiB XTX rank ~11 GiB free rather than 1.58 GiB. The remaining gap
-is TP2 prefill: it is 0.045x this project's own single-card bulk route because
-the session is still token-serial (the P1/P2 plan below). Full protocol,
+leaving the 24 GiB XTX rank ~11 GiB free rather than 1.58 GiB. The TP2 prefill
+gap in the table above was closed later the same day by two changes: the session
+consumes the rank-local bulk prefill candidate instead of staying token-serial,
+and that route projects the head for the last prompt row rather than for all of
+them, which alone was 46% of its kernel time. TP2 prefill is now **922.1 tok/s**
+at the same shape - 1.05x this project's own single-card bulk route (875.8) and
+0.98x llama.cpp TP=1 (941.8), against 1474.6 for the fork's TP=2 tensor split.
+Full protocol,
 commands, and artifacts:
 [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) "Qwen3.8-27B dense Q4_K_M
 TP1/TP2 vs llama.cpp RDNA3 fork" and
 [`2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json`](../benchmarks/results/2026-09-18-w7900-qwen38-27b-tp1-tp2-hipengine-vs-llamacpp.json).
+
+**Where the remaining TP2 prefill gap is (2026-09-19).** Prefill rate saturates
+near 950-965 tok/s instead of rising with prompt length (787.1 at 256 tokens,
+922.1 at 512, 964.7 at 1024, 947.9 at 2048; marginal cost 0.896, 0.989 and 1.074
+ms/token across those steps), so the gap to the fork's 1474.6 is per-token
+throughput, not a per-prefill fixed cost. Halving the sharded MLP should have
+made each rank do about 0.62x the single-card work, but the measured wall is
+0.95x, so each rank runs at roughly 65% of the single-card route's efficiency -
+recovering that would put the route near 1420 tok/s. The replicated GDN/attention
+work is only ~7% of profiled kernel time, so it does not explain the loss on its
+own. Attribution of the loss between the per-layer exchange and the shard-tile
+shape is the next unit. Artifact:
+[`2026-09-19-w7900-tp2-bulk-prefill-length-scaling.json`](../benchmarks/results/2026-09-19-w7900-tp2-bulk-prefill-length-scaling.json).
 
 **Capacity after the residency fix (2026-09-18).** Tier-1 allocation probes at
 the retained 0.44/0.56 split give per-rank device VRAM of **11.994 / 13.182 GiB
