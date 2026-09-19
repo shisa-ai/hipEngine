@@ -1471,6 +1471,178 @@
   ],
   "warm_run_passed": true
  },
+ "acceptance_by_category": {
+  "protocol": "scripts/gguf_mtp_server_pair_bench.py --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --pad-to-tokens 3530 --decode 128 --repeats 2 --identity-tokens 32 on the promoted route with the adapter window raised; accepted and rejected draft counts come from the response's usage.completion_tokens_details.",
+  "by_category": {
+   "code": {
+    "prompts": 4,
+    "cycles": 151,
+    "accepted": 356,
+    "acceptance": 0.7858719646799117
+   },
+   "general_en": {
+    "prompts": 2,
+    "cycles": 102,
+    "accepted": 151,
+    "acceptance": 0.4934640522875817
+   },
+   "general_ja": {
+    "prompts": 2,
+    "cycles": 106,
+    "accepted": 147,
+    "acceptance": 0.46226415094339623
+   },
+   "mixed_ja_en": {
+    "prompts": 2,
+    "cycles": 91,
+    "accepted": 163,
+    "acceptance": 0.5970695970695971
+   }
+  },
+  "reading": "Acceptance is category-dependent on this artifact: code accepts 0.786, mixed_ja_en 0.597, general_en 0.493 and general_ja 0.462, and the per-prompt decode rate tracks it (16.3 tok/s at 0.417 against 27.2 tok/s at 0.867). Coverage is flat at 0.984-0.992 everywhere. The natural ShareGPT lanes' 0.667-0.692 is a mixed-prompt average over this spread.",
+  "prompts": [
+   {
+    "label": "code_merge_intervals",
+    "category": "code",
+    "prompt_tokens": 3060,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 26.26668063894058,
+    "speculative_cycles": 37,
+    "accepted_draft_tokens": 90,
+    "rejected_draft_tokens": 19,
+    "acceptance": 0.8108108108108109,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "code_topological_sort",
+    "category": "code",
+    "prompt_tokens": 3070,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 24.01613607691784,
+    "speculative_cycles": 40,
+    "accepted_draft_tokens": 87,
+    "rejected_draft_tokens": 32,
+    "acceptance": 0.725,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "code_lru_cache",
+    "category": "code",
+    "prompt_tokens": 3067,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 24.752356702433453,
+    "speculative_cycles": 39,
+    "accepted_draft_tokens": 88,
+    "rejected_draft_tokens": 29,
+    "acceptance": 0.7521367521367521,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "code_markdown_table",
+    "category": "code",
+    "prompt_tokens": 3072,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 27.15622620470029,
+    "speculative_cycles": 35,
+    "accepted_draft_tokens": 91,
+    "rejected_draft_tokens": 14,
+    "acceptance": 0.8666666666666667,
+    "mtp_coverage": 0.984375,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "general_en_plan",
+    "category": "general_en",
+    "prompt_tokens": 3059,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 19.191316756069728,
+    "speculative_cycles": 50,
+    "accepted_draft_tokens": 77,
+    "rejected_draft_tokens": 73,
+    "acceptance": 0.5133333333333333,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "general_en_explain",
+    "category": "general_en",
+    "prompt_tokens": 3060,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 18.242272407950544,
+    "speculative_cycles": 52,
+    "accepted_draft_tokens": 74,
+    "rejected_draft_tokens": 82,
+    "acceptance": 0.47435897435897434,
+    "mtp_coverage": 0.984375,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "general_ja_plan",
+    "category": "general_ja",
+    "prompt_tokens": 3063,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 19.347915839915355,
+    "speculative_cycles": 50,
+    "accepted_draft_tokens": 77,
+    "rejected_draft_tokens": 70,
+    "acceptance": 0.5133333333333333,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "general_ja_explain",
+    "category": "general_ja",
+    "prompt_tokens": 3063,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 16.30166319072699,
+    "speculative_cycles": 56,
+    "accepted_draft_tokens": 70,
+    "rejected_draft_tokens": 97,
+    "acceptance": 0.4166666666666667,
+    "mtp_coverage": 0.984375,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "mixed_ja_en_translate",
+    "category": "mixed_ja_en",
+    "prompt_tokens": 3084,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 19.949257768296523,
+    "speculative_cycles": 42,
+    "accepted_draft_tokens": 85,
+    "rejected_draft_tokens": 39,
+    "acceptance": 0.6746031746031746,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   },
+   {
+    "label": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "prompt_tokens": 3091,
+    "completion_tokens": 128,
+    "decode_tokens_per_second_median": 17.11617806977113,
+    "speculative_cycles": 49,
+    "accepted_draft_tokens": 78,
+    "rejected_draft_tokens": 68,
+    "acceptance": 0.5306122448979592,
+    "mtp_coverage": 0.9921875,
+    "effective_route": "speculative_mtp",
+    "decision_reason": "qualified_automatic_realized_singleton_c1_b3"
+   }
+  ]
+ },
  "guards": [
   {
    "guard": "The speculative stream reproduces the autoregressive stream token for token",
@@ -1494,6 +1666,11 @@
    "guard": "Speculation beats autoregressive decoding at concurrency 4",
    "classification": "known failure: not satisfied on short natural prompts",
    "evidence": "Matched c=4 short lanes measure 3.906 tok/s speculative against 4.623 tok/s autoregressive on the shipping route (0.8449x) and 3.932 against 4.628 (0.8496x) on the promoted route, identical because both routes are graph-served below the cap; aggregate throughput is 13.875 against 16.422 tok/s."
+  },
+  {
+   "guard": "Acceptance is uniform across mtp-bench categories",
+   "classification": "known failure: acceptance is category-dependent, and the decode rate tracks it",
+   "evidence": "On the promoted route at 3,530-token prompts (128 outputs, two repeats, `scripts/gguf_mtp_server_pair_bench.py --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --pad-to-tokens 3530`): code **0.786** over 4 prompts, mixed_ja_en 0.597, general_en 0.493, general_ja 0.462, with per-prompt acceptance from 0.417 (general_ja_explain, 16.3 tok/s) to 0.867 (code_markdown_table, 27.2 tok/s). Coverage is flat at 0.984-0.992 in every category, so the difference is which drafts the verifier accepts and not whether speculation engaged."
   },
   {
    "guard": "Absolute task quality on the task packet",
