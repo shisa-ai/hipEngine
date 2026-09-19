@@ -8902,10 +8902,28 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
             plan_group_rows=1,
             plan_ar_only=False,
             plan_reason="speculative_qualified",
+            cycle_timing_ms={
+                "proposal": 1.0,
+                "target": 40.0,
+                "provider_update": 2.0,
+                "accept": 3.0,
+                "candidate_readback": 0.0,
+                "target_readback": 1.0,
+                "accept_upload": 0.0,
+                "accept_tail": 0.0,
+                "accept_enqueue": 0.5,
+                "selected_commit": 0.5,
+            },
         ),
     )
 
     engaged_summary = _mtp_response_summary("speculative_mtp", [engaged])
+
+    # The phase split is reported with the cycle count it must be divided by:
+    # these windows are host wall, so a sum alone is not a per-cycle cost.
+    assert engaged_summary["draft_cycles"] == 8
+    assert engaged_summary["cycle_timing_ms"]["target"] == 40.0
+    assert engaged_summary["cycle_timing_ms"]["proposal"] == 1.0
 
     # No admission refusal was recorded, so the fold falls back to the most
     # frequent autoregressive reason -- which is exactly why the activation

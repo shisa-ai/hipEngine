@@ -137,6 +137,32 @@ def _row_mapping(row: Any, name: str) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _row_float(row: Any, name: str) -> float:
+    try:
+        return max(0.0, float(getattr(row, name, 0.0) or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+# Per-row cycle phase windows, all measured around host wall on the serving
+# thread. They are the phase split of a committed cycle, and they are host wall
+# rather than device-busy: a window that ends by reading a result includes the
+# wait for that result. Read them beside ``cycles``; a sum without the cycle
+# count cannot be turned into a per-cycle cost.
+CYCLE_PHASE_ATTRIBUTES: tuple[tuple[str, str], ...] = (
+    ("proposal", "mtp2_proposal_ms"),
+    ("target", "mtp2_target_ms"),
+    ("provider_update", "mtp2_provider_update_ms"),
+    ("accept", "mtp2_accept_ms"),
+    ("candidate_readback", "mtp2_candidate_readback_ms"),
+    ("target_readback", "mtp2_target_readback_ms"),
+    ("accept_upload", "mtp2_accept_upload_ms"),
+    ("accept_tail", "mtp2_accept_tail_ms"),
+    ("accept_enqueue", "mtp2_accept_enqueue_ms"),
+    ("selected_commit", "mtp2_selected_commit_ms"),
+)
+
+
 def record_speculative_outputs(
     row: Any,
     *,
@@ -538,6 +564,15 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
             str(name): int(value) for name, value in sorted(failure_counts.items())
         },
         "k0_catchups": _row_int(row, "mtp2_k0_catchups"),
+        # Host-wall phase sums for the committed cycles. Published here because
+        # the row already carries them and the response did not: the phase split
+        # was measured but unreachable, so every attribution question needed a
+        # new profiler run against a route that might not even be the one under
+        # test. Divide by ``cycles`` for a per-cycle cost.
+        "cycle_timing_ms": {
+            name: _row_float(row, attribute)
+            for name, attribute in CYCLE_PHASE_ATTRIBUTES
+        },
     }
     if output_span_recording_enabled():
         # Diagnostic only: the span list is added, never substituted for the

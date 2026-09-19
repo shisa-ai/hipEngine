@@ -16263,6 +16263,7 @@ def _mtp_response_summary(
     plan_group_rows: int | None = None
     plan_ar_only: bool | None = None
     plan_reason: str | None = None
+    cycle_timing: Mapping[str, Any] | None = None
     first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
@@ -16331,6 +16332,13 @@ def _mtp_response_summary(
             block_plan_reason = block.get("plan_reason")
             if block_plan_reason is not None and plan_reason is None:
                 plan_reason = str(block_plan_reason)
+            block_cycle_timing = block.get("cycle_timing_ms")
+            if isinstance(block_cycle_timing, Mapping) and cycle_timing is None:
+                cycle_timing = {
+                    str(name): float(value)
+                    for name, value in block_cycle_timing.items()
+                    if isinstance(value, (int, float))
+                }
             for reason, count in (block.get("ar_step_reason_counts") or {}).items():
                 fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
             for reason, count in (block.get("failure_reason_counts") or {}).items():
@@ -16461,6 +16469,11 @@ def _mtp_response_summary(
             "plan_ar_only": plan_ar_only,
             "plan_reason": plan_reason,
         }
+        if cycle_timing is not None:
+            # Host-wall phase sums for this request's committed cycles, beside
+            # the cycle count they belong to. ``draft_cycles`` above is the
+            # divisor; without it a sum cannot be read as a per-cycle cost.
+            summary["cycle_timing_ms"] = dict(cycle_timing)
         primary_fallback_reason = prompt_fallback_reason
         if primary_fallback_reason is None and fallback_reason_counts:
             # No admission-level refusal: report the reason that accounted for

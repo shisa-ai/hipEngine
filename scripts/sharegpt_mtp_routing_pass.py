@@ -698,6 +698,10 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "plan_group_rows": execution.get("plan_group_rows"),
         "plan_ar_only": execution.get("plan_ar_only"),
         "plan_reason": execution.get("plan_reason"),
+        # Host-wall phase sums for this row's committed cycles, beside the
+        # ``draft_cycles`` it must be divided by. These are the row's own
+        # measured cycle split, not an inference from throughput.
+        "cycle_timing_ms": mtp.get("cycle_timing_ms"),
         # Events, not tokens: one entry per non-speculative step or refusal. The
         # token-level attribution for the same reasons comes from
         # ``ar_output_tokens_by_reason`` when diagnostic spans were recorded.
