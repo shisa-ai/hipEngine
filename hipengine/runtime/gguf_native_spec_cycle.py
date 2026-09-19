@@ -37,6 +37,9 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     build_dflash_commit,
+    build_sampled_accept,
+    sampled_accept_chain_i32,
+    sampled_accept_row_stats_f32,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
@@ -733,6 +736,7 @@ def _native_target_configuration_key(
     capture_pre_output_norm_hidden: bool,
     defer_linear_state_commit: bool,
     device_accept_commit: bool,
+    sampled_accept: bool = False,
     execution_profile_manifest_sha256: str = "legacy",
     recurrent_state_dtype: str = "fp32",
 ) -> tuple[object, ...]:
@@ -754,6 +758,7 @@ def _native_target_configuration_key(
         bool(capture_pre_output_norm_hidden),
         bool(defer_linear_state_commit),
         bool(device_accept_commit),
+        bool(sampled_accept),
         manifest_hash,
         state_dtype,
         env,
@@ -961,6 +966,12 @@ class Qwen35GGUFNativeB2TargetGraph:
     accept_library: Any | None
     commit_library: Any | None
     device_accept_commit: bool
+    sampled_accept: bool
+    sampled_library: Any | None
+    sampled_row_max: Tensor | None
+    sampled_row_inv_sum: Tensor | None
+    sampled_temperatures: Tensor | None
+    sampled_draws: Tensor | None
     start_position: int
     end_position: int
     context_limit: int
@@ -986,6 +997,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
+        sampled_accept: bool = False,
     ) -> bool:
         if self.closed or session is not self.session:
             return False
@@ -997,6 +1009,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
+            sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
         )
@@ -1019,6 +1032,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
+        sampled_accept: bool = False,
     ) -> str | None:
         """Return a stable pre-launch rejection reason for this cached graph."""
 
@@ -1036,6 +1050,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
+            sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
         )
@@ -1064,6 +1079,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
+        sampled_accept: bool = False,
     ) -> bool:
         """Return whether the exact live cycle fits this immutable graph owner."""
 
@@ -1078,6 +1094,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
+            sampled_accept=sampled_accept,
         ) is None
 
     def launch(
@@ -1091,8 +1108,16 @@ class Qwen35GGUFNativeB2TargetGraph:
         device_proposal: Any | None = None,
         compact_result: bool = False,
         capture_lm_head_logits: bool = False,
+        sampled_accept_state: Any | None = None,
     ):
-        """Stage live metadata, replay once, and return one bounded result."""
+        """Stage live metadata, replay once, and return one bounded result.
+
+        ``sampled_accept_state`` carries ``(temperature, draws)`` for a
+        sampled-accept graph: the row temperature scales the target law and
+        ``draws`` holds the ``rows + 1`` uniforms the request's own sampler
+        stream produced, consumed in walk order, so a replay consumes exactly
+        the draws the autoregressive route would have consumed at that step.
+        """
 
         if self.closed:
             raise RuntimeError("native target graph is closed")
@@ -1165,6 +1190,35 @@ class Qwen35GGUFNativeB2TargetGraph:
             )
         elif remaining_decode is not None:
             raise ValueError("remaining_decode is only valid for N2 native accept/commit")
+        if self.sampled_accept:
+            if sampled_accept_state is None:
+                raise ValueError(
+                    "a sampled-accept graph requires (temperature, draws)"
+                )
+            temperature, draws = sampled_accept_state
+            if not float(temperature) > 0.0:
+                raise ValueError("sampled accept requires a positive temperature")
+            if self.sampled_temperatures is None or self.sampled_draws is None:
+                raise RuntimeError("sampled-accept graph buffers are missing")
+            draws = np.ascontiguousarray(np.asarray(seed, dtype=np.float32))
+            if draws.shape != (int(self.rows) + 1,):
+                raise ValueError(
+                    "sampled accept needs rows + 1 uniforms per request"
+                )
+            _copy_array_to_tensor(
+                self.sampled_temperatures,
+                np.full((int(self.rows),), float(temperature), dtype=np.float32),
+                runtime=runtime,
+            )
+            _copy_array_to_tensor(
+                self.sampled_draws,
+                draws,
+                runtime=runtime,
+            )
+        elif sampled_accept_state is not None:
+            raise ValueError(
+                "sampled_accept_state is only valid for a sampled-accept graph"
+            )
         if device_proposal is not None:
             if self.result_payload is None:
                 raise RuntimeError("device proposal target payload is missing")
@@ -1526,8 +1580,15 @@ def capture_qwen35_gguf_native_b2_target_graph(
     sync_stage_timings: bool = False,
     defer_linear_state_commit: bool = False,
     device_accept_commit: bool = False,
+    sampled_accept: bool = False,
 ) -> Qwen35GGUFNativeB2TargetGraph:
-    """Capture one fixed B1-B3 target forward without executing it."""
+    """Capture one fixed B1-B3 target forward without executing it.
+
+    ``sampled_accept`` captures the sampled variant of the N2 accept/commit:
+    the drafted chain is decided by the coupled acceptance from the resident
+    verifier's device logits instead of by the argmax comparison, so a row whose
+    sampler is not greedy can keep the target graph.
+    """
 
     capture_start = time.perf_counter()
     tokens = tuple(int(token) for token in input_token_ids)
@@ -1557,6 +1618,10 @@ def capture_qwen35_gguf_native_b2_target_graph(
         raise NativeSpecTargetGraphUnsupportedError(
             "N2 device accept/commit requires captured deferred linear-state rows"
         )
+    if sampled_accept and not bool(device_accept_commit):
+        raise NativeSpecTargetGraphUnsupportedError(
+            "sampled accept requires the N2 device accept/commit topology"
+        )
     start = int(session.position)
     end = start + rows
     if end > int(session.scratch.max_positions):
@@ -1577,13 +1642,20 @@ def capture_qwen35_gguf_native_b2_target_graph(
             raise NativeSpecTargetGraphUnsupportedError(
                 "N2 device accept/commit requires uniform fused linear-state commit tables"
             )
-        accept_kernel = resolve(
-            backend=str(session.backend),
-            layer="speculative_accept_commit",
-            quant="w4_gguf",
-            variant="native_v1_i32",
-            missing="none",
-        )
+        if sampled_accept:
+            sampled_library = build_sampled_accept(
+                load=True,
+                compiler_version=getattr(session, "compiler_version", None),
+                require_cached=bool(getattr(session, "require_cached_build", False)),
+            )
+        else:
+            accept_kernel = resolve(
+                backend=str(session.backend),
+                layer="speculative_accept_commit",
+                quant="w4_gguf",
+                variant="native_v1_i32",
+                missing="none",
+            )
         hidden_commit_kernel = resolve(
             backend=str(session.backend),
             layer="dflash_commit_chain",
@@ -1745,6 +1817,45 @@ def capture_qwen35_gguf_native_b2_target_graph(
         commit_buffers = None
         pre_output_commit_buffers = None
         candidate_counts = None
+        sampled_row_max = None
+        sampled_row_inv_sum = None
+        sampled_temperatures = None
+        sampled_draws = None
+        if sampled_accept:
+            # Per-launch sampled-accept inputs live in graph-owned buffers so a
+            # replay only stages values: the row statistics are produced inside
+            # the graph from the verifier's resident logits, and each row's law
+            # comes from the request's own temperature, seed, and step index.
+            sampled_row_max = workspace.reserve_tensor(
+                "native_spec_sampled_row_max",
+                (rows,),
+                DType.FP32,
+            )
+            sampled_row_inv_sum = workspace.reserve_tensor(
+                "native_spec_sampled_row_inv_sum",
+                (rows,),
+                DType.FP32,
+            )
+            sampled_temperatures = workspace.reserve_tensor(
+                "native_spec_sampled_temperatures",
+                (rows,),
+                DType.FP32,
+            )
+            sampled_draws = workspace.reserve_tensor(
+                "native_spec_sampled_draws",
+                (rows + 1,),
+                DType.FP32,
+            )
+            _copy_array_to_tensor(
+                sampled_temperatures,
+                np.full((rows,), 1.0, dtype=np.float32),
+                runtime=runtime,
+            )
+            _copy_array_to_tensor(
+                sampled_draws,
+                np.full((rows + 1,), 0.5, dtype=np.float32),
+                runtime=runtime,
+            )
         if device_accept_commit:
             accept_owner = TargetVerifyBufferOwner.allocate(
                 TargetVerifyBufferSpec(
@@ -1961,10 +2072,18 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 assert pre_output_commit_buffers is not None
                 assert pre_output_norm_hidden_rows is not None
                 assert pre_output_norm_hidden_bf16_rows is not None
-                assert accept_kernel is not None
+                if sampled_accept:
+                    assert sampled_library is not None
+                    assert sampled_row_max is not None
+                    assert sampled_row_inv_sum is not None
+                    assert sampled_temperatures is not None
+                    assert sampled_draws is not None
+                else:
+                    assert accept_kernel is not None
+                    assert accept_library is not None
                 assert linear_commit_kernel is not None
                 assert hidden_commit_kernel is not None
-                assert accept_library is not None and commit_library is not None
+                assert commit_library is not None
                 f32_to_bf16(
                     pre_output_norm_hidden_rows.ptr,
                     pre_output_norm_hidden_bf16_rows.ptr,
@@ -1973,35 +2092,88 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     library=session.runner._cast_library(),
                     runtime=runtime,
                 )
-                accept_kernel(
-                    token_ids_i32.ptr,
-                    positions_i32.ptr,
-                    accept_buffers.parent_rows.ptr,
-                    accept_buffers.draft_depths.ptr,
-                    accept_buffers.active_mask.ptr,
-                    accept_buffers.target_top1.ptr,
-                    remaining_decode_tensor.ptr,
-                    accept_buffers.accepted_counts.ptr,
-                    accept_buffers.commit_rows.ptr,
-                    accept_buffers.commit_tokens.ptr,
-                    accept_buffers.commit_positions.ptr,
-                    accept_buffers.next_tokens.ptr,
-                    accept_buffers.full_accept.ptr,
-                    accept_buffers.committed_output_ids.ptr,
-                    accept_buffers.committed_output_lengths.ptr,
-                    result_payload.ptr,
-                    visible_output_ids.ptr,
-                    visible_output_lengths.ptr,
-                    session.scratch.position_buf.ptr,
-                    session.scratch.context_buf.ptr,
-                    1,
-                    rows,
-                    1,
-                    rows,
-                    stream=stream,
-                    library=accept_library,
-                    runtime=runtime,
-                )
+                if sampled_accept:
+                    sampled_logits_buf = getattr(session, "_verify_logits_buf", None)
+                    if sampled_logits_buf is None:
+                        raise RuntimeError(
+                            "sampled accept requires the resident verifier logits buffer"
+                        )
+                    sampled_vocab_size = int(session.runner.vocab_size)
+                    sampled_accept_row_stats_f32(
+                        int(sampled_logits_buf.ptr),
+                        sampled_temperatures.ptr,
+                        sampled_row_max.ptr,
+                        sampled_row_inv_sum.ptr,
+                        rows,
+                        sampled_vocab_size,
+                        stream=stream,
+                        library=sampled_library,
+                        runtime=runtime,
+                    )
+                    sampled_accept_chain_i32(
+                        int(sampled_logits_buf.ptr),
+                        sampled_temperatures.ptr,
+                        sampled_row_max.ptr,
+                        sampled_row_inv_sum.ptr,
+                        sampled_draws.ptr,
+                        token_ids_i32.ptr,
+                        positions_i32.ptr,
+                        accept_buffers.parent_rows.ptr,
+                        accept_buffers.draft_depths.ptr,
+                        accept_buffers.active_mask.ptr,
+                        remaining_decode_tensor.ptr,
+                        accept_buffers.accepted_counts.ptr,
+                        accept_buffers.commit_rows.ptr,
+                        accept_buffers.commit_tokens.ptr,
+                        accept_buffers.commit_positions.ptr,
+                        accept_buffers.next_tokens.ptr,
+                        accept_buffers.full_accept.ptr,
+                        accept_buffers.committed_output_ids.ptr,
+                        accept_buffers.committed_output_lengths.ptr,
+                        result_payload.ptr,
+                        visible_output_ids.ptr,
+                        visible_output_lengths.ptr,
+                        session.scratch.position_buf.ptr,
+                        session.scratch.context_buf.ptr,
+                        1,
+                        rows,
+                        1,
+                        rows,
+                        sampled_vocab_size,
+                        stream=stream,
+                        library=sampled_library,
+                        runtime=runtime,
+                    )
+                else:
+                    accept_kernel(
+                        token_ids_i32.ptr,
+                        positions_i32.ptr,
+                        accept_buffers.parent_rows.ptr,
+                        accept_buffers.draft_depths.ptr,
+                        accept_buffers.active_mask.ptr,
+                        accept_buffers.target_top1.ptr,
+                        remaining_decode_tensor.ptr,
+                        accept_buffers.accepted_counts.ptr,
+                        accept_buffers.commit_rows.ptr,
+                        accept_buffers.commit_tokens.ptr,
+                        accept_buffers.commit_positions.ptr,
+                        accept_buffers.next_tokens.ptr,
+                        accept_buffers.full_accept.ptr,
+                        accept_buffers.committed_output_ids.ptr,
+                        accept_buffers.committed_output_lengths.ptr,
+                        result_payload.ptr,
+                        visible_output_ids.ptr,
+                        visible_output_lengths.ptr,
+                        session.scratch.position_buf.ptr,
+                        session.scratch.context_buf.ptr,
+                        1,
+                        rows,
+                        1,
+                        rows,
+                        stream=stream,
+                        library=accept_library,
+                        runtime=runtime,
+                    )
                 linear_commit_kernel(
                     linear_state_src_conv_table.ptr,
                     linear_state_dst_conv_table.ptr,
@@ -2097,6 +2269,12 @@ def capture_qwen35_gguf_native_b2_target_graph(
             accept_library=accept_library,
             commit_library=commit_library,
             device_accept_commit=bool(device_accept_commit),
+            sampled_accept=bool(sampled_accept),
+            sampled_library=sampled_library,
+            sampled_row_max=sampled_row_max,
+            sampled_row_inv_sum=sampled_row_inv_sum,
+            sampled_temperatures=sampled_temperatures,
+            sampled_draws=sampled_draws,
             start_position=start,
             end_position=end,
             context_limit=context_limit,
@@ -2111,6 +2289,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 device_accept_commit=bool(device_accept_commit),
+                sampled_accept=bool(sampled_accept),
                 execution_profile_manifest_sha256=(
                     _native_target_execution_identity(session)[0]
                 ),
@@ -2530,12 +2709,18 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
     capture_lm_head_logits: bool = False,
     defer_linear_state_commit: bool = True,
     compact_result: bool = False,
+    sampled_accept: bool = False,
+    sampled_accept_state: Any | None = None,
 ):
     """Retire a cached proposal and cached N2 target behind one synchronization.
 
     This route is intentionally cached-only. A miss is reported before target
     launch so the caller can use the established host-materialized proposal on
     a later cycle; capture is never attempted with an in-flight proposal.
+
+    ``sampled_accept`` selects the sampled accept/commit graph, which decides
+    the chain with the coupled acceptance from the resident verifier logits and
+    consumes ``sampled_accept_state`` = ``(temperature, seed, step_index)``.
     """
 
     session.last_native_spec_target_submitted = False
@@ -2557,6 +2742,8 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
             "device proposal requires one cached B1-B7 target bucket"
         )
     cache_name = f"_native_spec_b{rows - 1}_target_graph_n2"
+    if sampled_accept:
+        cache_name = f"{cache_name}_sampled"
     graph = getattr(session, cache_name, None)
     if graph is None:
         reason = "device proposal handoff requires a compatible cached N2 target graph"
@@ -2578,6 +2765,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=True,
+        sampled_accept=bool(sampled_accept),
     )
     if reason is not None:
         session.last_native_spec_target_fallback_reason = reason
@@ -2592,6 +2780,8 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         }
         if compact_result:
             launch_kwargs["compact_result"] = True
+        if sampled_accept:
+            launch_kwargs["sampled_accept_state"] = sampled_accept_state
         return graph.launch(**launch_kwargs)
     except Exception:
         try:

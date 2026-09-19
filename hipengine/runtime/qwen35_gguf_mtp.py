@@ -1178,7 +1178,15 @@ class Qwen35GGUFTransactionalVerifier:
         device_proposal: Any | None = None,
         qualification_oracle: bool = True,
         allow_graph: bool = True,
+        sampled_accept: Any | None = None,
     ) -> Qwen35GGUFPreparedVerify:
+        """Verify one drafted batch.
+
+        ``sampled_accept`` = ``(temperature, seed, step_index)`` asks the native
+        N2 graph to decide the chain with the coupled sampled acceptance from
+        its own device logits instead of the argmax comparison, so a row whose
+        sampler is not greedy can keep the target graph.
+        """
         if self.closed:
             raise RuntimeError("GGUF transactional verifier is closed")
         if self._prepared is not None:
@@ -1271,6 +1279,8 @@ class Qwen35GGUFTransactionalVerifier:
                                 request_id=int(batch.request_ids[0]),
                                 remaining_decode=int(budgets[0]),
                                 compact_result=not bool(qualification_oracle),
+                                sampled_accept=sampled_accept is not None,
+                                sampled_accept_state=sampled_accept,
                                 **native_kwargs,
                             )
                     except NativeSpecTargetGraphUnsupportedError:

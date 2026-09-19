@@ -30140,6 +30140,7 @@ class Qwen35GGUFResidentSession:
         capture_pre_output_norm_hidden: bool = False,
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
+        sampled_accept: bool = False,
     ):
         """Capture a reusable B1-B3 N1 or N2 native target graph."""
 
@@ -30160,6 +30161,7 @@ class Qwen35GGUFResidentSession:
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
+            sampled_accept=bool(sampled_accept),
         )
 
     def prepare_native_spec_target_graph(
@@ -30167,14 +30169,22 @@ class Qwen35GGUFResidentSession:
         input_token_ids: list[int] | tuple[int, ...],
         *,
         request_id: int,
+        sampled_accept: bool = False,
     ) -> bool:
-        """Capture/cache one strict N2 target graph before a hot cycle."""
+        """Capture/cache one strict N2 target graph before a hot cycle.
+
+        ``sampled_accept`` warms the sampled accept/commit variant, which a row
+        with a non-greedy sampler needs; the two variants are separate cache
+        slots because their captured accept kernels differ.
+        """
 
         tokens = tuple(int(token) for token in input_token_ids)
         budget = len(tokens) - 1
         if budget not in {1, 2, 3, 4, 5, 6, 7}:
             return False
         cache_name = f"_native_spec_b{budget}_target_graph_n2"
+        if sampled_accept:
+            cache_name = f"{cache_name}_sampled"
         existing = getattr(self, cache_name, None)
         if existing is not None and not bool(getattr(existing, "closed", False)):
             compatible = getattr(existing, "compatible_with", None)
@@ -30187,6 +30197,7 @@ class Qwen35GGUFResidentSession:
                 capture_pre_output_norm_hidden=True,
                 defer_linear_state_commit=True,
                 device_accept_commit=True,
+                sampled_accept=bool(sampled_accept),
             ):
                 return True
             existing.close()
@@ -30199,13 +30210,14 @@ class Qwen35GGUFResidentSession:
             capture_pre_output_norm_hidden=True,
             defer_linear_state_commit=True,
             device_accept_commit=True,
+            sampled_accept=bool(sampled_accept),
         )
         setattr(self, cache_name, graph)
         cache = getattr(self, "_native_spec_target_graphs", None)
         if not isinstance(cache, dict):
             cache = {}
             setattr(self, "_native_spec_target_graphs", cache)
-        cache[(budget, True, int(graph.context_limit))] = graph
+        cache[(budget, True, int(graph.context_limit), bool(sampled_accept))] = graph
         return True
 
     def verify_target_block_native_cycle(
@@ -30267,6 +30279,8 @@ class Qwen35GGUFResidentSession:
         capture_lm_head_logits: bool = False,
         defer_linear_state_commit: bool = True,
         compact_result: bool = False,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Retire cached proposal/N2 graphs behind the target synchronization."""
 
@@ -30288,6 +30302,8 @@ class Qwen35GGUFResidentSession:
             capture_lm_head_logits=bool(capture_lm_head_logits),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             compact_result=bool(compact_result),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def run_native_spec_mtp_cycle(

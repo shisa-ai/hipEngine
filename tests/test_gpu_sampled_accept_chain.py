@@ -9,8 +9,8 @@ autoregressive control.
 
 These tests pin three things:
 
-* the device walk consumes the same uniforms in the same order as the oracle, so
-  replaying the oracle with the device's own draws reproduces the device's
+* the device walk consumes the caller's uniforms in the oracle's order, so
+  replaying the oracle with the same draw buffer reproduces the device's
   decision exactly (accepted count, committed row, emitted token);
 * the first emitted token is distributed as the target law ``p`` itself - the
   speculative-sampling identity - on both paths;
@@ -26,7 +26,6 @@ import pathlib
 import numpy as np
 import pytest
 
-from hipengine.generation.mtp_sampled_accept import sampled_accept_uniform
 from hipengine.speculative.interfaces import TargetVerifyBatch
 from hipengine.speculative.sampling import sampled_accept_from_distributions
 
@@ -192,17 +191,19 @@ class _DeviceChain:
         self._buffers.clear()
 
     # -- one cycle ------------------------------------------------------
-    def run(self, seed: int, step_index: int) -> dict:
-        seeds_d = self._upload(np.asarray([seed], dtype=np.uint64))
-        steps_d = self._upload(np.asarray([step_index], dtype=np.uint64))
+    def run(self, draws: np.ndarray) -> dict:
+        draws = np.ascontiguousarray(
+            np.asarray(draws, dtype=np.float32).reshape(-1)
+        )
+        assert draws.shape == (self.rows + 1,), draws.shape
+        draws_d = self._upload(draws)
         try:
             self._chain(
                 self._logits_d.ptr,
                 self._temperatures_d.ptr,
                 self._row_max_d.ptr,
                 self._row_inv_sum_d.ptr,
-                seeds_d.ptr,
-                steps_d.ptr,
+                draws_d.ptr,
                 self._token_ids_d.ptr,
                 self._positions_d.ptr,
                 self._parent_rows_d.ptr,
@@ -231,9 +232,8 @@ class _DeviceChain:
                 runtime=self._runtime,
             )
         finally:
-            self._free(seeds_d, runtime=self._runtime)
-            self._free(steps_d, runtime=self._runtime)
-            self._buffers = [b for b in self._buffers if b is not seeds_d and b is not steps_d]
+            self._free(draws_d, runtime=self._runtime)
+            self._buffers = [b for b in self._buffers if b is not draws_d]
         return {
             "accepted": int(self._download(self._accepted_d, np.int32, 1)[0]),
             "commit_row": int(self._download(self._commit_rows_d, np.int32, 1)[0]),
@@ -259,38 +259,38 @@ def _target_probabilities(logits: np.ndarray, row: int, temperature: float) -> n
 
 def _host_decision(
     device: _DeviceChain,
-    seed: int,
-    step_index: int,
+    draws: np.ndarray,
     walk: dict,
 ) -> tuple[int, int, int]:
     """Replay the host oracle with the draws the device walk consumed.
 
     The device walk consumes one uniform per acceptance test (slot 0 at each
     visited row) and then one for the residual or bonus sample (slot 1 at the
-    row where it stopped). Reproducing that sequence on the host and feeding it
-    to the oracle checks both the decision rule and the draw order. The returned
-    triple is ``(accepted, next_token, first_visible_token)``, where the first
-    visible token is the first accepted draft or, when none was accepted, the
+    row where it stopped). Feeding the oracle that same sequence checks both the
+    decision rule and the draw order. The returned triple is
+    ``(accepted, next_token, first_visible_token)``, where the first visible
+    token is the first accepted draft or, when none was accepted, the
     correction.
     """
 
+    draws = np.asarray(draws, dtype=np.float32).reshape(-1)
     chain = list(range(device.rows))
     accepted = int(walk["accepted"])
     # A walk that stopped on a rejection consumed one acceptance test at every
     # visited row plus one residual draw; a walk that exhausted the chain
-    # consumed one test per drafted token and then one bonus draw.
+    # consumed one test per drafted token and then one bonus draw. The device
+    # consumes the block in that order, so the replay does too.
     tests = accepted if accepted == device.rows - 1 else accepted + 1
-    stop_row = chain[accepted]
-    draws: list[float] = [
-        sampled_accept_uniform(seed, step_index, chain[index], 0)
-        for index in range(tests)
-    ]
-    draws.append(sampled_accept_uniform(seed, step_index, stop_row, 1))
-    stream = iter(draws)
+    stream = iter(float(value) for value in draws[: tests + 1])
     summary = sampled_accept_from_distributions(
         device.batch,
         tuple(_sparse_row(device, row) for row in chain),
-        tuple(_point_mass(device.tokens[row + 1] if row + 1 < device.rows else device.tokens[row]) for row in chain),
+        tuple(
+            _point_mass(
+                device.tokens[row + 1] if row + 1 < device.rows else device.tokens[row]
+            )
+            for row in chain
+        ),
         draws=lambda: next(stream),
     )
     return (
@@ -327,8 +327,9 @@ def test_device_walk_matches_the_host_oracle_on_its_own_draws() -> None:
     device = _DeviceChain(logits, tokens, temperature=0.7)
     try:
         for seed in range(12):
-            walk = device.run(seed, step_index=seed + 3)
-            host_accepted, host_next, _first = _host_decision(device, seed, seed + 3, walk)
+            draws = np.random.default_rng(seed).random(4).astype(np.float32)
+            walk = device.run(draws)
+            host_accepted, host_next, _first = _host_decision(device, draws, walk)
             assert walk["accepted"] == host_accepted, (seed, walk)
             assert walk["next_token"] == host_next, (seed, walk)
     finally:
@@ -349,8 +350,9 @@ def test_device_walk_uses_every_row_of_a_wider_chain() -> None:
     try:
         accepted_seen = set()
         for seed in range(40):
-            walk = device.run(seed, step_index=1)
-            host_accepted, host_next, _first = _host_decision(device, seed, 1, walk)
+            draws = np.random.default_rng(seed).random(5).astype(np.float32)
+            walk = device.run(draws)
+            host_accepted, host_next, _first = _host_decision(device, draws, walk)
             assert walk["accepted"] == host_accepted, (seed, walk)
             assert walk["next_token"] == host_next, (seed, walk)
             accepted_seen.add(int(walk["accepted"]))
@@ -394,9 +396,10 @@ def test_device_accept_emits_the_target_law() -> None:
         device_tokens: list[int] = []
         host_tokens: list[int] = []
         for seed in range(4000):
-            walk = device.run(seed, 5)
+            draws = np.random.default_rng(seed).random(3).astype(np.float32)
+            walk = device.run(draws)
             device_tokens.append(_first_visible_token(walk))
-            _accepted, _next, first_visible = _host_decision(device, seed, 5, walk)
+            _accepted, _next, first_visible = _host_decision(device, draws, walk)
             host_tokens.append(int(first_visible))
     finally:
         device.close()
