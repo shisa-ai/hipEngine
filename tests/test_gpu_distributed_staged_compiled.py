@@ -483,3 +483,168 @@ def test_head_shard_gemv_rows_bit_identical_to_replicated_head() -> None:
                 rt.stream_destroy(streams[device])
                 rt.free(buffers[device][0])
                 rt.free(buffers[device][1])
+
+
+def _widen_bf16(bits: np.ndarray) -> np.ndarray:
+    return (bits.astype("<u4") << 16).view("<f4")
+
+
+def _narrow_bf16_rne(values: np.ndarray) -> np.ndarray:
+    """RNE f32 -> bf16, the boundary-cast kernel's bit arithmetic."""
+
+    u = values.view("<u4")
+    return ((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype("<u2")
+
+
+def test_batched_device_exchange_sums_a_whole_prompt_bit_identically() -> None:
+    """The batched form of the device reduction: ``rows`` prompt rows reduced
+    in one exchange instead of one row per token step.
+
+    The driver stages a slot as a single long row, so a batched caller passes
+    ``rows`` and the element count scales with it. Parity is bit-exact against
+    the host sum followed by the boundary cast, which is what lets the bulk
+    prefill use this instead of the host-staged transport.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden, rows = 512, 8
+    n = hidden * rows
+    rng = np.random.default_rng(97)
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt, devices=(0, 1), streams=streams, num_layers=2, hidden=hidden, rows=rows
+    )
+    assert exchange.hidden == n, "a batched exchange stages the whole batch as one row"
+    assert exchange.rows == rows
+    # Tracked per device: a buffer allocated on one rank cannot be freed from
+    # another rank's context.
+    buffers: dict[int, list[int]] = {0: [], 1: []}
+    try:
+        outs = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                outs[device] = rt.malloc(n * 2)
+                buffers[device].append(outs[device])
+
+        # Two layers, two alternating slots, different data per layer: this is
+        # what catches a missing per-layer counter bump, because the peer's
+        # flag from layer 0 would already satisfy layer 1's comparison and the
+        # spin would read layer 0's staging.
+        exchange.reset_timeouts()
+        for layer in range(2):
+            host_rows = {}
+            partials = {}
+            for device in (0, 1):
+                bits = rng.integers(
+                    0, 2**16, size=n, dtype=np.uint16
+                )
+                host_rows[device] = bits
+                with scoped_current_device(rt, device):
+                    buffer = rt.malloc(n * 2)
+                    buffers[device].append(buffer)
+                    rt.memcpy(buffer, bits.ctypes.data, n * 2, 3)
+                    partials[device] = buffer
+            exchange.bump()
+            for rank, device in enumerate((0, 1)):
+                exchange.enqueue_rank(rank, partials[device], layer % 2, outs[device])
+            exchange.wait()
+            expected = _narrow_bf16_rne(
+                _widen_bf16(host_rows[0]) + _widen_bf16(host_rows[1])
+            )
+            for device in (0, 1):
+                got = np.empty(n, dtype="<u2")
+                with scoped_current_device(rt, device):
+                    rt.memcpy(got.ctypes.data, outs[device], n * 2, 2)
+                np.testing.assert_array_equal(
+                    got,
+                    expected,
+                    err_msg=(
+                        f"batched device exchange, layer {layer}, device {device}: "
+                        "not bit-identical to the host sum"
+                    ),
+                )
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_synchronize(streams[device])
+                for buffer in buffers[device]:
+                    rt.free(buffer)
+                rt.stream_destroy(streams[device])
+
+
+def test_batched_device_exchange_keeps_a_timeout_visible_across_layers() -> None:
+    """A per-layer bump must not clear an earlier layer's spin timeout.
+
+    The spin kernel writes nothing when it times out, so a cleared flag would
+    let a stale output row pass as a result. ``reset_timeouts`` exists to be
+    called once per group for exactly this reason, and ``bump`` must not clear
+    the flag the way ``step_begin`` does.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
+    from hipengine.distributed.transport import TransportStateError
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden, rows = 256, 4
+    n = hidden * rows
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt,
+        devices=(0, 1),
+        streams=streams,
+        num_layers=2,
+        hidden=hidden,
+        rows=rows,
+        max_spins=20_000,
+    )
+    buffers: dict[int, list[int]] = {0: [], 1: []}
+    try:
+        outs = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                outs[device] = rt.malloc(n * 2)
+                buffers[device].append(outs[device])
+        partials = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                buffer = rt.malloc(n * 2)
+                buffers[device].append(buffer)
+                rt.memset(buffer, 0, n * 2)
+                partials[device] = buffer
+
+        exchange.reset_timeouts()
+        # Only rank 0 exchanges, so its spin expires and sets its timeout flag.
+        exchange.bump()
+        exchange.enqueue_rank(0, partials[0], 0, outs[0])
+        # The next layer's bump must leave that flag set: if it cleared it the
+        # way step_begin does, the wait below would report success and the
+        # unwritten output row would pass as a result.
+        exchange.bump()
+        exchange.enqueue_rank(0, partials[0], 1, outs[0])
+        with pytest.raises(TransportStateError, match="spin timeout"):
+            exchange.wait()
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_synchronize(streams[device])
+                for buffer in buffers[device]:
+                    rt.free(buffer)
+                rt.stream_destroy(streams[device])
