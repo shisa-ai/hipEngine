@@ -4213,6 +4213,121 @@ def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefi
     assert runner._fallback_reasons["int8_direct_full_prompt_prefill"] == 1
 
 
+def test_gguf_resident_native_prefill_falls_back_when_packed_route_refuses_context() -> None:
+    """A packed-route shape refusal must not end a response mid-stream.
+
+    ``prefill_batch_native`` refuses contexts it cannot serve
+    (``packed paged AR prefill currently requires context < 1024``). A row that
+    reaches the single-row native prefill may already own committed prompt
+    chunks, so the refusal has to finish the prompt on the registered strict
+    per-session route instead of failing the request.
+    """
+
+    events: list[tuple] = []
+    finished: list[tuple] = []
+
+    class FakeSession:
+        position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            events.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=7, logits=None)
+
+        def prefill_batch_native(self, *args, **kwargs):
+            events.append(("prefill_batch_native", tuple(args[0][0])))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    prompt_ids = tuple(range(1024))
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=prompt_ids,
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+        mtp2_candidate_budget=3,
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._refresh_prefix_cache = lambda row: None
+    runner._resolved_mtp2_adapter = lambda: None
+    runner._finish_native_prefill = (
+        lambda row, result, *, native_compact_prefill: finished.append(
+            (int(result.token_id), bool(native_compact_prefill))
+        )
+    )
+
+    runner._prefill_native_row(row)
+
+    assert events == [
+        ("prefill_batch_native", prompt_ids),
+        ("prefill", prompt_ids, False),
+    ]
+    assert finished == [(7, False)]
+    assert row.mtp2_candidate_budget == 0
+    assert row.mtp2_prompt_fallback_reason == "packed_prefill_unsupported_k0"
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 1
+
+
+def test_gguf_resident_native_prefill_keeps_block_table_route_fail_closed() -> None:
+    """Sessions only the block-table-aware route can serve still fail closed."""
+
+    events: list[tuple] = []
+
+    class FakeSession:
+        kv_attention_source = "int8_direct"
+        position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            events.append(("prefill", tuple(token_ids)))
+            return SimpleNamespace(token_id=7, logits=None)
+
+        def prefill_batch_native(self, *args, **kwargs):
+            events.append(("prefill_batch_native",))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=(10, 11, 12, 13),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._refresh_prefix_cache = lambda row: None
+    runner._resolved_mtp2_adapter = lambda: None
+
+    with pytest.raises(NotImplementedError, match="requires context < 1024"):
+        runner._prefill_native_row(row)
+
+    assert events == [("prefill_batch_native",)]
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 0
+
+
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
     calls: list[tuple] = []
 

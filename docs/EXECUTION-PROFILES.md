@@ -530,6 +530,17 @@ controlled stop. Exception type alone is neither a recovery proof nor a
 universal fatal classification. Unimplemented recovery is a concrete limitation
 after a failure, not a reason to reject ordinary execution in advance.
 
+An unsupported-shape refusal from an optional packed route (`NotImplementedError`
+from a packed prefill or verifier layout check) is a route decision, not a
+runtime fault, and it must never become the terminal outcome of a request that
+already published output. A recovery path that runs after a canonical commit
+re-routes the affected rows through the registered strict per-session route with
+the same tokens and cursors, and records the route change as a fallback reason.
+Only rows whose KV layout the strict route cannot represent (a shared or shifted
+allocation that requires the block-table-aware entry) may fail closed, and the
+failure then follows the containment rules below rather than surfacing as a
+request-parameter error.
+
 Fatal is a controlled stop, not a silent one. The service reports `ok`,
 `unhealthy`, or `closed`; an unhealthy report names the failing phase, the
 deepest frame, and affected IDs when known. Readiness reports the same state
