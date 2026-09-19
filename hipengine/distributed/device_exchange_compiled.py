@@ -67,6 +67,10 @@ def _bind(library: Any) -> None:
     library.tp2_dev_exchange_create.restype = ctypes.c_void_p
     library.tp2_dev_exchange_step_begin.argtypes = [ctypes.c_void_p]
     library.tp2_dev_exchange_step_begin.restype = ctypes.c_int32
+    library.tp2_dev_exchange_reset_timeouts.argtypes = [ctypes.c_void_p]
+    library.tp2_dev_exchange_reset_timeouts.restype = ctypes.c_int32
+    library.tp2_dev_exchange_bump.argtypes = [ctypes.c_void_p]
+    library.tp2_dev_exchange_bump.restype = ctypes.c_int32
     library.tp2_dev_exchange_enqueue_rank.argtypes = [
         ctypes.c_void_p,  # handle
         ctypes.c_int32,  # rank
@@ -110,18 +114,19 @@ class CompiledDeviceExchange:
             raise TransportStateError("the device exchange serves exactly two ranks")
         if len(set(devices)) != len(devices):
             raise TransportStateError("device-exchange ranks must be distinct devices")
-        if rows != 1:
-            raise TransportStateError(
-                "the device-graph exchange is the single-row decode route; "
-                f"rows={rows} is unsupported - batched prefill uses the staged "
-                "transports instead"
-            )
+        if rows < 1:
+            raise TransportStateError(f"rows must be positive, got {rows}")
         missing = [d for d in devices if d not in streams]
         if missing:
             raise TransportStateError(f"no stream given for ranks {missing}")
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
-        self.hidden = int(hidden)
+        # ``hidden`` is the row width the driver stages per slot, so a batched
+        # caller passes the whole batch as one long row: the spin-add kernel is
+        # already generic in its element count, and the per-slot staging and
+        # flag arithmetic stay identical to the single-row route.
+        self.hidden = int(hidden) * int(rows)
+        self.rows = int(rows)
         self.num_layers = int(num_layers)
         self._poisoned = False
         self._handle: int | None = None
@@ -184,6 +189,49 @@ class CompiledDeviceExchange:
             )
             message = detail.decode(errors="replace") if detail else "unknown error"
             raise TransportStateError(f"device exchange step_begin failed: {message}")
+        self.step_begins += 1
+
+    def reset_timeouts(self) -> None:
+        """Clear both ranks' spin-timeout flags without touching the counters.
+
+        A batched group resets once and then bumps per layer, so a timeout in
+        any layer stays visible to :meth:`wait` instead of being cleared by the
+        next layer's bump. The spin kernel writes nothing on timeout, so a
+        cleared flag would let a stale output row pass as a result.
+        """
+
+        self._require_live()
+        code = self._library.tp2_dev_exchange_reset_timeouts(
+            ctypes.c_void_p(self._handle)
+        )
+        if code != _OK:
+            self._poisoned = True
+            detail = self._library.tp2_dev_exchange_last_error(
+                ctypes.c_void_p(self._handle)
+            )
+            message = detail.decode(errors="replace") if detail else "unknown error"
+            raise TransportStateError(
+                f"device exchange reset_timeouts failed: {message}"
+            )
+
+    def bump(self) -> None:
+        """Advance both ranks' step counters without clearing the timeouts.
+
+        The publish/spin pair compares against the counter, so a batched caller
+        that reuses two slots must advance it once per layer; without the bump
+        the peer's flag would already satisfy the comparison and the spin would
+        read the previous layer's staging.
+        """
+
+        self._require_live()
+        code = self._library.tp2_dev_exchange_bump(ctypes.c_void_p(self._handle))
+        if code != _OK:
+            self._poisoned = True
+            detail = self._library.tp2_dev_exchange_last_error(
+                ctypes.c_void_p(self._handle)
+            )
+            message = detail.decode(errors="replace") if detail else "unknown error"
+            raise TransportStateError(f"device exchange bump failed: {message}")
         self.step_begins += 1
 
     def enqueue_rank(

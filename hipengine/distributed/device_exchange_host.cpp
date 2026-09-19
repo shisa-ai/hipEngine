@@ -332,6 +332,61 @@ int32_t tp2_dev_exchange_step_begin(void* handle) {
   return kOk;
 }
 
+// Batched callers bump once per layer but must not clear a timeout that an
+// earlier layer recorded: the spin kernel writes nothing on timeout, so a
+// cleared flag would let a stale output row pass as a result. These two entry
+// points split step_begin's reset from its bump, so a group resets once and
+// then bumps per layer, and the final wait still sees any layer's timeout.
+int32_t tp2_dev_exchange_reset_timeouts(void* handle) {
+  auto* ex = static_cast<Tp2DeviceExchange*>(handle);
+  if (ex == nullptr) {
+    return kErrArg;
+  }
+  int previous_device = 0;
+  if (hipGetDevice(&previous_device) != hipSuccess) {
+    previous_device = 0;
+  }
+  for (int rank = 0; rank < ex->world; ++rank) {
+    if (hipSetDevice(ex->devices[rank]) != hipSuccess) {
+      (void)hipSetDevice(previous_device);
+      return set_hip_error(ex, hipGetLastError(), "hipSetDevice reset_timeouts");
+    }
+    if (hipMemsetAsync(ex->timeout_flags[rank], 0, sizeof(unsigned int),
+                       ex->streams[rank]) != hipSuccess) {
+      (void)hipSetDevice(previous_device);
+      return set_hip_error(ex, hipGetLastError(), "hipMemsetAsync timeout flag");
+    }
+  }
+  (void)hipSetDevice(previous_device);
+  return kOk;
+}
+
+int32_t tp2_dev_exchange_bump(void* handle) {
+  auto* ex = static_cast<Tp2DeviceExchange*>(handle);
+  if (ex == nullptr) {
+    return kErrArg;
+  }
+  int previous_device = 0;
+  if (hipGetDevice(&previous_device) != hipSuccess) {
+    previous_device = 0;
+  }
+  for (int rank = 0; rank < ex->world; ++rank) {
+    if (hipSetDevice(ex->devices[rank]) != hipSuccess) {
+      (void)hipSetDevice(previous_device);
+      return set_hip_error(ex, hipGetLastError(), "hipSetDevice bump");
+    }
+    hipLaunchKernelGGL(tp2_dev_bump_counter, dim3(1), dim3(1), 0, ex->streams[rank],
+                       ex->counters[rank]);
+    hipError_t code = hipGetLastError();
+    if (code != hipSuccess) {
+      (void)hipSetDevice(previous_device);
+      return set_hip_error(ex, code, "bump launch");
+    }
+  }
+  (void)hipSetDevice(previous_device);
+  return kOk;
+}
+
 // The rank-scoped building block: stage THIS rank's partial, publish this
 // rank's flag, and run this rank's spin-sum against the other rank's staged
 // row and flag. Stream-ordered on this rank's own stream, no host
