@@ -19,6 +19,10 @@ Lanes:
   packet drives them: the transcript is rebuilt from the fixture each turn.
 * ``code_cumulative`` - the same long repository prompts with the model's own
   output carried forward, which is what a normal coding client sends.
+* ``session_replay`` - a recorded real agent session (see
+  ``scripts/session_replay_convert.py``) resent cumulative request by
+  request: every turn re-sends the whole transcript, which grows by one
+  assistant round plus its tool results, or by one user message.
 
 Every turn is a full ``generate_detailed`` call through the production resident
 loop, rendered with the server's own chat renderer, so the prompt text is what
@@ -63,6 +67,12 @@ from hipengine.benchmark.agentic_live import (  # noqa: E402
     render_workload_prefix,
 )
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from hipengine.benchmark.session_replay import (  # noqa: E402
+    build_session_replay_tools,
+    build_session_replay_turn_messages,
+    load_session_replay_fixture,
+    session_replay_turn_count,
+)
 from hipengine.server import ServerConfig, create_app  # noqa: E402
 from hipengine.server.api import (  # noqa: E402
     ChatCompletionRequest,
@@ -72,6 +82,7 @@ from hipengine.server.api import (  # noqa: E402
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_SHAREGPT = REPO_ROOT / "benchmarks/prompts/qwen38-sharegpt-soak-v1.json"
 DEFAULT_AGENTIC = REPO_ROOT / "benchmarks/prompts/agentic-coding-v1.json"
+DEFAULT_SESSION_REPLAY = REPO_ROOT / "benchmarks/prompts/agentic-session-replay-v1.json"
 _HARDWARE_LABELS = {
     "hip_gfx1100": "AMD Radeon Pro W7900 (gfx1100)",
     "hip_gfx1151": "AMD Radeon 8060S (gfx1151)",
@@ -172,6 +183,37 @@ def _agentic_lanes(
             "workload_id": workload_id,
             "prefix_text": prefix.text,
             "prefix_tokens": prefix.target_tokens,
+            "tools": tools,
+            "max_tokens": max_tokens,
+        }
+    return lanes
+
+
+def _session_replay_lanes(
+    path: Path,
+    *,
+    workload_ids: Sequence[str],
+    max_tokens: int,
+) -> dict[str, dict[str, Any]]:
+    """Lanes that resend a real agent-session transcript turn by turn.
+
+    Every request re-sends the whole cumulative transcript, so the prompt of
+    request k+1 contains the prompt of request k verbatim plus one assistant
+    round and its tool results (or one user message). This is the resend
+    pattern of a real coding-agent client, built from a recorded session.
+    """
+
+    fixture = load_session_replay_fixture(path)
+    tools = build_session_replay_tools(fixture)
+    ids = list(workload_ids) if workload_ids else list(fixture.workloads)
+    lanes: dict[str, dict[str, Any]] = {}
+    for workload_id in ids:
+        if workload_id not in fixture.workloads:
+            raise ValueError(f"unknown session-replay workload {workload_id!r}")
+        lanes[f"session-{workload_id}"] = {
+            "kind": "session_replay",
+            "fixture": fixture,
+            "workload_id": workload_id,
             "tools": tools,
             "max_tokens": max_tokens,
         }
@@ -386,6 +428,30 @@ def _run_lane(
             observe_prompt(messages, None, int(lane["max_tokens"]), record)
             result.turns.append(record)
             messages.append({"role": "assistant", "content": record["text"]})
+        return result
+
+    if kind == "session_replay":
+        fixture = lane["fixture"]
+        session_workload_id = str(lane["workload_id"])
+        total_turns = session_replay_turn_count(fixture, session_workload_id)
+        if turn_limit is not None:
+            total_turns = min(total_turns, int(turn_limit))
+        for index in range(total_turns):
+            messages = build_session_replay_turn_messages(
+                fixture, session_workload_id, turn_index=index
+            )
+            record = run_turn(
+                messages=messages,
+                tools=lane["tools"],
+                max_tokens=int(lane["max_tokens"]),
+            )
+            record.update(
+                {"lane_id": lane_id, "lane_kind": kind, "turn_index": index}
+            )
+            observe_prompt(
+                messages, lane["tools"], int(lane["max_tokens"]), record
+            )
+            result.turns.append(record)
         return result
 
     suite = lane["suite"]
@@ -829,10 +895,20 @@ def _build_lanes(args: argparse.Namespace, llm: LLM) -> dict[str, dict[str, Any]
             max_tokens=int(args.code_tokens),
         )
     )
+    if getattr(args, "session_replay", None) is not None:
+        lanes.update(
+            _session_replay_lanes(
+                Path(args.session_replay),
+                workload_ids=list(args.session_replay_workloads or []),
+                max_tokens=int(args.code_tokens),
+            )
+        )
     if args.lane_kinds == "sharegpt":
         lanes = {k: v for k, v in lanes.items() if v["kind"] == "sharegpt"}
     elif args.lane_kinds == "code":
         lanes = {k: v for k, v in lanes.items() if v["kind"] != "sharegpt"}
+    elif args.lane_kinds == "session":
+        lanes = {k: v for k, v in lanes.items() if v["kind"] == "session_replay"}
     return lanes
 
 
@@ -1172,6 +1248,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "code": int(args.code_tokens),
             },
             "agentic_workloads": list(args.agentic_workloads),
+            "session_replay": (
+                None
+                if getattr(args, "session_replay", None) is None
+                else {
+                    "path": str(args.session_replay),
+                    "workloads": list(args.session_replay_workloads or []),
+                    "identity": load_session_replay_fixture(
+                        args.session_replay
+                    ).identity(),
+                }
+            ),
         },
         "repo": _repo_state(),
         "modes": {},
@@ -1363,13 +1450,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sharegpt", type=Path, default=DEFAULT_SHAREGPT)
     parser.add_argument("--agentic", type=Path, default=DEFAULT_AGENTIC)
     parser.add_argument(
+        "--session-replay",
+        type=Path,
+        default=None,
+        help=(
+            "optional session-replay fixture (e.g. "
+            f"{DEFAULT_SESSION_REPLAY.name}): lanes that resend a recorded "
+            "agent-session transcript cumulative turn by turn"
+        ),
+    )
+    parser.add_argument(
+        "--session-replay-workloads",
+        nargs="*",
+        default=None,
+        help="workload ids inside the session-replay fixture (default: all)",
+    )
+    parser.add_argument(
         "--agentic-workloads",
         nargs="*",
         default=["small_repo", "growing_history"],
     )
     parser.add_argument(
         "--lane-kinds",
-        choices=("all", "sharegpt", "code"),
+        choices=("all", "sharegpt", "code", "session"),
         default="all",
     )
     parser.add_argument("--modes", nargs="*", default=["off"])
