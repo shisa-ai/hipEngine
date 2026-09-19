@@ -2314,6 +2314,62 @@ def test_server_config_accepts_an_omitted_candidate_budget() -> None:
         ServerConfig(model="fake-path", speculative_candidate_budget=0)
 
 
+def test_unprepared_engine_logs_pending_not_off(caplog) -> None:
+    """RED: startup must not report MTP as off before the engine resolves.
+
+    The eager path creates the model and logs before ``prepare`` resolves the
+    generator, so ``supports_speculative_mtp`` is false only because the answer
+    is not known yet. Printing ``serving=off engine_supported=False`` there
+    contradicts the ``serving=enabled engine_supported=True`` line the operator
+    reads a few seconds later on the same command line.
+    """
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    class UnpreparedEngine:
+        """An engine whose generator - and MTP capability - is not resolved."""
+
+        _text_generator = None
+
+    with caplog.at_level(logging.INFO):
+        _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="auto",
+                speculative_candidate_budget=3,
+            ),
+            engine=UnpreparedEngine(),
+        )
+
+    assert "serving=pending engine_supported=unknown" in caplog.text
+    assert "pre-resolution" in caplog.text
+    assert "serving=off" not in caplog.text
+
+
+def test_resolved_engine_without_mtp_route_still_logs_off(caplog) -> None:
+    """A resolved engine that has no MTP route reports off, as before."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    class ResolvedPlainEngine:
+        _text_generator = object()
+
+    with caplog.at_level(logging.INFO):
+        _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="auto",
+            ),
+            engine=ResolvedPlainEngine(),
+        )
+
+    assert "serving=off engine_supported=False" in caplog.text
+
+
 def test_startup_warns_when_enabled_mtp_cannot_serve_its_budget(caplog) -> None:
     """An explicitly enabled route that cannot admit is reported, not silent."""
 
