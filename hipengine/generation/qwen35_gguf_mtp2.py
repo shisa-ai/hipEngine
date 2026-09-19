@@ -322,6 +322,24 @@ class _NgramBatchDeviceProposal:
             raise ValueError("n-gram proposal token_ids must be packed INT32 candidates")
 
 
+def _trace_prefix_checkpoint(message: str) -> None:
+    """Echo prefix-checkpoint capture activity under the opt-in trace flag.
+
+    The capture is silent by design -- a checkpoint is an optimization and a
+    request must not fail because one could not be taken -- which leaves a
+    swallowed failure indistinguishable from capture being switched off. This is
+    the operator's way to tell those apart.
+    """
+
+    try:
+        if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+            print(f"[mtp2-prefix-checkpoint] {message}", file=sys.stderr, flush=True)
+    except Exception:
+        # Diagnostics never fail a request: an operator-visible line is not
+        # worth a partially-mutated prefill.
+        pass
+
+
 @dataclass(slots=True)
 class _MTP2RequestState:
     request_id: int
@@ -1445,6 +1463,7 @@ class Qwen35GGUFMTP2Adapter:
         """Open exact shifted NextN sinks before target prompt prefill."""
 
         ids = tuple(int(value) for value in request_ids)
+        _trace_prefix_checkpoint(f"begin_prompt_streaming ids={ids}")
         if not ids or len(set(ids)) != len(ids):
             raise ValueError("streaming prompt request IDs must be non-empty and unique")
         if any(request_id not in self._intents for request_id in ids):
@@ -1693,6 +1712,11 @@ class Qwen35GGUFMTP2Adapter:
         stream: int = 0,
     ) -> None:
         """Commit carried prompt rows or roll back every provider/sink owner."""
+
+        _trace_prefix_checkpoint(
+            f"finish_prompt_streaming ids={tuple(int(v) for v in request_ids)} "
+            f"success={bool(success)}"
+        )
 
         ids = tuple(int(value) for value in request_ids)
         if not success:
@@ -5991,6 +6015,13 @@ class Qwen35GGUFMTP2Adapter:
         targets: Sequence[Any],
     ) -> dict[int, DeviceBuffer]:
         prompt_lengths = tuple(len(row.prompt_ids) for row in rows)
+        boundaries = tuple(
+            self._prefix_checkpoint_boundary(length) for length in prompt_lengths
+        )
+        _trace_prefix_checkpoint(
+            f"walk batch rows={len(rows)} lengths={prompt_lengths} "
+            f"boundaries={boundaries}"
+        )
         hidden_size = int(provider.executor.hidden_size)
         count = len(rows)
         hidden_batch = malloc(
@@ -6057,6 +6088,27 @@ class Qwen35GGUFMTP2Adapter:
                         active_tokens,
                         (position,) * len(active),
                         hidden,
+                    )
+                for offset, index in enumerate(active):
+                    boundary = boundaries[index]
+                    if not boundary or position + 1 != boundary:
+                        continue
+                    # The rows are packed into the batch buffer in active order,
+                    # not at their own index, so the slice is the row's offset
+                    # within this iteration's active set.
+                    request_id = request_ids[index]
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        tuple(rows[index].prompt_ids),
+                        self._prompt_hidden_rows[request_id],
+                        boundary,
+                        DeviceBuffer(
+                            hidden_batch.ptr
+                            + offset * hidden_size * DType.BF16.itemsize,
+                            hidden_size * DType.BF16.itemsize,
+                        ),
+                        targets[index],
                     )
             for request_id, row, target in zip(request_ids, rows, targets, strict=True):
                 bits = np.ascontiguousarray(
@@ -6160,6 +6212,10 @@ class Qwen35GGUFMTP2Adapter:
         if rows.shape != (len(tuple(prompt_ids)), hidden_size):
             raise ValueError("GGUF MTP2 prompt hidden rows do not align")
         boundary = self._prefix_checkpoint_boundary(len(tuple(prompt_ids)))
+        _trace_prefix_checkpoint(
+            f"walk single request={request_id} length={len(tuple(prompt_ids))} "
+            f"boundary={boundary}"
+        )
         hidden_buffer = malloc(hidden_size * DType.BF16.itemsize, runtime=target.runtime)
         try:
             zero_bits = np.zeros((hidden_size,), dtype=np.uint16)
@@ -6280,15 +6336,21 @@ class Qwen35GGUFMTP2Adapter:
 
         store = self._prefix_checkpoint_store(provider)
         if store is None:
+            _trace_prefix_checkpoint(
+                f"skipped prefix={boundary}: capture disabled or unreleasable"
+            )
             return
         key_provider = getattr(self, "prefix_checkpoint_key", None)
         if not callable(key_provider):
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: no key provider")
             return
         try:
-            block_ids = key_provider(int(request_id))
+            block_ids = key_provider(int(request_id), int(boundary))
         except Exception:
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: key provider raised")
             return
         if not block_ids:
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: no block ids")
             return
         hidden_size = int(provider.executor.hidden_size)
         boundary_bits = np.ascontiguousarray(
@@ -6303,6 +6365,9 @@ class Qwen35GGUFMTP2Adapter:
         )
         snapshot = getattr(provider.executor, "snapshot_prefix_state", None)
         if not callable(snapshot):
+            _trace_prefix_checkpoint(
+                f"skipped prefix={boundary}: executor cannot snapshot"
+            )
             return
         try:
             checkpoint = snapshot(
@@ -6312,9 +6377,18 @@ class Qwen35GGUFMTP2Adapter:
                     hidden_buffer.ptr, hidden_size * DType.BF16.itemsize
                 ),
             )
-        except Exception:
+        except Exception as exc:
+            # Silent to the request, visible to an operator: a swallowed capture
+            # failure is otherwise indistinguishable from capture being off.
+            _trace_prefix_checkpoint(
+                f"capture failed at prefix={boundary}: {type(exc).__name__}:{exc}"
+            )
             return
         store.put(tuple(prompt_ids[:boundary]), tuple(block_ids), checkpoint)
+        _trace_prefix_checkpoint(
+            f"captured prefix={boundary} blocks={len(tuple(block_ids))} "
+            f"held={len(store)}"
+        )
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
