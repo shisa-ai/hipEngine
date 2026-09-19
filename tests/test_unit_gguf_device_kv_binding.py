@@ -772,7 +772,12 @@ def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundar
     assert snapshot.position == 256
     assert snapshot.block_ids == (8,)
     assert snapshot.nbytes == 192
-    assert runtime.malloc_calls == [64, 128]
+    # One pooled arena backs every per-layer view, so capture issues a single
+    # allocation rather than one malloc per conv/recurrent buffer. Views are
+    # 4096-aligned inside it, so the arena is larger than the 192 live bytes.
+    assert len(runtime.malloc_calls) == 1
+    assert runtime.malloc_calls[0] >= 192
+    assert snapshot.arena is not None
     assert runtime.device_synchronize_calls == 1
 
     source._position = 0
@@ -788,6 +793,10 @@ def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundar
 
     snapshot.close()
     assert snapshot.closed is True
-    assert runtime.free_calls == [0xA000, 0x9000]
+    # Closing returns the arena to the per-session pool instead of freeing each
+    # view, so the next capture of the same geometry allocates nothing. Freeing
+    # the views individually would double free the arena's single allocation.
+    assert runtime.free_calls == []
+    assert source._prefix_snapshot_arena_pool().stats()["retained_arenas"] == 1
     with pytest.raises(RuntimeError, match="closed"):
         destination.clone_prefix_state_from_snapshot(snapshot)

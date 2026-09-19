@@ -1173,3 +1173,30 @@ def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> N
     before_grow()
     on_pressure(8)
     assert calls == ["invalidate", ("evict", 8)]
+
+
+def test_bound_blocks_validate_against_pool_capacity_after_growth() -> None:
+    """A grown pool's pages must bind, not fail against the first chunk's count.
+
+    The global pool grows by appending backing chunks while keeping page ids
+    stable and reaching every page through its pointer tables. Validating an
+    allocation against the first chunk's page count rejected any request whose
+    pages landed past that chunk, which is what a retained-snapshot prefix-cache
+    run hits the moment the pool grows.
+    """
+
+    validate = gguf_runner._validate_bound_blocks_against_capacity
+
+    # Pages inside the first chunk, and pages past it, are both in range once
+    # the bound is the pool capacity.
+    validate((0, 1, 2), start_block_id=0, page_capacity=128)
+    validate((126, 127, 200), start_block_id=0, page_capacity=256)
+
+    with pytest.raises(ValueError, match="must contain pages"):
+        validate((), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="must be unique"):
+        validate((3, 3), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="outside its pool page range"):
+        validate((0, 128), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="outside its pool page range"):
+        validate((1,), start_block_id=4, page_capacity=128)

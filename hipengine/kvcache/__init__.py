@@ -147,6 +147,7 @@ from hipengine.kvcache.radix import (
     PrefixCacheMatch,
     PrefixCacheStats,
     RadixCache,
+    PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
 __all__ = [
@@ -266,6 +267,7 @@ __all__ = [
     "load_external_dms_sidecar",
     "load_dms_retrofit_config",
     "resolve_kv_policy",
+    "PREFIX_CACHE_DEFAULT",
     "resolve_prefix_cache_mode",
     "screen_external_sidecar",
 ]

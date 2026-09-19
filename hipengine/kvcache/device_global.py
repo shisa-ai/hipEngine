@@ -507,6 +507,10 @@ class GlobalDeviceKVPool:
             backing=self._backing,
             reused_block_ids=tuple(int(page_id) for page_id in lease.shared_page_ids),
             allocated_block_ids=tuple(int(page_id) for page_id in lease.private_page_ids),
+            # Growth appends backing chunks while keeping page ids stable, so
+            # the first chunk's page count stops being the right bound as soon
+            # as the pool grows. The pointer tables cover every page.
+            pool_page_capacity=int(self.global_pool.page_capacity),
         )
 
     def _active_lease_for(self, page_ids: tuple[int, ...]) -> str:

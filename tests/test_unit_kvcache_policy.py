@@ -23,6 +23,7 @@ from hipengine.kvcache import (
     KVTransaction,
     RadixCache,
     resolve_kv_policy,
+    PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
 from hipengine.kvcache.pool import DeviceKVContiguityError
@@ -121,7 +122,11 @@ def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
 
 
 def test_radix_cache_hits_full_blocks_and_misses_partial_edges() -> None:
-    assert resolve_prefix_cache_mode(None) == "off"
+    # Prefix reuse is the default; an unset mode resolves to it, and "off" is
+    # the explicit opt-out.
+    assert resolve_prefix_cache_mode(None) == PREFIX_CACHE_DEFAULT == "radix"
+    assert resolve_prefix_cache_mode("") == "radix"
+    assert resolve_prefix_cache_mode("off") == "off"
     assert resolve_prefix_cache_mode("RADIX") == "radix"
     with pytest.raises(ValueError, match="prefix cache"):
         resolve_prefix_cache_mode("tree")

@@ -386,6 +386,12 @@ class DeviceKVPoolAllocation:
     reused_block_ids: tuple[int, ...] = ()
     allocated_block_ids: tuple[int, ...] = ()
     first_divergent_token: int | None = None
+    # Authoritative page bound for pools whose pages are reached through a
+    # pointer-table indirection rather than one contiguous backing chunk. The
+    # global pool grows by appending chunks while keeping page ids stable, so
+    # its allocations are valid against the pool's capacity, not against the
+    # first chunk's page count. None keeps the single-chunk contract.
+    pool_page_capacity: int | None = None
 
 
 class DeviceKVContiguityError(MemoryError):
