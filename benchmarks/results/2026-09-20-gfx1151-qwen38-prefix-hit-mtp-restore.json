@@ -1,0 +1,236 @@
+{
+  "date": "2026-09-20",
+  "kind": "served measurement (retained)",
+  "host": "zbook, physical host gfx1151 (Radeon 8060S)",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "backend": "hip_gfx1151",
+  "execution_profile": "production",
+  "kv_storage": "bf16",
+  "server": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 8192 --kv-storage bf16 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache radix",
+  "harness": "uv run --no-sync python scripts/sharegpt_mtp_routing_pass.py --dataset ShareGPT_V3_unfiltered_cleaned_split.json --num-prompts 2 --turns 2 --min-prompt-len 300 --max-prompt-len 600 --max-total-len 1024 --output-len 64 --max-concurrency 1 --seed 4242",
+  "arms": {
+    "mtp": {
+      "route_mix": "on",
+      "speculative_mtp": null,
+      "rows": [
+        {
+          "source_id": "PqbAs6M_19",
+          "turn_index": 0,
+          "prefix_reused_tokens": 0,
+          "prefix_matched_tokens": 0,
+          "effective_route": "speculative_mtp",
+          "mtp_used": true,
+          "draft_cycles": 24,
+          "accepted_draft_tokens": 39,
+          "provider_state_present": true,
+          "provider_readiness": "ready",
+          "unexplained_mtp_output_tokens": 0,
+          "reconciled": true,
+          "completion_tokens": 64,
+          "ttft_ms": 5236.547015141696,
+          "itl_median_ms": 39.85803077868636,
+          "e2e_ms": 7707.82621530816,
+          "output_sha256": "4020e150c51f037747f4f483a9c87329d856263c981359bd4255e691c3fd6ad8"
+        },
+        {
+          "source_id": "PqbAs6M_19",
+          "turn_index": 1,
+          "prefix_reused_tokens": 256,
+          "prefix_matched_tokens": 256,
+          "effective_route": "speculative_mtp",
+          "mtp_used": true,
+          "draft_cycles": 24,
+          "accepted_draft_tokens": 39,
+          "provider_state_present": true,
+          "provider_readiness": "ready",
+          "unexplained_mtp_output_tokens": 0,
+          "reconciled": true,
+          "completion_tokens": 64,
+          "ttft_ms": 1216.8437372893095,
+          "itl_median_ms": 41.133381546505035,
+          "e2e_ms": 3767.1838561072946,
+          "output_sha256": "e30598bdb4f70707c8a3b750d60fc0b0f68cfd90d4c4b9ada2c1c9050648ccae"
+        },
+        {
+          "source_id": "j432BUt_0",
+          "turn_index": 0,
+          "prefix_reused_tokens": 0,
+          "prefix_matched_tokens": 0,
+          "effective_route": "speculative_mtp",
+          "mtp_used": true,
+          "draft_cycles": 18,
+          "accepted_draft_tokens": 44,
+          "provider_state_present": true,
+          "provider_readiness": "ready",
+          "unexplained_mtp_output_tokens": 0,
+          "reconciled": true,
+          "completion_tokens": 64,
+          "ttft_ms": 1400.6281159818172,
+          "itl_median_ms": 30.461831724331265,
+          "e2e_ms": 3289.3184600397944,
+          "output_sha256": "89cdb1dd403415a5ca4fbf28d82e15eef5740700da68ff8c7008eee12f45bc2e"
+        },
+        {
+          "source_id": "j432BUt_0",
+          "turn_index": 1,
+          "prefix_reused_tokens": 256,
+          "prefix_matched_tokens": 256,
+          "effective_route": "speculative_mtp",
+          "mtp_used": true,
+          "draft_cycles": 20,
+          "accepted_draft_tokens": 42,
+          "provider_state_present": true,
+          "provider_readiness": "ready",
+          "unexplained_mtp_output_tokens": 0,
+          "reconciled": true,
+          "completion_tokens": 64,
+          "ttft_ms": 1207.8616530634463,
+          "itl_median_ms": 34.883353663908856,
+          "e2e_ms": 3370.6856151111424,
+          "output_sha256": "bd9b50e1675e19171ebc4d773ea6b1d69f47b69cea9412ae6edc438a8a3fde39"
+        }
+      ]
+    },
+    "ar": {
+      "route_mix": "off",
+      "speculative_mtp": false,
+      "rows": [
+        {
+          "source_id": "PqbAs6M_19",
+          "turn_index": 0,
+          "prefix_reused_tokens": 0,
+          "prefix_matched_tokens": 0,
+          "effective_route": null,
+          "mtp_used": null,
+          "draft_cycles": null,
+          "accepted_draft_tokens": null,
+          "provider_state_present": null,
+          "provider_readiness": null,
+          "unexplained_mtp_output_tokens": null,
+          "reconciled": null,
+          "completion_tokens": 64,
+          "ttft_ms": 1180.1187577657402,
+          "itl_median_ms": 82.06541589911907,
+          "e2e_ms": 6268.289650790393,
+          "output_sha256": "e10d7dcda2b029701c3ee2d3b05595770c6d152462a6ecaca15fbeefde6ea02c"
+        },
+        {
+          "source_id": "PqbAs6M_19",
+          "turn_index": 1,
+          "prefix_reused_tokens": 256,
+          "prefix_matched_tokens": 256,
+          "effective_route": null,
+          "mtp_used": null,
+          "draft_cycles": null,
+          "accepted_draft_tokens": null,
+          "provider_state_present": null,
+          "provider_readiness": null,
+          "unexplained_mtp_output_tokens": null,
+          "reconciled": null,
+          "completion_tokens": 64,
+          "ttft_ms": 1011.494698934257,
+          "itl_median_ms": 82.61754288668594,
+          "e2e_ms": 6133.858080022037,
+          "output_sha256": "e30598bdb4f70707c8a3b750d60fc0b0f68cfd90d4c4b9ada2c1c9050648ccae"
+        },
+        {
+          "source_id": "j432BUt_0",
+          "turn_index": 0,
+          "prefix_reused_tokens": 0,
+          "prefix_matched_tokens": 0,
+          "effective_route": null,
+          "mtp_used": null,
+          "draft_cycles": null,
+          "accepted_draft_tokens": null,
+          "provider_state_present": null,
+          "provider_readiness": null,
+          "unexplained_mtp_output_tokens": null,
+          "reconciled": null,
+          "completion_tokens": 64,
+          "ttft_ms": 1188.6948705650866,
+          "itl_median_ms": 82.32854198544256,
+          "e2e_ms": 6293.133073020726,
+          "output_sha256": "03c31fdb5c2f7f901d7cb766338374e2fdef73a34aea6a81c460979f5c09f115"
+        },
+        {
+          "source_id": "j432BUt_0",
+          "turn_index": 1,
+          "prefix_reused_tokens": 256,
+          "prefix_matched_tokens": 256,
+          "effective_route": null,
+          "mtp_used": null,
+          "draft_cycles": null,
+          "accepted_draft_tokens": null,
+          "provider_state_present": null,
+          "provider_readiness": null,
+          "unexplained_mtp_output_tokens": null,
+          "reconciled": null,
+          "completion_tokens": 64,
+          "ttft_ms": 1018.0588569492102,
+          "itl_median_ms": 82.56811364704082,
+          "e2e_ms": 6137.372802942991,
+          "output_sha256": "bd9b50e1675e19171ebc4d773ea6b1d69f47b69cea9412ae6edc438a8a3fde39"
+        }
+      ]
+    }
+  },
+  "identity": {
+    "hit_rows_output_sha256_match": true,
+    "miss_rows_output_sha256_match": false,
+    "note": "Hit rows -- the rows this change serves -- are byte-identical between the two client arms. The miss rows differ in one token; this change does not alter any miss-row route (the streaming-sink prompt priming that distinguishes the arms predates it), so that difference is the pre-existing MTP-vs-AR prefill-route variance, recorded here rather than claimed away."
+  },
+  "result": {
+    "hit_row_itl_median_ms": {
+      "before_ar": [
+        82.61754288668594,
+        82.56811364704082
+      ],
+      "after_mtp": [
+        41.133381546505035,
+        34.883353663908856
+      ]
+    },
+    "hit_row_e2e_ms": {
+      "before_ar": [
+        6133.858080022037,
+        6137.372802942991
+      ],
+      "after_mtp": [
+        3767.1838561072946,
+        3370.6856151111424
+      ]
+    },
+    "hit_row_ttft_ms": {
+      "before_ar": [
+        1011.494698934257,
+        1018.0588569492102
+      ],
+      "after_mtp": [
+        1216.8437372893095,
+        1207.8616530634463
+      ]
+    },
+    "hit_row_cycles": {
+      "before": 0,
+      "after": [
+        24,
+        20
+      ]
+    },
+    "hit_row_accepted_draft_tokens": {
+      "before": 0,
+      "after": [
+        39,
+        42
+      ]
+    },
+    "miss_row_itl_median_ms": [
+      39.85803077868636,
+      30.461831724331265
+    ],
+    "summary": "Prefix-cache hit rows go from autoregressive decoding (0 draft cycles, 82.6 ms median ITL) to speculative decoding at the miss rows' rate (20-24 cycles, 35-41 ms median ITL against the miss rows' 30-40 ms), with byte-identical output and 1.63-1.82x lower end-to-end latency on this load."
+  },
+  "source": "worklog/entries/20260919T233131.074462Z-lhl-mtp2-prefix-checkpoint-restore-prime-88eaea.md",
+  "correctness_gate": "Production-profile served route: hit rows report provider_state_present=true, provider_readiness=ready, unexplained_mtp_output_tokens=0 and reconciled=true; the target verifies every drafted token, and the hit rows' outputs are byte-identical to the same prompts served autoregressively."
+}

@@ -9269,9 +9269,14 @@ class Qwen35GGUFResidentModelRunner:
         row = self._row(int(request_id))
         if row.prefill_tokens_seen > 0 or row.mtp2_candidate_budget <= 0:
             return True
-        # A prefix-reused row never primes a provider (K0), so it can start
-        # whenever the scheduler picks it.
-        return bool(row.prefix_reused_tokens)
+        # A prefix-reused row that has no usable checkpoint never primes a
+        # provider (K0), so it can start whenever the scheduler picks it. One
+        # that does prime streams its suffix like any other row and needs the
+        # claim for the same reason: its first chunk would otherwise forfeit a
+        # provider that is about to be restored.
+        if not row.prefix_reused_tokens:
+            return False
+        return int(row.request_id) not in self._restorable_prefix_rows((row,))
 
     def prefill_needs_activation(self, request_id: int) -> bool:
         """Whether this row's next chunk would open the prompt-activation claim.
@@ -9285,20 +9290,58 @@ class Qwen35GGUFResidentModelRunner:
         """
 
         row = self._row(int(request_id))
-        return bool(
-            row.mtp2_candidate_budget > 0
-            and not row.prefix_reused_tokens
-            and row.prefill_tokens_seen == 0
-            and row.slot is None
-        )
+        if row.mtp2_candidate_budget <= 0:
+            return False
+        if row.prefix_reused_tokens:
+            # A restorable hit row opens a claim like any streaming row; a
+            # refused one never opens a sink at all.
+            return bool(
+                int(row.request_id) in self._restorable_prefix_rows((row,))
+                and row.prefill_tokens_seen == 0
+                and row.slot is None
+            )
+        return bool(row.prefill_tokens_seen == 0 and row.slot is None)
+
+    def _restorable_prefix_rows(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+    ) -> set[int]:
+        """Request ids whose reused prefix has a usable checkpoint.
+
+        Empty when no adapter is resolved, so a row that cannot be restored
+        keeps the pre-checkpoint behavior of never priming a provider.
+        """
+
+        if not hasattr(self, "_mtp2_adapter"):
+            # A runner double that never initialized adapter state has none.
+            return set()
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return set()
+        probe = getattr(adapter, "restorable_prefix_rows", None)
+        if not callable(probe):
+            return set()
+        return set(probe(rows))
 
     def _begin_mtp2_prompt_streaming(
         self,
         rows: Sequence[_GGUFResidentLoopRow],
     ) -> tuple[Any | None, ...]:
+        resolver = getattr(self, "_resolved_mtp2_adapter", None)
+        adapter = resolver() if callable(resolver) else None
+        restorable: set[int] = set()
+        # A runner double without adapter state has no restorable rows.
+        probe = getattr(self, "_restorable_prefix_rows", None)
+        if adapter is not None and callable(probe):
+            restorable = set(probe(rows))
         selected = tuple(
-            row for row in rows
-            if row.mtp2_candidate_budget > 0 and not row.prefix_reused_tokens
+            row
+            for row in rows
+            if row.mtp2_candidate_budget > 0
+            and (
+                not row.prefix_reused_tokens
+                or int(row.request_id) in restorable
+            )
         )
         # A reused prefix is never prefilled, so the prompt hidden rows a draft
         # provider is primed from cannot exist for such a row, and it is filtered
@@ -9311,6 +9354,7 @@ class Qwen35GGUFResidentModelRunner:
             if (
                 row.mtp2_candidate_budget > 0
                 and int(row.prefix_reused_tokens) > 0
+                and int(row.request_id) not in restorable
                 and row.mtp2_prompt_fallback_reason is None
             ):
                 row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
@@ -9321,7 +9365,6 @@ class Qwen35GGUFResidentModelRunner:
             return (None,) * len(tuple(rows))
         if not selected:
             return (None,) * len(tuple(rows))
-        adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             return (None,) * len(tuple(rows))
         checkpoints = {
@@ -9926,6 +9969,15 @@ class Qwen35GGUFResidentModelRunner:
         if row.prefix_reused_tokens:
             start = time.perf_counter()
             session = lease.session
+            # A restorable hit row primes its provider from the checkpoint at
+            # the boundary and then streams the suffix rows it is about to
+            # prefill, which is the only source of provider state a reused
+            # prefix can have: the reused tokens never run the target here.
+            reused_prefix = int(row.prefix_reused_tokens)
+            sink = None
+            if row.mtp2_candidate_budget > 0:
+                streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+                sink = streaming_sinks[0] if streaming_sinks else None
             prefill_batch = (
                 getattr(
                     self._packed_execution_owner(session),
@@ -9939,14 +9991,34 @@ class Qwen35GGUFResidentModelRunner:
                 else None
             )
             if callable(prefill_batch):
+                chunk_abs_start = int(getattr(session, "position", 0))
                 segments = _gguf_prefix_suffix_segments(
-                    int(getattr(session, "position", 0)),
+                    chunk_abs_start,
                     len(row.prompt_ids),
                     chunk,
                 )
                 result = None
+                segment_offset = 0
                 for segment_index, segment in enumerate(segments):
                     last_segment = segment_index == len(segments) - 1
+                    # The sink carries the suffix, so its chunk start is the
+                    # suffix-relative row index the engine reports as absolute.
+                    streaming_kwargs = (
+                        {
+                            "target_hidden_chunk_sinks": (sink,),
+                            "target_hidden_request_ids": (row.request_id,),
+                            "target_hidden_chunk_starts": (
+                                chunk_abs_start - reused_prefix + segment_offset,
+                            ),
+                            # A suffix is prefilled in chunks, so this call does
+                            # not own the sink's whole timeline: the adapter
+                            # closes it once the prompt is complete.
+                            "finish_target_hidden_sinks": False,
+                        }
+                        if sink is not None
+                        else {}
+                    )
+                    segment_offset += len(segment)
                     with _temporary_env(
                         {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
                     ):
@@ -9957,6 +10029,7 @@ class Qwen35GGUFResidentModelRunner:
                             return_logits=False,
                             return_hidden_seeds=False,
                             sample_output=bool(final_chunk and last_segment),
+                            **streaming_kwargs,
                         )
                     if not last_segment:
                         # The segment ended exactly on the deepest prompt-
@@ -9976,6 +10049,15 @@ class Qwen35GGUFResidentModelRunner:
                 row.prefill_chunk_count += 1
                 self._refresh_prefix_cache_at_prompt_boundary(row, lease)
                 if final_chunk:
+                    if sink is not None:
+                        # Commit the streamed suffix: the provider is now at the
+                        # prompt's end and the row owns it. A sink that is short
+                        # is refused there and the row decodes autoregressively.
+                        self._finish_mtp2_prompt_streaming(
+                            (row,),
+                            (sink,),
+                            success=True,
+                        )
                     self._finish_native_prefill(
                         row,
                         result,

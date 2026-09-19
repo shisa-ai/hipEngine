@@ -8,10 +8,13 @@ upstream prefix-cache A/B reproduces the merge screening rows (35B MoE all lanes
 hits). On the served multi-turn protocol with an in-load true-AR control, rows
 that used MTP decode at **25.34 against 12.27 tok/s per request (2.07x)** with
 median ITL halved (82.8 → 40.1 ms) at c=1, that per-request advantage is gone at
-c=4 (9.59 against 9.30), warm prefix hits use no MTP at all, and the c=4
-speculative lane loses coverage to activation (2 of 6 rows, 635 `no_provider`
-events). This is a working baseline, not a promotion or an aggregate MTP
-throughput claim.
+c=4 (9.59 against 9.30), and the c=4 speculative lane loses coverage to
+activation (2 of 6 rows, 635 `no_provider` events). Warm prefix hits now
+speculate too: a hit row restores the draft provider's checkpoint at its reused
+boundary and streams its suffix, measuring **82.6 → 35-41 ms median ITL and
+1.63-1.82x lower end-to-end latency** on the served c=1 protocol with
+byte-identical output. This is a working baseline, not a promotion or an
+aggregate MTP throughput claim.
 [Baseline artifact](results/2026-09-20-gfx1151-post-merge-baseline-cache-and-mtp-arms.json).
 
 Merge qualification on physical host `gfx1151` (Radeon 8060S): the local
