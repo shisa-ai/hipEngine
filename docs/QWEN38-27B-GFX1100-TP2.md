@@ -128,8 +128,9 @@ gap in the table above was closed later the same day by two changes: the session
 consumes the rank-local bulk prefill candidate instead of staying token-serial,
 and that route projects the head for the last prompt row rather than for all of
 them, which alone was 46% of its kernel time. TP2 prefill is now **922.1 tok/s**
-at the same shape - 1.05x this project's own single-card bulk route (875.8) and
-0.98x llama.cpp TP=1 (941.8), against 1474.6 for the fork's TP=2 tensor split.
+at the same shape - 1.04x this project's own single-card shipping bulk route
+(890.8, WMMA confirmed on) and 0.98x llama.cpp TP=1 (941.8), against 1474.6
+for the fork's TP=2 tensor split.
 Full protocol,
 commands, and artifacts:
 [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) "Qwen3.8-27B dense Q4_K_M
@@ -142,8 +143,8 @@ near 950-965 tok/s instead of rising with prompt length (787.1 at 256 tokens,
 ms/token across those steps), so the gap to the fork's 1474.6 is per-token
 throughput, not a per-prefill fixed cost. Halving the sharded MLP should have
 made each rank do about 0.62x the single-card work, but the measured wall is
-0.95x, so each rank runs at roughly 65% of the single-card route's efficiency -
-recovering that would put the route near 1420 tok/s. The replicated GDN/attention
+0.97x, so each rank runs at roughly 64% of the single-card route's efficiency -
+recovering that would put the route near 1444 tok/s. The replicated GDN/attention
 work is only ~7% of profiled kernel time, so it does not explain the loss on its
 own. Attribution of the loss between the per-layer exchange and the shard-tile
 shape is the next unit. Artifact:

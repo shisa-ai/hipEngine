@@ -181,10 +181,24 @@
   },
   "per_rank_efficiency": {
    "tp2_work_share_of_single_card": 0.616,
-   "tp2_wall_share_of_single_card": 0.949,
-   "ratio": 0.65,
-   "basis": "Work share derived from the pre-fix bulk-prefill kernel inventory (sharded quantized matmuls 42.6%, replicated GDN/attention 7.4%, exchange casts 5.5% of profiled kernel time) by halving the sharded fraction; wall share is measured 555 ms (TP2, 512 tokens) vs 585 ms (single-card resident bulk prefill, 875.8 tok/s). Profiled durations are inflated, so the work share is an estimate and the direction is what carries.",
-   "implied_if_recovered_tok_per_s": 1420
+   "tp2_wall_share_of_single_card": 0.966,
+   "ratio": 0.64,
+   "basis": "Work share derived from the pre-fix bulk-prefill kernel inventory (sharded quantized matmuls 42.6%, replicated GDN/attention 7.4%, exchange casts 5.5% of profiled kernel time) by halving the sharded fraction; wall share is measured 555 ms (TP2, 512 tokens) vs 574.8 ms (single-card shipping route, 890.8 tok/s, WMMA confirmed on). Profiled durations are inflated, so the work share is an estimate and the direction is what carries.",
+   "implied_if_recovered_tok_per_s": 1444
+  },
+  "single_card_baseline_verified": {
+   "date": "2026-09-19",
+   "prefill_tok_per_s_median": 890.7818761801236,
+   "samples": [
+    891.8582214505985,
+    890.7818761801236,
+    889.4190680048048
+   ],
+   "wall_ms_for_512_tokens": 574.8,
+   "use_wmma_prefill": true,
+   "shipping_ar_route_mismatch": false,
+   "command": "python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --warmup-runs 1 --measured-runs 3 --public-ar-profile",
+   "why": "The recorded 875.8 baseline predates this revision, and a re-run of the same harness without --public-ar-profile left use_wmma_prefill off and emitted shipping_ar_route_mismatch=true, so it could not be used to compare against a TP2 route that does run WMMA. The shipping route was therefore re-measured explicitly; it confirms the recorded baseline (890.8 vs 875.8, a 1.7% difference)."
   }
  }
 }
