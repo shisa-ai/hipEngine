@@ -8667,3 +8667,37 @@ the gfx1151 zbook and a W7900 host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled
 there. gfx1100 still lacks the head-major capability, so its gapped slots keep
 the native spans fallback and the suffix guard until that backend validates
 head-major KV.
+
+## Two MTP entry points disagree on the sampling contract (open 2026-09-19)
+
+The served GGUF MTP route (the MTP2 adapter, `qwen35_gguf_mtp2.py`) is
+capability-gated per sampling mode: a temperature request is served by the
+sampled route when an evidence row advertises it, and that route is a measured
+1.90x at c=1. The direct-generator MTP entry still declares the pre-gate
+contract in two places:
+
+- `hipengine/generation/qwen35_gguf.py::_generate_speculative_mtp_detailed`
+  (reached from the entry above it) raises
+  `NotImplementedError("GGUF speculative MTP currently supports only greedy-fast
+  sampling")` for any non-`GREEDY_FAST` sampler plan.
+- The transactional verify work that path drives
+  (`hipengine/generation/batch_scheduler.py::next_speculative_verify_work`)
+  builds every work item with `target_sampling_policy="raw_target_top1"` and
+  `compatible_sampling_modes=("greedy_fast",)`, and raises
+  `ValueError("speculative verification requires greedy-fast sampling; ...
+  incompatible fields: temperature")` for a sampled request.
+
+Both statements are *accurate for that implementation* -- its verifier commits a
+raw target top-1 and cannot serve a sampled accept -- so the repair is not to
+widen the constants but to stop having two sampling contracts. When the
+direct-generator path is next touched, a sampled request should be routed to the
+MTP2 adapter (which already owns the sampled accept) rather than growing a
+second sampled accept in the transactional verifier, and the two sites above
+should then be deleted rather than relaxed. Until then the refusal is honest and
+the gap is confined to direct-generator callers: the server's sampled requests
+reach the adapter route and are measured there.
+
+A test-level artifact of the same confusion is gone: the greedy route's
+predicate test is now named
+`test_greedy_speculative_route_predicate_allows_only_greedy_fast_requests` and
+says in its docstring that it pins one half of the policy.

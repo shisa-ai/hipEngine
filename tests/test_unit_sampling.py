@@ -320,7 +320,17 @@ def test_sampler_plan_reports_requested_native_gpu_unavailable() -> None:
     assert plan.fallback_reason == "native_gpu_unsupported_request"
 
 
-def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
+def test_greedy_speculative_route_predicate_allows_only_greedy_fast_requests() -> None:
+    """The greedy route's predicate, which is not the whole speculative policy.
+
+    ``speculative_mtp_sampling_blockers`` answers for the raw-argmax route
+    only. A request it blocks may still be served by the sampled route when the
+    capability qualifies it (``sampled_speculative_mtp_blockers`` /
+    ``supports_sampled_speculative_mtp``), which is what
+    ``speculative_serving_sampling_mode`` decides between; this test pins the
+    greedy half so the two are not confused again.
+    """
+
     assert tuple(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS) == SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     assert SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS["temperature"] == "temperature > 0"
 
