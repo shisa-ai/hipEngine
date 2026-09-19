@@ -217,6 +217,17 @@ class FakeShardGroup:
         # Session-scoped GGUF linear dispatch context active at each group
         # forward: the shard chain's own GGUF linears resolve from it.
         self.forward_dispatch_context: list[dict] = []
+        # Device-reduced groups are bracketed by a timeout reset and a final
+        # wait; the staged route has both as no-ops, so the fake records them
+        # rather than modelling either.
+        self.device_group_begins = 0
+        self.device_group_finishes = 0
+
+    def begin_device_group(self) -> None:
+        self.device_group_begins += 1
+
+    def finish_device_group(self) -> None:
+        self.device_group_finishes += 1
 
     def forward(self, layer_id: int, inputs, *, rows=None):
         if self.fail_on_layer is not None and layer_id == self.fail_on_layer:

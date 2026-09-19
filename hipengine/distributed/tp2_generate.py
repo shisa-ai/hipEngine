@@ -622,6 +622,7 @@ class MlpTP2GenerationSession:
             slot_sets=2,
             rows=rows,
             owns_weights=False,
+            reduce_mode=self.reduce_mode,
         )
 
     def _release_bulk_prefill_workspace(self) -> None:
@@ -794,11 +795,20 @@ class MlpTP2GenerationSession:
     def _run_bulk_prefill_layers(self, rows: int) -> None:
         src = {device: self._bulk_hidden[device][0] for device in self.devices}
         dst = {device: self._bulk_hidden[device][1] for device in self.devices}
+        group = self._bulk_shard_group
+        # A device-reduced group enqueues every layer without a host wait, so it
+        # needs its spin-timeout flags cleared once here and one wait at the end
+        # (which also surfaces a timeout as a failure rather than leaving a
+        # stale boundary row in place). The staged route is a no-op on both.
+        if group is not None:
+            group.begin_device_group()
         for layer_id, layer_type in enumerate(self._config.layer_types):
             self._bulk_attention_layer(layer_id, layer_type, src, rows)
             self._bulk_norm_residual_layer(layer_id, src, rows)
             self._bulk_sharded_mlp_layer(layer_id, src, dst, rows)
             src, dst = dst, src
+        if group is not None:
+            group.finish_device_group()
         self._bulk_final_hidden = dict(src)
 
     def _bulk_attention_layer(

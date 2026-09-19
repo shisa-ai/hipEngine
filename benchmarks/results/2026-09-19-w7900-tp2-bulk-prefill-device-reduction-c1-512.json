@@ -1,0 +1,60 @@
+{
+ "schema": 1,
+ "kind": "tp2_bulk_prefill_device_reduction",
+ "status": "retained",
+ "performance_claim": true,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "concurrency": 1,
+  "prompt_length": 512,
+  "decode_tokens": 128,
+  "max_sequence_length": 2048,
+  "speculative_decoding": false,
+  "kv_dtype": "f16"
+ },
+ "commands": {
+  "bench": "python3 scripts/tp2_c1_bench.py --mode tp2 --devices 0,1 --bulk-prefill --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --repeats 4",
+  "parity": "python3 scripts/tp2_bulk_prefill_diagnostic.py --reduce-mode {host,device} --json OUT.json"
+ },
+ "result": {
+  "prefill_tok_per_s_median": 1032.8965415301363,
+  "prefill_tok_per_s_samples": [
+   1024.1907532245027,
+   1031.980329332029,
+   1032.8965415301363,
+   1034.8598396853315
+  ],
+  "prefill_p50_ms": 499.9068761244416,
+  "decode_tok_per_s_median": 39.26597383533851,
+  "baseline_prefill_tok_per_s": 922.1,
+  "delta_percent": 12.02
+ },
+ "correctness": {
+  "method": "same-model, same-shape bulk prefill run under reduce_mode=host and reduce_mode=device, compared by per-prompt logits_sha256 and every gate metric",
+  "bit_identical": true,
+  "prompts": {
+   "heldout_mixed_summary": {
+    "host_logits_sha256": "af4b3ce0095a82eac3e9c2f9c7a4a23f1b1d40e57a8940f8b1ef5185c18405f6",
+    "device_logits_sha256": "af4b3ce0095a82eac3e9c2f9c7a4a23f1b1d40e57a8940f8b1ef5185c18405f6",
+    "identical": true,
+    "metrics_identical": true
+   },
+   "mixed_ja_en_translate": {
+    "host_logits_sha256": "b4c14c35c66e7a8469b3f8a0ee0865cdc91da8cfb509112bcb4edb5559fc48b5",
+    "device_logits_sha256": "b4c14c35c66e7a8469b3f8a0ee0865cdc91da8cfb509112bcb4edb5559fc48b5",
+    "identical": true,
+    "metrics_identical": true
+   }
+  },
+  "note": "The route's pre-existing KL gap against the TP1 reference is unchanged and unrelated: both reduce modes fail that gate with identical metrics, and the divergence was localized earlier to the Q6_K attn_qkv projection in the replicated attention phase, not the exchange.",
+  "route_gate_passed": false
+ },
+ "finding": "The staged transport's reduce is a host round trip per layer: D2H of both ranks' partials, a host f32 sum on the critical path (the device sits idle), then an f32 payload in pinned host memory that the consumer reads zero-copy over PCIe before a separate cast kernel narrows it. The device exchange does the sum in a peer-spin kernel and writes the bf16 boundary buffer directly, so the host sum, the f32 PCIe read-back and the cast all leave the critical path. Measured 922.1 -> 1032.9 tok/s prefill (+12.0%) with decode unchanged, against a predicted ~13% from the phase attribution."
+}
