@@ -12108,8 +12108,10 @@ def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] |
 def _execution_failed_error(exc: GenerationExecutionFailed) -> OpenAIHTTPError:
     """Report one contained execution failure without blaming the whole server.
 
-    The engine service contains a request's own pre-device step failure and keeps
-    serving, so this is a request-scoped failure the client can retry. A fatal
+    The engine service contains a request's own step failure and keeps
+    serving, so this is a request-scoped failure the client can retry. The
+    contained scope is the runner's, and its mutation class says how much of
+    the step could have reached device state. A fatal
     failure never reaches a client this way: it closes the service and every
     request on it reports that separately.
     """

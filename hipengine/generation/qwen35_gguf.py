@@ -5965,6 +5965,23 @@ class Qwen35GGUFResidentModelRunner:
         # default keeps a failure in any other phase fatal.
         self._execution_mutation_window = "unknown"
         self._execution_step_request_id: int | None = None
+        # Rows whose device state may already have advanced inside the step or
+        # speculative cycle currently executing, and rows whose canonical
+        # commit this runner recorded inside it.  Containment reads both to
+        # bound a post-device claim: a row is left unnamed only when the runner
+        # can prove it never entered the device phase, and the mutation class
+        # is ``committed`` exactly when a canonical commit was recorded before
+        # the failure.
+        self._execution_stepped_request_ids: set[int] = set()
+        self._execution_committed_request_ids: set[int] = set()
+        # The plan of the speculative cycle currently executing, so a failed
+        # cycle can name the rows it owned.
+        self._execution_speculative_plan: Any | None = None
+        # True once the current step's device phase has completed without any
+        # enumerated device work, so a failure after it is still pre-device for
+        # every row.  A phase that raised before completing leaves it False, so
+        # an unenumerated device path stays refused instead of contained.
+        self._execution_device_phase_empty = False
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
         self._graph_handle_replays: dict[int, int] = {}
@@ -7404,6 +7421,7 @@ class Qwen35GGUFResidentModelRunner:
         )
 
     def execute_speculative_cycle(self, plan, *, commit: bool):
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         execute = None if adapter is None else getattr(adapter, "execute_cycle", None)
         if not callable(execute):
@@ -7412,6 +7430,7 @@ class Qwen35GGUFResidentModelRunner:
             return execute(plan, commit=bool(commit))
 
     def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         if adapter is not None:
             with hip_target_arch_environment(self.generator.target_arch):
@@ -7450,6 +7469,7 @@ class Qwen35GGUFResidentModelRunner:
             adapter.release_claims(reservation)
 
     def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
@@ -7457,6 +7477,7 @@ class Qwen35GGUFResidentModelRunner:
             adapter.prepare_requests(plan, request_semantics, stream=stream)
 
     def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
@@ -7475,6 +7496,7 @@ class Qwen35GGUFResidentModelRunner:
         commit: bool,
         cancelled_request_ids,
     ):
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
@@ -7762,7 +7784,12 @@ class Qwen35GGUFResidentModelRunner:
             return frozenset()
         rows, chunks = [row for row, _ in eligible], [chunk for _, chunk in eligible]
         for row in rows:
+            self._execution_step_request_id = int(row.request_id)
             raise_if_generation_deadline_expired(row.request)
+        self._execution_step_request_id = None
+        # From here the grouped call may reach device work for any of these
+        # rows, so all of them join the containment scope of a failure.
+        self._mark_execution_stepped(row.request_id for row in rows)
         leases: list[_GGUFResidentSessionLease] = []
         for row in rows:
             lease = row.lease or self._acquire_lease()
@@ -7841,39 +7868,169 @@ class Qwen35GGUFResidentModelRunner:
         request_ids: tuple[int, ...],
         work_kind: str,
     ) -> ExecutionFailure | None:
-        """Contain one GGUF step that failed before any device call.
+        """Contain one GGUF step the runner can prove is safe to retire.
 
-        Only a step's own pre-device validation is containable here: no kernel
-        was launched, so the failing row's scheduler bookkeeping is the whole
-        blast radius and failing exactly that row is provably safe.  A failure
-        at or after the first device call may have advanced rows the scheduler
-        has not recorded, and a packed step's scratch state is shared, so those
-        failures stay fatal until a device-state proof exists for them.
+        Two claims are available for a prefill or decode step.  ``none`` means
+        the step raised before any device call, so the failing row's scheduler
+        bookkeeping is the whole blast radius.  ``partial`` means the step
+        entered its device phase without claiming a canonical commit: the
+        runner marks every row immediately before its first device call, so the
+        claim names exactly the rows whose device state may have advanced, and
+        the loop retires them through the same request-owned release path a
+        single-row claim uses.  Every row the step never reached stays canonical
+        and is left unnamed.
+
+        A speculative cycle instead asks its resolved adapter for the mutation
+        class and the rows it cannot prove canonical (a cycle that recorded a
+        canonical commit is ``committed``; a cycle whose device cursors moved
+        without one is ``partial``).
+
+        Everything else stays fatal: a ``HipError`` (the device itself reported
+        a fault, so shared device state is unproven), a quiesce that cannot be
+        established, a phase that does not mark its device window, a device
+        phase with no attributed row, and an adapter that cannot narrow the
+        mutation window.  Those are ``unknown``, which is never a successful
+        containment claim.
         """
 
         rows = tuple(int(request_id) for request_id in request_ids)
-        if not rows or str(phase) not in {"prefill", "decode"}:
+        if not rows:
             return None
+        if str(phase) not in {"prefill", "decode"}:
+            return self._contain_speculative_execution_failure(
+                error,
+                phase=phase,
+                request_ids=rows,
+                work_kind=work_kind,
+            )
         if isinstance(error, HipError):
             return None
-        if self._execution_mutation_window != "none":
-            return None
-        if not self._quiesce_after_execution_failure(rows):
-            return None
+        stepped = {
+            request_id
+            for request_id in rows
+            if request_id in self._execution_stepped_request_ids
+        }
         step_request_id = self._execution_step_request_id
-        affected = (
-            (int(step_request_id),)
+        trigger = (
+            int(step_request_id)
             if step_request_id is not None and int(step_request_id) in rows
-            else rows
+            else None
         )
+        if stepped:
+            # Device work is attributed to these rows; the row that raised is
+            # part of the scope even when it never reached its own device call,
+            # because its failure still has to be reported.
+            affected = tuple(
+                sorted(stepped | ({trigger} if trigger is not None else set()))
+            )
+            mutation = "partial"
+        elif (
+            trigger is not None
+            or self._execution_mutation_window == "none"
+            or self._execution_device_phase_empty
+        ):
+            # No row reached device work in this step, so the failure is
+            # pre-device for everything the claim names.
+            affected = (trigger,) if trigger is not None else rows
+            mutation = "none"
+        else:
+            # The step entered its device phase without attributing device work
+            # to any row: the window stays unresolved and the failure is fatal.
+            return None
+        if not self._quiesce_after_execution_failure(affected):
+            return None
         return ExecutionFailure(
             request_ids=affected,
             phase=str(phase),
             work_kind=str(work_kind),
-            mutation="none",
+            mutation=mutation,
             reason=f"{type(error).__name__}: {error}",
             error=error,
         )
+
+    def _contain_speculative_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Claim a failed speculative cycle the resolved adapter can scope."""
+
+        if str(phase) not in {"speculative_prepare", "speculative_cycle"}:
+            return None
+        if isinstance(error, HipError):
+            return None
+        plan = self._execution_speculative_plan
+        if plan is None:
+            return None
+        adapter = self._resolved_mtp2_adapter()
+        evidence = (
+            None if adapter is None else getattr(adapter, "containment_evidence", None)
+        )
+        if not callable(evidence):
+            return None
+        verdict = evidence(plan, error)
+        if verdict is None:
+            return None
+        mutation, affected = verdict
+        affected = tuple(int(request_id) for request_id in affected)
+        if not affected:
+            return None
+        if any(request_id not in request_ids for request_id in affected):
+            # A scope outside the failed work item is a runner bug, not a
+            # containment: refuse it here so the loop never has to reject it.
+            return None
+        if not self._quiesce_after_execution_failure(affected):
+            return None
+        return ExecutionFailure(
+            request_ids=affected,
+            phase=str(phase),
+            work_kind=str(work_kind),
+            mutation=str(mutation),
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
+
+    def _begin_execution_step(self) -> None:
+        """Reset the per-step containment accounting."""
+
+        self._execution_mutation_window = "none"
+        self._execution_step_request_id = None
+        self._execution_stepped_request_ids.clear()
+        self._execution_committed_request_ids.clear()
+        self._execution_device_phase_empty = False
+
+    def _begin_speculative_cycle(self, plan) -> None:
+        """Enter a speculative cycle: remember its plan and clear its commits."""
+
+        self._execution_speculative_plan = plan
+        self._execution_committed_request_ids.clear()
+
+    def _mark_execution_stepped(self, request_ids) -> None:
+        """Record that these rows' device state may already have advanced."""
+
+        self._execution_stepped_request_ids.update(
+            int(request_id) for request_id in request_ids
+        )
+
+    def note_execution_commit(self, request_id: int) -> None:
+        """Record one canonical commit made inside the current cycle.
+
+        A resolved adapter calls this when it publishes a cycle's committed
+        tokens for a row.  Containment reads the set to distinguish a
+        ``committed`` failure, where the row's device state is ahead of the
+        outer scheduler and cannot fall back to autoregressive decoding, from a
+        ``partial`` one where no commit was claimed.
+        """
+
+        self._execution_committed_request_ids.add(int(request_id))
+
+    def execution_committed_request_ids(self) -> frozenset[int]:
+        """Rows whose canonical commit this runner recorded in the current step."""
+
+        return frozenset(self._execution_committed_request_ids)
 
     def _quiesce_after_execution_failure(self, request_ids: tuple[int, ...]) -> bool:
         """Establish device completion after a failed step, or report that it failed."""
@@ -7911,8 +8068,7 @@ class Qwen35GGUFResidentModelRunner:
         return True
 
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
-        self._execution_mutation_window = "none"
-        self._execution_step_request_id = None
+        self._begin_execution_step()
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
@@ -7940,6 +8096,9 @@ class Qwen35GGUFResidentModelRunner:
                     min(len(chunk), int(row.prefix_reused_tokens) - start),
                 )
                 model_chunk = chunk[reused_in_chunk:]
+                # From here the row may reach a device call, so it joins the
+                # containment scope of a failure later in this step.
+                self._mark_execution_stepped((request_id,))
                 if row.native_greedy:
                     if row.incremental_prefill is None:
                         row.incremental_prefill = bool(row.prefix_reused_tokens) or not (
@@ -7988,8 +8147,7 @@ class Qwen35GGUFResidentModelRunner:
                     raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
-        self._execution_mutation_window = "none"
-        self._execution_step_request_id = None
+        self._begin_execution_step()
         if not commit:
             raise ValueError("GGUF resident decode requires commit=True")
         request_ids = tuple(int(request_id) for request_id in work.request_ids)
@@ -8032,9 +8190,17 @@ class Qwen35GGUFResidentModelRunner:
                         request_ids=step_request_ids,
                         row_to_request=step_request_ids,
                     )
+                self._mark_execution_stepped(step_request_ids)
                 self._step_native_rows(step_rows, work=step_work)
+            else:
+                # This tick's device phase has no packed work: every row's first
+                # token came from prefill, so nothing here can have advanced a
+                # row's device state.
+                self._execution_device_phase_empty = True
             for row in rows:
+                self._execution_step_request_id = int(row.request_id)
                 raise_if_generation_deadline_expired(row.request)
+            self._execution_step_request_id = None
 
             generated: list[GeneratedToken] = []
             for request_id, row in zip(request_ids, rows, strict=True):
