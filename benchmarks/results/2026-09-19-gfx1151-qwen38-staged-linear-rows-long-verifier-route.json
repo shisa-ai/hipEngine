@@ -2248,7 +2248,7 @@
     "gfx1100 (W7900) has no measurement in this packet and keeps the row-wise strict route.",
     "The adapter's measured 1,023-token provider window still refuses long-context MTP by default; every long-shape serving row in this packet sets HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192, so the 3,530-token rows measure the route with the window raised and not the default refusal.",
     "The promotion is inert on a cycle the cached native target graph serves: the graph replays the whole target step and never calls the dense linear chain. The server's own graph context cap is 1,023 tokens, which is why the long serving rows exercise the eager route; the task packet at 4,096 tokens is graph-eligible in its session configuration and needed an explicit allow_graph=False to bind eager cycle ownership.",
-    "Pre-existing and not touched by this change: the cached native target graph is not teacher-exact at cycle ends 1,016-1,022, where it submits zero split-K calls against a required split count of 4 and diverges from the serial-exact teacher by up to 9.27 absolute logit delta, KL 6.16 and top-1 agreement 0.667. The same numbers appear with the admission on and off, so the graph route - not the linear-rows route - owns that divergence, and the eager route is byte-exact at the same cycle ends. Filed for follow-up."
+    "Pre-existing and not touched by this change: in the gate's session configuration the cached native target graph is not teacher-exact at cycle ends 1,016-1,022, where it submits zero split-K calls against a required split count of 4 and diverges from the serial-exact teacher by up to 9.27 absolute logit delta, KL 6.16 and top-1 agreement 0.667. The same numbers appear with the admission on and off, so the graph route - not the linear-rows route - owns that divergence, and the eager route is byte-exact at the same cycle ends. It does not reproduce in serving: six shapes landing at 993-1,030 prompt tokens, with MTP engaged on 96.9-98.4% of output tokens, are all exact on generated ids against their own true-AR arm (see graph_band_serving_probe). The graph route still needs its own logits-level review at the ends whose buckets it does serve; this promotion is inert on such a cycle."
   ],
   "sources": {
     "commit": "e9cd1db78c3456e91a50335b34be976eee393436",
@@ -2468,6 +2468,79 @@
       },
       "heldout900-ar": {
         "command": null
+      }
+    }
+  },
+  "graph_band_serving_probe": {
+    "question": "The gate's packet submits the cached native target graph at cycle ends 1,016-1,022 and reports zero split-K calls against a required split count of 4, up to 9.27 absolute logit delta, KL 6.16 and top-1 agreement 0.667. gfx1151 declares a 65,544-token graph context limit, so the question is whether the serving session reaches the same ends and emits MTP output that is not its own AR output.",
+    "protocol": "One server process, staged-linear admission on, BF16 KV, candidate budget 3, HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192, synthetic shapes sized to land the first verify cycles inside the band, 64 decode tokens, two runs per shape, and a true-AR arm selected by the request's own speculative_mtp field against the same process.",
+    "result": "no divergence: every shape is exact on generated ids against its own AR arm",
+    "shapes": {
+      "993": {
+        "requested_shape_tokens": 1080,
+        "prompt_tokens": 993,
+        "mtp_decode_tok_s": 16.14887048997642,
+        "true_ar_decode_tok_s": 12.017022631372072,
+        "ratio": 1.344,
+        "mtp_coverage": 0.96875,
+        "speculative_cycles": 33,
+        "mtp_used": true,
+        "identity_ids_exact": true
+      },
+      "998": {
+        "requested_shape_tokens": 1090,
+        "prompt_tokens": 998,
+        "mtp_decode_tok_s": 18.150430372771982,
+        "true_ar_decode_tok_s": 12.011452121446482,
+        "ratio": 1.511,
+        "mtp_coverage": 0.984375,
+        "speculative_cycles": 30,
+        "mtp_used": true,
+        "identity_ids_exact": true
+      },
+      "1006": {
+        "requested_shape_tokens": 1100,
+        "prompt_tokens": 1006,
+        "mtp_decode_tok_s": 16.654660752125693,
+        "true_ar_decode_tok_s": 11.996781019808965,
+        "ratio": 1.388,
+        "mtp_coverage": 0.96875,
+        "speculative_cycles": 32,
+        "mtp_used": true,
+        "identity_ids_exact": true
+      },
+      "1012": {
+        "requested_shape_tokens": 1110,
+        "prompt_tokens": 1012,
+        "mtp_decode_tok_s": 16.605449024631163,
+        "true_ar_decode_tok_s": 12.001130554414978,
+        "ratio": 1.384,
+        "mtp_coverage": 0.984375,
+        "speculative_cycles": 33,
+        "mtp_used": true,
+        "identity_ids_exact": true
+      },
+      "1021": {
+        "requested_shape_tokens": 1120,
+        "prompt_tokens": 1021,
+        "mtp_decode_tok_s": 18.32989195183305,
+        "true_ar_decode_tok_s": 11.978663878522223,
+        "ratio": 1.53,
+        "mtp_coverage": 0.984375,
+        "speculative_cycles": 30,
+        "mtp_used": true,
+        "identity_ids_exact": true
+      },
+      "1030": {
+        "requested_shape_tokens": 1130,
+        "prompt_tokens": 1030,
+        "mtp_decode_tok_s": 17.887338043641257,
+        "true_ar_decode_tok_s": 11.976431206083,
+        "ratio": 1.494,
+        "mtp_coverage": 0.96875,
+        "speculative_cycles": 30,
+        "mtp_used": true,
+        "identity_ids_exact": true
       }
     }
   }
