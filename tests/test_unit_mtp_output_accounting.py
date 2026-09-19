@@ -204,6 +204,68 @@ def test_record_speculative_plan_keeps_group_rows_and_decision_apart() -> None:
     assert singleton.mtp2_plan_reason == "no_provider"
 
 
+def test_accounting_publishes_the_cycle_phase_split_with_its_divisor() -> None:
+    """The measured phase windows are published, and are not a per-cycle cost.
+
+    These are host-wall windows: a window that ends by reading a result
+    includes the wait for it. Publishing the sums beside ``cycles`` is what
+    makes a per-cycle cost computable without another profiler run.
+    """
+
+    row = _intent_row()
+    record_speculative_outputs(
+        row,
+        candidate_count=3,
+        accepted_count=2,
+        visible_count=3,
+        output_position=0,
+        plan_reason="speculative_qualified",
+    )
+    record_speculative_outputs(
+        row,
+        candidate_count=3,
+        accepted_count=1,
+        visible_count=2,
+        output_position=3,
+        plan_reason="speculative_qualified",
+    )
+    row.mtp2_proposal_ms = 1.5
+    row.mtp2_target_ms = 30.0
+    row.mtp2_provider_update_ms = 2.25
+    row.mtp2_accept_ms = 4.0
+    row.mtp2_target_readback_ms = 0.5
+    row.mtp2_accept_upload_ms = 0.25
+    row.mtp2_accept_tail_ms = 0.0
+    row.mtp2_accept_enqueue_ms = 0.75
+    row.mtp2_selected_commit_ms = 0.5
+    row.mtp2_candidate_readback_ms = 0.25
+
+    accounting = speculative_output_accounting(row)
+
+    assert accounting is not None
+    assert accounting["cycles"] == 2
+    assert accounting["cycle_timing_ms"] == {
+        "proposal": 1.5,
+        "target": 30.0,
+        "provider_update": 2.25,
+        "accept": 4.0,
+        "candidate_readback": 0.25,
+        "target_readback": 0.5,
+        "accept_upload": 0.25,
+        "accept_tail": 0.0,
+        "accept_enqueue": 0.75,
+        "selected_commit": 0.5,
+    }
+    # A row that never ran a cycle still reports zeroed windows rather than
+    # omitting the block, so a reader never has to guess whether the phase was
+    # unmeasured or merely absent from the response.
+    idle = _intent_row()
+    idle_accounting = speculative_output_accounting(idle)
+    assert idle_accounting is not None
+    assert idle_accounting["cycles"] == 0
+    assert set(idle_accounting["cycle_timing_ms"].values()) == {0.0}
+
+
 def test_accounting_keeps_the_first_fallback_position_only() -> None:
     row = _intent_row()
     record_speculative_outputs(
