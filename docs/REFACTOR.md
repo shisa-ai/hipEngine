@@ -8528,6 +8528,30 @@ acceptance against independent c=1 runs) and a claim that stays held until every
 co-activated sink finishes (`finish_prompt_streaming` currently clears
 `_active_prompt_claims` as soon as any one row finishes).
 
+**Intent no longer dies with the refusal (2026-09-19).** The refusal now records
+the row in `_streaming_refused_requests` and leaves `mtp2_candidate_budget`
+alone, because whether a refused row can still speculate is decided by its
+priming source (`_priming_source`: live provider state, a complete and current
+prompt buffer, or neither) rather than by the refusal. Zeroing the budget there
+was the blanket disable this entry was really paying for.
+
+## Priming-source refusals that still zero the budget (open 2026-09-19)
+
+The unsupported priming classes -- `prefix_reuse_k0`, `target_profile_k0`,
+`target_context_k0`, `physical_streaming_category_rejected`,
+`operator_disabled_streaming_prompt_k0`, `packed_prefill_unsupported_k0`,
+`incremental_streaming_unsupported_k0` -- still set
+`row.mtp2_candidate_budget = 0` at their refusal sites, spread across
+`hipengine/generation/qwen35_gguf.py` and `qwen35_gguf_mtp2.py`. That is correct
+today: each names a property of the row on this route, so the row cannot prime a
+provider at all. It should not stay spread out. `_priming_source` is the one
+place that answers "can this row speculate", so these sites should ask it
+instead of writing the budget, and `prefix_reuse_k0` should stop being a refusal
+entirely once #21 lands a checkpoint priming source: a reused-prefix row would
+then carry the fourth class (a restored checkpoint) rather than zeroing its
+budget. Removing the zeroing without that branch would let a reused-prefix row
+reach the gate with no source at all, which is why the two move together.
+
 Related, and separately owed: the serving evidence row for this cell is
 `cap4-realized-c1-b3`, which matches only `realized_group_rows == 1`, so a
 request admitted while it is alone is later batched into a wider decode group and

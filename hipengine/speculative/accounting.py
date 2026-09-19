@@ -70,6 +70,20 @@ PROVIDER_READINESS_STATES = (
     PROVIDER_DECLINED,
 )
 
+# Where a row's draft-provider state comes from. This is the routing rule the
+# refusal paths answer to: an unsupported priming source is a property of the
+# row on this route and keeps it autoregressive for its whole life, while
+# temporary contention is a property of the moment and must not, because whether
+# the row can speculate is decided by its source rather than by the refusal.
+PRIMING_SOURCE_LIVE = "live_provider_state"
+PRIMING_SOURCE_BUFFERED = "prompt_buffer"
+PRIMING_SOURCE_ABSENT = "none"
+PRIMING_SOURCES = (
+    PRIMING_SOURCE_LIVE,
+    PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_ABSENT,
+)
+
 # Diagnostic switch for committed output spans. Off by default: the span list is
 # attribution evidence for an audit, not production telemetry, and it grows with
 # the cycle count.
