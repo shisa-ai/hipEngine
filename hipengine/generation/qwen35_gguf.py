@@ -3003,6 +3003,7 @@ class Qwen35GGUFBringupGenerator:
         batch_results_by_request: dict[int, Any] = {}
         chunk_ms_by_request: dict[int, float] = {}
         completed_chunks = 0
+        serial_prefill_request_ids: set[int] = set()
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 for chunk in chunks:
@@ -3030,8 +3031,26 @@ class Qwen35GGUFBringupGenerator:
                     completed_chunks += 1
         except NotImplementedError:
             if completed_chunks == 0:
+                # Nothing was prefilled yet, so the caller's per-slot route can
+                # serve the whole request; declining here keeps the packed
+                # bound from rejecting a prompt the context admits.
                 return False
-            raise
+            # A later width group hit the packed route's context bound. The
+            # groups before it are already prefilled, so finish the remaining
+            # slots on the strict per-session route instead of failing a
+            # request whose prompt is inside the configured context.
+            self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+            for chunk in chunks[completed_chunks:]:
+                for slot in chunk:
+                    result = slot.session.prefill(
+                        slot.prompt_ids,
+                        return_logits=False,
+                    )
+                    batch_results_by_request[int(slot.request_id)] = result
+                    chunk_ms_by_request[int(slot.request_id)] = _timing_ms_since(
+                        batch_start
+                    )
+                    serial_prefill_request_ids.add(int(slot.request_id))
         prefill_ms = _timing_ms_since(batch_start)
         for slot in slots:
             result = batch_results_by_request[int(slot.request_id)]
@@ -3043,7 +3062,9 @@ class Qwen35GGUFBringupGenerator:
                     "prefill_batch_chunk_ms",
                     float(chunk_ms_by_request.get(int(slot.request_id), 0.0)),
                 )
-            slot.native_compact_prefill = True
+            slot.native_compact_prefill = (
+                int(slot.request_id) not in serial_prefill_request_ids
+            )
             self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
         return True
 
@@ -3912,47 +3933,56 @@ class Qwen35GGUFBringupGenerator:
                     }
                 )
 
-            owner_session = acquired[0]["session"]
-            prefill_batch = getattr(owner_session, "prefill_batch_native", None)
-            if not callable(prefill_batch):
-                raise NotImplementedError("resident session has no packed prefill entry point")
-            prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
-            prefill_ms_by_slot = [0.0] * len(acquired)
-            chunk_start_index = 0
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                while chunk_start_index < len(acquired):
-                    remaining = len(acquired) - chunk_start_index
-                    take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-                    if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
-                        take -= 1
-                    chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
-                    chunk_owner = chunk_entries[0]["session"]
-                    chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
-                    if not callable(chunk_prefill_batch):
-                        raise NotImplementedError("resident session has no packed prefill entry point")
-                    prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
-                    session_batch = [entry["session"] for entry in chunk_entries]
-                    prefill_start = time.perf_counter()
-                    chunk_results = chunk_prefill_batch(
-                        prompt_batch,
-                        sessions=session_batch,
-                        return_logits=False,
-                        return_hidden_seeds=True,
-                    )
-                    prefill_ms = _timing_ms_since(prefill_start)
-                    if chunk_results is None:
-                        raise NotImplementedError("packed MTP prefill returned no results")
-                    chunk_results = list(chunk_results)
-                    if len(chunk_results) != len(chunk_entries):
-                        raise RuntimeError(
-                            f"packed MTP prefill returned {len(chunk_results)} result(s) "
-                            f"for {len(chunk_entries)} slot(s)"
+            # The packed route can refuse this slab's shape (a live count at or
+            # above the packed-prefill bound with no slot-local full attention, see
+            # ``_validate_packed_ar_prefill_context``). That is a route decision for
+            # this request's prompt lengths, not a failure of the request: release
+            # what was acquired and decline so the per-request slot path serves it.
+            try:
+                owner_session = acquired[0]["session"]
+                prefill_batch = getattr(owner_session, "prefill_batch_native", None)
+                if not callable(prefill_batch):
+                    raise NotImplementedError("resident session has no packed prefill entry point")
+                prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
+                prefill_ms_by_slot = [0.0] * len(acquired)
+                chunk_start_index = 0
+                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                    while chunk_start_index < len(acquired):
+                        remaining = len(acquired) - chunk_start_index
+                        take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+                        if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                            take -= 1
+                        chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
+                        chunk_owner = chunk_entries[0]["session"]
+                        chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
+                        if not callable(chunk_prefill_batch):
+                            raise NotImplementedError("resident session has no packed prefill entry point")
+                        prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
+                        session_batch = [entry["session"] for entry in chunk_entries]
+                        prefill_start = time.perf_counter()
+                        chunk_results = chunk_prefill_batch(
+                            prompt_batch,
+                            sessions=session_batch,
+                            return_logits=False,
+                            return_hidden_seeds=True,
                         )
-                    for offset, result in enumerate(chunk_results):
-                        slot_index = chunk_start_index + offset
-                        prefill_results_by_slot[slot_index] = result
-                        prefill_ms_by_slot[slot_index] = prefill_ms
-                    chunk_start_index += take
+                        prefill_ms = _timing_ms_since(prefill_start)
+                        if chunk_results is None:
+                            raise NotImplementedError("packed MTP prefill returned no results")
+                        chunk_results = list(chunk_results)
+                        if len(chunk_results) != len(chunk_entries):
+                            raise RuntimeError(
+                                f"packed MTP prefill returned {len(chunk_results)} result(s) "
+                                f"for {len(chunk_entries)} slot(s)"
+                            )
+                        for offset, result in enumerate(chunk_results):
+                            slot_index = chunk_start_index + offset
+                            prefill_results_by_slot[slot_index] = result
+                            prefill_ms_by_slot[slot_index] = prefill_ms
+                        chunk_start_index += take
+            except NotImplementedError:
+                close_acquired()
+                return None
 
             slots: list[_GGUFMTPServingSlot] = []
             hidden_size = int(assets.token_embd_f32.shape[1])
@@ -7841,6 +7871,31 @@ class Qwen35GGUFResidentModelRunner:
                     return_hidden_seeds=capture_mtp2_hidden,
                     **streaming_kwargs,
                 )
+        except NotImplementedError:
+            # The packed route refuses this slab's shape: a live count at or
+            # above the packed-prefill bound whose slots need full attention
+            # (``_validate_packed_ar_prefill_context`` in the runtime runner).
+            # That is a route decision about this group, not a failure of the
+            # request: report no rows as handled so the caller prefills them
+            # through the serial path, which is the same contract this method
+            # already uses for an ineligible lane or a missing packed owner.
+            # Raising here instead retired every row of the item with an
+            # ``execution_failed`` 500 for a prompt well inside the configured
+            # context.
+            self._finish_mtp2_prompt_streaming(
+                rows,
+                streaming_sinks,
+                success=False,
+            )
+            for row, sink in zip(rows, streaming_sinks, strict=True):
+                if sink is not None:
+                    # The adapter already closed this row's streaming sink as
+                    # failed; keep the budget consistent with that so the
+                    # serial path does not open a second stream for the row.
+                    row.mtp2_candidate_budget = 0
+                    row.mtp2_prompt_fallback_reason = "packed_prefill_unsupported_k0"
+            self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+            return frozenset()
         except Exception:
             self._finish_mtp2_prompt_streaming(
                 rows,

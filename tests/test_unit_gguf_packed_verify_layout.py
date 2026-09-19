@@ -75,6 +75,61 @@ def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
         )
 
 
+def test_packed_prefill_context_bound_is_1024_live_tokens() -> None:
+    """Pin the packed route's context bound and its slot-local exemption.
+
+    ``_validate_packed_ar_prefill_context`` refuses a slab whose longest slot
+    is at or above 1024 live tokens while no slot needs slot-local full
+    attention. Callers must re-route that slab instead of failing the request:
+    1024 tokens is well inside the served context, and the bound exists to keep
+    long contexts on the per-session full-attention path, not to reject them.
+    """
+
+    def layout_for(start_position: int, tokens: int):
+        return _build_gguf_packed_verify_layout(
+            (
+                _GGUFPackedVerifySlotBlock(
+                    input_token_ids=tuple(range(tokens)),
+                    start_position=start_position,
+                ),
+            ),
+            slot_capacity=max(1024, start_position + tokens),
+        )
+
+    below = layout_for(start_position=0, tokens=1023)
+    assert int(below.max_live_count) == 1023
+    gguf_runner._validate_packed_ar_prefill_context(
+        below,
+        slot_local_full_prefill=False,
+    )
+
+    at_bound = layout_for(start_position=0, tokens=1024)
+    assert int(at_bound.max_live_count) == 1024
+    with pytest.raises(NotImplementedError, match="context < 1024"):
+        gguf_runner._validate_packed_ar_prefill_context(
+            at_bound,
+            slot_local_full_prefill=False,
+        )
+    # The same slab is admitted when the caller establishes slot-local full
+    # attention for it, which is how an ordinary long prompt reaches the packed
+    # route.
+    gguf_runner._validate_packed_ar_prefill_context(
+        at_bound,
+        slot_local_full_prefill=True,
+    )
+
+    # A long context carried by a small trailing chunk is the shape that used
+    # to fail: the live count is far above the bound while the chunk itself is
+    # shorter than the AOTriton threshold.
+    tail_chunk = layout_for(start_position=2048, tokens=64)
+    assert int(tail_chunk.max_live_count) == 2112
+    with pytest.raises(NotImplementedError, match="context < 1024"):
+        gguf_runner._validate_packed_ar_prefill_context(
+            tail_chunk,
+            slot_local_full_prefill=False,
+        )
+
+
 def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
