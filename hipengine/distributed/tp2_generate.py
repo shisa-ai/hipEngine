@@ -276,15 +276,20 @@ class MlpTP2GenerationSession:
         if self.bulk_prefill_enabled:
             if self.mode != "tp2":
                 raise ValueError("bulk_prefill is tp2-only (it needs the sharded MLP)")
-            if self.bulk_prefill_rows is None:
-                self.bulk_prefill_rows = int(self.max_sequence_length)
-            if self.bulk_prefill_rows < 1:
-                raise ValueError("bulk_prefill_rows must be positive")
-            if self.bulk_prefill_rows > int(self.max_sequence_length):
-                raise ValueError(
-                    f"bulk_prefill_rows {self.bulk_prefill_rows} exceeds the "
-                    f"session capacity {self.max_sequence_length}"
-                )
+            # ``bulk_prefill_rows`` is an explicit capacity: it is allocated
+            # here and the prompt must fit it. Left unset, the workspace is
+            # sized to the prompt on first use, which is both leaner and
+            # faster (a capacity-sized workspace costs ~7 GiB more per rank at
+            # a 512-token prompt and measured 386 against 440 tok/s, because
+            # every layer then moves more memory than the prompt has rows).
+            if self.bulk_prefill_rows is not None:
+                if self.bulk_prefill_rows < 1:
+                    raise ValueError("bulk_prefill_rows must be positive")
+                if self.bulk_prefill_rows > int(self.max_sequence_length):
+                    raise ValueError(
+                        f"bulk_prefill_rows {self.bulk_prefill_rows} exceeds the "
+                        f"session capacity {self.max_sequence_length}"
+                    )
         # The rank-local bulk prefill replaces the resident session's bulk
         # prefill, so it has to resolve the same GGUF linear kernels for the
         # same weight and rows. ``None`` means "the shipped resident policy"
@@ -314,6 +319,8 @@ class MlpTP2GenerationSession:
         self._shard_group: MlpShardGroup | None = None
         self._bulk_shard_group: MlpShardGroup | None = None
         self._bulk_scratch: dict[int, Any] = {}
+        self._bulk_rows = 0
+        self._bulk_buffers: dict[int, list[Any]] = {d: [] for d in self.devices}
         self._bulk_chunk_scratch: dict[int, Any] = {}
         self._bulk_hidden: dict[int, tuple[int, int]] = {}
         self._bulk_token_buf: dict[int, Any] = {}
@@ -386,8 +393,13 @@ class MlpTP2GenerationSession:
                 self._build_head_shards()
             for device in self.devices:
                 self._alloc_step_buffers(device)
-            if self.bulk_prefill_enabled:
-                self._build_bulk_prefill_workspace()
+            if self.bulk_prefill_enabled and self.bulk_prefill_rows is not None:
+                # An explicit capacity is pre-allocated here, which is how this
+                # route was validated. Deferring the *large* workspace instead
+                # (a 2048-row one costs ~10 GiB) measured erratic and much
+                # slower - 25 to 137 tok/s against 386 when built here. The
+                # prompt-sized default is the deferred one.
+                self._build_bulk_prefill_workspace(int(self.bulk_prefill_rows))
         except Exception:
             self.close()
             raise
@@ -549,16 +561,18 @@ class MlpTP2GenerationSession:
 
     # -- opt-in rank-local bulk prefill ------------------------------------
 
-    def _build_bulk_prefill_workspace(self) -> None:
+    def _build_bulk_prefill_workspace(self, rows: int) -> None:
         """Allocate the per-rank bulk-prefill scratch and a weight-sharing group.
 
         The bulk MLP group reuses the decode group's uploaded shard weights
         (``owns_weights=False``) so closing the two groups cannot double-free
-        them. Every bulk buffer is device-scoped to its own rank and appended
-        to that rank's ``_extra_buffers`` so ``close`` frees each exactly once.
+        them. Every bulk buffer is device-scoped to its own rank and tracked in
+        ``_bulk_buffers`` so growing or closing the session frees each exactly
+        once - the workspace is sized to the prompt, so it is not a build-time
+        allocation.
         """
 
-        rows = int(self.bulk_prefill_rows)
+        rows = int(rows)
         assert rows > 0
         for device in self.devices:
             runner = self._runners[device]
@@ -589,10 +603,11 @@ class MlpTP2GenerationSession:
             self._bulk_token_buf[device] = token_buf
             if logits_buf is not None:
                 self._bulk_logits_buf[device] = logits_buf
-            self._extra_buffers[device].extend([hidden_a, hidden_b, token_buf])
+            self._bulk_buffers[device].extend([hidden_a, hidden_b, token_buf])
             if logits_buf is not None:
-                self._extra_buffers[device].append(logits_buf)
-            self._extra_buffers[device].extend(scratch.buffers)
+                self._bulk_buffers[device].append(logits_buf)
+            self._bulk_buffers[device].extend(scratch.buffers)
+        self._bulk_rows = rows
         self._bulk_host_tokens = np.empty(rows, dtype=np.int64)
         self._bulk_shard_group = MlpShardGroup(
             self.runtime,
@@ -608,6 +623,63 @@ class MlpTP2GenerationSession:
             rows=rows,
             owns_weights=False,
         )
+
+    def _release_bulk_prefill_workspace(self) -> None:
+        """Free the bulk prefill scratch, group and buffers, exactly once.
+
+        The bulk group owns no weights (it shares the decode group's), so
+        closing it is safe at any point; the buffers are freed here rather than
+        by ``close``'s ``_extra_buffers`` sweep because growing the workspace
+        replaces them mid-session.
+        """
+
+        if self._bulk_shard_group is not None:
+            try:
+                self._bulk_shard_group.close()
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+            self._bulk_shard_group = None
+        for scratch in self._bulk_scratch.values():
+            for buffer in getattr(scratch, "full_attn_split_growth_buffers", ()) or ():
+                try:
+                    free(buffer, runtime=self.runtime)
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
+        self._bulk_scratch.clear()
+        self._bulk_chunk_scratch.clear()
+        self._bulk_hidden.clear()
+        self._bulk_token_buf.clear()
+        self._bulk_logits_buf.clear()
+        for device, buffers in self._bulk_buffers.items():
+            for buffer in buffers:
+                try:
+                    with scoped_current_device(self.runtime, device):
+                        free(buffer, runtime=self.runtime)
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
+            buffers.clear()
+        self._bulk_host_tokens = None
+        self._bulk_rows = 0
+
+    def _ensure_bulk_prefill_workspace(self, rows: int) -> None:
+        """Make the bulk workspace big enough for ``rows`` active rows.
+
+        Called before every bulk prefill. The first call allocates, a later
+        longer prompt grows it (the old workspace is released first), and
+        repeat prompts at or below the current size reuse it. With an explicit
+        ``bulk_prefill_rows`` the caller has asked for a fixed capacity and
+        that is what gets allocated.
+        """
+
+        rows = int(rows)
+        if rows < 1:
+            raise ValueError("rows must be positive")
+        target = int(self.bulk_prefill_rows) if self.bulk_prefill_rows is not None else rows
+        target = max(target, rows)
+        if self._bulk_shard_group is not None and self._bulk_rows >= target:
+            return
+        self._release_bulk_prefill_workspace()
+        self._build_bulk_prefill_workspace(target)
 
     def bulk_prefill(self, token_ids: Sequence[int]) -> np.ndarray:
         """Whole-prompt rank-local bulk prefill; returns ``(rows, vocab)`` logits.
@@ -628,7 +700,11 @@ class MlpTP2GenerationSession:
         if not tokens:
             raise ValueError("token_ids must not be empty")
         rows = len(tokens)
-        capacity = int(self.bulk_prefill_rows)
+        capacity = (
+            int(self.bulk_prefill_rows)
+            if self.bulk_prefill_rows is not None
+            else int(self.max_sequence_length)
+        )
         if rows > capacity:
             raise ValueError(
                 f"prompt of {rows} tokens exceeds the bulk prefill capacity "
@@ -639,6 +715,10 @@ class MlpTP2GenerationSession:
                 raise ValueError(
                     f"token_id {token} outside [0, {self.vocab_size})"
                 )
+        # Sized to the prompt unless the caller pinned a capacity. This is the
+        # first thing the route does, so a session that never bulk-prefills
+        # never pays for the workspace.
+        self._ensure_bulk_prefill_workspace(rows)
         # Capture/warmup zeroes the state and rewinds positions, so build the
         # decode schedule BEFORE writing the prefill state - otherwise the
         # capture would overwrite the newly computed KV/GDN state.
@@ -1815,20 +1895,8 @@ class MlpTP2GenerationSession:
             except Exception:  # noqa: BLE001 - teardown continues
                 pass
             self._device_exchange = None
-        if self._bulk_shard_group is not None:
-            try:
-                self._bulk_shard_group.close()
-            except Exception:  # noqa: BLE001 - teardown continues
-                pass
-            self._bulk_shard_group = None
-        for scratch in self._bulk_scratch.values():
-            for buffer in getattr(scratch, "full_attn_split_growth_buffers", ()) or ():
-                try:
-                    free(buffer, runtime=self.runtime)
-                except Exception:  # noqa: BLE001 - teardown continues
-                    pass
-        self._bulk_scratch.clear()
-        self._bulk_chunk_scratch.clear()
+        if self._bulk_shard_group is not None or self._bulk_rows:
+            self._release_bulk_prefill_workspace()
         if self._shard_group is not None:
             self._shard_group.close()
             self._shard_group = None
