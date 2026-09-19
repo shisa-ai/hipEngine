@@ -1097,6 +1097,34 @@ class Qwen35GGUFMTP2Adapter:
             (request_id,),
         )
 
+    def eos_finish_supported(self, request_id: int) -> bool:
+        """True when this row's next cycle can finish on EOS exactly.
+
+        EOS is handled on the device-accept path, where ``_limit_target_batch_eos``
+        bounds the greedy chain so EOS stays the last visible token. The eager
+        host-proposal path refuses an EOS row outright
+        (``EOS requires native device acceptance before selected commit``), so the
+        static physical-c1 admission is not enough on its own: the row also needs
+        the target graph the device proposal rides on to be ready at this cycle's
+        position. A row that fails this probe decodes autoregressively for that
+        cycle instead of entering a cycle that would raise and be contained.
+        """
+
+        rid = int(request_id)
+        if not self._physical_c1_request(rid):
+            return False
+        state = self._states.get(rid)
+        verifier = None if state is None else getattr(state, "verifier", None)
+        if verifier is None:
+            return False
+        target = getattr(verifier, "target", None)
+        if target is None or not self._target_graph_supported(target):
+            return False
+        device_ready = getattr(verifier, "device_proposal_ready", None)
+        if not callable(device_ready):
+            return False
+        return bool(device_ready(int(self.candidate_budget)))
+
     def register_request(
         self,
         request_id: int,
