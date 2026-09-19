@@ -915,8 +915,8 @@ candidate is now consumed by `MlpTP2GenerationSession.generate`, not only by the
 diagnostics, its workspace is sized to the prompt on first use instead of to the
 session capacity, and it projects the head for the last prompt row only instead
 of for all of them. On the same host, model, 512-token prompt, 128 decode tokens
-and c=1 session: **39.3 -> 922.1 tok/s prefill (23.5x)** with decode unchanged
-(38.35 -> 38.79) and per-rank VRAM **12.43 -> 15.39 GiB**. For reference at the
+and c=1 session: **39.3 -> 1032.9 tok/s prefill (26.3x)** with decode unchanged
+(38.35 -> 39.27) and per-rank VRAM **12.43 -> 15.39 GiB**. For reference at the
 same shape: the single-card resident bulk prefill route is 890.8 tok/s, llama.cpp
 TP=1 is 941.8 and llama.cpp's TP=2 tensor split is 1474.6. The head projection
 was 46% of the route's kernel time, because picking the next token needs the last

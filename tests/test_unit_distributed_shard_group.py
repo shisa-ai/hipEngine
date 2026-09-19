@@ -349,3 +349,205 @@ def test_uneven_group_forward_launches_at_each_rank_own_width(group_env) -> None
     silu_widths = {device: feature for device, name, feature in spy.calls if name == "silu"}
     assert silu_widths == {0: 2, 1: 6}
     group.close()
+
+
+class _FakeDeviceExchange:
+    """Records the device reduction's submission order without HIP."""
+
+    def __init__(self, runtime, **kwargs):
+        self.runtime = runtime
+        self.kwargs = dict(kwargs)
+        self.devices = tuple(kwargs["devices"])
+        self.hidden = int(kwargs["hidden"])
+        self.rows = int(kwargs["rows"])
+        self.num_layers = int(kwargs["num_layers"])
+        self.bumps = 0
+        self.resets = 0
+        self.waits = 0
+        self.enqueues: list[tuple[int, int, int, int]] = []
+        self.closed = 0
+
+    def bump(self) -> None:
+        self.bumps += 1
+
+    def reset_timeouts(self) -> None:
+        self.resets += 1
+
+    def wait(self) -> None:
+        self.waits += 1
+
+    def enqueue_rank(self, rank, partial, slot, out) -> int:
+        self.enqueues.append((int(rank), int(partial), int(slot), int(out)))
+        return int(out)
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _device_group(
+    rt: FakeHipRuntime, monkeypatch, *, rows: int = 8, hidden: int = 16, per_rank_ffn: int = 8
+):
+    """A group in device reduce mode over a recording fake exchange."""
+
+    created: list[_FakeDeviceExchange] = []
+
+    class _Exchange(_FakeDeviceExchange):
+        def __init__(self, runtime, **kwargs):
+            super().__init__(runtime, **kwargs)
+            created.append(self)
+
+    monkeypatch.setattr(shard_group, "CompiledDeviceExchange", _Exchange)
+    weights = {
+        0: {
+            device: _weights(rt, device, hidden, per_rank_ffn)
+            for device in (0, 1)
+        }
+    }
+    group = MlpShardGroup(
+        rt,
+        devices=(0, 1),
+        streams={0: 0, 1: 0},
+        hidden=hidden,
+        per_rank_ffn=per_rank_ffn,
+        weights=weights,
+        staging_dtype="bf16",
+        rows=rows,
+        reduce_mode="device",
+    )
+    return group, created[0]
+
+
+def test_device_reduce_is_rejected_outside_bf16_and_two_ranks(group_env) -> None:
+    """The spin-add kernel is bf16 in and out and serves exactly two ranks, so
+    the other shapes must fail at construction rather than at the first layer."""
+
+    rt, _spy = group_env
+    weights = {0: {device: _weights(rt, device, 16, 8) for device in (0, 1)}}
+    with pytest.raises(ShardGroupError, match="exactly two ranks"):
+        MlpShardGroup(
+            rt,
+            devices=(0,),
+            streams={0: 0},
+            hidden=16,
+            per_rank_ffn=8,
+            weights={0: {0: _weights(rt, 0, 16, 8)}},
+            staging_dtype="bf16",
+            rows=4,
+            reduce_mode="device",
+        )
+    with pytest.raises(ShardGroupError, match="bf16 in and out"):
+        MlpShardGroup(
+            rt,
+            devices=(0, 1),
+            streams={0: 0, 1: 0},
+            hidden=16,
+            per_rank_ffn=8,
+            weights=weights,
+            staging_dtype="f32",
+            rows=4,
+            reduce_mode="device",
+        )
+    with pytest.raises(ShardGroupError, match="unknown reduce_mode"):
+        MlpShardGroup(
+            rt,
+            devices=(0, 1),
+            streams={0: 0, 1: 0},
+            hidden=16,
+            per_rank_ffn=8,
+            weights=weights,
+            staging_dtype="bf16",
+            rows=4,
+            reduce_mode="allreduce",
+        )
+
+
+def test_device_reduce_bumps_once_per_layer_and_alternates_two_slots(group_env, monkeypatch) -> None:
+    rt, _spy = group_env
+
+    """Two reused slots need a counter bump per layer.
+
+    Without it the peer's published flag already satisfies the spin's
+    comparison, so layer 2 would sum layer 0's staging. This pins the bump and
+    the alternation, and that the reduction writes the boundary buffer the
+    residual add already consumes (so no cast is enqueued and nothing is read
+    back over PCIe).
+    """
+
+    group, exchange = _device_group(rt, monkeypatch, rows=8)
+    assert exchange.num_layers == 2, "two alternating slots, not one slot per layer"
+    assert exchange.hidden == 16 and exchange.rows == 8
+
+    group.begin_device_group()
+    for layer_id in range(3):
+        group._forward_device_reduce(
+            layer_id, {0: 0xA0 + layer_id, 1: 0xB0 + layer_id}, rows=8
+        )
+
+    assert exchange.bumps == 3, "one bump per layer"
+    assert [entry[2] for entry in exchange.enqueues] == [0, 0, 1, 1, 0, 0]
+    assert [entry[0] for entry in exchange.enqueues] == [0, 1, 0, 1, 0, 1]
+    assert [entry[3] for entry in exchange.enqueues] == [
+        group._out_ptrs[0], group._out_ptrs[1],
+        group._out_ptrs[0], group._out_ptrs[1],
+        group._out_ptrs[0], group._out_ptrs[1],
+    ]
+    # The staged route's cast is skipped: the kernel already wrote bf16.
+    assert not [call for call in rt.calls if call[0] == "launch" and "cast" in call[2]]
+
+
+def test_device_reduce_refuses_more_rows_than_capacity(group_env, monkeypatch) -> None:
+    """The exchange stages a fixed rows x hidden block, so a call wider than the
+    group's capacity would reduce a region that was never allocated.
+
+    A *shorter* call is allowed: the block is staged whole and the tail is
+    allocated memory the consumer never reads, which is what lets a session
+    whose workspace grew from a longer prompt prefill a shorter one.
+    """
+
+    rt, _spy = group_env
+    group, exchange = _device_group(rt, monkeypatch, rows=8)
+    with pytest.raises(ShardGroupError, match="cannot exceed the group capacity"):
+        group._forward_device_reduce(0, {0: 1, 1: 2}, rows=16)
+
+    # Shorter is fine, and still bumps and enqueues both ranks.
+    group._forward_device_reduce(0, {0: 1, 1: 2}, rows=4)
+    assert exchange.bumps == 1
+    assert len(exchange.enqueues) == 2
+
+
+def test_device_group_brackets_one_reset_and_one_wait(group_env, monkeypatch) -> None:
+    rt, _spy = group_env
+
+    """The timeout flags are sticky by design: reset once per group and wait
+    once at its end, so a timeout in any layer still surfaces instead of being
+    cleared by the next layer's bump."""
+
+    group, exchange = _device_group(rt, monkeypatch)
+    group.begin_device_group()
+    group.finish_device_group()
+    assert (exchange.resets, exchange.waits) == (1, 1)
+
+
+def test_staged_mode_does_not_build_a_device_exchange(group_env, monkeypatch) -> None:
+    rt, _spy = group_env
+
+    """The staged transport stays the registered fallback; its bracket calls are
+    no-ops rather than errors."""
+
+    group, _exchange = _device_group(rt, monkeypatch)
+    assert group._device_exchange is not None
+
+    host = MlpShardGroup(
+        rt,
+        devices=(0, 1),
+        streams={0: 0, 1: 0},
+        hidden=16,
+        per_rank_ffn=8,
+        weights={0: {device: _weights(rt, device, 16, 8) for device in (0, 1)}},
+        staging_dtype="bf16",
+        rows=8,
+        reduce_mode="host",
+    )
+    assert host._device_exchange is None
+    host.begin_device_group()
+    host.finish_device_group()

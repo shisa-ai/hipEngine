@@ -36,6 +36,7 @@ import time
 from typing import Any, Mapping
 
 from hipengine.core.device import scoped_current_device
+from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
 from hipengine.distributed.shard_exec import MlpShardRank
 from hipengine.distributed.staged import StagedExchangeTransport
 from hipengine.distributed.staged_compiled import CompiledStagedExchangeTransport
@@ -75,12 +76,17 @@ class MlpShardGroup:
         slot_sets: int = 2,
         rows: int = 1,
         owns_weights: bool = True,
+        reduce_mode: str = "host",
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
         if driver not in {"python", "compiled"}:
             raise ShardGroupError(
                 f"unknown exchange driver {driver!r}; expected 'python' or 'compiled'"
+            )
+        if reduce_mode not in {"host", "device"}:
+            raise ShardGroupError(
+                f"unknown reduce_mode {reduce_mode!r}; expected 'host' or 'device'"
             )
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
@@ -126,6 +132,7 @@ class MlpShardGroup:
         # them twice.
         self._owns_weights = bool(owns_weights)
         self.exchange_walls_s: list[float] = []
+        self.reduce_mode = str(reduce_mode)
 
         self._ranks: dict[tuple[int, int], MlpShardRank] = {}
         for layer_id, per_device in weights.items():
@@ -145,6 +152,32 @@ class MlpShardGroup:
                     rows=self.rows,
                     owns_weights=self._owns_weights,
                 )
+        # The device-side reduction, when selected: a peer-spin kernel sums the
+        # two ranks' partials into a device buffer, so no f32 payload crosses
+        # PCIe and no boundary cast is needed. It needs two ranks and bf16
+        # partials (the kernel's widen/add/narrow arithmetic is bf16 in and out).
+        self._device_exchange: CompiledDeviceExchange | None = None
+        if self.reduce_mode == "device":
+            if len(self.devices) != 2:
+                raise ShardGroupError(
+                    "the device-side reduction serves exactly two ranks; "
+                    f"got {len(self.devices)}"
+                )
+            if str(staging_dtype) != "bf16":
+                raise ShardGroupError(
+                    "the device-side reduction is bf16 in and out; "
+                    f"staging_dtype={staging_dtype!r} would change the arithmetic"
+                )
+            self._device_exchange = CompiledDeviceExchange(
+                runtime,
+                devices=self.devices,
+                streams=self._streams,
+                # Two alternating slots with a counter bump per layer, so the
+                # staging stays a fixed size instead of one slot per layer.
+                num_layers=2,
+                hidden=int(hidden),
+                rows=self.rows,
+            )
         if driver == "compiled":
             # The compiled host driver: the same batched protocol enqueued
             # from hipcc-built code, with the H2D return path removed (the
@@ -180,7 +213,9 @@ class MlpShardGroup:
             )
         # The bf16 boundary buffer per rank: the reduced f32 value cast to the
         # dtype the TP1 local chain's down projection writes, so the caller's
-        # residual add consumes one identical contract on either path.
+        # residual add consumes one identical contract on either path. With the
+        # device-side reduction the same buffer is the spin-add kernel's output,
+        # so the consumer reads it directly and no cast is enqueued.
         self._out_ptrs: dict[int, int] = {}
         for device in self.devices:
             with scoped_current_device(runtime, device):
@@ -238,12 +273,79 @@ class MlpShardGroup:
 
         partial_ptrs = self.enqueue_chain(layer_id, inputs, rows=rows)
         rows = self._resolve_rows(rows)
+        if self._device_exchange is not None:
+            return self._forward_device_reduce(layer_id, partial_ptrs, rows=rows)
         started = time.perf_counter()
         reduced = self._transport.reduce(partial_ptrs, rows=rows)
         self.exchange_walls_s.append(time.perf_counter() - started)
         for device in self.devices:
             self.cast_reduced(device, reduced[device])
         return dict(self._out_ptrs)
+
+    def _forward_device_reduce(
+        self,
+        layer_id: int,
+        partial_ptrs: Mapping[int, int],
+        *,
+        rows: int,
+    ) -> Mapping[int, int]:
+        """Reduce the partials on the device into the bf16 boundary buffer.
+
+        The counterpart of the staged route's host sum plus cast, with both of
+        those removed: the spin-add kernel sums this rank's partial with the
+        peer's staged partial in bf16 and writes the boundary buffer directly,
+        so nothing is read back over PCIe and no cast kernel is enqueued.
+
+        Each layer bumps the step counter before its exchange. Two slots are
+        reused, so without the bump the peer's published flag would already
+        satisfy the spin's comparison and the kernel would sum the previous
+        layer's staging. The timeout flags are reset once per group (see
+        ``begin_device_group``) rather than per layer, so a timeout in any layer
+        is still visible to the final ``wait``.
+        """
+
+        exchange = self._device_exchange
+        assert exchange is not None
+        if int(rows) > int(self.rows):
+            raise ShardGroupError(
+                "the device-side reduction stages a fixed rows x hidden block, "
+                f"so it cannot exceed the group capacity ({self.rows} rows), got {rows}"
+            )
+        # The exchange was built for the group's capacity, so a shorter active
+        # count still stages and reduces the whole block. That is correct (each
+        # element is independent and the partial buffer is capacity-sized, so
+        # the tail is allocated memory the consumer never reads) and only costs
+        # the unused fraction. The bulk prefill sizes its workspace to the
+        # prompt, so the two agree on the common path.
+        exchange.bump()
+        slot = int(layer_id) % 2
+        for rank, device in enumerate(self.devices):
+            exchange.enqueue_rank(
+                rank, int(partial_ptrs[device]), slot, self._out_ptrs[device]
+            )
+        return dict(self._out_ptrs)
+
+    def begin_device_group(self) -> None:
+        """Clear the device exchange's spin-timeout flags, once per prefill.
+
+        Called before a group of layers rather than per layer: the flags are
+        sticky on purpose, because the spin kernel writes nothing when it times
+        out and a cleared flag would let a stale boundary row pass as a result.
+        """
+
+        if self._device_exchange is not None:
+            self._device_exchange.reset_timeouts()
+
+    def finish_device_group(self) -> None:
+        """Sync both ranks once at the end of a device-reduced group.
+
+        The device route enqueues every layer without a host wait, so the group
+        needs one wait at its end; it also surfaces a spin timeout as a failure
+        instead of leaving a stale row in a boundary buffer.
+        """
+
+        if self._device_exchange is not None:
+            self._device_exchange.wait()
 
     def enqueue_chain(
         self,
@@ -399,6 +501,9 @@ class MlpShardGroup:
             return
         self._closed = True
         self._transport.close()
+        if self._device_exchange is not None:
+            self._device_exchange.close()
+            self._device_exchange = None
         for rank in self._ranks.values():
             rank.close()
         for device, ptr in self._out_ptrs.items():
