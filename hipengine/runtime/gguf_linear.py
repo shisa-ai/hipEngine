@@ -2399,6 +2399,35 @@ def _q4_t16_grouped_pair_rows6_variant(
     return variant if is_registered(key) else None
 
 
+def _q4_t16_dual_silu_prefill_out_features(backend: str) -> frozenset[int]:
+    """Activated widths this backend admits the dense Q4T16 dual+SiLU pair at.
+
+    The unsharded H5120 FFN width is the shape the row ladder was built and
+    validated on, so it is the fail-closed default for any backend that does not
+    publish the capability. A sharded MLP rank activates ``ffn_size // ranks``
+    instead, which the ladder could not reach while the predicate compared
+    ``out_features`` against that one constant - so the TP2 rank-local bulk
+    prefill fell back to the unfused chain (two t16 WMMA prefill singles plus a
+    separate SiLU-multiply) even though the fused owner is bit-identical to it
+    and faster in every row band.
+
+    Widening this set is a shape admission, so it takes the same evidence as any
+    other: bit-parity against the unfused chain at the newly admitted width,
+    recorded with the artifact. Backends without the capability keep the single
+    validated width rather than inheriting another backend's measurement.
+    """
+
+    admitted = backend_package_capability(
+        backend,
+        "GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES",
+        frozenset({_PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES}),
+    )
+    try:
+        return frozenset(int(width) for width in admitted)
+    except TypeError:
+        return frozenset({_PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES})
+
+
 def _q4_t16_dual_wmma_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -2426,7 +2455,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
     if (
         (rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and physical_variant is None)
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
-        or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
+        or out_features not in _q4_t16_dual_silu_prefill_out_features(dispatch_a.key.backend)
         or dispatch_a.abi != "t16"
         or dispatch_b.abi != "t16"
         or dispatch_a.key.quant not in _Q4_T16_DENSE_QUANTS

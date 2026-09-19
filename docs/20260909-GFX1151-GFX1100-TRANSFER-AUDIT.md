@@ -972,6 +972,7 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | `GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY` | `{}` — and unreachable | its only call site is nested inside the absent `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS` gate, so no gfx1151 route reaches it; the rows6 sibling is registered but unselectable | N/A |
 | `GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES` | `{}` → identity miss | retained pair route; `dense_unequal_dual_wmma_prefill_bf16_bf16_out` is registered but never selected | declined |
 | `GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS` | `48` | row48 at rows33-48; row64/row128 above the band; exact unfused fallback | admitted |
+| `GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES` | absent → `{17_408}` | the gfx1151 ladder keeps the single unsharded FFN width, so its fused pair is selected exactly where it is today and no sharded width is admitted. The widening to `8_704` is a shape admission measured bit-identical to the unfused chain on W7900 only; publishing it here would claim a gfx1151 result nobody measured | declined |
 | `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` | `{}` → `None` | no scratch liveness aliasing (more scratch, no arithmetic change) | declined |
 | `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` | `{}` | computed `coltile*_rowbatch*` geometry; all three W7900 entries are `gguf_q6_k`, whose raw coltile family gfx1151 declines upstream | N/A |
 | `GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX` | `""` → guard fails | the F16 rocBLAS pair route is not selected; its kernel is not registered on gfx1151 | N/A |

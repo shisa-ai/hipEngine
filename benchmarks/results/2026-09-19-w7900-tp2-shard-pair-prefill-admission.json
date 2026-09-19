@@ -1,0 +1,121 @@
+{
+ "schema": 1,
+ "kind": "tp2_shard_pair_silu_prefill_admission",
+ "status": "retained_exact_neutral_wall",
+ "performance_claim": false,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "change": "GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES admits the TP2 even-split shard width (5_120 -> 8_704) to the dense Q4T16 gate/up+SiLU prefill owner; MlpShardRank.forward_partial attempts that pair at batched rows with the unfused chain as its fallback. Previously the dispatch predicate compared out_features against the unsharded FFN width (17_408) exactly, so a sharded rank's batched prefill ran two t16 WMMA prefill singles plus a separate SiLU-multiply.",
+ "kernel_level_parity": {
+  "method": "fused pair vs the unfused chain the shard chain runs (two t16 WMMA prefill shared_b singles + silu_mul_separate_out_bf16), real synthetic Q4_K t16 tiles at in_features=5_120, out_features=8_704",
+  "bit_identical_every_band": true,
+  "rows": [
+   33,
+   48,
+   64,
+   128,
+   256,
+   512
+  ],
+  "note": "Also asserted in tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_sharded_pair_silu_matches_unfused_chain."
+ },
+ "kernel_level_speedup_vs_unfused_chain": {
+  "32": 2.41,
+  "48": 2.08,
+  "64": 1.81,
+  "128": 1.67,
+  "256": 1.14,
+  "512": 1.27,
+  "note": "Isolated back-to-back timing. The band-named variant is fastest in every band, so the existing ladder is reused as-is. An earlier version of this measurement used the plain t16_wmma_prefill single as the control and reported 1.74x at rows=512; the chain actually runs the shared_b single, which is faster, so that figure was overstated and is superseded here."
+ },
+ "end_to_end_product_path": {
+  "protocol": {
+   "concurrency": 1,
+   "prompt_length": 512,
+   "decode_tokens": 128,
+   "max_sequence_length": 2048,
+   "logits_rows": 1,
+   "speculative_decoding": false
+  },
+  "paired_same_session_ab": {
+   "method": "one session, capability toggled between {17_408} and {17_408, 8_704}, alternating 4 rounds",
+   "unfused_wall_ms": [
+    513.3,
+    492.7,
+    492.7,
+    492.8
+   ],
+   "fused_wall_ms": [
+    492.1,
+    494.0,
+    493.0,
+    493.9
+   ],
+   "unfused_median_tok_per_s": 1039.0,
+   "fused_median_tok_per_s": 1037.6,
+   "delta_percent": -0.14,
+   "paired_deltas_percent": [
+    4.32,
+    -0.27,
+    -0.07,
+    -0.22
+   ]
+  },
+  "c1_bench": {
+   "command": "python3 scripts/tp2_c1_bench.py --mode tp2 --devices 0,1 --bulk-prefill --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --repeats 4",
+   "prefill_tok_per_s_median": 1043.247,
+   "prior_retained": 1032.9,
+   "delta_percent": 1.0,
+   "note": "Within run-to-run noise; the paired A/B above is the controlled comparison."
+  },
+  "phase_attribution": {
+   "command": "python3 scripts/tp2_prefill_phase_attribution.py --prompt-tokens 512 --max-sequence-length 2048 --repeats 3",
+   "mlp_chain_ms_rank0_before": 189.74,
+   "mlp_chain_ms_rank0_after": 189.5,
+   "wall_ms_before": 491.2,
+   "wall_ms_after": 495.4
+  },
+  "conclusion": "Neutral on the product path. The ~30 ms of chain work removed per prefill is absorbed as extra wait at the per-layer peer exchange, so the sharded MLP phase is rendezvous-bound rather than arithmetic-bound."
+ },
+ "control_that_explains_the_effect": {
+  "method": "same paired A/B but WITHOUT logits_rows=1, so the head is projected for all 512 rows",
+  "unfused_median_ms": 1085.6,
+  "fused_median_ms": 1052.3,
+  "delta_percent": 3.16,
+  "paired_deltas_percent": [
+   5.82,
+   4.06,
+   2.26,
+   2.33
+  ],
+  "reading": "The ~30 ms saving is real and reaches the wall whenever the wall is not sync-bound. This run's wall is dominated by ~560 ms of full-row head projection, which is on the critical path, so the saving shows directly."
+ },
+ "end_to_end_bit_identity": {
+  "method": "scripts/tp2_bulk_prefill_diagnostic.py --reduce-mode device, compared against the pre-change run of the same command on the same model and prompts",
+  "logits_sha256_unchanged": true,
+  "prompts": {
+   "mixed_ja_en_translate": {
+    "sha256": "b4c14c35c66e7a8469b3f8a0ee0865cdc91da8cfb509112bcb4edb5559fc48b5",
+    "identical": true
+   },
+   "heldout_mixed_summary": {
+    "sha256": "af4b3ce0095a82eac3e9c2f9c7a4a23f1b1d40e57a8940f8b1ef5185c18405f6",
+    "identical": true
+   }
+  },
+  "metrics_identical": true,
+  "route_gate_passed": false,
+  "note": "The route's pre-existing KL gap is unchanged and unrelated (identical metrics and digests before and after), so this change neither causes nor hides it."
+ },
+ "launch_count": {
+  "before_per_prefill": 384,
+  "after_per_prefill": 128,
+  "note": "64 layers x 2 ranks; 256 singles + 128 silu replaced by 128 fused pairs."
+ }
+}
