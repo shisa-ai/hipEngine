@@ -328,6 +328,7 @@ class _MTP2RequestState:
     proposal_device: Qwen35GGUFNextNDeviceProposal | None = None
     proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
     proposal_ngram: _NgramBatchDeviceProposal | None = None
+    sampled_accept_plan: "_DeviceSampledAcceptPlan | None" = None
     ngram_candidate_tokens: tuple[int, ...] = ()
     proposal_source: str = "mtp2"
     device_chain_prepare_error: str | None = None
@@ -941,6 +942,12 @@ class Qwen35GGUFMTP2Adapter:
         self._last_partition_contract: dict[str, Any] = {}
         self._last_screening_cell: dict[str, Any] | None = None
         self._intents: dict[int, int] = {}
+        # The planner's resolved sampling mode per request. The adapter's
+        # own route probe reads the row's request, which is not the resolved
+        # sampler block the planner saw; the two disagree on a request whose
+        # mode comes from the scheduler's params (temperature plus EOS, for
+        # instance), so the planner's answer is recorded here and reused.
+        self._sampling_mode_by_request: dict[int, str] = {}
         self._static_eligibility_by_request: dict[
             int, SpeculativeMTPStaticEligibility
         ] = {}
@@ -2000,6 +2007,9 @@ class Qwen35GGUFMTP2Adapter:
             # The accept rule draws from the row's live host sampler stream, so a
             # row whose sampling runs on the device sampler cannot use it.
             return False
+        recorded = self._sampling_mode_by_request.get(int(request_id))
+        if recorded is not None:
+            return recorded == "sampled"
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if params is None:
             return False
@@ -2028,7 +2038,16 @@ class Qwen35GGUFMTP2Adapter:
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if state is None or params is None:
             return None
-        if speculative_sampling_mode(params) != "sampled":
+        # The planner's resolved mode, not the row's raw request: a temperature
+        # request carries EOS, and the raw request then reads as "processed"
+        # while the planner (which sees the scheduler's resolved params) calls
+        # the same row "sampled". Reading the raw request here silently kept
+        # every sampled row on the host accept, which is the 5.3x cycle.
+        recorded = self._sampling_mode_by_request.get(int(request_id))
+        if recorded is not None:
+            if recorded != "sampled":
+                return None
+        elif speculative_sampling_mode(params) != "sampled":
             return None
         if _needs_processors(params):
             return None
@@ -2056,6 +2075,10 @@ class Qwen35GGUFMTP2Adapter:
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
+        for item in semantics:
+            mode = str(getattr(item, "sampling_mode", "") or "")
+            if mode:
+                self._sampling_mode_by_request[int(item.request_id)] = mode
         physical_max_requests = self._max_physical_requests()
         import os as _os
         if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
@@ -2141,7 +2164,13 @@ class Qwen35GGUFMTP2Adapter:
                         f"budget={getattr(row, 'mtp2_candidate_budget', None)} "
                         f"intent={rid in self._intents} "
                         f"state={rid in self._states} "
-                        f"prompt_hidden={rid in self._prompt_hidden_rows}",
+                        f"prompt_hidden={rid in self._prompt_hidden_rows} "
+                        f"slot_type={type(row.slot).__name__ if row.slot is not None else None} "
+                        f"slot_tokens={len(row.slot.generated_ids) if row.slot is not None else None} "
+                        f"prefill_seen={getattr(row, 'prefill_tokens_seen', None)} "
+                        f"fallback_output={row.fallback_output is not None} "
+                        f"prompt_fallback={getattr(row, 'mtp2_prompt_fallback_reason', None)} "
+                        f"owner={type(self.owner).__name__}",
                         file=_sys.stderr,
                         flush=True,
                     )
@@ -3001,6 +3030,7 @@ class Qwen35GGUFMTP2Adapter:
                 state.proposal_device = device_proposal
                 state.proposal_device_batch = device_draft
                 state.proposal_ngram = ngram_proposal
+                state.sampled_accept_plan = sampled_device_plan
                 state.ngram_candidate_tokens = (
                     () if ngram_proposal is None else ngram_candidate_rows[index]
                 )
@@ -3226,6 +3256,12 @@ class Qwen35GGUFMTP2Adapter:
                 cancelled_request_ids=(rid,),
             )
         sampled_route = self._sampled_route_request(rid)
+        sampled_device_plan = state.sampled_accept_plan
+        sampled_device_state = (
+            None
+            if sampled_device_plan is None
+            else sampled_device_plan.state_tuple()
+        )
         batch = frontier.target_batch
         device_proposal = state.proposal_device
         if batch is None:
@@ -3289,6 +3325,9 @@ class Qwen35GGUFMTP2Adapter:
             )
             target_finished_ns = time.perf_counter_ns()
             target_seconds = (target_finished_ns - target_started_ns) / 1e9
+            # The launch consumed the staged draws: drop the plan now so a
+            # rollback or a later cycle cannot reuse a stale stream position.
+            state.sampled_accept_plan = None
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
                 state.verifier.rollback(prepared)
@@ -5853,6 +5892,7 @@ class Qwen35GGUFMTP2Adapter:
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
+        self._sampling_mode_by_request.pop(rid, None)
         self._post_reject_pending.discard(rid)
         self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
         state = self._states.pop(rid, None)

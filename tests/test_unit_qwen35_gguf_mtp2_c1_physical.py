@@ -742,3 +742,35 @@ def test_physical_c1_frontier_pads_into_the_shared_accept_bucket() -> None:
         == 2
     )
     assert adapter.physical_accept_max_rows == 36
+
+
+def test_sampled_accept_plan_rides_the_request_state_between_phases() -> None:
+    """The device sampled accept plan survives the propose -> execute seam.
+
+    The proposal stages the draws and the execute phase launches the graph that
+    consumes them, so the plan has to live on the request state: a local in
+    ``propose_batch`` is not visible to ``execute_target_frontier``, and the
+    resulting ``NameError`` is contained into an autoregressive step that then
+    disables the row's provider for the rest of its life (every later cycle
+    plans ``no_provider``). This guard pins the seam rather than the plan's
+    arithmetic, which the induced-law tests cover.
+    """
+
+    import inspect
+
+    propose = inspect.getsource(mtp2_module.Qwen35GGUFMTP2Adapter.propose_batch)
+    execute = inspect.getsource(
+        mtp2_module.Qwen35GGUFMTP2Adapter.execute_target_frontier
+    )
+
+    # The proposal publishes the plan on the state...
+    assert "state.sampled_accept_plan = sampled_device_plan" in propose
+    # ...the state can hold it...
+    assert "sampled_accept_plan" in mtp2_module._MTP2RequestState.__dataclass_fields__
+    # ...and the execute phase reads it from there, not from a proposal local.
+    assert "sampled_device_plan = state.sampled_accept_plan" in execute
+    for line in execute.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "state.sampled_accept_plan" in stripped:
+            continue
+        assert "sampled_device_plan = " not in stripped, stripped
