@@ -161,6 +161,8 @@ class _StreamingNextNPromptSink:
         start_position: int = 0,
         initial_hidden: Tensor | None = None,
         transform_hidden_rows: Callable[[int, int, int], int] | None = None,
+        prefix_capture: Callable[[int, int], None] | None = None,
+        capture_boundary: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
         if not tokens:
@@ -190,6 +192,12 @@ class _StreamingNextNPromptSink:
         self.runtime = runtime
         self.checkpoint = checkpoint
         self.transform_hidden_rows = transform_hidden_rows
+        # Called once, when a consumed chunk brings the provider cursor to the
+        # request's block-aligned prefix boundary, with (prefix_len,
+        # boundary_hidden_ptr): the row this chunk ends on is the row the first
+        # draft step consumes at the boundary, because the sink feeds token[p]
+        # against row[p-1] and carries the last row forward.
+        self.prefix_capture = prefix_capture
         self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
         self._pending_hidden = malloc(self.hidden_nbytes, runtime=runtime)
         try:
@@ -206,6 +214,12 @@ class _StreamingNextNPromptSink:
             free(self._pending_hidden, runtime=runtime)
             raise
         self.consumed_rows = 0
+        # Absolute prefix length to capture at, in the same coordinates as
+        # ``start_position``; 0 means no capture for this sink.
+        self.capture_boundary = int(capture_boundary)
+        self._capture_failed = False
+        self._capture_missed = False
+        self._captured = False
         self._stream: int | None = None
         self._finished = False
         self._failed = False
@@ -321,6 +335,43 @@ class _StreamingNextNPromptSink:
             self._failed = True
             raise
         self.consumed_rows += count
+        # The provider cursor is now at start_position + consumed_rows, and the
+        # row it would consume next is the one this chunk ended on -- still live
+        # in the caller's chunk buffer at this point in the call, which is why
+        # the capture is taken here rather than after the sink retires.
+        if self.prefix_capture is not None and self.capture_boundary > self.start_position:
+            reached = self.start_position + self.consumed_rows
+            if reached == self.capture_boundary:
+                try:
+                    self.prefix_capture(
+                        self.capture_boundary,
+                        draft_hidden_ptr + (count - 1) * self.hidden_nbytes,
+                    )
+                except Exception:
+                    # A checkpoint is an optimization: a row must not fail
+                    # because one could not be taken.
+                    self._capture_failed = True
+                else:
+                    self._captured = True
+            elif reached > self.capture_boundary and not self._captured:
+                # A chunk spans the boundary, so the cursor is never at it: the
+                # enqueues inside one chunk are batched, and the chunk's rows are
+                # only fully consumed at its end. Reachable boundaries are
+                # multiples of the chunk width, which the shipped configuration
+                # satisfies because chunk rows and the cache block size are the
+                # same constant. Record the miss instead of leaving a boundary
+                # that silently never captures.
+                self._capture_missed = True
+                try:
+                    if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+                        print(
+                            "[mtp2-prefix-checkpoint] boundary unreachable: "
+                            f"boundary={self.capture_boundary} chunk reached {reached}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                except Exception:
+                    pass
 
     def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
         """Validate complete request ownership at the target activation seam."""
