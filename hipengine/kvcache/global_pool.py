@@ -267,6 +267,7 @@ class GlobalKVPoolSet:
         growth_credit_pages: int,
         shared_page_ids: tuple[int, ...] = (),
         require_contiguous: bool = False,
+        within_page_range: tuple[int, int] | None = None,
     ) -> GlobalPageLease:
         """Lease private and shared pages, optionally requiring one contiguous run.
 
@@ -290,10 +291,17 @@ class GlobalKVPoolSet:
                 page = self._get_page(page_id)
                 if page.credit_owner_id is not None or page.state is KVPageState.FREE:
                     raise ValueError(f"KV page {page_id} is not shareable")
+            if within_page_range is not None:
+                low, high = int(within_page_range[0]), int(within_page_range[1])
+                if any(not (low <= page_id < high) for page_id in shared):
+                    raise MemoryError(
+                        "shared KV pages fall outside the requested page range"
+                    )
             acquired = self._select_free(
                 private_count + credit_count,
                 after=(shared[-1] if shared else None),
                 require_contiguous=bool(require_contiguous),
+                within=within_page_range,
             )
             private = acquired[:private_count]
             if require_contiguous and (*shared, *private) != _contiguous_run(
@@ -539,6 +547,7 @@ class GlobalKVPoolSet:
         *,
         after: int | None = None,
         require_contiguous: bool = False,
+        within: tuple[int, int] | None = None,
     ) -> tuple[int, ...]:
         """Choose free pages without claiming them.
 
@@ -547,35 +556,51 @@ class GlobalKVPoolSet:
         fallback preserves the previous placement policy. ``require_contiguous``
         selects only from a single free run and reports a placement failure when the
         pool has enough pages but no run of the requested size.
+
+        ``within`` restricts the choice to a half-open page-id range. A pool that
+        grew by appending storage chunks addresses each chunk from its own base, so
+        a caller whose kernels index one chunk asks for pages from one chunk.
         """
 
-        if count > len(self._free_page_ids):
+        candidates = self._free_page_ids
+        if within is not None:
+            low, high = int(within[0]), int(within[1])
+            candidates = {
+                page_id for page_id in self._free_page_ids if low <= page_id < high
+            }
+        if count > len(candidates):
             raise MemoryError(
                 f"global KV page pool cannot allocate {count} pages with "
-                f"{len(self._free_page_ids)} free"
+                f"{len(candidates)} free"
             )
         if count <= 0:
             return ()
         if after is not None:
             adjacent = tuple(range(int(after) + 1, int(after) + 1 + count))
-            if all(page_id in self._free_page_ids for page_id in adjacent):
+            if all(page_id in candidates for page_id in adjacent):
                 return adjacent
         if require_contiguous:
-            run = self._find_free_run(count)
+            run = self._find_free_run(count, candidates=candidates)
             if run is None:
                 raise DeviceKVContiguityError(
-                    f"global KV page pool has {len(self._free_page_ids)} free pages "
+                    f"global KV page pool has {len(candidates)} free pages "
                     f"but no contiguous run of {count}"
                 )
             return run
-        return tuple(sorted(self._free_page_ids)[:count])
+        return tuple(sorted(candidates)[:count])
 
-    def _find_free_run(self, count: int) -> tuple[int, ...] | None:
+    def _find_free_run(
+        self,
+        count: int,
+        *,
+        candidates: set[int] | None = None,
+    ) -> tuple[int, ...] | None:
         """Return the lowest free run of ``count`` consecutive page ids, if any."""
 
+        pool = self._free_page_ids if candidates is None else candidates
         run: list[int] = []
         previous: int | None = None
-        for page_id in sorted(self._free_page_ids):
+        for page_id in sorted(pool):
             if previous is None or page_id == previous + 1:
                 run.append(page_id)
             else:

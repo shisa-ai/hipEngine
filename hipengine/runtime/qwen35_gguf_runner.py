@@ -18035,7 +18035,7 @@ class Qwen35GGUFResidentSession:
         def grow_storage(
             pages: int,
             start_block_id: int,
-        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int]]:
+        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int], object]:
             """Append device pages and rebuild indirection tables atomically."""
 
             # `pointer_tables` is rebound below, which without this declaration
@@ -18110,9 +18110,13 @@ class Qwen35GGUFResidentSession:
             for table in reversed(tuple(old_tables.values())):
                 free(table, runtime=runtime)
             backings.append(chunk)
+            # The appended chunk carries its own device buffers, and every KV
+            # kernel addresses a chunk from its own base, so the pool needs the
+            # backing to keep each allocation inside one chunk.
             return (
                 appended,
                 {role: int(table.ptr) for role, table in new_tables.items()},
+                chunk,
             )
 
         def close_storage() -> None:
