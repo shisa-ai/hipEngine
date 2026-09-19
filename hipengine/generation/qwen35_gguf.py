@@ -5960,6 +5960,10 @@ class _GGUFResidentLoopRow:
     # group it was planned in was, and whether that group ran autoregressively.
     mtp2_provider_readiness: str | None = None
     mtp2_provider_decline_reason: str | None = None
+    # Declared here because this row is a slotted dataclass: the accounting
+    # layer writes these attributes, and an undeclared one raises inside the
+    # engine loop rather than reporting a missing fact.
+    mtp2_provider_state_present: bool | None = None
     mtp2_plan_group_rows: int | None = None
     mtp2_plan_ar_only: bool | None = None
     mtp2_plan_reason: str | None = None
@@ -7918,13 +7922,20 @@ class Qwen35GGUFResidentModelRunner:
                 plan_reason=getattr(reason, "value", reason),
             )
 
-    def note_provider_readiness(self, request_id, readiness, reason=None) -> None:
+    def note_provider_readiness(
+        self, request_id, readiness, reason=None, state_present=None
+    ) -> None:
         """Publish the row's own draft-provider readiness and decline reason."""
 
         row = self._row(int(request_id))
         if row is None:
             return
-        record_provider_readiness(row, readiness=readiness, decline_reason=reason)
+        record_provider_readiness(
+            row,
+            readiness=readiness,
+            decline_reason=reason,
+            state_present=state_present,
+        )
 
     def speculative_component_claims(self, plan):
         adapter = self._resolved_mtp2_adapter()

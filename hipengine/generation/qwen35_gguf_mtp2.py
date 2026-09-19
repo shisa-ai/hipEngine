@@ -2317,14 +2317,19 @@ class Qwen35GGUFMTP2Adapter:
                     # A granted capability whose source is unusable cannot be
                     # reported ready: the buffer is present but the row will be
                     # refused, and readiness exists to make that visible.
-                    note(request_id, PROVIDER_ABSENT, invalid_reason)
+                    note(
+                        request_id,
+                        PROVIDER_ABSENT,
+                        invalid_reason,
+                        source == PRIMING_SOURCE_LIVE,
+                    )
                     continue
                 readiness = (
                     PROVIDER_READY
                     if source == PRIMING_SOURCE_LIVE
                     else PROVIDER_PROMPT_BUFFERED
                 )
-                note(request_id, readiness)
+                note(request_id, readiness, None, source == PRIMING_SOURCE_LIVE)
             return
         declined = int(getattr(self, "_decline_serial", 0)) != int(decline_serial)
         if declined:
@@ -2339,7 +2344,18 @@ class Qwen35GGUFMTP2Adapter:
             state = PROVIDER_ABSENT
             reason = "capability_refused_without_a_recorded_reason"
         for item in semantics:
-            note(int(item.request_id), state, reason)
+            request_id = int(item.request_id)
+            # A refusal says nothing about whether this row still holds provider
+            # state, and the two have opposite lifecycle consequences: a row
+            # refused by its realized width keeps the provider it may use again
+            # when its group narrows, while a row whose state is gone cannot
+            # speculate until something primes it again.
+            note(
+                request_id,
+                state,
+                reason,
+                int(request_id) in self._states,
+            )
 
     def _capability_impl(
         self,

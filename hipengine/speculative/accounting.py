@@ -51,6 +51,13 @@ SPAN_ATTRIBUTE = "mtp2_output_spans"
 PROMPT_FALLBACK_ATTRIBUTE = "mtp2_prompt_fallback_reason"
 PROVIDER_READINESS_ATTRIBUTE = "mtp2_provider_readiness"
 PROVIDER_DECLINE_ATTRIBUTE = "mtp2_provider_decline_reason"
+# Whether the row holds live provider state right now. Readiness alone cannot
+# answer that: a declined group reports ``declined`` whether the row still holds
+# an attached provider (refused by its realized width this cycle, usable again
+# when its group narrows) or never attached one at all (refused for good). The
+# two have opposite lifecycle consequences -- retained state versus absent state
+# -- so they are published as separate facts rather than folded together.
+PROVIDER_STATE_PRESENT_ATTRIBUTE = "mtp2_provider_state_present"
 PLAN_GROUP_ROWS_ATTRIBUTE = "mtp2_plan_group_rows"
 PLAN_AR_ONLY_ATTRIBUTE = "mtp2_plan_ar_only"
 PLAN_REASON_ATTRIBUTE = "mtp2_plan_reason"
@@ -280,12 +287,15 @@ def record_provider_readiness(
     *,
     readiness: str,
     decline_reason: Any | None = None,
+    state_present: bool | None = None,
 ) -> None:
     """Record whether the row's draft provider was ready, and why not.
 
     ``readiness`` is one of ``PROVIDER_READINESS_STATES``. ``decline_reason``
     is retained only for a non-ready state so a stale reason cannot outlive a
-    row that has since acquired a provider.
+    row that has since acquired a provider. ``state_present`` records whether
+    the row holds live provider state at the same moment, which is orthogonal:
+    a declined group can be refused while its rows still hold state.
     """
 
     state = str(readiness)
@@ -301,6 +311,8 @@ def record_provider_readiness(
         if state == PROVIDER_READY or decline_reason is None
         else str(decline_reason),
     )
+    if state_present is not None:
+        setattr(row, PROVIDER_STATE_PRESENT_ATTRIBUTE, bool(state_present))
 
 
 def record_autoregressive_step(
@@ -509,6 +521,7 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
     plan_group_rows = getattr(row, PLAN_GROUP_ROWS_ATTRIBUTE, None)
     plan_ar_only = getattr(row, PLAN_AR_ONLY_ATTRIBUTE, None)
     plan_reason = getattr(row, PLAN_REASON_ATTRIBUTE, None)
+    provider_state_present = getattr(row, PROVIDER_STATE_PRESENT_ATTRIBUTE, None)
     ar_step_reasons = dict(_row_mapping(row, AR_STEP_REASON_ATTRIBUTE))
     recoverable_failures = _row_int(row, "mtp2_recoverable_failures")
     # A request with no speculative intent has no MTP-versus-AR question to
@@ -544,6 +557,15 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         ),
         "provider_decline_reason": (
             None if provider_decline is None else str(provider_decline)
+        ),
+        # Orthogonal to readiness: a declined group reports ``declined`` whether
+        # or not its rows still hold provider state, and the lifecycle answers
+        # are opposite -- retained state is usable again when the group narrows,
+        # absent state means the row cannot speculate until something primes it.
+        "provider_state_present": (
+            None
+            if provider_state_present is None
+            else bool(provider_state_present)
         ),
         "plan_group_rows": (
             None if plan_group_rows is None else max(0, int(plan_group_rows))

@@ -16259,6 +16259,7 @@ def _mtp_response_summary(
     prompt_fallback_reason: str | None = None
     activation_reason: str | None = None
     provider_readiness: str | None = None
+    provider_state_present: bool | None = None
     provider_decline_reason: str | None = None
     plan_group_rows: int | None = None
     plan_ar_only: bool | None = None
@@ -16320,6 +16321,9 @@ def _mtp_response_summary(
             block_readiness = block.get("provider_readiness")
             if block_readiness is not None and provider_readiness is None:
                 provider_readiness = str(block_readiness)
+            block_state_present = block.get("provider_state_present")
+            if block_state_present is not None and provider_state_present is None:
+                provider_state_present = bool(block_state_present)
             block_decline = block.get("provider_decline_reason")
             if block_decline is not None and provider_decline_reason is None:
                 provider_decline_reason = str(block_decline)
@@ -16464,6 +16468,7 @@ def _mtp_response_summary(
         summary["execution"] = {
             "activation_reason": activation_reason,
             "provider_readiness": provider_readiness,
+            "provider_state_present": provider_state_present,
             "provider_decline_reason": provider_decline_reason,
             "plan_group_rows": plan_group_rows,
             "plan_ar_only": plan_ar_only,

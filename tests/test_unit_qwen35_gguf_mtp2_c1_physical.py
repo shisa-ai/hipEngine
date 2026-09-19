@@ -439,8 +439,13 @@ def test_capability_publishes_the_row_provider_readiness_it_refused(
         eligibility=_c1_eligibility(7),
     )
     adapter.owner.note_provider_readiness = (
-        lambda rid, readiness, reason=None: seen.append(
-            (int(rid), str(readiness), None if reason is None else str(reason))
+        lambda rid, readiness, reason=None, state_present=None: seen.append(
+            (
+                int(rid),
+                str(readiness),
+                None if reason is None else str(reason),
+                state_present,
+            )
         )
     )
     semantics = (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 32, 25),)
@@ -451,6 +456,7 @@ def test_capability_publishes_the_row_provider_readiness_it_refused(
     assert seen[-1][0] == 7
     assert seen[-1][1] == PROVIDER_DECLINED
     assert "unregistered" in str(seen[-1][2])
+    assert seen[-1][3] is False
 
     # 2. A silent refusal (the row has not emitted its first token) reports
     #    absent-with-reason rather than an unexplained ``no_provider``.
@@ -462,7 +468,7 @@ def test_capability_publishes_the_row_provider_readiness_it_refused(
         slot=None,
     )
     assert adapter.capability(semantics) is None
-    assert seen[-1] == (7, PROVIDER_ABSENT, "first_token_pending")
+    assert seen[-1] == (7, PROVIDER_ABSENT, "first_token_pending", False)
 
     # 3. A resolved capability reports the buffered prompt rows it will prime from.
     adapter = _adapter(
@@ -473,12 +479,19 @@ def test_capability_publishes_the_row_provider_readiness_it_refused(
     )
     seen.clear()
     adapter.owner.note_provider_readiness = (
-        lambda rid, readiness, reason=None: seen.append(
-            (int(rid), str(readiness), None if reason is None else str(reason))
+        lambda rid, readiness, reason=None, state_present=None: seen.append(
+            (
+                int(rid),
+                str(readiness),
+                None if reason is None else str(reason),
+                state_present,
+            )
         )
     )
     assert adapter.capability(semantics) is not None
-    assert seen == [(7, PROVIDER_PROMPT_BUFFERED, None)]
+    # Buffered priming is not live state, and the two are reported separately so
+    # a refused group can be told from a row whose state is gone.
+    assert seen == [(7, PROVIDER_PROMPT_BUFFERED, None, False)]
 
     # 4. A row that already owns provider state reports ready, not buffered.
     adapter._prompt_hidden_rows = {}
@@ -494,7 +507,7 @@ def test_capability_publishes_the_row_provider_readiness_it_refused(
     }
     seen.clear()
     assert adapter.capability(semantics) is not None
-    assert seen == [(7, PROVIDER_READY, None)]
+    assert seen == [(7, PROVIDER_READY, None, True)]
 
 
 def test_observe_prefill_result_names_a_reused_prefix_refusal() -> None:
