@@ -2,6 +2,18 @@
 
 Last updated: **2026-09-20**
 
+Merged-tree working baseline on physical host `gfx1151` (Radeon 8060S): the
+upstream prefix-cache A/B reproduces the merge screening rows (35B MoE all lanes
+28.19 → 33.88 tok/s, 16/27 hits; dense 27B code lanes 5.64 → 7.35 tok/s, 9/18
+hits). On the served multi-turn protocol with an in-load true-AR control, rows
+that used MTP decode at **25.34 against 12.27 tok/s per request (2.07x)** with
+median ITL halved (82.8 → 40.1 ms) at c=1, that per-request advantage is gone at
+c=4 (9.59 against 9.30), warm prefix hits use no MTP at all, and the c=4
+speculative lane loses coverage to activation (2 of 6 rows, 635 `no_provider`
+events). This is a working baseline, not a promotion or an aggregate MTP
+throughput claim.
+[Baseline artifact](results/2026-09-20-gfx1151-post-merge-baseline-cache-and-mtp-arms.json).
+
 Merge qualification on physical host `gfx1151` (Radeon 8060S): the local
 MTP/containment branch and upstream prefix-cache branch pass the CPU and
 serving integration checks, live cache-hit/lifecycle checks, and sampled-MTP
@@ -1805,6 +1817,7 @@ for the current gfx1151 FP32 production profile.
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 38.373 | **65.347** | **1.7029x** | Current `ud-quants` paired control on a clean worktree at `92c7e3dc4`; `complete_exact`, all ten prompts exact across two runs with identical token IDs, GPU/CPU acceptance agree, `speed_claim_eligible: true`, and the true-AR arm uses recorded production graph replay. [`artifact`](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Merged-tree served baseline: multi-turn ShareGPT 256–1,200-token prompts, greedy, cache off, in-load AR control | 12.27 | 25.34 | **2.07x** | Working baseline on `19f2dd45e`, not admission evidence. Per-request decode rate (median of `completion/(e2e−ttft)` over rows); median ITL **82.8 → 40.1 ms** and the matched per-turn medians favour the speculative arm at every turn. At c=4 the same protocol is **1.03x** (9.59 against 9.30) while the load aggregate rises to 21.65 tok/s, so concurrency buys the aggregate and the route adds nothing per request there. Warm prefix hits use no MTP. A different workload from the natural-short rows above; rates are not comparable across them. [`artifact`](results/2026-09-20-gfx1151-post-merge-baseline-cache-and-mtp-arms.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Natural ShareGPT prompts, c=1, matched prompts, in-load AR control | 12.02 | 23.54 | **1.958x** | Promoted staged route; the route choice is inert below the 1,023-token graph cap (the row-wise route measures 23.62, **1.964x**). Above the cap on natural long prompts the staged route measures **15.39 against 9.33 row-wise and 8.75 AR (1.76x against 1.07x)**, same prompts and tokens, acceptance 0.688 either way. At c=4 the same short prompts are **0.85x** AR on both routes. `serial_exact` verification is token-identical to AR on 9/9 prompts at 8.07 tok/s against 23.55 for the default `native` mode. [`artifact`](results/2026-09-19-gfx1151-qwen38-natural-sharegpt-mtp-route-comparison.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical direct-leaf natural25 B3 | 11.692 | 21.158 | 1.8095x | August 26 direct-leaf protocol, not the public-server headline. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
