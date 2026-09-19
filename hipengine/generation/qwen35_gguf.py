@@ -105,6 +105,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_gapped_slot_local_fast_route_available,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
     _qualified_no_mirror_int8_capability,
@@ -378,16 +379,24 @@ _GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT = 512
 
 
 def _gguf_prefix_gapped_suffix_max_tokens() -> int:
-    """Largest suffix worth prefilling through a gapped (paged) hit.
+    """Largest suffix worth prefilling through a gapped hit on the slow route.
 
     Placement decides the route. A contiguous shared allocation keeps the
-    slot-local prefill; a gapped one drops to the packed paged route, which is
-    far slower per token and gets worse as context grows. Measured on
-    Qwen3.5-0.8B against the full prefill the hit replaces, a gapped hit wins
-    below roughly 600-700 suffix tokens and loses above it at both 2048 and
-    4096 token boundaries (2048+768 costs 1.07x the miss, 4096+768 1.22x, while
-    2048+512 costs 0.63x and 4096+512 0.87x). Past that the cheaper answer is to
-    decline the hit and let the request take the fast private prefill.
+    slot-local prefill; a gapped one used to drop to the packed paged route,
+    which was far slower per token and got worse as context grows (measured
+    on Qwen3.5-0.8B against the full prefill the hit replaces: 2048+768 cost
+    1.07x the miss, 4096+768 1.22x, while 2048+512 cost 0.63x and 4096+512
+    0.87x). Past that the cheaper answer was to decline the hit and let the
+    request take the fast private prefill.
+
+    The gapped gather route changed the cost side: a gapped BF16 slot whose
+    head-major KV buffers are admitted gathers into the same dense buffers
+    the contiguous route uses and pays the same AOTriton attention cost, so
+    the guard no longer applies to it (any suffix length wins). The budget
+    below only binds when that fast gapped route is unavailable for the
+    lease's backend/config - the gather kill-switch, a backend without
+    head-major KV, or a context beyond the validated head-major allocation
+    class - where the old paged-route costs still hold.
 
     A contiguous hit is never subject to this: it uses the same route the miss
     would have used, so it wins at any suffix length.
@@ -397,6 +406,21 @@ def _gguf_prefix_gapped_suffix_max_tokens() -> int:
         _GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV,
         _GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT,
         minimum=0,
+    )
+
+
+def _gguf_prefix_gapped_fast_route_available(lease: Any) -> bool:
+    """Whether a gapped hit on this lease gathers onto the fast slot-local route."""
+
+    session = getattr(lease, "session", None)
+    runner = getattr(session, "runner", None)
+    scratch = getattr(session, "scratch", None)
+    if runner is None or scratch is None:
+        return False
+    return _gguf_gapped_slot_local_fast_route_available(
+        backend=str(getattr(runner, "backend", "")),
+        max_positions=int(getattr(scratch, "max_positions", 0)),
+        kv_width=int(getattr(runner, "kv_width", 0)),
     )
 
 
@@ -6858,10 +6882,15 @@ class Qwen35GGUFResidentModelRunner:
                 self._prefix_contiguous_admissions += 1
             except (DeviceKVContiguityError, MemoryError):
                 suffix_tokens = len(row.prompt_ids) - len(matched_tokens)
-                if suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens():
+                if (
+                    suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens()
+                    and not _gguf_prefix_gapped_fast_route_available(lease)
+                ):
                     # Only a gapped placement is available and the suffix is
-                    # long enough that the paged route costs more than the full
-                    # prefill it would replace.
+                    # long enough that the slow paged route costs more than
+                    # the full prefill it would replace. The fast gapped
+                    # gather route is unavailable for this lease, so declining
+                    # the hit is still the cheaper answer.
                     self._note_prefix_admission_fallback(
                         row, "gapped_suffix_exceeds_paged_budget"
                     )

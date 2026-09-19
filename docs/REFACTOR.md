@@ -258,8 +258,21 @@
   0.87x the miss at a 512-token suffix and 1.07x and 1.22x at 768.
 - Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`
   down from 134.9 s to 6.8 s; the default retention is unchanged at -18.6%.
+- **Update 2026-09-19 (gapped gather route):** the cost model's premise is now
+  gone where the gather route serves. A gapped BF16 slot swaps its identity
+  spans for its real chunk-local block table and runs the same AOTriton
+  attention over gathered head-major buffers the contiguous route uses, so a
+  gapped hit pays contiguous cost at any suffix length (the 35B lane's forced
+  gapped suffix prefill went 134,511 ms -> 8,306 ms against 8,226 ms
+  contiguous). The suffix budget now binds only when the fast gapped route is
+  unavailable - `HIPENGINE_GGUF_GAPPED_GATHER=0`, a backend without
+  head-major KV, or a context beyond the validated head-major allocation
+  class - where the paged-route costs above still hold. Removal scope below
+  is unchanged for those populations.
 - Removal scope: the threshold and the decline path, once the paged prefill
-  route is no longer several times slower per token than the slot-local one.
+  route is no longer several times slower per token than the slot-local one
+  on every backend (gfx1100 still lacks `GGUF_AOTRITON_HEAD_MAJOR_KV`, so its
+  gapped slots still take the native paged fallback and keep the guard).
   Fixing that is the real prize - it would make every hit pay and let the
   retained working set grow.
 
@@ -8316,3 +8329,23 @@ Related, and separately owed: the serving evidence row for this cell is
 request admitted while it is alone is later batched into a wider decode group and
 silently realizes `effective_route="default"`. The wider realized widths need
 their own measured evidence rows before MTP can be admitted at c>1.
+
+## `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)
+
+Default **on**. A gapped device-KV placement used to drop the whole packed
+prefill slab onto the native three-pass paged prefill kernel (~34x per-launch
+vs AOTriton on gfx1151; the 35B regression lane measured 134,511 ms vs 8,226 ms
+for the same 6,144-token suffix). With the flag on, a gapped BF16 slot keeps the
+slot-local executor: `_gguf_gapped_slot_local_prefill_scratch` swaps its identity
+spans for spans carrying the session's real chunk-local block table, the paged
+KV write / native fallback / head-major gather all walk it, and AOTriton reads
+the same gathered dense head-major buffers the contiguous route uses.
+
+Removal scope: the flag, the `gapped_slot_local_gather` branch in
+`_prefill_batch_native_single_slab`, and the fast-route condition that keeps
+`HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` binding only when the gather is
+unavailable - once the gather route holds through a full `--suite all`
+milestone plus the served multi-turn A/B on both the gfx1151 zbook and a W7900
+host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled there. gfx1100 still lacks the
+head-major capability, so its gapped slots keep the native spans fallback and
+the suffix guard until that backend validates head-major KV.

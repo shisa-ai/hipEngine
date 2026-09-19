@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.generation import qwen35_gguf as qwen35_gguf_generation
 from hipengine.generation.engine_loop import EngineLoopConfig
 from hipengine.generation.qwen35_gguf import (
     _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV,
@@ -1501,4 +1502,69 @@ def test_gapped_placement_declines_a_hit_whose_suffix_exceeds_the_paged_budget(
     assert short_row.prefix_fallback_reason is None
     assert runner._prefix_gapped_admissions >= 1
     runner.rollback_admission(SimpleNamespace(request_id=62))
+    runner.close()
+
+
+def test_gapped_placement_takes_a_long_suffix_when_the_gather_route_is_fast(
+    monkeypatch,
+) -> None:
+    """With the gapped gather route available, any suffix length is worth a hit.
+
+    The gapped gather route swaps a gapped slot's identity spans for its real
+    block table and runs the same AOTriton attention the contiguous route
+    uses, so a gapped hit no longer pays the paged-route penalty the suffix
+    budget guarded against. The decline below only binds when that fast
+    route is unavailable (kill-switch, no head-major KV, oversized context).
+    """
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX", "64")
+    monkeypatch.setattr(
+        qwen35_gguf_generation,
+        "_gguf_prefix_gapped_fast_route_available",
+        lambda lease: True,
+    )
+    from hipengine.kvcache.pool import DeviceKVContiguityError
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2)
+    runner.register_batch((70,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=70))
+    source = runner._rows[70]
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    pool = runner.kv_pool
+    real_admit = pool.admit_with_shared_prefix
+
+    def only_gapped(*args, **kwargs):
+        if kwargs.get("require_contiguous"):
+            raise DeviceKVContiguityError("no contiguous run for the test")
+        return real_admit(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "admit_with_shared_prefix", only_gapped)
+
+    # The same long suffix the budget would decline on the slow route now
+    # takes the gapped hit: the gather route makes it pay contiguous cost.
+    long_prompt = (*prefix, *range(9000, 9000 + 128))
+    runner.register_batch((71,), _request(long_prompt, max_tokens=2), prompt_rows=(long_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=71))
+    long_row = runner._rows[71]
+    assert long_row.prefix_matched_tokens == 512
+    assert long_row.prefix_reused_tokens == 512
+    assert long_row.prefix_fallback_reason is None
+    assert runner._prefix_gapped_admissions >= 1
+    runner.rollback_admission(SimpleNamespace(request_id=71))
     runner.close()

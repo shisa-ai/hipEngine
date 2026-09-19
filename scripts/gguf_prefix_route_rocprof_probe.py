@@ -152,6 +152,8 @@ def _session_plan(runner: Any, session: Any) -> dict[str, Any]:
                     "device_kv_nonidentity_scatter",
                     "device_kv_contiguous_base_rows",
                     "device_kv_shifted_contiguous_rebase",
+                    "gapped_slot_local_gather",
+                    "gapped_gather_slots",
                     "executor_mode",
                 )
             }

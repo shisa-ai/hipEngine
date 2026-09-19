@@ -11180,6 +11180,7 @@ _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATH
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
+_GGUF_GAPPED_GATHER_ENV = "HIPENGINE_GGUF_GAPPED_GATHER"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
     "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
 )
@@ -15032,6 +15033,200 @@ def _gguf_slot_local_prefill_cache_views(
     )
 
 
+def _gguf_gapped_gather_prefill_enabled() -> bool:
+    """Whether gapped device-KV slots may gather onto the slot-local route.
+
+    A gapped placement historically dropped the whole packed slab onto the
+    native paged prefill kernel, which is a large per-token multiple of the
+    AOTriton slot-local route. With the gather enabled, a gapped BF16 slot
+    swaps its identity spans for spans carrying the session's real
+    chunk-local block table, so the paged KV write, the native fallback and
+    the head-major gather all address the pool pages and AOTriton reads the
+    same dense head-major buffers the contiguous route uses. The env is the
+    rollback path to the packed fallback (see docs/REFACTOR.md).
+    """
+
+    return _env_flag(_GGUF_GAPPED_GATHER_ENV, True)
+
+
+def _gguf_gapped_slot_local_fast_route_available(
+    *,
+    backend: str,
+    max_positions: int,
+    kv_width: int,
+) -> bool:
+    """Whether gapped slots gather onto the fast AOTriton route for this config.
+
+    Mirrors ``_try_allocate_gguf_aotriton_head_major_kv_scratch``: the gather
+    needs the env flag, the backend's head-major KV capability, and head-major
+    buffers within the validated token/byte allocation class. When any check
+    fails, a gapped slot falls back to the native paged prefill kernel and the
+    admission cost guard keeps protecting long suffixes (see
+    ``hipengine/generation/qwen35_gguf.py``).
+    """
+
+    if not _gguf_gapped_gather_prefill_enabled():
+        return False
+    if not _gguf_aotriton_head_major_kv_enabled(str(backend)):
+        return False
+    max_positions = int(max_positions)
+    kv_width = int(kv_width)
+    if max_positions <= 0 or kv_width <= 0:
+        return False
+    max_tokens = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+    )
+    if max_tokens <= 0 or max_positions > max_tokens:
+        return False
+    per_buffer_bytes = max_positions * kv_width * DType.BF16.itemsize
+    max_bytes = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+    )
+    return max_bytes > 0 and 2 * per_buffer_bytes <= max_bytes
+
+
+def _gguf_gapped_slot_local_prefill_admitted(
+    *,
+    direct_int8_prefill: bool,
+    sessions: Sequence[object],
+    contiguous_base_rows: Sequence[int | None],
+) -> bool:
+    """Whether a gapped slab may keep the slot-local executor via gather.
+
+    Only BF16-KV slabs without the direct-INT8 prefill route qualify: the
+    direct-INT8 oracle path keeps its own pointer/table contract, and an
+    INT8-retained session's mirror/retained double-write spans are not
+    swapped by the gather, so those populations keep the packed fallback.
+    """
+
+    if direct_int8_prefill:
+        return False
+    if not _gguf_gapped_gather_prefill_enabled():
+        return False
+    for session, base_row in zip(sessions, contiguous_base_rows, strict=True):
+        if base_row is not None:
+            continue
+        storage = getattr(session, "kv_storage_dtype", DType.BF16)
+        if storage != DType.BF16:
+            return False
+    return True
+
+
+def _gguf_gapped_slot_block_table_rows(session: object, *, rows: int) -> np.ndarray:
+    """Tile one session's chunk-local device-KV page ids per query row.
+
+    The slot-local bulk scratch carries an identity block table (its spans
+    plus the rebased cache view are what make contiguous sessions readable).
+    A gapped session instead needs one equal real block table per query row,
+    which is the shape contract every parent paged kernel validates. This is
+    the same scheduler page table the INT8 retained prefill write tiles.
+    """
+
+    rows = int(rows)
+    if rows <= 0:
+        raise ValueError("gapped slot block table rows must be positive")
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None:
+        raise RuntimeError("gapped slot-local prefill requires a bound device KV allocation")
+    block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
+    if not block_ids:
+        raise RuntimeError("GGUF device KV allocation must contain pages")
+    return _gguf_retained_prefill_block_table_host(
+        allocation,
+        rows=rows,
+        blocks_per_row=len(block_ids),
+    )
+
+
+def _gguf_gapped_slot_block_table(
+    session: object,
+    *,
+    rows: int,
+    device: object,
+    runtime: HipRuntime,
+) -> Tensor:
+    """Return the session's tiled gapped block table as a device tensor.
+
+    The (rows, blocks) INT32 buffer is cached on the session keyed by the
+    bound allocation and row count, so a multi-chunk prefill uploads it once
+    per chunk geometry instead of once per layer. It is released with the
+    session's other preflight buffers (see ``_release_int8_prefill_oracle_buffers``).
+    """
+
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None:
+        raise RuntimeError("gapped slot-local prefill requires a bound device KV allocation")
+    signature = (
+        tuple(int(block_id) for block_id in allocation.block_ids),
+        int(allocation.chunk_start_block_id),
+        int(rows),
+    )
+    cached = getattr(session, "_gapped_slot_block_table_cache", None)
+    if cached is not None and cached[0] == signature:
+        buffer = cached[1]
+    else:
+        if cached is not None:
+            free(cached[1], runtime=runtime)
+        table_host = np.ascontiguousarray(
+            _gguf_gapped_slot_block_table_rows(session, rows=rows)
+        )
+        buffer = malloc(table_host.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(table_host),
+            table_host.nbytes,
+            runtime=runtime,
+        )
+        session._gapped_slot_block_table_cache = (signature, buffer)  # type: ignore[attr-defined]
+    return Tensor.from_handle(
+        buffer.ptr,
+        (int(rows), int(signature[0].__len__())),
+        DType.INT32,
+        device,
+    )
+
+
+def _gguf_gapped_slot_local_prefill_scratch(layer_scratch, *, block_table: Tensor):
+    """Swap a gapped slot's identity spans for real block-table spans.
+
+    The cache pointers stay at the pool chunk base (no contiguous rebase
+    exists for a gapped allocation); the paged KV write, the native fallback
+    kernel and the head-major gather all walk the block table instead.
+    ``head_major_kv_dense_prefix`` must be False so the head-major copy takes
+    the block-table-walking variant rather than the identity-addressing one.
+    """
+
+    start = int(layer_scratch.start)
+    rows = int(layer_scratch.rows)
+    end = start + rows
+    positions = layer_scratch.positions_tensor
+    context_counts = layer_scratch.context_counts_tensor
+    append_spans = KVLiveSpans.paged_uniform(
+        block_table=block_table,
+        live_counts=positions,
+        max_live_count=end - 1,
+        storage_dtype=DType.BF16,
+        row_positions=positions,
+        span_role="prefill",
+    )
+    prefill_spans = KVLiveSpans.paged_uniform(
+        block_table=block_table,
+        live_counts=context_counts,
+        max_live_count=end,
+        storage_dtype=DType.BF16,
+        row_positions=positions,
+        span_role="prefill",
+    )
+    return replace(
+        layer_scratch,
+        append_spans=append_spans,
+        prefill_spans=prefill_spans,
+        head_major_kv_dense_prefix=False,
+    )
+
+
 def _gguf_device_kv_copy_segments(
     session: object,
     *,
@@ -15601,6 +15796,11 @@ class Qwen35GGUFResidentSession:
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
+    # Session-lifetime tiled block table for the gapped slot-local prefill
+    # gather: (block_ids, chunk_start_block_id, rows) signature plus one
+    # (rows, blocks) INT32 device buffer. Rebuilt only when the bound
+    # allocation or the bulk-scratch row capacity changes.
+    _gapped_slot_block_table_cache: tuple[tuple[tuple[int, ...], int, int], DeviceBuffer] | None = field(default=None, init=False)
     # Monotonic while-live peaks of the oracle owners, sampled in
     # prefill_batch_native's finally before the release (see the comment
     # there): scrape-based polling cannot observe these buffers mid-call.
@@ -16913,6 +17113,7 @@ class Qwen35GGUFResidentSession:
         view._decode_graph_submission_contexts = {}
         view._device_kv_graph_handles = {}
         view._int8_prefill_oracle_buffers = {}
+        view._gapped_slot_block_table_cache = None
         view._linear_state_snapshot_backups = ()
         # Packed prefill/verify may grow slot-local result buffers after this
         # view is created. Never inherit the owner's pointers: the owner closes
@@ -19536,6 +19737,9 @@ class Qwen35GGUFResidentSession:
         if self._int8_prefill_retained_block_table is not None:
             free(self._int8_prefill_retained_block_table, runtime=runtime)
             self._int8_prefill_retained_block_table = None
+        if self._gapped_slot_block_table_cache is not None:
+            free(self._gapped_slot_block_table_cache[1], runtime=runtime)
+            self._gapped_slot_block_table_cache = None
 
     def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
@@ -24486,11 +24690,27 @@ class Qwen35GGUFResidentSession:
         device_kv_nonidentity_scatter = any(
             base_row is None for base_row in device_kv_contiguous_base_rows
         )
-        if device_kv_nonidentity_scatter:
+        gapped_slot_local_gather = (
+            device_kv_nonidentity_scatter
+            and _gguf_gapped_slot_local_prefill_admitted(
+                direct_int8_prefill=direct_int8_prefill,
+                sessions=session_tuple,
+                contiguous_base_rows=device_kv_contiguous_base_rows,
+            )
+        )
+        if device_kv_nonidentity_scatter and not gapped_slot_local_gather:
             # Slot-local prefill cannot represent a shared prefix plus a
             # non-contiguous COW suffix. Keep those sessions in packed scratch
             # and scatter through their scheduler-owned block table below.
             slot_local_full_prefill = False
+            force_aotriton_slots.clear()
+        elif device_kv_nonidentity_scatter and gapped_slot_local_gather:
+            # A gapped BF16 slot keeps the slot-local executor: its identity
+            # spans are swapped for the session's real chunk-local block
+            # table, the KV write and the head-major gather walk it, and
+            # AOTriton reads the gathered dense head-major buffers exactly
+            # as the contiguous route does.
+            slot_local_full_prefill = True
             force_aotriton_slots.clear()
         elif direct_int8_prefill:
             # The c1 correctness route keeps one transient BF16 oracle but uses
@@ -24510,6 +24730,14 @@ class Qwen35GGUFResidentSession:
             base_row not in {None, 0}
             for base_row in device_kv_contiguous_base_rows
         )
+        self.last_packed_prefill_plan["gapped_slot_local_gather"] = bool(
+            device_kv_nonidentity_scatter and gapped_slot_local_gather
+        )
+        self.last_packed_prefill_plan["gapped_gather_slots"] = [
+            slot_index
+            for slot_index, base_row in enumerate(device_kv_contiguous_base_rows)
+            if base_row is None and gapped_slot_local_gather
+        ]
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
         capture_layer_ids = self._normalize_layer_output_capture(
@@ -24641,12 +24869,33 @@ class Qwen35GGUFResidentSession:
                                 and session.scratch.full_bf16_mirror_cache(layer_id)
                                 is None
                             )
-                            layer_scratch = _gguf_slot_local_prefill_cache_views(
-                                session,
-                                layer_scratch,
-                                row_nbytes=full_kv_row_nbytes,
-                                direct_int8=transient_direct_oracle,
+                            gapped_gather_slot = bool(
+                                gapped_slot_local_gather
+                                and device_kv_contiguous_base_rows[slot_index] is None
                             )
+                            if gapped_gather_slot:
+                                # No contiguous rebase exists for this slot:
+                                # keep the pool-chunk cache pointers and swap the
+                                # identity spans for the session's real block
+                                # table so the KV write, the native fallback
+                                # and the head-major gather all address the
+                                # scheduler-owned pages.
+                                layer_scratch = _gguf_gapped_slot_local_prefill_scratch(
+                                    layer_scratch,
+                                    block_table=_gguf_gapped_slot_block_table(
+                                        session,
+                                        rows=slot_rows,
+                                        device=slot_scratch.positions_tensor.device,
+                                        runtime=runtime,
+                                    ),
+                                )
+                            else:
+                                layer_scratch = _gguf_slot_local_prefill_cache_views(
+                                    session,
+                                    layer_scratch,
+                                    row_nbytes=full_kv_row_nbytes,
+                                    direct_int8=transient_direct_oracle,
+                                )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
                             self.runner._run_full_attention_prefill_layer_aotriton(
                                 layer_id,
@@ -24663,6 +24912,16 @@ class Qwen35GGUFResidentSession:
                                         transient_direct_oracle=(
                                             transient_direct_oracle
                                         ),
+                                    )
+                                    and (
+                                        not gapped_gather_slot
+                                        or bool(
+                                            getattr(
+                                                layer_scratch,
+                                                "head_major_kv_admitted",
+                                                False,
+                                            )
+                                        )
                                     )
                                 ),
                                 aotriton_min_tokens=(
