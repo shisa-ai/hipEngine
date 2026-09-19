@@ -1393,12 +1393,19 @@ def test_generate_consumes_the_prompt_through_bulk_prefill(env) -> None:
     second resident weight set and no schedule change. One prefill trace with
     the last prompt position is what a rate measured from ``step_traces``
     needs, and the last bulk row is what seeds the first decoded token.
+
+    ``generate`` asks for the last row alone. The head is a ``hidden x vocab``
+    matrix, so projecting all four prompt rows would be four times the
+    arithmetic and four times the readback for logits nothing reads - the
+    single-card route and this session's token-serial route both project one
+    row here. The injected readback is a single row for that reason: a
+    four-row readback no longer fits the request.
     """
 
     session = _bulk_session(env, rows=4)
-    bulk_rows = np.zeros((4, VOCAB), dtype="<f4")
-    bulk_rows[3, 7] = 5.0
-    env["injected_rows"].append(np.ascontiguousarray(bulk_rows).reshape(-1))
+    last_row = np.zeros(VOCAB, dtype="<f4")
+    last_row[7] = 5.0
+    env["injected_rows"].append(np.ascontiguousarray(last_row))
     env["queue_logits"]([2, 3])
     result = session.generate([11, 12, 13, 14], max_new_tokens=2)
     assert [trace.kind for trace in result.step_traces] == [
@@ -1408,6 +1415,48 @@ def test_generate_consumes_the_prompt_through_bulk_prefill(env) -> None:
     ]
     assert result.step_traces[0].position == 3
     assert result.token_ids == (7, 2)
+    session.close()
+
+
+def test_bulk_prefill_projects_only_the_rows_it_is_asked_for(env) -> None:
+    """``logits_rows`` shrinks the head projection and the readback together."""
+
+    session = _bulk_session(env, rows=4)
+    full = np.arange(4 * VOCAB, dtype="<f4").reshape(4, VOCAB)
+    env["injected_rows"].append(np.ascontiguousarray(full).reshape(-1))
+    all_rows = session.bulk_prefill([1, 2, 3, 4])
+    assert all_rows.shape == (4, VOCAB)
+
+    # Only the trailing row is projected, so only one row is read back and it
+    # is the last prompt row's, not the first.
+    env["injected_rows"].append(np.ascontiguousarray(full[-1]))
+    last = session.bulk_prefill([1, 2, 3, 4], logits_rows=1)
+    assert last.shape == (1, VOCAB)
+    assert np.array_equal(last[0], full[3])
+
+    env["injected_rows"].append(np.ascontiguousarray(full[-2:]).reshape(-1))
+    tail = session.bulk_prefill([1, 2, 3, 4], logits_rows=2)
+    assert tail.shape == (2, VOCAB)
+    assert np.array_equal(tail, full[2:])
+    session.close()
+
+
+def test_bulk_prefill_rejects_an_out_of_range_logits_rows(env) -> None:
+    session = _bulk_session(env, rows=4)
+    for bad in (0, 5):
+        with pytest.raises(ValueError, match="logits_rows"):
+            session.bulk_prefill([1, 2, 3, 4], logits_rows=bad)
+    session.close()
+
+
+def test_teacher_forced_logits_keeps_every_prompt_row(env) -> None:
+    """The diagnostic needs all rows, so the default must stay all-rows."""
+
+    session = _bulk_session(env, rows=4)
+    full = np.arange(4 * VOCAB, dtype="<f4").reshape(4, VOCAB)
+    env["injected_rows"].append(np.ascontiguousarray(full).reshape(-1))
+    logits = session.teacher_forced_logits([1, 2, 3, 4])
+    assert logits.shape == (4, VOCAB)
     session.close()
 
 

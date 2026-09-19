@@ -681,7 +681,9 @@ class MlpTP2GenerationSession:
         self._release_bulk_prefill_workspace()
         self._build_bulk_prefill_workspace(target)
 
-    def bulk_prefill(self, token_ids: Sequence[int]) -> np.ndarray:
+    def bulk_prefill(
+        self, token_ids: Sequence[int], *, logits_rows: int | None = None
+    ) -> np.ndarray:
         """Whole-prompt rank-local bulk prefill; returns ``(rows, vocab)`` logits.
 
         Experimental opt-in candidate. Each layer runs the attention/GDN
@@ -691,6 +693,11 @@ class MlpTP2GenerationSession:
         prefill is not implemented, so an over-capacity prompt is rejected
         before any allocation or launch. Every call zeroes the KV/GDN state
         first, so it is repeatable and never inherits a previous sequence.
+
+        ``logits_rows`` projects the head for only the trailing N prompt rows
+        and returns that many rows. The product path needs the last row alone,
+        which is what the single-card and token-serial routes compute; the
+        teacher-forced diagnostic needs every row and leaves it unset.
         """
 
         self._require_live()
@@ -715,6 +722,13 @@ class MlpTP2GenerationSession:
                 raise ValueError(
                     f"token_id {token} outside [0, {self.vocab_size})"
                 )
+        # Validated here rather than in the launcher so a bad argument is a
+        # plain ValueError before any allocation, and does not poison the
+        # session through the launch-failure handler.
+        if logits_rows is not None and not 1 <= int(logits_rows) <= rows:
+            raise ValueError(
+                f"logits_rows {int(logits_rows)} is outside [1, {rows}]"
+            )
         # Sized to the prompt unless the caller pinned a capacity. This is the
         # first thing the route does, so a session that never bulk-prefills
         # never pays for the workspace.
@@ -768,7 +782,7 @@ class MlpTP2GenerationSession:
                         stream=self._rank_stream(device),
                     )
             self._run_bulk_prefill_layers(rows)
-            logits = self._finish_bulk_prefill(rows)
+            logits = self._finish_bulk_prefill(rows, project_rows=logits_rows)
         except Exception as error:
             self._poisoned = True
             raise TP2GroupError(
@@ -935,7 +949,27 @@ class MlpTP2GenerationSession:
                 add_residual=add_residual,
             )
 
-    def _finish_bulk_prefill(self, rows: int) -> np.ndarray:
+    def _finish_bulk_prefill(
+        self, rows: int, *, project_rows: int | None = None
+    ) -> np.ndarray:
+        """Project the head for the trailing ``project_rows`` rows (default: all).
+
+        Picking the next token needs the last row's logits and nothing else,
+        which is what both the single-card route (``_sample_from_hidden`` at
+        rows=1) and this session's own token-serial route compute. The head is
+        a ``hidden x vocab`` matrix, so projecting every prompt row costs 512x
+        the arithmetic and 512x the device-to-host traffic for logits no caller
+        reads. ``None`` keeps the all-rows behaviour the teacher-forced
+        diagnostic needs.
+        """
+
+        rows = int(rows)
+        want = rows if project_rows is None else int(project_rows)
+        if want < 1 or want > rows:
+            raise ValueError(f"project_rows {want} is outside [1, {rows}]")
+        # The projected rows are the last ``want`` of the pre-norm hidden, so
+        # the norm and the projection both start at this row offset.
+        offset_rows = rows - want
         src = self._bulk_final_hidden
         if self.head_shard:
             plan = self._head_plan
@@ -953,10 +987,10 @@ class MlpTP2GenerationSession:
                 # reference. See docs/REFACTOR.md.
                 with scoped_current_device(self.runtime, device):
                     gguf_rmsnorm_bf16_f32_weight(
-                        int(src[device]),
+                        int(src[device]) + offset_rows * runner.hidden_size * 2,
                         runner.weights.root("output_norm").allocation().tensor.ptr,
                         scratch.norm.ptr,
-                        rows,
+                        want,
                         runner.hidden_size,
                         runner.weights.config.rms_norm_eps,
                         stream=stream,
@@ -966,14 +1000,14 @@ class MlpTP2GenerationSession:
                         self._head_weights[device],
                         scratch.norm.ptr,
                         self._bulk_logits_buf[device].ptr,
-                        rows,
+                        want,
                         runner.hidden_size,
                         shard_rows,
                         output_dtype=GGUF_OUTPUT_F32,
                         stream=stream,
                         runtime=self.runtime,
                     )
-            logits = np.empty((rows, int(plan.vocab_rows)), dtype="<f4")
+            logits = np.empty((want, int(plan.vocab_rows)), dtype="<f4")
             for device in self.devices:
                 stream = self._rank_stream(device)
                 with scoped_current_device(self.runtime, device):
@@ -981,11 +1015,11 @@ class MlpTP2GenerationSession:
                         self.runtime.stream_synchronize(stream)
                     # A column slice of the 2-D logits array is not contiguous,
                     # so read each rank's shard into a contiguous buffer first.
-                    chunk = np.empty((rows, shard_rows), dtype="<f4")
+                    chunk = np.empty((want, shard_rows), dtype="<f4")
                     copy_device_to_host(
                         chunk.ctypes.data,
                         self._bulk_logits_buf[device],
-                        rows * shard_rows * 4,
+                        want * shard_rows * 4,
                         runtime=self.runtime,
                     )
                     start = int(plan.rank_row_start(device))
@@ -999,10 +1033,10 @@ class MlpTP2GenerationSession:
         # helper and must keep its registered f32-out route.
         with scoped_current_device(self.runtime, device):
             gguf_rmsnorm_bf16_f32_weight(
-                int(src[device]),
+                int(src[device]) + offset_rows * runner.hidden_size * 2,
                 runner.weights.root("output_norm").allocation().tensor.ptr,
                 scratch.norm.ptr,
-                rows,
+                want,
                 runner.hidden_size,
                 runner.weights.config.rms_norm_eps,
                 stream=stream,
@@ -1012,7 +1046,7 @@ class MlpTP2GenerationSession:
                 runner.weights.root("lm_head"),
                 scratch.norm.ptr,
                 self._bulk_logits_buf[device].ptr,
-                rows,
+                want,
                 runner.hidden_size,
                 runner.vocab_size,
                 output_dtype=GGUF_OUTPUT_F32,
@@ -1021,11 +1055,11 @@ class MlpTP2GenerationSession:
             )
             if stream:
                 self.runtime.stream_synchronize(stream)
-        logits = np.empty((rows, runner.vocab_size), dtype="<f4")
+        logits = np.empty((want, runner.vocab_size), dtype="<f4")
         copy_device_to_host(
             logits.ctypes.data,
             self._bulk_logits_buf[device],
-            rows * runner.vocab_size * 4,
+            want * runner.vocab_size * 4,
             runtime=self.runtime,
         )
         return logits
@@ -1114,7 +1148,7 @@ class MlpTP2GenerationSession:
             # prefill step in the trace, which is what a rate measured from
             # ``step_traces`` must see.
             started = time.perf_counter()
-            bulk_logits = self.bulk_prefill(prompt)
+            bulk_logits = self.bulk_prefill(prompt, logits_rows=1)
             traces.append(
                 StepTrace(
                     kind="prefill",
