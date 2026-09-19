@@ -1,0 +1,72 @@
+{
+ "schema": 1,
+ "kind": "tp2_bulk_prefill_gate_vs_current_reference",
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "reference": {
+  "path": "/tmp/quality-tp1-d0-current.json",
+  "source_revision": "0dced662c2d15a1c01dda3dba26d0748e5f2da78",
+  "clean_tree": true,
+  "profile": "production",
+  "route": {
+   "mode": "resident_tp1",
+   "schedule": "bulk-prefill/c1-head",
+   "prefill_schedule": "bulk",
+   "driver": "resident",
+   "reduce_mode": "none",
+   "head_shard": false,
+   "max_sequence_length": 200,
+   "uneven_split": null,
+   "shard_widths": null,
+   "shard_variants": null
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 python3 scripts/tp2_teacher_coverage_broad.py --sustained-arm tp1-d0 --max-sequence-length 200 --repeat-tp2 3 --json OUT"
+ },
+ "candidate_command": "python3 scripts/tp2_bulk_prefill_diagnostic.py --reference OUT --reduce-mode device --json OUT2",
+ "finding": {
+  "summary": "The bulk prefill route fails the production KL gate against a reference captured on the same clean revision, with metrics bit-identical to those measured against the day-old reference, so the gap is real and reproducible rather than a stale-reference or dispatch-mismatch artifact.",
+  "hypothesis_ruled_out": "The single-card harness can silently resolve use_wmma_prefill off while the TP2 bulk route runs WMMA, which would have made the comparison like-for-like-broken. Re-capturing the reference on the current clean revision reproduces the same metrics to full float precision, so the reference's dispatch is not the cause.",
+  "metrics_identical_to_day_old_reference": true,
+  "gate_thresholds": {
+   "max_kl": 0.05,
+   "mean_kl": 0.001,
+   "p95_kl": 0.005,
+   "p99_kl": 0.02,
+   "top1_agreement": 0.99
+  },
+  "prompts": {
+   "heldout_mixed_summary": {
+    "mean_kl": 0.0024068130614897268,
+    "p95_kl": 0.0006870128237073894,
+    "p99_kl": 0.01873827367731936,
+    "max_kl": 0.26077550858777865,
+    "top1_agreement": 0.984375,
+    "flipped_rows": 2,
+    "gate_failures": [
+     "mean_kl 0.00240681 > 0.001",
+     "max_kl 0.260776 > 0.05"
+    ],
+    "status": "fail"
+   },
+   "mixed_ja_en_translate": {
+    "mean_kl": 0.002557612045921964,
+    "p95_kl": 0.0009884388612576842,
+    "p99_kl": 0.09134977608861948,
+    "max_kl": 0.16705312926134894,
+    "top1_agreement": 1.0,
+    "flipped_rows": 0,
+    "gate_failures": [
+     "mean_kl 0.00255761 > 0.001",
+     "p99_kl 0.0913498 > 0.02",
+     "max_kl 0.167053 > 0.05"
+    ],
+    "status": "fail"
+   }
+  },
+  "localization": "A prior entry localizes the divergence to the Q6_K attn_qkv projection in the replicated attention phase (rel 3.73e-03, max_abs 0.25, not bit-equal) with identical layer input, weights and state - too large for an accumulation-order difference on a single projection, so a variant or layout difference between the two routes is the leading hypothesis.",
+  "relation_to_device_reduction": "Independent: the device reduction is bit-identical to the staged route (same logits_sha256), so it neither causes nor hides this gap."
+ }
+}

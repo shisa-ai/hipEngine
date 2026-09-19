@@ -98,6 +98,7 @@ class PhaseRecorder:
         self.layer_index = 0
         self.group: Any = None
         self.wrapped_bulk_group = False
+        self.device_reduce = False
         self._pools: dict[int, list[Any]] = {}
         self._originals: list[tuple[Any, str, Any]] = []
 
@@ -130,8 +131,18 @@ class PhaseRecorder:
         self._wrap(session, "_bulk_sharded_mlp_layer", self._enter_mlp, self._exit_mlp)
         self._wrap(session, "_finish_bulk_prefill", self._enter_tail, self._exit_tail)
         self._wrap(group, "enqueue_chain", self._enter_chain, self._exit_chain)
-        self._wrap(group._transport, "reduce", None, self._exit_exchange)
-        self._wrap(group, "cast_reduced", None, self._exit_cast)
+        if getattr(group, "_device_exchange", None) is not None:
+            # The device route has no transport reduce and no cast: the spin-add
+            # kernel writes the bf16 boundary buffer directly. Recording both
+            # boundaries here keeps the slot contract (and reports the cast as
+            # the zero-width span it now is) instead of leaving events unset,
+            # which surfaces as an invalid-resource-handle error.
+            self.device_reduce = True
+            self._wrap(group, "_forward_device_reduce", None, self._exit_device_reduce)
+        else:
+            self.device_reduce = False
+            self._wrap(group._transport, "reduce", None, self._exit_exchange)
+            self._wrap(group, "cast_reduced", None, self._exit_cast)
 
     def close(self) -> None:
         for owner, name, original in self._originals:
@@ -213,6 +224,19 @@ class PhaseRecorder:
 
     def _exit_exchange(self, *_args: Any, **_kwargs: Any) -> None:
         self._record_all(self._slot(SLOT_EXCHANGE_STOP))
+
+    def _exit_device_reduce(self, *_args: Any, **_kwargs: Any) -> None:
+        """The device route's whole reduction, and its absent cast.
+
+        ``_forward_device_reduce`` enqueues the staging copy, the flag publish
+        and the spin-add for both ranks, so this span is the exchange. The cast
+        boundary is recorded immediately after it because the kernel already
+        wrote bf16: leaving it unset would make ``collect`` read an event that
+        was never recorded.
+        """
+
+        self._record_all(self._slot(SLOT_EXCHANGE_STOP))
+        self._record_all(self._slot(SLOT_CAST_STOP))
 
     def _exit_cast(self, device: Any, *_args: Any, **_kwargs: Any) -> None:
         # ``cast_reduced`` runs once per rank inside the group's forward, so this
@@ -361,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
         "prompt_tokens": int(args.prompt_tokens),
         "repeats": int(args.repeats),
         "layer_count": int(len(session._config.layer_types)),
+        "reduce_mode": getattr(session, "reduce_mode", None),
+        "device_reduce": bool(recorder.device_reduce),
         "wall_ms": wall_ms,
         "wall_ms_samples": [round(value * 1000.0, 3) for value in walls],
         "prefill_tok_per_s": round(int(args.prompt_tokens) / (wall_ms / 1000.0), 3),
