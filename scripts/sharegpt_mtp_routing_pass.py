@@ -694,6 +694,10 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         # autoregressively.
         "activation_reason": execution.get("activation_reason"),
         "provider_readiness": execution.get("provider_readiness"),
+        # Orthogonal to readiness: a declined group reports declined whether or
+        # not its rows still hold provider state, and the lifecycle answers are
+        # opposite (retained state is usable again when the group narrows).
+        "provider_state_present": execution.get("provider_state_present"),
         "provider_decline_reason": execution.get("provider_decline_reason"),
         "plan_group_rows": execution.get("plan_group_rows"),
         "plan_ar_only": execution.get("plan_ar_only"),

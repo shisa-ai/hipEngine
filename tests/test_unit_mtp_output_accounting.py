@@ -695,6 +695,10 @@ def test_resident_loop_row_declares_the_diagnostic_span_field() -> None:
 
     names = {entry.name for entry in fields(_GGUFResidentLoopRow)}
     assert "mtp2_output_spans" in names
+    # Every attribute the accounting layer writes belongs in this list. A
+    # missing declaration is not a missing fact: setattr on a slots dataclass
+    # raises inside the engine loop, so the request fails with a 500 instead of
+    # reporting the fact. That is how mtp2_provider_state_present was found.
     for name in (
         "mtp2_mtp_output_tokens",
         "mtp2_ar_output_tokens",
@@ -704,5 +708,60 @@ def test_resident_loop_row_declares_the_diagnostic_span_field() -> None:
         "mtp2_cycles",
         "mtp2_candidate_counts",
         "mtp2_accepted_counts",
+        "mtp2_provider_readiness",
+        "mtp2_provider_decline_reason",
+        "mtp2_provider_state_present",
+        "mtp2_plan_group_rows",
+        "mtp2_plan_ar_only",
+        "mtp2_plan_reason",
+        "mtp2_requested_budget",
+        "mtp2_candidate_budget",
+        "mtp2_prompt_fallback_reason",
     ):
         assert name in names
+
+
+def test_provider_state_presence_is_reported_beside_a_declined_readiness() -> None:
+    """A refused group says nothing about whether the row still holds state.
+
+    Readiness folds both into ``declined``, and the lifecycle answers are
+    opposite: a row refused by its realized width keeps the provider it may use
+    again when its group narrows, while a row whose state is gone cannot
+    speculate until something primes it again.
+    """
+
+    held = _intent_row()
+    record_provider_readiness(
+        held,
+        readiness=PROVIDER_DECLINED,
+        decline_reason="width 4 exceeds static group bound 1",
+        state_present=True,
+    )
+    held_accounting = speculative_output_accounting(held)
+    assert held_accounting is not None
+    assert held_accounting["provider_readiness"] == "declined"
+    assert held_accounting["provider_decline_reason"] == (
+        "width 4 exceeds static group bound 1"
+    )
+    assert held_accounting["provider_state_present"] is True
+
+    gone = _intent_row()
+    record_provider_readiness(
+        gone,
+        readiness=PROVIDER_ABSENT,
+        decline_reason="provider_state_absent",
+        state_present=False,
+    )
+    gone_accounting = speculative_output_accounting(gone)
+    assert gone_accounting is not None
+    assert gone_accounting["provider_readiness"] == "absent"
+    assert gone_accounting["provider_state_present"] is False
+
+    # A ready row reports presence too, and an older caller that passes no
+    # presence keeps the field absent rather than inventing a value for it.
+    ready = _intent_row()
+    record_provider_readiness(ready, readiness=PROVIDER_READY)
+    ready_accounting = speculative_output_accounting(ready)
+    assert ready_accounting is not None
+    assert ready_accounting["provider_state_present"] is None
+    assert ready_accounting["provider_decline_reason"] is None

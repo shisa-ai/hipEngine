@@ -8876,6 +8876,7 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
             activation_reason="prefix_reuse_k0",
             provider_readiness="absent",
             provider_decline_reason="provider_state_absent",
+            provider_state_present=False,
             plan_group_rows=1,
             plan_ar_only=True,
             plan_reason="no_provider",
@@ -8889,6 +8890,11 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
         "activation_reason": "prefix_reuse_k0",
         "provider_readiness": "absent",
         "provider_decline_reason": "provider_state_absent",
+        # Reported beside readiness because the two answer different questions:
+        # readiness says whether the capability was granted, this says whether
+        # the row still holds provider state. A reused prefix never primes, so
+        # there is no state here even before the refusal.
+        "provider_state_present": False,
         "plan_group_rows": 1,
         "plan_ar_only": True,
         "plan_reason": "no_provider",
@@ -8902,6 +8908,7 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
             plan_group_rows=1,
             plan_ar_only=False,
             plan_reason="speculative_qualified",
+            provider_state_present=True,
             cycle_timing_ms={
                 "proposal": 1.0,
                 "target": 40.0,
@@ -8933,6 +8940,7 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
         "activation_reason": None,
         "provider_readiness": "ready",
         "provider_decline_reason": None,
+        "provider_state_present": True,
         "plan_group_rows": 1,
         "plan_ar_only": False,
         "plan_reason": "speculative_qualified",
