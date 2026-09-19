@@ -1356,3 +1356,143 @@ def test_adopt_accept_summary_keeps_the_open_transaction_identity() -> None:
         verifier.adopt_accept_summary(copy, "other-summary")
     with pytest.raises(ValueError, match="not the open transaction"):
         verifier._require_open(copy)
+
+
+def test_sink_captures_once_at_the_boundary_it_was_configured_for(monkeypatch) -> None:
+    """The capture fires on the chunk whose cumulative rows reach the boundary.
+
+    The boundary row is the chunk's last row -- the row the sink carries
+    forward and the next draft step consumes -- so a capture that used the
+    chunk's first row, or fired on the chunk before the boundary, would
+    snapshot a state that cannot be resumed from.
+    """
+
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    prompt = tuple(range(101, 111))
+    captures: list[tuple[int, int]] = []
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=prompt,
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captures.append((int(boundary), int(ptr))),
+        capture_boundary=8,
+    )
+    source_base = 0x4000
+    for start in range(0, len(prompt), 4):
+        count = min(4, len(prompt) - start)
+        sink.consume(
+            request_id=7,
+            chunk_start=start,
+            hidden_ptr=source_base + start * hidden_nbytes,
+            rows=count,
+            stream=3,
+        )
+
+    # Boundary 8 lands on the second chunk's end, and the captured row is that
+    # chunk's last row rather than the carried row or the first row.
+    assert captures == [(8, source_base + 7 * hidden_nbytes)]
+    assert sink._capture_missed is False
+
+
+def test_sink_capture_is_optional_and_contained(monkeypatch) -> None:
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    def boom(boundary: int, ptr: int) -> None:
+        raise RuntimeError("snapshot refused")
+
+    prompt = tuple(range(101, 105))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=prompt,
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=boom,
+        capture_boundary=4,
+    )
+    # A refused capture must not fail the request's prefill.
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x4000, rows=4, stream=3)
+    sink.finish(request_id=7, total_rows=4, stream=3)
+
+    assert sink.consumed_rows == 4
+    assert sink._capture_failed is True
+
+
+def test_sink_records_a_boundary_that_no_chunk_ends_on(monkeypatch) -> None:
+    """An unreachable boundary is recorded, not silently skipped.
+
+    One chunk's enqueues are batched, so the provider cursor only sits at a
+    chunk end. A boundary inside a chunk can never be captured by this route,
+    and a future change to the chunk width would otherwise disable capture with
+    nothing to see.
+    """
+
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    captures: list[tuple[int, int]] = []
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=tuple(range(101, 109)),
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captures.append((int(boundary), int(ptr))),
+        capture_boundary=6,
+    )
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x4000, rows=4, stream=3)
+    assert sink._capture_missed is False
+    sink.consume(request_id=7, chunk_start=4, hidden_ptr=0x4010, rows=4, stream=3)
+
+    assert captures == []
+    assert sink._capture_missed is True

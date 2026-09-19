@@ -122,7 +122,9 @@ def _executor(monkeypatch, scratches: dict[int, SimpleNamespace]):
 
 
 def test_snapshot_copies_the_prefix_rows_at_the_slot_stride(monkeypatch) -> None:
-    scratch = _slot_scratch(position=5, context=6)
+    # The host mirrors are (last consumed position, consumed count), so the
+    # cursor for a prefix of 5 is position 4 with context 5.
+    scratch = _slot_scratch(position=4, context=5)
     executor, allocations, _frees, _copies = _executor(monkeypatch, {7: scratch})
     boundary = DeviceBuffer(0x2000, HIDDEN_NBYTES)
 
@@ -132,8 +134,8 @@ def test_snapshot_copies_the_prefix_rows_at_the_slot_stride(monkeypatch) -> None
 
     assert isinstance(checkpoint, Qwen35GGUFNextNPrefixCheckpoint)
     assert checkpoint.prefix_len == 5
-    assert checkpoint.position == 5
-    assert checkpoint.context_length == 6
+    assert checkpoint.position == 4
+    assert checkpoint.context_length == 5
     assert checkpoint.hidden_size == HIDDEN_NBYTES // 2
     # Layer 1 has no full-attention cache, and the blob keeps that shape so a
     # restore can zip it against the destination by layer index.
@@ -206,7 +208,9 @@ def test_snapshot_requires_the_cursor_at_the_boundary(monkeypatch) -> None:
         executor.snapshot_prefix_state(7, prefix_len=0)
 
     with pytest.raises(ValueError, match="exceeds the provider window"):
-        boundary_scratch = _slot_scratch(position=MAX_POSITIONS + 1, context=MAX_POSITIONS + 2)
+        boundary_scratch = _slot_scratch(
+            position=MAX_POSITIONS, context=MAX_POSITIONS + 1
+        )
         executor.scratch.for_slot = lambda slot, span_role: boundary_scratch
         executor.snapshot_prefix_state(7, prefix_len=MAX_POSITIONS + 1)
 
@@ -215,7 +219,7 @@ def test_snapshot_requires_the_cursor_at_the_boundary(monkeypatch) -> None:
 
 
 def test_restore_writes_into_a_different_request_slot(monkeypatch) -> None:
-    source = _slot_scratch(position=5, context=6, ptr_base=0x1000)
+    source = _slot_scratch(position=4, context=5, ptr_base=0x1000)
     destination = _slot_scratch(position=0, context=0, ptr_base=0x5000)
     executor, _allocations, _frees, host_copies = _executor(
         monkeypatch, {7: source, 8: destination}
@@ -265,18 +269,18 @@ def test_restore_writes_into_a_different_request_slot(monkeypatch) -> None:
     ]
     # The cursor moves to the boundary, so the next step consumes the token at
     # position 5 with the checkpointed hidden row.
-    assert int(destination.position_host[0]) == 5
-    assert int(destination.context_host[0]) == 6
+    assert int(destination.position_host[0]) == 4
+    assert int(destination.context_host[0]) == 5
     assert host_copies == [
         (int(destination.position_buf.ptr), 8),
         (int(destination.context_buf.ptr), 8),
     ]
     # The source slot is untouched by a restore.
-    assert int(source.position_host[0]) == 5
+    assert int(source.position_host[0]) == 4
 
 
 def test_restore_refuses_a_mismatched_destination(monkeypatch) -> None:
-    source = _slot_scratch(position=5, context=6)
+    source = _slot_scratch(position=4, context=5)
     executor, _allocations, _frees, _copies = _executor(
         monkeypatch, {7: source, 8: _slot_scratch(position=0, context=0)}
     )
@@ -302,7 +306,7 @@ def test_restore_refuses_a_mismatched_destination(monkeypatch) -> None:
 
 
 def test_release_frees_every_buffer_once(monkeypatch) -> None:
-    scratch = _slot_scratch(position=5, context=6)
+    scratch = _slot_scratch(position=4, context=5)
     executor, allocations, frees, _copies = _executor(monkeypatch, {7: scratch})
     checkpoint = executor.snapshot_prefix_state(
         7, prefix_len=5, boundary_hidden=DeviceBuffer(0x2000, HIDDEN_NBYTES)

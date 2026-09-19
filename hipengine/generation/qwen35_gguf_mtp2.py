@@ -1679,6 +1679,31 @@ class Qwen35GGUFMTP2Adapter:
                     )
                     return int(norm_buffer.ptr)
 
+                # The sink is the route the served engine primes a provider
+                # through, so this is the hook a first-turn prefix-cache hit
+                # depends on; the catch-up walks only run on the attach paths.
+                # The callback is bound to this request rather than read from
+                # adapter state, so two sinks in flight cannot swap rows.
+                def capture_streamed_prefix(
+                    boundary: int,
+                    boundary_hidden_ptr: int,
+                    *,
+                    request_id: int = int(request_id),
+                    prompt_ids: tuple[int, ...] = tuple(row.prompt_ids),
+                    provider: Any = group.provider,
+                    target: Any = target,
+                    hidden_nbytes: int = int(hidden_nbytes),
+                ) -> None:
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        prompt_ids,
+                        None,
+                        int(boundary),
+                        DeviceBuffer(int(boundary_hidden_ptr), hidden_nbytes),
+                        target,
+                    )
+
                 sink = _StreamingNextNPromptSink(
                     request_id=request_id,
                     prompt_tokens=row.prompt_ids,
@@ -1687,6 +1712,14 @@ class Qwen35GGUFMTP2Adapter:
                     runtime=target.runtime,
                     checkpoint=checkpoint,
                     transform_hidden_rows=transform_hidden_rows,
+                    prefix_capture=(
+                        capture_streamed_prefix
+                        if self.prefix_checkpoint_capacity > 0
+                        else None
+                    ),
+                    capture_boundary=self._prefix_checkpoint_boundary(
+                        len(tuple(row.prompt_ids))
+                    ),
                 )
                 self._prompt_streaming_sinks[request_id] = sink
                 self._prompt_streaming_group_keys[request_id] = group.key
@@ -6315,18 +6348,20 @@ class Qwen35GGUFMTP2Adapter:
         provider: Any,
         request_id: int,
         prompt_ids: Sequence[int],
-        rows: np.ndarray,
+        rows: np.ndarray | None,
         boundary: int,
         hidden_buffer: DeviceBuffer,
         target: Any,
     ) -> None:
         """Store provider state at a block-aligned prefix boundary.
 
-        Called on the walk iteration whose ``run_step`` brings the cursor to
-        ``boundary``. The boundary hidden row is ``rows[boundary - 1]`` -- the
-        row that produces the token *after* the prefix, which is what a restore
-        hands the first draft step -- so it is staged into the step buffer here
-        and the snapshot takes its own copy.
+        Two routes reach this with the provider cursor at the boundary. The
+        catch-up walk passes ``rows`` and the row that produces the token *after*
+        the prefix is ``rows[boundary - 1]``, which is staged into
+        ``hidden_buffer`` here. The streaming prompt sink passes ``rows=None``
+        and a ``hidden_buffer`` that already points at the chunk's boundary row
+        in device memory, because that row is what the sink would feed next. The
+        snapshot takes its own copy in both cases.
 
         A capture that cannot be taken is skipped, never raised: the checkpoint
         is an optimization, and a request must not fail because its prefix could
@@ -6353,16 +6388,17 @@ class Qwen35GGUFMTP2Adapter:
             _trace_prefix_checkpoint(f"skipped prefix={boundary}: no block ids")
             return
         hidden_size = int(provider.executor.hidden_size)
-        boundary_bits = np.ascontiguousarray(
-            float_array_to_bf16_bits(rows[boundary - 1]),
-            dtype=np.uint16,
-        )
-        copy_host_to_device(
-            DeviceBuffer(hidden_buffer.ptr, boundary_bits.nbytes),
-            host_array_ptr(boundary_bits),
-            boundary_bits.nbytes,
-            runtime=target.runtime,
-        )
+        if rows is not None:
+            boundary_bits = np.ascontiguousarray(
+                float_array_to_bf16_bits(rows[boundary - 1]),
+                dtype=np.uint16,
+            )
+            copy_host_to_device(
+                DeviceBuffer(hidden_buffer.ptr, boundary_bits.nbytes),
+                host_array_ptr(boundary_bits),
+                boundary_bits.nbytes,
+                runtime=target.runtime,
+            )
         snapshot = getattr(provider.executor, "snapshot_prefix_state", None)
         if not callable(snapshot):
             _trace_prefix_checkpoint(

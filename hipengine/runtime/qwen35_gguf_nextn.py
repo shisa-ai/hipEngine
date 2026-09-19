@@ -2652,7 +2652,9 @@ class Qwen35GGUFNextNExecutor:
             )
         slot_scratch.position_host[0] = int(checkpoint.position)
         slot_scratch.context_host[0] = int(checkpoint.context_length)
-        self._set_batch_session_position(slot, int(checkpoint.position))
+        # The session cursor is the *next* position to consume, which is the
+        # consumed count, not the last consumed position.
+        self._set_batch_session_position(slot, int(checkpoint.context_length))
         copy_host_to_device(
             slot_scratch.position_buf,
             host_array_ptr(slot_scratch.position_host),
@@ -2741,11 +2743,21 @@ class Qwen35GGUFNextNExecutor:
         if length <= 0:
             raise ValueError("GGUF NextN prefix snapshot requires a positive prefix")
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
-        position = int(slot_scratch.position_host[0])
-        if position != length:
+        # The host mirrors are (last consumed position, consumed count), the same
+        # pair ``capture_request_checkpoint`` and the after-root snapshot read,
+        # so a prefix of ``length`` is consumed == length with the last consumed
+        # position one behind it.
+        consumed_position = int(slot_scratch.position_host[0])
+        context_length = int(slot_scratch.context_host[0])
+        if context_length != consumed_position + 1:
+            raise RuntimeError(
+                "GGUF NextN prefix snapshot cursor is inconsistent: "
+                f"position={consumed_position} context={context_length}"
+            )
+        if context_length != length:
             raise ValueError(
                 "GGUF NextN prefix snapshot requires the cursor at the boundary: "
-                f"cursor={position} boundary={length}"
+                f"consumed={context_length} boundary={length}"
             )
         max_positions = int(slot_scratch.max_positions)
         if length > max_positions:
@@ -2815,8 +2827,8 @@ class Qwen35GGUFNextNExecutor:
             value_buffers=tuple(values),
             state_backups=tuple(backups),
             boundary_hidden=boundary,
-            position=position,
-            context_length=int(slot_scratch.context_host[0]),
+            position=consumed_position,
+            context_length=context_length,
         )
 
     def restore_prefix_state(
