@@ -5344,6 +5344,83 @@ def test_sampled_prefill_hands_the_row_to_its_mtp_provider(monkeypatch) -> None:
     assert observed == []
 
 
+def test_streaming_prompt_refusal_names_a_reused_prefix_row() -> None:
+    """The gate that excludes a reused-prefix row is where its reason is set.
+
+    Such a row is filtered out before any adapter gate sees it, so without this
+    it would carry no activation reason at all and the served response would
+    report only the planner's ``no_provider``.
+    """
+
+    row = SimpleNamespace(
+        request_id=7,
+        mtp2_candidate_budget=3,
+        prefix_reused_tokens=256,
+        mtp2_prompt_fallback_reason=None,
+    )
+    runner = SimpleNamespace()
+
+    sinks = Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (row,))
+
+    assert sinks == (None,)
+    assert row.mtp2_prompt_fallback_reason == "prefix_reuse_k0"
+
+    # A row that already recorded a refusal keeps it: the first gate to refuse
+    # a row is the one that explains it.
+    row.mtp2_prompt_fallback_reason = "target_context_k0"
+    Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (row,))
+    assert row.mtp2_prompt_fallback_reason == "target_context_k0"
+
+    # A row that owns no candidate budget is not a refusal at all.
+    quiet = SimpleNamespace(
+        request_id=8,
+        mtp2_candidate_budget=0,
+        prefix_reused_tokens=256,
+        mtp2_prompt_fallback_reason=None,
+    )
+    Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (quiet,))
+    assert quiet.mtp2_prompt_fallback_reason is None
+
+
+def test_note_speculative_plan_publishes_the_group_decision_on_every_row() -> None:
+    """The loop's plan is the only source of the realized group width.
+
+    A row's response used to carry the route's ``k0_class`` and a serving-key
+    width, so a row that decoded autoregressively for its whole life still read
+    as route-qualified with no group-level decision beside it.
+    """
+
+    rows = {7: SimpleNamespace(), 8: SimpleNamespace()}
+    plan = SimpleNamespace(
+        request_ids=(7, 8),
+        reasons=(
+            mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            mtp2_module.SpecPlanReason.NO_PROVIDER,
+        ),
+        is_ar_only=False,
+    )
+    runner = SimpleNamespace(_row=lambda rid: rows.get(rid))
+
+    Qwen35GGUFResidentModelRunner.note_speculative_plan(runner, plan)
+
+    assert rows[7].mtp2_plan_group_rows == 2
+    assert rows[8].mtp2_plan_group_rows == 2
+    assert rows[7].mtp2_plan_ar_only is False
+    assert rows[7].mtp2_plan_reason == "speculative_qualified"
+    assert rows[8].mtp2_plan_reason == "no_provider"
+
+    # A row that has already left the engine is skipped, not an error.
+    plan.request_ids = (7, 9)
+    plan.reasons = (
+        mtp2_module.SpecPlanReason.POLICY_SELECTED_AR,
+        mtp2_module.SpecPlanReason.POLICY_SELECTED_AR,
+    )
+    plan.is_ar_only = True
+    Qwen35GGUFResidentModelRunner.note_speculative_plan(runner, plan)
+    assert rows[7].mtp2_plan_ar_only is True
+    assert rows[7].mtp2_plan_reason == "policy_selected_ar"
+
+
 def test_sampled_prefill_streams_prompt_hidden_rows_for_a_due_row(monkeypatch) -> None:
     """A sampled row that owes a draft provider must open the hidden-row sink.
 

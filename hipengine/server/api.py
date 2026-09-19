@@ -16257,6 +16257,12 @@ def _mtp_response_summary(
     output_spans: list[dict[str, Any]] = []
     spans_recorded = False
     prompt_fallback_reason: str | None = None
+    activation_reason: str | None = None
+    provider_readiness: str | None = None
+    provider_decline_reason: str | None = None
+    plan_group_rows: int | None = None
+    plan_ar_only: bool | None = None
+    plan_reason: str | None = None
     first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
@@ -16294,10 +16300,37 @@ def _mtp_response_summary(
             for depth, depth_cycles in (block.get("selected_depth_histogram") or {}).items():
                 depth_histogram[str(depth)] += _mtp_counted_int(depth_cycles)
             prompt_reason = block.get("prompt_fallback_reason")
+            if prompt_reason is None:
+                # The same admission refusal is published under both names; read
+                # either so a block that reports only the explicit one still
+                # makes it the primary reason instead of folding to an event.
+                prompt_reason = block.get("activation_reason")
             if prompt_reason:
                 fallback_reason_counts[str(prompt_reason)] += 1
                 if prompt_fallback_reason is None:
                     prompt_fallback_reason = str(prompt_reason)
+            # The four refusal facts are collected separately from the folded
+            # ``fallback_reason`` below. Folding them is what made an engaged row
+            # (one initial provider wait) and a row refused for its whole life
+            # report the same reason.
+            block_activation = block.get("activation_reason")
+            if block_activation is not None and activation_reason is None:
+                activation_reason = str(block_activation)
+            block_readiness = block.get("provider_readiness")
+            if block_readiness is not None and provider_readiness is None:
+                provider_readiness = str(block_readiness)
+            block_decline = block.get("provider_decline_reason")
+            if block_decline is not None and provider_decline_reason is None:
+                provider_decline_reason = str(block_decline)
+            block_group_rows = block.get("plan_group_rows")
+            if block_group_rows is not None and plan_group_rows is None:
+                plan_group_rows = _mtp_counted_int(block_group_rows)
+            block_ar_only = block.get("plan_ar_only")
+            if block_ar_only is not None and plan_ar_only is None:
+                plan_ar_only = bool(block_ar_only)
+            block_plan_reason = block.get("plan_reason")
+            if block_plan_reason is not None and plan_reason is None:
+                plan_reason = str(block_plan_reason)
             for reason, count in (block.get("ar_step_reason_counts") or {}).items():
                 fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
             for reason, count in (block.get("failure_reason_counts") or {}).items():
@@ -16415,6 +16448,19 @@ def _mtp_response_summary(
             for reason in sorted(fallback_reason_counts)
         }
         summary["fallback_event_total"] = sum(fallback_reason_counts.values())
+        # Reported separately from ``fallback_reason``: the activation reason is
+        # the row's own admission outcome, the readiness is whether its provider
+        # existed at all, the plan fields are what the group it ran in actually
+        # decided. A reader must be able to see all four at once, because a row
+        # can be route-qualified, plan-refused, and provider-absent together.
+        summary["execution"] = {
+            "activation_reason": activation_reason,
+            "provider_readiness": provider_readiness,
+            "provider_decline_reason": provider_decline_reason,
+            "plan_group_rows": plan_group_rows,
+            "plan_ar_only": plan_ar_only,
+            "plan_reason": plan_reason,
+        }
         primary_fallback_reason = prompt_fallback_reason
         if primary_fallback_reason is None and fallback_reason_counts:
             # No admission-level refusal: report the reason that accounted for

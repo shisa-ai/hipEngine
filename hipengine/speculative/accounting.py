@@ -48,6 +48,27 @@ AR_STEP_OUTPUT_ATTRIBUTE = "mtp2_ar_step_output_tokens"
 FIRST_FALLBACK_ATTRIBUTE = "mtp2_first_fallback_position"
 AR_STEP_REASON_ATTRIBUTE = "mtp2_ar_step_reasons"
 SPAN_ATTRIBUTE = "mtp2_output_spans"
+PROMPT_FALLBACK_ATTRIBUTE = "mtp2_prompt_fallback_reason"
+PROVIDER_READINESS_ATTRIBUTE = "mtp2_provider_readiness"
+PROVIDER_DECLINE_ATTRIBUTE = "mtp2_provider_decline_reason"
+PLAN_GROUP_ROWS_ATTRIBUTE = "mtp2_plan_group_rows"
+PLAN_AR_ONLY_ATTRIBUTE = "mtp2_plan_ar_only"
+PLAN_REASON_ATTRIBUTE = "mtp2_plan_reason"
+
+# Readiness states for ``PROVIDER_READINESS_ATTRIBUTE``. They are deliberately
+# a closed set: a reader must be able to tell a row whose prompt activation was
+# refused from one whose activation never ran, because both used to report the
+# planner's ``no_provider`` while meaning opposite things.
+PROVIDER_READY = "ready"
+PROVIDER_PROMPT_BUFFERED = "prompt_buffered"
+PROVIDER_ABSENT = "absent"
+PROVIDER_DECLINED = "declined"
+PROVIDER_READINESS_STATES = (
+    PROVIDER_READY,
+    PROVIDER_PROMPT_BUFFERED,
+    PROVIDER_ABSENT,
+    PROVIDER_DECLINED,
+)
 
 # Diagnostic switch for committed output spans. Off by default: the span list is
 # attribution evidence for an audit, not production telemetry, and it grows with
@@ -186,6 +207,60 @@ def record_speculative_outputs(
     # The visible tokens of this cycle are attributed above, so the step record
     # must not attribute them a second time.
     record_autoregressive_step(row, plan_reason=plan_reason, emitted_tokens=0)
+
+
+def record_speculative_plan(
+    row: Any,
+    *,
+    group_rows: int,
+    ar_only: bool,
+    plan_reason: Any | None,
+) -> None:
+    """Record the group-level plan decision this row ran under.
+
+    The plan is the only place that knows the row's realized group width and
+    whether the group as a whole was planned autoregressively. Both used to be
+    unobservable per request: the served response reported a route-level
+    ``k0_class`` (which says what the route intended, not what the plan chose)
+    and a serving-key width, so a row that ran 127 autoregressive steps beside
+    a ``not_k0`` route claim looked self-contradictory rather than refused.
+    """
+
+    setattr(row, PLAN_GROUP_ROWS_ATTRIBUTE, max(0, int(group_rows)))
+    setattr(row, PLAN_AR_ONLY_ATTRIBUTE, bool(ar_only))
+    setattr(
+        row,
+        PLAN_REASON_ATTRIBUTE,
+        None if plan_reason is None else str(plan_reason),
+    )
+
+
+def record_provider_readiness(
+    row: Any,
+    *,
+    readiness: str,
+    decline_reason: Any | None = None,
+) -> None:
+    """Record whether the row's draft provider was ready, and why not.
+
+    ``readiness`` is one of ``PROVIDER_READINESS_STATES``. ``decline_reason``
+    is retained only for a non-ready state so a stale reason cannot outlive a
+    row that has since acquired a provider.
+    """
+
+    state = str(readiness)
+    if state not in PROVIDER_READINESS_STATES:
+        raise ValueError(
+            f"provider readiness must be one of {PROVIDER_READINESS_STATES}, got {state!r}"
+        )
+    setattr(row, PROVIDER_READINESS_ATTRIBUTE, state)
+    setattr(
+        row,
+        PROVIDER_DECLINE_ATTRIBUTE,
+        None
+        if state == PROVIDER_READY or decline_reason is None
+        else str(decline_reason),
+    )
 
 
 def record_autoregressive_step(
@@ -388,7 +463,12 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
 
     requested_budget = _row_int(row, REQUESTED_BUDGET_ATTRIBUTE)
     cycles = _row_int(row, "mtp2_cycles")
-    prompt_reason = getattr(row, "mtp2_prompt_fallback_reason", None)
+    prompt_reason = getattr(row, PROMPT_FALLBACK_ATTRIBUTE, None)
+    provider_readiness = getattr(row, PROVIDER_READINESS_ATTRIBUTE, None)
+    provider_decline = getattr(row, PROVIDER_DECLINE_ATTRIBUTE, None)
+    plan_group_rows = getattr(row, PLAN_GROUP_ROWS_ATTRIBUTE, None)
+    plan_ar_only = getattr(row, PLAN_AR_ONLY_ATTRIBUTE, None)
+    plan_reason = getattr(row, PLAN_REASON_ATTRIBUTE, None)
     ar_step_reasons = dict(_row_mapping(row, AR_STEP_REASON_ATTRIBUTE))
     recoverable_failures = _row_int(row, "mtp2_recoverable_failures")
     # A request with no speculative intent has no MTP-versus-AR question to
@@ -411,6 +491,25 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         "prompt_fallback_reason": (
             None if prompt_reason is None else str(prompt_reason)
         ),
+        # The four facts a refusal diagnosis needs, each published on its own so
+        # no one has to reconstruct them from the folded ``fallback_reason``:
+        # why this row's prompt activation was refused, whether its provider was
+        # ready, how wide the group it was planned in actually was, and whether
+        # that group was planned autoregressively.
+        "activation_reason": (
+            None if prompt_reason is None else str(prompt_reason)
+        ),
+        "provider_readiness": (
+            None if provider_readiness is None else str(provider_readiness)
+        ),
+        "provider_decline_reason": (
+            None if provider_decline is None else str(provider_decline)
+        ),
+        "plan_group_rows": (
+            None if plan_group_rows is None else max(0, int(plan_group_rows))
+        ),
+        "plan_ar_only": None if plan_ar_only is None else bool(plan_ar_only),
+        "plan_reason": None if plan_reason is None else str(plan_reason),
         "cycles": cycles,
         "generated_draft_tokens": sum(candidate_counts),
         "accepted_draft_tokens": sum(accepted_counts),

@@ -38,6 +38,10 @@ from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.mtp_sampled_accept import sampled_accept_summary
 from hipengine.generation.sampling import speculative_sampling_mode
 from hipengine.speculative.accounting import (
+    PROVIDER_ABSENT,
+    PROVIDER_DECLINED,
+    PROVIDER_PROMPT_BUFFERED,
+    PROVIDER_READY,
     record_autoregressive_step,
     record_speculative_outputs,
 )
@@ -1927,6 +1931,19 @@ class Qwen35GGUFMTP2Adapter:
             self._prompt_hidden_rows.pop(rid, None)
             if rid in self._states:
                 return
+            # The prompt finish returned no hidden rows and this row owns no
+            # provider state: record why, because a row in this state is refused
+            # by every later capability call and would otherwise publish no
+            # reason at all. A reused prefix is the common cause -- the reused
+            # tokens are never prefilled, so the full-prompt rows a provider
+            # needs cannot exist.
+            row = self.owner._row(rid)
+            if row is not None and getattr(row, "mtp2_prompt_fallback_reason", None) is None:
+                row.mtp2_prompt_fallback_reason = (
+                    "prefix_reuse_k0"
+                    if int(getattr(row, "prefix_reused_tokens", 0) or 0) > 0
+                    else "prompt_hidden_rows_unavailable"
+                )
             return
         rows = np.ascontiguousarray(hidden, dtype=np.float32)
         expected_rows = len(tuple(prompt_ids))
@@ -1944,9 +1961,13 @@ class Qwen35GGUFMTP2Adapter:
         Admission has many independent gates; without a recorded reason a
         non-engaging cell is indistinguishable from a disabled one. The
         attribute is always set (cheap) and echoed to stderr only when
-        HIPENGINE_MTP2_TRACE_DECLINE is set.
+        HIPENGINE_MTP2_TRACE_DECLINE is set. ``_decline_serial`` lets the
+        caller tell a decline recorded by *this* call from a stale one left by
+        an earlier call, which is what makes the per-row readiness report
+        trustworthy.
         """
 
+        self._decline_serial = int(getattr(self, "_decline_serial", 0)) + 1
         self._last_capability_decline = str(reason)
         if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
             seen = getattr(self, "_declines_traced", None)
@@ -2157,6 +2178,73 @@ class Qwen35GGUFMTP2Adapter:
         self,
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
+        """Resolve the capability and publish the outcome on every row it asked about.
+
+        The resolution itself lives in ``_capability_impl``; this wrapper exists
+        so every refusal path -- recorded or silent -- reports the row's own
+        provider readiness. A row refused here used to publish nothing but the
+        planner's ``no_provider``, which is indistinguishable from a row whose
+        provider was still priming.
+        """
+
+        semantics = tuple(request_semantics)
+        decline_serial = int(getattr(self, "_decline_serial", 0))
+        silent_serial = int(getattr(self, "_silent_decline_serial", 0))
+        result = self._capability_impl(semantics)
+        self._note_capability_readiness(
+            semantics,
+            result,
+            decline_serial=decline_serial,
+            silent_serial=silent_serial,
+        )
+        return result
+
+    def _note_capability_readiness(
+        self,
+        semantics: Sequence[SpeculativeRequestSemantics],
+        result: SpeculativeCapability | None,
+        *,
+        decline_serial: int,
+        silent_serial: int,
+    ) -> None:
+        """Publish readiness (and the decline reason) for each request asked about."""
+
+        note = getattr(self.owner, "note_provider_readiness", None)
+        if not callable(note):
+            return
+        if result is not None:
+            for item in semantics:
+                request_id = int(item.request_id)
+                if request_id in self._states:
+                    readiness = PROVIDER_READY
+                elif request_id in self._prompt_hidden_rows:
+                    readiness = PROVIDER_PROMPT_BUFFERED
+                else:
+                    # The admission gate requires one of the two, so this is
+                    # unreachable in practice; report ready rather than claim a
+                    # buffer that does not exist.
+                    readiness = PROVIDER_READY
+                note(request_id, readiness)
+            return
+        declined = int(getattr(self, "_decline_serial", 0)) != int(decline_serial)
+        if declined:
+            state = PROVIDER_DECLINED
+            reason = self._last_capability_decline
+        elif int(getattr(self, "_silent_decline_serial", 0)) != int(silent_serial):
+            state = PROVIDER_ABSENT
+            reason = getattr(self, "_last_capability_silent_reason", None)
+        else:
+            # A refusal with no recorded gate: report the absence without
+            # inventing a reason for it.
+            state = PROVIDER_ABSENT
+            reason = "capability_refused_without_a_recorded_reason"
+        for item in semantics:
+            note(int(item.request_id), state, reason)
+
+    def _capability_impl(
+        self,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+    ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
         for item in semantics:
             mode = str(getattr(item, "sampling_mode", "") or "")
@@ -2257,6 +2345,25 @@ class Qwen35GGUFMTP2Adapter:
                         file=_sys.stderr,
                         flush=True,
                     )
+                # A silent refusal is still a refusal: name the condition that
+                # failed so the row's readiness is reported as absent-with-reason
+                # instead of as an unexplained ``no_provider`` planner reason.
+                if not (row.native_greedy or self._sampled_route_request(rid)):
+                    silent_reason = "row_not_admitted_to_speculation"
+                elif not row.first_token_emitted:
+                    silent_reason = "first_token_pending"
+                elif row.lease is None:
+                    silent_reason = "row_has_no_lease"
+                elif row.slot is None:
+                    silent_reason = "row_has_no_slot"
+                elif rid not in self._states and rid not in self._prompt_hidden_rows:
+                    silent_reason = "provider_state_absent"
+                else:
+                    silent_reason = "provider_state_unavailable"
+                self._silent_decline_serial = (
+                    int(getattr(self, "_silent_decline_serial", 0)) + 1
+                )
+                self._last_capability_silent_reason = silent_reason
                 return None
             target = row.lease.session
             if not self._target_profile_supported(target):

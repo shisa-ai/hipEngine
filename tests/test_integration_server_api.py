@@ -8851,6 +8851,76 @@ def _full_coverage_accounting(**overrides: Any) -> dict[str, Any]:
     return accounting
 
 
+def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -> None:
+    """A refused row and an engaged row must not fold to the same story.
+
+    Both rows here emit autoregressive steps attributed to ``no_provider``, so
+    both report the same ``fallback_reason``. What separates them is the
+    activation reason, the provider readiness, the realized group width, and the
+    group's autoregressive decision -- each published on its own, because the
+    first row was refused at admission for its whole life while the second only
+    waited one cycle for its provider to prime.
+    """
+
+    refused = _mtp_accounting_detail(
+        generated_tokens=3,
+        accounting=_full_coverage_accounting(
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=0,
+            ar_output_tokens_in_cycles=0,
+            first_fallback_position=0,
+            ar_step_reason_counts={"no_provider": 3},
+            activation_reason="prefix_reuse_k0",
+            provider_readiness="absent",
+            provider_decline_reason="provider_state_absent",
+            plan_group_rows=1,
+            plan_ar_only=True,
+            plan_reason="no_provider",
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [refused])
+
+    assert summary["fallback_reason"] == "prefix_reuse_k0"
+    assert summary["execution"] == {
+        "activation_reason": "prefix_reuse_k0",
+        "provider_readiness": "absent",
+        "provider_decline_reason": "provider_state_absent",
+        "plan_group_rows": 1,
+        "plan_ar_only": True,
+        "plan_reason": "no_provider",
+    }
+
+    engaged = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(
+            ar_step_reason_counts={"no_provider": 1},
+            provider_readiness="ready",
+            plan_group_rows=1,
+            plan_ar_only=False,
+            plan_reason="speculative_qualified",
+        ),
+    )
+
+    engaged_summary = _mtp_response_summary("speculative_mtp", [engaged])
+
+    # No admission refusal was recorded, so the fold falls back to the most
+    # frequent autoregressive reason -- which is exactly why the activation
+    # reason has to be reported separately rather than inferred from it.
+    assert engaged_summary["fallback_reason"] == "no_provider"
+    assert engaged_summary["execution"] == {
+        "activation_reason": None,
+        "provider_readiness": "ready",
+        "provider_decline_reason": None,
+        "plan_group_rows": 1,
+        "plan_ar_only": False,
+        "plan_reason": "speculative_qualified",
+    }
+
+
 def test_mtp_summary_reports_full_speculative_output_coverage() -> None:
     """``used`` alone must not read as full coverage: report the output split."""
 
