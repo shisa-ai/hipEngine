@@ -3074,7 +3074,13 @@ edge-case hardening:
    (bias, penalties, suppression, temperature, top-k/top-p/min-p) plus
    `ignore_eos`; min-token/EOS policy and stop controls stay blockers there too,
    because the cycle commit implements the greedy-chain EOS finish rule and not
-   the autoregressive one.
+   the autoregressive one. The one EOS relaxation is runner-owned and conditional
+   on the route that will run: the engine loop asks
+   `runner.speculative_eos_supported(request_id)` only for an EOS-only blocker,
+   and the GGUF runner answers yes only for an enabled physical c1 row whose
+   target graph can run the device accept, because the eager host-proposal path
+   fails closed for EOS. A row that fails that probe decodes autoregressively for
+   that cycle instead of entering a cycle that would raise and be contained.
 
 ### P2 — Core but allowed to fail closed
 
