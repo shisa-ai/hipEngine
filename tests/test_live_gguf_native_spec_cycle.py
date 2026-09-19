@@ -1586,7 +1586,13 @@ def test_native_staged_linear_rows_long_is_env_gated(monkeypatch) -> None:
 
 
 def test_native_staged_linear_rows_long_reads_the_backend_capability(monkeypatch) -> None:
-    """The admission is a backend capability with an explicit env override."""
+    """The admission is a file-type default with an explicit env override.
+
+    A measured default binds only the loader-qualified plain artifact identity
+    whose stamp the backend package admits. A preset-bound (UD) or
+    unknown-manifest key and an absent stamp keep the row-wise strict route,
+    because the default was measured on one pinned plain control.
+    """
 
     from hipengine.runtime import qwen35_gguf_runner as qgr
 
@@ -1595,17 +1601,53 @@ def test_native_staged_linear_rows_long_reads_the_backend_capability(monkeypatch
         qgr,
         "backend_package_capability",
         lambda backend, name, default=None: (
-            True if name == "GGUF_STAGED_LINEAR_ROWS_LONG" else default
+            frozenset({"mostly_q4_k_m"})
+            if name == "GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES"
+            else default
         ),
     )
-    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is True
+    enabled = qgr._gguf_staged_linear_rows_long_enabled
+    assert enabled("hip_gfx1151", file_type_name="MOSTLY_Q4_K_M") is True
+    assert enabled("hip_gfx1151", file_type_name="mostly_q4_k_s") is False
+    assert enabled("hip_gfx1151", file_type_name=None) is False
+    assert (
+        enabled(
+            "hip_gfx1151",
+            file_type_name="MOSTLY_Q4_K_M",
+            artifact_preset_key="ud-q4_k_xl",
+        )
+        is False
+    )
 
-    # An explicit env value wins in either direction.
+    # An explicit env value wins in either direction, including over the
+    # qualification the stamp would otherwise have to satisfy.
     monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "0")
-    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is False
-    monkeypatch.setattr(qgr, "backend_package_capability", lambda *a, **k: False)
+    assert enabled("hip_gfx1151", file_type_name="MOSTLY_Q4_K_M") is False
+    monkeypatch.setattr(qgr, "backend_package_capability", lambda *a, **k: ())
     monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, "1")
-    assert qgr._gguf_staged_linear_rows_long_enabled("hip_gfx1151") is True
+    assert enabled("hip_gfx1151", file_type_name="mostly_q4_k_s") is True
+
+
+def test_native_staged_linear_rows_long_default_binds_the_measured_artifact(
+    monkeypatch,
+) -> None:
+    """The shipped default admits the measured file type, not every artifact."""
+
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
+    assert (
+        qgr._gguf_staged_linear_rows_long_enabled(
+            "hip_gfx1151", file_type_name="MOSTLY_Q4_K_M"
+        )
+        is True
+    )
+    assert (
+        qgr._gguf_staged_linear_rows_long_enabled(
+            "hip_gfx1151", file_type_name="MOSTLY_Q5_K_M"
+        )
+        is False
+    )
 
 
 def test_native_staged_linear_rows_long_fails_closed_without_a_backend(
@@ -1614,7 +1656,12 @@ def test_native_staged_linear_rows_long_fails_closed_without_a_backend(
     from hipengine.runtime import qwen35_gguf_runner as qgr
 
     monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
-    assert qgr._gguf_staged_linear_rows_long_enabled("auto") is False
+    assert (
+        qgr._gguf_staged_linear_rows_long_enabled(
+            "auto", file_type_name="MOSTLY_Q4_K_M"
+        )
+        is False
+    )
 
 
 def test_native_full_attention_chain_scheduler_stages_dynamic_dense_rows_once(

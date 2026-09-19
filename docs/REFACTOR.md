@@ -196,19 +196,18 @@ above before it becomes a default.
   serial-exact teacher, 16/32 split-K calls per case unchanged
   (`worklog/entries/20260917T195925.422701Z-lhl-gguf-long-context-eager-staged-attention-2c4ca3.md`,
   `benchmarks/results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json`).
-- Remaining: the staged *linear*-attention chain still takes the row-wise strict
-  route at long context by default, because it diverges from scalar AR in BF16 at
-  the split-attention boundary. It is now reachable behind
-  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` for production-numerics evaluation
-  (see the row-wise strict dispatch entry above); the default stays row-wise
-  until that evaluation and the task/performance gates pass. This is the
-  dominant blocker for long-context MTP economics: 48 of the 64 layers are
-  linear, and a serving measurement with the batched full-attention chain in
-  place but linear rows still row-wise lands at 0.90x AR at a 945-token prompt
-  and 0.68x at 3,530 tokens (Qwen3.8-27B Q4_K_M, gfx1151, budget 3, split-K
-  decode at its default threshold, same server process for both arms), against
-  1.38x when the split-K threshold is raised so both chains batch
-  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
+- Resolved for the measured artifact (2026-09-19): the staged *linear*-attention
+  chain is byte-exact above the split threshold on the current dense Q4_K_M
+  path, so the blanket row-wise rule no longer has a correctness reason to cover
+  it and the backend default admits the staged chain for that file type (see the
+  row-wise strict dispatch entry above). The row-wise c1 route stays registered
+  as the strict fallback for every other artifact identity and behind
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0`; it is not dead code. The recorded
+  0.90x/0.68x serving ratios were measured with the row-wise rule in force
+  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`);
+  serving MTP above a 1,022-token prompt is still refused by the adapter's
+  measured 1,023-token provider window, which is a separate blocker from this
+  route.
 - Historical note: the only measured way to reach the batched long-row route
   before this was to raise the split threshold past the request's context (or
   disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
@@ -6162,26 +6161,32 @@ should be boring.
 - This is deliberately not the fast long-context route (direct cycle cost
   0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
   context cap.
-- Admission is now explicit and default-off (2026-09-19):
-  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` (or the backend package capability
-  `GGUF_STAGED_LINEAR_ROWS_LONG`) lets dense linear-attention rows stage above
-  the split threshold, which the row-wise rule above previously forbade. Unset
-  keeps this entry's row-wise route byte-for-byte, so the strict fallback is
-  unchanged. The 2026-09-12 BF16 boundary that motivated the blanket rule
-  (layer 46, max abs 0.015625) does not reproduce on the current dense
-  Q4_K_M path: on the eager route
+- The staged route is now the default for the measured artifact (2026-09-19):
+  the backend package capability
+  `GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES` (`mostly_q4_k_m` on
+  gfx1151) admits dense linear-attention rows above the split threshold, and
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` overrides it in either direction as
+  the rollback seam. The row-wise route in this entry stays registered as the
+  strict fallback for a preset-bound or unknown-manifest artifact, an unlisted
+  file type, gfx1100, and `=0`. The 2026-09-12 BF16 boundary that motivated the
+  blanket rule (layer 46, max abs 0.015625) does not reproduce on the current
+  dense Q4_K_M path: on the eager route
   (`scripts/gguf_mtp_long_context_gate.py --disable-target-graph`, gfx1151,
-  Qwen3.8-27B Q4_K_M) every straddle case is exact against the serial-exact
-  teacher with `staged_chain_calls` 48 and `row_wise_attn_calls` 0, while the
-  matched row-wise control is exact as well. The candidate is being evaluated
-  under the production numerical, task, and performance gates before any
-  capability default is set; until then the flag is the only way to reach the
-  batched linear rows at long context.
-- Removal trigger: once the production numerical, task, and performance gates
-  qualify the staged linear route on the admitted (backend, model, quant) cells,
-  read the backend capability directly and delete the env override (or keep it
-  as a documented rollback exactly like `GGUF_AOTRITON_HEAD_MAJOR_KV`). If the
-  candidate fails a gate, delete the flag with the row-wise route unchanged.
+  Qwen3.8-27B Q4_K_M) every straddle case at 1,020-1,028, 3,528-3,532 and 8,192
+  is exact against the serial-exact teacher with `staged_chain_calls` 48 and
+  `row_wise_attn_calls` 0, the matched row-wise control is exact as well, and
+  the committed long-context task packet binds task, AR-id and eager-ownership
+  equality at a 4,096-token context.
+- Removal trigger: the gates have now qualified the staged linear route on the
+  admitted (backend, model, quant) cell, the capability default is the promoted
+  path, and `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` is a documented rollback
+  exactly like `GGUF_AOTRITON_HEAD_MAJOR_KV`. Retire the env override and the
+  row-wise long-context branch together when the row-wise c1 route stops being
+  the registered strict fallback for an unlisted artifact - that is, when every
+  admitted artifact family has its own packet and the strict chain is reachable
+  through the registry rather than through this branch. A gate failure on a
+  newly admitted family means removing that family from the capability, not
+  restoring a default-off flag.
 - Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified
   and the eager long path becomes a non-authoritative fallback, re-evaluate
   whether the row-wise serialization can be consolidated into the registered

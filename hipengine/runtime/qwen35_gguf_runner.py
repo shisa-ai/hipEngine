@@ -7828,7 +7828,13 @@ class Qwen35GGUFFullStackRunner:
             and not bool(self.weights.config.is_moe)
             and layer_type == LINEAR_ATTENTION
             and _use_gguf_full_attention_split_decode(start_position + rows)
-            and not _gguf_staged_linear_rows_long_enabled(self.backend)
+            and not _gguf_staged_linear_rows_long_enabled(
+                self.backend,
+                file_type_name=getattr(self.weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    self.weights, "artifact_preset_key", None
+                ),
+            )
         )
         staged_dense_linear = (
             layer_type == LINEAR_ATTENTION
@@ -35208,32 +35214,44 @@ def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
     return threshold > 0 and int(active_context) >= threshold
 
 
-def _gguf_staged_linear_rows_long_enabled(backend: str) -> bool:
+def _gguf_staged_linear_rows_long_enabled(
+    backend: str,
+    *,
+    file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
+) -> bool:
     """Whether dense linear-attention verifier rows stage above the split gate.
 
-    Default off: the row-wise c1 route is the strict fallback that keeps
-    selected Conv/GDN state, K/V rows and logits byte-exact against scalar AR.
-    The backend package capability ``GGUF_STAGED_LINEAR_ROWS_LONG`` admits the
-    batched staged chain (projections plus FFN across rows) so its
-    production-numerics envelope can be measured, and
-    ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG`` overrides it in either direction
-    for an explicit rollback. It never changes single-row decode.
+    An explicit environment value always wins and remains the rollback seam.
+    Otherwise the backend package admits only model file types with complete
+    correctness evidence, and only for artifacts the admission pipeline bound
+    as qualified plain controls: ``artifact_preset_key=None`` means the caller
+    holds a loader-resolved plain identity, so the stamp-membership default
+    applies. A preset-bound (UD) or unknown-manifest key never inherits the
+    artifact-qualified default from the stamp alone and keeps the row-wise c1
+    route, which is the strict fallback that keeps selected Conv/GDN state, K/V
+    rows and logits byte-exact against scalar AR. It never changes single-row
+    decode.
     """
 
     if _env_value(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV) is not None:
         return _env_flag(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV, False)
+    if artifact_preset_key is not None or file_type_name is None:
+        return False
     try:
-        return bool(
-            backend_package_capability(
-                backend,
-                "GGUF_STAGED_LINEAR_ROWS_LONG",
-                False,
-            )
+        admitted = backend_package_capability(
+            backend,
+            "GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES",
+            (),
         )
     except ValueError:
         # An unresolved backend (``auto`` on a partially built runner) declares
         # no capability, and the row-wise route is the fail-closed choice.
         return False
+    normalized = {
+        str(value).strip().lower() for value in admitted if str(value).strip()
+    }
+    return str(file_type_name).strip().lower() in normalized
 
 
 def _use_gguf_short_full_attention_split_decode(

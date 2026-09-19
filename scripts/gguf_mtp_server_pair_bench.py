@@ -89,29 +89,75 @@ def stream_options() -> dict:
     return options
 
 
+def _merge_extension(target: dict[str, Any], update: Mapping[str, Any]) -> None:
+    """Merge a stream's routing extension, keeping earlier nested fields.
+
+    The accounting arrives in pieces: a chunk may carry the route decision while
+    the terminal usage chunk carries the cycle and coverage counters. Replacing
+    the nested mapping outright would drop whichever half arrived first, so
+    nested mappings are merged and only leaf values are overwritten.
+    """
+
+    for key, value in update.items():
+        current = target.get(key)
+        if isinstance(value, Mapping) and isinstance(current, Mapping):
+            merged = dict(current)
+            merged.update(value)
+            target[key] = merged
+        else:
+            target[key] = value
+
+
 def route_summary(extension: Mapping[str, Any]) -> dict:
     """The routing and MTP accounting a served row reports about itself.
 
     A serving rate is only comparable across arms if the row says which route
     ran and how much of its output came from speculative cycles, so the pair
     harness records the same fields the ShareGPT recorder reads rather than
-    inferring coverage from the arm's intent.
+    inferring coverage from the arm's intent. Streaming and non-streaming
+    responses carry the same accounting under slightly different keys, so both
+    channels are read.
     """
     route = (extension.get("generation_shape") or {}).get("route_decision") or {}
     mtp = extension.get("speculative_mtp") or {}
     accounting = mtp.get("output_accounting") or {}
     token_accounting = extension.get("token_accounting") or {}
     return {
-        "effective_route": route.get("effective_route"),
-        "decision_reason": route.get("decision_reason"),
+        "effective_route": (
+            route.get("effective_route")
+            or mtp.get("effective_route")
+            or extension.get("effective_route")
+        ),
+        "decision_reason": route.get("decision_reason") or mtp.get("decision_reason"),
         "mtp_used": bool(mtp.get("used")),
-        "speculative_cycles": mtp.get("speculative_cycles"),
-        "mtp_output_tokens": accounting.get("mtp_output_tokens"),
-        "ar_output_tokens": accounting.get("ar_output_tokens"),
-        "mtp_coverage": accounting.get("mtp_coverage"),
+        "speculative_cycles": mtp.get("draft_cycles") or mtp.get("speculative_cycles"),
+        "mtp_output_tokens": accounting.get("mtp_output_tokens")
+        or mtp.get("mtp_output_tokens"),
+        "ar_output_tokens": accounting.get("ar_output_tokens")
+        or mtp.get("ar_output_tokens"),
+        "mtp_coverage": accounting.get("mtp_coverage") or mtp.get("mtp_coverage"),
         "fallback_event_counts": mtp.get("fallback_event_counts"),
-        "generated_ids": token_accounting.get("choice_generated_token_ids"),
+        "generated_ids": _flat_generated_ids(
+            token_accounting.get("choice_generated_token_ids")
+        ),
     }
+
+
+def _flat_generated_ids(value: Any) -> list[int] | None:
+    """Normalize ``choice_generated_token_ids`` to one choice's id list.
+
+    The API reports ids per choice, so a single-choice response arrives as
+    ``[[...]]``. Comparing two arms is a token-for-token comparison of the
+    sequence each one emitted, so the nested single-choice form is flattened
+    and a multi-choice response keeps its per-choice lists.
+    """
+    if not isinstance(value, list) or not value:
+        return None
+    if all(isinstance(item, list) for item in value):
+        if len(value) != 1:
+            return value
+        return list(value[0])
+    return list(value)
 
 
 def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
@@ -195,12 +241,12 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
             except json.JSONDecodeError:
                 continue
             if isinstance(chunk.get("hipengine"), Mapping):
-                extension.update(chunk["hipengine"])
+                _merge_extension(extension, chunk["hipengine"])
             if chunk.get("usage"):
                 usage = chunk["usage"]
             for choice in chunk.get("choices") or []:
                 if isinstance(choice.get("hipengine"), Mapping):
-                    extension.update(choice["hipengine"])
+                    _merge_extension(extension, choice["hipengine"])
                 if choice.get("finish_reason"):
                     finish = choice["finish_reason"]
                 delta = choice.get("delta") or {}
