@@ -3066,7 +3066,15 @@ edge-case hardening:
    selection or post-accept finish behavior (`logit_bias`, penalties,
    suppressions, min-token/EOS policy, stop controls, forced tokens, tool/JSON
    constraints, thinking budgets, logprobs) must keep an advertised blocker and
-   a test.
+   a test. The advertised blocker list is checked against the request vocabulary
+   (`PerRowSamplingParams`) by a totality test, so a newly added sampler field
+   cannot be admitted by omission; the fields that are not blockers are named
+   selection-preserving with the reason they cannot change the greedy decision.
+   The sampled route's servable set is the sampling law it reproduces exactly
+   (bias, penalties, suppression, temperature, top-k/top-p/min-p) plus
+   `ignore_eos`; min-token/EOS policy and stop controls stay blockers there too,
+   because the cycle commit implements the greedy-chain EOS finish rule and not
+   the autoregressive one.
 
 ### P2 — Core but allowed to fail closed
 

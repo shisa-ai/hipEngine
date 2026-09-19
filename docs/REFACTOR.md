@@ -8225,6 +8225,16 @@ sink for a due sampled row, and
 inert without the row, and pinned by RED/GREEN tests; do not delete them while
 the device-side accept is still the intended follow-up.
 
+The route's servable blocker set is the sampling law and nothing else
+(`temperature`, `logit_bias`, penalties, `suppress_token_ids`) plus
+`ignore_eos`. `min_tokens`, `eos_token_id`, `stop_token_ids`, and
+`stop_token_sequences` are unservable until the route implements the
+autoregressive finish rule: the cycle commit ends a row only when its last
+visible token is the row's EOS, and a stochastic accept has no
+`greedy_chain_eos_limit` bound, so a stop token or EOS can land mid-cycle.
+Moving them back to servable requires a finish-rule gate, not just the
+induced-law gate.
+
 **Sampled-route debug traces (env-gated, added 2026-09-18).**
 `HIPENGINE_DEBUG_SAMPLED_ROUTE` gates five stderr traces that named every gate on
 this route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and

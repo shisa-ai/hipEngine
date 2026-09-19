@@ -20,6 +20,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
 from hipengine.generation.sampling import (
     SAMPLED_MTP_SERVABLE_BLOCKERS,
     SAMPLED_MTP_UNSERVABLE_BLOCKERS,
+    SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     sampled_speculative_mtp_blockers,
     speculative_sampling_mode,
     speculative_serving_sampling_mode,
@@ -65,21 +66,21 @@ def _params(**overrides):
 
 _SERVABLE = {
     "temperature": _params(temperature=0.7),
-    "temperature_with_eos": _params(temperature=0.7, eos_token_id=9),
     "repetition_penalty": _params(temperature=0.7, repetition_penalty=1.1),
     "presence_penalty": _params(temperature=0.7, presence_penalty=0.2),
     "frequency_penalty": _params(temperature=0.7, frequency_penalty=0.2),
     "logit_bias": _params(temperature=0.7, logit_bias={3: 2.0}),
     "suppress_token_ids": _params(temperature=0.7, suppress_token_ids=(4,)),
-    "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
-    "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
-    "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     "ignore_eos": _params(temperature=0.7, ignore_eos=True),
     "greedy": _params(),
     "eos_only": _params(eos_token_id=9),
 }
 
 _UNSERVABLE = {
+    "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
+    "eos_gate": _params(temperature=0.7, eos_token_id=9),
+    "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
+    "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     "logprobs": _params(temperature=0.7, logprobs=True),
     "top_logprobs": _params(temperature=0.7, top_logprobs=5),
     "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
@@ -225,12 +226,20 @@ def test_sampled_route_rejects_a_different_artifact_size() -> None:
 
 def test_sampled_route_request_follows_the_row_sampling_mode() -> None:
     row = SimpleNamespace(
-        sampling_request=_params(temperature=0.7, eos_token_id=9),
-        request=_params(temperature=0.7, eos_token_id=9),
+        sampling_request=_params(temperature=0.7, logit_bias={3: 1.0}),
+        request=_params(temperature=0.7, logit_bias={3: 1.0}),
         sampling_state=None,
     )
     adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
     assert adapter._sampled_route_request(1) is True
+    # An EOS finish policy is a finish-rule field, not a sampling-law field, so
+    # it keeps the row off the sampled route even when the row is qualified.
+    eos_row = SimpleNamespace(
+        sampling_request=_params(temperature=0.7, eos_token_id=9),
+        request=_params(temperature=0.7, eos_token_id=9),
+        sampling_state=None,
+    )
+    assert _adapter(plugin_evidence=(_evidence_row(),), row=eos_row)._sampled_route_request(1) is False
     greedy_row = SimpleNamespace(
         sampling_request=_params(),
         request=_params(),
@@ -264,13 +273,32 @@ def test_engine_loop_selects_the_sampled_mode_for_a_temperature_request() -> Non
     runner = SimpleNamespace(speculative_eos_supported=lambda request_id: False)
     assert _speculative_sampling_mode(runner, 1, _params(temperature=0.7)) == "sampled"
     assert _speculative_sampling_mode(runner, 1, _params()) == "greedy"
-    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
-    # An EOS gate is servable, and so is ignoring EOS: both are processors the
-    # sampled law already applies, so this row takes the sampled route rather
-    # than the processed one.
+    # Selection-preserving settings stay on the greedy route: the truncation
+    # filters and the stream seed cannot change a raw argmax.
     assert (
-        _speculative_sampling_mode(runner, 1, _params(eos_token_id=9, ignore_eos=True))
+        _speculative_sampling_mode(
+            runner, 1, _params(top_p=0.1, top_k=4, min_p=0.5, seed=7)
+        )
+        == "greedy"
+    )
+    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
+    # Ignoring EOS is a finish-rule relaxation both routes already honor, so it
+    # stays on the sampled route; naming an EOS token is not, because a
+    # stochastic accept can commit EOS mid-cycle and the cycle commit would
+    # publish the tokens after it.
+    assert (
+        _speculative_sampling_mode(runner, 1, _params(temperature=0.7, ignore_eos=True))
         == "sampled"
+    )
+    assert (
+        _speculative_sampling_mode(runner, 1, _params(temperature=0.7, eos_token_id=9))
+        == "processed"
+    )
+    assert (
+        _speculative_sampling_mode(
+            runner, 1, _params(temperature=0.7, eos_token_id=9, ignore_eos=True)
+        )
+        == "processed"
     )
     eos_runner = SimpleNamespace(speculative_eos_supported=lambda request_id: True)
     assert (
@@ -446,3 +474,104 @@ def test_no_shipped_evidence_row_advertises_the_sampled_mode() -> None:
         assert table, name
         for row in table:
             assert "sampled" not in tuple(row.sampling_modes), (name, row.evidence_key)
+
+# ------------------------------------------------------------- guard totality
+
+# Request fields that cannot change token selection or post-accept finish
+# behavior on the admitted route.  Every other field of the request vocabulary
+# is an advertised MTP blocker; the two sets must partition the vocabulary so a
+# new sampler field cannot be admitted by omission.
+_SELECTION_PRESERVING_FIELDS = {
+    # Inert while temperature <= 0: the autoregressive route selects the raw
+    # argmax, so a truncation filter never removes the selected token.
+    "top_k": "truncation filters are inert on the raw-argmax route",
+    "top_p": "truncation filters are inert on the raw-argmax route",
+    "min_p": "truncation filters are inert on the raw-argmax route",
+    # Only the sampler stream differs; the selected token is still the argmax.
+    "seed": "selects the sampler stream, not the greedy decision",
+    # Reasons label a queue that is itself a blocker, so an empty queue carries
+    # no behavior of its own.
+    "forced_token_reason": "labels forced_tokens_pending, which is a blocker",
+    "post_thinking_forced_token_reason": "labels a blocked queue",
+    "force_sequence_completion_reason": "labels a blocked queue",
+    # The thinking budget is active only as a pair; a partial configuration
+    # builds no budget state and enforces nothing.
+    "thinking_close_token_ids": "inert without thinking_hard_token_cap",
+    "thinking_hard_token_cap": "inert without thinking_close_token_ids",
+    "thinking_soft_close_window": "inert without the active budget pair",
+}
+
+
+def test_sampled_servable_set_is_the_sampling_law_plus_ignore_eos() -> None:
+    """The sampled route reproduces the sampler law, not the finish rule.
+
+    ``hipengine/speculative/sampling.py`` requires the caller to apply the
+    request's pipeline (bias, penalties, suppression, temperature, top-k,
+    top-p, min-p) before the coupled accept, and the induced-law gate measures
+    exactly that set.  ``ignore_eos`` is a finish-rule relaxation the cycle
+    commit already honors.  Every other admitted field changes *post-accept
+    finish* behavior, which the cycle commit implements only for EOS on the
+    greedy chain, so it must stay an advertised blocker.
+    """
+
+    assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
+        "temperature",
+        "logit_bias",
+        "repetition_penalty",
+        "presence_penalty",
+        "frequency_penalty",
+        "suppress_token_ids",
+        "ignore_eos",
+    }
+    finish_rule_fields = {
+        "min_tokens",
+        "eos_token_id",
+        "stop_token_ids",
+        "stop_token_sequences",
+    }
+    assert finish_rule_fields <= set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert not finish_rule_fields & set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
+        SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["min_tokens", "eos_gate", "stop_token_ids", "stop_token_sequences"],
+)
+def test_finish_rule_fields_keep_the_autoregressive_route(name: str) -> None:
+    """A temperature request that stops on anything but length stays AR."""
+
+    params = {
+        "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
+        "eos_gate": _params(temperature=0.7, eos_token_id=9),
+        "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
+        "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
+    }[name]
+    assert supports_sampled_speculative_mtp(params) is False
+    assert sampled_speculative_mtp_blockers(params)
+    assert speculative_serving_sampling_mode(params) == "processed_argmax"
+
+
+def test_request_vocabulary_is_fully_classified() -> None:
+    """Every request field is an advertised blocker or selection-preserving."""
+
+    import dataclasses
+
+    from hipengine.generation.batch_scheduler import PerRowSamplingParams
+
+    vocabulary = {field.name for field in dataclasses.fields(PerRowSamplingParams)}
+    blockers = set(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS)
+    preserving = set(_SELECTION_PRESERVING_FIELDS)
+    # The guard names two blockers by their request-side alias.
+    aliases = {
+        "suppress_tokens": "suppress_token_ids",
+        "stop_tokens": "stop_token_ids",
+    }
+    classified = {aliases.get(name, name) for name in vocabulary}
+    unclassified = classified - blockers - preserving
+    assert not unclassified, sorted(unclassified)
+    assert not (blockers & preserving)
+    assert preserving <= set(vocabulary)
+    assert all(reason for reason in _SELECTION_PRESERVING_FIELDS.values())

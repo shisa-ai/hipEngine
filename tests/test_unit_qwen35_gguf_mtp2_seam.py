@@ -2973,6 +2973,86 @@ def test_eager_cycle_commit_reports_eos_and_max_tokens_completion() -> None:
     assert eos_row.slot.done is True
 
 
+def _cycle_commit_row(**request_overrides) -> SimpleNamespace:
+    request = {
+        "eos_token_id": None,
+        "ignore_eos": False,
+        "max_tokens": 64,
+        "stop_token_ids": (),
+        "stop_token_sequences": (),
+        "min_tokens": 0,
+    }
+    request.update(request_overrides)
+    return SimpleNamespace(
+        request=SimpleNamespace(**request),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+
+def test_eager_cycle_commit_implements_only_the_greedy_chain_eos_finish_rule() -> None:
+    """The cycle commit's finish rule is why stop-semantics fields are blockers.
+
+    A committed cycle ends a row only when its last visible token is the row's
+    EOS.  Token stops, multi-token stops, and a mid-cycle EOS are therefore not
+    finishes here, which is exactly the divergence
+    ``SAMPLED_MTP_UNSERVABLE_BLOCKERS`` keeps off the route: the greedy route
+    avoids the mid-cycle case by bounding acceptance with
+    ``greedy_chain_eos_limit``, and a stochastic accept has no such bound.  If
+    this test starts failing, the commit path learned the autoregressive finish
+    rule and the blockers are ready to be re-measured.
+    """
+
+    for overrides, visible in (
+        ({"stop_token_ids": (2,)}, (101, 2, 102)),
+        ({"stop_token_sequences": ((2, 3),)}, (101, 2, 3)),
+        ({"eos_token_id": 2, "min_tokens": 8}, (101, 2, 102)),
+    ):
+        row = _cycle_commit_row(**overrides)
+        assert (
+            mtp2_module._commit_eager_cycle_row(
+                row,
+                visible=visible,
+                accepted=len(visible) - 1,
+                candidate_count=len(visible),
+                plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+                target_position=6,
+            )
+            is False
+        ), overrides
+        assert row.slot.done is False, overrides
+        # The token past the stop is committed, which is the behavior the
+        # blocker prevents from reaching a client.
+        assert row.slot.generated_ids == [90, *visible], overrides
+
+    # The one finish the commit path does implement: EOS as the last visible
+    # token, which the greedy chain bound makes the only reachable position.
+    trailing = _cycle_commit_row(eos_token_id=2)
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            trailing,
+            visible=(101, 2),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is True
+    )
+
+
 def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
     provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
     group = mtp2_module._MTP2ProviderGroup(
