@@ -7906,27 +7906,108 @@ near-tie rows: post-fix the heldout fails against **both** TP1 references
 envelope against token-serial (max 0.0259) and outside it against the resident
 teacher (0.167). Do not relax the envelope.
 
-**The sharded pair admission buys nothing until the exchange stops being a
-rendezvous (2026-09-19).** `GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES` now admits the
-TP2 even-split shard width (5_120 -> 8_704) to the dense Q4T16 gate/up+SiLU
-prefill owner, and `MlpShardRank.forward_partial` attempts that pair at batched
-rows with the unfused chain as its fallback. The pair is bit-identical to the
-unfused chain at every row band the ladder names and faster in isolation in every
-band (row48 2.08x, row64 1.81x, row128 1.67x, generic 1.27x at rows=512), and it
-replaces three launches per layer per rank with one — but the product-path wall
-does not move: paired same-session A/B at 512 rows with `logits_rows=1` measured
-492.8 -> 493.5 ms (-0.14%). The sharded MLP phase is rendezvous-bound, so the
-~30 ms of chain work removed per prefill is absorbed as extra wait at the
-per-layer peer exchange instead of shortening the wall. The saving is real and
-visible whenever the wall is not sync-bound (the same A/B with the full row head
-projection reads +3.16%, all four paired deltas positive), which is what makes
-this refactor debt rather than a rejected idea.
+**The sharded pair admission is retained, but the reason it does not move the
+wall is NOT established (2026-09-19, corrected).**
+`GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES` admits the TP2 even-split shard width
+(5_120 -> 8_704) to the dense Q4T16 gate/up+SiLU prefill owner, and
+`MlpShardRank.forward_partial` attempts that pair at batched rows with the
+unfused chain as its fallback. The pair is bit-identical to the unfused chain at
+every row band the ladder names and faster in isolation in every band (row48
+2.08x, row64 1.81x, row128 1.67x, generic 1.27x at rows=512), and it replaces
+three launches per layer per rank with one. End to end on the product path it is
+neutral: paired same-session A/B at 512 rows with `logits_rows=1` measured
+492.8 -> 493.5 ms (-0.14%), and the corrected attribution's `mlp_chain` span is
+flat at 189.5 vs 189.7 ms.
 
-Re-evaluate when either changes: (a) the exchange stops being a per-layer
-rendezvous (a batched or overlapped reduction would let chain work reach the
-wall), or (b) the MLP phase is no longer straggler-bound — today rank 1 carries
-168.7 ms of chain against rank 0's 189.5 ms while rank 1 waits 111.5 ms at the
-exchange against rank 0's 64.6 ms, so the wait is absorbing a genuine imbalance.
-If neither changes, this admission can be withdrawn without losing throughput:
-delete the `8_704` entry, and `forward_partial`'s batched attempt falls back to
-the unfused chain exactly as before.
+An earlier revision of this entry explained that with "the sharded MLP phase is
+rendezvous-bound, so the ~30 ms of chain work removed is absorbed as extra wait"
+and concluded "MLP arithmetic is exhausted as a lever on this route". **That
+explanation is retracted.** It was inferred from stream-event spans, which cannot
+carry it: the spans include enqueue bubbles, the hooks bracket *both* ranks'
+sequential host submissions, and the "full-row head" control that appeared to
+confirm it changed the workload rather than only the synchronization. Nothing
+measured here shows a 30 ms chain reduction becoming 30 ms of additional
+exchange wait, so the ~30 ms saving is also unestablished - the isolated kernel
+speedup is real, but what the pipeline does with it is not known.
+
+What the corrected attribution does establish, and what the next attempt should
+start from:
+
+- The prefill is **device-bound**, not enqueue-bound. Host spans sum to 71.8 ms
+  against a 489.6 ms device span, so the host has roughly 7x headroom and an
+  enqueue-bubble explanation cannot be the whole story.
+- Every layer is **synchronised at its MLP exchange**, and rank 0 is the
+  critical path. Rank 0's attention + chain is 6.620 ms/layer against rank 1's
+  5.869, and the model `rank1_exchange = lead + rank0_exchange_work` predicts
+  1.677 ms against 1.694 measured. Rank 1 therefore idles ~0.75 ms/layer.
+- Rebalancing the MLP shard to 0.463/0.537 would equalise `attention + chain`
+  and is worth ~24 ms/prefill (~4.9%) on that model. The model assumes chain
+  cost scales with the shard width, which is untested - measure before relying
+  on it.
+- The exchange itself is **near its floor**, so it is the wrong thing to attack.
+  Measured PCIe ceiling on this host is ~14 GB/s per direction for a 5.24 MB
+  transfer; the exchange's two such transfers cost ~0.75 ms of a 0.926 ms span,
+  i.e. ~81% of the hardware floor. Direct peer access is unavailable
+  (`hipDeviceCanAccessPeer` returns 0 both ways between the W7900 and the RX
+  7900 XTX), so host staging is required and the traffic cannot be halved.
+
+Re-evaluate the fusion itself when the MLP phase stops being straggler-bound.
+The admission can be withdrawn without losing throughput by deleting the `8_704`
+entry; `forward_partial`'s batched attempt then falls back to the unfused chain
+exactly as before.
+
+**The TP2 bulk prefill omits five calibrated dispatch contexts that TP1 installs
+(2026-09-19, open, highest-value known gap).** The single-card bulk prefill wraps
+its whole pass in five dispatch contexts (`qwen35_gguf_runner.py`, the `run_bulk`
+branch):
+
+```python
+resident_prefill_dispatch_session(...),
+self._prefill_f16_staging_context(),
+self._q6_integer_mmq_context(),
+self._iq_dense_mmq_context(),
+self._q8_mmq_prefill_context(),
+self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
+```
+
+The TP2 rank-local bulk prefill (`tp2_generate.py::_bulk_attention_layer`,
+`_bulk_norm_residual_layer`, `_bulk_sharded_mlp_layer`) installs only
+`resident_prefill_dispatch_session`. Without the rest, the largest GEMMs on the
+attention path resolve to a **decode-shaped GEMV kernel** during prefill:
+
+| tensor | quant | shape | GFLOP/layer | variant on the TP2 prefill path |
+| --- | --- | --- | ---: | --- |
+| `attn_qkv` | `gguf_q6_k_t16_qmicro_planar_v1` | (5120, 10240) | 53.7 | `t16_gemv_decode_bf16_bf16_out` |
+| `ssm_out` | `gguf_q5_k_t16_v1` | (6144, 5120) | 32.2 | `t16_gemv_decode_bf16_bf16_out` |
+| `attn_v` (16 layers) | `gguf_q6_k_t16_qmicro_planar_v1` | (5120, 1024) | — | `t16_gemv_decode_bf16_bf16_out` |
+| `attn_gate`, `attn_q`, `attn_k` | `gguf_q4_k_t16_v1` | — | — | `t16_wmma_prefill_bf16_bf16_out` |
+
+This is why the attention phase runs at 31.2 TFLOPS (GDN layers) and 34.6 TFLOPS
+(full-attention layers) while the sharded MLP chain reaches 46.2 TFLOPS/rank on
+the same device. The model geometry is already admitted by the calibrated policy
+`GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES`, and every shape above is admitted
+at exactly rows=512 by `GGUF_Q{4,5,6}_T16_F16_ROCBLAS_PREFILL_POLICIES`.
+
+**Measured, interleaved, in one session (four independent A/B/A runs):** entering
+`_q6_f16_rocblas_prefill_context` around the per-rank attention call takes the
+512-token product-path prefill from **494.1 ms to 477.6 ms (+3.45%)**; all five
+contexts together give 476.7 ms (+3.65%); `_q6_integer_mmq_context` alone gives
+nothing (496.8 ms). The win is entirely the f16-rocBLAS prefill route.
+
+The integration is not done, and it is not a one-line change. The contexts are
+methods on `Qwen35GGUFResidentSession`, not on the runner TP2 holds, and they
+carry **per-rank scratch** (the f16 weight plane and `q6_f16_x`/`q6_f16_out`).
+Two consequences, both confirmed the hard way:
+
+- They must be entered **inside** the per-device loop, around that rank's own
+  work. Entering one rank's context around both ranks' work makes rank 1 read
+  rank 0's f16 planes and faults the GPU (`Memory access fault ... Page not
+  present`).
+- A `Qwen35GGUFResidentSession(shared_runner=runner)` per rank works and reuses
+  the uploaded weights, but allocates its own bulk-prefill workspace on top of
+  TP2's. Whatever lands must account for that memory and close the sessions with
+  the TP2 session.
+
+Landing it also changes arithmetic on the attention path from int8 WMMA to
+source-F16 rocBLAS, so it needs the applicable production-profile gate and a
+registered strict fallback, not just the timing A/B.
