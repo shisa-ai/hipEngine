@@ -207,10 +207,34 @@ def main(argv: list[str] | None = None) -> int:
         result["memory_after_load"] = per_rank
 
         prompt_ids = [int(args.token_id)] * int(args.prompt_length)
-        # One warmup generation, then the measured repeats, all on the resident
-        # session: the first call pays graph capture, and a c=1 cell should not
-        # report that as decode time.
-        session.generate(prompt_ids, max_new_tokens=1)
+        # Warm up with the shape being measured, then run the measured repeats on
+        # the resident session: the first calls pay graph capture and
+        # variant/JIT warmup, and a c=1 cell must not report that as its rate.
+        # A shorter warmup is not enough - with the bulk prefill route, warming
+        # up at ``max_new_tokens=1`` and then measuring 128-token generations
+        # left four transient runs (8.5 s, 11.5 s, 13.5 s, 7.2 s against a 1.15 s
+        # steady state) inside the median.
+        session.generate(prompt_ids, max_new_tokens=int(args.decode_tokens))
+        # The bulk prefill workspace is sized to the prompt on first use, so it
+        # does not exist at ``memory_after_load``. Sample again after the
+        # warmup: for the bulk route this is the footprint a caller actually
+        # lives with, and comparing the two readings is how the sizing shows up.
+        after_warmup: dict[str, dict[str, float]] = {}
+        for rank in devices:
+            with scoped_current_device(runtime, rank):
+                free_bytes, total_bytes = runtime.mem_get_info()
+                after_warmup[str(rank)] = {
+                    "vram_used_gib_after_warmup": round(
+                        (total_bytes - free_bytes) / 2**30, 6
+                    ),
+                    "session_vram_gib": round(
+                        (total_bytes - free_bytes) / 2**30 - baseline[str(rank)], 6
+                    ),
+                    "free_gib_after_warmup": round(free_bytes / 2**30, 6),
+                }
+        result["memory_after_warmup"] = after_warmup
+        result["bulk_prefill_rows"] = getattr(session, "bulk_prefill_rows", None)
+        result["bulk_prefill_workspace_rows"] = getattr(session, "_bulk_rows", None)
         prefill_runs: list[dict[str, float]] = []
         decode_runs: list[dict[str, float]] = []
         started = time.perf_counter()

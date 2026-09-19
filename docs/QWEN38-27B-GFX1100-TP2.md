@@ -780,9 +780,31 @@ default-off and the token-serial route remains the committed prefill schedule.
   bit-identical before and after on both prompts, and two independent post-fix
   runs produced identical bulk and serial logits SHA-256s.
   (`benchmarks/results/2026-09-17-w7900-tp2-bulk-prefill-dispatch-context-ab.json`)
-- **Blocker:** both prompts still exceed the production envelope (max KL ≤ 0.05,
-  mean KL ≤ 0.001, p99 KL ≤ 0.02), so the bulk route stays opt-in and
-  default-off and is not promoted. Bit-identical layer-0 intermediates do **not**
+- **Superseded 2026-09-18 (scoped):** the numbers above score the bulk route
+  against the **resident TP1 bulk teacher** on two diagnostic prompts. The
+  envelope that binds promotion in `docs/EXECUTION-PROFILES.md` is the
+  **arm-vs-control** production comparison, and on that basis the route passes
+  the full 18-prompt suite: 831 rows, mean KL 2.895e-04, p99 KL 3.452e-03, max
+  KL 4.2273e-02, top-1 99.64%, 3 flipped rows, 3-sweep determinism, controls
+  byte-identical
+  (`benchmarks/results/2026-09-18-w7900-tp2-bulk-prefill-gate-prompt-sized.json`).
+  The committed token-serial route passes the same gate with a better tail (max
+  KL 1.2125e-02, top-1 100%, 0 flips), so the candidate is a pass with a thinner
+  margin, not a free win. The teacher-relative readings above are unchanged and
+  still describe the bit-exactness gap; they are simply not the promotion bar.
+- **Wired into the product path and sized to the prompt (2026-09-18):**
+  `MlpTP2GenerationSession.generate` now consumes the bulk route instead of
+  walking the prompt token by token, and `bulk_prefill_rows` defaults to the
+  prompt length rather than `max_sequence_length`, so a 2048-token session no
+  longer reserves a 2048-row workspace before the prompt is known. At a
+  512-token prompt, 128 decode tokens, c=1: prefill **39.1 -> 459.7 tok/s
+  (11.8x)**, decode 38.36 -> 38.94, per-rank VRAM **12.43 -> 15.39 GiB**; a
+  pinned 2048-row capacity costs 22.55 GiB per rank and measures 384.5 tok/s.
+- **Blocker (remaining):** the route stays opt-in because chunked bulk prefill
+  is not implemented, so a prompt longer than the workspace forces a mid-session
+  rebuild, and a *deferred* large workspace is erratic (25-137 tok/s against 386
+  when built at construction), so an explicit `bulk_prefill_rows` is still
+  allocated eagerly. Localizing that slowdown is the next unit. Bit-identical layer-0 intermediates do **not**
   by themselves prove that every end-to-end difference came from the dispatch
   context; the A/B above is the controlled intervention, and it shows the
   remaining gap is no longer a single monotone defect — the heldout's max/mean

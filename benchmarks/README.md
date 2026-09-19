@@ -895,7 +895,7 @@ same prompts at the same decode depths. Both harnesses take `--horizon D`, gate
 the first D rows per prompt, and always record the full-horizon envelope as an
 unscored diagnostic.
 
-**No native-product timing runs or TP2 speed ratios were emitted.** The declared
+**That gate emitted no timing runs and no TP2 speed ratios.** Its declared
 no-EOS-stop protocol remains 128 timed transitions plus one prefill sample
 (129 samples total), not API 128-token completion latency. The failing post-EOS
 position is not removed from the gate. Task/BF16-relative and public distributed
@@ -909,6 +909,25 @@ qualification are not claimed.
 [split balance plan](results/2026-09-18-w7900-tp2-split-balance-plan.json) ·
 [uneven shard width pair-route admission](results/2026-09-18-w7900-tp2-pair-route-admission-uneven.json) ·
 [uneven split end-to-end smoke](results/2026-09-18-w7900-tp2-uneven-split-smoke.json).
+
+**TP2 prefill route, measured 2026-09-18.** The rank-local bulk prefill
+candidate is now consumed by `MlpTP2GenerationSession.generate`, not only by the
+diagnostics, and its workspace is sized to the prompt on first use instead of to
+the session capacity. On the same host, model, 512-token prompt, 128 decode
+tokens and c=1 session: **39.1 -> 459.7 tok/s prefill (11.8x)** with decode
+unchanged (38.36 -> 38.94) and per-rank VRAM **12.43 -> 15.39 GiB**. Pinning the
+old capacity-sized workspace instead costs 22.55 GiB per rank and measures
+384.5 tok/s, so prompt-sizing is both leaner and faster. The production
+arm-vs-control gate over the full 18-prompt suite passes with the candidate
+(831 rows, mean KL 2.895e-04, p99 3.452e-03, max KL 4.2273e-02, top-1 99.64%,
+3 flipped rows, 3-sweep determinism, controls byte-identical) and is
+byte-identical between the prompt-sized and capacity-sized configurations.
+Bulk prefill stays opt-in: chunked bulk prefill is not implemented, so a prompt
+longer than the workspace forces a rebuild mid-session.
+[Prompt-sized cell](results/2026-09-18-w7900-bulk-prompt-c1-512.json) ·
+[capacity cell](results/2026-09-18-w7900-bulk-cap2048-c1-512.json) ·
+[serial control](results/2026-09-18-w7900-tp2-serial-c1-512-shaped-warmup.json) ·
+[production gate](results/2026-09-18-w7900-tp2-bulk-prefill-gate-prompt-sized.json).
 
 **Sustained numerical gate, measured 2026-09-18.** Three arms on one host
 (W7900 rank 0, RX 7900 XTX rank 1), 18 product prompts, 128 teacher-forced

@@ -7805,11 +7805,17 @@ add per rank) instead of token-serial TP2 prefill. It is off by default and the
 token-serial route stays the committed prefill schedule until this candidate
 passes the production numerical envelope end to end.
 
-Remove the flag (make bulk prefill the only route) once the whole-prompt bulk
-route clears the calibrated mean/p95/p99/max KL and top-1 gates on the full
-mtp-bench category suite. Until then it is a candidate, not a default: the
-capacity-64 MLP relative-error finding is still open, chunked bulk prefill is
-not implemented, and no end-to-end quality run exists for the bulk route.
+Status 2026-09-18: the route is now consumed by `generate`, not only by
+`teacher_forced_logits` and the diagnostics, and it clears the full-suite
+production gate against the tp1 controls (831 rows, mean KL 2.895e-04, p99
+3.452e-03, max KL 4.2273e-02, top-1 99.64%, determinism 3/3, controls
+byte-identical). The workspace is sized to the prompt on first use instead of
+to the session capacity, which removed ~7 GiB per rank at a 512-token prompt
+and measured *faster* (463 against 386 tok/s), so the memory objection to
+promoting it is gone. What is left before the flag can be deleted: chunked bulk
+prefill for prompts longer than the capacity, and the same gate re-run at each
+prompt width that the ladder admits. The capacity-64 MLP relative-error finding
+remains open as a diagnostic.
 
 ## 2026-09-17 TP2 bulk prefill omits the resident dispatch context — fixed
 

@@ -1159,6 +1159,8 @@ def _bulk_session(
 
 def _bulk_group(env):
     # The decode group is built first, then the bulk (weight-sharing) group.
+    # The bulk workspace is sized to the prompt on first use, so a caller must
+    # have run a bulk prefill before the second group exists.
     assert len(env["groups"]) == 2
     return env["groups"][0], env["groups"][1]
 
@@ -1185,6 +1187,8 @@ def test_decode_partial_dtype_selects_the_decode_group_only(env) -> None:
         bulk_prefill_rows=8,
         decode_partial_dtype="f32",
     )
+    env["injected_rows"].extend([np.zeros(4 * VOCAB, dtype="<f4")] * 2)
+    session.bulk_prefill([1, 2, 3, 4])
     decode_group, bulk_group = _bulk_group(env)
     assert session.decode_partial_dtype == "f32"
     assert decode_group.staging_dtype == "f32"
@@ -1370,6 +1374,8 @@ def test_bulk_prefill_graphed_capture_cannot_overwrite_prefill_state(env) -> Non
 
 def test_bulk_prefill_reuses_weights_without_double_free(env) -> None:
     session = _bulk_session(env, rows=4)
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
     decode, bulk = _bulk_group(env)
     assert decode.owns_weights is True
     assert bulk.owns_weights is False
@@ -1419,6 +1425,58 @@ def test_generate_keeps_the_token_serial_prefill_when_bulk_is_off(env) -> None:
         "decode",
     ]
     assert [trace.position for trace in result.step_traces] == [0, 1, 2, 3, 4]
+    session.close()
+
+
+def test_bulk_prefill_workspace_is_sized_to_the_prompt(env) -> None:
+    """The workspace is a scratch: allocate on use, grow for a longer prompt.
+
+    A capacity-sized workspace (the old default) cost ~7 GiB more per rank at
+    a 512-token prompt and measured slower, 386 against 463 tok/s, because
+    every layer moved more memory than the prompt had rows.
+    """
+
+    session = MlpTP2GenerationSession(
+        "fake.gguf",
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=64,
+        schedule="eager",
+        bulk_prefill=True,
+    )
+    # Nothing is allocated until the route is used.
+    assert session.bulk_prefill_rows is None
+    assert session._bulk_rows == 0
+    assert len(env["groups"]) == 1
+
+    env["injected_rows"].extend([np.zeros(4 * VOCAB, dtype="<f4")] * 2)
+    session.bulk_prefill([1, 2, 3, 4])
+    assert session._bulk_rows == 4
+
+    # A longer prompt grows the workspace rather than failing.
+    env["injected_rows"].extend([np.zeros(6 * VOCAB, dtype="<f4")] * 2)
+    session.bulk_prefill([1, 2, 3, 4, 5, 6])
+    assert session._bulk_rows == 6
+
+    # A shorter one reuses it.
+    env["injected_rows"].extend([np.zeros(2 * VOCAB, dtype="<f4")] * 2)
+    session.bulk_prefill([7, 8])
+    assert session._bulk_rows == 6
+    session.close()
+
+
+def test_bulk_prefill_workspace_honours_an_explicit_capacity(env) -> None:
+    """An explicit ``bulk_prefill_rows`` is pre-allocated at construction.
+
+    The deferred (prompt-sized) default is the lean one; a pinned capacity is
+    built eagerly, which is how that configuration was validated.
+    """
+
+    session = _bulk_session(env, rows=8)
+    assert session._bulk_rows == 8
+    env["injected_rows"].append(np.zeros(4 * VOCAB, dtype="<f4"))
+    session.bulk_prefill([1, 2, 3, 4])
+    assert session._bulk_rows == 8
     session.close()
 
 
