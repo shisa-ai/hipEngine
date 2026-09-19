@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-19**
+Last updated: **2026-09-20**
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
 blank and degraded pages, and longer layouts. Both lanes explicitly execute
@@ -332,11 +332,21 @@ defaults to 512 but binds only where the gather route is unavailable - the
 `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch, a backend without head-major KV
 (gfx1100 today), or a context beyond the validated 64K head-major allocation
 class. The wide retained working set
-(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) therefore measures **-20.1%
-wall against -18.4% for the default retention** (21.58 vs 21.12 tok/s, 18/27
-vs 16/27 lookups hit, worst single-turn prefill 15.1 s), making it the
-strongest configuration measured rather than a guarded opt-in.
-[Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-retained16.json);
+(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) is therefore the strongest
+configuration measured rather than a guarded opt-in. On the merged main
+(including the post-merge private packed-workspace KV budgeting fix) the
+same protocol re-measures it at **-18.4% wall against -17.8% for the default
+retention** (20.82 vs 20.68 tok/s against a 17.00 tok/s no-cache baseline;
+18/27 vs 16/27 lookups hit, 46,592 vs 42,496 reused tokens, zero declines,
+worst single-turn prefill 15.8 s), with the pre-merge best at -20.1%/-18.4%
+the day before — the same deterministic hit pattern, within same-host
+day-to-day variance.
+Current merged-main measurements:
+[retained-16](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-merged-retained16.json);
+[default retention](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-merged-default.json);
+[off baseline](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-merged-baseline-off.json).
+Pre-merge gather-route evidence:
+[retained-16](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-retained16.json);
 [default retention](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-default.json);
 [off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-baseline-off.json).
 
