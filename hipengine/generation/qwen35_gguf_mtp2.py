@@ -1798,12 +1798,18 @@ class Qwen35GGUFMTP2Adapter:
             )
         if rid not in self._intents:
             return
+        # Resolve the row's prefill-time identity once: the sampled accept
+        # variant is warmed below (outside the capacity-1 warmup), and the
+        # capacity-1 warmup reuses the same names.
+        row = self.owner._row(rid)
+        target = None if row.lease is None else row.lease.session
+        token_id = getattr(result, "token_id", None)
+        budget = int(self._intents[rid])
+        state = self._states.get(rid)
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             or self._physical_c1_request(rid)
         ):
-            row = self.owner._row(rid)
-            target = None if row.lease is None else row.lease.session
             prepare_device_commit = getattr(
                 target,
                 "prepare_external_verify_state_commit",
@@ -1811,12 +1817,44 @@ class Qwen35GGUFMTP2Adapter:
             )
             if callable(prepare_device_commit):
                 prepare_device_commit()
+        if (
+            target is not None
+            and token_id is not None
+            and self._sampled_accept_candidate(rid)
+            and getattr(
+                target,
+                f"_native_spec_b{budget}_target_graph_n2_sampled",
+                None,
+            )
+            is None
+        ):
+            # Warm the sampled accept variant independently of the row's
+            # verifier. This hook is the only capture site and it runs at
+            # prefill, while the verifier is created on the row's first
+            # admitted cycle; the verify path never captures with an
+            # in-flight proposal, so without this a sampled row keeps the
+            # host accept (one full-vocabulary logits row per verified
+            # prefix) for its whole life and every cycle declines the
+            # device plan for a missing graph.
+            warm_target = getattr(
+                target,
+                "prepare_native_spec_target_graph",
+                None,
+            )
+            if callable(warm_target):
+                try:
+                    warm_target(
+                        (int(token_id), *((0,) * budget)),
+                        request_id=rid,
+                        sampled_accept=True,
+                    )
+                except Exception as exc:
+                    if state is not None:
+                        state.device_chain_prepare_error = (
+                            f"sampled-warmup {type(exc).__name__}:{exc}"
+                        )
+
         if int(getattr(self.owner, "capacity", 1)) == 1:
-            state = self._states.get(rid)
-            row = self.owner._row(rid)
-            target = None if row.lease is None else row.lease.session
-            token_id = getattr(result, "token_id", None)
-            budget = int(self._intents[rid])
             if (
                 state is not None
                 and state.verifier is not None
@@ -1841,10 +1879,10 @@ class Qwen35GGUFMTP2Adapter:
                             (int(token_id), *((0,) * budget)),
                             request_id=rid,
                         )
-                        if self._sampled_route_request(rid):
-                            # A sampled row needs its own captured accept
-                            # variant; warm it here so the first hot cycle is a
-                            # cache hit rather than a capture under load.
+                        if self._sampled_accept_candidate(rid):
+                            # The sampled variant is warmed at prefill, before
+                            # this verifier exists; this second call covers a row
+                            # that reaches prefill already owning one.
                             prepare_target(
                                 (int(token_id), *((0,) * budget)),
                                 request_id=rid,
@@ -2015,6 +2053,27 @@ class Qwen35GGUFMTP2Adapter:
             return False
         return speculative_sampling_mode(params) == "sampled"
 
+    def _sampled_accept_candidate(self, request_id: int) -> bool:
+        """Whether this row may need the captured sampled accept variant.
+
+        The warmup runs at prefill, before the planner has published a mode for
+        the row, and the row's raw request still carries the thinking-budget
+        fields the server relaxes for the MTP path, so the planner's own
+        predicate answers "processed" at that point. The variant is therefore
+        captured for any host-sampled row that samples at all; the plan gate
+        still decides whether a cycle uses it.
+        """
+
+        if not self._sampled_route_qualified():
+            return False
+        row = self.owner._row(int(request_id))
+        if row is None or bool(getattr(row, "native_sampler", False)):
+            return False
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None:
+            return False
+        return float(getattr(params, "temperature", 0.0)) > 0.0
+
     def _device_sampled_accept_plan(
         self,
         request_id: int,
@@ -2031,12 +2090,22 @@ class Qwen35GGUFMTP2Adapter:
 
         from hipengine.runtime.native_sampler import _needs_processors
 
+        def _decline(reason: str) -> None:
+            if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+                print(
+                    f"[sampled-plan] rid={int(request_id)} declined: {reason}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
         row = self.owner._row(int(request_id))
         if row is None or bool(getattr(row, "native_sampler", False)):
+            _decline("row missing or device sampler")
             return None
         state = getattr(row, "sampling_state", None)
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if state is None or params is None:
+            _decline("no host sampling state or params")
             return None
         # The planner's resolved mode, not the row's raw request: a temperature
         # request carries EOS, and the raw request then reads as "processed"
@@ -2046,23 +2115,37 @@ class Qwen35GGUFMTP2Adapter:
         recorded = self._sampling_mode_by_request.get(int(request_id))
         if recorded is not None:
             if recorded != "sampled":
+                _decline(f"planner mode {recorded!r}")
                 return None
         elif speculative_sampling_mode(params) != "sampled":
+            _decline(
+                "raw request mode "
+                f"{speculative_sampling_mode(params)!r} with no recorded planner mode"
+            )
             return None
         if _needs_processors(params):
+            _decline("parameters need logits processors")
             return None
         if getattr(state, "tool_call_constraint_state", None) is not None:
+            _decline("active tool-call constraint")
             return None
         if getattr(state, "_json_object_constraint", None) is not None:
+            _decline("active json-object constraint")
             return None
         if bool(getattr(state, "has_forced_tokens", False)):
+            _decline("pending forced tokens")
             return None
         temperature = float(getattr(params, "temperature", 0.0))
         if not temperature > 0.0:
+            _decline("temperature is zero")
             return None
         budget = int(candidate_budget)
         graph_name = f"_native_spec_b{budget}_target_graph_n2_sampled"
         if getattr(target, graph_name, None) is None:
+            _decline(
+                f"sampled graph {graph_name} not captured"
+                f" (warmup error: {getattr(state, 'device_chain_prepare_error', None)})"
+            )
             return None
         return _DeviceSampledAcceptPlan(
             state=state,

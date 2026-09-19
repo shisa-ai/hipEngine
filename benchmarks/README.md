@@ -452,12 +452,13 @@ speculative arms spend 3.4x the AR arm's TTFT (11.9-13.0 against 3.5 s on
 ~840-token prompts) and then decode at the AR rate. [Refused-group split
 rejected](results/2026-09-18-gfx1151-qwen38-mtp-refused-group-split-rejected.json).
 
-**Sampled acceptance (2026-09-18):** temperature sampling is the largest
+**Sampled acceptance (2026-09-19):** temperature sampling is the largest
 remaining reason a real request cannot use MTP at all -- every processor except an
 EOS gate makes the row autoregressive, because the verifier's argmax accept emits
 `argmax(p)` where the request asked for a draw from `p`. The sampled rule that
 closes that gap (accept the drafted token with `min(1, p/q)`, otherwise resample
-from `normalize(max(0, p - q))`) is implemented and **passes its arithmetic gate
+from `normalize(max(0, p - q))`) is implemented, is what the device now commits,
+and **passes its arithmetic gate
 on real gfx1151 rows**: across three prompts and eight decode steps each,
 **824 of 824 induced-law comparisons are exact** (max total variation 4.5e-16,
 max KL 9.0e-16, top-1 agreement 1.0 against a 1e-9 tolerance) over supports up to
@@ -465,25 +466,27 @@ max KL 9.0e-16, top-1 agreement 1.0 against a 1e-9 tolerance) over supports up t
 Monte-Carlo arm that drives the real accept/resample walk 4,000 times per sampler
 config reports top-1 agreement 1.0 with no cell outside its calibrated limit.
 
-Serving that route is **measured and rejected**. With its evidence-row switch in
-place, a temperature-0.7 request reaches a provider and commits sampled
-acceptances, and on a matched ShareGPT load with a true-AR control assigned per
-request inside the same server process it is **0.47x of that control at c=1**
-(**6.37 against 13.56 tok/s**, median TTFT 5,628 against 1,735 ms) even though
-**253 of 256** output tokens come from speculative cycles. Acceptance is not the
-limit: the sampled rows accept 89 and 87 drafts over 38 and 39 cycles, the same
-counts the greedy control accepts on the same prompts. The limit is the cycle's
-own cost -- 3.37 emitted tokens per cycle at **528.5 ms per cycle against 98.9
-ms** for the identical draft chain at temperature 0, a **5.3x** cost, while the
-same load at temperature 0 still measures **34.07 against 20.58 tok/s (+66%)**.
-The mechanism is architectural: the native target graph commits the argmax accept
-on device, so a sampled row runs without graph replay and with no device
-proposal, and the accept decision is then computed on the host from one
-full-vocabulary logits row per verified prefix. The switch is reverted, so every
-temperature request keeps running autoregressive; a device-side sampled accept is
-what would make this route worth re-measuring. [Sampled-acceptance distribution
+Serving that route now **wins**. With the coupled accept committed on the
+device, the protocol that measured **0.47x** at c=1 (**6.37 against 13.56 tok/s**,
+median TTFT 5,628 against 1,735 ms) measures **26.05 against 13.73 tok/s
+(1.90x)** with median ITL **36.4 against 132.1 ms** and **253 of 256** output
+tokens from speculative cycles; acceptance is unchanged, so the gain is the
+cycle's own cost and not draft quality. The limit was architectural: the native
+target graph commits the argmax accept on device, so a sampled row used to run
+without graph replay and with no device proposal, and the accept decision was
+computed on the host from one full-vocabulary logits row per verified prefix
+(528.5 ms per cycle against 98.9 ms for the identical draft chain at
+temperature 0). A sampled row now keeps the N2 target graph through a captured
+sampled accept/commit variant that walks the drafted chain with the row's own
+staged draws, so the row's sampler stream stays aligned with the autoregressive
+route. The production cap4 c1 evidence row advertises the sampled mode, so a
+temperature request at that key is served by this route by default; c>=2 lanes
+still inherit the one-row policy cell and are not covered. [Sampled-acceptance
+distribution
 gate](results/2026-09-18-gfx1151-qwen38-mtp-sampled-accept-distribution-gate.json);
-[serving measurement](results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json).
+[serving measurement
+(accepted)](results/2026-09-19-gfx1151-qwen38-mtp-sampled-acceptance-serving-accepted.json);
+[rejected](results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json).
 
 **Prefix-cache hits (2026-09-18):** a hit is a measured loss on a realistic
 multi-turn load, and the reason is the prefill route rather than the cache. Four

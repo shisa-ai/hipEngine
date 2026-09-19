@@ -307,7 +307,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         realized_group_rows=1,
         resident_capacity=4,
         candidate_budget=3,
-        sampling_modes=("greedy_fast",),
+        sampling_modes=("greedy_fast", "sampled"),
         reason="diagnostic_production_cap4_c1_or_c2_after_ar_rebase",
         evidence_artifacts=(
             "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
