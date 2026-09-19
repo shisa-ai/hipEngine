@@ -34,6 +34,7 @@ from hipengine.generation.deadline import (
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
     ResourceUnavailable,
+    PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
 from hipengine.generation.registry import (
@@ -129,7 +130,7 @@ class EngineLoopConfig:
     kv_pool_memory_budget_mib: int | None = None
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
-    prefix_cache: str = "off"
+    prefix_cache: str = PREFIX_CACHE_DEFAULT
     # P4 (roadmap F2): the packed KV plane lease is skipped only when no
     # plane consumer can appear. The MTP verifier is one such consumer,
     # so the serving policy must reach configure_engine_loop - "off"
@@ -1930,7 +1931,9 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             if getattr(args, "max_pending_requests") is None
             else int(getattr(args, "max_pending_requests"))
         ),
-        prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
+        prefix_cache=resolve_prefix_cache_mode(
+            getattr(args, "prefix_cache", PREFIX_CACHE_DEFAULT)
+        ),
         speculative_mtp_serving=str(
             getattr(args, "speculative_mtp_serving", "auto")
         )

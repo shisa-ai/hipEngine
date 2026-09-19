@@ -48,6 +48,8 @@ def tokenizer():
         path = resolve_model_path(TOKENIZER_MODEL_ID)
     except (FileNotFoundError, ValueError):
         pytest.skip(f"{TOKENIZER_MODEL_ID} not in local HF cache", allow_module_level=True)
+    if not (Path(path) / "tokenizer.json").is_file():
+        pytest.skip(f"{TOKENIZER_MODEL_ID} tokenizer.json not in local HF cache")
     return load_tts_tokenizer(path)
 
 

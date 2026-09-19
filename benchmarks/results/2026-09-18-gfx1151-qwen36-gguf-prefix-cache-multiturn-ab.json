@@ -1,0 +1,1045 @@
+{
+ "schema": 1,
+ "kind": "gguf_prefix_cache_multiturn_ab",
+ "created_at": "2026-09-18T05:18:14.121022+00:00",
+ "hardware": {
+  "label": "AMD Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "hostname": "zbook"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m"
+ },
+ "protocol": {
+  "scope": "in-process resident loop; server chat renderer; greedy ignore_eos",
+  "lanes": "all",
+  "turn_limit": 3,
+  "modes": [
+   "off"
+  ],
+  "repetitions": 1,
+  "max_tokens": {
+   "sharegpt_short": 96,
+   "sharegpt_long": 384,
+   "code": 128
+  },
+  "agentic_workloads": [
+   "small_repo",
+   "growing_history",
+   "medium_repo"
+  ],
+  "command": [
+   "scripts/prefix_cache_multiturn_bench.py",
+   "--backend",
+   "hip_gfx1151",
+   "--lane-kinds",
+   "all",
+   "--modes",
+   "radix",
+   "--repetitions",
+   "1",
+   "--turn-limit",
+   "3",
+   "--agentic-workloads",
+   "small_repo",
+   "growing_history",
+   "medium_repo",
+   "--sharegpt-tokens",
+   "96",
+   "--sharegpt-long-tokens",
+   "384",
+   "--code-tokens",
+   "128",
+   "--max-sequence-length",
+   "12288",
+   "--baseline-artifact",
+   "/tmp/ab-off.json",
+   "--json",
+   "/tmp/ab-radix.json"
+  ]
+ },
+ "provenance": {
+  "off": {
+   "kind": "hipengine_artifact_provenance",
+   "schema_version": 2,
+   "collected_at": "2026-09-18T05:18:14.280221+00:00",
+   "host_name": "zbook",
+   "repo_root": "/home/lhl/hipEngine-main",
+   "hipengine_commit": "6123174dafb8b52eb042772bdb7d79bab1e4c65f",
+   "git_branch": "perf-prefix-caching",
+   "staged_dirty": false,
+   "unstaged_dirty": false,
+   "untracked_dirty": true,
+   "untracked_count": 2,
+   "dirty": true,
+   "configured_backend": "hip_gfx1151",
+   "resolved_backend": "hip_gfx1151",
+   "target_arch": "gfx1151",
+   "device_name": "AMD Radeon 8060S Graphics",
+   "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+   "model_revision": null,
+   "model_fingerprint": {
+    "algorithm": "sha256-sampled-v1",
+    "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "sampled_bytes": 3145728,
+    "sample_offsets": [
+     0,
+     11331169424,
+     22662338848
+    ],
+    "exists": true,
+    "path_type": "file"
+   },
+   "quant": "gguf_q4_k_m",
+   "kv_dtype": null,
+   "command": [
+    "scripts/prefix_cache_multiturn_bench.py",
+    "--backend",
+    "hip_gfx1151",
+    "--lane-kinds",
+    "all",
+    "--modes",
+    "off",
+    "--repetitions",
+    "1",
+    "--turn-limit",
+    "3",
+    "--agentic-workloads",
+    "small_repo",
+    "growing_history",
+    "medium_repo",
+    "--sharegpt-tokens",
+    "96",
+    "--sharegpt-long-tokens",
+    "384",
+    "--code-tokens",
+    "128",
+    "--max-sequence-length",
+    "12288",
+    "--json",
+    "/tmp/ab-off.json"
+   ],
+   "environment": {
+    "HIPENGINE_BACKEND": null,
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "GPU_MAX_HW_QUEUES": null,
+    "HIPENGINE_BUILD_CACHE_ROOT": null,
+    "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+    "HIP_VISIBLE_DEVICES": "0",
+    "ROCR_VISIBLE_DEVICES": null,
+    "CUDA_VISIBLE_DEVICES": null,
+    "GPU_DEVICE_ORDINAL": null
+   },
+   "rocm_version": "HIP version: 7.15.26333-0000000",
+   "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+   "build_profile": null,
+   "timing_protocol": "in-process multi-turn, greedy ignore_eos, engine-attributed prefill/decode",
+   "warmups": 0,
+   "repetitions": 1,
+   "profiler": null
+  },
+  "radix": {
+   "kind": "hipengine_artifact_provenance",
+   "schema_version": 2,
+   "collected_at": "2026-09-18T05:26:04.250758+00:00",
+   "host_name": "zbook",
+   "repo_root": "/home/lhl/hipEngine-main",
+   "hipengine_commit": "6123174dafb8b52eb042772bdb7d79bab1e4c65f",
+   "git_branch": "perf-prefix-caching",
+   "staged_dirty": false,
+   "unstaged_dirty": false,
+   "untracked_dirty": true,
+   "untracked_count": 2,
+   "dirty": true,
+   "configured_backend": "hip_gfx1151",
+   "resolved_backend": "hip_gfx1151",
+   "target_arch": "gfx1151",
+   "device_name": "AMD Radeon 8060S Graphics",
+   "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+   "model_revision": null,
+   "model_fingerprint": {
+    "algorithm": "sha256-sampled-v1",
+    "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "sampled_bytes": 3145728,
+    "sample_offsets": [
+     0,
+     11331169424,
+     22662338848
+    ],
+    "exists": true,
+    "path_type": "file"
+   },
+   "quant": "gguf_q4_k_m",
+   "kv_dtype": null,
+   "command": [
+    "scripts/prefix_cache_multiturn_bench.py",
+    "--backend",
+    "hip_gfx1151",
+    "--lane-kinds",
+    "all",
+    "--modes",
+    "radix",
+    "--repetitions",
+    "1",
+    "--turn-limit",
+    "3",
+    "--agentic-workloads",
+    "small_repo",
+    "growing_history",
+    "medium_repo",
+    "--sharegpt-tokens",
+    "96",
+    "--sharegpt-long-tokens",
+    "384",
+    "--code-tokens",
+    "128",
+    "--max-sequence-length",
+    "12288",
+    "--baseline-artifact",
+    "/tmp/ab-off.json",
+    "--json",
+    "/tmp/ab-radix.json"
+   ],
+   "environment": {
+    "HIPENGINE_BACKEND": null,
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "GPU_MAX_HW_QUEUES": null,
+    "HIPENGINE_BUILD_CACHE_ROOT": null,
+    "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+    "HIP_VISIBLE_DEVICES": "0",
+    "ROCR_VISIBLE_DEVICES": null,
+    "CUDA_VISIBLE_DEVICES": null,
+    "GPU_DEVICE_ORDINAL": null
+   },
+   "rocm_version": "HIP version: 7.15.26333-0000000",
+   "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+   "build_profile": null,
+   "timing_protocol": "in-process multi-turn, greedy ignore_eos, engine-attributed prefill/decode",
+   "warmups": 0,
+   "repetitions": 1,
+   "profiler": null
+  }
+ },
+ "modes": {
+  "off": {
+   "turns": 41,
+   "hits": 0,
+   "lookups": 0,
+   "reused_tokens": 0.0,
+   "prompt_tokens": 87582.0,
+   "output_tokens": 5952.0,
+   "wall_ms": 398977.5579778943,
+   "output_tokens_per_second": 14.918132313421436,
+   "prefill_ms_median": 1260.8139999999999,
+   "prefill_ms_total": 161862.541,
+   "by_kind": {
+    "code_cumulative": {
+     "turns": 9,
+     "hits": 0,
+     "lookups": 0,
+     "wall_ms": 122639.0345627442,
+     "output_tokens": 1152
+    },
+    "code_fixture": {
+     "turns": 9,
+     "hits": 0,
+     "lookups": 0,
+     "wall_ms": 118934.03432506602,
+     "output_tokens": 1152
+    },
+    "sharegpt": {
+     "turns": 23,
+     "hits": 0,
+     "lookups": 0,
+     "wall_ms": 157404.4890900841,
+     "output_tokens": 3648
+    }
+   }
+  },
+  "radix": {
+   "turns": 41,
+   "hits": 16,
+   "lookups": 27,
+   "reused_tokens": 42496.0,
+   "prompt_tokens": 87582.0,
+   "output_tokens": 5952.0,
+   "wall_ms": 424481.9787440356,
+   "output_tokens_per_second": 14.021796679356983,
+   "prefill_ms_median": 3140.018,
+   "prefill_ms_total": 164681.485,
+   "by_kind": {
+    "code_cumulative": {
+     "turns": 9,
+     "hits": 6,
+     "lookups": 9,
+     "wall_ms": 112422.18896793202,
+     "output_tokens": 1152
+    },
+    "code_fixture": {
+     "turns": 9,
+     "hits": 3,
+     "lookups": 9,
+     "wall_ms": 118983.7544998154,
+     "output_tokens": 1152
+    },
+    "sharegpt": {
+     "turns": 23,
+     "hits": 7,
+     "lookups": 9,
+     "wall_ms": 193076.03527628817,
+     "output_tokens": 3648
+    }
+   }
+  }
+ },
+ "lanes": [
+  {
+   "lane_id": "cumulative-growing_history",
+   "lane_kind": "code_cumulative",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 2088,
+     "output_tokens": 128,
+     "off_wall_ms": 9608.045334927738,
+     "off_prefill_ms": 4433.584,
+     "radix_wall_ms": 10131.989165907726,
+     "radix_prefill_ms": 4805.086,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2088,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 2241,
+     "output_tokens": 128,
+     "off_wall_ms": 9392.086594016291,
+     "off_prefill_ms": 4247.961,
+     "radix_wall_ms": 12357.599026989192,
+     "radix_prefill_ms": 6588.93,
+     "hit": true,
+     "reused_tokens": 2048,
+     "suffix_tokens": 193,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 2397,
+     "output_tokens": 128,
+     "off_wall_ms": 10139.561527990736,
+     "off_prefill_ms": 4887.353000000001,
+     "radix_wall_ms": 8228.857451002114,
+     "radix_prefill_ms": 3140.018,
+     "hit": true,
+     "reused_tokens": 2304,
+     "suffix_tokens": 93,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "cumulative-medium_repo",
+   "lane_kind": "code_cumulative",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 8234,
+     "output_tokens": 128,
+     "off_wall_ms": 27128.665584954433,
+     "off_prefill_ms": 21817.784000000003,
+     "radix_wall_ms": 30552.47378104832,
+     "radix_prefill_ms": 24628.565000000002,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 8234,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 8388,
+     "output_tokens": 128,
+     "off_wall_ms": 19776.760485954583,
+     "off_prefill_ms": 14409.939999999999,
+     "radix_wall_ms": 12159.83628097456,
+     "radix_prefill_ms": 6678.168,
+     "hit": true,
+     "reused_tokens": 8192,
+     "suffix_tokens": 196,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 8547,
+     "output_tokens": 128,
+     "off_wall_ms": 20035.03286500927,
+     "off_prefill_ms": 14869.431999999999,
+     "radix_wall_ms": 8613.916961941868,
+     "radix_prefill_ms": 3353.44,
+     "hit": true,
+     "reused_tokens": 8448,
+     "suffix_tokens": 99,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "cumulative-small_repo",
+   "lane_kind": "code_cumulative",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 2094,
+     "output_tokens": 128,
+     "off_wall_ms": 8657.687325961888,
+     "off_prefill_ms": 3564.478,
+     "radix_wall_ms": 9274.348915088922,
+     "radix_prefill_ms": 3614.716,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2094,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 2248,
+     "output_tokens": 128,
+     "off_wall_ms": 8774.196433951147,
+     "off_prefill_ms": 3740.194,
+     "radix_wall_ms": 12403.892271919176,
+     "radix_prefill_ms": 6848.641,
+     "hit": true,
+     "reused_tokens": 2048,
+     "suffix_tokens": 200,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 2406,
+     "output_tokens": 128,
+     "off_wall_ms": 9126.998409978114,
+     "off_prefill_ms": 4041.6999999999994,
+     "radix_wall_ms": 8699.27511306014,
+     "radix_prefill_ms": 3486.29,
+     "hit": true,
+     "reused_tokens": 2304,
+     "suffix_tokens": 102,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "fixture-growing_history",
+   "lane_kind": "code_fixture",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 2552,
+     "output_tokens": 128,
+     "off_wall_ms": 9386.742436909117,
+     "off_prefill_ms": 4243.715999999999,
+     "radix_wall_ms": 10347.665254957974,
+     "radix_prefill_ms": 4308.157999999999,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2552,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 2643,
+     "output_tokens": 128,
+     "off_wall_ms": 9681.08808202669,
+     "off_prefill_ms": 4445.972,
+     "radix_wall_ms": 10316.84204901103,
+     "radix_prefill_ms": 4519.782999999999,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2643,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 2732,
+     "output_tokens": 128,
+     "off_wall_ms": 9920.476939994842,
+     "off_prefill_ms": 4555.861000000001,
+     "radix_wall_ms": 11723.038068041205,
+     "radix_prefill_ms": 5845.574,
+     "hit": true,
+     "reused_tokens": 2560,
+     "suffix_tokens": 172,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "fixture-medium_repo",
+   "lane_kind": "code_fixture",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 8698,
+     "output_tokens": 128,
+     "off_wall_ms": 20055.168019025587,
+     "off_prefill_ms": 14927.341999999999,
+     "radix_wall_ms": 20971.354626934044,
+     "radix_prefill_ms": 15287.122999999998,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 8698,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 8792,
+     "output_tokens": 128,
+     "off_wall_ms": 20510.537041001953,
+     "off_prefill_ms": 15353.482000000002,
+     "radix_wall_ms": 20751.862448989414,
+     "radix_prefill_ms": 15284.902999999997,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 8792,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 8891,
+     "output_tokens": 128,
+     "off_wall_ms": 20454.1850379901,
+     "off_prefill_ms": 15299.418,
+     "radix_wall_ms": 11872.018452035263,
+     "radix_prefill_ms": 6366.203,
+     "hit": true,
+     "reused_tokens": 8704,
+     "suffix_tokens": 187,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "fixture-small_repo",
+   "lane_kind": "code_fixture",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 2558,
+     "output_tokens": 128,
+     "off_wall_ms": 9344.940407085232,
+     "off_prefill_ms": 4238.805,
+     "radix_wall_ms": 10186.660415958613,
+     "radix_prefill_ms": 4292.343,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2558,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 2654,
+     "output_tokens": 128,
+     "off_wall_ms": 9686.053114011884,
+     "off_prefill_ms": 4460.96,
+     "radix_wall_ms": 10561.337891966105,
+     "radix_prefill_ms": 4545.5,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 2654,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 2749,
+     "output_tokens": 128,
+     "off_wall_ms": 9894.843247020617,
+     "off_prefill_ms": 4583.977999999999,
+     "radix_wall_ms": 12252.975291921757,
+     "radix_prefill_ms": 6433.271,
+     "hit": true,
+     "reused_tokens": 2560,
+     "suffix_tokens": 189,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-0",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 60,
+     "output_tokens": 96,
+     "off_wall_ms": 3891.2470520008355,
+     "off_prefill_ms": 237.864,
+     "radix_wall_ms": 4165.684821084142,
+     "radix_prefill_ms": 365.877,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 60,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 202,
+     "output_tokens": 96,
+     "off_wall_ms": 4076.776452944614,
+     "off_prefill_ms": 415.085,
+     "radix_wall_ms": 4628.149379044771,
+     "radix_prefill_ms": 413.362,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 202,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 326,
+     "output_tokens": 96,
+     "off_wall_ms": 4408.800223027356,
+     "off_prefill_ms": 715.6850000000001,
+     "radix_wall_ms": 6267.717429087497,
+     "radix_prefill_ms": 2376.505,
+     "hit": true,
+     "reused_tokens": 256,
+     "suffix_tokens": 70,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-1",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 30,
+     "output_tokens": 96,
+     "off_wall_ms": 3768.2555589126423,
+     "off_prefill_ms": 137.598,
+     "radix_wall_ms": 3929.997939034365,
+     "radix_prefill_ms": 132.052,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 30,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 143,
+     "output_tokens": 96,
+     "off_wall_ms": 3984.3016020022333,
+     "off_prefill_ms": 320.942,
+     "radix_wall_ms": 4234.6059089759365,
+     "radix_prefill_ms": 329.399,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 143,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 252,
+     "output_tokens": 96,
+     "off_wall_ms": 4149.44408799056,
+     "off_prefill_ms": 483.769,
+     "radix_wall_ms": 4703.666091081686,
+     "radix_prefill_ms": 463.305,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 252,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-2",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 36,
+     "output_tokens": 96,
+     "off_wall_ms": 3772.9795839404687,
+     "off_prefill_ms": 160.495,
+     "radix_wall_ms": 3956.935647991486,
+     "radix_prefill_ms": 163.999,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 36,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 153,
+     "output_tokens": 96,
+     "off_wall_ms": 4016.096265986562,
+     "off_prefill_ms": 346.143,
+     "radix_wall_ms": 4191.911016940139,
+     "radix_prefill_ms": 342.05,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 153,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 294,
+     "output_tokens": 96,
+     "off_wall_ms": 4373.319418053143,
+     "off_prefill_ms": 663.345,
+     "radix_wall_ms": 4925.257046008483,
+     "radix_prefill_ms": 680.968,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 294,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-3",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 45,
+     "output_tokens": 96,
+     "off_wall_ms": 3968.898321967572,
+     "off_prefill_ms": 181.963,
+     "radix_wall_ms": 3997.0080989878625,
+     "radix_prefill_ms": 178.64,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 45,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 163,
+     "output_tokens": 96,
+     "off_wall_ms": 4046.8921919818968,
+     "off_prefill_ms": 358.13,
+     "radix_wall_ms": 4625.064695021138,
+     "radix_prefill_ms": 361.972,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 163,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 274,
+     "output_tokens": 96,
+     "off_wall_ms": 4301.552036078647,
+     "off_prefill_ms": 602.726,
+     "radix_wall_ms": 4450.7016990100965,
+     "radix_prefill_ms": 567.17,
+     "hit": true,
+     "reused_tokens": 256,
+     "suffix_tokens": 18,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-4",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 250,
+     "output_tokens": 384,
+     "off_wall_ms": 15751.025225035846,
+     "off_prefill_ms": 507.151,
+     "radix_wall_ms": 17166.032144916244,
+     "radix_prefill_ms": 488.716,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 250,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 665,
+     "output_tokens": 384,
+     "off_wall_ms": 16775.455864029936,
+     "off_prefill_ms": 1260.8139999999999,
+     "radix_wall_ms": 22671.810820000246,
+     "radix_prefill_ms": 5212.838,
+     "hit": true,
+     "reused_tokens": 512,
+     "suffix_tokens": 153,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-5",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 47,
+     "output_tokens": 96,
+     "off_wall_ms": 3837.784119998105,
+     "off_prefill_ms": 188.875,
+     "radix_wall_ms": 4038.3892750833184,
+     "radix_prefill_ms": 184.985,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 47,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 180,
+     "output_tokens": 96,
+     "off_wall_ms": 4147.417976055294,
+     "off_prefill_ms": 397.176,
+     "radix_wall_ms": 4490.472930017859,
+     "radix_prefill_ms": 416.564,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 180,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 302,
+     "output_tokens": 96,
+     "off_wall_ms": 4385.12907596305,
+     "off_prefill_ms": 669.845,
+     "radix_wall_ms": 5497.642859001644,
+     "radix_prefill_ms": 1572.121,
+     "hit": true,
+     "reused_tokens": 256,
+     "suffix_tokens": 46,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-6",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 42,
+     "output_tokens": 96,
+     "off_wall_ms": 3811.1686860211194,
+     "off_prefill_ms": 175.404,
+     "radix_wall_ms": 4012.237388989888,
+     "radix_prefill_ms": 174.467,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 42,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 167,
+     "output_tokens": 96,
+     "off_wall_ms": 4063.2963159587234,
+     "off_prefill_ms": 373.89,
+     "radix_wall_ms": 4574.098185985349,
+     "radix_prefill_ms": 364.369,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 167,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "prompt_too_short"
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 281,
+     "output_tokens": 96,
+     "off_wall_ms": 4331.43777505029,
+     "off_prefill_ms": 620.543,
+     "radix_wall_ms": 4671.88671999611,
+     "radix_prefill_ms": 810.909,
+     "hit": true,
+     "reused_tokens": 256,
+     "suffix_tokens": 25,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  },
+  {
+   "lane_id": "sharegpt-7",
+   "lane_kind": "sharegpt",
+   "turns": [
+    {
+     "turn_index": 0,
+     "prompt_tokens": 437,
+     "output_tokens": 384,
+     "off_wall_ms": 16186.674827011302,
+     "off_prefill_ms": 871.466,
+     "radix_wall_ms": 18555.60742598027,
+     "radix_prefill_ms": 890.367,
+     "hit": false,
+     "reused_tokens": 0,
+     "suffix_tokens": 437,
+     "snapshot_hit": false,
+     "state_clone_bytes": 0,
+     "fallback_reason": "miss"
+    },
+    {
+     "turn_index": 1,
+     "prompt_tokens": 868,
+     "output_tokens": 384,
+     "off_wall_ms": 17210.778295062482,
+     "off_prefill_ms": 1591.666,
+     "radix_wall_ms": 20637.203285004944,
+     "radix_prefill_ms": 3353.99,
+     "hit": true,
+     "reused_tokens": 768,
+     "suffix_tokens": 100,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    },
+    {
+     "turn_index": 2,
+     "prompt_tokens": 1453,
+     "output_tokens": 384,
+     "off_wall_ms": 18145.75813501142,
+     "off_prefill_ms": 2460.006,
+     "radix_wall_ms": 32683.954469044693,
+     "radix_prefill_ms": 14810.148000000001,
+     "hit": true,
+     "reused_tokens": 1024,
+     "suffix_tokens": 429,
+     "snapshot_hit": true,
+     "state_clone_bytes": 66846720,
+     "fallback_reason": null
+    }
+   ]
+  }
+ ],
+ "findings": {
+  "wall_delta_percent": 6.392444952393628,
+  "output_tokens_per_second_delta_percent": -6.008363615719136,
+  "by_kind_wall_delta_percent": {
+   "code_cumulative": -8.330826829515747,
+   "code_fixture": 0.041804833268741674,
+   "sharegpt": 22.662343617016475
+  },
+  "hit_turn_suffix_prefill_ms_per_token_median": 34.04116860481567,
+  "hit_turn_suffix_prefill_ms_per_token_min": 31.50944444444444,
+  "hit_turn_suffix_prefill_ms_per_token_max": 34.522489510489514,
+  "off_full_prefill_ms_per_token": 1.8481256536731292,
+  "hit_turn_suffix_prefill_route": "prefix_c1_suffix_prefill_chunks: one session.step() per suffix token",
+  "prefix_cache_observability": {
+   "mode": "radix",
+   "block_size_tokens": 256,
+   "stats": {
+    "entries": 1,
+    "live_requests": 0,
+    "hits": 16,
+    "misses": 11,
+    "partial_block_misses": 3
+   },
+   "usable_hits": 16,
+   "unusable_hits": 0,
+   "admission_fallbacks": 0,
+   "reused_tokens": 42496,
+   "state_clone_bytes": 1069547520,
+   "snapshot_entries": 1,
+   "snapshot_limit": 1,
+   "retained_snapshot_entries": 1,
+   "snapshot_hits": 16,
+   "snapshot_evictions": 34,
+   "snapshot_captures": 35,
+   "snapshot_capture_bytes": 2339635200,
+   "snapshot_bytes": 66846720,
+   "retained_kv_pages": 7,
+   "retained_kv_bytes": 36700160,
+   "resident_bytes": 103546880,
+   "resident_limit_bytes": 103802470400
+  }
+ },
+ "source_artifacts": {
+  "off": "/tmp/ab-off.json",
+  "radix": "/tmp/ab-radix.json"
+ }
+}

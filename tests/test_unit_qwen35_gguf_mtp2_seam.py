@@ -1044,6 +1044,7 @@ def test_gfx1100_capability_owns_one_c8_k3_frontier() -> None:
         _row=lambda request_id: rows[int(request_id)],
     )
     adapter._intents = {request_id: 3 for request_id in request_ids}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         request_id: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
@@ -4168,6 +4169,7 @@ def test_mtp2_static_capability_requires_its_qualified_realized_width() -> None:
     )
     adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: rows[int(rid)])
     adapter._intents = {7: 3, 8: 3}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         rid: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
@@ -4352,6 +4354,7 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     )
     adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: row)
     adapter._intents = {7: 1}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         7: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,

@@ -386,6 +386,21 @@ class DeviceKVPoolAllocation:
     reused_block_ids: tuple[int, ...] = ()
     allocated_block_ids: tuple[int, ...] = ()
     first_divergent_token: int | None = None
+    # Authoritative page bound for pools whose pages are reached through a
+    # pointer-table indirection rather than one contiguous backing chunk. The
+    # global pool grows by appending chunks while keeping page ids stable, so
+    # its allocations are valid against the pool's capacity, not against the
+    # first chunk's page count. None keeps the single-chunk contract.
+    pool_page_capacity: int | None = None
+
+
+class DeviceKVContiguityError(MemoryError):
+    """Raised when a device KV admission cannot produce a required contiguous run.
+
+    Subclasses ``MemoryError`` so existing admission fallbacks keep working; the
+    long-context packed prefill path additionally distinguishes it to report that
+    a shared prefix was declined for placement reasons rather than capacity.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -593,9 +608,16 @@ class DeviceChunkedKVPool:
         pages: int,
         *,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
-        """Reserve pages atomically, growing one real backing chunk if needed."""
+        """Reserve pages atomically, growing one real backing chunk if needed.
 
+        Chunk placement always selects one contiguous free run inside a single
+        backing chunk, so ``require_contiguous`` is satisfied by construction and
+        only documents the caller's requirement.
+        """
+
+        del require_contiguous
         rid = int(request_id)
         count = int(pages)
         if count <= 0:
@@ -633,12 +655,21 @@ class DeviceChunkedKVPool:
         *,
         suffix_pages: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         """Share live prefix pages and reserve a private suffix in one backing.
 
         The current GGUF attention ABI binds one base backing plus an int32
         block table, so a request cannot span device chunks.  All validation is
         completed before refcounts or free-page state change.
+
+        ``require_contiguous`` makes the admission fail with
+        ``DeviceKVContiguityError`` instead of returning a prefix-plus-suffix
+        allocation with a page gap.  The long-context packed prefill path can
+        only reach a context at or above the AOTriton slot threshold through a
+        slot-local contiguous KV view, so a caller that will need one asks for
+        contiguity here and falls back to a private allocation when it is
+        unavailable.
         """
 
         rid = int(request_id)
@@ -661,9 +692,16 @@ class DeviceChunkedKVPool:
                 raise ValueError("shared device prefix must belong to one backing chunk")
             if self._refcounts.get(block_id, 0) <= 0:
                 raise ValueError("cannot share a free device prefix page")
-        private = tuple(sorted(chunk.free_block_ids)[:private_count])
+        private = self._shared_suffix_block_ids(chunk, prefix, private_count)
         if len(private) != private_count:
             raise MemoryError("device KV shared admission needs private suffix pages in the same backing chunk")
+        block_ids = (*prefix, *private)
+        if require_contiguous and block_ids != tuple(
+            range(block_ids[0], block_ids[0] + len(block_ids))
+        ):
+            raise DeviceKVContiguityError(
+                "device KV shared admission cannot place a contiguous prefix-plus-suffix run"
+            )
 
         self._last_active_seconds = float(now_seconds)
         for block_id in prefix:
@@ -694,6 +732,7 @@ class DeviceChunkedKVPool:
         suffix_pages: int,
         first_divergent_token: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         """Fork a live prefix onto request-private suffix pages."""
 
@@ -707,6 +746,7 @@ class DeviceChunkedKVPool:
             prefix_block_ids,
             suffix_pages=int(suffix_pages),
             now_seconds=now_seconds,
+            require_contiguous=bool(require_contiguous),
         )
         fork = DeviceKVPoolAllocation(
             request_id=admission.request_id,
@@ -836,6 +876,28 @@ class DeviceChunkedKVPool:
             previous = block_id
         return ()
 
+    @staticmethod
+    def _shared_suffix_block_ids(
+        chunk: _DeviceKVPoolChunkState,
+        prefix: tuple[int, ...],
+        count: int,
+    ) -> tuple[int, ...]:
+        """Pick private suffix pages, preferring a run directly after the prefix.
+
+        A suffix that continues the shared prefix keeps the whole allocation one
+        contiguous run, which the long-context packed prefill path requires and
+        which also keeps the request inside a single raw-cache window.  The
+        lowest-free fallback preserves the previous placement behavior.
+        """
+
+        if count <= 0:
+            return ()
+        tail = int(prefix[-1]) + 1
+        adjacent = tuple(range(tail, tail + count))
+        if all(block_id in chunk.free_block_ids for block_id in adjacent):
+            return adjacent
+        return tuple(sorted(chunk.free_block_ids)[:count])
+
     def _grow_for_allocation(self, pages: int) -> _DeviceKVPoolChunkState | None:
         grow_pages = max(int(pages), self.chunk_pages)
         if self.high_water_pages is not None:
@@ -887,6 +949,7 @@ class DeviceChunkedKVPool:
 __all__ = [
     "ChunkedKVPool",
     "DeviceChunkedKVPool",
+    "DeviceKVContiguityError",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
     "KVPoolAllocation",

@@ -365,6 +365,48 @@ def _prefill_work(request_id: int, tokens: tuple[int, ...]) -> Any:
     )
 
 
+def _suite_prompt_tokens(
+    path: Path,
+    category: str | None,
+    tokenizer: Any,
+    total_tokens: int,
+) -> tuple[int, ...]:
+    """Build a real-text token run of exactly ``total_tokens``.
+
+    The suite's prompts are far shorter than the reuse boundaries this gate
+    exercises, so their tokenized messages are concatenated (and cycled) up to
+    the requested length. That keeps a representative token distribution -
+    unlike the repeated-token-id default, whose degenerate logits make KL
+    unrepresentative of production text.
+    """
+
+    records: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            if category and str(record.get("category")) != category:
+                continue
+            records.append(record)
+    if not records:
+        raise ValueError(f"no prompts in {path} for category {category!r}")
+    texts = [
+        str(message.get("content", ""))
+        for record in records
+        for message in record.get("messages", ())
+    ]
+    tokens: list[int] = []
+    index = 0
+    while len(tokens) < total_tokens:
+        tokens.extend(tokenizer.encode(texts[index % len(texts)]))
+        index += 1
+        if index > 100000:
+            raise RuntimeError("prompt suite produced no tokens")
+    return tuple(int(token) for token in tokens[:total_tokens])
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from hipengine import LLM
     from hipengine.benchmark.correctness import evaluate_logits
@@ -427,6 +469,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         pool = runner.kv_pool
         if pool is None:
             raise RuntimeError("GGUF resident runner did not configure a device KV pool")
+
+        if args.prompt_file is not None:
+            real = _suite_prompt_tokens(
+                args.prompt_file.expanduser().resolve(),
+                args.prompt_category,
+                runner.generator.tokenizer,
+                full_length,
+            )
+            prefix = real[:boundary]
+            suffix = real[boundary:]
+            continued_prompt = (*prefix, *suffix)
+            if len(suffix) != suffix_tokens:
+                raise RuntimeError("suite prompt did not fill the requested suffix")
 
         source_request = _request(
             prefix,
@@ -799,6 +854,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 or _HARDWARE_LABELS.get(str(args.backend), str(args.backend))
             ),
             "workload": {
+                "prompt_source": (
+                    None if args.prompt_file is None else str(args.prompt_file)
+                ),
+                "prompt_category": args.prompt_category,
                 "prefix_token_id": int(args.prefix_token_id),
                 "prefix_tokens": boundary,
                 "suffix_token_id": int(args.suffix_token_id),
@@ -999,6 +1058,19 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("active", "completed"),
         default="active",
         help="Keep the source live or release it into cache ownership before admission",
+    )
+    parser.add_argument(
+        "--prompt-file",
+        type=Path,
+        help=(
+            "JSONL prompt suite (e.g. benchmarks/prompts/mtpbench-code-general-ja.jsonl). "
+            "When given, the prefix/suffix are built from real tokenized text instead of "
+            "a repeated token id, so the numerical gate sees a representative distribution."
+        ),
+    )
+    parser.add_argument(
+        "--prompt-category",
+        help="Restrict --prompt-file to one category (code, general_en, general_ja, mixed_ja_en).",
     )
     parser.add_argument("--max-sequence-length", type=int, default=512)
     parser.add_argument("--hardware-label")

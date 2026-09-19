@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kvcache.device_global import GlobalDeviceKVPool
+from hipengine.kvcache.pool import DeviceKVContiguityError
 
 
 def _pool(*, pages: int = 6):
@@ -24,6 +25,55 @@ def _pool(*, pages: int = 6):
         close_storage=lambda: closed.append(True),
     )
     return pool, closed
+
+
+@pytest.mark.parametrize("fragmented", [False, True])
+@pytest.mark.parametrize("max_pages", [4, 8])
+def test_private_allocation_grows_a_whole_chunk_or_refuses(
+    monkeypatch, fragmented: bool, max_pages: int
+) -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = max_pages
+    pool._growth_chunk_pages = 1
+    grown = []
+
+    def grow(pages, start):
+        grown.append(pages)
+        return (
+            {role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+             for role in ("layer0.key", "layer0.value")},
+            {"layer0.key": 0xE000, "layer0.value": 0xF000},
+            {"arena": start},
+        )
+
+    pool._grow_storage = grow
+    if fragmented:
+        pool.grow(2)
+    pool.allocate(1, 1)
+    grown.clear()
+    allocate = pool._allocate_within_one_chunk
+    attempts = 0
+
+    def bounded_allocate(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        assert attempts <= 3, "private allocation retried without placement progress"
+        return allocate(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "_allocate_within_one_chunk", bounded_allocate)
+    if max_pages == 4:
+        with pytest.raises(MemoryError):
+            pool.allocate(2, 3)
+        assert grown == []
+        assert set(pool.allocations) == {1}
+    else:
+        allocation = pool.allocate(2, 3)
+        assert grown == [3]
+        assert len(allocation.block_ids) == 3
+        assert allocation.chunk_start_block_id == (4 if fragmented else 2)
+        pool.release(2)
+    pool.release(1)
+    pool.close()
 
 
 def test_global_device_pool_allocates_arbitrary_free_pages_without_chunks() -> None:
@@ -123,6 +173,7 @@ def test_global_device_pool_grows_on_pressure_with_graph_invalidation() -> None:
                 "layer0.value": (0x4200, 0x4300),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -166,6 +217,7 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
                 "layer0.value": tuple(0x4200 + index * 0x100 for index in range(pages)),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -188,13 +240,31 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
     pool.retain_blocks(source.block_ids)
     pool.release(1)
 
-    reused = pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
-    assert reused.reused_block_ids == source.block_ids
-    assert len(reused.allocated_block_ids) == 2
+    # The prefix sits in the first storage chunk, which has one page left. A
+    # two-page suffix cannot join it there, and growth cannot help: it appends a
+    # separate chunk, and every KV kernel addresses one chunk from its own base,
+    # so a prefix and suffix split across chunks would index past the first one.
+    # The admission declines instead and the caller falls back to a private
+    # allocation, which is confined to one chunk as a whole and may use the
+    # appended one.
+    with pytest.raises(MemoryError):
+        pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
+    assert grown == []
+    assert pool.stats.prefix_reused_pages == 0
+
+    private = pool.allocate(3, 2)
     assert grown == [2]
+    assert private.chunk_start_block_id == 3
+
+    # A suffix that does fit beside its prefix still reuses it.
+    reused = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=1)
+    assert reused.reused_block_ids == source.block_ids
+    assert len(reused.allocated_block_ids) == 1
+    assert reused.chunk_start_block_id == 0
     assert pool.stats.prefix_reused_pages == 2
 
-    pool.release(2)
+    pool.release(3)
+    pool.release(4)
     pool.release_blocks(source.block_ids)
     pool.close()
 
@@ -260,4 +330,106 @@ def test_global_device_pool_workspace_lease_exhaustion_and_missing_release() -> 
     with pytest.raises(KeyError, match="second-workspace"):
         pool.release_workspace("second-workspace")
     pool.release_workspace("packed-ar")
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_continues_the_prefix_run() -> None:
+    """A shared suffix continues the prefix instead of taking the lowest free pages."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 4)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(1)
+
+    shared = pool.admit_with_shared_prefix(
+        3,
+        source.block_ids,
+        suffix_pages=2,
+        require_contiguous=True,
+    )
+
+    assert source.block_ids == (4, 5)
+    assert shared.block_ids == (4, 5, 6, 7)
+    assert shared.reused_block_ids == (4, 5)
+    assert shared.allocated_block_ids == (6, 7)
+    pool.release(3)
+    pool.release(2)
+    pool.release_blocks(source.block_ids)
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_rejects_a_gapped_run_when_required() -> None:
+    """A contiguous requirement declines the reuse instead of returning a gapped lease."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 2)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(2)
+    pool.allocate(3, 2)
+
+    with pytest.raises(DeviceKVContiguityError, match="contiguous shared-plus-private run"):
+        pool.admit_with_shared_prefix(
+            4,
+            source.block_ids,
+            suffix_pages=2,
+            require_contiguous=True,
+        )
+
+    # A declined admission leaves the pool conserved and the same pages reusable.
+    assert pool.stats.free_pages == 2
+    assert pool.refcount(source.block_ids[0]) == 1
+    shared = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=2)
+    assert shared.block_ids == (2, 3, 6, 7)
+    assert pool.stats.prefix_reuse_events == 1
+    pool.release(4)
+    pool.release(3)
+    pool.release(1)
+    pool.release_blocks(source.block_ids)
+    pool.close()
+
+
+def test_private_workspace_shares_budget_with_arena_growth() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 5
+    grown = []
+
+    def grow(pages, start):
+        grown.append(pages)
+        return ({role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+                 for role in ("layer0.key", "layer0.value")},
+                {"layer0.key": 0xE000, "layer0.value": 0xF000})
+
+    pool._grow_storage = grow
+    token = pool.reserve_private_workspace(2 * pool.page_bytes)
+    assert pool.private_workspace_bytes == 256
+    assert pool.accounted_bytes == 512
+    with pytest.raises(MemoryError, match="budget"):
+        pool.grow(2)
+    assert grown == []
+    pool._growth_chunk_pages = 8
+    pool.allocate(1, 2)
+    pool.allocate(2, 1)  # automatic growth clamps to the remaining shared budget
+    assert grown == [1]
+    assert pool.accounted_bytes == pool.budget_bytes
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(1)
+    pool.release(1)
+    pool.release(2)
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+    pool.release_private_workspace(token)
+    assert pool.private_workspace_bytes == 0
+    pool.grow(2)
+    pool.close()
+
+
+def test_private_workspace_counts_allocated_arena_not_only_live_pages() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 2
+    assert pool.stats.free_pages == 2
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(128)
+    assert pool.private_workspace_bytes == 0
     pool.close()
