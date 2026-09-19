@@ -32,7 +32,7 @@
     "supersedes": "benchmarks/results/2026-09-17-gfx1151-q4km-execution-failure-containment.json"
   },
   "date": "2026-09-19",
-  "elapsed_s": 104.849,
+  "elapsed_s": 104.984,
   "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
   "max_tokens": 12,
   "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
@@ -42,7 +42,7 @@
     "The post-device scenario fires in the second decode step post-device check, after its packed step ran; the claim is partial and names the packed rows.",
     "The control forces contain_execution_failure to return None: the service turns unhealthy and both rows fail with the named fatal error.",
     "Not a throughput measurement.",
-    "Measured on the working tree carrying this unit (HEAD 713130483 plus the unit diff); the proof is reproducible from the commit that adds this artifact."
+    "Re-run on the committed tree after the fatal-report refactor; every scenario and check reproduced identically (105.0 s)."
   ],
   "passed": true,
   "performance_claim": false,
@@ -396,8 +396,7 @@
   "status": "retained",
   "title": "Execution failure containment: pre-device, empty-device-phase and post-device decode claims",
   "tree": {
-    "clean": false,
-    "commit": "713130483",
-    "note": "measured on the working tree carrying this unit; the first commit containing this artifact is that tree"
+    "clean": true,
+    "commit": "de6d31685"
   }
 }
