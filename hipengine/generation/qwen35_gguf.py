@@ -687,6 +687,47 @@ def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
     )
 
 
+_GGUF_PREFIX_SUFFIX_PACKED_ENV = "HIPENGINE_GGUF_PREFIX_SUFFIX_PACKED"
+"""Registered strict fallback switch for the reused-prefix suffix route.
+
+Unset (the default) batches the suffix through the packed prefill entry the miss
+path uses. ``=0`` keeps the per-token ``session.step`` loop, which is the
+byte-exact serial c1 continuation the retained prefix-reuse correctness gate
+compares against; use it for bisection or to reproduce that gate.
+"""
+
+
+def _gguf_prefix_suffix_packed_enabled() -> bool:
+    raw = os.environ.get(_GGUF_PREFIX_SUFFIX_PACKED_ENV)
+    if raw is None:
+        return True
+    return raw.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _gguf_reused_suffix_segments(
+    chunk: tuple[int, ...],
+    *,
+    start: int,
+    prompt_length: int,
+) -> tuple[tuple[int, ...], ...]:
+    """Split a reused-prefix suffix at the prompt's last 256-token boundary.
+
+    The per-token step route a batched suffix replaces refreshed the prefix
+    cache when it crossed that boundary, and the next turn of a conversation
+    matches at it, so a single batched call that jumped over it would shrink
+    the reused prefix of every later turn. Splitting there keeps that one
+    snapshot while still running the suffix as packed prefill.
+    """
+
+    if not chunk:
+        raise ValueError("GGUF reused-prefix suffix segment plan requires tokens")
+    boundary = (int(prompt_length) // 256) * 256
+    split = boundary - int(start)
+    if 0 < split < len(chunk):
+        return (chunk[:split], chunk[split:])
+    return (chunk,)
+
+
 def _qualified_compact_serial_int8_max_rows(generator: object) -> int:
     """Return the artifact-qualified logical residency bound for serial c1 INT8."""
 
@@ -9163,6 +9204,100 @@ class Qwen35GGUFResidentModelRunner:
             native_sample=native_sample,
         )
 
+    def _prefill_reused_suffix_packed(
+        self,
+        row: _GGUFResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        final_chunk: bool,
+        return_logits: bool,
+    ) -> tuple[bool, Any]:
+        """Advance a reused-prefix suffix through the packed prefill entry.
+
+        The miss path already consumes its prompt through
+        ``prefill_batch_native``; a reused row ran the same entry's per-token
+        equivalent instead, which costs a decode step per suffix token (82.1 ms
+        against the miss path's 3.3 ms at ~700 tokens of context). Returns
+        ``(False, None)`` when the packed entry is unavailable, so the caller
+        keeps the step-loop fallback, and ``(True, result)`` with the final
+        segment's result otherwise.
+        """
+
+        lease = row.lease
+        if lease is None:
+            return False, None
+        session = lease.session
+        if not _gguf_prefix_suffix_packed_enabled():
+            # Registered strict fallback: the per-token step loop is a
+            # byte-exact serial c1 continuation, and it is the route the
+            # retained prefix-reuse correctness gate compares against.
+            self._route_counts["prefix_c1_suffix_serial_prefill_chunks"] += 1
+            return False, None
+        if getattr(session, "kv_attention_source", None) == "int8_direct":
+            # The resumable INT8 route owns its own prefill state machine; a
+            # reused prefix keeps the step loop there until it is measured.
+            return False, None
+        prefill_batch = getattr(
+            self._packed_execution_owner(session),
+            "prefill_batch_native",
+            None,
+        )
+        if not callable(prefill_batch):
+            return False, None
+        segments = _gguf_reused_suffix_segments(
+            chunk,
+            start=int(getattr(session, "position", 0)),
+            prompt_length=len(row.prompt_ids),
+        )
+        initial_position = int(getattr(session, "position", 0))
+        started = time.perf_counter()
+        result: Any = None
+        for index, segment in enumerate(segments):
+            last = index == len(segments) - 1
+            sample_kwargs = (
+                {} if (final_chunk and last) else {"sample_output": False}
+            )
+            try:
+                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                    results = prefill_batch(
+                        [segment],
+                        sessions=[session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=bool(return_logits and final_chunk and last),
+                        return_hidden_seeds=False,
+                        **sample_kwargs,
+                    )
+            except NotImplementedError:
+                # The packed paged route refuses a context at or above its
+                # 1024-token bound whenever the row's copy-on-write allocation
+                # keeps it off the slot-local full-attention path, and a shared
+                # prefix plus a non-contiguous suffix is exactly that shape.
+                # The refusal is a whole-context precondition raised before any
+                # device work, so the caller keeps the per-token step route
+                # instead of failing the request; a refusal after a segment
+                # committed is a real defect and propagates.
+                if index > 0 or int(getattr(session, "position", 0)) != initial_position:
+                    raise
+                self._route_counts[
+                    "prefix_c1_suffix_packed_prefill_declined"
+                ] += 1
+                return False, None
+            result_list = [] if results is None else list(results)
+            if len(result_list) != 1:
+                raise RuntimeError(
+                    "GGUF reused-prefix suffix prefill returned "
+                    f"{len(result_list)} result(s) for one row"
+                )
+            result = result_list[0]
+            self._refresh_prefix_cache(row)
+        row.prefill_ms += _timing_ms_since(started)
+        row.prefill_chunk_count += 1
+        self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+        self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+        self._route_counts["prefix_c1_suffix_packed_prefill_chunks"] += 1
+        self._route_counts["prefix_c1_suffix_packed_prefill_tokens"] += len(chunk)
+        return True, result
+
     def _prefill_processed_argmax_chunk(
         self,
         row: _GGUFResidentLoopRow,
@@ -9188,6 +9323,29 @@ class Qwen35GGUFResidentModelRunner:
         final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
 
         if row.prefix_reused_tokens:
+            handled, result = self._prefill_reused_suffix_packed(
+                row,
+                chunk,
+                final_chunk=final_chunk,
+                return_logits=True,
+            )
+            if handled:
+                self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(
+                    chunk
+                )
+                if final_chunk:
+                    if result is None or getattr(result, "logits", None) is None:
+                        raise RuntimeError(
+                            "processed-argmax final prefill did not return "
+                            "full-vocabulary logits"
+                        )
+                    self._finish_sampled_prefill(
+                        row,
+                        result,
+                        native_compact_prefill=True,
+                    )
+                return
             start = time.perf_counter()
             for index, token_id in enumerate(chunk):
                 result = session.step(
@@ -9303,6 +9461,20 @@ class Qwen35GGUFResidentModelRunner:
         lease = row.lease or self._acquire_lease()
         row.lease = lease
         if row.prefix_reused_tokens:
+            handled, result = self._prefill_reused_suffix_packed(
+                row,
+                chunk,
+                final_chunk=final_chunk,
+                return_logits=False,
+            )
+            if handled:
+                if final_chunk:
+                    self._finish_native_prefill(
+                        row,
+                        result,
+                        native_compact_prefill=True,
+                    )
+                return
             start = time.perf_counter()
             result = None
             for token_id in chunk:
