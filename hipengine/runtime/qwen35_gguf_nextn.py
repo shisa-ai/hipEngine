@@ -89,6 +89,41 @@ class Qwen35GGUFNextNRequestCheckpoint:
     released: bool = False
 
 
+@dataclass(slots=True)
+class Qwen35GGUFNextNPrefixCheckpoint:
+    """Portable provider state at one prefix boundary.
+
+    This is not a rewind inside one request: it outlives the request it came
+    from, so a later request whose prompt reuses that prefix can be drafted
+    without re-running the target over the prefix. The two are deliberately
+    separate types, because the request-local checkpoint is bound to a provider
+    request slot and carries no KV.
+
+    ``prefix_len`` is the number of positions the snapshot covers. After a
+    restore, the first draft step consumes the token at ``prefix_len`` together
+    with ``boundary_hidden`` -- the hidden row the priming walk would have left
+    in the root buffer at that boundary -- so the restored provider is
+    positioned exactly where the walk would have left it.
+    """
+
+    prefix_len: int
+    hidden_size: int
+    # Per layer: this slot's slice of the private full-attention KV, truncated
+    # to ``prefix_len`` rows. The provider's KV is not the target's paged KV, so
+    # a portable checkpoint is a second copy of the prefix's KV and must be
+    # released with the prefix it describes.
+    key_buffers: tuple[DeviceBuffer, ...]
+    value_buffers: tuple[DeviceBuffer, ...]
+    # Per layer: the Conv/GDN recurrent state as of ``prefix_len``. Captured
+    # through the request-local checkpoint machinery, which already knows how to
+    # back those buffers up at a given position.
+    state_backups: tuple[DeviceBuffer, ...]
+    boundary_hidden: DeviceBuffer | None
+    position: int
+    context_length: int
+    released: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class Qwen35GGUFNextNDeviceProposal:
     """One in-flight cached proposal graph awaiting target-stream retirement.
@@ -2639,6 +2674,240 @@ class Qwen35GGUFNextNExecutor:
             return
         for _state, backup in reversed(checkpoint.state_pairs):
             free(backup, runtime=self.runtime)
+        checkpoint.released = True
+
+    def _slot_state_buffers(self, slot_scratch: Any) -> tuple[DeviceBuffer, ...]:
+        """This slot's mutable Conv/GDN state buffers, in layer-major order.
+
+        The same ordering rule ``capture_request_checkpoint`` uses, so a backup
+        taken from one slot can be written into another slot's live states by
+        position rather than by identity.
+        """
+
+        return tuple(
+            state
+            for pair in zip(
+                slot_scratch.layer_conv_states,
+                slot_scratch.layer_recurrent_states,
+                strict=True,
+            )
+            for state in pair
+            if state is not None
+        )
+
+    def _cache_row_strides(
+        self,
+        source: DeviceBuffer,
+        *,
+        physical_slots: int,
+        max_positions: int,
+    ) -> tuple[int, int]:
+        """Split one packed KV cache buffer into slot stride and row stride."""
+
+        slot_nbytes, remainder = divmod(int(source.nbytes), int(physical_slots))
+        if remainder:
+            raise ValueError("GGUF NextN prefix checkpoint KV slot layout mismatch")
+        row_nbytes, remainder = divmod(int(slot_nbytes), int(max_positions))
+        if remainder:
+            raise ValueError("GGUF NextN prefix checkpoint KV position layout mismatch")
+        return slot_nbytes, row_nbytes
+
+    def snapshot_prefix_state(
+        self,
+        request_id: int,
+        *,
+        prefix_len: int,
+        boundary_hidden: DeviceBuffer | None = None,
+    ) -> Qwen35GGUFNextNPrefixCheckpoint:
+        """Copy this request's provider state at a prefix boundary into a blob.
+
+        The provider cursor must already be at ``prefix_len``: the recurrent
+        state is current state, not history, so a snapshot taken later would
+        describe a later position. The priming walk visits every position in
+        order, which is what makes a block-aligned boundary reachable -- the
+        caller snapshots on the iteration that brings the cursor to it.
+
+        ``boundary_hidden`` is the hidden row the walk has just staged for the
+        token at ``prefix_len`` (the row for position ``prefix_len - 1``); it is
+        what a restore hands the first draft step. It is optional so the
+        KV/recurrent half can be captured and tested on its own.
+        """
+
+        rid = int(request_id)
+        slot = self._request_slots.get(rid)
+        if slot is None:
+            raise ValueError("GGUF NextN prefix snapshot requires an active request")
+        length = int(prefix_len)
+        if length <= 0:
+            raise ValueError("GGUF NextN prefix snapshot requires a positive prefix")
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        position = int(slot_scratch.position_host[0])
+        if position != length:
+            raise ValueError(
+                "GGUF NextN prefix snapshot requires the cursor at the boundary: "
+                f"cursor={position} boundary={length}"
+            )
+        max_positions = int(slot_scratch.max_positions)
+        if length > max_positions:
+            raise ValueError(
+                "GGUF NextN prefix snapshot exceeds the provider window: "
+                f"prefix={length} max_positions={max_positions}"
+            )
+        physical_slots = int(getattr(self.scratch, "slot_count", 1))
+        hidden_size = int(getattr(slot_scratch, "hidden_size", 0))
+        keys: list[DeviceBuffer | None] = []
+        values: list[DeviceBuffer | None] = []
+        backups: list[DeviceBuffer] = []
+        boundary: DeviceBuffer | None = None
+        try:
+            if boundary_hidden is not None:
+                boundary = malloc(int(boundary_hidden.nbytes), runtime=self.runtime)
+                self.runtime.memcpy(
+                    int(boundary.ptr),
+                    int(boundary_hidden.ptr),
+                    int(boundary_hidden.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+            for state in self._slot_state_buffers(slot_scratch):
+                backup = malloc(int(state.nbytes), runtime=self.runtime)
+                backups.append(backup)
+                self.runtime.memcpy(
+                    int(backup.ptr),
+                    int(state.ptr),
+                    int(state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+            for key_cache, value_cache in zip(
+                slot_scratch.full_key_caches,
+                slot_scratch.full_value_caches,
+                strict=True,
+            ):
+                for source, destination in ((key_cache, keys), (value_cache, values)):
+                    if source is None:
+                        destination.append(None)
+                        continue
+                    slot_nbytes, row_nbytes = self._cache_row_strides(
+                        source,
+                        physical_slots=physical_slots,
+                        max_positions=max_positions,
+                    )
+                    copied = malloc(length * row_nbytes, runtime=self.runtime)
+                    destination.append(copied)
+                    self.runtime.memcpy(
+                        int(copied.ptr),
+                        int(source.ptr) + slot * slot_nbytes,
+                        length * row_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                    )
+        except BaseException:
+            for buffer in (*keys, *values):
+                if buffer is not None:
+                    free(buffer, runtime=self.runtime)
+            for backup in reversed(backups):
+                free(backup, runtime=self.runtime)
+            if boundary is not None:
+                free(boundary, runtime=self.runtime)
+            raise
+        return Qwen35GGUFNextNPrefixCheckpoint(
+            prefix_len=length,
+            hidden_size=hidden_size,
+            key_buffers=tuple(keys),
+            value_buffers=tuple(values),
+            state_backups=tuple(backups),
+            boundary_hidden=boundary,
+            position=position,
+            context_length=int(slot_scratch.context_host[0]),
+        )
+
+    def restore_prefix_state(
+        self,
+        checkpoint: Qwen35GGUFNextNPrefixCheckpoint,
+        request_id: int,
+    ) -> None:
+        """Write a portable checkpoint into this request's provider slot.
+
+        Unlike ``restore_request_checkpoint`` this crosses requests: the blob is
+        content, not slot ownership, so the destination may be any slot whose
+        window covers the prefix. The caller owns the target-side half -- the
+        boundary hidden row it must publish as the row that produced the last
+        prefix token -- because that is target state, not provider state.
+        """
+
+        if checkpoint.released:
+            raise RuntimeError("GGUF NextN prefix checkpoint is released")
+        rid = int(request_id)
+        slot = self._slot(rid)
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        max_positions = int(slot_scratch.max_positions)
+        if checkpoint.prefix_len > max_positions:
+            raise ValueError(
+                "GGUF NextN prefix checkpoint exceeds the destination window: "
+                f"prefix={checkpoint.prefix_len} max_positions={max_positions}"
+            )
+        physical_slots = int(getattr(self.scratch, "slot_count", 1))
+        live_states = self._slot_state_buffers(slot_scratch)
+        if len(live_states) != len(checkpoint.state_backups):
+            raise ValueError("GGUF NextN prefix checkpoint state layout mismatch")
+        for state, backup in zip(live_states, checkpoint.state_backups, strict=True):
+            if int(state.nbytes) != int(backup.nbytes):
+                raise ValueError("GGUF NextN prefix checkpoint state size mismatch")
+            self.runtime.memcpy(
+                int(state.ptr),
+                int(backup.ptr),
+                int(state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        for sources, caches in (
+            (checkpoint.key_buffers, slot_scratch.full_key_caches),
+            (checkpoint.value_buffers, slot_scratch.full_value_caches),
+        ):
+            for source, cache in zip(sources, caches, strict=True):
+                if (source is None) != (cache is None):
+                    raise ValueError("GGUF NextN prefix checkpoint KV layout mismatch")
+                if source is None or cache is None:
+                    continue
+                slot_nbytes, row_nbytes = self._cache_row_strides(
+                    cache,
+                    physical_slots=physical_slots,
+                    max_positions=max_positions,
+                )
+                self.runtime.memcpy(
+                    int(cache.ptr) + slot * slot_nbytes,
+                    int(source.ptr),
+                    checkpoint.prefix_len * row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+        slot_scratch.position_host[0] = int(checkpoint.position)
+        slot_scratch.context_host[0] = int(checkpoint.context_length)
+        self._set_batch_session_position(slot, int(checkpoint.position))
+        copy_host_to_device(
+            slot_scratch.position_buf,
+            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            slot_scratch.context_buf,
+            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host.nbytes,
+            runtime=self.runtime,
+        )
+
+    def release_prefix_state(
+        self,
+        checkpoint: Qwen35GGUFNextNPrefixCheckpoint,
+    ) -> None:
+        """Free a portable checkpoint. Idempotent, like the request-local one."""
+
+        if checkpoint.released:
+            return
+        for buffer in (*checkpoint.key_buffers, *checkpoint.value_buffers):
+            if buffer is not None:
+                free(buffer, runtime=self.runtime)
+        for backup in reversed(checkpoint.state_backups):
+            free(backup, runtime=self.runtime)
+        if checkpoint.boundary_hidden is not None:
+            free(checkpoint.boundary_hidden, runtime=self.runtime)
         checkpoint.released = True
 
     def clone_request_state(
