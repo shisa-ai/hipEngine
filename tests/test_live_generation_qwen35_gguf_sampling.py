@@ -5101,6 +5101,111 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
     assert runner._route_counts["native_full_prefill_groups"] == 1
 
 
+def test_resident_packed_prefill_falls_back_when_the_slab_hits_the_context_bound(
+    monkeypatch,
+) -> None:
+    """RED: a slab the packed route refuses must be served, not rejected.
+
+    ``_validate_packed_ar_prefill_context`` refuses a slab whose longest slot is
+    at or above 1024 live tokens while no slot needs slot-local full attention.
+    The grouped work-batch prefill re-raised that refusal, so the containment
+    layer retired every row of the item with an ``execution_failed`` 500 for a
+    prompt well inside the configured context. The method's own contract is to
+    report only the rows it consumed, so the refusal has to leave every row to
+    the caller's serial route.
+    """
+
+    from hipengine.dispatch.batch import WorkItem, WorkKind
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    prompt = tuple(range(2000, 2000 + 1024))  # exactly the bound
+
+    class FakeSession:
+        def __init__(self, slot_id):
+            self.slot_id = slot_id
+            self.position = 0
+            self.prefilled: list[tuple[int, ...]] = []
+
+        def prefill(self, token_ids, *, return_logits=False):
+            self.prefilled.append(tuple(int(token) for token in token_ids))
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=7)
+
+    class FakeLease:
+        def __init__(self, slot_id):
+            self.session = FakeSession(slot_id)
+
+    class RefusingOwner:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
+            self.calls.append(tuple(tuple(int(t) for t in row) for row in prompt_token_ids))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    rows = {}
+    for request_id in (1, 2):
+        rows[request_id] = SimpleNamespace(
+            request_id=request_id,
+            prompt_ids=prompt,
+            request=SimpleNamespace(deadline_at=None, cancellation_token=None),
+            lease=FakeLease(request_id),
+            native_greedy=True,
+            native_sampled=False,
+            slot=None,
+            prefill_tokens_seen=0,
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=0,
+            incremental_prefill=None,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+            first_token_emitted=False,
+        )
+
+    owner = RefusingOwner()
+    runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(target_arch="hip_gfx1100", tokenizer=None)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = Counter(native_full_prefill_rows=0, native_full_prefill_groups=0)
+    runner._fallback_reasons = Counter()
+    runner._execution_stepped_request_ids = set()
+    runner._execution_committed_request_ids = set()
+    runner._row = lambda request_id: rows[int(request_id)]
+    runner._packed_execution_owner = lambda session: owner
+    runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(tuple(_rows))
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._refresh_prefix_cache = lambda _row: None
+    runner._finish_native_prefill = lambda *args, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=(1, 2),
+        row_to_request=(1, 2),
+        token_rows=(prompt, prompt),
+    )
+
+    handled = runner._try_prefill_native_work_batch(work)
+
+    assert handled == frozenset(), (
+        "the refused slab was reported as handled; the caller will not prefill it"
+    )
+    assert len(owner.calls) == 1
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 1
+    assert runner._route_counts["native_full_prefill_rows"] == 0
+    assert all(row.prefill_tokens_seen == 0 for row in rows.values())
+
+    # The scheduler then runs the same work item: every row must be served by
+    # the serial route instead of failing the request.
+    runner.prefill_batch(work, commit=True)
+
+    for row in rows.values():
+        assert row.prefill_tokens_seen == len(prompt)
+        assert row.lease.session.prefilled == [prompt]
+
+
 def test_gguf_gfx1100_packed_prefill_capability_is_declared() -> None:
     """gfx1100 ships grouped prefill; this replaces the earlier "undeclared" tripwire.
 
