@@ -1402,7 +1402,11 @@ def main() -> int:
         help=(
             "Send every prompt this many times. Rows after the first reuse the "
             "prompt prefix, so a server with prefix caching enabled shows the "
-            "hit path beside the miss path."
+            "hit path beside the miss path. With ``--route-mix`` the arm is "
+            "assigned by submission-index parity over the flattened repeat "
+            "list, so an even ``--num-prompts`` gives each prompt the same arm "
+            "in every repeat and ``arm_identity`` compares nothing; use an odd "
+            "prompt count to put the same prompt on both arms."
         ),
     )
     parser.add_argument(
