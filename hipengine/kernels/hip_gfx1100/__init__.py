@@ -718,13 +718,15 @@ GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 # the product path the TP2 bulk prefill is unchanged by it: paired same-session
 # A/B at 512 rows / logits_rows=1 measured 492.8 -> 493.5 ms (-0.14%, paired
 # deltas +4.32/-0.27/-0.07/-0.22%), and the phase attribution's mlp_chain span
-# is flat at 189.5 vs 189.7 ms. The sharded MLP phase is rendezvous-bound: the
-# per-layer peer exchange carries a fixed sync latency, so the ~30 ms of chain
-# work this removes is absorbed as extra wait rather than shortened wall. The
-# saving does appear when the wall is not sync-bound (same A/B with the full
-# row head projection: +3.16%, all four paired deltas positive). Retained as an
-# exact, strictly-less-work owner; the wall effect needs the exchange structure
-# to change first (docs/REFACTOR.md).
+# is flat at 189.5 vs 189.7 ms. The isolated speedup is real; **what the
+# pipeline does with it is not known.** An earlier revision of this comment
+# claimed the phase was "rendezvous-bound" and that the removed work was
+# "absorbed as extra wait" - that is retracted. It was inferred from stream
+# event spans, which cannot carry it: the spans include enqueue bubbles, the
+# hooks bracket both ranks' sequential host submissions, and the full-row-head
+# control that appeared to confirm it changed the workload rather than only the
+# synchronization. Retained as an exact, strictly-less-work owner (384 -> 128
+# launches per prefill) with the wall effect unexplained; see docs/REFACTOR.md.
 GGUF_Q4_DUAL_SILU_PREFILL_OUT_FEATURES = frozenset({17_408, 8_704})
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
 # avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling

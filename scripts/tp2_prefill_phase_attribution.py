@@ -526,9 +526,12 @@ def main(argv: list[str] | None = None) -> int:
         "prefill_tok_per_s": headline["prefill_tok_per_s"],
         "uninstrumented_wall_ms": [round(value, 3) for value in uninstrumented],
         "uninstrumented_wall_ms_min": round(min(uninstrumented), 3),
-        "instrumentation_overhead_ms": round(min(uninstrumented) - wall_ms, 3),
+        # Added latency: how much *longer* the instrumented run took. The first
+        # version subtracted the other way round and reported the wrapper calls
+        # as making the prefill faster.
+        "instrumentation_overhead_ms": round(wall_ms - min(uninstrumented), 3),
         "instrumentation_overhead_percent": round(
-            100.0 * (min(uninstrumented) - wall_ms) / min(uninstrumented), 3
+            100.0 * (wall_ms - min(uninstrumented)) / min(uninstrumented), 3
         ),
         "exchange_host_wall_ms_per_prefill": round(exchange_host, 3),
         "exchange_host_samples": len(exchange_walls),
@@ -552,7 +555,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"headline repeat {headline_index}; uninstrumented "
           f"{min(uninstrumented):.1f} ms, instrumentation "
           f"{report['instrumentation_overhead_ms']:+.1f} ms "
-          f"({report['instrumentation_overhead_percent']:+.2f}%)")
+          f"({report['instrumentation_overhead_percent']:+.2f}% added latency)")
     print(f"layers {report['layer_count']}  exchange host wall "
           f"{exchange_host:.2f} ms/prefill over {len(exchange_walls)} samples")
     print()

@@ -932,18 +932,17 @@ arm-vs-control gate over the full 18-prompt suite passes with the candidate
 byte-identical between the prompt-sized and capacity-sized configurations.
 
 That gate compares the bulk prefill candidate against its own serial control
-**within the TP2 route**, which is what qualifies it as the default prefill
-path. It is not a statement that the TP2 route as a whole is numerically
-qualified: the separate cross-route check, which scores the TP2 prefill against
-a single-card reference, does **not** pass, and
-`scripts/tp2_bulk_prefill_diagnostic.py` reports that honestly as
-`all_passed: false`. The two gates differ in both comparator and horizon - a
-within-route arm-vs-control comparison over 831 rows versus a cross-route
-reference comparison on a handful of prompts - so a passing arm-vs-control gate
-and a failing route gate are consistent, and the route gate is the unresolved
-blocker. Bulk prefill therefore ships as the TP2 default for prefill while TP2
-remains unqualified as a route against the single-card reference. The per-tensor
-kernel mix behind this route, and the largest known gap in it, are recorded in
+**within the TP2 route**, which is what qualifies it for promotion. It is not a
+statement that the TP2 route as a whole is numerically qualified: the separate
+cross-route check, which scores the TP2 prefill against a single-card reference,
+does **not** pass, and `scripts/tp2_bulk_prefill_diagnostic.py` reports that
+honestly as `all_passed: false`. The two gates differ in both comparator and
+horizon - a within-route arm-vs-control comparison over 831 rows versus a
+cross-route reference comparison on a handful of prompts - so a passing
+arm-vs-control gate and a failing route gate are consistent, and the route gate
+is the unresolved blocker. Bulk prefill remains **opt-in** (`bulk_prefill=False`
+by default) for the separate reason below. The per-tensor kernel mix behind this
+route, and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
 Bulk prefill stays opt-in: chunked bulk prefill is not implemented, so a prompt
 longer than the workspace forces a rebuild mid-session.

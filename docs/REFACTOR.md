@@ -7934,22 +7934,34 @@ What the corrected attribution does establish, and what the next attempt should
 start from:
 
 - The prefill is **device-bound**, not enqueue-bound. Host spans sum to 71.8 ms
-  against a 489.6 ms device span, so the host has roughly 7x headroom and an
-  enqueue-bubble explanation cannot be the whole story.
-- Every layer is **synchronised at its MLP exchange**, and rank 0 is the
+  against a 489.6 ms device span. Note what this does and does not say: it bounds
+  the aggregate host submission cost, so the *sum* of host work cannot account
+  for the gap. It does not show "7x headroom", because host and device time
+  overlap, and a short host stall at the wrong point still idles the device.
+- Every layer is **synchronised at its MLP exchange**, and rank 0 is on the
   critical path. Rank 0's attention + chain is 6.620 ms/layer against rank 1's
   5.869, and the model `rank1_exchange = lead + rank0_exchange_work` predicts
-  1.677 ms against 1.694 measured. Rank 1 therefore idles ~0.75 ms/layer.
-- Rebalancing the MLP shard to 0.463/0.537 would equalise `attention + chain`
-  and is worth ~24 ms/prefill (~4.9%) on that model. The model assumes chain
-  cost scales with the shard width, which is untested - measure before relying
-  on it.
-- The exchange itself is **near its floor**, so it is the wrong thing to attack.
+  1.677 ms against 1.694 measured. Rank 1 idles ~0.75 ms/layer. Constant
+  exchange *duration* is consistent with rank 1 arriving early and waiting, but
+  it does not by itself prove zero queueing inside the exchange.
+- Rebalancing the MLP shard to **0.4327/0.5673** equalises `attention + chain`
+  under the stated model, worth ~25.5 ms/prefill (~5.2%). An earlier revision
+  quoted 0.463 and ~24 ms; that came from a script that scaled both ranks by the
+  *combined* measured total, implying rank 0 cost 2.791 ms at an even split when
+  it was measured at 2.961. The per-rank form is
+  `3.659 + 2.961*(f/0.5) = 3.248 + 2.621*((1-f)/0.5)`. Both numbers are model
+  output, not measurements. The model assumes chain cost scales linearly with
+  the shard width, which is untested, and uneven widths select different kernels
+  (the 8_704-wide pair owner does not apply at 10_240), so the per-width chain
+  cost must be measured rather than extrapolated.
+- The exchange is **near the floor for its current fixed-payload schedule**.
   Measured PCIe ceiling on this host is ~14 GB/s per direction for a 5.24 MB
   transfer; the exchange's two such transfers cost ~0.75 ms of a 0.926 ms span,
-  i.e. ~81% of the hardware floor. Direct peer access is unavailable
-  (`hipDeviceCanAccessPeer` returns 0 both ways between the W7900 and the RX
-  7900 XTX), so host staging is required and the traffic cannot be halved.
+  i.e. ~81% of the hardware floor. This bounds optimizing *that* schedule. It
+  does not bound compression, pipelining, overlap with compute, or a different
+  transport design, none of which were measured. Direct peer access is
+  unavailable (`hipDeviceCanAccessPeer` returns 0 both ways between the W7900 and
+  the RX 7900 XTX), so host staging is required for the current design.
 
 Re-evaluate the fusion itself when the MLP phase stops being straggler-bound.
 The admission can be withdrawn without losing throughput by deleting the `8_704`
@@ -7972,27 +7984,51 @@ self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
 
 The TP2 rank-local bulk prefill (`tp2_generate.py::_bulk_attention_layer`,
 `_bulk_norm_residual_layer`, `_bulk_sharded_mlp_layer`) installs only
-`resident_prefill_dispatch_session`. Without the rest, the largest GEMMs on the
-attention path resolve to a **decode-shaped GEMV kernel** during prefill:
+`resident_prefill_dispatch_session`.
 
-| tensor | quant | shape | GFLOP/layer | variant on the TP2 prefill path |
-| --- | --- | --- | ---: | --- |
-| `attn_qkv` | `gguf_q6_k_t16_qmicro_planar_v1` | (5120, 10240) | 53.7 | `t16_gemv_decode_bf16_bf16_out` |
-| `ssm_out` | `gguf_q5_k_t16_v1` | (6144, 5120) | 32.2 | `t16_gemv_decode_bf16_bf16_out` |
-| `attn_v` (16 layers) | `gguf_q6_k_t16_qmicro_planar_v1` | (5120, 1024) | — | `t16_gemv_decode_bf16_bf16_out` |
-| `attn_gate`, `attn_q`, `attn_k` | `gguf_q4_k_t16_v1` | — | — | `t16_wmma_prefill_bf16_bf16_out` |
+**A decode-kernel explanation was claimed here and is retracted (2026-09-19).**
+An earlier revision of this table listed `attn_qkv`, `ssm_out`, and `attn_v` as
+resolving to `t16_gemv_decode_bf16_bf16_out` during prefill, and used that to
+explain the attention phase's 31.2 TFLOPS (GDN) / 34.6 TFLOPS (full-attention)
+against the MLP chain's 46.2 TFLOPS/rank. That table was produced by a census
+hooked to `resolve_gguf_linear_dispatch`, which runs **before** the prefill
+rewrites. The rewrite stage
+(`_wmma_prefill_dispatch` and the f16-rocBLAS route) then converts
+`t16_gemv_decode_*` to a prefill-shaped variant, so the initial key does not name
+what launches. Re-running the census against the **final**
+`kernels.registry.resolve` - the authoritative point, after every rewrite -
+records no decode variant on this path at all:
 
-This is why the attention phase runs at 31.2 TFLOPS (GDN layers) and 34.6 TFLOPS
-(full-attention layers) while the sharded MLP chain reaches 46.2 TFLOPS/rank on
-the same device. The model geometry is already admitted by the calibrated policy
-`GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES`, and every shape above is admitted
-at exactly rows=512 by `GGUF_Q{4,5,6}_T16_F16_ROCBLAS_PREFILL_POLICIES`.
+| quant | variant resolved at rows=512 | distinct dispatches |
+| --- | --- | ---: |
+| `gguf_q4_k_t16_v1` | `t16_wmma_prefill_bf16_bf16_out` | 5 |
+| `gguf_q5_k_t16_v1` | `t16_wmma_prefill_bf16_bf16_out` | 1 |
+| `gguf_q6_k_t16_qmicro_planar_v1` | `t16_wmma_prefill_bf16_bf16_out` | 3 |
 
-**Measured, interleaved, in one session (four independent A/B/A runs):** entering
-`_q6_f16_rocblas_prefill_context` around the per-rank attention call takes the
-512-token product-path prefill from **494.1 ms to 477.6 ms (+3.45%)**; all five
-contexts together give 476.7 ms (+3.65%); `_q6_integer_mmq_context` alone gives
-nothing (496.8 ms). The win is entirely the f16-rocBLAS prefill route.
+So the attention path already runs a WMMA prefill kernel, and **the missing
+contexts are not explained by a decode-shaped kernel.** What is still true is the
+measured effect: the contexts change the *arithmetic* the attention path uses,
+and that is worth ~16.5 ms. What is not established is why the remaining gap is
+there, or how much of it is arithmetic at all.
+
+**Measured with a committed, counterbalanced, one-session harness**
+(`scripts/tp2_prefill_context_ab.py`, A/B/B/A ordering, both arms warmed, raw
+samples preserved): entering `_q6_f16_rocblas_prefill_context` around the
+per-rank attention call takes the 512-token product-path prefill from **493.6 ms
+to 476.0 ms (+3.69%)**, all four paired per-round deltas the same sign
+(+3.191/+3.711/+3.678/+3.853%), within-arm drift under 0.5%. Earlier figures for
+this effect (+3.45% interleaved, +3.65% for all five contexts,
+`_q6_integer_mmq_context` alone giving nothing) came from throwaway probes; the
+committed harness reproduces the direction and magnitude, and its numbers are
+the ones to cite.
+
+**What this is not.** It is a promising incremental optimization, not the
+explanation for the llama.cpp gap. At 476.0 ms the 512-token prefill is ~1,076
+tok/s against the historical 1,474.6 tok/s reference, still ~27% short; closing
+that needs roughly **147 ms** off the baseline, and this candidate supplies
+**~16.5 ms of it (~11%)**. Do not add it to the rebalance model's ~25.5 ms and
+treat the sum as a plan: the two overlap (both touch the attention/chain split)
+and neither has been measured with the other applied.
 
 The integration is not done, and it is not a one-line change. The contexts are
 methods on `Qwen35GGUFResidentSession`, not on the runner TP2 holds, and they
