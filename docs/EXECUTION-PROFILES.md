@@ -556,17 +556,51 @@ Validate the recovery mechanism with:
 - terminal errors carrying phase, affected IDs, work kind, mutation class and
   cause, with no lost or duplicated committed output.
 
+The unit coverage for these items is
+[`tests/test_unit_generation_execution_failure_containment.py`](../tests/test_unit_generation_execution_failure_containment.py)
+(contained and refused prefill, grouped-prefill, decode and speculative
+failures, a committed cycle, cleanup failure, a simulated fatal device error and
+the service-level unhealthy report) plus the adapter verdicts in
+[`tests/test_unit_qwen35_gguf_mtp2_seam.py`](../tests/test_unit_qwen35_gguf_mtp2_seam.py).
+
 This is fault-class and ownership coverage, not an allowlist of every exception
 message or workload permitted to run. Add a reproducer when a new failure is
 observed and repair or scope that failure.
 
 **Implemented scope:** the resident GGUF runner's `contain_execution_failure`
-claims `none` only for prefill/decode, after synchronizing the affected runtimes.
-It conservatively refuses every `HipError`, a missing/failing runtime and later
-mutation windows. That is the current implementation, not a permanent rule
-that every HIP error is unrecoverable. No runner currently claims `partial` or
-`committed`; those need a recovery implementation and its tests. `unknown` is
-never a successful containment claim.
+claims `none` and `partial` for prefill and decode, and `partial` or
+`committed` for a failed speculative cycle, always after synchronizing the
+affected runtimes.
+
+- `none` covers a step that never advanced a row's device state: it raised
+  before any device call, or its decode phase completed with no packed work
+  (every row's first token came from prefill). The claim names the row whose
+  failure the runner attributed, and the work item's rows when it could not.
+- `partial` covers a prefill or decode step that entered its device phase
+  without claiming a canonical commit. The runner marks every row immediately
+  before its first device call and every row of a grouped prefill call, so the
+  claim names exactly the rows whose device state may have advanced, plus the
+  row whose step raised so its failure is reported; rows the step never reached
+  stay canonical and are left unnamed. The loop retires the named rows through
+  the same request-owned release path a single-row claim uses.
+- A speculative cycle asks its resolved adapter for the mutation class and the
+  rows it cannot prove canonical. A cycle whose adapter recorded a canonical
+  commit before the failure (the eager commit path publishes the row's visible
+  tokens and cursor, leaving the outer scheduler behind it) is `committed` and
+  cannot fall back to autoregressive decoding; a cycle whose device cursors
+  moved without a recorded commit is `partial`. Rows the cycle left canonical
+  are unnamed and continue.
+
+It conservatively refuses every `HipError` (the device itself reported a fault,
+so shared device state is unproven), a missing or failing runtime, a device
+phase that raised before it could establish that no row reached device work, an
+adapter that cannot narrow the mutation window (including a physical target
+commit that may or may not have landed), and every phase that does not mark its
+device window. That is the current implementation, not a permanent rule that
+every HIP error is unrecoverable. `unknown` is never a successful containment
+claim: a refused failure is reported as a fatal `GenerationExecutionFailed`
+whose `state_mutation` is `unknown`, so `health()` and a later refused
+submission name the phase, the affected rows and the deepest cause.
 
 ### 4.4 Per-request eligibility under group execution
 

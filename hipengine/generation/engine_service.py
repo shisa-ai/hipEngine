@@ -273,6 +273,7 @@ class EngineService:
             return
         location: str | None = None
         cause: BaseException | None = error
+        deepest: BaseException | None = error
         seen: set[int] = set()
         while cause is not None and id(cause) not in seen:
             seen.add(id(cause))
@@ -280,11 +281,17 @@ class EngineService:
             if frames:
                 last = frames[-1]
                 location = f"{last.filename}:{last.lineno} in {last.name}"
+            deepest = cause
             cause = cause.__cause__
         phase = getattr(error, "phase", None)
         request_ids = getattr(error, "request_ids", None)
         self._unhealthy = {
             "exception_type": type(error).__name__,
+            # The deepest cause names the fault itself: a fatal execution
+            # failure is reported through its wrapper, so a device error stays
+            # visible as ``HipError`` rather than only as the containment
+            # refusal that followed it.
+            "cause_type": None if deepest is None else type(deepest).__name__,
             "message": str(error),
             "location": location,
             "phase": None if phase is None else str(phase),

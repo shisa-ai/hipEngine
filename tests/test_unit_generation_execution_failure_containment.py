@@ -11,6 +11,7 @@ instead of blaming the client's memory budget.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -239,6 +240,7 @@ class _ContainingResidentRunner:
         self.outputs: dict[int, GenerationOutput] = {}
         self.fail_decode: set[int] = set()
         self.cancel_decode: set[int] = set()
+        self.device_fault: set[int] = set()
         self.failed_row: int | None = None
         self.contain = True
 
@@ -261,6 +263,9 @@ class _ContainingResidentRunner:
         generated = []
         for request_id in work.request_ids:
             rid = int(request_id)
+            if rid in self.device_fault:
+                self.failed_row = rid
+                raise HipError(719, "unspecified launch failure")
             if rid in self.fail_decode:
                 self.failed_row = rid
                 raise RuntimeError(f"packed sampler row {rid} exceeds capacity 0")
@@ -280,7 +285,9 @@ class _ContainingResidentRunner:
         return tuple(generated)
 
     def contain_execution_failure(self, error, *, phase, request_ids, work_kind):
-        if not self.contain:
+        # Mirror the resident runner's device-fault refusal: a HIP error leaves
+        # shared device state unproven, so it is never contained.
+        if not self.contain or isinstance(error, HipError):
             return None
         rows = tuple(int(request_id) for request_id in request_ids)
         affected = (
@@ -440,15 +447,22 @@ def test_service_fatal_execution_failure_reports_unhealthy_reason() -> None:
     try:
         handle = service.submit_child(_service_request(2))
         inner.runner.fail_decode = {handle.request_id}
-        with pytest.raises(RuntimeError, match="packed sampler row"):
+        with pytest.raises(RuntimeError, match="packed sampler row") as fatal:
             handle.result()
+        assert "state_mutation=unknown" in str(fatal.value)
 
         health = service.health()
         assert health["status"] == "unhealthy"
         assert health["serving"] is False
         unhealthy = health["unhealthy"]
-        assert unhealthy["exception_type"] == "RuntimeError"
+        # A refusal is reported through the named execution failure, which
+        # carries the phase and the affected rows; the deepest cause keeps the
+        # original fault visible.
+        assert unhealthy["exception_type"] == "GenerationExecutionFailed"
+        assert unhealthy["cause_type"] == "RuntimeError"
         assert "packed sampler row" in unhealthy["message"]
+        assert unhealthy["phase"] == "decode"
+        assert unhealthy["request_ids"] == [handle.request_id]
         assert unhealthy["location"] is not None
         assert "test_unit_generation_execution_failure_containment.py" in (
             unhealthy["location"]
@@ -463,6 +477,41 @@ def test_service_fatal_execution_failure_reports_unhealthy_reason() -> None:
     finally:
         service.close()
     # A recorded fatal reason outlives the shutdown that follows it.
+    assert service.health()["status"] == "unhealthy"
+
+
+def test_service_simulated_fatal_device_error_names_phase_and_rows() -> None:
+    """A device fault is never contained, and the stop names what it touched."""
+
+    inner = _ContainingInner()
+    service = EngineService(
+        SubmitPollTextGenerator(inner, capacity=3, prefill_chunk_size=4)
+    )
+    try:
+        handle = service.submit_child(_service_request(2))
+        inner.runner.device_fault = {handle.request_id}
+        with pytest.raises(RuntimeError, match="unspecified launch failure") as fatal:
+            handle.result()
+        assert "cause=HipError" in str(fatal.value)
+        assert "state_mutation=unknown" in str(fatal.value)
+
+        health = service.health()
+        assert health["status"] == "unhealthy"
+        assert health["serving"] is False
+        unhealthy = health["unhealthy"]
+        assert unhealthy["exception_type"] == "GenerationExecutionFailed"
+        assert unhealthy["cause_type"] == "HipError"
+        assert unhealthy["phase"] == "decode"
+        assert unhealthy["request_ids"] == [handle.request_id]
+        assert "unspecified launch failure" in unhealthy["message"]
+        assert unhealthy["location"] is not None
+
+        with pytest.raises(RuntimeError) as closed:
+            service.submit_child(_service_request(4))
+        assert "fatal execution failure" in str(closed.value)
+        assert "unspecified launch failure" in str(closed.value)
+    finally:
+        service.close()
     assert service.health()["status"] == "unhealthy"
 
 
@@ -494,8 +543,15 @@ class _ContainmentSession:
         self.prefill_calls: list[tuple[tuple[int, ...], int, int]] = []
         self.step_calls: list[tuple[int, int, int]] = []
         self.runtime = _ContainmentRuntime()
+        # Injection hooks: a device-phase failure and a post-step callback (a
+        # request cancelled while its step was in flight).
+        self.fail_step: BaseException | None = None
+        self.fail_prefill: BaseException | None = None
+        self.post_step: Any = None
 
     def prefill(self, token_ids, *, return_logits: bool):
+        if self.fail_prefill is not None:
+            raise self.fail_prefill
         prompt = tuple(int(token) for token in token_ids)
         start = int(self.position)
         self.position += len(prompt)
@@ -503,13 +559,23 @@ class _ContainmentSession:
         return self._result(return_logits=return_logits)
 
     def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
-        assert sessions == [self]
-        return [self.prefill(prompt_token_ids[0], return_logits=bool(kwargs.get("return_logits", False)))]
+        # The packed call runs on the first row's session and receives every
+        # row's session, so a grouped prefill is exercised with one stub.
+        assert sessions and sessions[0] is self
+        assert len(sessions) == len(prompt_token_ids)
+        return [
+            self.prefill(prompt, return_logits=bool(kwargs.get("return_logits", False)))
+            for prompt in prompt_token_ids
+        ]
 
     def step(self, token_id: int, *, return_logits: bool):
         start = int(self.position)
         self.position += 1
         self.step_calls.append((int(token_id), start, int(self.position)))
+        if self.fail_step is not None:
+            raise self.fail_step
+        if self.post_step is not None:
+            self.post_step()
         return self._result(return_logits=return_logits)
 
     def invalidate_device_kv_graphs(self) -> int:
@@ -554,7 +620,7 @@ class _ContainmentOwner:
     _prepared_max_sequence_length = 1024
     tokenizer = SimpleNamespace(
         eos_token_id=None,
-        decode=lambda tokens: "".join(str(token) for token in tokens),
+        decode=lambda tokens, **kwargs: "".join(str(token) for token in tokens),
     )
 
     def __init__(self) -> None:
@@ -634,9 +700,88 @@ def test_real_runner_contains_only_a_pre_device_validation_failure() -> None:
     # Quiescing ran on the owner's device runtime before the scope was returned.
     assert owner.runtime.synchronize_calls == 1
 
-    # A failure at or after the first device call is never contained: the step
-    # may have advanced rows the scheduler has not recorded.
+    # A failure in a step whose device phase produced no attributed row is
+    # still refused: the window alone no longer decides, the step accounting
+    # does, and an unattributed device phase stays unresolved.
     runner._execution_mutation_window = "unknown"
+    runner._execution_step_request_id = None
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("packed sampler row 0 exceeds capacity 0"),
+            phase="decode",
+            request_ids=(request_id,),
+            work_kind="decode",
+        )
+        is None
+    )
+    # Once the step attributes device work to the row, the same failure is a
+    # ``partial`` containment instead (see the post-device cases below).
+    runner._execution_stepped_request_ids.add(request_id)
+    claimed = runner.contain_execution_failure(
+        RuntimeError("packed sampler row 0 exceeds capacity 0"),
+        phase="decode",
+        request_ids=(request_id,),
+        work_kind="decode",
+    )
+    assert isinstance(claimed, ExecutionFailure)
+    assert claimed.mutation == "partial"
+    assert claimed.request_ids == (request_id,)
+
+
+def test_real_runner_contains_an_empty_device_phase_after_it_completed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A decode tick with no packed work cannot have advanced any row.
+
+    The first decode after prefill reads the token that prefill already
+    produced, so the tick's device phase has no packed work.  A failure in its
+    post-device check is therefore still ``none``, and it must name the row
+    whose check failed rather than the whole work item.
+    """
+
+    from hipengine.generation import qwen35_gguf as module
+    from hipengine.generation.deadline import raise_if_generation_deadline_expired
+
+    runner, owner, request_id = _resident_runner_with_row()
+    calls = {"count": 0}
+
+    def checked(request_or_deadline: Any, **kwargs: Any) -> None:
+        calls["count"] += 1
+        if calls["count"] > 1:
+            # The prologue passed; this is the step's own post-device check.
+            raise GenerationCancelled()
+        return raise_if_generation_deadline_expired(request_or_deadline, **kwargs)
+
+    monkeypatch.setattr(module, "raise_if_generation_deadline_expired", checked)
+    decode = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(request_id,),
+        row_to_request=(request_id,),
+    )
+
+    with pytest.raises(GenerationCancelled):
+        runner.decode_batch(decode, commit=True)
+
+    assert runner._execution_device_phase_empty is True
+    assert runner._execution_stepped_request_ids == set()
+    assert runner._execution_step_request_id == request_id
+    assert runner._execution_mutation_window == "unknown"
+    failure = runner.contain_execution_failure(
+        GenerationCancelled(),
+        phase="decode",
+        request_ids=(request_id,),
+        work_kind="decode",
+    )
+    assert isinstance(failure, ExecutionFailure)
+    assert failure.mutation == "none"
+    assert failure.request_ids == (request_id,)
+    assert owner.runtime.synchronize_calls == 1
+
+    # A phase that never established its emptiness stays refused: the window
+    # alone does not decide, and an unenumerated device path must not be
+    # contained as ``none``.
+    runner._execution_device_phase_empty = False
+    runner._execution_step_request_id = None
     assert (
         runner.contain_execution_failure(
             RuntimeError("packed sampler row 0 exceeds capacity 0"),
@@ -707,3 +852,279 @@ def test_real_runner_refuses_containment_it_cannot_prove() -> None:
         )
         is None
     )
+
+
+def _prefilled_runner(
+    *,
+    cancelled: bool = False,
+) -> tuple[object, object, int, WorkItem, object]:
+    """Prefill one row through the real runner and return its decode work."""
+
+    runner, owner, request_id = _resident_runner_with_row(cancelled=cancelled)
+    prefill = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=(request_id,),
+        row_to_request=(request_id,),
+        token_rows=((11, 12),),
+    )
+    runner.prefill_batch(prefill, commit=True)
+    decode = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(request_id,),
+        row_to_request=(request_id,),
+    )
+    return runner, owner, request_id, decode, runner._rows[request_id].lease.session
+
+
+def _emit_one_token(runner, decode: WorkItem) -> None:
+    """Run one successful decode so the row joins the packed step group."""
+
+    assert runner.decode_batch(decode, commit=True)
+
+
+def test_real_runner_claims_partial_for_a_failed_device_step() -> None:
+    """A device-phase failure is contained as ``partial`` over the stepped rows."""
+
+    runner, owner, request_id, decode, session = _prefilled_runner()
+    _emit_one_token(runner, decode)
+    session.fail_step = RuntimeError("packed sampler row 0 exceeds capacity 0")
+
+    with pytest.raises(RuntimeError, match="packed sampler row"):
+        runner.decode_batch(decode, commit=True)
+
+    # The step entered its device phase without a canonical commit, and the row
+    # it reached is the whole scope.
+    assert runner._execution_mutation_window == "unknown"
+    assert runner._execution_stepped_request_ids == {request_id}
+    failure = runner.contain_execution_failure(
+        RuntimeError("packed sampler row 0 exceeds capacity 0"),
+        phase="decode",
+        request_ids=(request_id,),
+        work_kind="decode",
+    )
+    assert isinstance(failure, ExecutionFailure)
+    assert failure.request_ids == (request_id,)
+    assert failure.mutation == "partial"
+    assert failure.phase == "decode"
+    assert owner.runtime.synchronize_calls >= 1
+
+    # A peer the step never reached is not named, so it keeps its state.
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("packed sampler row 0 exceeds capacity 0"),
+            phase="decode",
+            request_ids=(request_id, 99),
+            work_kind="decode",
+        ).request_ids
+        == (request_id,)
+    )
+
+
+def test_real_runner_claims_partial_for_a_step_that_already_completed() -> None:
+    """A failure after the device work still names only the rows that stepped."""
+
+    runner, owner, request_id, decode, session = _prefilled_runner()
+    _emit_one_token(runner, decode)
+    request = runner._rows[request_id].request
+    session.post_step = request.cancellation_token.cancel
+
+    with pytest.raises(GenerationCancelled):
+        runner.decode_batch(decode, commit=True)
+
+    assert runner._execution_mutation_window == "unknown"
+    failure = runner.contain_execution_failure(
+        GenerationCancelled(),
+        phase="decode",
+        request_ids=(request_id,),
+        work_kind="decode",
+    )
+    assert isinstance(failure, ExecutionFailure)
+    assert failure.mutation == "partial"
+    assert failure.request_ids == (request_id,)
+    assert owner.runtime.synchronize_calls >= 1
+
+
+def test_real_runner_refuses_post_device_failures_it_cannot_scope() -> None:
+    runner, owner, request_id, decode, session = _prefilled_runner()
+    _emit_one_token(runner, decode)
+    session.fail_step = HipError(719, "unspecified launch failure")
+    with pytest.raises(HipError):
+        runner.decode_batch(decode, commit=True)
+
+    # A device fault leaves shared device state unproven even though the row is
+    # attributed: it stays fatal.
+    assert runner._execution_stepped_request_ids == {request_id}
+    assert (
+        runner.contain_execution_failure(
+            HipError(719, "unspecified launch failure"),
+            phase="decode",
+            request_ids=(request_id,),
+            work_kind="decode",
+        )
+        is None
+    )
+
+    # A device phase with no attributed row cannot be scoped either.
+    runner._execution_mutation_window = "unknown"
+    runner._execution_stepped_request_ids.clear()
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("host-side validation"),
+            phase="decode",
+            request_ids=(request_id,),
+            work_kind="decode",
+        )
+        is None
+    )
+
+    # Nor can a row whose device state will not quiesce.
+    runner._execution_stepped_request_ids.add(request_id)
+    owner.runtime.fail_synchronize = True
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("host-side validation"),
+            phase="decode",
+            request_ids=(request_id,),
+            work_kind="decode",
+        )
+        is None
+    )
+
+
+def test_runner_claims_a_scoped_speculative_cycle_from_its_adapter() -> None:
+    """A failed cycle is contained only through the adapter's own evidence."""
+
+    runner, owner, request_id, _decode, _session = _prefilled_runner()
+    plan = SimpleNamespace(
+        operation_id="op-1",
+        request_ids=(request_id,),
+        speculative_request_ids=(request_id,),
+    )
+    asked: list[tuple[object, BaseException]] = []
+    verdict: list[tuple[str, tuple[int, ...]] | None] = [
+        ("committed", (request_id,))
+    ]
+
+    class Adapter:
+        def prepare_k0(self, plan_arg, semantics, *, stream=None):
+            del plan_arg, semantics, stream
+
+        def containment_evidence(self, plan_arg, error):
+            asked.append((plan_arg, error))
+            return verdict[0]
+
+    runner._mtp2_adapter = Adapter()
+    runner._mtp2_adapter_resolved = True
+
+    # A canonical commit recorded in this cycle is visible to the adapter.
+    runner.note_execution_commit(request_id)
+    assert runner.execution_committed_request_ids() == frozenset({request_id})
+    # Entering a new cycle clears it.
+    runner.prepare_speculative_k0(plan, ())
+    assert runner.execution_committed_request_ids() == frozenset()
+
+    failure = runner.contain_execution_failure(
+        RuntimeError("postcommit"),
+        phase="speculative_cycle",
+        request_ids=(request_id,),
+        work_kind="verify_chain",
+    )
+    assert isinstance(failure, ExecutionFailure)
+    assert failure.mutation == "committed"
+    assert failure.request_ids == (request_id,)
+    assert failure.phase == "speculative_cycle"
+    assert asked[-1][0] is plan
+    assert owner.runtime.synchronize_calls >= 1
+
+    # A scope outside the failed work item is refused here, not handed to the
+    # loop to reject.
+    verdict[0] = ("partial", (request_id, 99))
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("late"),
+            phase="speculative_cycle",
+            request_ids=(request_id,),
+            work_kind="verify_chain",
+        )
+        is None
+    )
+
+    # An adapter that cannot narrow the window keeps the failure fatal, and a
+    # device fault is never contained regardless of the adapter's verdict.
+    verdict[0] = None
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("unresolved"),
+            phase="speculative_cycle",
+            request_ids=(request_id,),
+            work_kind="verify_chain",
+        )
+        is None
+    )
+    verdict[0] = ("committed", (request_id,))
+    assert (
+        runner.contain_execution_failure(
+            HipError(719, "unspecified launch failure"),
+            phase="speculative_cycle",
+            request_ids=(request_id,),
+            work_kind="verify_chain",
+        )
+        is None
+    )
+
+    # A cycle that never recorded its plan stays fatal.
+    runner._execution_speculative_plan = None
+    assert (
+        runner.contain_execution_failure(
+            RuntimeError("unresolved"),
+            phase="speculative_cycle",
+            request_ids=(request_id,),
+            work_kind="verify_chain",
+        )
+        is None
+    )
+
+
+def test_real_runner_claims_partial_for_a_failed_grouped_prefill() -> None:
+    """A grouped prefill that fails owns every row the call could have stepped."""
+
+    runner, owner, request_id = _resident_runner_with_row()
+    runner.packed_prefill_max_rows = 4
+    second = request_id + 1
+    runner.register_batch(
+        (second,),
+        GenerationRequest(
+            prompts=((21, 22),),
+            max_tokens=3,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+        ),
+        prompt_rows=((21, 22),),
+    )
+    runner.reserve_admission(SimpleNamespace(request_id=second))
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=(request_id, second),
+        row_to_request=(request_id, second),
+        token_rows=((11, 12), (21, 22)),
+    )
+    for lease in runner._available:
+        lease.session.fail_prefill = RuntimeError("grouped prefill lost its scratch")
+
+    with pytest.raises(RuntimeError, match="grouped prefill lost its scratch"):
+        runner.prefill_batch(work, commit=True)
+
+    # The grouped call could have reached device work for any of its rows, so
+    # containment owns all of them rather than guessing which one moved.
+    assert runner._execution_stepped_request_ids == {request_id, second}
+    failure = runner.contain_execution_failure(
+        RuntimeError("grouped prefill lost its scratch"),
+        phase="prefill",
+        request_ids=(request_id, second),
+        work_kind="prefill",
+    )
+    assert isinstance(failure, ExecutionFailure)
+    assert failure.mutation == "partial"
+    assert failure.request_ids == (request_id, second)
+    assert owner.runtime.synchronize_calls >= 1

@@ -4630,6 +4630,7 @@ class Qwen35GGUFMTP2Adapter:
         output_ids: list[tuple[int, ...]] = []
         finish_reasons: list[str | None] = []
         next_tokens = accept.next_tokens or (None,) * len(ids)
+        note_commit = getattr(self.owner, "note_execution_commit", None)
         for index, (request_id, target, row, accepted, accepted_tokens, next_token) in enumerate(
             zip(
                 ids,
@@ -4662,6 +4663,11 @@ class Qwen35GGUFMTP2Adapter:
                 plan_reason=plan.reasons[plan.request_ids.index(request_id)],
                 target_position=int(target.position),
             )
+            if callable(note_commit):
+                # This row's visible tokens and cursor are committed, so a
+                # later failure in this cycle cannot fall back to
+                # autoregressive decoding without losing them.
+                note_commit(int(request_id))
             finish_reasons.append("eos" if eos_finished else None)
             if (
                 self.post_reject_cooldown_enabled
@@ -5290,6 +5296,18 @@ class Qwen35GGUFMTP2Adapter:
                     ("postcommit_target_rebuild_ar_fallback", reason)
                 )
             return True
+        committed = self._committed_request_ids(plan)
+        if committed:
+            # A row of this cycle already published its committed tokens and
+            # advanced its cursor, so the outer scheduler is behind it.  An
+            # autoregressive fallback would decode from the advanced position
+            # and drop the committed tokens from the client stream; containment
+            # retires exactly those rows instead.
+            for row in rows:
+                row.mtp2_failure_reasons.extend(
+                    ("postcommit_eager_commit_ar_fallback_refused", reason)
+                )
+            return False
         for row in rows:
             if row.slot is None or row.lease is None:
                 return False
@@ -5301,6 +5319,56 @@ class Qwen35GGUFMTP2Adapter:
                 ("precommit_failure_ar_fallback", reason)
             )
         return True
+
+    def _committed_request_ids(self, plan: SpecRequestPlan) -> tuple[int, ...]:
+        """Rows of this cycle whose canonical commit the owner already recorded."""
+
+        committed = getattr(self.owner, "execution_committed_request_ids", None)
+        recorded = (
+            frozenset() if not callable(committed) else frozenset(committed())
+        )
+        if not recorded:
+            return ()
+        return tuple(
+            int(request_id)
+            for request_id in plan.speculative_request_ids
+            if int(request_id) in recorded
+        )
+
+    def containment_evidence(
+        self,
+        plan: SpecRequestPlan,
+        error: BaseException,
+    ) -> tuple[str, tuple[int, ...]] | None:
+        """Mutation class and retirable rows for a failed speculative cycle.
+
+        Returns ``("committed", rows)`` when this cycle recorded a canonical
+        commit before the failure, ``("partial", rows)`` when no commit was
+        recorded but rows cannot be proven canonical (their device cursor moved
+        past the slot record, or their lease is unreachable), and ``None`` when
+        the mutation window stays unresolved: a ``_PhysicalTargetCommitError``
+        may or may not have landed its physical commit, and a cycle whose rows
+        are all canonical is recovery's business, not containment's.
+        """
+
+        if isinstance(error, _PhysicalTargetCommitError):
+            return None
+        committed = self._committed_request_ids(plan)
+        retirable: list[int] = []
+        for request_id in plan.speculative_request_ids:
+            rid = int(request_id)
+            if rid in committed:
+                continue
+            row = self.owner._row(rid)
+            if row is None or row.slot is None or row.lease is None:
+                retirable.append(rid)
+                continue
+            if int(row.lease.session.position) != int(row.slot.seq_position):
+                retirable.append(rid)
+        if not committed and not retirable:
+            return None
+        rows = (*committed, *retirable)
+        return ("committed" if committed else "partial", rows)
 
     def release_request(self, request_id: int) -> None:
         rid = int(request_id)

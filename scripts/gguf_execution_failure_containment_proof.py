@@ -18,10 +18,25 @@ This harness proves both halves on the real resident GGUF path, in-process:
    that step. The healthy co-resident must then complete with token IDs identical
    to the reference, the injected row must report a cancellation, the service
    must still report ``status == ok``, and a follow-up request must complete.
-3. **Control** - repeat with ``contain_execution_failure`` forced to return None
-   and confirm the same fault closes the service and fails the co-resident. That
-   is the pre-repair behaviour, so the run is a real RED/GREEN rather than a
-   demonstration of a path that could not fail.
+3. **Empty device phase** - the same fault in the decode step's own
+   post-device check on a tick whose device phase has no packed work (every
+   row's first token came from prefill).  Nothing in that tick can have
+   advanced a row's device state, so the claim is ``none`` and names only the
+   failing row: the co-resident must still complete with reference token IDs
+   and the service must stay ``ok``.
+4. **Post-device containment** - the same fault on a later call, in a decode
+   step's own post-device check, so the failed step has already run its packed
+   kernels.  The first decode after prefill does no device work (the row's
+   first token comes from prefill), so the fault must land past it: the default
+   call index is the second decode step's post-device check.  The claim is
+   ``partial`` and names the packed step's rows; the service must still report
+   ``status == ok``, a follow-up request must complete, and the co-resident
+   must either be retired with the group or complete with reference token IDs -
+   never continue with different ones.
+5. **Control** - repeat the pre-device fault with ``contain_execution_failure``
+   forced to return None and confirm the same fault closes the service and fails
+   the co-resident. That is the pre-repair behaviour, so the run is a real
+   RED/GREEN rather than a demonstration of a path that could not fail.
 
 Not a throughput measurement: ``performance_claim`` is false. Greedy,
 artifact-scoped, default host settings.
@@ -132,6 +147,11 @@ class _ClassifierProbe:
             record["contained"] = result is not None
             record["contained_request_ids"] = (
                 None if result is None else list(result.request_ids)
+            )
+            record["mutation"] = None if result is None else str(result.mutation)
+            record["stepped_request_ids"] = sorted(
+                int(request_id)
+                for request_id in getattr(self, "_execution_stepped_request_ids", ())
             )
             self._probe.calls.append(record)
             return result
@@ -369,6 +389,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=3,
         help="fire the fault on this matching prologue call (prefill uses at most two)",
     )
+    parser.add_argument(
+        "--empty-phase-match",
+        type=int,
+        default=4,
+        help=(
+            "fire the empty-device-phase scenario on this matching call; the "
+            "first decode after prefill is the one whose device phase has no "
+            "packed work"
+        ),
+    )
+    parser.add_argument(
+        "--post-device-match",
+        type=int,
+        default=6,
+        help=(
+            "fire the second scenario on this matching call; the first decode "
+            "after prefill does no device work, so the second decode step's "
+            "post-device check is the first marked post-device call"
+        ),
+    )
+    parser.add_argument(
+        "--skip-post-device",
+        action="store_true",
+        help="run only the pre-device containment and control scenarios",
+    )
     parser.add_argument("--neighbor-token", type=int, default=374)
     parser.add_argument("--out", default=None)
     parser.add_argument(
@@ -422,6 +467,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             json.dumps({"contained": payload["contained"]}, indent=2, sort_keys=True),
             flush=True,
         )
+        if not args.skip_post_device:
+            payload["contained_empty_device_phase"] = _run_scenario(
+                llm,
+                prompt_token=int(args.prompt_token),
+                neighbor_token=int(args.neighbor_token),
+                max_tokens=int(args.max_tokens),
+                fire_on_match=int(args.empty_phase_match),
+                probe=_ClassifierProbe(),
+            )
+            print(
+                json.dumps(
+                    {"contained_empty_device_phase": payload["contained_empty_device_phase"]},
+                    indent=2,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            payload["contained_post_device"] = _run_scenario(
+                llm,
+                prompt_token=int(args.prompt_token),
+                neighbor_token=int(args.neighbor_token),
+                max_tokens=int(args.max_tokens),
+                fire_on_match=int(args.post_device_match),
+                probe=_ClassifierProbe(),
+            )
+            print(
+                json.dumps(
+                    {"contained_post_device": payload["contained_post_device"]},
+                    indent=2,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
         if not args.skip_control:
             payload["control_no_containment"] = _run_control(
                 llm,
@@ -471,11 +549,79 @@ def main(argv: Sequence[str] | None = None) -> int:
             control.get("healthy_error") is not None
             or control.get("submit_error") is not None
         )
-        # Without containment the fault reaches every row raw: the injected row
-        # sees the injected exception itself rather than a contained outcome.
-        checks["control_injected_row_sees_raw_fault"] = bool(
-            control_error.get("is_cancellation")
-        ) and not bool(control_error.get("is_execution_failure"))
+        # Without containment the fault closes the service, and the refusal is
+        # reported the way the profile contract requires: a fatal
+        # ``GenerationExecutionFailed`` naming the phase, the affected rows and
+        # the deepest cause, with an ``unknown`` mutation class.
+        checks["control_reports_the_refused_scope"] = (
+            bool(control_error.get("is_execution_failure"))
+            and control_error.get("mutation") == "unknown"
+            and control_error.get("phase") == "decode"
+            and control_error.get("cause_type") == "GenerationCancelled"
+        )
+    if not args.skip_post_device:
+        empty_phase = payload.get("contained_empty_device_phase") or {}
+        empty_claims = [
+            call
+            for call in empty_phase.get("classifier_calls", ())
+            if call.get("contained")
+        ]
+        empty_claim = empty_claims[-1] if empty_claims else {}
+        checks["empty_phase_fault_fired_in_decode"] = (
+            empty_phase.get("fault_fired_in") == "decode_batch"
+        )
+        checks["empty_phase_claim_is_none"] = empty_claim.get("mutation") == "none"
+        checks["empty_phase_names_the_failing_row"] = list(
+            empty_claim.get("contained_request_ids") or ()
+        ) == [empty_claim.get("step_request_id")] and empty_claim.get(
+            "step_request_id"
+        ) is not None
+        checks["empty_phase_healthy_matches_reference"] = empty_phase.get(
+            "healthy_tokens"
+        ) == list(reference)
+        checks["service_healthy_after_empty_phase_fault"] = (
+            empty_phase.get("health_after_fault", {}).get("status") == "ok"
+        )
+        checks["empty_phase_follow_up_completed"] = (
+            empty_phase.get("follow_up_error") is None
+        )
+        checks["empty_phase_follow_up_matches_reference"] = (
+            empty_phase.get("follow_up_tokens") == list(reference)
+        )
+        post_device = payload.get("contained_post_device") or {}
+        claims = [
+            call
+            for call in post_device.get("classifier_calls", ())
+            if call.get("contained")
+        ]
+        claim = claims[-1] if claims else {}
+        scope = tuple(claim.get("contained_request_ids") or ())
+        stepped = set(claim.get("stepped_request_ids") or ())
+        checks["post_device_fault_fired_in_decode"] = (
+            post_device.get("fault_fired_in") == "decode_batch"
+        )
+        checks["post_device_claim_is_partial"] = claim.get("mutation") == "partial"
+        # The scope comes from the runner's own device accounting: every row it
+        # names was marked as possibly having advanced before the failure.
+        checks["post_device_scope_is_the_stepped_group"] = bool(scope) and set(
+            scope
+        ) <= stepped
+        checks["service_healthy_after_post_device_fault"] = (
+            post_device.get("health_after_fault", {}).get("status") == "ok"
+        )
+        checks["post_device_follow_up_completed"] = (
+            post_device.get("follow_up_error") is None
+        )
+        checks["post_device_follow_up_matches_reference"] = (
+            post_device.get("follow_up_tokens") == list(reference)
+        )
+        # A peer the claim named is retired with the group; a peer it left
+        # unnamed must still match the reference.  Neither may silently
+        # continue from an advanced position.
+        checks["post_device_peer_outcome_is_consistent"] = bool(
+            post_device.get("healthy_error") is not None
+            or post_device.get("healthy_tokens") == list(reference)
+        )
     payload["checks"] = checks
     payload["passed"] = all(checks.values())
     print(json.dumps(payload, indent=2, sort_keys=True))

@@ -2496,6 +2496,34 @@ class ResidentEngineLoop:
             )
         return tuple(events)
 
+    def _fatal_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        work: WorkItem,
+    ) -> GenerationExecutionFailed:
+        """Report a failure nobody could contain, naming its scope.
+
+        The mutation class stays ``unknown``: the service stops precisely
+        because no runner could establish how much of the step reached device
+        state.  Naming the phase, the affected rows, the work kind and the
+        deepest cause is what lets ``health()`` and a later refused submission
+        explain the stop instead of reporting a bare exception.  Callers raise
+        the result, so the step's own handler still re-raises.
+        """
+
+        return GenerationExecutionFailed(
+            phase=str(phase),
+            request_ids=tuple(int(request_id) for request_id in work.request_ids),
+            work_kind=(
+                work.kind.value if isinstance(work.kind, WorkKind) else str(work.kind)
+            ),
+            mutation="unknown",
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
+
     def _run_token_budget_round(self) -> tuple[EngineLoopEvent, ...]:
         """Run fair prefill quanta and one decode step for every due row."""
 
@@ -2616,7 +2644,9 @@ class ResidentEngineLoop:
         except BaseException as exc:
             contained = self._contain_execution_failure(exc, phase="prefill", work=work)
             if contained is None:
-                raise
+                raise self._fatal_execution_failure(
+                    exc, phase="prefill", work=work
+                ) from exc
             self._last_work_kind = work.kind
             self._consecutive_prefill_chunks += 1
             return contained
@@ -2756,7 +2786,9 @@ class ResidentEngineLoop:
         except BaseException as exc:
             contained = self._contain_execution_failure(exc, phase="decode", work=work)
             if contained is None:
-                raise
+                raise self._fatal_execution_failure(
+                    exc, phase="decode", work=work
+                ) from exc
             self._record_contained_decode_step(work)
             return contained
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
@@ -3036,7 +3068,11 @@ class ResidentEngineLoop:
                         work=work,
                     )
                     if contained is None:
-                        raise
+                        raise self._fatal_execution_failure(
+                            exc,
+                            phase="speculative_prepare",
+                            work=work,
+                        ) from exc
                     self._record_contained_decode_step(work)
                     return contained
             return None
@@ -3066,7 +3102,11 @@ class ResidentEngineLoop:
                 work=work,
             )
             if contained is None:
-                raise
+                raise self._fatal_execution_failure(
+                    exc,
+                    phase="speculative_cycle",
+                    work=work,
+                ) from exc
             self._record_contained_decode_step(work)
             return contained
         elapsed = time.perf_counter() - start

@@ -676,8 +676,20 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
         unregister_gguf_mtp2_adapter(key)
 
 
-def test_resident_runner_delegates_staged_methods_without_backend_branches() -> None:
+def _bare_runner() -> Qwen35GGUFResidentModelRunner:
+    """A runner built without ``__init__``, carrying its cycle accounting."""
+
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._execution_mutation_window = "unknown"
+    runner._execution_step_request_id = None
+    runner._execution_stepped_request_ids = set()
+    runner._execution_committed_request_ids = set()
+    runner._execution_speculative_plan = None
+    return runner
+
+
+def test_resident_runner_delegates_staged_methods_without_backend_branches() -> None:
+    runner = _bare_runner()
     adapter = _AdapterDouble()
     runner._mtp2_adapter = adapter
     runner._mtp2_adapter_resolved = True
@@ -733,7 +745,7 @@ def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it
         staged_frontier=False,
         execute_cycle=lambda plan, commit: (plan, commit),
     )
-    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner = _bare_runner()
     runner._mtp2_adapter = adapter
     runner._mtp2_adapter_resolved = True
     runner.generator = SimpleNamespace(target_arch="gfx1100")
@@ -5313,3 +5325,87 @@ def test_sampled_prefill_streams_prompt_hidden_rows_for_a_due_row(monkeypatch) -
     runner._prefill_sampled_row(_row(budget=0))
     assert captured == [("finish", 7)]
     assert scalar_calls == [((1, 2, 3), True)]
+
+
+def test_adapter_refuses_ar_fallback_for_a_committed_cycle() -> None:
+    """A committed eager row cannot fall back: the scheduler is behind it."""
+
+    rows = {
+        10: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=9)),
+            mtp2_recoverable_failures=0,
+            mtp2_failure_reasons=[],
+        ),
+    }
+    committed: set[int] = set()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        execution_committed_request_ids=lambda: frozenset(committed),
+    )
+    plan = SimpleNamespace(speculative_request_ids=(10,))
+
+    # Canonical cursors and no recorded commit: the cycle still falls back to AR.
+    assert adapter.recover_cycle_failure(plan, RuntimeError("precommit")) is True
+    assert rows[10].mtp2_failure_reasons == ["precommit_failure_ar_fallback", "RuntimeError:precommit"]
+
+    committed.add(10)
+    assert adapter.recover_cycle_failure(plan, RuntimeError("postcommit")) is False
+    assert rows[10].mtp2_failure_reasons[-2:] == [
+        "postcommit_eager_commit_ar_fallback_refused",
+        "RuntimeError:postcommit",
+    ]
+
+
+def test_adapter_containment_evidence_maps_commit_and_cursor_state() -> None:
+    rows = {
+        10: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=9)),
+        ),
+        20: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        ),
+        30: SimpleNamespace(slot=None, lease=None),
+    }
+    committed: set[int] = set()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        execution_committed_request_ids=lambda: frozenset(committed),
+    )
+    plan = SimpleNamespace(speculative_request_ids=(10, 20, 30))
+
+    # A row whose cursor moved without a commit, and a row with no device state
+    # to prove, are both retirable; the canonical row is left unnamed.
+    assert adapter.containment_evidence(plan, RuntimeError("late")) == (
+        "partial",
+        (20, 30),
+    )
+    # A recorded commit makes the cycle ``committed`` and names the committed
+    # row alongside the rows that cannot be proven canonical.
+    committed.add(10)
+    assert adapter.containment_evidence(plan, RuntimeError("late")) == (
+        "committed",
+        (10, 20, 30),
+    )
+    # A physical commit that may or may not have landed leaves the window
+    # unresolved: that stays fatal rather than becoming a claim.
+    assert (
+        adapter.containment_evidence(
+            plan,
+            mtp2_module._PhysicalTargetCommitError("selected target state may be committed"),
+        )
+        is None
+    )
+    # A cycle whose rows are all canonical is recovery's business, not
+    # containment's.
+    committed.clear()
+    rows[20].lease.session.position = 9
+    rows[30] = SimpleNamespace(
+        slot=SimpleNamespace(seq_position=4),
+        lease=SimpleNamespace(session=SimpleNamespace(position=4)),
+    )
+    assert adapter.containment_evidence(plan, RuntimeError("late")) is None
