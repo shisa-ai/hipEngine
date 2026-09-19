@@ -486,8 +486,8 @@ def _resident_owner_fixture(monkeypatch):
     shadow_lease = SimpleNamespace(session=shadow_session, pool_key="pool")
 
     class Pool:
-        def allocate(self, request_id, pages, *, now_seconds):
-            del now_seconds
+        def allocate(self, request_id, pages, *, now_seconds, require_contiguous=False):
+            del now_seconds, require_contiguous
             events.append(("allocate", request_id, pages))
             return SimpleNamespace(
                 block_ids=tuple(range(10, 10 + pages)),

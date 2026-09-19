@@ -1,0 +1,1086 @@
+{
+  "schema": 1,
+  "kind": "prefix_mtp_merge_integration_qualification",
+  "created_at": "2026-09-19T18:27:10.549960+00:00",
+  "performance_claim": false,
+  "full_production_profile_requalification": false,
+  "host": "gfx1151",
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S (gfx1151)",
+  "merge_parents": {
+    "local": "0f3bd43dcde8c98275c9a5dfab4c8a6808a3bb00",
+    "upstream": "1de470e218b9728ff588b8455a5aba5e5849af48"
+  },
+  "source_sha256": {
+    "hipengine/generation/engine_loop.py": "ff295af663d49facd41f35a348287a239ac92ff98cd6b632946065ead9829254",
+    "hipengine/generation/qwen35_gguf.py": "a4cf4d5e9a4eb75c377ad3886856bbbc71e2f40c16d73dfdc73780198623f5ce",
+    "hipengine/generation/qwen35_gguf_mtp2.py": "3c92d37749a7ece491a2714ed5718c660abc823785597d472e01c0a2caa1d8f4",
+    "hipengine/runtime/qwen35_gguf_runner.py": "8dad4831a598b8eff0f8f5e6cdeab9485fe79da2e6bed51e35777442c55a4d05",
+    "hipengine/kvcache/device_global.py": "773accf2b85bba3683118b09051b720a7a81d126ed626dc7fa9bf669e54a5642"
+  },
+  "merge_decisions": [
+    "Upstream prefix helpers and both suffix methods are AST-identical (26 functions).",
+    "Upstream gapped/prefill/workspace functions are AST-identical (24 functions).",
+    "Task20's early-return helper and duplicate flag were removed, preserving its commit history.",
+    "Local sampled-MTP, long-context verifier, and containment implementation retained.",
+    "Four RED allocation tests exposed a retry loop; a whole-chunk growth/budget repair passes."
+  ],
+  "tests": {
+    "unit-final.xml": {
+      "tests": 9495,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 59,
+      "passed": 9436,
+      "seconds": 34.484
+    },
+    "integration-final.xml": {
+      "tests": 1002,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 1002,
+      "seconds": 28.305
+    },
+    "gpu.xml": {
+      "tests": 28,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 22,
+      "passed": 6,
+      "seconds": 1.463
+    },
+    "pool-repair.xml": {
+      "tests": 84,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 84,
+      "seconds": 0.589
+    }
+  },
+  "live_runs": {
+    "moe_off": {
+      "source": "/tmp/hipengine-merge-qualification/off.json",
+      "source_sha256": "aa9f0001fb8a683eeea3be5217673107aecad64a52e3a4da31de4d9c52fc1bc2",
+      "model": {
+        "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m"
+      },
+      "hardware": {
+        "label": "AMD Radeon 8060S (gfx1151)",
+        "backend": "hip_gfx1151",
+        "hostname": "gfx1151"
+      },
+      "protocol": {
+        "scope": "in-process resident loop; server chat renderer; greedy ignore_eos",
+        "transport": "inprocess",
+        "lanes": "all",
+        "turn_limit": 3,
+        "modes": [
+          "off"
+        ],
+        "repetitions": 1,
+        "arm_order": "sequential",
+        "warmup_turns": 1,
+        "max_tokens": {
+          "sharegpt_short": 96,
+          "sharegpt_long": 384,
+          "code": 128
+        },
+        "agentic_workloads": [
+          "small_repo",
+          "growing_history",
+          "medium_repo"
+        ]
+      },
+      "summary": {
+        "turns": 41,
+        "hits": 0,
+        "lookups": 0,
+        "hit_rate_of_lookups": 0.0,
+        "reused_tokens": 0.0,
+        "prompt_tokens": 87582.0,
+        "output_tokens": 5952.0,
+        "wall_ms": 211467.65143843368,
+        "output_tokens_per_second": 28.146148876736614,
+        "fallback_reasons": {
+          "cache_off": 41
+        },
+        "by_kind": {
+          "code_cumulative": {
+            "turns": 9,
+            "hits": 0,
+            "lookups": 0,
+            "wall_ms": 66128.88926872984,
+            "output_tokens": 1152,
+            "output_tokens_per_second": 17.420525472892567
+          },
+          "code_fixture": {
+            "turns": 9,
+            "hits": 0,
+            "lookups": 0,
+            "wall_ms": 67767.84608280286,
+            "output_tokens": 1152,
+            "output_tokens_per_second": 16.999212260522736
+          },
+          "sharegpt": {
+            "turns": 23,
+            "hits": 0,
+            "lookups": 0,
+            "wall_ms": 77570.91608690098,
+            "output_tokens": 3648,
+            "output_tokens_per_second": 47.02793500483128
+          }
+        }
+      },
+      "pool": {
+        "current_pages": 1152,
+        "current_bytes": 6039797760,
+        "high_water_observed_pages": 1060,
+        "high_water_observed_bytes": 5557452800,
+        "free_pages": 128,
+        "refcounted_pages": 1024,
+        "pinned_pages": 1024,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 19472,
+        "budget_bytes": 102089359360,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": 6039797760
+      },
+      "timing_classification": "diagnostic only; no new production performance claim",
+      "records_generated_ids": false
+    },
+    "moe_radix": {
+      "source": "/tmp/hipengine-merge-qualification/radix.json",
+      "source_sha256": "69074789e0a0bf9f74e443b76650fea97c12f359d17bb7b902a1a782a6a34a5f",
+      "model": {
+        "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m"
+      },
+      "hardware": {
+        "label": "AMD Radeon 8060S (gfx1151)",
+        "backend": "hip_gfx1151",
+        "hostname": "gfx1151"
+      },
+      "protocol": {
+        "scope": "in-process resident loop; server chat renderer; greedy ignore_eos",
+        "transport": "inprocess",
+        "lanes": "all",
+        "turn_limit": 3,
+        "modes": [
+          "radix"
+        ],
+        "repetitions": 1,
+        "arm_order": "sequential",
+        "warmup_turns": 1,
+        "max_tokens": {
+          "sharegpt_short": 96,
+          "sharegpt_long": 384,
+          "code": 128
+        },
+        "agentic_workloads": [
+          "small_repo",
+          "growing_history",
+          "medium_repo"
+        ]
+      },
+      "summary": {
+        "turns": 41,
+        "hits": 16,
+        "lookups": 27,
+        "hit_rate_of_lookups": 0.5925925925925926,
+        "reused_tokens": 42496.0,
+        "prompt_tokens": 87582.0,
+        "output_tokens": 5952.0,
+        "wall_ms": 177784.0034305118,
+        "output_tokens_per_second": 33.47882759500566,
+        "fallback_reasons": {
+          "miss": 11,
+          "prompt_too_short": 14
+        },
+        "by_kind": {
+          "code_cumulative": {
+            "turns": 9,
+            "hits": 6,
+            "lookups": 9,
+            "wall_ms": 40741.098881699145,
+            "output_tokens": 1152,
+            "output_tokens_per_second": 28.276115068596667
+          },
+          "code_fixture": {
+            "turns": 9,
+            "hits": 3,
+            "lookups": 9,
+            "wall_ms": 54978.98776968941,
+            "output_tokens": 1152,
+            "output_tokens_per_second": 20.953459616714
+          },
+          "sharegpt": {
+            "turns": 23,
+            "hits": 7,
+            "lookups": 9,
+            "wall_ms": 82063.91677912325,
+            "output_tokens": 3648,
+            "output_tokens_per_second": 44.453154847808065
+          }
+        }
+      },
+      "pool": {
+        "current_pages": 1152,
+        "current_bytes": 6039797760,
+        "high_water_observed_pages": 1093,
+        "high_water_observed_bytes": 5730467840,
+        "free_pages": 121,
+        "refcounted_pages": 1031,
+        "pinned_pages": 1024,
+        "grow_events": 0,
+        "grow_failures": 1,
+        "shrink_events": 0,
+        "prefix_reuse_events": 16,
+        "prefix_reused_pages": 166,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 19472,
+        "budget_bytes": 102089359360,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": 6039797760
+      },
+      "timing_classification": "diagnostic only; no new production performance claim",
+      "records_generated_ids": false
+    },
+    "dense_off": {
+      "source": "/tmp/hipengine-merge-qualification/dense-off.json",
+      "source_sha256": "18924df361e0dc1d8abc63ae2ec1f20d011755501657c4886a514ea79af07bfd",
+      "model": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m"
+      },
+      "hardware": {
+        "label": "AMD Radeon 8060S (gfx1151)",
+        "backend": "hip_gfx1151",
+        "hostname": "gfx1151"
+      },
+      "protocol": {
+        "scope": "in-process resident loop; server chat renderer; greedy ignore_eos",
+        "transport": "inprocess",
+        "lanes": "code",
+        "turn_limit": 3,
+        "modes": [
+          "off"
+        ],
+        "repetitions": 1,
+        "arm_order": "sequential",
+        "warmup_turns": 1,
+        "max_tokens": {
+          "sharegpt_short": 96,
+          "sharegpt_long": 384,
+          "code": 32
+        },
+        "agentic_workloads": [
+          "small_repo",
+          "growing_history"
+        ]
+      },
+      "summary": {
+        "turns": 12,
+        "hits": 0,
+        "lookups": 0,
+        "hit_rate_of_lookups": 0.0,
+        "reused_tokens": 0.0,
+        "prompt_tokens": 28786.0,
+        "output_tokens": 384.0,
+        "wall_ms": 105139.3009708263,
+        "output_tokens_per_second": 3.652297442100657,
+        "fallback_reasons": {
+          "cache_off": 12
+        },
+        "by_kind": {
+          "code_cumulative": {
+            "turns": 6,
+            "hits": 0,
+            "lookups": 0,
+            "wall_ms": 48969.102344010025,
+            "output_tokens": 192,
+            "output_tokens_per_second": 3.920839688895905
+          },
+          "code_fixture": {
+            "turns": 6,
+            "hits": 0,
+            "lookups": 0,
+            "wall_ms": 56170.19862681627,
+            "output_tokens": 192,
+            "output_tokens_per_second": 3.418182678605254
+          }
+        }
+      },
+      "pool": {
+        "current_pages": 1152,
+        "current_bytes": 19327352832,
+        "high_water_observed_pages": 1035,
+        "high_water_observed_bytes": 17364418560,
+        "free_pages": 128,
+        "refcounted_pages": 1024,
+        "pinned_pages": 1024,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 6210,
+        "budget_bytes": 104186511360,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": 19327352832
+      },
+      "timing_classification": "diagnostic only; no new production performance claim",
+      "records_generated_ids": false
+    },
+    "dense_radix": {
+      "source": "/tmp/hipengine-merge-qualification/dense-radix.json",
+      "source_sha256": "56c336deea37b2849b7d54f37385301b3a8b8b56095483f8e0cfb90a0e6b81a9",
+      "model": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m"
+      },
+      "hardware": {
+        "label": "AMD Radeon 8060S (gfx1151)",
+        "backend": "hip_gfx1151",
+        "hostname": "gfx1151"
+      },
+      "protocol": {
+        "scope": "in-process resident loop; server chat renderer; greedy ignore_eos",
+        "transport": "inprocess",
+        "lanes": "code",
+        "turn_limit": 3,
+        "modes": [
+          "radix"
+        ],
+        "repetitions": 1,
+        "arm_order": "sequential",
+        "warmup_turns": 1,
+        "max_tokens": {
+          "sharegpt_short": 96,
+          "sharegpt_long": 384,
+          "code": 32
+        },
+        "agentic_workloads": [
+          "small_repo",
+          "growing_history"
+        ]
+      },
+      "summary": {
+        "turns": 12,
+        "hits": 7,
+        "lookups": 12,
+        "hit_rate_of_lookups": 0.5833333333333334,
+        "reused_tokens": 15360.0,
+        "prompt_tokens": 28786.0,
+        "output_tokens": 384.0,
+        "wall_ms": 69054.89292787388,
+        "output_tokens_per_second": 5.5607935038155585,
+        "fallback_reasons": {
+          "miss": 5
+        },
+        "by_kind": {
+          "code_cumulative": {
+            "turns": 6,
+            "hits": 5,
+            "lookups": 6,
+            "wall_ms": 24991.49199621752,
+            "output_tokens": 192,
+            "output_tokens_per_second": 7.682614548545534
+          },
+          "code_fixture": {
+            "turns": 6,
+            "hits": 2,
+            "lookups": 6,
+            "wall_ms": 44063.40093165636,
+            "output_tokens": 192,
+            "output_tokens_per_second": 4.357357715029707
+          }
+        }
+      },
+      "pool": {
+        "current_pages": 1152,
+        "current_bytes": 19327352832,
+        "high_water_observed_pages": 1045,
+        "high_water_observed_bytes": 17532190720,
+        "free_pages": 118,
+        "refcounted_pages": 1034,
+        "pinned_pages": 1024,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 7,
+        "prefix_reused_pages": 60,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 6210,
+        "budget_bytes": 104186511360,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": 19327352832
+      },
+      "timing_classification": "diagnostic only; no new production performance claim",
+      "records_generated_ids": false
+    }
+  },
+  "prefix_state_smoke": {
+    "code": {
+      "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle active --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --json /tmp/hipengine-merge-qualification/prefix-state-code.json",
+      "strict_gate_passed": false,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 4,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "prefix_metadata_exact": true,
+      "clone_boundary_exact": true,
+      "semantic_boundary_exact": false,
+      "initial_state_exact": false,
+      "initial_output_exact": true,
+      "source_immutable": true,
+      "source_immutability_applicable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "teacher_forced": {
+        "forced_token_ids": [
+          248046,
+          198,
+          248045,
+          248068
+        ],
+        "candidate_predicted_token_ids": [
+          248046,
+          198,
+          248045,
+          248068,
+          198
+        ],
+        "reference_predicted_token_ids": [
+          248046,
+          198,
+          248045,
+          248068,
+          198
+        ],
+        "candidate_response_token_ids": [
+          248046,
+          198,
+          248045,
+          248068,
+          198
+        ],
+        "reference_response_token_ids": [
+          248046,
+          198,
+          248045,
+          248068,
+          198
+        ],
+        "trajectory_exact": true,
+        "kl_mean": 3.88219582871377e-05,
+        "kl_max": 0.0001263163169276493,
+        "top1_agreement": 1.0,
+        "gate_passed": true,
+        "final_state_exact": false
+      },
+      "private_batched_recompute": {
+        "predicted_token_id": 248046,
+        "output_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": false
+      }
+    },
+    "general_en": {
+      "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle active --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --json /tmp/hipengine-merge-qualification/prefix-state-general_en.json",
+      "strict_gate_passed": false,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 4,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "prefix_metadata_exact": true,
+      "clone_boundary_exact": true,
+      "semantic_boundary_exact": false,
+      "initial_state_exact": false,
+      "initial_output_exact": true,
+      "source_immutable": true,
+      "source_immutability_applicable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "teacher_forced": {
+        "forced_token_ids": [
+          271,
+          248068,
+          198,
+          760
+        ],
+        "candidate_predicted_token_ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156
+        ],
+        "reference_predicted_token_ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156
+        ],
+        "candidate_response_token_ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156
+        ],
+        "reference_response_token_ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156
+        ],
+        "trajectory_exact": true,
+        "kl_mean": 0.0071986578985438225,
+        "kl_max": 0.028723569621221398,
+        "top1_agreement": 1.0,
+        "gate_passed": true,
+        "final_state_exact": false
+      },
+      "private_batched_recompute": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": false
+      }
+    },
+    "general_ja": {
+      "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle completed --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --json /tmp/hipengine-merge-qualification/prefix-state-general_ja.json",
+      "strict_gate_passed": false,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 4,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "prefix_metadata_exact": true,
+      "clone_boundary_exact": true,
+      "semantic_boundary_exact": false,
+      "initial_state_exact": false,
+      "initial_output_exact": false,
+      "source_immutable": true,
+      "source_immutability_applicable": false,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "teacher_forced": {
+        "forced_token_ids": [
+          96026,
+          98222,
+          271,
+          248068
+        ],
+        "candidate_predicted_token_ids": [
+          271,
+          271,
+          271,
+          248068,
+          198
+        ],
+        "reference_predicted_token_ids": [
+          96026,
+          98222,
+          271,
+          248068,
+          198
+        ],
+        "candidate_response_token_ids": [
+          271,
+          271,
+          271,
+          248068,
+          198
+        ],
+        "reference_response_token_ids": [
+          96026,
+          98222,
+          271,
+          248068,
+          198
+        ],
+        "trajectory_exact": false,
+        "kl_mean": 0.6811212740489249,
+        "kl_max": 1.7583460667891433,
+        "top1_agreement": 0.75,
+        "gate_passed": false,
+        "final_state_exact": false
+      },
+      "private_batched_recompute": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": false
+      }
+    },
+    "mixed_ja_en": {
+      "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle completed --sampler-mode processed_argmax --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --json /tmp/hipengine-merge-qualification/prefix-state-mixed_ja_en.json",
+      "strict_gate_passed": false,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 4,
+        "max_sequence_length": 2048,
+        "sampling": "forced_sequence_processed_argmax_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": [
+          9709,
+          9710
+        ]
+      },
+      "prefix_metadata_exact": true,
+      "clone_boundary_exact": true,
+      "semantic_boundary_exact": false,
+      "initial_state_exact": false,
+      "initial_output_exact": true,
+      "source_immutable": true,
+      "source_immutability_applicable": false,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "teacher_forced": {
+        "forced_token_ids": [
+          9709,
+          9710,
+          271,
+          248068
+        ],
+        "candidate_predicted_token_ids": [
+          9709,
+          9710,
+          271,
+          248068,
+          198
+        ],
+        "reference_predicted_token_ids": [
+          9709,
+          9710,
+          271,
+          248068,
+          198
+        ],
+        "candidate_response_token_ids": [
+          9709,
+          9710,
+          271,
+          248068,
+          198
+        ],
+        "reference_response_token_ids": [
+          9709,
+          9710,
+          271,
+          248068,
+          198
+        ],
+        "trajectory_exact": true,
+        "kl_mean": 0.003394357479231654,
+        "kl_max": 0.005818730884899044,
+        "top1_agreement": 1.0,
+        "gate_passed": true,
+        "final_state_exact": false
+      },
+      "private_batched_recompute": {
+        "predicted_token_id": 248046,
+        "output_exact": false,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": false
+      }
+    }
+  },
+  "prefix_ownership_and_batched_state_passed": true,
+  "serial_oracle_numerical_smoke_passed": false,
+  "upstream_japanese_control": {
+    "revision": "1de470e21",
+    "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle completed --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --json /tmp/hipengine-merge-qualification/upstream-prefix-general_ja.json",
+    "same_teacher_and_prefill_results": true,
+    "teacher_forced": {
+      "forced_token_ids": [
+        96026,
+        98222,
+        271,
+        248068
+      ],
+      "candidate_predicted_token_ids": [
+        271,
+        271,
+        271,
+        248068,
+        198
+      ],
+      "reference_predicted_token_ids": [
+        96026,
+        98222,
+        271,
+        248068,
+        198
+      ],
+      "candidate_response_token_ids": [
+        271,
+        271,
+        271,
+        248068,
+        198
+      ],
+      "reference_response_token_ids": [
+        96026,
+        98222,
+        271,
+        248068,
+        198
+      ],
+      "trajectory_exact": false,
+      "kl_mean": 0.6811212740489249,
+      "kl_max": 1.7583460667891433,
+      "top1_agreement": 0.75,
+      "gate_passed": false,
+      "final_state_exact": false
+    },
+    "strict_gate_passed": false,
+    "source_sha256": "ecd2b2c7db499b525a77b5929debf4805980b17603650e65a75bcc1144fc1f12"
+  },
+  "containment": {
+    "passed": true,
+    "checks": {
+      "control_closed_service": true,
+      "control_failed_healthy_row": true,
+      "control_reports_the_refused_scope": true,
+      "empty_phase_claim_is_none": true,
+      "empty_phase_fault_fired_in_decode": true,
+      "empty_phase_follow_up_completed": true,
+      "empty_phase_follow_up_matches_reference": true,
+      "empty_phase_healthy_matches_reference": true,
+      "empty_phase_names_the_failing_row": true,
+      "fault_fired_in_decode": true,
+      "follow_up_completed": true,
+      "follow_up_matches_reference": true,
+      "healthy_matches_reference": true,
+      "injected_row_not_an_engine_fault": true,
+      "injected_row_reported": true,
+      "post_device_claim_is_partial": true,
+      "post_device_fault_fired_in_decode": true,
+      "post_device_follow_up_completed": true,
+      "post_device_follow_up_matches_reference": true,
+      "post_device_peer_outcome_is_consistent": true,
+      "post_device_scope_is_the_stepped_group": true,
+      "service_healthy_after_empty_phase_fault": true,
+      "service_healthy_after_fault": true,
+      "service_healthy_after_post_device_fault": true
+    }
+  },
+  "sampled_serving": {
+    "passed": true,
+    "prompt_count": 10,
+    "rows": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "ar_used_mtp": false,
+        "sampled_used_mtp": [
+          true,
+          true
+        ],
+        "repeat_exact": true,
+        "accounting_passed": [
+          true,
+          true
+        ]
+      }
+    ],
+    "max_output_tokens": 16,
+    "temperature": 0.7,
+    "seed": 4242,
+    "task_quality_claim": false
+  },
+  "limitations": [
+    "Independent host lane from upstream zbook; do not compare absolute rates.",
+    "One timing run per arm, in-process resident loop, not a new performance promotion.",
+    "35B timing arms ran before the allocation retry repair; neither grew storage.",
+    "Dense live/state/containment and sampled serving runs use the allocation repair.",
+    "22 live-prefill fixture tests skipped for absent 0.8B/plain-Q4_K_S models.",
+    "Four-category serial-oracle checks FAIL numerics in Japanese and exceed production mean KL in English/mixed; full profile qualification is not claimed.",
+    "All four categories match private batched recomputation state bytes at prefix and suffix boundaries; processed-argmax raw argmax output is not processor-adjusted in that diagnostic.",
+    "Full --suite all milestone and gfx1100/W7900 qualification were not run.",
+    "Prefix hits still lack MTP provider checkpoints; wider sampled-MTP admission is unchanged."
+  ],
+  "reproduction_sources": {
+    "hipengine-merge-qual-env.sh": "#!/usr/bin/env bash\nset -euo pipefail\nROOT=$(/home/lhl/miniforge3/envs/therock/bin/python -m rocm_sdk path --root)\nSITE=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\nexec env -i HOME=\"$HOME\" USER=lhl LOGNAME=lhl SHELL=/bin/bash TERM=xterm \\\n  PATH=\"$ROOT/bin:$ROOT/lib/llvm/bin:/home/lhl/miniforge3/envs/vllm/bin:/usr/local/bin:/usr/bin:/bin\" \\\n  LD_LIBRARY_PATH=\"$ROOT/lib:$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_libraries/lib:$SITE/_rocm_sdk_devel/lib\" \\\n  HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIPENGINE_HIP_ARCH=gfx1151 \\\n  PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 \\\n  \"$@\"\n",
+    "hipengine-merge-qual.sh": "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/lhl/hipEngine-main\nOUT=/tmp/hipengine-merge-qualification\nmkdir -p \"$OUT\"\nPY=/home/lhl/miniforge3/envs/vllm/bin/python\nWRAPPER=/tmp/hipengine-merge-qual-env.sh\nCOMMON=(--backend hip_gfx1151 --lane-kinds all --repetitions 1 --turn-limit 3\n  --agentic-workloads small_repo growing_history medium_repo\n  --sharegpt-tokens 96 --sharegpt-long-tokens 384 --code-tokens 128\n  --max-sequence-length 12288)\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" scripts/prefix_cache_multiturn_bench.py \"${COMMON[@]}\" \\\n  --modes off --json \"$OUT/off.json\" > \"$OUT/off.log\" 2>&1\nprintf 'cache-off complete\\n'\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" scripts/prefix_cache_multiturn_bench.py \"${COMMON[@]}\" \\\n  --modes radix --baseline-artifact \"$OUT/off.json\" \\\n  --json \"$OUT/radix.json\" > \"$OUT/radix.log\" 2>&1\nprintf 'cache-on complete\\n'\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" scripts/gguf_execution_failure_containment_proof.py \\\n  --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 \\\n  --probe --out \"$OUT/containment.json\" > \"$OUT/containment.log\" 2>&1\nprintf 'containment complete\\n'\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" -m pytest tests/test_gpu_sampled_accept_chain.py \\\n  tests/test_live_qwen35_gguf_chunked_prefill.py -q -o addopts='' \\\n  --junitxml=\"$OUT/gpu.xml\" > \"$OUT/gpu.log\" 2>&1\nprintf 'GPU tests complete\\n'\ndate -Iseconds\n",
+    "hipengine-merge-dense-qual.sh": "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/lhl/hipEngine-main\nOUT=/tmp/hipengine-merge-qualification\nPY=/home/lhl/miniforge3/envs/vllm/bin/python\nWRAPPER=/tmp/hipengine-merge-qual-env.sh\nCOMMON=(--model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf\n  --backend hip_gfx1151 --lane-kinds code --repetitions 1 --turn-limit 3\n  --agentic-workloads small_repo growing_history --code-tokens 32\n  --max-sequence-length 12288)\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" scripts/prefix_cache_multiturn_bench.py \"${COMMON[@]}\" \\\n  --modes off --json \"$OUT/dense-off.json\" > \"$OUT/dense-off.log\" 2>&1\nprintf 'dense cache-off complete\\n'\ndate -Iseconds\nbash \"$WRAPPER\" \"$PY\" scripts/prefix_cache_multiturn_bench.py \"${COMMON[@]}\" \\\n  --modes radix --baseline-artifact \"$OUT/dense-off.json\" \\\n  --json \"$OUT/dense-radix.json\" > \"$OUT/dense-radix.log\" 2>&1\nprintf 'dense cache-on complete\\n'\ndate -Iseconds\n",
+    "hipengine-merge-prefix-state-qual.sh": "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/lhl/hipEngine-main\nOUT=/tmp/hipengine-merge-qualification\nPY=/home/lhl/miniforge3/envs/vllm/bin/python\nfor category in code general_en general_ja mixed_ja_en; do\n  lifecycle=active\n  sampler=greedy_fast\n  if [[ \"$category\" == general_ja || \"$category\" == mixed_ja_en ]]; then\n    lifecycle=completed\n  fi\n  if [[ \"$category\" == mixed_ja_en ]]; then\n    sampler=processed_argmax\n  fi\n  status=0\n  bash /tmp/hipengine-merge-qual-env.sh \"$PY\" scripts/gguf_prefix_reuse_gate.py \\\n    --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf \\\n    --backend hip_gfx1151 --quant gguf_q4_k_m \\\n    --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 \\\n    --max-sequence-length 2048 --source-lifecycle \"$lifecycle\" \\\n    --sampler-mode \"$sampler\" \\\n    --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \\\n    --prompt-category \"$category\" \\\n    --json \"$OUT/prefix-state-$category.json\" \\\n    > \"$OUT/prefix-state-$category.log\" 2>&1 || status=$?\n  printf '%s gate exit %s\\n' \"$category\" \"$status\"\n  if [[ \"$status\" -gt 1 || ! -f \"$OUT/prefix-state-$category.json\" ]]; then\n    exit 1\n  fi\ndone\n",
+    "hipengine-merge-sampled-qual.py": "import json\nfrom pathlib import Path\n\nfrom fastapi.testclient import TestClient\n\nfrom hipengine.server import ServerConfig, create_app\nfrom scripts.gguf_mtp_api_gate import _generated_ids, _mtp_output_accounting_contract\n\n\nout = Path(\"/tmp/hipengine-merge-qualification/sampled-serving.json\")\nprompts = [\n    json.loads(line)\n    for line in Path(\"benchmarks/prompts/mtpbench-code-general-ja.jsonl\").read_text().splitlines()\n    if line.strip()\n]\nconfig = ServerConfig(\n    model=\"/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf\",\n    backend=\"hip_gfx1151\",\n    served_model_name=\"merge-qualification\",\n    eager_load=True,\n    startup_chat_smoke=False,\n    startup_scratch_probe=False,\n    speculative_mtp_serving=\"auto\",\n    speculative_mtp_thinking=\"hint\",\n    max_active_requests=4,\n    max_context_tokens=8192,\n    kv_storage=\"bf16\",\n    execution_profile=\"production\",\n)\nrows = []\nwith TestClient(create_app(config)) as client:\n    ready = client.get(\"/ready\")\n    assert ready.status_code == 200\n    for prompt in prompts:\n        bodies = []\n        for enabled in (False, True, True):\n            response = client.post(\n                \"/v1/chat/completions\",\n                json={\n                    \"model\": \"merge-qualification\",\n                    \"messages\": prompt[\"messages\"],\n                    \"max_tokens\": 16,\n                    \"temperature\": 0.7,\n                    \"top_p\": 1.0,\n                    \"seed\": 4242,\n                    \"speculative_mtp\": enabled,\n                },\n            )\n            assert response.status_code == 200, response.text\n            bodies.append(response.json())\n        contracts = [body.get(\"hipengine\", {}).get(\"speculative_mtp\", {}) for body in bodies]\n        ids = [_generated_ids(body) for body in bodies]\n        accounting = [\n            _mtp_output_accounting_contract(body, contract)\n            for body, contract in zip(bodies[1:], contracts[1:], strict=True)\n        ]\n        row = {\n            \"id\": prompt[\"id\"],\n            \"category\": prompt[\"category\"],\n            \"ar_used_mtp\": bool(contracts[0].get(\"used\")),\n            \"sampled_used_mtp\": [bool(c.get(\"used\")) for c in contracts[1:]],\n            \"repeat_exact\": ids[1] == ids[2],\n            \"accounting_passed\": accounting,\n            \"generated_ids\": ids,\n            \"contracts\": contracts,\n        }\n        rows.append(row)\n        out.write_text(json.dumps({\"performance_claim\": False, \"rows\": rows}, indent=2))\n        print(prompt[\"id\"], row[\"sampled_used_mtp\"], row[\"repeat_exact\"], accounting, flush=True)\n    final_ready = client.get(\"/ready\")\n    assert final_ready.status_code == 200\n\npassed = all(\n    not row[\"ar_used_mtp\"]\n    and all(row[\"sampled_used_mtp\"])\n    and row[\"repeat_exact\"]\n    and all(row[\"accounting_passed\"])\n    for row in rows\n)\nout.write_text(json.dumps({\n    \"schema\": 1,\n    \"kind\": \"merge_sampled_serving_smoke\",\n    \"performance_claim\": False,\n    \"task_quality_claim\": False,\n    \"passed\": passed,\n    \"rows\": rows,\n    \"ready_after\": final_ready.json(),\n}, indent=2))\nassert passed, \"sampled serving qualification failed; inspect sampled-serving.json\"\n",
+    "hipengine-upstream-prefix-control.sh": "#!/usr/bin/env bash\nset -euo pipefail\ncd /tmp/hipengine-upstream-merge-control\nstatus=0\nbash /tmp/hipengine-merge-qual-env.sh env \\\n  PYTHONPATH=/tmp/hipengine-upstream-merge-control \\\n  /home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py \\\n  --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf \\\n  --backend hip_gfx1151 --quant gguf_q4_k_m \\\n  --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 \\\n  --max-sequence-length 2048 --source-lifecycle completed \\\n  --sampler-mode greedy_fast \\\n  --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \\\n  --prompt-category general_ja \\\n  --json /tmp/hipengine-merge-qualification/upstream-prefix-general_ja.json \\\n  > /tmp/hipengine-merge-qualification/upstream-prefix-general_ja.log 2>&1 || status=$?\nprintf 'upstream Japanese gate exit %s\\n' \"$status\"\ntest -f /tmp/hipengine-merge-qualification/upstream-prefix-general_ja.json\n"
+  },
+  "passed": true,
+  "status": "passed_bounded_integration"
+}

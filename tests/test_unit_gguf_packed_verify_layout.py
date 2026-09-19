@@ -53,81 +53,60 @@ def test_private_resident_slot_kv_copy_segments_include_slot_base() -> None:
     ) == ((37, 37, 5),)
 
 
-def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
-    layout = _build_gguf_packed_verify_layout(
+def test_long_packed_prefill_admits_the_paged_route_for_suffix_slabs() -> None:
+    """Suffix-shaped slabs select the paged route at any context length.
+
+    The <1024 paged-prefill policy gate was removed: slot-local (contiguous
+    AOTriton) selection is a pure function of per-slot slab rows, and a long
+    context with a short suffix slab must be admitted on the paged route
+    instead of refused.
+    """
+
+    suffix_slab = _build_gguf_packed_verify_layout(
         (
             _GGUFPackedVerifySlotBlock(
-                input_token_ids=(17,),
-                start_position=1023,
+                input_token_ids=tuple([17] * 200),
+                start_position=1024,
+            ),
+        ),
+        slot_capacity=1280,
+    )
+    assert suffix_slab.max_live_count == 1224
+    assert not gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        suffix_slab
+    )
+
+    full_prefill_slab = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=tuple([17] * 1024),
+                start_position=0,
             ),
         ),
         slot_capacity=1024,
     )
-
-    gguf_runner._validate_packed_ar_prefill_context(
-        layout,
-        slot_local_full_prefill=True,
+    assert gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        full_prefill_slab
     )
-    with pytest.raises(NotImplementedError, match="packed paged AR prefill"):
-        gguf_runner._validate_packed_ar_prefill_context(
-            layout,
-            slot_local_full_prefill=False,
-        )
 
 
-def test_packed_prefill_context_bound_is_1024_live_tokens() -> None:
-    """Pin the packed route's context bound and its slot-local exemption.
+@pytest.mark.parametrize("start,tokens", [(0, 1023), (0, 1024), (2048, 64)])
+def test_packed_prefill_layout_preserves_long_context(start: int, tokens: int) -> None:
+    """The former 1024-token refusal must not truncate a suffix's live span."""
 
-    ``_validate_packed_ar_prefill_context`` refuses a slab whose longest slot
-    is at or above 1024 live tokens while no slot needs slot-local full
-    attention. Callers must re-route that slab instead of failing the request:
-    1024 tokens is well inside the served context, and the bound exists to keep
-    long contexts on the per-session full-attention path, not to reject them.
-    """
-
-    def layout_for(start_position: int, tokens: int):
-        return _build_gguf_packed_verify_layout(
-            (
-                _GGUFPackedVerifySlotBlock(
-                    input_token_ids=tuple(range(tokens)),
-                    start_position=start_position,
-                ),
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=tuple(range(tokens)),
+                start_position=start,
             ),
-            slot_capacity=max(1024, start_position + tokens),
-        )
-
-    below = layout_for(start_position=0, tokens=1023)
-    assert int(below.max_live_count) == 1023
-    gguf_runner._validate_packed_ar_prefill_context(
-        below,
-        slot_local_full_prefill=False,
+        ),
+        slot_capacity=max(1024, start + tokens),
     )
-
-    at_bound = layout_for(start_position=0, tokens=1024)
-    assert int(at_bound.max_live_count) == 1024
-    with pytest.raises(NotImplementedError, match="context < 1024"):
-        gguf_runner._validate_packed_ar_prefill_context(
-            at_bound,
-            slot_local_full_prefill=False,
-        )
-    # The same slab is admitted when the caller establishes slot-local full
-    # attention for it, which is how an ordinary long prompt reaches the packed
-    # route.
-    gguf_runner._validate_packed_ar_prefill_context(
-        at_bound,
-        slot_local_full_prefill=True,
-    )
-
-    # A long context carried by a small trailing chunk is the shape that used
-    # to fail: the live count is far above the bound while the chunk itself is
-    # shorter than the AOTriton threshold.
-    tail_chunk = layout_for(start_position=2048, tokens=64)
-    assert int(tail_chunk.max_live_count) == 2112
-    with pytest.raises(NotImplementedError, match="context < 1024"):
-        gguf_runner._validate_packed_ar_prefill_context(
-            tail_chunk,
-            slot_local_full_prefill=False,
-        )
+    assert int(layout.max_live_count) == start + tokens
+    assert int(layout.row_positions[0]) == start
+    assert int(layout.row_positions[-1]) == start + tokens - 1
+    assert int(layout.live_counts[-1]) == start + tokens
 
 
 def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
@@ -2719,7 +2698,11 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
     assert all(buffer in state.buffers for buffer in state.full_key_caches)
 
     allocated.clear()
-    leaseless_pool = SimpleNamespace(workspace_pages=lambda key: None)
+    leaseless_pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+    )
     state2 = _GGUFPackedTargetState.allocate(
         _lease_test_runner(),
         slot_count=2,
@@ -2741,19 +2724,52 @@ def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> Non
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)
 
+    # 2026-09-19: a lease SHORTER than the request no longer fails closed.
+    # It is sized once at pool creation from caps known then, while
+    # `_packed_verify_union_geometry` may legitimately pack more slots than
+    # the serving capacity (an MTP verify group does so at C1). Degrading to
+    # the private KV chunk keeps that geometry servable; the arena lease is a
+    # fast path, never a correctness dependency. A layout-incompatible arena
+    # is different in kind and still fails closed, below.
     small_pool = SimpleNamespace(
         backing=backing,
         workspace_pages=lambda key: (1, 2),
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
     )
-    with pytest.raises(RuntimeError, match="pages"):
+    reached_private: list[int] = []
+
+    def _private_marker(*args, **kwargs):
+        reached_private.append(int(kwargs["pages"]))
+        raise RuntimeError("reached-private-branch")
+
+    monkeypatch.setattr(
+        gguf_runner, "_allocate_qwen35_gguf_kv_chunk", _private_marker
+    )
+    short_lease_runner = _lease_test_runner()
+    with pytest.raises(RuntimeError, match="reached-private-branch"):
         _GGUFPackedTargetState.allocate(
-            _lease_test_runner(),
+            short_lease_runner,
             slot_count=2,
             max_sequence_length=512,
             runtime=SimpleNamespace(),
             kv_layout=layout,
             kv_pool=small_pool,
         )
+    # 2 slots x ceil(512/256) = 4 pages requested against a 2-page lease.
+    assert reached_private == [4]
+    shortfalls = getattr(
+        short_lease_runner, "_packed_workspace_lease_shortfalls", []
+    )
+    assert len(shortfalls) == 1
+    assert shortfalls[0]["leased_pages"] == 2
+    assert shortfalls[0]["needed_pages"] == 4
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
+    )
 
     mismatched_layout = gguf_runner.Qwen35GGUFKVChunkLayout(
         storage_dtype=DType.INT8_PER_TOKEN_HEAD,

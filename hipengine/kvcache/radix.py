@@ -13,12 +13,21 @@ from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 PREFIX_CACHE_CHOICES = ("off", "radix")
+# Prefix reuse is on by default: it measured -18.6% wall and +22.9% output
+# rate on the served multi-turn lanes. Set HIPENGINE_PREFIX_CACHE=off (or
+# --prefix-cache off) to disable it; see benchmarks/README.md for the
+# bit-exactness bound that comes with it.
+PREFIX_CACHE_DEFAULT = "radix"
 
 
 def resolve_prefix_cache_mode(value: str | None) -> str:
     """Normalize a user-facing prefix-cache mode."""
 
-    mode = "off" if value is None or value == "" else str(value).strip().lower()
+    mode = (
+        PREFIX_CACHE_DEFAULT
+        if value is None or value == ""
+        else str(value).strip().lower()
+    )
     if mode not in PREFIX_CACHE_CHOICES:
         raise ValueError(f"prefix cache must be one of {PREFIX_CACHE_CHOICES!r}")
     return mode

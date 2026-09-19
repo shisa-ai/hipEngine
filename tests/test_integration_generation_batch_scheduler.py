@@ -17135,7 +17135,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config.kv_pool_memory_budget_mib is None
     assert config.kv_pool_idle_grace_seconds == 30.0
     assert config.max_pending_requests is None
-    assert config.prefix_cache == "off"
+    assert config.prefix_cache == "radix"
 
     docs = Path("docs/ENVS.md").read_text()
     for text in [
