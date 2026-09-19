@@ -180,6 +180,7 @@ def _child(args: argparse.Namespace) -> int:
         "capacity": int(args.capacity),
         "prompt_tokens": int(args.prompt_tokens),
         "prefills": int(args.prefills),
+        "logits_rows": int(args.logits_rows),
         "layer_count": layer_count,
         "bulk_prefill_workspace_rows": int(getattr(session, "_bulk_rows", 0)),
         "devices": _device_rows(session),
@@ -211,7 +212,14 @@ def _child(args: argparse.Namespace) -> int:
     started = time.perf_counter()
     digests: list[str] = []
     for _ in range(int(args.prefills)):
-        logits = session.bulk_prefill(prompt)
+        # ``logits_rows`` defaults to the product path: ``generate`` projects the
+        # head for the last prompt row only, so an inventory that asks for every
+        # row would profile a path the engine does not ship and would rank the
+        # head projection at the top of a list that no longer contains it.
+        want_rows = int(args.logits_rows)
+        logits = session.bulk_prefill(
+            prompt, logits_rows=(None if want_rows == 0 else want_rows)
+        )
         import hashlib
 
         digests.append(hashlib.sha256(np.asarray(logits, dtype=np.float32).tobytes()).hexdigest())
@@ -369,6 +377,7 @@ def _parent(args: argparse.Namespace) -> int:
     ]
     if args.bulk_prefill_rows is not None:
         child += ["--bulk-prefill-rows", str(int(args.bulk_prefill_rows))]
+    child += ["--logits-rows", str(int(args.logits_rows))]
 
     # Prebuild outside the profiler, then require the cache for the traced run:
     # a profiler-injected child must never spawn hipcc.
@@ -412,6 +421,12 @@ def main() -> int:
     parser.add_argument("--capacity", type=int, default=1024)
     parser.add_argument("--prefills", type=int, default=3, help="bulk prefills inside the measured region")
     parser.add_argument("--prompt-tokens", type=int, default=512)
+    parser.add_argument(
+        "--logits-rows",
+        type=int,
+        default=1,
+        help="head rows to project; 1 matches generate(), 0 means every prompt row",
+    )
     parser.add_argument("--bulk-prefill-rows", type=int, default=None)
     parser.add_argument("--reduce-mode", choices=("device", "host"), default="device")
     parser.add_argument("--child", action="store_true", help="run the profiled leaf only")
