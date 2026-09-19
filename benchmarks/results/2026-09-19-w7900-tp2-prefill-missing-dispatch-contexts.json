@@ -1,0 +1,205 @@
+{
+ "schema": 1,
+ "kind": "tp2_prefill_missing_dispatch_contexts",
+ "status": "finding_open_not_integrated",
+ "performance_claim": false,
+ "date": "2026-09-19",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB (PCIe 4.0 x16)",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB (PCIe 4.0 x16)"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "finding": "The TP2 rank-local bulk prefill installs only resident_prefill_dispatch_session, while the single-card bulk prefill wraps its pass in five further calibrated dispatch contexts. Without them the largest GEMMs on the TP2 attention path resolve to a decode-shaped GEMV kernel during prefill.",
+ "missing_contexts": [
+  "_prefill_f16_staging_context",
+  "_q6_integer_mmq_context",
+  "_iq_dense_mmq_context",
+  "_q8_mmq_prefill_context",
+  "_q6_f16_rocblas_prefill_context"
+ ],
+ "reference": "hipengine/runtime/qwen35_gguf_runner.py, the run_bulk branch of the resident session",
+ "prefill_dispatch_by_tensor": [
+  {
+   "tensor": "attn_qkv",
+   "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+   "shape": [
+    5120,
+    10240
+   ],
+   "gflop_per_layer": 53.7,
+   "tp2_prefill_variant": "t16_gemv_decode_bf16_bf16_out"
+  },
+  {
+   "tensor": "ssm_out",
+   "quant": "gguf_q5_k_t16_v1",
+   "shape": [
+    6144,
+    5120
+   ],
+   "gflop_per_layer": 32.2,
+   "tp2_prefill_variant": "t16_gemv_decode_bf16_bf16_out"
+  },
+  {
+   "tensor": "attn_v",
+   "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+   "shape": [
+    5120,
+    1024
+   ],
+   "gflop_per_layer": null,
+   "tp2_prefill_variant": "t16_gemv_decode_bf16_bf16_out",
+   "note": "16 full-attention layers"
+  },
+  {
+   "tensor": "attn_gate/attn_q/attn_k",
+   "quant": "gguf_q4_k_t16_v1",
+   "shape": null,
+   "gflop_per_layer": null,
+   "tp2_prefill_variant": "t16_wmma_prefill_bf16_bf16_out"
+  }
+ ],
+ "reproduce_dispatch": "python scripts/tp2_prefill_dispatch_census.py --prompt-tokens 512 --json OUT.json",
+ "calibration_state": {
+  "admission_capability": "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
+  "admitted_for_this_geometry": true,
+  "shapes_admitted_at_rows_512": {
+   "gguf_q6_k_t16_qmicro_planar_v1": [
+    [
+     17408,
+     5120
+    ],
+    [
+     5120,
+     10240
+    ],
+    [
+     5120,
+     1024
+    ]
+   ],
+   "gguf_q5_k_t16_v1": [
+    [
+     6144,
+     5120
+    ]
+   ],
+   "gguf_q4_k_t16_v1": [
+    [
+     17408,
+     5120
+    ],
+    [
+     5120,
+     12288
+    ],
+    [
+     6144,
+     5120
+    ],
+    [
+     5120,
+     1024
+    ]
+   ]
+  },
+  "note": "every shape above is admitted at exactly rows=512, so the route is available, not merely registrable"
+ },
+ "achieved_efficiency": {
+  "gdn_layer_tflops": 31.2,
+  "full_attention_layer_tflops": 34.6,
+  "sharded_mlp_chain_tflops_per_rank": 46.2,
+  "method": "FLOPs from the GGUF tensor shapes x 512 rows / the attribution's per-layer spans"
+ },
+ "ab_measurement": {
+  "protocol": "one session, contexts entered per rank inside the per-device loop around that rank's attention call, arms interleaved, 3 prefills per arm, median reported",
+  "command": "python /tmp/probe7.py  (harness reproduced in the worklog entry)",
+  "arms": {
+   "none_control_ms": [
+    492.8,
+    495.4
+   ],
+   "all_five_ms": [
+    475.5,
+    477.9
+   ],
+   "q6_f16_rocblas_only_ms": [
+    476.2,
+    479.0
+   ],
+   "q6_integer_mmq_only_ms": [
+    495.5,
+    498.1
+   ]
+  },
+  "medians_ms": {
+   "none": 494.1,
+   "all_five": 476.7,
+   "q6_f16_rocblas_only": 477.6,
+   "q6_integer_mmq_only": 496.8
+  },
+  "delta_percent": {
+   "all_five": 3.65,
+   "q6_f16_rocblas_only": 3.45,
+   "q6_integer_mmq_only": -0.55
+  },
+  "independent_repeats": {
+   "note": "four separate A/B/A runs agreed: +3.63/+3.71, +3.67/+3.73, and the interleaved run above",
+   "drift_between_controls_percent": [
+    -0.31,
+    -0.26
+   ]
+  },
+  "conclusion": "the win is entirely the calibrated f16-rocBLAS prefill route",
+  "not_claimed": "The per-tensor variant diff under the context was not captured cleanly (the cache-clearing in that capture was invalid, so it reported 56 tensors for the baseline and 280 for the arm). The routing change is therefore established by the timing A/B and the admitted-policy lookup, not by a variant census."
+ },
+ "why_not_integrated": [
+  "the contexts are methods on Qwen35GGUFResidentSession, not on the runner the TP2 session holds",
+  "they carry per-rank scratch (the f16 weight plane and q6_f16_x/q6_f16_out)",
+  "entering one rank's context around both ranks' work faults the GPU: measured 'Memory access fault by GPU node-2 ... Page not present or supervisor privilege'",
+  "a Qwen35GGUFResidentSession(shared_runner=runner) per rank works and reuses the uploaded weights, but allocates its own bulk-prefill workspace on top of the TP2 session's",
+  "the route changes attention arithmetic from int8 WMMA to source-F16 rocBLAS, so it needs the applicable production-profile gate and a registered strict fallback"
+ ],
+ "control_measurement_pcie_floor": {
+  "method": "timed hipMemcpy D2H/H2D of 5.24 MB (the MLP partial size) on both devices, 20 reps, median",
+  "device_0": {
+   "d2h_gb_per_s": 13.99,
+   "h2d_gb_per_s": 13.83
+  },
+  "device_1": {
+   "d2h_gb_per_s": 13.92,
+   "h2d_gb_per_s": 13.83
+  },
+  "reading": "the exchange's two 5.24 MB transfers cost ~0.75 ms of a 0.926 ms span, so the exchange is at ~81% of the measured hardware floor and is not the lever",
+  "peer_access": {
+   "hipDeviceCanAccessPeer_0_1": 0,
+   "hipDeviceCanAccessPeer_1_0": 0
+  }
+ },
+ "critical_path_model": {
+  "method": "per-layer, per-rank spans from the corrected attribution, one repetition read whole",
+  "rank0_attention_ms_per_layer": 3.659,
+  "rank0_chain_ms_per_layer": 2.961,
+  "rank1_attention_ms_per_layer": 3.248,
+  "rank1_chain_ms_per_layer": 2.621,
+  "rank0_exchange_ms_per_layer": 0.926,
+  "rank1_exchange_ms_per_layer": 1.694,
+  "rank0_exchange_sd_ms": 0.005,
+  "model": "rank1_exchange = (rank0 attention+chain - rank1 attention+chain) + rank0 exchange work",
+  "predicted_rank1_exchange_ms": 1.677,
+  "measured_rank1_exchange_ms": 1.694,
+  "reading": "every layer synchronises at its MLP exchange and rank 0 is the critical path; rank 1 idles ~0.75 ms/layer",
+  "host_vs_device": {
+   "host_phase_sum_ms": 71.76,
+   "device_phase_sum_ms": 489.56,
+   "reading": "the prefill is device-bound; the host has ~7x headroom"
+  },
+  "instrumentation_overhead": {
+   "uninstrumented_ms": 488.5,
+   "instrumented_ms": 491.1,
+   "percent": -0.54,
+   "reading": "within noise, so the recorded wall is usable"
+  }
+ }
+}

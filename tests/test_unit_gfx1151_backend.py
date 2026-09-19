@@ -1890,6 +1890,20 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
             # already covered it and the slice probe was bit-identical to the
             # unfused chain on both ranks. This expectation lagged that commit.
             (1, 5_120, 8_704): "dense_dual_local32_bf16_bf16_out",
+            # The TP2 uneven-split widths. An uneven split moves the ranks off
+            # 8_704 to whatever the balance solve returns, and each width the
+            # campaign retained was measured bit-identical to the unfused chain
+            # before admission, so all four belong in the expectation:
+            #   0.417145/0.582855 -> 7_168 / 10_240
+            #   (results/2026-09-18-w7900-tp2-pair-route-admission-uneven.json)
+            #   0.44/0.56         -> 7_680 / 9_728
+            #   (results/2026-09-18-w7900-tp2-pair-route-admission-044.json)
+            # This expectation lagged both commits; it is an exact equality, so
+            # an admission added without a measurement still fails here.
+            (1, 5_120, 7_168): "dense_dual_local32_bf16_bf16_out",
+            (1, 5_120, 10_240): "dense_dual_local32_bf16_bf16_out",
+            (1, 5_120, 7_680): "dense_dual_local32_bf16_bf16_out",
+            (1, 5_120, 9_728): "dense_dual_local32_bf16_bf16_out",
         },
         # The Q5 decode dual admitted in the UD campaign (8r2 lane): same-
         # launch gate+up SiLU GEMV for the Q5 FFN role, keyed by the stamp.

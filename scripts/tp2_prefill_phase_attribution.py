@@ -9,11 +9,31 @@ demonstrably unreliable here: two profiled runs of the same prefill reported
 kernel sums 1.7x apart at an identical region wall.
 
 This tool answers the complementary question without a profiler. It wraps the
-production layer helpers, records two stream events per phase boundary per layer
+production layer helpers, records a stream event per phase boundary per layer
 per rank *in stream order without intermediate syncs*, then calls the real
-``bulk_prefill``. Each span is therefore the device execution of that phase on
-that rank, including any bubble inside it, and the difference between the host
-wall and the summed spans is the host-side/enqueue component.
+``bulk_prefill``.
+
+Two timelines are reported, and keeping them apart is the point:
+
+- **device** - each rank's own stream interval between the two boundaries. This
+  is that rank's execution of the phase, including any bubble inside it.
+- **host** - wall-clock deltas between the host crossing the same boundaries.
+  Every boundary is crossed once, after the host has submitted that phase's work
+  for *both* ranks, so the host spans partition the host timeline exactly as the
+  device spans partition each stream timeline.
+
+A phase whose host span is much larger than its device span is enqueue-bound:
+the device is idle waiting for the host, and shrinking the kernels cannot help.
+A phase whose device span is much larger than its host span is device-bound.
+This distinction is why the host timeline is recorded at all - device event
+spans alone cannot separate the two, and reading them as pure execution time
+overstates what kernel work can recover.
+
+Every repetition is kept as a *paired* record: one wall clock with the spans
+measured inside that same wall. The headline row is the minimum-wall repetition
+read together with its own spans. Mixing a minimum wall with another
+repetition's spans would make the percentages and the unaccounted remainder
+describe an execution that never happened.
 
 The sharded MLP phase is split further, because "the MLP is slow" is not
 actionable:
@@ -32,7 +52,7 @@ reduce is limited by enqueue/synchronization rather than by device time.
 Usage::
 
     python scripts/tp2_prefill_phase_attribution.py [--prompt-tokens 512]
-        [--repeats 3] [--model MODEL] [--json OUT.json]
+        [--repeats 3] [--model MODEL] [--json OUT.json] [--per-layer]
 """
 
 from __future__ import annotations
@@ -79,6 +99,16 @@ PHASES = (
 # breakdown as well double counts the MLP and reports a total above the wall.
 TOP_LEVEL_PHASES = ("attention", "norm_residual", "mlp", "tail")
 MLP_PARTS = ("mlp_chain", "mlp_exchange", "mlp_cast", "mlp_residual")
+# The span pairs each phase reads, as (start slot, stop slot) offsets.
+PHASE_SLOTS = {
+    "attention": (SLOT_LAYER_START, SLOT_ATTN_STOP),
+    "norm_residual": (SLOT_ATTN_STOP, SLOT_MLP_START),
+    "mlp": (SLOT_MLP_START, SLOT_MLP_STOP),
+    "mlp_chain": (SLOT_CHAIN_START, SLOT_CHAIN_STOP),
+    "mlp_exchange": (SLOT_CHAIN_STOP, SLOT_EXCHANGE_STOP),
+    "mlp_cast": (SLOT_EXCHANGE_STOP, SLOT_CAST_STOP),
+    "mlp_residual": (SLOT_CAST_STOP, SLOT_MLP_STOP),
+}
 
 
 class PhaseRecorder:
@@ -101,6 +131,9 @@ class PhaseRecorder:
         self.device_reduce = False
         self._pools: dict[int, list[Any]] = {}
         self._originals: list[tuple[Any, str, Any]] = []
+        # Host-side arrival time per absolute slot index. Shared across ranks
+        # because a boundary is crossed once for both.
+        self._host_stamps: dict[int, float] = {}
 
     # -- lifecycle ---------------------------------------------------------
     def install(self) -> None:
@@ -158,6 +191,7 @@ class PhaseRecorder:
 
     def reset(self) -> None:
         self.layer_index = 0
+        self._host_stamps.clear()
 
     def _wrap(self, owner: Any, name: str, before: Any, after: Any) -> None:
         original = getattr(owner, name)
@@ -184,46 +218,60 @@ class PhaseRecorder:
         with scoped_current_device(self.runtime, device):
             self.runtime.event_record(self._pools[device][slot], stream)
 
-    def _record_all(self, slot: int) -> None:
-        for device in self.devices:
-            self._record(device, slot)
-
     def _slot(self, slot: int) -> int:
         return self.layer_index * SLOTS_PER_LAYER + slot
+
+    def _boundary_at(self, index: int) -> None:
+        """Cross a phase boundary: one host stamp plus one event per rank.
+
+        The host stamp is what separates device execution from an enqueue
+        bubble. It is taken after the work for this phase has been submitted,
+        so a phase's host span covers the submission of both ranks' work while
+        its device span is a single rank's own stream interval. The gap between
+        the two is the part of the phase the device spent waiting on the host.
+        """
+        if not self.enabled:
+            return
+        self._host_stamps[index] = time.perf_counter()
+        for device in self.devices:
+            self._record(device, index)
+
+    def _boundary(self, slot: int) -> None:
+        self._boundary_at(self._slot(slot))
 
     # -- phase hooks -------------------------------------------------------
     def _enter_attention(self, *_args: Any, **_kwargs: Any) -> None:
         if not self.enabled:
             return
-        self._record_all(self._slot(SLOT_LAYER_START))
+        self._boundary(SLOT_LAYER_START)
 
     def _exit_attention(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_ATTN_STOP))
+        self._boundary(SLOT_ATTN_STOP)
 
     def _enter_norm(self, *_args: Any, **_kwargs: Any) -> None:
-        # The norm phase starts where attention stopped; no new event needed.
+        # The norm phase starts where attention stopped; no new boundary needed.
         return
 
     def _exit_norm(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_MLP_START))
+        self._boundary(SLOT_MLP_START)
 
     def _enter_mlp(self, *_args: Any, **_kwargs: Any) -> None:
         # mlp_start was recorded by the norm exit hook.
         return
 
     def _exit_mlp(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_MLP_STOP))
+        self._boundary(SLOT_MLP_STOP)
         if self.enabled:
             self.layer_index += 1
 
     def _enter_chain(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_CHAIN_START))
+        self._boundary(SLOT_CHAIN_START)
 
     def _exit_chain(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_CHAIN_STOP))
+        self._boundary(SLOT_CHAIN_STOP)
 
     def _exit_exchange(self, *_args: Any, **_kwargs: Any) -> None:
-        self._record_all(self._slot(SLOT_EXCHANGE_STOP))
+        self._boundary(SLOT_EXCHANGE_STOP)
 
     def _exit_device_reduce(self, *_args: Any, **_kwargs: Any) -> None:
         """The device route's whole reduction, and its absent cast.
@@ -235,64 +283,112 @@ class PhaseRecorder:
         was never recorded.
         """
 
-        self._record_all(self._slot(SLOT_EXCHANGE_STOP))
-        self._record_all(self._slot(SLOT_CAST_STOP))
+        self._boundary(SLOT_EXCHANGE_STOP)
+        self._boundary(SLOT_CAST_STOP)
 
     def _exit_cast(self, device: Any, *_args: Any, **_kwargs: Any) -> None:
         # ``cast_reduced`` runs once per rank inside the group's forward, so this
-        # records the calling rank's own cast boundary.
-        self._record(int(device), self._slot(SLOT_CAST_STOP))
-
-    def _enter_tail(self, *_args: Any, **_kwargs: Any) -> None:
+        # records the calling rank's own cast boundary. The host stamp is
+        # last-wins, so it lands after the final rank has been submitted.
         if not self.enabled:
             return
-        for device in self.devices:
-            self._record(device, self.layers * SLOTS_PER_LAYER + 0)
+        index = self._slot(SLOT_CAST_STOP)
+        self._host_stamps[index] = time.perf_counter()
+        self._record(int(device), index)
+
+    def _enter_tail(self, *_args: Any, **_kwargs: Any) -> None:
+        self._boundary_at(self.layers * SLOTS_PER_LAYER + 0)
 
     def _exit_tail(self, *_args: Any, **_kwargs: Any) -> None:
-        for device in self.devices:
-            self._record(device, self.layers * SLOTS_PER_LAYER + 1)
+        self._boundary_at(self.layers * SLOTS_PER_LAYER + 1)
 
     # -- reporting ---------------------------------------------------------
     def collect(self) -> dict[str, Any]:
         from hipengine.core.device import scoped_current_device
 
-        spans: dict[int, dict[str, float]] = {device: {name: 0.0 for name in PHASES} for device in self.devices}
+        spans: dict[int, dict[str, float]] = {
+            device: {name: 0.0 for name in PHASES} for device in self.devices
+        }
+        per_layer: dict[int, list[dict[str, float]]] = {device: [] for device in self.devices}
         for device in self.devices:
             pool = self._pools[device]
             with scoped_current_device(self.runtime, device):
                 for layer in range(self.layers):
                     base = layer * SLOTS_PER_LAYER
-                    spans[device]["attention"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_LAYER_START], pool[base + SLOT_ATTN_STOP]
-                    )
-                    spans[device]["norm_residual"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_ATTN_STOP], pool[base + SLOT_MLP_START]
-                    )
-                    spans[device]["mlp"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_MLP_START], pool[base + SLOT_MLP_STOP]
-                    )
-                    spans[device]["mlp_chain"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_CHAIN_START], pool[base + SLOT_CHAIN_STOP]
-                    )
-                    spans[device]["mlp_exchange"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_CHAIN_STOP], pool[base + SLOT_EXCHANGE_STOP]
-                    )
-                    spans[device]["mlp_cast"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_EXCHANGE_STOP], pool[base + SLOT_CAST_STOP]
-                    )
-                    spans[device]["mlp_residual"] += self.runtime.event_elapsed_time_ms(
-                        pool[base + SLOT_CAST_STOP], pool[base + SLOT_MLP_STOP]
-                    )
+                    row = {
+                        name: self.runtime.event_elapsed_time_ms(
+                            pool[base + start], pool[base + stop]
+                        )
+                        for name, (start, stop) in PHASE_SLOTS.items()
+                    }
+                    per_layer[device].append(row)
+                    for name, value in row.items():
+                        spans[device][name] += value
                 spans[device]["tail"] += self.runtime.event_elapsed_time_ms(
                     pool[self.layers * SLOTS_PER_LAYER + 0],
                     pool[self.layers * SLOTS_PER_LAYER + 1],
                 )
-        return spans
+        return {"spans": spans, "per_layer": per_layer, "host": self._host_spans()}
+
+    def _host_spans(self) -> dict[str, float]:
+        """Host-side spans for the same boundaries, in milliseconds.
+
+        These are wall-clock deltas, so they are not attributable to a single
+        rank: a boundary is crossed once, after both ranks' work for that phase
+        has been submitted. They partition the host timeline, which is exactly
+        what is needed to tell an enqueue-bound phase from a device-bound one.
+        """
+        stamps = self._host_stamps
+        out = {name: 0.0 for name in PHASES}
+
+        def gap(start: int, stop: int) -> float:
+            if start in stamps and stop in stamps:
+                return (stamps[stop] - stamps[start]) * 1000.0
+            return 0.0
+
+        for layer in range(self.layers):
+            base = layer * SLOTS_PER_LAYER
+            for name, (start, stop) in PHASE_SLOTS.items():
+                out[name] += gap(base + start, base + stop)
+        tail = self.layers * SLOTS_PER_LAYER
+        out["tail"] += gap(tail + 0, tail + 1)
+        return out
 
 
 def _phase_sum(spans: dict[str, float]) -> float:
     return sum(spans[name] for name in TOP_LEVEL_PHASES)
+
+
+def _rank_record(
+    devices: tuple[int, ...],
+    wall_ms: float,
+    result: dict[str, Any],
+    host_spans: dict[str, float],
+) -> dict[str, Any]:
+    """One repetition's wall paired with the spans measured inside it."""
+    per_rank = {str(device): result["spans"][device] for device in devices}
+    return {
+        "wall_ms": round(wall_ms, 4),
+        "prefill_tok_per_s": None,  # filled by the caller, which knows the tokens
+        "phases": {
+            device: {name: round(value, 4) for name, value in spans.items()}
+            for device, spans in per_rank.items()
+        },
+        "mlp_parts": {
+            device: {name: round(spans[name], 4) for name in MLP_PARTS}
+            for device, spans in per_rank.items()
+        },
+        "host_phases": {name: round(value, 4) for name, value in host_spans.items()},
+        "host_phase_sum_ms": round(sum(host_spans[name] for name in TOP_LEVEL_PHASES), 4),
+        "totals": {
+            device: {
+                "phase_sum_ms": round(_phase_sum(spans), 4),
+                "unaccounted_ms": round(wall_ms - _phase_sum(spans), 4),
+                "share_of_wall": round(_phase_sum(spans) / wall_ms, 4),
+            }
+            for device, spans in per_rank.items()
+        },
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -304,6 +400,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--fractions", default=None, help="e.g. 0.44,0.56")
+    parser.add_argument(
+        "--logits-rows",
+        type=int,
+        default=1,
+        help="rows the head projects; 1 is the product path and 512 is the full-row control",
+    )
+    parser.add_argument(
+        "--per-layer",
+        action="store_true",
+        help="include every layer's spans in the JSON (large; for skew analysis)",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -328,11 +435,25 @@ def main(argv: list[str] | None = None) -> int:
         bulk_prefill=True,
     )
     prompt = [int(args.token_id)] * int(args.prompt_tokens)
+    logits_rows = int(args.logits_rows)
 
     # Warm up through generate so the graph schedule, JIT variants and the
     # prompt-sized workspace all exist before the measured region.
     session.generate(prompt, max_new_tokens=2)
     runtime.device_synchronize()
+
+    def prefill() -> float:
+        runtime.device_synchronize()
+        started = time.perf_counter()
+        session.bulk_prefill(prompt, logits_rows=logits_rows)
+        runtime.device_synchronize()
+        return (time.perf_counter() - started) * 1000.0
+
+    # Uninstrumented reference, measured before the wrappers exist at all: the
+    # recorded run pays Python wrapper calls on every helper, and a phase share
+    # read off an inflated wall would misattribute that overhead to the phases.
+    prefill()  # one unrecorded prefill so the measured ones are steady-state
+    uninstrumented = [prefill() for _ in range(int(args.repeats))]
 
     recorder = PhaseRecorder(runtime, session)
     recorder.install()
@@ -343,31 +464,42 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # One unrecorded prefill so every helper has run once with the wrappers
         # installed, then the recorded repeats.
-        session.bulk_prefill(prompt, logits_rows=1)
-        runtime.device_synchronize()
+        prefill()
 
         recorder.reset()
         recorder.enabled = True
-        walls: list[float] = []
-        per_repeat: list[dict[int, dict[str, float]]] = []
-        for _ in range(int(args.repeats)):
-            recorder.reset()
-            runtime.device_synchronize()
-            started = time.perf_counter()
-            session.bulk_prefill(prompt, logits_rows=1)
-            runtime.device_synchronize()
-            walls.append(time.perf_counter() - started)
-            per_repeat.append(recorder.collect())
+        records: list[dict[str, Any]] = []
+        per_layer_all: list[dict[int, list[dict[str, float]]]] = []
+        try:
+            for _ in range(int(args.repeats)):
+                recorder.reset()
+                runtime.device_synchronize()
+                started = time.perf_counter()
+                session.bulk_prefill(prompt, logits_rows=logits_rows)
+                runtime.device_synchronize()
+                wall_ms = (time.perf_counter() - started) * 1000.0
+                result = recorder.collect()
+                record = _rank_record(devices, wall_ms, result, result["host"])
+                record["prefill_tok_per_s"] = round(
+                    int(args.prompt_tokens) / (wall_ms / 1000.0), 3
+                )
+                records.append(record)
+                per_layer_all.append(result["per_layer"])
+        finally:
+            recorder.enabled = False
     finally:
-        recorder.enabled = False
         recorder.close()
 
-    wall_ms = min(walls) * 1000.0
-    # The slowest rank's spans bound the step, so the report uses the max.
-    worst = max(per_repeat, key=lambda spans: max(_phase_sum(v) for v in spans.values()))
-    per_rank = {str(device): worst[device] for device in devices}
+    # The headline is one repetition read whole: its own wall with its own
+    # spans. Taking a minimum wall and another repetition's spans would report
+    # percentages for an execution that never happened.
+    headline_index = min(range(len(records)), key=lambda index: records[index]["wall_ms"])
+    headline = records[headline_index]
+    wall_ms = headline["wall_ms"]
+    per_rank = headline["phases"]
+    host_phases = headline["host_phases"]
     exchange_walls = list(getattr(group, "exchange_walls_s", []) or [])
-    exchange_host = sum(exchange_walls) * 1000.0 / max(1, len(walls))
+    exchange_host = sum(exchange_walls) * 1000.0 / max(1, len(records))
     if not recorder.wrapped_bulk_group:
         raise SystemExit(
             "the recorder wrapped the decode group, not the bulk prefill group; "
@@ -375,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     report: dict[str, Any] = {
-        "schema": 1,
+        "schema": 2,
         "kind": "tp2_prefill_phase_attribution",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": platform.node(),
@@ -383,60 +515,77 @@ def main(argv: list[str] | None = None) -> int:
         "devices": list(devices),
         "fractions": None if fractions is None else list(fractions),
         "prompt_tokens": int(args.prompt_tokens),
+        "logits_rows": logits_rows,
         "repeats": int(args.repeats),
         "layer_count": int(len(session._config.layer_types)),
         "reduce_mode": getattr(session, "reduce_mode", None),
         "device_reduce": bool(recorder.device_reduce),
+        "headline_repeat": headline_index,
         "wall_ms": wall_ms,
-        "wall_ms_samples": [round(value * 1000.0, 3) for value in walls],
-        "prefill_tok_per_s": round(int(args.prompt_tokens) / (wall_ms / 1000.0), 3),
+        "wall_ms_samples": [round(record["wall_ms"], 3) for record in records],
+        "prefill_tok_per_s": headline["prefill_tok_per_s"],
+        "uninstrumented_wall_ms": [round(value, 3) for value in uninstrumented],
+        "uninstrumented_wall_ms_min": round(min(uninstrumented), 3),
+        "instrumentation_overhead_ms": round(min(uninstrumented) - wall_ms, 3),
+        "instrumentation_overhead_percent": round(
+            100.0 * (min(uninstrumented) - wall_ms) / min(uninstrumented), 3
+        ),
         "exchange_host_wall_ms_per_prefill": round(exchange_host, 3),
         "exchange_host_samples": len(exchange_walls),
-        "mlp_parts": {
-            device: {name: round(spans[name], 4) for name in MLP_PARTS}
-            for device, spans in per_rank.items()
-        },
-        "phases": {
-            device: {name: round(value, 4) for name, value in spans.items()}
-            for device, spans in per_rank.items()
-        },
-        "totals": {
-            device: {
-                "phase_sum_ms": round(_phase_sum(spans), 4),
-                "unaccounted_ms": round(wall_ms - _phase_sum(spans), 4),
-                "share_of_wall": round(_phase_sum(spans) / wall_ms, 4),
-            }
-            for device, spans in per_rank.items()
-        },
+        "mlp_parts": headline["mlp_parts"],
+        "phases": per_rank,
+        "host_phases": host_phases,
+        "totals": headline["totals"],
+        "repeats_paired": records,
     }
+    if args.per_layer:
+        report["per_layer"] = [
+            {str(device): rows for device, rows in result.items()} for result in per_layer_all
+        ]
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(report, indent=1) + "\n")
 
     print(f"prefill {args.prompt_tokens} tokens: wall {wall_ms:.1f} ms = "
-          f"{report['prefill_tok_per_s']:.1f} tok/s ({report['wall_ms_samples']})")
+          f"{report['prefill_tok_per_s']:.1f} tok/s "
+          f"(paired samples {report['wall_ms_samples']})")
+    print(f"headline repeat {headline_index}; uninstrumented "
+          f"{min(uninstrumented):.1f} ms, instrumentation "
+          f"{report['instrumentation_overhead_ms']:+.1f} ms "
+          f"({report['instrumentation_overhead_percent']:+.2f}%)")
     print(f"layers {report['layer_count']}  exchange host wall "
           f"{exchange_host:.2f} ms/prefill over {len(exchange_walls)} samples")
     print()
-    header = f"{'phase':<16}" + "".join(f"{'rank ' + str(d):>12}" for d in devices) + f"{'% wall':>9}"
+    header = (
+        f"{'phase':<16}"
+        + "".join(f"{'dev r' + str(d):>11}" for d in devices)
+        + f"{'host':>10}{'% wall':>9}{'binding':>11}"
+    )
     print(header)
     print("-" * len(header))
     for name in PHASES:
         values = [per_rank[str(device)][name] for device in devices]
+        host_value = host_phases[name]
+        # Which side is the constraint: the busier rank's device span or the
+        # host span. Whichever is larger is what has to shrink.
+        binding = "device" if max(values) > host_value else "host"
         print(
             f"{name:<16}"
-            + "".join(f"{value:>12.2f}" for value in values)
+            + "".join(f"{value:>11.2f}" for value in values)
+            + f"{host_value:>10.2f}"
             + f"{100 * max(values) / wall_ms:>8.1f}%"
+            + f"{binding:>11}"
         )
     print("-" * len(header))
     for device in devices:
         total = report["totals"][str(device)]
         print(
-            f"{'sum':<16}{total['phase_sum_ms']:>12.2f}"
-            + " " * (12 * (len(devices) - 1))
+            f"{'sum':<16}{total['phase_sum_ms']:>11.2f}"
+            + " " * (11 * (len(devices) - 1))
+            + f"{headline['host_phase_sum_ms']:>10.2f}"
             + f"{100 * total['share_of_wall']:>8.1f}%"
         )
-        print(f"{'unaccounted':<16}{total['unaccounted_ms']:>12.2f}")
+        print(f"{'unaccounted':<16}{total['unaccounted_ms']:>11.2f}")
     return 0
 
 
