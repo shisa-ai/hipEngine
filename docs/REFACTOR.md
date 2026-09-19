@@ -146,6 +146,14 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   a matching hit. Rebuilding the target's hidden rows for a reused prefix is the
   rejected alternative, because it re-runs the target over the whole reused
   prefix.
+- Capture (2026-09-19) and the restored-checkpoint classification
+  (`PRIMING_SOURCE_RESTORED`) are in place; the refusal itself is still written
+  by `_open_prompt_streaming_sinks`. Two named reasons remain, both removed when
+  the engine half lands: `restored_checkpoint_suffix_unavailable_k0` in
+  `_restored_priming_source` (a valid checkpoint is classified but the hit row's
+  suffix is not yet fed to the sink), and the runner-side `prefix_reuse_k0`
+  label plus the `prefill_activation_ready` / `prefill_needs_activation`
+  shortcut that treats a reused row as never priming a provider.
 ## Prefix snapshot eviction destroys the retained entry it just served (found 2026-09-18)
 
 - `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >

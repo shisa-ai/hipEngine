@@ -84,10 +84,12 @@ PROVIDER_READINESS_STATES = (
 # the row can speculate is decided by its source rather than by the refusal.
 PRIMING_SOURCE_LIVE = "live_provider_state"
 PRIMING_SOURCE_BUFFERED = "prompt_buffer"
+PRIMING_SOURCE_RESTORED = "restored_checkpoint"
 PRIMING_SOURCE_ABSENT = "none"
 PRIMING_SOURCES = (
     PRIMING_SOURCE_LIVE,
     PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_RESTORED,
     PRIMING_SOURCE_ABSENT,
 )
 

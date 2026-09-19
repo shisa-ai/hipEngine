@@ -22,6 +22,9 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     _MTP2RequestState,
     _PhysicalTargetCommitError,
     _target_verify_mode_for_context,
+    PRIMING_SOURCE_ABSENT,
+    PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_RESTORED,
 )
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
@@ -6057,3 +6060,97 @@ def test_batch_catch_up_captures_each_row_at_its_own_boundary(monkeypatch) -> No
     assert store is not None
     assert store.get((20, 21, 22, 23), (8,)) == "blob:4"
     assert store.get((10, 11, 12), (7,)) is None
+
+
+def _restored_source_adapter(monkeypatch, *, block_ids=(11,), stored_ids=(11,), checkpoint=None):
+    """Adapter double with a checkpoint store and a block-id key provider.
+
+    ``stored_ids`` is what the store recorded with the checkpoint and
+    ``block_ids`` is what the row's allocation answers with now; they differ
+    when the allocator has moved the row's blocks since the capture.
+    """
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._prompt_hidden_rows = {}
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: block_ids
+    if checkpoint is None:
+        adapter._prefix_checkpoint_store_instance = None
+    else:
+        store = SimpleNamespace(
+            get=lambda tokens, ids: checkpoint if tuple(ids) == tuple(stored_ids) else None,
+            entries={},
+        )
+        adapter._prefix_checkpoint_store_instance = store
+    return adapter
+
+
+def test_restored_priming_source_needs_a_validated_checkpoint(monkeypatch) -> None:
+    row = SimpleNamespace(prompt_ids=tuple(range(10)), prefix_reused_tokens=8, slot=None)
+    adapter = _restored_source_adapter(monkeypatch)
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+
+    # No capture has happened in this process, so there is nothing to restore
+    # and the row stays autoregressive.
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+    # A captured checkpoint is complete and current, and the reason that keeps
+    # the row autoregressive names the engine half that is not wired yet.
+    adapter = _restored_source_adapter(monkeypatch, checkpoint="blob")
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_suffix_unavailable_k0",
+    )
+
+    # A row that has generated past its first draft step has moved on: the
+    # checkpoint's boundary is no longer the row's current position.
+    stale = SimpleNamespace(
+        prompt_ids=tuple(range(10)),
+        prefix_reused_tokens=8,
+        slot=SimpleNamespace(generated_ids=[1, 2]),
+    )
+    adapter.owner = SimpleNamespace(_row=lambda request_id: stale)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_stale_k0",
+    )
+
+
+def test_restored_priming_source_misses_are_not_restores(monkeypatch) -> None:
+    row = SimpleNamespace(prompt_ids=tuple(range(10)), prefix_reused_tokens=8, slot=None)
+
+    # Moved block ids are a miss: the allocator reuses freed ids, so a token hit
+    # whose ids differ cannot be validated against the blocks it describes.
+    adapter = _restored_source_adapter(
+        monkeypatch, block_ids=(99,), stored_ids=(11,), checkpoint="blob"
+    )
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+    # A prefix shorter than one block has no ids to validate with.
+    adapter = _restored_source_adapter(monkeypatch, block_ids=None, checkpoint="blob")
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+
+def test_restored_source_is_not_reached_without_prefix_reuse(monkeypatch) -> None:
+    """A row with no reused prefix keeps the buffered/absent classification."""
+
+    row = SimpleNamespace(prompt_ids=tuple(range(4)), prefix_reused_tokens=0, slot=None)
+    adapter = _restored_source_adapter(monkeypatch, checkpoint="blob")
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+
+    assert adapter._priming_source(7) == (PRIMING_SOURCE_ABSENT, "provider_state_absent")
+
+    adapter._prompt_hidden_rows[7] = np.zeros((4, 2), dtype=np.float32)
+    assert adapter._priming_source(7) == (PRIMING_SOURCE_BUFFERED, None)
