@@ -11360,18 +11360,42 @@ def _startup_memory_summary(
     }
 
 
+def _engine_speculative_mtp_unresolved(engine: Any | None) -> bool:
+    """Whether the engine's speculative MTP route is not resolved yet.
+
+    ``LLM`` resolves its text generator - and with it the model's speculative
+    capability - during ``prepare``. An engine that already has one is resolved,
+    so its answer stands whether it is yes or no. Before that, "no MTP route"
+    only means "not known yet", and printing it as ``serving=off`` contradicts
+    the line the operator reads once the engine has resolved. Startup calls this
+    with an unprepared engine on the eager path and on the first lazy request.
+    """
+
+    if engine is None:
+        return True
+    if _engine_speculative_mtp_callable(engine) is not None:
+        return False
+    if getattr(engine, "_text_generator", None) is not None:
+        return False
+    return getattr(engine, "text_generator", None) is None
+
+
 def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> None:
     """Log configured or effective MTP serving state.
 
     Lazy startup has no engine to inspect yet, so it reports a pending state;
     ``get_llm`` emits the effective state immediately after creating the model.
+    An engine that exists but has not prepared its generator is still pending:
+    reporting it as off would contradict the effective line that follows once
+    the model is resident.
     """
 
-    if engine is None:
+    if engine is None or _engine_speculative_mtp_unresolved(engine):
         _LOGGER.info(
             "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
             "default_enabled=unknown policy=%s thinking=%s "
-            "candidate_budget=requested:%s resolved:pending source:pending",
+            "candidate_budget=requested:%s resolved:pending source:pending "
+            "(pre-resolution: the engine has not prepared its generator yet)",
             config.speculative_mtp_serving,
             config.speculative_mtp_thinking,
             config.speculative_candidate_budget,
