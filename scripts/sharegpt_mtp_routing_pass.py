@@ -632,6 +632,7 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         # record it as a failure instead of an empty success row.
         return _error_row(sample, result)
     mtp = result.get("speculative_mtp") or {}
+    execution = mtp.get("execution") or {}
     shape = result.get("generation_shape") or {}
     decision = shape.get("route_decision") or {}
     accounting = mtp.get("output_accounting") or {}
@@ -686,6 +687,17 @@ def _request_row(sample: Mapping[str, Any], result: Mapping[str, Any]) -> dict[s
         "mtp_coverage": accounting.get("mtp_coverage"),
         "first_fallback_position": mtp.get("first_fallback_position"),
         "fallback_reason": mtp.get("fallback_reason"),
+        # The four refusal facts, kept apart from the folded ``fallback_reason``
+        # above: which admission gate refused this row's prompt activation,
+        # whether its draft provider existed at all, how wide the group it was
+        # actually planned in was, and whether that group was planned
+        # autoregressively.
+        "activation_reason": execution.get("activation_reason"),
+        "provider_readiness": execution.get("provider_readiness"),
+        "provider_decline_reason": execution.get("provider_decline_reason"),
+        "plan_group_rows": execution.get("plan_group_rows"),
+        "plan_ar_only": execution.get("plan_ar_only"),
+        "plan_reason": execution.get("plan_reason"),
         # Events, not tokens: one entry per non-speculative step or refusal. The
         # token-level attribution for the same reasons comes from
         # ``ar_output_tokens_by_reason`` when diagnostic spans were recorded.

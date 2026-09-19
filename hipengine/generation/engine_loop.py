@@ -3053,6 +3053,12 @@ class ResidentEngineLoop:
             )
         self._last_speculative_plan = plan
         self._recent_speculative_plans.append(plan)
+        note_plan = getattr(self.runner, "note_speculative_plan", None)
+        if callable(note_plan):
+            # Publish the realized group width and the group-level AR decision on
+            # the rows themselves: the response cannot reconstruct either from
+            # the route-level fields it already reports.
+            note_plan(plan)
         if plan.is_ar_only:
             # The AR decode that follows emits these rows' tokens; the reason is
             # carried to that emission instead of counting at preparation.

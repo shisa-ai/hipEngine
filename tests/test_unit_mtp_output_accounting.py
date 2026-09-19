@@ -9,10 +9,18 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.speculative.accounting import (
+    PROVIDER_ABSENT,
+    PROVIDER_DECLINED,
+    PROVIDER_PROMPT_BUFFERED,
+    PROVIDER_READY,
     accounting_timing_fields,
     record_autoregressive_step,
+    record_provider_readiness,
     record_speculative_outputs,
+    record_speculative_plan,
     span_accounting,
     speculative_output_accounting,
 )
@@ -90,6 +98,110 @@ def test_accounting_splits_speculative_and_autoregressive_output() -> None:
         "mtp_ar_output_tokens": 1.0,
         "mtp_accept_per_draft": 0.5,
     }
+
+
+def test_accounting_publishes_the_four_refusal_facts_separately() -> None:
+    """One row can be route-qualified, plan-refused, and provider-absent at once.
+
+    Every fact here is deliberately a *different* value from the others, so a
+    single published field cannot satisfy two assertions: the row's own
+    activation refusal, its provider readiness, the width of the group it was
+    planned in, and that group's autoregressive decision must each come from
+    their own attribute.
+    """
+
+    row = _intent_row()
+    row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
+    row.mtp2_provider_readiness = PROVIDER_ABSENT
+    row.mtp2_provider_decline_reason = "provider_state_absent"
+    row.mtp2_plan_group_rows = 4
+    row.mtp2_plan_ar_only = True
+    row.mtp2_plan_reason = "no_provider"
+    record_autoregressive_step(row, plan_reason="no_provider")
+
+    accounting = speculative_output_accounting(row)
+
+    assert accounting is not None
+    assert accounting["activation_reason"] == "prefix_reuse_k0"
+    assert accounting["provider_readiness"] == PROVIDER_ABSENT
+    assert accounting["provider_decline_reason"] == "provider_state_absent"
+    assert accounting["plan_group_rows"] == 4
+    assert accounting["plan_ar_only"] is True
+    assert accounting["plan_reason"] == "no_provider"
+    # The event fold is a different quantity from the activation reason: this row
+    # emitted one autoregressive step for the same planner reason, and a reader
+    # must be able to see both without one standing in for the other.
+    assert accounting["ar_step_reason_counts"] == {"no_provider": 1}
+    assert accounting["prompt_fallback_reason"] == "prefix_reuse_k0"
+
+
+def test_accounting_reports_an_engaged_row_without_a_refusal_reason() -> None:
+    """An engaged row keeps ``no_provider`` events and a ready provider at once."""
+
+    row = _intent_row()
+    record_speculative_outputs(
+        row,
+        candidate_count=3,
+        accepted_count=2,
+        visible_count=3,
+        output_position=0,
+        plan_reason="speculative_qualified",
+    )
+    record_autoregressive_step(row, plan_reason="no_provider")
+    record_provider_readiness(row, readiness=PROVIDER_READY)
+    record_speculative_plan(
+        row, group_rows=1, ar_only=False, plan_reason="speculative_qualified"
+    )
+
+    accounting = speculative_output_accounting(row)
+
+    assert accounting is not None
+    assert accounting["cycles"] == 1
+    assert accounting["activation_reason"] is None
+    assert accounting["provider_readiness"] == PROVIDER_READY
+    assert accounting["provider_decline_reason"] is None
+    assert accounting["plan_group_rows"] == 1
+    assert accounting["plan_ar_only"] is False
+    assert accounting["plan_reason"] == "speculative_qualified"
+    assert accounting["ar_step_reason_counts"] == {"no_provider": 1}
+
+
+def test_record_provider_readiness_clears_a_stale_decline_reason() -> None:
+    """A row that acquired a provider must not keep reporting why it had not."""
+
+    row = _intent_row()
+    record_provider_readiness(
+        row, readiness=PROVIDER_DECLINED, decline_reason="first_token_pending"
+    )
+    assert row.mtp2_provider_readiness == PROVIDER_DECLINED
+    assert row.mtp2_provider_decline_reason == "first_token_pending"
+
+    record_provider_readiness(row, readiness=PROVIDER_PROMPT_BUFFERED)
+    assert row.mtp2_provider_readiness == PROVIDER_PROMPT_BUFFERED
+    assert row.mtp2_provider_decline_reason is None
+
+    with pytest.raises(ValueError):
+        record_provider_readiness(row, readiness="probably")
+
+
+def test_record_speculative_plan_keeps_group_rows_and_decision_apart() -> None:
+    """The group's width and its AR decision are independent published facts."""
+
+    wide = _intent_row()
+    record_speculative_plan(
+        wide, group_rows=4, ar_only=False, plan_reason="speculative_qualified"
+    )
+    assert wide.mtp2_plan_group_rows == 4
+    assert wide.mtp2_plan_ar_only is False
+    assert wide.mtp2_plan_reason == "speculative_qualified"
+
+    singleton = _intent_row()
+    record_speculative_plan(
+        singleton, group_rows=1, ar_only=True, plan_reason="no_provider"
+    )
+    assert singleton.mtp2_plan_group_rows == 1
+    assert singleton.mtp2_plan_ar_only is True
+    assert singleton.mtp2_plan_reason == "no_provider"
 
 
 def test_accounting_keeps_the_first_fallback_position_only() -> None:

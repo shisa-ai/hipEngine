@@ -34,6 +34,12 @@ from hipengine.speculative import (
     SpeculativeRequestSemantics,
     TargetFrontier,
 )
+from hipengine.speculative.accounting import (
+    PROVIDER_ABSENT,
+    PROVIDER_DECLINED,
+    PROVIDER_PROMPT_BUFFERED,
+    PROVIDER_READY,
+)
 from hipengine.kvcache.backend import ResourceClaimSet
 from hipengine.speculative.transaction import SpecCycleStage
 from hipengine.kernels.backends import backend_package_capability
@@ -408,6 +414,174 @@ def test_physical_c1_capability_returns_packed_cell(
     capability = adapter.capability(semantics)
     assert capability is not None
     assert capability.max_candidates_per_request == 3
+
+
+def test_capability_publishes_the_row_provider_readiness_it_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every capability outcome names the row's own provider state.
+
+    The served response used to report only the planner's ``no_provider`` for
+    both a row whose provider was still priming and a row whose prompt
+    activation never ran, so a reader could not tell the two apart. A refusal
+    is silent on this path (no ``_decline`` call), so the readiness report is
+    the only place that reason exists.
+    """
+
+    monkeypatch.setattr(
+        mtp2_module, "Qwen35GGUFTransactionalVerifier", lambda *a, **k: None
+    )
+    seen: list[tuple[int, str, str | None]] = []
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=1,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    adapter.owner.note_provider_readiness = (
+        lambda rid, readiness, reason=None: seen.append(
+            (int(rid), str(readiness), None if reason is None else str(reason))
+        )
+    )
+    semantics = (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 32, 25),)
+
+    # 1. A recorded refusal reports the gate that refused it.
+    adapter._intents = {}
+    assert adapter.capability(semantics) is None
+    assert seen[-1][0] == 7
+    assert seen[-1][1] == PROVIDER_DECLINED
+    assert "unregistered" in str(seen[-1][2])
+
+    # 2. A silent refusal (the row has not emitted its first token) reports
+    #    absent-with-reason rather than an unexplained ``no_provider``.
+    adapter._intents = {7: 3}
+    adapter.owner._row = lambda rid: SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=False,
+        lease=SimpleNamespace(session=SimpleNamespace()),
+        slot=None,
+    )
+    assert adapter.capability(semantics) is None
+    assert seen[-1] == (7, PROVIDER_ABSENT, "first_token_pending")
+
+    # 3. A resolved capability reports the buffered prompt rows it will prime from.
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=1,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    seen.clear()
+    adapter.owner.note_provider_readiness = (
+        lambda rid, readiness, reason=None: seen.append(
+            (int(rid), str(readiness), None if reason is None else str(reason))
+        )
+    )
+    assert adapter.capability(semantics) is not None
+    assert seen == [(7, PROVIDER_PROMPT_BUFFERED, None)]
+
+    # 4. A row that already owns provider state reports ready, not buffered.
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {
+        7: _MTP2RequestState(
+            7,
+            provider=SimpleNamespace(),
+            provider_pool_key=None,
+            provider_group_key=(7,),
+            verifier=SimpleNamespace(target_verify_mode="native"),
+            root_hidden_buffer=SimpleNamespace(),
+        )
+    }
+    seen.clear()
+    assert adapter.capability(semantics) is not None
+    assert seen == [(7, PROVIDER_READY, None)]
+
+
+def test_observe_prefill_result_names_a_reused_prefix_refusal() -> None:
+    """A prompt finish with no hidden rows records why the row has no provider.
+
+    A prefix-cache hit never prefills the reused tokens, so the full-prompt
+    hidden rows a provider needs cannot be produced. The row is then refused by
+    every later capability call; without this the only published reason was the
+    planner's ``no_provider``, which reads as a transient wait.
+    """
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=1,
+        rid=7,
+        eligibility=_wide_eligibility(7, rows=2),
+    )
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {}
+    row = SimpleNamespace(
+        prompt_ids=(1, 2, 3),
+        lease=None,
+        prefix_reused_tokens=256,
+        mtp2_prompt_fallback_reason=None,
+    )
+    adapter.owner._row = lambda rid: row
+
+    adapter.observe_prefill_result(7, row.prompt_ids, SimpleNamespace(token_id=9))
+
+    assert row.mtp2_prompt_fallback_reason == "prefix_reuse_k0"
+
+
+def test_observe_prefill_result_names_a_missing_hidden_row_refusal() -> None:
+    """A full-prompt finish that returned no hidden rows is refused explicitly."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=1,
+        rid=7,
+        eligibility=_wide_eligibility(7, rows=2),
+    )
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {}
+    row = SimpleNamespace(
+        prompt_ids=(1, 2, 3),
+        lease=None,
+        prefix_reused_tokens=0,
+        mtp2_prompt_fallback_reason=None,
+    )
+    adapter.owner._row = lambda rid: row
+
+    adapter.observe_prefill_result(7, row.prompt_ids, SimpleNamespace(token_id=9))
+
+    assert row.mtp2_prompt_fallback_reason == "prompt_hidden_rows_unavailable"
+
+
+def test_observe_prefill_result_keeps_a_streamed_rows_existing_state() -> None:
+    """A row that streamed its hidden rows keeps them and records no refusal."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=1,
+        rid=7,
+        eligibility=_wide_eligibility(7, rows=2),
+    )
+    adapter._prompt_hidden_rows = {}
+    state = _MTP2RequestState(
+        7,
+        provider=SimpleNamespace(),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=SimpleNamespace(target_verify_mode="native"),
+        root_hidden_buffer=SimpleNamespace(),
+    )
+    adapter._states = {7: state}
+    row = SimpleNamespace(
+        prompt_ids=(1, 2, 3),
+        lease=None,
+        prefix_reused_tokens=0,
+        mtp2_prompt_fallback_reason=None,
+    )
+    adapter.owner._row = lambda rid: row
+
+    adapter.observe_prefill_result(7, row.prompt_ids, SimpleNamespace(token_id=9))
+
+    assert row.mtp2_prompt_fallback_reason is None
+    assert adapter._states[7] is state
 
 
 def test_physical_c1_single_survivor_keeps_legacy_route_for_gfx1151(

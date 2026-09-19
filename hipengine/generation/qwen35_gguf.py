@@ -97,6 +97,8 @@ from hipengine.kernels.backends import (
 from hipengine.quant.gguf import dequantize_gguf_data
 from hipengine.speculative.accounting import (
     accounting_timing_fields,
+    record_provider_readiness,
+    record_speculative_plan,
     speculative_output_accounting,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -5952,6 +5954,15 @@ class _GGUFResidentLoopRow:
     mtp2_prompt_prime_rows: int = 0
     mtp2_prompt_carried_bytes: int = 0
     mtp2_prompt_fallback_reason: str | None = None
+    # The four separately-published refusal facts. Declared on the row (a slots
+    # dataclass) because the shared accounting helper cannot attach a new
+    # attribute at runtime: why the row's provider was not ready, how wide the
+    # group it was planned in was, and whether that group ran autoregressively.
+    mtp2_provider_readiness: str | None = None
+    mtp2_provider_decline_reason: str | None = None
+    mtp2_plan_group_rows: int | None = None
+    mtp2_plan_ar_only: bool | None = None
+    mtp2_plan_reason: str | None = None
     mtp2_mtp_output_tokens: int = 0
     mtp2_ar_output_tokens: int = 0
     mtp2_ar_step_output_tokens: int = 0
@@ -7876,6 +7887,39 @@ class Qwen35GGUFResidentModelRunner:
             with hip_target_arch_environment(self.generator.target_arch):
                 observe(request_id, reason)
 
+    def note_speculative_plan(self, plan) -> None:
+        """Publish the group-level plan decision on every row it planned.
+
+        The loop owns the plan; the row owns the per-request reporting. Without
+        this the served response could only report the route's intent
+        (``k0_class``) and a serving-key width, so a row that decoded
+        autoregressively for its whole life still read as ``not_k0`` with no way
+        to see the group it was actually planned in.
+        """
+
+        request_ids = tuple(int(value) for value in plan.request_ids)
+        reasons = tuple(getattr(plan, "reasons", ()) or ())
+        ar_only = bool(getattr(plan, "is_ar_only", False))
+        for index, request_id in enumerate(request_ids):
+            row = self._row(request_id)
+            if row is None:
+                continue
+            reason = reasons[index] if index < len(reasons) else None
+            record_speculative_plan(
+                row,
+                group_rows=len(request_ids),
+                ar_only=ar_only,
+                plan_reason=getattr(reason, "value", reason),
+            )
+
+    def note_provider_readiness(self, request_id, readiness, reason=None) -> None:
+        """Publish the row's own draft-provider readiness and decline reason."""
+
+        row = self._row(int(request_id))
+        if row is None:
+            return
+        record_provider_readiness(row, readiness=readiness, decline_reason=reason)
+
     def speculative_component_claims(self, plan):
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
@@ -9152,6 +9196,20 @@ class Qwen35GGUFResidentModelRunner:
             row for row in rows
             if row.mtp2_candidate_budget > 0 and not row.prefix_reused_tokens
         )
+        # A reused prefix is never prefilled, so the prompt hidden rows a draft
+        # provider is primed from cannot exist for such a row, and it is filtered
+        # out above before any adapter gate sees it. Record that refusal here --
+        # the adapter's own reuse gate is never reached for these rows -- because
+        # a row refused without a reason is indistinguishable from a row whose
+        # provider was merely still priming, and both used to publish only the
+        # planner's ``no_provider``.
+        for row in rows:
+            if (
+                row.mtp2_candidate_budget > 0
+                and int(row.prefix_reused_tokens) > 0
+                and row.mtp2_prompt_fallback_reason is None
+            ):
+                row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
         if not _gguf_specdec2_streaming_prompt_enabled():
             for row in selected:
                 row.mtp2_candidate_budget = 0
@@ -9583,6 +9641,15 @@ class Qwen35GGUFResidentModelRunner:
         final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
 
         if row.prefix_reused_tokens:
+            # A reused prefix is never prefilled, so this row's prompt activation
+            # cannot produce the full-prompt hidden rows a provider needs. Run
+            # the same admission the miss path runs, for its recorded reason:
+            # it refuses a reused-prefix row (``prefix_reuse_k0``, or whichever
+            # gate fires first) and would otherwise leave the row with no
+            # published reason at all, so the served response reported the
+            # planner's ``no_provider`` beside a ``not_k0`` route claim and no
+            # reader could tell the row was refused at admission.
+            self._begin_mtp2_prompt_streaming((row,))
             start = time.perf_counter()
             prefill_batch = (
                 getattr(
