@@ -7770,9 +7770,15 @@ class Qwen35GGUFResidentModelRunner:
             max(1, evidence_budget),
         )
         row.mtp2_candidate_budget = effective_budget
-        # Admission intent is never zeroed: a later refusal (prompt activation,
-        # K0 planner decision, context miss) keeps the requested depth so the
-        # response can report intent separately from realized execution.
+        # Admission intent is never zeroed by a transient refusal: a prompt
+        # activation that was refused while another was in flight keeps its
+        # requested depth, because whether the row can speculate is decided by
+        # its priming source rather than by that refusal. An *unsupported*
+        # priming source is a property of the row on this route -- a reused
+        # prefix, an unsupported target profile, a prompt past the context
+        # window, an operator-disabled streaming path -- so those refusals do
+        # zero the budget, and the response reports intent separately from
+        # realized execution via ``mtp2_requested_budget``.
         row.mtp2_requested_budget = max(
             int(getattr(row, "mtp2_requested_budget", 0) or 0), effective_budget
         )

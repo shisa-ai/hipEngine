@@ -38,6 +38,9 @@ from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.mtp_sampled_accept import sampled_accept_summary
 from hipengine.generation.sampling import speculative_sampling_mode
 from hipengine.speculative.accounting import (
+    PRIMING_SOURCE_ABSENT,
+    PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_LIVE,
     PROVIDER_ABSENT,
     PROVIDER_DECLINED,
     PROVIDER_PROMPT_BUFFERED,
@@ -959,6 +962,12 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._prompt_streaming_norm_buffers: dict[int, DeviceBuffer] = {}
+        # Rows whose prompt activation was refused while another activation was
+        # in flight. The refusal is about the sink, not about the row's
+        # eligibility: a prompt that already started cannot open a sink later
+        # without leaving a partial hidden-row buffer behind, so the sink stays
+        # refused for that prompt while the row's speculative intent survives.
+        self._streaming_refused_requests: set[int] = set()
         self._states: dict[int, _MTP2RequestState] = {}
         self._c1_shadow_states: dict[int, _C1ShadowAdapterState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
@@ -1445,6 +1454,23 @@ class Qwen35GGUFMTP2Adapter:
             for request_id, sink in zip(ids, existing, strict=True)
             if sink is None
         )
+        if any(request_id in self._streaming_refused_requests for request_id in pending):
+            # A previous chunk of these rows' prompts ran without a sink, so the
+            # only buffer they could still produce is a partial one. Refuse the
+            # sink without touching the rows' budget: whether they can speculate
+            # is decided by their priming source (see _priming_source), not by
+            # this refusal. A mixed call still carries its streaming rows.
+            pending = tuple(
+                request_id
+                for request_id in pending
+                if request_id not in self._streaming_refused_requests
+            )
+            if not pending:
+                if not streaming:
+                    return None
+                return tuple(
+                    self._prompt_streaming_sinks.get(request_id) for request_id in ids
+                )
         if any(request_id in self._states for request_id in pending):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
         # Only the rows that are not streaming yet need a new activation; rows
@@ -1491,13 +1517,26 @@ class Qwen35GGUFMTP2Adapter:
             # holds its claim across ticks (see the non-final chunk path), so a
             # second request arriving while another is mid-prompt is a normal
             # scheduling outcome, not a broken invariant. Refuse only the rows
-            # that are not already streaming; they decode without a draft
-            # provider, and the refusal is reported instead of failing the
-            # engine service.
+            # that are not already streaming, and refuse only the *sink*: this
+            # row's prompt has already started, so it cannot open one later
+            # without leaving a partial hidden-row buffer, but its speculative
+            # intent is not this refusal's business. Whether it can speculate is
+            # decided by its priming source -- live provider state or a
+            # complete, current prompt buffer -- and _priming_source refuses the
+            # row when neither exists. Zeroing the budget here instead made a
+            # transient scheduling outcome permanent for the row's whole life.
             for request_id in pending:
                 refused = self.owner._row(request_id)
-                refused.mtp2_candidate_budget = 0
                 refused.mtp2_prompt_fallback_reason = "prompt_activation_in_flight"
+                # The caller prefills a refused row's chunk without a sink, so
+                # this prompt runs without one from here on: a later chunk
+                # could only add a partial hidden-row buffer, which the
+                # catch-up walk cannot use. Refuse the sink for the rest of
+                # this prompt. The row's budget is deliberately untouched --
+                # whether it can speculate is decided by its priming source
+                # (see _priming_source), and a row deferred before its first
+                # chunk still activates normally on a later tick.
+                self._streaming_refused_requests.add(int(request_id))
             if not streaming:
                 return None
             return tuple(
@@ -2199,6 +2238,64 @@ class Qwen35GGUFMTP2Adapter:
         )
         return result
 
+    def _priming_source(self, request_id: int) -> tuple[str, str | None]:
+        """Classify this row's draft-provider priming source.
+
+        Returns ``(source, invalid_reason)``. ``source`` names where provider
+        state would come from; ``invalid_reason`` is None only when that source
+        is complete and current for the row's decode position, and otherwise
+        names why the row must be served autoregressively instead.
+
+        The buffered prompt rows are the one source that can be *present but
+        unusable*, in two ways that used to be invisible:
+
+        * Incomplete. The catch-up walk requires one hidden row per prompt
+          token and raises ``ValueError`` when the shape disagrees, so a prompt
+          that started without a sink -- leaving only a partial buffer -- turned
+          a scheduling outcome into an engine execution failure instead of an
+          autoregressive fallback.
+        * Stale. The catch-up walk leaves the provider at the row's first draft
+          step: it hands the target the last prompt hidden row, which the draft
+          step consumes together with the next root token. That is the row's
+          current position only while the row has generated at most that one
+          token. A row admitted later -- after a refusal that has since cleared
+          -- would draft from the prompt's end while the target is several
+          tokens ahead, and because the target verifies every candidate the
+          cost is silent acceptance loss rather than a wrong answer.
+
+        Live provider state needs no such check: it advances with the row. A
+        source that cannot be inspected (no ``shape``, no ``prompt_ids``) is
+        reported valid, because every production buffer is an array and every
+        production row carries its prompt, so the guard is active where it
+        matters and a test double is not turned into a fabricated refusal.
+        """
+
+        rid = int(request_id)
+        if rid in self._states:
+            return PRIMING_SOURCE_LIVE, None
+        buffered = self._prompt_hidden_rows.get(rid)
+        if buffered is None:
+            return PRIMING_SOURCE_ABSENT, "provider_state_absent"
+        row = self.owner._row(rid)
+        prompt_ids = tuple(getattr(row, "prompt_ids", ()) or ())
+        shape = getattr(buffered, "shape", None)
+        if (
+            shape is not None
+            and len(shape) == 2
+            and prompt_ids
+            and int(shape[0]) != len(prompt_ids)
+        ):
+            return PRIMING_SOURCE_BUFFERED, "prompt_buffer_incomplete_k0"
+        slot = getattr(row, "slot", None)
+        generated = (
+            len(tuple(getattr(slot, "generated_ids", ()) or ()))
+            if slot is not None
+            else 0
+        )
+        if generated > 1:
+            return PRIMING_SOURCE_BUFFERED, "prompt_buffer_stale_k0"
+        return PRIMING_SOURCE_BUFFERED, None
+
     def _note_capability_readiness(
         self,
         semantics: Sequence[SpeculativeRequestSemantics],
@@ -2215,15 +2312,18 @@ class Qwen35GGUFMTP2Adapter:
         if result is not None:
             for item in semantics:
                 request_id = int(item.request_id)
-                if request_id in self._states:
-                    readiness = PROVIDER_READY
-                elif request_id in self._prompt_hidden_rows:
-                    readiness = PROVIDER_PROMPT_BUFFERED
-                else:
-                    # The admission gate requires one of the two, so this is
-                    # unreachable in practice; report ready rather than claim a
-                    # buffer that does not exist.
-                    readiness = PROVIDER_READY
+                source, invalid_reason = self._priming_source(request_id)
+                if invalid_reason is not None:
+                    # A granted capability whose source is unusable cannot be
+                    # reported ready: the buffer is present but the row will be
+                    # refused, and readiness exists to make that visible.
+                    note(request_id, PROVIDER_ABSENT, invalid_reason)
+                    continue
+                readiness = (
+                    PROVIDER_READY
+                    if source == PRIMING_SOURCE_LIVE
+                    else PROVIDER_PROMPT_BUFFERED
+                )
                 note(request_id, readiness)
             return
         declined = int(getattr(self, "_decline_serial", 0)) != int(decline_serial)
@@ -2313,15 +2413,13 @@ class Qwen35GGUFMTP2Adapter:
             if rid not in self._intents or rid in self._disabled_requests:
                 return self._decline(f"request {rid} unregistered or disabled")
             row = self.owner._row(rid)
+            source_reason = self._priming_source(rid)[1]
             if (
                 not (row.native_greedy or self._sampled_route_request(rid))
                 or not row.first_token_emitted
                 or row.lease is None
                 or row.slot is None
-                or (
-                    rid not in self._states
-                    and rid not in self._prompt_hidden_rows
-                )
+                or source_reason is not None
             ):
                 if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
                     import sys as _sys
@@ -2356,8 +2454,8 @@ class Qwen35GGUFMTP2Adapter:
                     silent_reason = "row_has_no_lease"
                 elif row.slot is None:
                     silent_reason = "row_has_no_slot"
-                elif rid not in self._states and rid not in self._prompt_hidden_rows:
-                    silent_reason = "provider_state_absent"
+                elif source_reason is not None:
+                    silent_reason = source_reason
                 else:
                     silent_reason = "provider_state_unavailable"
                 self._silent_decline_serial = (
@@ -6082,6 +6180,7 @@ class Qwen35GGUFMTP2Adapter:
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
+        self._streaming_refused_requests.discard(rid)
         self._sampling_mode_by_request.pop(rid, None)
         self._post_reject_pending.discard(rid)
         self.drop_c1_shadow_lifecycle(rid, reason="request_drop")

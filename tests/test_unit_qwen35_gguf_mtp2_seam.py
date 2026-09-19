@@ -3589,7 +3589,7 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
             ),
             _prefill_hidden_a=DeviceBuffer(0x5000 + rid * 0x100, 16),
         )
-        for rid in (7, 8)
+        for rid in (7, 8, 9)
     }
     rows = {
         rid: SimpleNamespace(
@@ -3601,7 +3601,7 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
             mtp2_prompt_streaming=False,
             mtp2_prompt_fallback_reason=None,
         )
-        for rid in (7, 8)
+        for rid in (7, 8, 9)
     }
     acquisitions: list[str] = []
 
@@ -3668,6 +3668,7 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
     )
     adapter.register_request(7, 3)
     adapter.register_request(8, 3)
+    adapter.register_request(9, 3)
     adapter.physical_prompt_streaming = True
 
     # Request 7 opens the activation; its prompt is still being prefilled.
@@ -3679,7 +3680,12 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
     # Request 8 arrives while 7's activation is open: refused, not fatal.
     assert adapter.begin_prompt_streaming((8,), checkpoints={}) is None
     assert rows[8].mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
-    assert rows[8].mtp2_candidate_budget == 0
+    # The refusal is about the activation claim, not about row 8's eligibility:
+    # its speculative intent survives. The sink does not, because the caller
+    # prefills the refused row's chunk without one, so a later chunk could only
+    # add a partial hidden-row buffer.
+    assert rows[8].mtp2_candidate_budget == 3
+    assert 8 in adapter._streaming_refused_requests
     assert rows[7].mtp2_prompt_fallback_reason is None
     assert rows[7].mtp2_candidate_budget == 3
     assert adapter._active_prompt_claims is claim
@@ -3692,17 +3698,15 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
     assert mixed is not None and mixed[0] is sinks[0] and mixed[1] is None
     assert acquisitions == ["provider"]
 
-    # Releasing the activation lets a later request activate normally.
+    # Releasing the activation lets an untouched request activate normally.
     adapter.finish_prompt_streaming((7,), success=True, stream=0)
     assert adapter._active_prompt_claims is None
-    rows[8].mtp2_candidate_budget = 3
-    rows[8].mtp2_prompt_fallback_reason = None
-    reopened = adapter.begin_prompt_streaming((8,), checkpoints={})
+    reopened = adapter.begin_prompt_streaming((9,), checkpoints={})
     assert reopened is not None and reopened[0] is not None
     # The released group's provider is reused rather than re-acquired.
     assert acquisitions == ["provider"]
-    assert adapter._prompt_streaming_group_keys[8] == (7,)
-    adapter.finish_prompt_streaming((8,), success=True, stream=0)
+    assert adapter._prompt_streaming_group_keys[9] == (7,)
+    adapter.finish_prompt_streaming((9,), success=True, stream=0)
 
 
 def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -> None:
@@ -5610,3 +5614,150 @@ def test_adapter_containment_evidence_maps_commit_and_cursor_state() -> None:
         lease=SimpleNamespace(session=SimpleNamespace(position=4)),
     )
     assert adapter.containment_evidence(plan, RuntimeError("late")) is None
+
+
+def _priming_gate_adapter(
+    *,
+    rows: dict[int, SimpleNamespace],
+    prompt_hidden: dict[int, object],
+    budget: int = 3,
+) -> Qwen35GGUFMTP2Adapter:
+    """Adapter whose owner serves the given rows, with no live provider state."""
+
+    adapter = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                backend="hip_gfx1151",
+                execution_profile="production",
+            ),
+            capacity=1,
+            _shared_runner=None,
+            _row=lambda request_id: rows[int(request_id)],
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=budget,
+    )
+    adapter._intents = {rid: budget for rid in rows}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_c1_k3",
+            max_candidate_count=budget,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-c1-k3-{rid}",
+            evidence_fingerprint=f"sha256:test-c1-k3-{rid}",
+        )
+        for rid in rows
+    }
+    adapter._prompt_hidden_rows = prompt_hidden
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+    return adapter
+
+
+def _priming_gate_row(
+    *,
+    prompt_tokens: int,
+    generated_tokens: int,
+) -> SimpleNamespace:
+    target = SimpleNamespace(
+        runner=SimpleNamespace(fp16_recurrent_state=False),
+        _target_scratch_owner=SimpleNamespace(slot_count=1),
+        target_layout=SimpleNamespace(max_sequence_length=8192),
+        kv_storage_dtype="bf16",
+    )
+    return SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(generated_ids=[7] * generated_tokens),
+        prompt_ids=tuple(range(prompt_tokens)),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=3,
+        mtp2_prompt_fallback_reason=None,
+    )
+
+
+def test_capability_refuses_a_stale_prompt_buffer_instead_of_drafting_behind() -> None:
+    # The catch-up walk leaves the provider at the row's first draft step: it
+    # hands the target the last prompt hidden row, which the draft step consumes
+    # with the next root token. A row that has generated past that point would be
+    # drafted from the prompt's end while the target is several tokens ahead, and
+    # the target verifies every candidate, so the cost is silent acceptance loss
+    # rather than a wrong answer. Refuse it and serve AR instead.
+    rid = 4
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=3)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "prompt_buffer_stale_k0"
+
+
+def test_capability_refuses_an_incomplete_prompt_buffer_instead_of_raising() -> None:
+    # A prompt that started without a sink can leave a partial buffer behind. The
+    # catch-up walk requires one hidden row per prompt token and raises when the
+    # shape disagrees, so a scheduling outcome used to surface as an engine
+    # execution failure instead of an autoregressive fallback.
+    rid = 5
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((3, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "prompt_buffer_incomplete_k0"
+
+
+def test_capability_admits_a_complete_current_prompt_buffer() -> None:
+    # The valid-buffered-priming class: complete for the whole prompt and at the
+    # row's first draft step. This is the case the refusal rule must not break.
+    rid = 6
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is not None
+
+
+def test_prompt_activation_contention_preserves_speculative_intent() -> None:
+    # Temporary contention is not a property of the row: the refusal is about the
+    # activation claim, and whether this row can speculate is decided by its
+    # priming source. Zeroing the budget here made a transient scheduling outcome
+    # permanent for the row's whole life.
+    rid = 7
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=0)
+    adapter = _priming_gate_adapter(rows={rid: row}, prompt_hidden={})
+    adapter._active_prompt_claims = object()
+
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    assert row.mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
+    assert row.mtp2_candidate_budget == 3
+
+    # The sink itself is permanently refused for a prompt that already started:
+    # a later chunk must not open a mid-prompt sink that would leave a partial
+    # buffer behind. Intent still survives.
+    row.prefill_tokens_seen = 5
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    adapter._active_prompt_claims = None
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    assert adapter._prompt_streaming_sinks == {}
+    assert adapter._streaming_refused_requests == {rid}
+    assert row.mtp2_candidate_budget == 3
