@@ -1635,6 +1635,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     accept_library = None
     commit_library = None
     accept_kernel = None
+    sampled_library = None
     hidden_commit_kernel = None
     linear_commit_kernel = None
     if device_accept_commit:
@@ -1642,19 +1643,21 @@ def capture_qwen35_gguf_native_b2_target_graph(
             raise NativeSpecTargetGraphUnsupportedError(
                 "N2 device accept/commit requires uniform fused linear-state commit tables"
             )
+        # The argmax accept kernel is resolved for both topologies: the sampled
+        # variant replaces its launch, not its registration, and leaving it
+        # unbound here made the sampled capture fail its own primitive guard.
+        accept_kernel = resolve(
+            backend=str(session.backend),
+            layer="speculative_accept_commit",
+            quant="w4_gguf",
+            variant="native_v1_i32",
+            missing="none",
+        )
         if sampled_accept:
             sampled_library = build_sampled_accept(
                 load=True,
                 compiler_version=getattr(session, "compiler_version", None),
                 require_cached=bool(getattr(session, "require_cached_build", False)),
-            )
-        else:
-            accept_kernel = resolve(
-                backend=str(session.backend),
-                layer="speculative_accept_commit",
-                quant="w4_gguf",
-                variant="native_v1_i32",
-                missing="none",
             )
         hidden_commit_kernel = resolve(
             backend=str(session.backend),
