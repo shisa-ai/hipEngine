@@ -1,0 +1,359 @@
+{
+  "schema": "hipengine.mtp2_activation_wait_and_budget_bound.v1",
+  "timestamp": "2026-09-19T21:24:29Z",
+  "host": {
+    "label": "AMD Radeon 8060S (gfx1151, RDNA3.5)",
+    "hostname": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "artifact_size_bytes": 17106773120
+  },
+  "tree": {
+    "head": "7d0b9da49a4cf735c5c7f9cb966d751363e0aa5d"
+  },
+  "runs": {
+    "budget3_c1": {
+      "question": "#25 activation waiting and the #32 K=3 anchor",
+      "server": "python -m hipengine.server --model <dense 27B Q4_K_M> --backend hip_gfx1151 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache off --kv-storage bf16 --max-context-tokens 8192",
+      "load": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 4 --turns 4 --min-prompt-len 256 --max-prompt-len 600 --max-total-len 1024 --output-len 128 --max-concurrency 1 --route-mix on --seed 4242",
+      "cache": "off",
+      "concurrency": 1,
+      "budget": 3,
+      "script": "/tmp/t25-c1.sh",
+      "attribution": {
+        "rows": 16,
+        "draft_cycles": 655,
+        "events_by_reason": {
+          "no_provider": 16
+        },
+        "activation_wait_events": 16,
+        "activation_wait_share_of_cycles": 0.024427480916030534,
+        "accepted_draft_tokens": 1375,
+        "accepted_drafts_per_cycle": 2.099236641221374,
+        "mtp_output_tokens": 2030,
+        "ar_output_tokens": 18,
+        "mtp_coverage": 0.9912109375,
+        "rows_with_exactly_one_wait_event": 16,
+        "first_fallback_positions": [
+          "None"
+        ],
+        "per_row": [
+          {
+            "prompt_tokens": 325,
+            "turn_index": 0,
+            "draft_cycles": 41,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 86,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 34.67788187313884
+          },
+          {
+            "prompt_tokens": 419,
+            "turn_index": 1,
+            "draft_cycles": 44,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 83,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 37.902750684657974
+          },
+          {
+            "prompt_tokens": 492,
+            "turn_index": 2,
+            "draft_cycles": 44,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 83,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 38.33126721327149
+          },
+          {
+            "prompt_tokens": 557,
+            "turn_index": 3,
+            "draft_cycles": 39,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 88,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 33.9689699984673
+          },
+          {
+            "prompt_tokens": 288,
+            "turn_index": 0,
+            "draft_cycles": 39,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 88,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 32.723233151796556
+          },
+          {
+            "prompt_tokens": 409,
+            "turn_index": 1,
+            "draft_cycles": 42,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 85,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 35.937512348893854
+          },
+          {
+            "prompt_tokens": 483,
+            "turn_index": 2,
+            "draft_cycles": 44,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 83,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 38.34605655662479
+          },
+          {
+            "prompt_tokens": 558,
+            "turn_index": 3,
+            "draft_cycles": 41,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 85,
+            "mtp_output_tokens": 126,
+            "ar_output_tokens": 2,
+            "mtp_coverage": 0.984375,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 36.658331618777346
+          },
+          {
+            "prompt_tokens": 341,
+            "turn_index": 0,
+            "draft_cycles": 43,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 84,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 36.455163103897895
+          },
+          {
+            "prompt_tokens": 362,
+            "turn_index": 1,
+            "draft_cycles": 44,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 83,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 37.53123243176748
+          },
+          {
+            "prompt_tokens": 504,
+            "turn_index": 2,
+            "draft_cycles": 38,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 88,
+            "mtp_output_tokens": 126,
+            "ar_output_tokens": 2,
+            "mtp_coverage": 0.984375,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 33.612396856326434
+          },
+          {
+            "prompt_tokens": 574,
+            "turn_index": 3,
+            "draft_cycles": 41,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 86,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 35.90329920518256
+          },
+          {
+            "prompt_tokens": 388,
+            "turn_index": 0,
+            "draft_cycles": 42,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 85,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 35.9537438082967
+          },
+          {
+            "prompt_tokens": 418,
+            "turn_index": 1,
+            "draft_cycles": 37,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 90,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 31.438201015430785
+          },
+          {
+            "prompt_tokens": 445,
+            "turn_index": 2,
+            "draft_cycles": 38,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 89,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 32.6087220963682
+          },
+          {
+            "prompt_tokens": 489,
+            "turn_index": 3,
+            "draft_cycles": 38,
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "accepted_draft_tokens": 89,
+            "mtp_output_tokens": 127,
+            "ar_output_tokens": 1,
+            "mtp_coverage": 0.9921875,
+            "decode_tokens_per_s": null,
+            "itl_median_ms": 32.85595071723773
+          }
+        ]
+      }
+    },
+    "budget5_c1": {
+      "question": "#32 whether a deeper budget is clamped or refused",
+      "server": "python -m hipengine.server --model <dense 27B Q4_K_M> --backend hip_gfx1151 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 5 --prefix-cache off --kv-storage bf16 --max-context-tokens 8192",
+      "load": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 2 --turns 1 --min-prompt-len 256 --max-prompt-len 600 --max-total-len 1024 --output-len 128 --max-concurrency 1 --route-mix on --seed 4242",
+      "cache": "off",
+      "concurrency": 1,
+      "budget_requested": 5,
+      "script": "/tmp/t32-clamp.sh",
+      "capabilities": {
+        "sampling.speculative_mtp.candidate_budget": {
+          "requested": 5,
+          "resolved": 5,
+          "source": "explicit"
+        },
+        "sampling.speculative_mtp.certified_explicit_scope.key.candidate_budget": 5
+      },
+      "per_request": [
+        {
+          "prompt_tokens": 363,
+          "effective_route": "default",
+          "requested_route": "speculative_mtp",
+          "route_decision_reason": "candidate_budget_not_qualified",
+          "selected_candidate_count": 0,
+          "mtp_used": false,
+          "draft_cycles": 0
+        },
+        {
+          "prompt_tokens": 271,
+          "effective_route": "default",
+          "requested_route": "speculative_mtp",
+          "route_decision_reason": "candidate_budget_not_qualified",
+          "selected_candidate_count": 0,
+          "mtp_used": false,
+          "draft_cycles": 0
+        }
+      ],
+      "refused_rows": 2,
+      "rows": 2
+    }
+  },
+  "budget_trend_k1_to_k3": {
+    "source": "benchmarks/results/2026-09-20-gfx1151-q4km-mtp2-cycle-budget-sweep-c1.json for K=1 and K=2, this run for K=3",
+    "points": [
+      {
+        "budget": 1,
+        "accepted_drafts_per_cycle": 0.874,
+        "target_window_ms": 94.5201,
+        "decode_tokens_per_s_per_request": 19.807
+      },
+      {
+        "budget": 2,
+        "accepted_drafts_per_cycle": 1.608,
+        "target_window_ms": 101.7764,
+        "decode_tokens_per_s_per_request": 25.873
+      },
+      {
+        "budget": 3,
+        "accepted_drafts_per_cycle": 2.085,
+        "target_window_ms": 110.3508,
+        "decode_tokens_per_s_per_request": 28.006
+      },
+      {
+        "budget": 3,
+        "accepted_drafts_per_cycle": 2.099,
+        "target_window_ms": null,
+        "decode_tokens_per_s_per_request": null,
+        "note": "this run's in-run anchor, 0.7% above the sweep's K=3 point"
+      }
+    ],
+    "marginal_drafts_per_added_row": [
+      0.734,
+      0.477
+    ],
+    "marginal_target_ms_per_added_row": [
+      7.2563,
+      8.5744
+    ]
+  },
+  "evidence_bound": {
+    "deepest_qualified_candidate_budget_for_this_artifact": 3,
+    "evidence_key": "qwen36-dense-q4km-gfx1100-production-bf16-c1-k3-d24",
+    "mechanism": "hipengine/speculative/serving.py::_evidence_checks requires key.candidate_budget <= row.candidate_budget, so a deeper request is refused with candidate_budget_not_qualified rather than clamped; resolve_max_qualified_candidate_budget returns the deepest retained row for the cell."
+  },
+  "findings": [
+    "#25: activation waiting is not the dominant cost. Every one of the 16 c=1 rows records exactly one no_provider event, 16 events against 655 speculative cycles, or 2.44% of cycles. Eliminating it entirely bounds the gain at 2.44%, so the task's own stop condition applies and no priming change is warranted. first_fallback_position is null on every row, so the event is the activation cycle at the start, not a mid-generation loss.",
+    "#32: budgets 4-6 cannot be swept on this artifact. A server pinned to --speculative-candidate-budget 5 reports resolved 5 at /v1/hipengine/capabilities and refuses both requests at admission with route_decision_reason=candidate_budget_not_qualified, effective_route=default, and zero MTP tokens. The deepest retained evidence row for this artifact is K=3, and the gate is a comparison rather than a clamp, so the sweep needs a new evidence row for a deeper cell (production numerical, quality, and performance artifacts) before any K=4-6 number can exist.",
+    "#32, the trend below the bound: accepted drafts per cycle is still rising at K=3 (0.874, 1.608, 2.085/2.099) while each added verify row costs a rising amount of the dominant target window (+7.26 then +8.57 ms). Per-request decode still improved 19.81 -> 25.87 -> 28.01 tok/s, so saturation is not demonstrated at the deepest qualified budget; it is bounded by the evidence gate, not measured."
+  ]
+}
