@@ -319,19 +319,26 @@ unit in the last place and occasionally select a different token. That bound is
 a property of split prefill rather than of the cache, and it is pinned by
 `test_split_prefill_divergence_boundaries_are_unchanged`.
 
-Placement decides which prefill route a hit gets, and the routes are far
-apart: a contiguous shared allocation keeps the fast slot-local prefill, while
-a gapped one falls to the packed paged route at roughly 6.5 ms/token against
-0.39 ms/token for the full prefill it replaces. Admission therefore asks for a
-contiguous placement first, and accepts a gapped one only when the suffix is at
-most `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens (default 512), declining
-into the full prefill past that. The wide retained working set
-(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) fragments the page arena enough
-to make 8 of 18 placements gapped; with the cost model it measures **-11.0%
-wall** where it previously measured +9.5%, and it stays opt-in only because the
-default retention is better still.
-[Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json);
-[off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-baseline-off.json).
+Placement no longer decides which prefill route a cache hit gets. A gapped
+device-KV placement used to fall to the packed paged route at roughly 6.5
+ms/token against 0.39 ms/token for the slot-local prefill it displaced; a
+gapped BF16 slot now keeps the slot-local AOTriton prefill by swapping its
+identity spans for its real block table and gathering its pages into dense
+head-major buffers with the existing block-table copy, so every hit pays
+contiguous cost at any suffix length (a forced-gapped 35B suffix prefill
+measures 8.3 s against 8.2 s contiguous; the packed paged route measured
+134.5 s for the same shape). `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` still
+defaults to 512 but binds only where the gather route is unavailable - the
+`HIPENGINE_GGUF_GAPPED_GATHER` kill-switch, a backend without head-major KV
+(gfx1100 today), or a context beyond the validated 64K head-major allocation
+class. The wide retained working set
+(`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) therefore measures **-20.1%
+wall against -18.4% for the default retention** (21.58 vs 21.12 tok/s, 18/27
+vs 16/27 lookups hit, worst single-turn prefill 15.1 s), making it the
+strongest configuration measured rather than a guarded opt-in.
+[Measurements](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-retained16.json);
+[default retention](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-default.json);
+[off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-baseline-off.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default

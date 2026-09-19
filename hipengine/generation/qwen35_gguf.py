@@ -409,17 +409,16 @@ def _gguf_prefix_gapped_suffix_max_tokens() -> int:
     )
 
 
-def _gguf_prefix_gapped_fast_route_available(lease: Any) -> bool:
+def _gguf_prefix_gapped_fast_route_available(lease: Any, context_tokens: int) -> bool:
     """Whether a gapped hit on this lease gathers onto the fast slot-local route."""
 
     session = getattr(lease, "session", None)
     runner = getattr(session, "runner", None)
-    scratch = getattr(session, "scratch", None)
-    if runner is None or scratch is None:
+    if runner is None:
         return False
     return _gguf_gapped_slot_local_fast_route_available(
         backend=str(getattr(runner, "backend", "")),
-        max_positions=int(getattr(scratch, "max_positions", 0)),
+        context_tokens=int(context_tokens),
         kv_width=int(getattr(runner, "kv_width", 0)),
     )
 
@@ -6884,7 +6883,7 @@ class Qwen35GGUFResidentModelRunner:
                 suffix_tokens = len(row.prompt_ids) - len(matched_tokens)
                 if (
                     suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens()
-                    and not _gguf_prefix_gapped_fast_route_available(lease)
+                    and not _gguf_prefix_gapped_fast_route_available(lease, positions)
                 ):
                     # Only a gapped placement is available and the suffix is
                     # long enough that the slow paged route costs more than
