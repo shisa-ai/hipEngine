@@ -37,9 +37,9 @@ All 144 requests complete and all 72 repeat pairs match. CPU generated tokens
 match the original in all 36 sampled requests. GPU numerical fixtures and the
 full-vocabulary c1/c4 lifecycle/state/ownership gate pass; GPU versus CPU or old
 GPU sampled-token identity is not required. The short output suite is not a
-separate task-quality certification. Native placement remains controlled by
-`HIPENGINE_QWEN35_NATIVE_SAMPLER`; this result does not widen supported request
-shapes or claim gfx1100 hardware validation.
+separate task-quality certification. Supported, available GGUF native sampling
+is default-on; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` selects host rollback. This does
+not widen supported request shapes or claim gfx1100 hardware validation.
 [Commands, correctness checks, and per-request evidence](results/2026-09-21-zbook-fast-cpu-gpu-sampling.json).
 
 September 20 W7900 C1 refresh on physical host **epyc**, GPU0
