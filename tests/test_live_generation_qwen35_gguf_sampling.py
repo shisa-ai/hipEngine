@@ -429,7 +429,7 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
         "fp16",
         "per_token_head",
     )
-    assert generator.kv_capability_provenance["status"] == "unknown"
+    assert generator.kv_capability_provenance["status"] == "unsupported"
     assert generator.kv_capability_provenance["runtime_action"] == "diagnostic_override"
     assert generator.kv_capability_provenance["promotion_eligible"] is False
 
@@ -451,6 +451,9 @@ def test_eager_model_load_prepare_honors_a_server_policy_hint(monkeypatch) -> No
     generator = _generator()
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_773_984,
@@ -487,7 +490,7 @@ def test_eager_model_load_prepare_without_hint_keeps_auto_bf16() -> None:
     )
 
 
-def test_gguf_unknown_int8_artifact_fails_closed_to_bf16(monkeypatch) -> None:
+def test_gguf_without_int8_implementation_falls_back_to_bf16(monkeypatch) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
         monkeypatch.delenv(name, raising=False)
     generator = _generator()
@@ -503,7 +506,7 @@ def test_gguf_unknown_int8_artifact_fails_closed_to_bf16(monkeypatch) -> None:
         "per_token_head",
     )
     assert generator._prepared_session_kv_kwargs() == {}
-    assert generator.kv_capability_provenance["status"] == "unknown"
+    assert generator.kv_capability_provenance["status"] == "unsupported"
     assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
     assert generator.kv_capability_provenance["effective_kv_storage"] == "bf16"
 
@@ -514,6 +517,9 @@ def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) 
     generator = _generator()
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_773_984,
@@ -548,6 +554,9 @@ def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
     generator.backend = "hip_gfx1151"
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_775_008,
