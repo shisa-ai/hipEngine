@@ -1784,7 +1784,9 @@ class Qwen35GGUFTransactionalVerifier:
         }
 
     def _publish_position(self, next_position: int, *, stream: int) -> None:
-        owner = self.target._target_scratch_owner
+        owner = getattr(self.target, "scratch", None)
+        if owner is None:
+            owner = self.target._target_scratch_owner
         if owner is None:
             raise RuntimeError("GGUF target scratch is closed")
         positions = list(owner.position_host.tolist())
@@ -1825,6 +1827,57 @@ class Qwen35GGUFTransactionalVerifier:
         self._require_open(prepared)
         object.__setattr__(prepared, "summary", summary)
         return prepared
+
+    def adopt_terminal_summary(
+        self,
+        prepared: Qwen35GGUFPreparedVerify,
+        summary: TargetAcceptSummary,
+    ) -> Qwen35GGUFPreparedVerify:
+        """Recommit an EOS-shortened chain from retained verifier state rows.
+
+        N2 may already have selected a later row inside the graph. Its producer
+        journals still own every row, so only the terminal cycle needs to stage
+        their hidden rows and select the earlier state through ordinary commit.
+        """
+
+        self._require_open(prepared)
+        if summary.request_ids != prepared.summary.request_ids or (
+            summary.accepted_counts[0] >= prepared.summary.accepted_counts[0]
+        ):
+            raise ValueError("terminal summary must shorten the prepared chain")
+        if prepared.native_device_accept_commit:
+            buffers = prepared.device_state_commit_buffers
+            if buffers is None or buffers.hidden_taps_src is None:
+                raise RuntimeError("terminal graph recommit requires captured hidden rows")
+            self.journal._copy_d2d(
+                self.journal.row_hidden.ptr,
+                buffers.hidden_taps_src.ptr,
+                prepared.batch.rows * self.journal.hidden_nbytes,
+                stream=0,
+            )
+            object.__setattr__(prepared, "native_device_accept_commit", False)
+        for name in ("accepted_counts", "commit_rows", "commit_tokens", "commit_positions", "next_tokens"):
+            tensor = getattr(prepared.buffers, name, None)
+            values = getattr(summary, name)
+            if tensor is not None and values is not None:
+                _copy_array(tensor, np.asarray(values, dtype=np.int32), self.target.runtime)
+        if prepared.buffers.full_accept is not None:
+            _copy_array(
+                prepared.buffers.full_accept,
+                np.asarray(summary.full_accept, dtype=np.uint8), self.target.runtime,
+            )
+        if prepared.buffers.committed_output_ids is not None:
+            values = np.full(prepared.buffers.committed_output_ids.shape, -1, dtype=np.int32)
+            prefix = (prepared.batch.tokens[prepared.batch.root_rows[0]], *summary.accepted_tokens[0])
+            values[0, :len(prefix)] = prefix
+            _copy_array(prepared.buffers.committed_output_ids, values, self.target.runtime)
+        if prepared.buffers.committed_output_lengths is not None:
+            _copy_array(
+                prepared.buffers.committed_output_lengths,
+                np.asarray([summary.accepted_counts[0] + 1], dtype=np.int32),
+                self.target.runtime,
+            )
+        return self.adopt_accept_summary(prepared, summary)
 
     def __enter__(self) -> "Qwen35GGUFTransactionalVerifier":
         return self
@@ -2193,6 +2246,13 @@ class Qwen35GGUFMTPDecodeSession:
                         target_batch=actual_work.target_batch,
                         work_item=actual_work.work_item,
                     )
+                from hipengine.speculative.streaming import limit_chain_accept_eos
+
+                terminal_summary, _ = limit_chain_accept_eos(
+                    prepared.batch, prepared.summary, eos_token_id=eos_token_id,
+                )
+                if terminal_summary is not prepared.summary:
+                    prepared = self.verifier.adopt_terminal_summary(prepared, terminal_summary)
                 target_rows += prepared.batch.rows
                 prepared_top1 = prepared.target_top1
                 prepared_logits = prepared.target_logits

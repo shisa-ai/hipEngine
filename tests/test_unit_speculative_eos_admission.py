@@ -32,16 +32,9 @@ def test_gguf_runner_requires_enabled_physical_owner(enabled,physical,expected):
     assert not Qwen35GGUFResidentModelRunner.speculative_eos_supported(runner,42)
 
 
-@pytest.mark.parametrize('device_ready,expected', [(True, True), (False, False)])
-def test_eos_admission_requires_the_device_accept_path(device_ready, expected):
-    """EOS is handled only where the device accept runs.
-
-    ``_limit_target_batch_eos`` bounds the greedy chain on the device-accept
-    path so EOS stays the last visible token; the eager host-proposal path
-    refuses an EOS row outright.  A statically eligible row whose target graph
-    is not ready for this cycle must therefore not be admitted, or the cycle
-    raises and is contained instead of decoding autoregressively by plan.
-    """
+@pytest.mark.parametrize('device_ready,expected', [(True, True), (False, True)])
+def test_eos_admission_supports_eager_and_device_accept(device_ready, expected):
+    """Both routes now select the terminal prefix before publishing output."""
 
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 

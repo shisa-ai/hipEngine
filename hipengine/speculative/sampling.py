@@ -207,6 +207,7 @@ def sampled_accept_from_distributions(
     draws: Callable[[], float],
     transaction_id: int | None = None,
     remaining_decode: Sequence[int] | None = None,
+    eos_token_ids: Sequence[int | None] | None = None,
 ) -> AcceptResult:
     """Walk one drafted chain and accept it with ``min(1, p/q)``.
 
@@ -226,6 +227,8 @@ def sampled_accept_from_distributions(
         raise ValueError("target_distributions must align with target verify rows")
     if len(draft_distributions) != batch.rows:
         raise ValueError("draft_distributions must align with target verify rows")
+    if eos_token_ids is not None and len(eos_token_ids) != len(batch.request_ids):
+        raise ValueError("eos_token_ids must align with request_ids")
     budgets = (
         None
         if remaining_decode is None
@@ -279,6 +282,10 @@ def sampled_accept_from_distributions(
             # draw (including an exact 0.0) and a certain draft accepting for
             # every draw in [0, 1).
             if float(draws()) < accepted_probability:
+                eos = None if eos_token_ids is None else eos_token_ids[index]
+                if eos is not None and token_id == int(eos):
+                    emitted = token_id
+                    break
                 request_tokens.append(token_id)
                 row = child
                 continue
