@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-20**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -944,6 +944,31 @@ is the unresolved blocker. Bulk prefill remains **opt-in** (`bulk_prefill=False`
 by default) for the separate reason below. The per-tensor kernel mix behind this
 route, and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
+
+**Matched llama.cpp comparison, measured 2026-09-20.** Same host, same model
+bytes (`7b2aec3b…`), 512-token prompt, 128 decode tokens, f16 KV, c=1, three
+repetitions, prefill and decode measured separately:
+
+| engine | transport | prefill tok/s | decode tok/s |
+| --- | --- | ---: | ---: |
+| llama.cpp TP=2 | `-sm tensor -ts 1/1`, NCCL allreduce | 1328.4 ± 10.5 | 41.46 ± 0.46 |
+| llama.cpp TP=2 | `-sm tensor`, internal q8 allreduce, P2P on | 1321.3 ± 12.1 | 41.38 ± 0.38 |
+| hipEngine TP2 | rank-local bulk prefill, host-staged exchange | 1035.2 | 39.17 |
+| llama.cpp TP=1 | single device | 934.8 ± 2.9 | 30.39 ± 0.04 |
+
+So the current prefill deficit is **28.3%** against llama.cpp's tensor split -
+about **109 ms** to remove from a 494.6 ms prefill - and decode is **5.9%**
+behind. Both engines' transport configurations are recorded in
+[`results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json`](results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json).
+
+The earlier figure of 1474.6 tok/s for llama.cpp's TP=2 tensor split **does not
+reproduce** on this host: the same build (`15995a1`), model bytes and host now
+measure 1328.4, and the number stays in the 1321-1328 range under the internal
+allreduce and P2P flags the original note attributes to it. The TP=1 companion
+from that same note *does* reproduce (934.8 against a recorded 941.8, -0.7%), so
+this is specific to the tensor-split arm rather than a host-wide clock or thermal
+difference. Treat 1474.6 as unreproduced, and size the remaining work against
+the 28.3% deficit above rather than the larger figure it implies.
 Bulk prefill stays opt-in: chunked bulk prefill is not implemented, so a prompt
 longer than the workspace forces a rebuild mid-session.
 [Prompt-sized cell](results/2026-09-18-w7900-bulk-prompt-c1-512.json) ·

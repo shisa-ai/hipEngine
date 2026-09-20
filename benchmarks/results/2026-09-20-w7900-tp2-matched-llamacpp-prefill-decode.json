@@ -1,0 +1,78 @@
+{
+ "schema": 1,
+ "kind": "tp2_matched_llamacpp_prefill_decode",
+ "generated_at": "2026-09-20T08:02:39Z",
+ "host": "lhl-w7900-xtx",
+ "hardware": {
+  "device0": "AMD Radeon Pro W7900 (gfx1100, 46064 MiB)",
+  "device1": "AMD Radeon RX 7900 XTX (gfx1100, 24560 MiB)",
+  "rocm": "7.2.4"
+ },
+ "matched": {
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256_prefix": "7b2aec3b9ababdfd75aa",
+  "prompt_tokens": 512,
+  "decode_tokens": 128,
+  "concurrency": 1,
+  "kv_cache": "f16/f16",
+  "speculative_decoding": false,
+  "repetitions": 3,
+  "timing_boundary": "llama-bench pp512/tg128 medians; hipEngine per-generation wall including its own synchronize",
+  "output_projection": "llama-bench tg128 projects one row per step; hipEngine bulk prefill uses logits_rows=1 (last prompt row only)",
+  "warmup": "llama-bench -r 3 discards its own warmup; hipEngine runs one unmeasured prefill before the 3 measured generations"
+ },
+ "arms": {
+  "llamacpp_tp2_nccl": {
+   "command": "cd /home/lhl/llama.cpp/llama.cpp-rdna3-opt && ./build-rocm-gfx1100/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -p 512 -n 128 -r 3 -sm tensor -ts 1/1 -ngl 999 -ctk f16 -ctv f16 -fa auto",
+   "build": "15995a1",
+   "transport": "split-mode tensor, tensor-split 1/1, GGML_CUDA_ALLREDUCE unset (Linux default = NCCL), P2P off",
+   "prefill_tok_s": 1328.44,
+   "prefill_sd": 10.46,
+   "decode_tok_s": 41.46,
+   "decode_sd": 0.46
+  },
+  "llamacpp_tp2_internal_p2p": {
+   "command": "GGML_CUDA_ALLREDUCE=internal GGML_CUDA_P2P=1 <same as above>",
+   "build": "15995a1",
+   "transport": "split-mode tensor, internal q8 allreduce, P2P enabled",
+   "prefill_tok_s": 1321.26,
+   "prefill_sd": 12.06,
+   "decode_tok_s": 41.38,
+   "decode_sd": 0.38
+  },
+  "llamacpp_tp1": {
+   "command": "./build-rocm-gfx1100/bin/llama-bench ... -sm none -dev ROCm0",
+   "build": "15995a1",
+   "transport": "single device",
+   "prefill_tok_s": 934.81,
+   "prefill_sd": 2.93,
+   "decode_tok_s": 30.39,
+   "decode_sd": 0.04
+  },
+  "hipengine_tp2_bulk": {
+   "command": "python3 scripts/tp2_c1_bench.py --mode tp2 --devices 0,1 --bulk-prefill --prompt-length 512 --decode-tokens 128 --max-sequence-length 2048 --repeats 3",
+   "transport": "rank-local bulk prefill, host-staged MLP exchange (hipDeviceCanAccessPeer is 0 both ways on this pair, so direct peer access is unavailable)",
+   "prefill_tok_s": 1035.2,
+   "prefill_p50_ms": 494.592,
+   "decode_tok_s": 39.17,
+   "decode_p50_ms": 25.503,
+   "session_vram_gib_per_rank": 12.367
+  }
+ },
+ "gap": {
+  "prefill_ratio_vs_llamacpp_tp2": 1.2833,
+  "prefill_deficit_percent": 28.33,
+  "prefill_ms_to_remove": 109.2,
+  "decode_ratio_vs_llamacpp_tp2": 1.0585,
+  "decode_deficit_percent": 5.85
+ },
+ "reproducibility_of_the_previous_reference": {
+  "historical_llamacpp_tp2_prefill_tok_s": 1474.6,
+  "remeasured_llamacpp_tp2_prefill_tok_s": 1328.44,
+  "delta_percent": -9.91,
+  "historical_llamacpp_tp1_prefill_tok_s": 941.8,
+  "remeasured_llamacpp_tp1_prefill_tok_s": 934.81,
+  "tp1_delta_percent": -0.74,
+  "finding": "The TP=1 companion reproduces within 0.7% on the same build (15995a1), model bytes and host, so this is not a host-wide clock or thermal difference. The TP=2 tensor-split number does not reproduce: 1328.4 measured against 1474.6 recorded, -9.9%, and it stays ~1321-1328 under the internal allreduce and P2P flags the historical note attributes to it. Treat 1474.6 as unreproduced until a command that reaches it is recorded."
+ }
+}
