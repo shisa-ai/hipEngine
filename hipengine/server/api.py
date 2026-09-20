@@ -74,6 +74,9 @@ from hipengine.generation import (
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.qwen35_gguf_mtp2 import (
+    _MTP2_MAX_CONTEXT_ENV as _MTP2_MAX_CONTEXT_ENV,
+    _MTP2_QUALIFIED_CONTEXT_WINDOW as _MTP2_QUALIFIED_CONTEXT_WINDOW,
+    _mtp2_context_window as _mtp2_context_window,
     unqualified_mtp_screening_enabled as _mtp_unqualified_screening_enabled,
 )
 from hipengine.generation.registry import normalize_prompt_input
@@ -1511,6 +1514,7 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
         "candidate_budget": _candidate_budget_resolution(config, engine=engine),
+        "context_window": _mtp2_context_window_resolution(),
     }
     if serving_plan is not None:
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
@@ -2222,6 +2226,77 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if raw is None or raw.strip() == "":
         return bool(default)
     return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+# Credentials are reported as present-but-redacted.  Redaction is by exact
+# name on purpose: a substring rule on "KEY"/"TOKEN" would hide the tuning
+# knobs this echo exists to expose (HIPENGINE_MTP2_MAX_CONTEXT_TOKENS,
+# HIPENGINE_GGUF_INT8_KV_KEY_ONLY, HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED).
+_ENV_ECHO_PREFIX = "HIPENGINE_"
+_ENV_ECHO_REDACTED = frozenset({"HIPENGINE_API_KEY", "HIPENGINE_KEY"})
+_ENV_ECHO_REDACTED_VALUE = "<redacted>"
+
+
+def _effective_hipengine_env(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Report the HIPENGINE_* environment this process actually resolved.
+
+    A launcher that clears or filters the environment (``env -i``, a
+    container entrypoint, a systemd unit) can strip a requested knob without
+    failing.  The server then keeps its default, and a benchmark that
+    believed it had raised a limit silently measures the default instead.
+    Echoing the resolved values turns that no-op into something a caller can
+    assert against the values it requested.
+    """
+
+    source = os.environ if environ is None else environ
+    return {
+        name: (
+            _ENV_ECHO_REDACTED_VALUE if name in _ENV_ECHO_REDACTED else str(value)
+        )
+        for name, value in sorted(source.items())
+        if name.startswith(_ENV_ECHO_PREFIX)
+    }
+
+
+def _mtp2_context_window_resolution() -> dict[str, Any]:
+    """Resolve the exported MTP context window, reporting instead of raising.
+
+    A launcher that clears or filters the environment can strip the export
+    without failing.  The server then keeps the qualified default, and a
+    benchmark that believed it had raised the window measures the default.
+    Reporting ``exported`` beside ``resolved`` makes that no-op visible.
+
+    Resolution errors are returned rather than raised: an invalid export is
+    already fatal at the adapter's own call sites, and a diagnostic payload
+    must not become a new crash path with a different failure order.
+    """
+
+    exported = os.environ.get(_MTP2_MAX_CONTEXT_ENV)
+    resolved: int | None = None
+    error: str | None = None
+    try:
+        resolved = int(_mtp2_context_window())
+    except RuntimeError as exc:
+        error = str(exc)
+    return {
+        "env": _MTP2_MAX_CONTEXT_ENV,
+        "exported": None if exported is None else str(exported),
+        "resolved": resolved,
+        "qualified_default": int(_MTP2_QUALIFIED_CONTEXT_WINDOW),
+        "error": error,
+    }
+
+
+def _mtp2_context_window_log_fields() -> tuple[str, str]:
+    """Render the context-window resolution as the ``env:``/``resolved:`` pair."""
+
+    resolution = _mtp2_context_window_resolution()
+    exported = resolution["exported"]
+    resolved = resolution["resolved"]
+    text = f"invalid({resolution['error']})" if resolved is None else str(resolved)
+    return ("unset" if exported is None else str(exported), text)
 
 
 def _mtp_unavailable_route_fallback(
@@ -6864,6 +6939,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         return {
             "object": "hipengine.capabilities",
+            "effective_env": _effective_hipengine_env(),
             "model": {
                 "id": model_identity["id"],
                 "path": config.model,
@@ -11395,17 +11471,20 @@ def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> No
             "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
             "default_enabled=unknown policy=%s thinking=%s "
             "candidate_budget=requested:%s resolved:pending source:pending "
+            "mtp2_context_window=env:%s resolved:%s "
             "(pre-resolution: the engine has not prepared its generator yet)",
             config.speculative_mtp_serving,
             config.speculative_mtp_thinking,
             config.speculative_candidate_budget,
+            *_mtp2_context_window_log_fields(),
         )
         return
     capability = _speculative_mtp_capability(config, engine=engine)
     budget = _candidate_budget_resolution(config, engine=engine)
     _LOGGER.info(
         "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s "
-        "candidate_budget=requested:%s resolved:%s source:%s",
+        "candidate_budget=requested:%s resolved:%s source:%s "
+        "mtp2_context_window=env:%s resolved:%s",
         "enabled" if capability["serving_route"] else "off",
         _engine_supports_speculative_mtp(engine),
         capability.get("default_enabled", False),
@@ -11414,6 +11493,7 @@ def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> No
         budget["requested"],
         budget["resolved"],
         budget["source"],
+        *_mtp2_context_window_log_fields(),
     )
     _warn_unservable_mtp_budget(config, engine=engine, budget=budget)
 

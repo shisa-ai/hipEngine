@@ -87,6 +87,46 @@ from `qwen35_readme_sweep.py` and `qwen35_gguf_bench.py`. Speculative-decode
 tables use `gguf_ar_mtp_suite.py` or `gguf_mtp_category_bench.py` with a
 `gguf_true_ar_category_bench.py` true-AR denominator.
 
+## Environment knobs: verify the server resolved them (read before launching)
+
+A launcher that builds a clean environment for the server can strip a tuning
+variable without failing. `exec env -i ...` clears everything, and a wrapper
+that forwards a hand-written list of variables forwards only those. The server
+then keeps its default and the run measures the default while the report claims
+the raised value. Nothing errors, and the numbers look plausible.
+
+A real instance: a shape sweep exported `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192`
+through a wrapper that forwarded two other variables. The server kept the
+qualified 1,023-token window and the "forced window" arm reproduced the default
+to the digit (11.40 tok/s both arms). The near-miss was publishing "raising the
+window changes nothing" as a finding about the model.
+
+Two habits prevent this. First, forward the whole namespace instead of a list:
+
+```bash
+mapfile -t hipengine_env < <(env | grep -E '^HIPENGINE_[A-Z0-9_]+=')
+exec env -i "${hipengine_env[@]}" PATH="$PATH" ... ./serve.sh
+```
+
+Second, assert the resolution instead of trusting the launch. The server
+reports what it resolved in the startup log line (`EFFECTIVE_MTP: ...
+mtp2_context_window=env:... resolved:...`) and in
+`/v1/hipengine/capabilities`, which carries `effective_env` (every
+`HIPENGINE_*` variable, with credentials redacted) and the MTP block's
+`context_window` (`exported` beside `resolved`).
+
+```bash
+python3 scripts/bench_env_preflight.py --url http://127.0.0.1:8097 \
+    HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192
+```
+
+The preflight exits non-zero unless every requested value is confirmed in
+effect, and a missing or unreadable `effective_env` block is a failure rather
+than a pass, so a check that cannot see its evidence never reports success. Run
+it after the server is ready and before the measurement. `--unset NAME`
+asserts a variable is absent, which catches a stale export from an earlier
+launch in the same shell.
+
 ## Profiling these harnesses under rocprofv3 (read before launching)
 
 A profiled Python/ctypes process must never discover the compiler: the
