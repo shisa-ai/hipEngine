@@ -90,12 +90,14 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 ### HTTP And Library Behavior
 
-- [ ] `LLM.generate()` and `hipengine serve --kv-storage int8_per_token_head`
-  reach the intended route without a test-only admission override.
+- [x] `hipengine serve --kv-storage int8_per_token_head` reaches the intended
+  route without a test-only admission override on the supported W7900 artifact.
+- [ ] `LLM.generate()` independently reaches the intended route.
 - [x] Blocking completions and chat return correct IDs/text, finish reason and
   prompt/completion usage against their own true no-MTP INT8 baseline.
-- [x] SSE streams preserve ordering, usage, terminal events, and cancellation;
-  stopping inside an accepted draft chain publishes no extra tokens.
+- [x] SSE streams preserve ordering, usage, terminal events, and cancellation.
+- [ ] Stopping inside an accepted draft chain publishes no extra tokens.
+  Text-stop requests currently select AR; that fallback's stop outcome passes.
 - [ ] Multiple choices, tool/structured responses, and unsupported sampling
   either work through existing contracts or select a named supported fallback.
 - [ ] GPU waits leave the HTTP event loop responsive.
@@ -154,8 +156,12 @@ This host's exact artifact has an existing compact-INT8 quality rejection.
 The run explicitly uses the existing KV diagnostic override and reports it
 as such; no MTP screening override is required. This is successful HTTP
 execution evidence, not reversal of the approximate-KV quality decision.
-The no-override supported-artifact run, prefix-on validation, and DMS work
-are still open.
+The independent W7900 run on its supported exact Q4_K_M artifact also passes
+the full 108-request matrix and lifecycle gate without diagnostic overrides.
+Nine primitive GPU cases pass there. Prefix-on validation and DMS work remain
+open. Longer gfx1151 probes execute MTP at 333/777/1031/1409 prompt tokens, but
+4097 currently loses provider priming in resumable INT8 prefill; its AR fallback
+matches output but does not close the long-prompt requirement.
 
 Commands against an already running INT8 server:
 
