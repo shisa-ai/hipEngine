@@ -1,0 +1,202 @@
+"""Rows, triage, and the durable store.
+
+An *inventory row* is a mechanically extracted candidate: a flag, a kernel, a
+ledger heading, a campaign candidate. A row carries **evidence and never a
+verdict**, because an extractor can only see what greps can see and is often
+wrong about what it means.
+
+A *triage* decision is a human or agent judgement about a row. It lives in its
+own store, keyed by the row's stable id, so re-running an extractor never
+destroys it. Each decision records a hash of the evidence it was made against;
+when that evidence changes the decision is reported as **stale** and comes back
+for review instead of quietly standing on facts that no longer hold.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import hashlib
+import json
+import pathlib
+import re
+from dataclasses import dataclass, field
+from typing import Any
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+AUDIT_ROOT = REPO_ROOT / "audit"
+INVENTORY_DIR = AUDIT_ROOT / "inventory"
+TRIAGE_DIR = AUDIT_ROOT / "triage"
+
+#  What a row turns out to be, once someone has looked.
+TAGS = (
+    "DEAD-FLAG",       # a flag nothing reads, or whose behaviour is now unconditional
+    "LOST-OPT",        # a measured win that was never promoted to the default path
+    "ORPHAN-KERNEL",   # a kernel with no reachable registry key
+    "STALE-LEDGER",    # a ledger entry whose referent is gone or whose condition fired
+    "UNREACHABLE",     # a path production never selects
+    "SKELETON",        # declared but unimplemented
+    "GATE-CATCH22",    # a restriction with no command that could lift it
+    "DUP-DISPATCH",    # two routes to the same work
+    "BENCH-INVALID",   # a retained row that fails the current evidence policy
+    "DOC-DRIFT",       # documentation disagrees with the tree
+    "DEAD-CODE",
+    "TEST-GAP",
+    "NOT-DEBT",        # the extractor was wrong; this row is fine as it stands
+)
+
+#  hipEngine cleanup verbs. Most debt here resolves by turning something on or
+#  deleting it, not by fixing a bug, so the vocabulary differs from a bug tracker.
+DISPOSITIONS = (
+    "promote",    # make it the default path
+    "remove",     # delete the dead flag / path / entry
+    "qualify",    # run the gate that is missing, then decide
+    "keep",       # justified as-is; the note says why
+    "document",   # the code is right, the docs are not
+    "defer",      # real, accepted, not scheduled; the note says what unblocks it
+)
+
+SEVERITIES = ("high", "medium", "low")
+
+
+def slug(text: str, limit: int = 60) -> str:
+    out = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return out[:limit].rstrip("-") or "unnamed"
+
+
+def digest(*parts: Any) -> str:
+    payload = "\x1f".join("" if p is None else str(p) for p in parts)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+@dataclass
+class Row:
+    """One mechanically extracted candidate."""
+
+    kind: str                                   # flag | kernel | ledger | candidate
+    key: str                                    # stable within kind
+    title: str
+    location: str = ""                          # path or path:line
+    evidence: dict[str, Any] = field(default_factory=dict)
+    signals: list[str] = field(default_factory=list)   # observations, not verdicts
+
+    @property
+    def id(self) -> str:
+        return f"{self.kind}/{self.key}"
+
+    @property
+    def evidence_hash(self) -> str:
+        """Hash of what a triage decision would have been made against."""
+        return digest(self.location, json.dumps(self.evidence, sort_keys=True), sorted(self.signals))
+
+    def to_dict(self) -> dict[str, Any]:
+        out = dataclasses.asdict(self)
+        out["id"] = self.id
+        out["evidence_hash"] = self.evidence_hash
+        return out
+
+
+@dataclass
+class Triage:
+    """A durable decision about a row."""
+
+    id: str
+    tag: str
+    disposition: str
+    severity: str = "low"
+    note: str = ""
+    decided: str = ""
+    by: str = ""
+    evidence_hash: str = ""
+    resolved: bool = False        # the work is done; keep the record
+
+    def problems(self) -> list[str]:
+        out = []
+        if self.tag not in TAGS:
+            out.append(f"tag {self.tag!r} is not one of {'/'.join(TAGS)}")
+        if self.disposition not in DISPOSITIONS:
+            out.append(f"disposition {self.disposition!r} is not one of {'/'.join(DISPOSITIONS)}")
+        if self.severity not in SEVERITIES:
+            out.append(f"severity {self.severity!r} is not one of {'/'.join(SEVERITIES)}")
+        if not self.note.strip():
+            out.append("note is empty — say why this disposition is right")
+        return out
+
+
+def load_triage() -> dict[str, Triage]:
+    """Every recorded decision, keyed by row id."""
+    out: dict[str, Triage] = {}
+    if not TRIAGE_DIR.exists():
+        return out
+    for path in sorted(TRIAGE_DIR.glob("*.jsonl")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"{path}:{number}: invalid JSON — {exc}") from exc
+            known = {f.name for f in dataclasses.fields(Triage)}
+            out[payload["id"]] = Triage(**{k: v for k, v in payload.items() if k in known})
+    return out
+
+
+def save_triage(decisions: dict[str, Triage]) -> None:
+    """Rewrite the store, one file per kind, sorted so diffs stay readable."""
+    TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
+    by_kind: dict[str, list[Triage]] = {}
+    for decision in decisions.values():
+        by_kind.setdefault(decision.id.split("/", 1)[0], []).append(decision)
+    for kind, items in by_kind.items():
+        lines = [json.dumps(dataclasses.asdict(d), sort_keys=True) for d in sorted(items, key=lambda d: d.id)]
+        (TRIAGE_DIR / f"{kind}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def load_inventory(kind: str | None = None) -> list[Row]:
+    rows: list[Row] = []
+    if not INVENTORY_DIR.exists():
+        return rows
+    for path in sorted(INVENTORY_DIR.glob("*.json")):
+        if path.name == "meta.json":          # run metadata, not rows
+            continue
+        if kind and path.stem != kind:
+            continue
+        for payload in json.loads(path.read_text(encoding="utf-8"))["rows"]:
+            rows.append(Row(
+                kind=payload["kind"], key=payload["key"], title=payload["title"],
+                location=payload.get("location", ""), evidence=payload.get("evidence", {}),
+                signals=payload.get("signals", []),
+            ))
+    return rows
+
+
+def save_inventory(kind: str, rows: list[Row], meta: dict[str, Any]) -> pathlib.Path:
+    INVENTORY_DIR.mkdir(parents=True, exist_ok=True)
+    path = INVENTORY_DIR / f"{kind}.json"
+    payload = {"kind": kind, "meta": meta, "rows": [r.to_dict() for r in sorted(rows, key=lambda r: r.id)]}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    return path
+
+
+def reconcile(rows: list[Row], decisions: dict[str, Triage]) -> dict[str, list[Row]]:
+    """Split rows by triage state.
+
+    `stale` is the important one: the row was triaged, but the evidence behind
+    that decision has since changed, so the conclusion may no longer hold.
+    """
+    state: dict[str, list[Row]] = {"open": [], "triaged": [], "stale": []}
+    for row in rows:
+        decision = decisions.get(row.id)
+        if decision is None:
+            state["open"].append(row)
+        elif decision.evidence_hash and decision.evidence_hash != row.evidence_hash:
+            state["stale"].append(row)
+        else:
+            state["triaged"].append(row)
+    return state
+
+
+def orphaned(rows: list[Row], decisions: dict[str, Triage]) -> list[Triage]:
+    """Decisions whose row no longer exists — the debt went away, or the key moved."""
+    live = {row.id for row in rows}
+    return [d for d in decisions.values() if d.id not in live and not d.resolved]

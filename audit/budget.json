@@ -1,0 +1,10 @@
+{
+  "recorded": "2026-09-21",
+  "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason.",
+  "open": {
+    "candidate": 225,
+    "flag": 745,
+    "kernel": 255,
+    "ledger": 396
+  }
+}
