@@ -47,6 +47,7 @@ from starlette.concurrency import run_in_threadpool
 from hipengine import LLM, SamplingParams
 from hipengine.generation import (
     DecodeState,
+    EngineCommandTimeout,
     EngineServiceClosed,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
@@ -730,10 +731,11 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "emitted": True,
         "description": (
-            "The resident engine service is closed or unhealthy and cannot "
-            "accept work. The message names the fatal cause the service "
-            "recorded; /ready reports the same state as unhealthy. Restart the "
-            "server to restore serving."
+            "The resident engine service is closed, unhealthy, or unresponsive "
+            "and cannot accept work. The message names the fatal cause the "
+            "service recorded, or - for an engine command that outlived its "
+            "liveness budget - the method, the budget, and the activity that "
+            "held the driver thread. Restart the server to restore serving."
         ),
     },
     "internal_error": {
@@ -5766,14 +5768,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         service is unhealthy) was answered with Starlette's plain-text
         ``Internal Server Error``: no ``error.code``, no message, and nothing a
         client could distinguish from a truncation.
+
+        A resident service that cannot answer is reported as unavailable rather
+        than as an internal fault: it is closed or unhealthy
+        (``EngineServiceClosed``), or its driver thread let a command's liveness
+        budget expire (``EngineCommandTimeout``). Neither is the request's
+        fault, and a client can retry both once the engine serves again, so
+        answering ``internal_error`` would tell it the opposite of the truth.
         """
 
-        service_closed = isinstance(exc, EngineServiceClosed)
-        status_code = 503 if service_closed else 500
-        code = "engine_unavailable" if service_closed else "internal_error"
+        engine_unavailable = isinstance(exc, (EngineServiceClosed, EngineCommandTimeout))
+        status_code = 503 if engine_unavailable else 500
+        code = "engine_unavailable" if engine_unavailable else "internal_error"
         message = (
             str(exc)
-            if service_closed
+            if engine_unavailable
             else f"unhandled server error: {type(exc).__name__}: {exc}"
         )
         _LOGGER.exception(

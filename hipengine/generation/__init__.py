@@ -54,6 +54,7 @@ from hipengine.generation.deadline import (
 )
 from hipengine.generation.engine_service import (
     EngineService,
+    EngineCommandTimeout,
     EngineServiceClosed,
     EngineServiceHandle,
 )
@@ -201,6 +202,7 @@ __all__ = [
     "EngineLoopRunner",
     "EngineOutput",
     "EngineService",
+    "EngineCommandTimeout",
     "EngineServiceClosed",
     "EngineServiceHandle",
     "ExecutionCompatibilityKey",

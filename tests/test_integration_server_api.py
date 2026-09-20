@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    EngineCommandTimeout,
     EngineServiceClosed,
     FinishDetails,
     GenerationAdmissionRejected,
@@ -2636,6 +2637,57 @@ def test_closed_engine_service_answers_with_a_typed_unavailable_error() -> None:
     assert body["error"]["message"] == closed_message
     assert body["error"]["hipengine"]["retryable"] is True
     assert body["error"]["hipengine"]["exception_type"] == "EngineServiceClosed"
+
+
+def test_engine_command_timeout_answers_with_a_typed_unavailable_error() -> None:
+    """A driver that never answers is the server's problem, not the request's.
+
+    The resident service abandons a command whose liveness budget expires, and the
+    error names the method, the budget, and the activity holding the driver thread.
+    Answering the non-retryable ``internal_error`` would tell a client that its own
+    request was at fault for a stalled engine, so an exhausted budget is reported
+    the way a closed service is: retryable ``engine_unavailable``.
+    """
+
+    timeout_message = (
+        "engine service command timed out: method=tokenize budget_s=300.0 "
+        "driver_command=control:prepare driver_command_s=301.2 queued_commands=2 "
+        "active_requests=1 driver_alive=yes"
+    )
+
+    class UnresponsiveServiceFakeLLM(PromptPreparingFakeLLM):
+        def tokenize(self, text: str) -> tuple[int, ...]:
+            raise EngineCommandTimeout(timeout_message)
+
+    fake = UnresponsiveServiceFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["type"] == "server_error"
+    assert "method=tokenize" in body["error"]["message"]
+    assert "budget_s=300.0" in body["error"]["message"]
+    assert "driver_command=control:prepare" in body["error"]["message"]
+    assert body["error"]["hipengine"]["exception_type"] == "EngineCommandTimeout"
 
 
 def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event() -> None:
