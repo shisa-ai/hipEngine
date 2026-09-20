@@ -158,7 +158,9 @@ def read_index_blobs(paths: list[str]) -> dict[str, bytes]:
 def slugify(value: str, *, fallback: str) -> str:
     value = value.strip().lower()
     value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
-    return value[:48] or fallback
+    # Strip again after truncation: cutting at 48 characters can leave a
+    # trailing dash, which would fail the slug self-check in parse_entry_text.
+    return value[:48].rstrip("-") or fallback
 
 
 def utc_now() -> datetime:
@@ -269,26 +271,36 @@ def create_entry(args: argparse.Namespace) -> int:
     raise WorklogError("could not allocate a unique worklog entry filename")
 
 
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def _fence_transition(line: str, fence: tuple[str, int] | None) -> tuple[str, int] | None:
+    """Apply one body line to the fenced-code state machine.
+
+    A fence line is indented at most three spaces and opens with a run of
+    backticks or tildes; it closes an open fence of the same character and at
+    least the same length when it carries no info string. Indented fence-like
+    lines inside a fence are content, not closers, matching CommonMark.
+    """
+    match = _FENCE_RE.match(line)
+    if match is None:
+        return fence
+    chars, info = match.group(1), match.group(2).strip()
+    if fence is None:
+        return chars[0], len(chars)
+    char, run = fence
+    if chars[0] == char and len(chars) >= run and info == "":
+        return None
+    return fence
+
+
 def _markdown_heading_positions(body: str) -> tuple[list[int], dict[str, list[int]]]:
     """Return title and required-section line positions outside fenced code."""
     title_positions: list[int] = []
     section_positions = {section: [] for section in REQUIRED_SECTIONS}
-    fence: str | None = None
+    fence: tuple[str, int] | None = None
     for index, line in enumerate(body.splitlines()):
-        stripped = line.lstrip()
-        marker = (
-            "```"
-            if stripped.startswith("```")
-            else "~~~"
-            if stripped.startswith("~~~")
-            else None
-        )
-        if marker is not None:
-            if fence is None:
-                fence = marker
-            elif fence == marker:
-                fence = None
-            continue
+        fence = _fence_transition(line, fence)
         if fence is not None:
             continue
         if line.startswith("# "):
@@ -296,6 +308,23 @@ def _markdown_heading_positions(body: str) -> tuple[list[int], dict[str, list[in
         if line in section_positions:
             section_positions[line].append(index)
     return title_positions, section_positions
+
+
+def _line_conflict_marker(body: str) -> str | None:
+    """A git conflict marker starting a line outside fenced code, if any.
+
+    Markers inside fenced code blocks or mid-line (for example documented
+    examples of merge output) are legitimate content, so only column-zero
+    markers outside fences are treated as unresolved conflicts.
+    """
+    fence: tuple[str, int] | None = None
+    for line in body.splitlines():
+        fence = _fence_transition(line, fence)
+        if fence is not None:
+            continue
+        if line.startswith("<<<<<<<") or line.startswith(">>>>>>>") or line == "=======":
+            return line[:80]
+    return None
 
 
 def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
@@ -376,8 +405,9 @@ def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
     for placeholder in PLACEHOLDERS:
         if placeholder in body:
             raise WorklogError(f"unfinished placeholder remains: {placeholder}")
-    if any(marker in text for marker in ("<<<<<<<", "=======", ">>>>>>>")):
-        raise WorklogError("git conflict marker present")
+    conflict_line = _line_conflict_marker(body)
+    if conflict_line is not None:
+        raise WorklogError(f"git conflict marker present: {conflict_line!r}")
 
     return fields, text.rstrip() + "\n"
 
