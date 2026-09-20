@@ -612,7 +612,7 @@ class UnqualifiedBudgetSpeculativeMTPFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM
             if sampling_ok
             else [
                 "candidate_budget_not_qualified",
-                "sampling_mode_not_qualified",
+                "sampling_mode_unmeasured",
             ]
         )
         plan["reason"] = plan["failed_axes"][0]
@@ -2814,6 +2814,34 @@ def test_engine_command_timeout_answers_with_a_typed_unavailable_error() -> None
     assert "budget_s=300.0" in body["error"]["message"]
     assert "driver_command=control:prepare" in body["error"]["message"]
     assert body["error"]["hipengine"]["exception_type"] == "EngineCommandTimeout"
+
+
+@pytest.mark.parametrize("explicit,status", [(True, 501), (False, 200), (None, 200)])
+def test_explicit_unimplemented_mtp_does_not_silently_downgrade(explicit, status):
+    fake = SpeculativeMTPFakeLLM()
+    fake.resolve_speculative_mtp_serving_plan = lambda **kwargs: {
+        "admitted": False,
+        "automatic_eligible": False,
+        "reason": "packed_int8_mtp_not_implemented",
+        "implementation_key": "gguf_dense_int8_native_chain",
+        "selected_candidate_count": 0,
+        "key": {"kv_storage": "int8_per_token_head", "realized_group_rows": 2},
+    }
+    app = create_app(
+        ServerConfig(model="fake", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    body = {"model": "fake-model", "prompt": "hi", "max_tokens": 4}
+    if explicit is not None:
+        body["speculative_mtp"] = explicit
+    with TestClient(app) as client:
+        response = client.post("/v1/completions", json=body)
+    assert response.status_code == status, response.text
+    if explicit is True:
+        assert response.json()["error"]["code"] == "unsupported_feature"
+        assert "packed_int8_mtp_not_implemented" in response.json()["error"]["message"]
+        assert fake.mtp_calls == []
+        assert fake.calls == []
 
 
 @pytest.mark.parametrize("error_class", [EngineServiceClosed, EngineCommandTimeout])
@@ -7302,7 +7330,7 @@ def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> No
     assert plan is not None
     assert plan["reason"] == "candidate_budget_not_qualified"
     assert plan["reason"] in _MTP_SCREENING_REASONS
-    assert "sampling_mode_not_qualified" in plan["failed_axes"]
+    assert "sampling_mode_unmeasured" in plan["failed_axes"]
     assert plan["static_intent_allowed"] is False
     assert plan.get("screening") is None
 
@@ -7647,14 +7675,17 @@ def test_screening_override_reads_every_failed_axis_not_the_summary_reason() -> 
 
     for structural in (
         "insufficient_memory",
-        "sampling_mode_not_qualified",
-        "artifact_identity_unverified",
+        "sampling_mode_unmeasured",
     ):
         plan = dict(screenable)
         plan["failed_axes"] = ["candidate_budget_not_qualified", structural]
         assert (
             _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
         ), structural
+
+    unverified = dict(screenable)
+    unverified["failed_axes"] = ["artifact_identity_unverified"]
+    assert _mtp_screening_static_eligibility(unverified, physical_max_rows=4) is not None
 
     # A plan whose failed set is entirely screenable still screens.
     only_screenable = dict(screenable)

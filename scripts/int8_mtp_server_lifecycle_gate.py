@@ -64,27 +64,35 @@ def run(args):
             drain(client)
             report["checks"]["concurrent_mixed_ar_mtp"] = True
 
-            # Explicit multi-choice requests must fall back before any unsupported
-            # packed INT8 verifier runs, preserving each row's result.
-            many = generate(speculative_mtp=True, n=2)
+            response = client.post("/v1/completions", json={
+                **base, "speculative_mtp": True, "n": 2,
+            })
+            assert response.status_code == 501, response.text
+            assert "packed_int8_mtp_not_implemented" in response.text
+            many = generate(speculative_mtp=False, n=2)
             assert len(many["choices"]) == 2
             assert all(choice["hipengine"]["generated_token_ids"] == baseline["ids"] for choice in many["choices"])
-            decision = many["hipengine"]["generation_shape"]["route_decision"]
-            assert decision["reason"] == "packed_int8_mtp_not_implemented", decision
-            report["checks"]["multichoice_structural_fallback"] = True
+            report["checks"]["multichoice_structural_error_and_ar"] = True
 
             text = baseline_body["choices"][0]["text"]
             assert len(text) >= 12
             stop_at = len(text) // 2
             stop_text = text[stop_at:stop_at + 8]
-            stopped = [
-                blocking_result(generate(speculative_mtp=value, stop=[stop_text]))
-                for value in (False, True)
-            ]
-            assert stopped[0]["ids"] == stopped[1]["ids"]
-            assert stopped[0]["finish_reason"] == stopped[1]["finish_reason"] == "stop"
-            report["checks"]["stop_policy"] = True
-            report["stop_mtp_cycles"] = stopped[1]["cycles"]
+            stopped = blocking_result(generate(speculative_mtp=False, stop=[stop_text]))
+            assert stopped["finish_reason"] == "stop"
+            response = client.post("/v1/completions", json={
+                **base, "speculative_mtp": True, "stop": [stop_text],
+            })
+            if response.status_code == 501:
+                assert "mtp_sampling_unsupported" in response.text, response.text
+                report["checks"]["explicit_stop_mtp_capability_error"] = True
+            else:
+                response.raise_for_status()
+                speculative_stop = blocking_result(response.json())
+                assert stopped["ids"] == speculative_stop["ids"]
+                assert speculative_stop["finish_reason"] == "stop"
+                assert speculative_stop["cycles"] > 0
+                report["checks"]["stop_inside_speculation"] = True
 
             before = drain(client)
             token_seen = False

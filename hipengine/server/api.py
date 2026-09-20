@@ -14354,6 +14354,26 @@ def _generation_route_for_request(
         return route, None
     explicit_requested = _request_speculative_mtp_enabled(request) is True
     plan_reason = str(plan.get("reason") or "")
+    if (
+        explicit_requested
+        and not bool(plan.get("admitted"))
+        and (
+            plan.get("implementation_key")
+            or plan_reason == "mtp_contract_unsupported"
+        )
+    ):
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {plan_reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {
+                "reason": plan_reason,
+                "implementation_key": plan.get("implementation_key"),
+                "key": plan.get("key"),
+            }}},
+        )
     defer_physical_group = bool(
         explicit_requested
         and not bool(plan.get("admitted"))
