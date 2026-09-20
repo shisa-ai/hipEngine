@@ -604,6 +604,15 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   2026-09-17
   (`worklog/entries/20260917T170209.714945Z-lhl-mtp-long-context-assessment-8122b3.md`):
   of the four boundaries on this path only the adapter window refused a request.
+- Residue removed with it (2026-09-20): `benchmarks/atlas-agent/` still described
+  the window as current behaviour, named the deleted
+  `_MTP2_QUALIFIED_CONTEXT_WINDOW`, and shipped a `FORCE_LONG_MTP=1` knob whose
+  only effects were to export the now-inert `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`
+  and to pass a `--max-context-tokens` the base command already passed. The
+  knob, its `force_long_mtp` provenance line, the README section and knob row,
+  and `analyze.py`'s "LONG-CONTEXT MTP" caveat are gone, and the prose now
+  reports the measured admission range instead. A dead knob is worse than no
+  knob: it warned an operator that a working route was unqualified.
 
 ## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
 
@@ -632,10 +641,10 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   as the strict fallback for every other artifact identity and behind
   `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0`; it is not dead code. The recorded
   0.90x/0.68x serving ratios were measured with the row-wise rule in force
-  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`);
-  serving MTP above a 1,022-token prompt is still refused by the adapter's
-  measured 1,023-token provider window, which is a separate blocker from this
-  route.
+  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
+  The adapter's 1,023-token provider window that also refused serving MTP above a
+  1,022-token prompt was a separate blocker from this route and has since been
+  removed (see the entry above).
 - Historical note: the only measured way to reach the batched long-row route
   before this was to raise the split threshold past the request's context (or
   disable it with `0`), which cost normal decoding about 9% at 3,530 prompt

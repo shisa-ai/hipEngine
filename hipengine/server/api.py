@@ -373,6 +373,10 @@ class ServerConfig:
     shutdown_grace_seconds: float = 5.0
     request_timeout_ms: float | None = None
     metrics: str = "off"
+    # Not PREFIX_CACHE_DEFAULT: the HTTP surface stays off until its cross-host
+    # production gate passes, while the engine loop defaults to radix. The reason
+    # and the removal condition are in docs/REFACTOR.md; the --prefix-cache
+    # default in hipengine/server/__main__.py carries the measurements.
     prefix_cache: str = "off"
     info: bool = False
     debug: bool = False
@@ -11865,14 +11869,34 @@ def _log_pretty_startup_summary(
         else f"{_format_bytes(int(used))} / {_format_bytes(int(total))}"
     )
     budget_text = "automatic" if budget is None else _format_bytes(int(budget))
+    # The three decisions that decide what a request actually runs: how KV is
+    # stored, whether a repeated prefix is reused, and whether speculation is
+    # served. A reader must not have to probe /ready to learn any of them.
+    prefix_mode = resolve_prefix_cache_mode(config.prefix_cache)
+    prefix_block = _prefix_cache_metric_values(snapshot).get("block_size_tokens")
+    if prefix_mode == "off":
+        prefix_text = "off"
+    elif prefix_block:
+        prefix_text = f"{prefix_mode} ({int(prefix_block)}-token blocks)"
+    else:
+        prefix_text = prefix_mode
+    capability = _speculative_mtp_capability(config, engine=engine)
+    budget_resolution = _candidate_budget_resolution(config, engine=engine)
+    speculation_text = (
+        f"MTP enabled, candidate budget {budget_resolution['resolved']}"
+        if capability["serving_route"]
+        else f"MTP unavailable (policy {config.speculative_mtp_serving})"
+    )
     _LOGGER.info(
         "\n%s%s%s\n"
-        "  Model       %s\n"
-        "  Context     %s tokens\n"
-        "  KV cache    %s (%s scales)\n"
-        "  Concurrency %s requests in flight\n"
-        "  KV budget   %s\n"
-        "  GPU memory  %s used\n"
+        "  Model        %s\n"
+        "  Context      %s tokens\n"
+        "  KV cache     %s (%s scales)\n"
+        "  Prefix cache %s\n"
+        "  Speculation  %s\n"
+        "  Concurrency  %s requests in flight\n"
+        "  KV budget    %s\n"
+        "  GPU memory   %s used\n"
         "%s%s%s",
         cyan,
         "hipEngine ready",
@@ -11881,6 +11905,8 @@ def _log_pretty_startup_summary(
         context_text,
         f"{storage}",
         scale,
+        prefix_text,
+        speculation_text,
         "automatic" if concurrency is None else str(int(concurrency)),
         budget_text,
         memory_text,

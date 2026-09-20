@@ -22389,7 +22389,10 @@ def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
 
     monkeypatch.delenv("HIPENGINE_PREFIX_CACHE", raising=False)
     assert PREFIX_CACHE_DEFAULT == "radix"
-    # The HTTP default stays off until its KV routes pass production gates.
+    # The HTTP default is deliberately off while the engine loop defaults to
+    # radix. docs/REFACTOR.md "HTTP default-on is blocked" holds the measured
+    # reason (W7900/gfx1100 section 6.1 envelope and A2 agentic economics) and
+    # the removal condition, so this pin is a decision, not a stale override.
     assert ServerConfig(model="fake-path").prefix_cache == "off"
     assert build_parser().parse_args(["--model", "fake-path"]).prefix_cache == "off"
     if mode is not None:

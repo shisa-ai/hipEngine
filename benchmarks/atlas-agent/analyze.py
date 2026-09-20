@@ -24,11 +24,11 @@ CAVEATS = [
     "are not same-quant rates.",
     "SPECULATION DEPTH DIFFERS: atlas runs K=4 MTP (NUM_DRAFTS=4), hipEngine runs K=3, which "
     "is the deepest candidate budget its serving evidence qualifies.",
-    "LONG-CONTEXT MTP: hipEngine's dense MTP adapter admits only inside a 1,023-token window, "
-    "so above it rows decode autoregressively by design. At the context lengths measured here "
-    "the hipEngine arm is therefore AR unless FORCE_LONG_MTP=1 was set, and that forced arm is "
-    "an unqualified diagnostic: raising the window alone measures 0.57x because the target and "
-    "draft graphs decline into their eager paths per cycle (docs/REFACTOR.md).",
+    "LONG-CONTEXT MTP: hipEngine's dense MTP adapter is bounded by the target's own "
+    "max_sequence_length rather than an evidence window, and measured on this host greedy "
+    "requests are served through speculative_mtp from 128 to 11,291 prompt tokens, so the "
+    "hipEngine arm is speculative at agentic context lengths. A temperature > 0 request is "
+    "refused with automatic_mtp_scope_not_promoted; the arms measured here are greedy.",
     "Both engines were measured on this one host in this one run. No number here is taken from "
     "either project's published results, and none may be compared against them as if same-host.",
 ]
