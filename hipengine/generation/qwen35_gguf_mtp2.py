@@ -132,34 +132,20 @@ _Q6_MIXED_TARGET_ROWTILES_ENV = (
 # instead of the request falling to pre-mutation K0. Remove with the campaign's
 # screening harness (docs/REFACTOR.md).
 MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
-# Experimental MTP context window. The qualified window is 1,023 tokens: every
-# retained MTP measurement was taken inside it, the packed multi-row verifier
-# drops to the exact per-row strict route at `start_position + rows >= 1024`
-# (`qwen35_gguf_runner.strict_long_rows`), and the target graph declines spans
-# that cross the 1024 attention transition or a split-workspace boundary. Setting
-# this above 1023 is a long-context qualification experiment, not a promotion;
-# remove it once a measured long-context route lands or the work stops
-# (docs/REFACTOR.md).
-_MTP2_MAX_CONTEXT_ENV = "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS"
-_MTP2_QUALIFIED_CONTEXT_WINDOW = 1023
-
-
-def _mtp2_context_window(default: int = _MTP2_QUALIFIED_CONTEXT_WINDOW) -> int:
-    """Resolve the adapter's MTP context window (qualified 1,023 by default)."""
-
-    raw = os.environ.get(_MTP2_MAX_CONTEXT_ENV)
-    if raw is None:
-        return int(default)
-    text = str(raw).strip()
-    try:
-        value = int(text)
-    except ValueError:
-        raise RuntimeError(
-            f"{_MTP2_MAX_CONTEXT_ENV} must be an integer number of tokens"
-        ) from None
-    if value <= 0:
-        raise RuntimeError(f"{_MTP2_MAX_CONTEXT_ENV} must be positive")
-    return value
+# The adapter no longer carries a fixed MTP context window. Prompt context is not
+# an admission axis (docs/EXECUTION-PROFILES.md section 2.9): gating on it
+# silently disables an already-qualified path, and the 1,023 sentinel existed
+# only because no measurement had been taken past the 1,024 attention
+# transition. Both of its stated causes are resolved. The staged linear-attention
+# chain is byte-exact above the split threshold on the dense Q4_K_M path, so
+# ``strict_long_rows`` no longer covers it and the multi-row verifier is what runs
+# there (docs/REFACTOR.md, 2026-09-19); and measured long-context MTP reaches
+# 1.42x-1.74x from 1,804 to 12,142 prompt tokens at 0.992-0.996 coverage with
+# greedy output identical to AR. What remains as a bound is the target's own
+# ``max_sequence_length``, which is allocated capacity rather than an evidence
+# gap. Graph and draft bucket misses above the transition stay observable
+# fallbacks for the cycle that hits them; they do not refuse the request.
+#
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -1541,14 +1527,15 @@ class Qwen35GGUFMTP2Adapter:
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "target_profile_k0"
             return None
+        # A request is refused here only when its prompt leaves no room for even
+        # one generated token inside the target's own capacity. Prompt length is
+        # otherwise not an admission axis: the staged long-context verifier is
+        # qualified and measured, so a long prompt takes the same route a short
+        # one does.
         context_misses = tuple(
             (row, target)
             for row, target in zip(rows, targets, strict=True)
-            if len(row.prompt_ids) + 1
-            >= min(
-                _mtp2_context_window(),
-                int(target.target_layout.max_sequence_length),
-            )
+            if len(row.prompt_ids) + 1 >= int(target.target_layout.max_sequence_length)
         )
         if context_misses:
             for row, _target in context_misses:
@@ -2809,14 +2796,12 @@ class Qwen35GGUFMTP2Adapter:
                     f"slot_count={int(getattr(owner, 'slot_count', 1))}, "
                     f"capacity={int(getattr(self.owner, 'capacity', 1))}"
                 )
-        # Streaming activation is retained only through the already-qualified
-        # short target context. Longer requests stay K0 until an exact shifted-
-        # page eager target owner is qualified independently of graph capture.
-        # ``HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`` raises this window for the
-        # long-context qualification experiment; the default stays 1,023.
+        # Streaming activation spans the target's whole capacity. The 1,023
+        # admission window is gone: it was a guard over unmeasured territory, not
+        # a capability bound, and the long-context verifier is now qualified and
+        # measured (see the note at the head of this module).
         max_context = min(
-            _mtp2_context_window(),
-            *(int(target.target_layout.max_sequence_length) for target in targets),
+            int(target.target_layout.max_sequence_length) for target in targets
         )
         sampled_route_qualified = self._sampled_route_qualified()
         realized_verify_modes = {

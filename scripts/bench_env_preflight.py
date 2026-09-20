@@ -10,10 +10,12 @@ default, and the benchmark measures the default while reporting the raised
 value.  Nothing fails, and the numbers look plausible.
 
 A real instance: a sweep exported ``HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192``
-through a wrapper that forwarded only two hard-coded variables.  The server
-kept the qualified 1,023-token window, and the "forced window" arm reproduced
-the default to the digit (11.40 tok/s both arms).  The near-miss was recording
-"raising the window changes nothing" as a finding about the model.
+through a wrapper that forwarded only two hard-coded variables.  The server kept
+its default, and the "forced window" arm reproduced it to the digit (11.40 tok/s
+both arms).  The near-miss was recording "raising the window changes nothing" as
+a finding about the model.  That particular knob has since been removed as an
+unjustified guard, but the hazard is general: any variable a launcher forwards
+by hand can be lost the same way.
 
 The server reports what it resolved in two places:
 
@@ -28,7 +30,7 @@ instead of quietly producing a number for the wrong configuration.
 Usage
 -----
     python3 scripts/bench_env_preflight.py --url http://127.0.0.1:8097 \
-        HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192
+        HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=1
 
     # assert a knob is NOT set, catching a stale export
     python3 scripts/bench_env_preflight.py --url ... --unset HIPENGINE_FOO
@@ -53,12 +55,11 @@ __all__ = [
     "EnvPreflightError",
     "assert_env_effective",
     "env_preflight_failures",
-    "find_context_window",
+    "find_env_resolution_block",
     "parse_assignments",
 ]
 
 CAPABILITIES_PATH = "/v1/hipengine/capabilities"
-MTP_WINDOW_ENV = "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS"
 REDACTED_VALUE = "<redacted>"
 
 
@@ -84,24 +85,28 @@ def parse_assignments(assignments: Iterable[str]) -> dict[str, str]:
     return parsed
 
 
-def find_context_window(payload: Any) -> Mapping[str, Any] | None:
-    """Locate the MTP ``context_window`` block anywhere in a capabilities payload.
+def find_env_resolution_block(payload: Any, env_name: str) -> Mapping[str, Any] | None:
+    """Find a payload block that reports how ``env_name`` resolved.
 
-    The check is path-agnostic on purpose.  Hard-coding the nesting would make
+    Some knobs resolve into a value the server reports separately from the raw
+    export, so the export alone does not prove the setting took effect. This
+    looks for such a block by the variable it names.
+
+    The search is path-agnostic on purpose.  Hard-coding the nesting would make
     this script fail open the day the payload is reorganized, which is the
     same silent-success failure it exists to prevent.
     """
 
     if isinstance(payload, Mapping):
-        if payload.get("env") == MTP_WINDOW_ENV and "resolved" in payload:
+        if payload.get("env") == env_name and "resolved" in payload:
             return payload
         for value in payload.values():
-            found = find_context_window(value)
+            found = find_env_resolution_block(value, env_name)
             if found is not None:
                 return found
     elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
         for value in payload:
-            found = find_context_window(value)
+            found = find_env_resolution_block(value, env_name)
             if found is not None:
                 return found
     return None
@@ -153,19 +158,22 @@ def env_preflight_failures(
                 f"{reported[name]!r}"
             )
 
-    window = find_context_window(capabilities)
-    if MTP_WINDOW_ENV in requested and window is not None:
-        expected_window = requested[MTP_WINDOW_ENV]
-        resolved_window = window.get("resolved")
+    for name, expected in sorted(requested.items()):
+        block = find_env_resolution_block(capabilities, name)
+        if block is None:
+            continue
+        resolved = block.get("resolved")
+        if resolved is None:
+            continue
         try:
-            expected_int: int | None = int(str(expected_window).strip())
+            expected_int: int | None = int(str(expected).strip())
         except ValueError:
             expected_int = None
-        if expected_int is not None and resolved_window != expected_int:
+        if expected_int is not None and int(resolved) != expected_int:
             failures.append(
-                f"{MTP_WINDOW_ENV}: the MTP context window resolved to "
-                f"{resolved_window!r}, not {expected_int} (exported "
-                f"{window.get('exported')!r}, error {window.get('error')!r})"
+                f"{name}: the export is in the server environment but resolved "
+                f"to {resolved!r}, not {expected_int} (exported "
+                f"{block.get('exported')!r}, error {block.get('error')!r})"
             )
 
     return failures
@@ -270,16 +278,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ENV PREFLIGHT FAILED: {exc}", file=sys.stderr)
         return 1
 
-    window = find_context_window(capabilities)
     for name, value in sorted(confirmed.items()):
         print(f"confirmed {name}={value}")
     for name in sorted(set(args.unset)):
         print(f"confirmed {name} is unset")
-    if window is not None:
-        print(
-            "MTP context window: "
-            f"exported={window.get('exported')!r} resolved={window.get('resolved')!r}"
-        )
+    for name in sorted(requested):
+        block = find_env_resolution_block(capabilities, name)
+        if block is not None and block.get("resolved") is not None:
+            print(
+                f"{name}: exported={block.get('exported')!r} "
+                f"resolved={block.get('resolved')!r}"
+            )
     return 0
 
 

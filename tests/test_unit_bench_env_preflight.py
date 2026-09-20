@@ -15,7 +15,7 @@ from scripts.bench_env_preflight import (
     EnvPreflightError,
     assert_env_effective,
     env_preflight_failures,
-    find_context_window,
+    find_env_resolution_block,
     main,
     parse_assignments,
 )
@@ -101,73 +101,46 @@ class TestServerResolvedEnvReport:
         assert reported["HIPENGINE_GGUF_INT8_KV_KEY_ONLY"] == "1"
         assert reported["HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED"] == "0"
 
-    def test_window_resolution_reports_the_qualified_default_when_unset(
-        self, monkeypatch
-    ) -> None:
-        from hipengine.server.api import _mtp2_context_window_resolution
+    def test_window_policy_reports_target_capacity_with_no_fixed_cap(self) -> None:
+        """The 1,023 window is gone, and the payload says so.
 
-        monkeypatch.delenv(WINDOW_ENV, raising=False)
+        Prompt context is not an admission axis (docs/EXECUTION-PROFILES.md
+        section 2.9), so the adapter is bounded by the target's allocated
+        capacity rather than by an evidence window. A harness asserting which
+        policy is in effect must read this block rather than infer it from
+        rates, and a lingering ``fixed_cap`` would mean a guard survived the
+        removal.
+        """
+
+        from hipengine.server.api import _mtp2_context_window_resolution
 
         resolution = _mtp2_context_window_resolution()
 
-        assert resolution["exported"] is None
-        assert resolution["resolved"] == resolution["qualified_default"]
-        assert resolution["error"] is None
+        assert resolution["policy"] == "target_capacity"
+        assert resolution["fixed_cap"] is None
+        assert resolution["env"] is None
 
-    def test_window_resolution_reports_the_exported_value(self, monkeypatch) -> None:
+    def test_window_policy_ignores_a_retired_export(self, monkeypatch) -> None:
+        """The removed variable must not be able to re-impose a cap."""
+
         from hipengine.server.api import _mtp2_context_window_resolution
 
         monkeypatch.setenv(WINDOW_ENV, "8192")
 
         resolution = _mtp2_context_window_resolution()
 
-        assert resolution["exported"] == "8192"
-        assert resolution["resolved"] == 8192
-        assert resolution["error"] is None
-
-    def test_window_resolution_reports_an_invalid_export_without_raising(
-        self, monkeypatch
-    ) -> None:
-        """A diagnostic payload must not become a new crash path."""
-
-        from hipengine.server.api import _mtp2_context_window_resolution
-
-        monkeypatch.setenv(WINDOW_ENV, "not-a-number")
-
-        resolution = _mtp2_context_window_resolution()
-
+        assert resolution["policy"] == "target_capacity"
+        assert resolution["fixed_cap"] is None
         assert resolution["resolved"] is None
-        assert resolution["exported"] == "not-a-number"
-        assert resolution["error"]
 
-    @pytest.mark.parametrize(
-        ("exported", "expected"),
-        [
-            (None, ("unset", "1023")),
-            ("8192", ("8192", "8192")),
-        ],
-    )
-    def test_log_fields_render_the_env_and_resolved_pair(
-        self, monkeypatch, exported, expected
-    ) -> None:
+    def test_log_fields_render_the_policy(self, monkeypatch) -> None:
+        """The startup line names the policy instead of an env/resolved pair."""
+
         from hipengine.server.api import _mtp2_context_window_log_fields
 
-        if exported is None:
-            monkeypatch.delenv(WINDOW_ENV, raising=False)
-        else:
-            monkeypatch.setenv(WINDOW_ENV, exported)
+        monkeypatch.setenv(WINDOW_ENV, "8192")
 
-        assert _mtp2_context_window_log_fields() == expected
-
-    def test_log_fields_render_an_invalid_export(self, monkeypatch) -> None:
-        from hipengine.server.api import _mtp2_context_window_log_fields
-
-        monkeypatch.setenv(WINDOW_ENV, "0")
-
-        logged_env, logged_resolved = _mtp2_context_window_log_fields()
-
-        assert logged_env == "0"
-        assert logged_resolved.startswith("invalid(")
+        assert _mtp2_context_window_log_fields() == ("none", "target_capacity")
 
 
 class TestPreflightDetectsTheStrippedExport:
@@ -254,8 +227,8 @@ class TestPreflightDetectsTheStrippedExport:
             capabilities, {}, unset=["HIPENGINE_STALE_FLAG"]
         ) == []
 
-    def test_catches_an_export_that_did_not_change_the_resolved_window(self) -> None:
-        """The export can be present while the adapter still resolves the default."""
+    def test_catches_an_export_that_did_not_change_the_resolved_value(self) -> None:
+        """The export can be present while the resolved value stays the default."""
 
         capabilities = _capabilities(
             {WINDOW_ENV: "8192"},
@@ -278,26 +251,35 @@ class TestPreflightDetectsTheStrippedExport:
         assert "http://127.0.0.1:8097" in str(excinfo.value)
 
 
-class TestWindowDiscoveryIsPathAgnostic:
+class TestResolutionBlockDiscoveryIsPathAgnostic:
     """Hard-coded nesting would fail open the day the payload is reorganized."""
 
     def test_finds_the_block_at_a_different_nesting(self) -> None:
         payload = {
-            "some": {"deeper": [{"context_window": _window_block(exported=None, resolved=1023)}]}
+            "some": {
+                "deeper": [
+                    {"context_window": _window_block(exported=None, resolved=1023)}
+                ]
+            }
         }
 
-        found = find_context_window(payload)
+        found = find_env_resolution_block(payload, WINDOW_ENV)
 
         assert found is not None
         assert found["resolved"] == 1023
 
     def test_returns_none_when_no_block_is_present(self) -> None:
-        assert find_context_window({"effective_env": {}}) is None
+        assert find_env_resolution_block({"effective_env": {}}, WINDOW_ENV) is None
 
-    def test_does_not_mistake_another_env_block_for_the_window(self) -> None:
+    def test_does_not_mistake_another_env_block_for_the_one_named(self) -> None:
         payload = {"block": {"env": "HIPENGINE_SOMETHING_ELSE", "resolved": 7}}
 
-        assert find_context_window(payload) is None
+        assert find_env_resolution_block(payload, WINDOW_ENV) is None
+
+    def test_the_named_block_is_found(self) -> None:
+        payload = {"block": {"env": WINDOW_ENV, "resolved": 7}}
+
+        assert find_env_resolution_block(payload, WINDOW_ENV) == payload["block"]
 
 
 class TestAssignmentParsing:
@@ -336,7 +318,7 @@ class TestCliContract:
         assert status == 0
         output = capsys.readouterr().out
         assert f"confirmed {WINDOW_ENV}=8192" in output
-        assert "MTP context window" in output
+        assert f"{WINDOW_ENV}: exported='8192' resolved=8192" in output
 
     def test_exits_nonzero_and_explains_a_stripped_export(
         self, monkeypatch, capsys

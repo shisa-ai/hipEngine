@@ -566,31 +566,44 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   override sites (the request-time helper and the realized-intent carry-forward
   in `_realized_model_serving_plan`).
 
-## Long-context MTP window override (found 2026-09-17)
+## Long-context MTP window override (found 2026-09-17, removed 2026-09-20)
 
-- `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` (`hipengine/generation/qwen35_gguf_mtp2.py`)
-  raises the dense MTP adapter's 1,023-token prompt/generation window. It exists
-  only to measure what the speculative route does past the 1,024-token attention
-  transition, and it defaults to the qualified value. It is not a promotion: the
-  measured long-context arms are a diagnostic screen
-  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`),
-  not retained evidence rows.
-- Replace it with a capability derived from the model/provider plugin once a
-  long-context verifier route passes the production numerical and task gates, or
-  delete it if no long-context route is ever qualified. Until then the adapter's
-  prompt gate and advertised `max_context_tokens` must keep reading the same
+- **Removed.** The 1,023-token window and its
+  `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` override are gone from
+  `hipengine/generation/qwen35_gguf_mtp2.py`. The adapter is now bounded only by
+  the target's own `max_sequence_length`, which is allocated capacity rather
+  than an evidence gap, and the advertised `max_context_tokens` reads that same
   value so admission and per-cycle policy cannot disagree.
-- The same 1,023 boundary appears on the draft side:
-  `runtime/qwen35_gguf_nextn.py` `_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023`
-  skips the proposal graph past it (`eager_long_context`) and runs the eager
-  proposal chain instead. Both caps are knobs with working fallbacks, not
-  blockers. Assessed 2026-09-17
+- Why it had to go: it was a guard whose only cause was that nothing had been
+  measured past the 1,024 attention transition. `docs/EXECUTION-PROFILES.md`
+  section 1.1 says a restriction must name a concrete cause and that a guard
+  existing only because a case was not tested is an evaluation and cleanup task,
+  not a permanent safety boundary; section 2.9 lists prompt context as
+  explicitly **not** an admission axis, and `max_sequence_length_not_qualified`
+  and `context_bucket_not_qualified` were already removed as rejection reasons
+  elsewhere. A guard justified by "untested" also prevents the measurement that
+  would retire it, so it is permanent by construction.
+- Both stated causes were resolved before removal. The staged linear-attention
+  chain is byte-exact above the split threshold on the dense Q4_K_M path
+  (2026-09-19, see the row-wise strict dispatch entry below), so
+  `strict_long_rows` no longer covers it and the multi-row verifier is what runs
+  there. Measured long-context MTP then reaches 1.42x-1.74x from 1,804 to 12,142
+  prompt tokens at 0.992-0.996 coverage with greedy output identical to AR, and a
+  512-token prompt decoded 2,048 tokens across the 1,024 transition at 0.999
+  coverage with no bucket miss at all.
+- The long-context gate the entry asked for already exists:
+  `scripts/gguf_mtp_long_context_gate.py`. Long-context MTP claims still need the
+  mtp-bench category suite per `docs/BENCHMARK.md` "Anti-gaming"; the removal
+  makes that measurement reachable rather than blocked.
+- The draft-side boundary stays: `runtime/qwen35_gguf_nextn.py`
+  `_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023` skips the proposal graph past it
+  (`eager_long_context`) and runs the eager proposal chain instead. That is a
+  per-cycle schedule choice with a working fallback, which section 1.1 permits
+  ("a graph-bucket miss may select eager execution for that cycle"), not a
+  refusal. Same for the target graph bucket and the split-K boundary. Assessed
+  2026-09-17
   (`worklog/entries/20260917T170209.714945Z-lhl-mtp-long-context-assessment-8122b3.md`):
-  of the four boundaries on this path only the adapter window refuses a request;
-  the target graph bucket and the draft graph decline per cycle into their eager
-  paths, and the split-K boundary picks the exact per-row verifier route. That is
-  why raising the window alone makes long-context MTP slower (0.57x) and why the
-  batched split-K leaf below is the piece that matters.
+  of the four boundaries on this path only the adapter window refused a request.
 
 ## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
 

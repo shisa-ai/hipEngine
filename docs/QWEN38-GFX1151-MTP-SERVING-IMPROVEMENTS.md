@@ -176,7 +176,7 @@ that hipEngine can obtain by removing a guard.
 ### P1 — Extend MTP through the whole request, then beyond short prompts
 
 **Measured screen (2026-09-17).** The window can be raised today:
-`HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` (default 1,023, experimental) replaces both
+the long-context MTP window (since removed) replaced both
 literal limits, and the route above the transition is what decides whether that
 is worth anything. Diagnostic artifact:
 [long-context MTP screen](../benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json).
