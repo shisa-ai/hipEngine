@@ -6091,7 +6091,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise _request_cancelled_error(exc.finish_details) from exc
         except GenerationExecutionFailed as exc:
             raise _execution_failed_error(exc) from exc
-        except EngineServiceClosed as exc:
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
             app.state.hipengine_server_metrics.record_failure()
             raise _engine_unavailable_error(exc) from exc
         except OpenAIHTTPError as exc:
@@ -6142,7 +6142,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 request=request,
                 usage=batch.usage,
                 timing=_generation_output_timing(details),
-                kv_pool=_kv_pool_stream_payload(engine),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
                 kv_request_bytes=_generation_output_kv_request_bytes(details),
                 wall_ms=(time.perf_counter() - info_started_at) * 1000.0,
             )
@@ -6558,7 +6558,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             yield "data: [DONE]\n\n"
             return
-        except EngineServiceClosed as exc:
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
             app.state.hipengine_server_metrics.record_failure()
             message = str(exc)
             _log_stream_failure(
@@ -6641,7 +6641,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     usage=usage,
                     backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
                 ),
-                kv_pool=_kv_pool_stream_payload(engine),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
                 kv_request_bytes=_telemetry_kv_request_bytes(
                     None if last_stream_chunk is None else last_stream_chunk.telemetry
                 ),
@@ -6652,7 +6652,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine and token_accounting is not None
             else None
         )
-        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+        final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
         yield _completion_stream_done(
             response_id,
             created,
@@ -6689,12 +6689,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         yield "data: [DONE]\n\n"
 
-    def readiness_payload() -> dict[str, Any]:
+    async def readiness_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
         model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
-        live_snapshot = _live_loop_snapshot(engine)
+        live_snapshot = await asyncio.to_thread(_live_loop_snapshot, engine) or {}
         graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
         pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
         prefix_cache = _prefix_cache_metric_values(live_snapshot)
@@ -6794,7 +6794,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     @app.get("/ready")
     async def ready() -> JSONResponse:
-        payload = readiness_payload()
+        payload = await readiness_payload()
         return JSONResponse(status_code=200 if payload["ready"] else 503, content=payload)
 
     @app.get("/v1/hipengine/sessions")
@@ -7017,10 +7017,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         @app.get("/metrics", response_class=PlainTextResponse)
         async def prometheus_metrics() -> PlainTextResponse:
+            engine = getattr(app.state, "hipengine_llm", None)
+            live_snapshot = await asyncio.to_thread(_live_loop_snapshot, engine) or {}
             return PlainTextResponse(
                 _render_prometheus_metrics(
                     app.state.hipengine_server_metrics,
-                    engine=getattr(app.state, "hipengine_llm", None),
+                    engine=engine,
+                    live_snapshot=live_snapshot,
                     generation_batcher=getattr(app.state, "hipengine_generation_batcher", None),
                     chat_sessions=chat_sessions,
                     pending_chat_sessions=chat_session_pending,
@@ -7743,7 +7746,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     if include_hipengine
                     else None,
                     kv_pool=(
-                        _kv_pool_stream_payload(engine)
+                        await _kv_pool_stream_payload_async(engine)
                         if include_hipengine
                         else None
                     ),
@@ -7894,7 +7897,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             # the text-only generators that report nothing.
             reported_prompt_tokens = getattr(detail, "prompt_tokens", None)
             if reported_prompt_tokens is None:
-                reported_prompt_tokens = int(engine.count_tokens(prompt))
+                reported_prompt_tokens = int(await asyncio.to_thread(engine.count_tokens, prompt))
             prompt_tokens = int(reported_prompt_tokens)
             completion_tokens = len(generated_ids)
             return {
@@ -8401,14 +8404,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                     last_stream_chunks[0] if last_stream_chunks else None
                                 ),
                             ),
-                            kv_pool=_kv_pool_stream_payload(engine),
+                            kv_pool=await _kv_pool_stream_payload_async(engine),
                             kv_request_bytes=_telemetry_kv_request_bytes(
                                 None
                                 if not last_stream_chunks
                                 else last_stream_chunks[0].telemetry
                             ),
                         )
-                    final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+                    final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
                     for index, text in enumerate(full_text):
                         backend_detail = _output_from_stream_chunk(last_stream_chunks[index], text)
                         finish_reason = _finish_reason_for_output(backend_detail, "stop")
@@ -8662,7 +8665,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8685,7 +8688,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8709,7 +8712,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8726,7 +8729,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
                     kv_pool=(
-                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                         if include_hipengine
                         else None
                     ),
@@ -8754,7 +8757,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-        except EngineServiceClosed as exc:
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
             app.state.hipengine_server_metrics.record_failure()
             message = str(exc)
             _log_stream_failure(
@@ -9316,7 +9319,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             yield "data: [DONE]\n\n"
             return
-        except EngineServiceClosed as exc:
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
             app.state.hipengine_server_metrics.record_failure()
             message = str(exc)
             _log_stream_failure(
@@ -9404,7 +9407,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     usage=usage,
                     backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
                 ),
-                kv_pool=_kv_pool_stream_payload(engine),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
                 kv_request_bytes=_telemetry_kv_request_bytes(
                     None if last_stream_chunk is None else last_stream_chunk.telemetry
                 ),
@@ -9415,7 +9418,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine and token_accounting is not None
             else None
         )
-        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+        final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls_for_engine(
                 engine,
@@ -9781,8 +9784,10 @@ def _render_prometheus_metrics(
     pending_chat_sessions: set[str] | None = None,
     max_chat_sessions: int | None = None,
     config: ServerConfig | None = None,
+    live_snapshot: Mapping[str, Any] | None = None,
 ) -> str:
-    live_snapshot = _live_loop_snapshot(engine)
+    if live_snapshot is None:
+        live_snapshot = _live_loop_snapshot(engine) or {}
     resident = _resident_loop_metric_values(live_snapshot)
     pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
     graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
@@ -10146,6 +10151,11 @@ def _kv_pool_stream_payload(engine: Any | None) -> dict[str, float] | None:
         for key, value in values.items()
         if key not in {"max_pages", "budget_bytes"}
     }
+
+
+async def _kv_pool_stream_payload_async(engine: Any | None) -> dict[str, float] | None:
+    # Live snapshots are serialized behind GPU work on the engine driver.
+    return await asyncio.to_thread(_kv_pool_stream_payload, engine)
 
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
@@ -12630,8 +12640,10 @@ def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] |
     )
 
 
-def _engine_unavailable_error(exc: EngineServiceClosed) -> OpenAIHTTPError:
-    """Report a closed resident service as an availability failure.
+def _engine_unavailable_error(
+    exc: EngineServiceClosed | EngineCommandTimeout,
+) -> OpenAIHTTPError:
+    """Report a closed or unresponsive service as an availability failure.
 
     A closed or unhealthy engine service cannot accept work for any request, so
     this is not the request's fault: the client can retry once the service is
