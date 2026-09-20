@@ -2690,16 +2690,30 @@ def test_engine_command_timeout_answers_with_a_typed_unavailable_error() -> None
     assert body["error"]["hipengine"]["exception_type"] == "EngineCommandTimeout"
 
 
-def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event() -> None:
+@pytest.mark.parametrize("error_class", [EngineServiceClosed, EngineCommandTimeout])
+@pytest.mark.parametrize("chat,n", [(False, 1), (True, 1), (True, 2)])
+def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event(error_class, chat, n) -> None:
     """A service that closes after the first chunk still names itself."""
 
     class ClosingStreamFakeLLM(FakeLLM):
+        supports_stream_many = True
+
         def stream(self, prompt, sampling_params):
             yield "partial"
-            raise EngineServiceClosed(
+            raise error_class(
                 "engine service is closed after a fatal execution failure "
                 "(RuntimeError: device fault)"
             )
+
+        def stream_many_detailed(self, prompts, sampling_params):
+            for text in self.stream(prompts[0], sampling_params):
+                yield GenerationStreamChunk(
+                    text=text,
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1, generated_tokens=1, row_index=0,
+                        phase="answer", sampler_mode="greedy_fast", execution_path="test",
+                    ),
+                )
 
     fake = ClosingStreamFakeLLM()
     app = create_app(
@@ -2714,12 +2728,13 @@ def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event() -> Non
 
     with client.stream(
         "POST",
-        "/v1/completions",
+        "/v1/chat/completions" if chat else "/v1/completions",
         json={
             "model": "fake-model",
-            "prompt": "hi",
+            **({"messages": [{"role": "user", "content": "hi"}]} if chat else {"prompt": "hi"}),
             "max_tokens": 4,
             "stream": True,
+            "n": n,
         },
     ) as response:
         assert response.status_code == 200
@@ -2735,6 +2750,137 @@ def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event() -> Non
     assert errors[-1]["code"] == "engine_unavailable"
     assert errors[-1]["hipengine"]["status_code"] == 503
     assert errors[-1]["hipengine"]["retryable"] is True
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_completion_tokenize_timeout_is_engine_unavailable(stream) -> None:
+    class UnresponsiveFake(PromptPreparingFakeLLM):
+        def tokenize(self, text):
+            raise EngineCommandTimeout("method=tokenize budget_s=300.0 driver_alive=yes")
+
+    app = create_app(
+        ServerConfig(model="fake", served_model_name="fake-model", eager_load=False),
+        llm=UnresponsiveFake(),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/v1/completions",
+            json={"model": "fake-model", "prompt": "hi", "max_tokens": 4, "stream": stream},
+        )
+    if stream:
+        assert response.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        error = next(event["error"] for event in events if "error" in event)
+        assert response.text.endswith("data: [DONE]\n\n")
+    else:
+        assert response.status_code == 503
+        error = response.json()["error"]
+    assert error["code"] == "engine_unavailable"
+    assert error["hipengine"]["status_code"] == 503
+    assert error["hipengine"]["retryable"] is True
+    assert "method=tokenize" in error["message"]
+
+
+@pytest.mark.parametrize(
+    "path,stream,n,info,metadata,live_many",
+    [
+        ("/ready", False, 1, False, False, False),
+        ("/metrics", False, 1, False, False, False),
+        ("/v1/completions", False, 1, True, False, False),
+        ("/v1/completions", True, 1, True, False, False),
+        ("/v1/completions", True, 1, False, True, False),
+        ("/v1/chat/completions", False, 1, True, False, False),
+        ("/v1/chat/completions", True, 1, True, False, False),
+        ("/v1/chat/completions", True, 1, False, True, False),
+        ("/v1/chat/completions", True, 2, True, False, False),
+        ("/v1/chat/completions", True, 2, False, True, False),
+        ("/v1/chat/completions", True, 2, True, False, True),
+        ("/v1/chat/completions", True, 2, False, True, True),
+    ],
+)
+def test_busy_snapshot_does_not_block_other_http_requests(path, stream, n, info, metadata, live_many):
+    import httpx
+
+    entered = threading.Event()
+    release = threading.Event()
+    snapshot_threads = []
+
+    class BusySnapshotFake(FakeLLM):
+        supports_stream_many = live_many
+
+        def stream_many_detailed(self, prompts, sampling_params):
+            for index, _prompt in enumerate(prompts):
+                yield GenerationStreamChunk(
+                    text="hello",
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1, generated_tokens=1, row_index=index,
+                        phase="answer", sampler_mode="greedy_fast", execution_path="test",
+                    ),
+                )
+
+        def live_loop_snapshot(self):
+            snapshot_threads.append(threading.get_ident())
+            entered.set()
+            assert release.wait(5.0), "snapshot watchdog did not release"
+            return {"runner": {"kv_pool": {"current_bytes": 1024}}}
+
+    fake = BusySnapshotFake(outputs=["hello"] * n)
+    app = create_app(
+        ServerConfig(
+            model="fake", served_model_name="fake-model", eager_load=False,
+            metrics="prometheus", info=info,
+        ),
+        llm=fake,
+    )
+
+    # Only release after a real snapshot wait has started. This also lets a
+    # regressed, blocked event loop unwind and fail instead of hanging the test.
+    def watchdog():
+        if entered.wait(5.0):
+            release.wait(1.0)
+        release.set()
+
+    watcher = threading.Thread(target=watchdog)
+    watcher.start()
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            body = {"model": "fake-model", "max_tokens": 4, "stream": stream, "n": n}
+            if path == "/v1/chat/completions":
+                body["messages"] = [{"role": "user", "content": "hi"}]
+            else:
+                body["prompt"] = "hi"
+            if metadata:
+                body["stream_options"] = {"include_hipengine": True, "include_usage": True}
+            pending = asyncio.create_task(
+                client.get(path) if path in {"/ready", "/metrics"}
+                else client.post(path, json=body)
+            )
+            try:
+                assert await asyncio.to_thread(entered.wait, 5.0)
+                health = await client.get("/health")
+                models = await client.get("/v1/models")
+                assert health.status_code == models.status_code == 200
+                assert not release.is_set(), "unrelated HTTP requests waited for the driver"
+                assert threading.get_ident() not in snapshot_threads
+            finally:
+                release.set()
+                response = await pending
+            assert response.status_code == 200
+            if path.startswith("/v1/"):
+                assert '"error":' not in response.text
+
+    try:
+        asyncio.run(run())
+    finally:
+        release.set()
+        watcher.join(5.0)
 
 
 def test_unexpected_server_fault_answers_with_the_openai_error_shape() -> None:
