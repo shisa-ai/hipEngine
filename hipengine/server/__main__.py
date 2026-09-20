@@ -367,6 +367,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
     )
     parser.add_argument(
+        "--info",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("HIPENGINE_INFO", False),
+        help=(
+            "Log one per-request summary at completion: tokens in/out, prefill and "
+            "decode rates, time to first token, wall time, and KV memory "
+            "(env HIPENGINE_INFO; default: false)"
+        ),
+    )
+    parser.add_argument(
         "--debug",
         action=argparse.BooleanOptionalAction,
         default=_env_bool("HIPENGINE_DEBUG", False),
@@ -421,6 +431,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         request_timeout_ms=args.request_timeout_ms,
         metrics=args.metrics,
         prefix_cache=args.prefix_cache,
+        info=args.info,
         debug=args.debug,
         replay_dir=args.replay_dir,
         replay_redaction=args.replay_redaction,

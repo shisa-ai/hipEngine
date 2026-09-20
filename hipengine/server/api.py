@@ -373,6 +373,7 @@ class ServerConfig:
     request_timeout_ms: float | None = None
     metrics: str = "off"
     prefix_cache: str = "off"
+    info: bool = False
     debug: bool = False
     replay_dir: str | None = None
     replay_redaction: str = "hash"
@@ -2907,6 +2908,168 @@ def _log_stream_failure(
         param,
         message,
     )
+
+
+def _log_request_info(
+    *,
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    usage: Mapping[str, Any],
+    timing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, Any] | None = None,
+    kv_request_bytes: int | None = None,
+    wall_ms: float | None = None,
+) -> None:
+    """Log one compact per-request summary when ``--info`` is enabled.
+
+    The line carries the request's token counts, the backend prefill phase, the
+    server-observed time to first token and decode rate, the request's
+    persistent KV allocation in the shared pool, and the pool state. Absent
+    phases are omitted rather than reported as zero.
+    """
+
+    if not bool(getattr(config, "info", False)):
+        return
+
+    prompt_tokens = _info_number(usage.get("prompt_tokens"))
+    completion_tokens = _info_number(usage.get("completion_tokens"))
+    is_chat = isinstance(request, ChatCompletionRequest)
+    endpoint = "/v1/chat/completions" if is_chat else "/v1/completions"
+    fields = [
+        f"endpoint={endpoint}",
+        f"stream={'true' if bool(getattr(request, 'stream', False)) else 'false'}",
+        f"model={config.model_id}",
+        f"tokens_in={int(prompt_tokens or 0)}",
+        f"tokens_out={int(completion_tokens or 0)}",
+    ]
+    resolved_timing = timing if isinstance(timing, Mapping) else {}
+    prefill_ms = _info_number(resolved_timing.get("prefill_ms"))
+    if prefill_ms is not None and prefill_ms > 0:
+        fields.append(f"prefill_ms={prefill_ms:.1f}")
+        if prompt_tokens:
+            fields.append(f"prefill_tok_s={prompt_tokens / (prefill_ms / 1000.0):.1f}")
+    ttft_ms = _info_number(resolved_timing.get("ttft_ms"))
+    if ttft_ms is not None:
+        fields.append(f"ttft_ms={ttft_ms:.1f}")
+    decode_ms = _info_number(resolved_timing.get("decode_elapsed_ms"))
+    if decode_ms is None:
+        # Blocking requests have no first-token timestamp; the engine's own
+        # phase accounting is the only decode-phase source for them.
+        request_total_ms = _info_number(resolved_timing.get("request_total_ms"))
+        if request_total_ms is not None and prefill_ms is not None:
+            decode_ms = max(0.0, request_total_ms - prefill_ms)
+    decode_tok_s = _info_number(resolved_timing.get("decode_tokens_per_second"))
+    if decode_tok_s is None and decode_ms and completion_tokens:
+        decode_tok_s = completion_tokens / (decode_ms / 1000.0)
+    if decode_ms is not None:
+        fields.append(f"decode_ms={decode_ms:.1f}")
+    if decode_tok_s is not None:
+        fields.append(f"decode_tok_s={decode_tok_s:.2f}")
+    if wall_ms is None:
+        # Streamed requests are measured by the server's own timing tracker.
+        wall_ms = _info_number(resolved_timing.get("elapsed_ms"))
+    if wall_ms is not None:
+        fields.append(f"wall_ms={wall_ms:.1f}")
+    if kv_request_bytes:
+        fields.append(f"kv_request_alloc_mib={float(kv_request_bytes) / 2**20:.1f}")
+    if isinstance(kv_pool, Mapping) and kv_pool:
+        pool_bytes = _info_number(kv_pool.get("current_bytes"))
+        if pool_bytes is not None:
+            fields.append(f"kv_pool_gib={pool_bytes / 2**30:.2f}")
+        for key, label in (
+            ("current_pages", "kv_pool_pages"),
+            ("pinned_pages", "kv_pool_pinned_pages"),
+            ("grow_events", "kv_pool_grows"),
+        ):
+            value = _info_number(kv_pool.get(key))
+            if value is not None:
+                fields.append(f"{label}={value:.0f}")
+    _LOGGER.info("REQUEST_INFO: %s", " ".join(fields))
+
+
+def _info_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _telemetry_kv_request_bytes(telemetry: Any) -> int | None:
+    """Return one request's persistent KV bytes from generation telemetry."""
+
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    layout = diagnostics.get("kv_layout")
+    if not isinstance(layout, Mapping):
+        return None
+    return int(_info_number(layout.get("persistent_total_bytes")) or 0) or None
+
+
+def _stream_timing_enabled(include_hipengine: bool, config: ServerConfig) -> bool:
+    """True when stream timing must be tracked for this request.
+
+    Stream timing is tracked for the client's ``include_hipengine`` metadata and
+    for the server's own ``--info`` summary, so ``--info`` reports the same
+    time-to-first-token and decode rate that a metadata-requesting client sees.
+    """
+
+    return bool(include_hipengine) or bool(getattr(config, "info", False))
+
+
+def _generation_output_timing(details: Sequence[Any]) -> Mapping[str, Any] | None:
+    """Return the timing payload owned by one blocking generation output."""
+
+    for detail in details:
+        timing, _decode_state, timing_owner = _mtp_telemetry_parts(detail)
+        if timing and timing_owner:
+            return timing
+    for detail in details:
+        timing, _decode_state, _timing_owner = _mtp_telemetry_parts(detail)
+        if timing:
+            return timing
+    return None
+
+
+def _generation_output_kv_request_bytes(details: Sequence[Any]) -> int | None:
+    """Return the persistent KV bytes of one blocking generation output."""
+
+    for detail in details:
+        value = _telemetry_kv_request_bytes(getattr(detail, "telemetry", None))
+        if value:
+            return value
+    return None
+
+
+def _stream_timing_summary(
+    stream_started_at: "_StreamTimingSource",
+    *,
+    usage: Mapping[str, Any] | None = None,
+    backend_timing: Mapping[str, float] | None = None,
+) -> dict[str, float]:
+    """Server-observed stream timing merged with backend phase timing."""
+
+    timing: dict[str, float] = {}
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        # Observing the final usage keeps the decode rate on the authoritative
+        # completion-token count even if the last token delta lagged it.
+        timing.update(
+            stream_started_at.observe(event="usage", usage=usage)
+        )
+    elif isinstance(stream_started_at, (int, float)) and not isinstance(stream_started_at, bool):
+        timing["elapsed_ms"] = round(
+            max(0.0, (time.perf_counter() - float(stream_started_at)) * 1000.0), 3
+        )
+    if backend_timing:
+        for raw_key, raw_value in backend_timing.items():
+            key = str(raw_key).strip().removeprefix("backend_")
+            value = _info_number(raw_value)
+            if key and value is not None:
+                timing.setdefault(key, value)
+    return timing
 
 
 def _prompt_context_tokens(prompt: PromptInput) -> int | None:
@@ -5765,6 +5928,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prepared_thinking: _ThinkingControl | None = None,
         resident_session_key: str | None = None,
     ) -> _GeneratedBatch:
+        info_started_at = time.perf_counter()
         generation_shape: dict[str, Any] | None = None
         try:
             _validate_generation_request(
@@ -5942,6 +6106,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             generation_shape=generation_shape,
         )
         app.state.hipengine_server_metrics.record_success(batch.usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=batch.usage,
+                timing=_generation_output_timing(details),
+                kv_pool=_kv_pool_stream_payload(engine),
+                kv_request_bytes=_generation_output_kv_request_bytes(details),
+                wall_ms=(time.perf_counter() - info_started_at) * 1000.0,
+            )
         return batch
 
     async def generate_with_request_control(
@@ -5981,7 +6155,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -6423,6 +6601,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prefer_telemetry_counts=True,
         )
         app.state.hipengine_server_metrics.record_success(usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=usage,
+                timing=_stream_timing_summary(
+                    stream_started_at,
+                    usage=usage,
+                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                ),
+                kv_pool=_kv_pool_stream_payload(engine),
+                kv_request_bytes=_telemetry_kv_request_bytes(
+                    None if last_stream_chunk is None else last_stream_chunk.telemetry
+                ),
+            )
         cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
@@ -7493,7 +7686,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         if request.stream:
             include_hipengine = _stream_include_hipengine(request)
-            stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+            stream_started_at = (
+                _StreamTimingTracker.start()
+                if _stream_timing_enabled(include_hipengine, config)
+                else time.perf_counter()
+            )
             engine = getattr(app.state, "hipengine_llm", None)
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             return StreamingResponse(
@@ -7992,7 +8189,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -8158,6 +8359,25 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             )
                     usage = _usage(engine, prompts, full_text)
                     app.state.hipengine_server_metrics.record_success(usage)
+                    if config.info:
+                        _log_request_info(
+                            config=config,
+                            request=request,
+                            usage=usage,
+                            timing=_stream_timing_summary(
+                                stream_started_at,
+                                usage=usage,
+                                backend_timing=_stream_chunk_backend_timing(
+                                    last_stream_chunks[0] if last_stream_chunks else None
+                                ),
+                            ),
+                            kv_pool=_kv_pool_stream_payload(engine),
+                            kv_request_bytes=_telemetry_kv_request_bytes(
+                                None
+                                if not last_stream_chunks
+                                else last_stream_chunks[0].telemetry
+                            ),
+                        )
                     final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
                     for index, text in enumerate(full_text):
                         backend_detail = _output_from_stream_chunk(last_stream_chunks[index], text)
@@ -8561,7 +8781,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -9140,6 +9364,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prefer_telemetry_counts=True,
         )
         app.state.hipengine_server_metrics.record_success(usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=usage,
+                timing=_stream_timing_summary(
+                    stream_started_at,
+                    usage=usage,
+                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                ),
+                kv_pool=_kv_pool_stream_payload(engine),
+                kv_request_bytes=_telemetry_kv_request_bytes(
+                    None if last_stream_chunk is None else last_stream_chunk.telemetry
+                ),
+            )
         cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
@@ -18694,8 +18933,11 @@ def _attach_stream_hipengine(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
-    if include_hipengine:
-        payload["hipengine"] = _stream_hipengine_payload(
+    # A tracker is also created when only the --info summary needs it, so it has
+    # to be fed even when the client did not request stream metadata; the
+    # payload itself stays opt-in.
+    if include_hipengine or isinstance(stream_started_at, _StreamTimingTracker):
+        hipengine_payload = _stream_hipengine_payload(
             event,
             stream_started_at=stream_started_at,
             usage=usage,
@@ -18705,6 +18947,8 @@ def _attach_stream_hipengine(
             routing=routing,
             kv_pool=kv_pool,
         )
+        if include_hipengine:
+            payload["hipengine"] = hipengine_payload
     return payload
 
 

@@ -8423,6 +8423,69 @@ def test_promoted_artifact_plan_routes_auto_for_every_shape_in_the_cell() -> Non
     assert disabled["hipengine"]["generation_shape"]["route"] == "default"
 
 
+def test_info_mode_logs_one_request_summary_per_completed_request(caplog) -> None:
+    """--info logs tokens in/out, rates, and KV memory once per request.
+
+    The summary is the only place the server reports a request's own token
+    counts, phase rates, and KV footprint together, so it must appear exactly
+    once per completed request and must stay silent when the flag is off.
+    """
+
+    fake = FakeLLM(outputs=["hello there"])
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", info=True),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 4,
+            },
+        )
+
+    assert response.status_code == 200
+    usage = response.json()["usage"]
+    lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("REQUEST_INFO:")
+    ]
+    assert len(lines) == 1
+    line = lines[0]
+    assert "endpoint=/v1/chat/completions" in line
+    assert "stream=false" in line
+    assert "model=fake-model" in line
+    assert f"tokens_in={usage['prompt_tokens']}" in line
+    assert f"tokens_out={usage['completion_tokens']}" in line
+    assert "wall_ms=" in line
+
+    caplog.clear()
+    quiet = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=["hello there"]),
+    )
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        assert (
+            TestClient(quiet)
+            .post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 4,
+                },
+            )
+            .status_code
+            == 200
+        )
+    assert "REQUEST_INFO:" not in caplog.text
+
+
 def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
@@ -21979,11 +22042,13 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_MAX_CHAT_SESSIONS", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
+    monkeypatch.delenv("HIPENGINE_INFO", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.backend == "auto"
     assert default_args.quant == "auto"
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
+    assert default_args.info is False
     assert default_args.chat_default_max_tokens == 4096
     assert default_args.startup_chat_smoke is True
     assert default_args.startup_scratch_probe is True
@@ -22013,11 +22078,13 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_MAX_CHAT_SESSIONS", "5")
     monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
     monkeypatch.setenv("HIPENGINE_REPLAY_REDACTION", "none")
+    monkeypatch.setenv("HIPENGINE_INFO", "1")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
     assert env_args.generation_batch_window_ms == 3.5
     assert env_args.debug is True
+    assert env_args.info is True
     assert env_args.chat_default_max_tokens is None
     assert env_args.startup_chat_smoke is False
     assert env_args.startup_scratch_probe is False

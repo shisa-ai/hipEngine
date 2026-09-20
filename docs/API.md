@@ -1523,6 +1523,37 @@ HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
 Debug payload logs include prompts and generated text; do not enable them for
 shared or sensitive deployments.
 
+To log one summary line per completed generation request, pass `--info` or set
+`HIPENGINE_INFO=1`:
+
+```bash
+HIPENGINE_INFO=1 hipengine serve --model /path/to/model
+# or: hipengine serve --model /path/to/model --info
+```
+
+Each line reports the endpoint, stream mode, served model, prompt and completion
+token counts, backend prefill time and rate, server-observed time to first token
+and decode rate, wall time, the request's persistent KV allocation in the shared
+pool, and the pool's own bytes, pages, pins, and growth count:
+
+```text
+INFO:     REQUEST_INFO: endpoint=/v1/chat/completions stream=true model=qwen3.8-27b tokens_in=49 tokens_out=51 prefill_ms=345.2 prefill_tok_s=142.0 ttft_ms=364.9 decode_ms=5077.7 decode_tok_s=10.04 wall_ms=5442.6 kv_request_alloc_mib=16.0 kv_pool_gib=66.00 kv_pool_pages=4224 kv_pool_pinned_pages=4096 kv_pool_grows=0
+```
+
+`kv_request_alloc_mib` is the request's persistent KV allocation, meaning the
+space it reserves in the shared pool for its own context. It is a capacity
+number, not the bytes the prompt's tokens touched: the request above reserved
+16 MiB for a short prompt, while a 7,975-token agent request reserving a much
+larger context reported 2,560 MiB and grew the pool by one chunk.
+
+Unlike `--debug`, `--info` never logs prompts, tool arguments, or generated text.
+The summary needs no client cooperation: stream timing is tracked even when the
+request did not ask for `stream_options.include_hipengine`. Blocking requests
+have no first-token timestamp, so their decode rate is derived from the engine's
+own phase accounting (`request_total_ms - prefill_ms`); streamed requests use the
+server's observed first-token time. Phases the backend does not report are
+omitted instead of logged as zero.
+
 Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
 set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP
 requests, streaming SSE error events, and normal strict, structured-output, or
