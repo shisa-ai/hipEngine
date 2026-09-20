@@ -1,0 +1,1762 @@
+{
+  "schema": 1,
+  "kind": "prefix_reuse_int8_retained_attention_repair",
+  "passed": true,
+  "performance_claim": false,
+  "hardware": {
+    "host_name": "epyc",
+    "machine_id": "13fc037d426b4f70918af4fc4a17e399",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gpu_unique_id": "0xcc4d02090dc9c3ff",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "1",
+    "rocm_hip_version": "HIP version: 7.15.0-0000000",
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "vram_bytes": 25753026560
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "int8_per_token_head",
+  "kv_scale_dtype": "fp32",
+  "teacher_rows": 2048,
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "top1_min": 0.99,
+    "per_scope_top1_min": 0.97,
+    "review_kl": 0.02
+  },
+  "scope": "Cache-hit fidelity against independent private same-schedule recomputation; not cross-schedule identity or a W7900 transfer claim.",
+  "root_cause": "Resumed no-mirror suffix attention selected a fresh transient BF16 oracle with unwritten prefix rows instead of retained INT8 payload and scale planes.",
+  "repair": "Read initialized retained payload/scales for resumed prefill; preserve cold BF16-oracle and persistent-mirror routes. Select scale/geometry-compatible readers.",
+  "protocol": {
+    "base_export_revision": "366d2b299df7bdcf414a5f37c5baaf520effc71e",
+    "integrated_repair_commit": "d603dcdbf0ca840668ceaedcf6af7c576a4a4722",
+    "model_reused_between_scopes": true,
+    "independent_private_kv_each_scope": true,
+    "driver": "/tmp/prefix-packet.py",
+    "driver_sha256": "25f2aa89d8a02460500a7d05d2f71ce89a290a25983f390076e4b8c18684389a",
+    "environment_driver": "/tmp/run-prefix-debug.py",
+    "environment_driver_sha256": "ca52ec4207b7cca2e99ec20cb213ce26546926fde52779963358fff698d00574",
+    "runtime_source_sha256": "a9942e00e71c91bdf60f0a82509e990df704444146f85864820bd982f51ec60a",
+    "gate_source_sha256": "7fdece4e120b0f223cdc12ef134135509be751ce2ddf4e517452036ec248b5f2",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-v060-gfx1100-refresh-results/hipcc-version-715.txt",
+      "isolation": "env constructed from HOME/USER/LOGNAME/SHELL/TERM plus explicit TheRock paths"
+    },
+    "public_revision": "26746c281",
+    "public_command": "PREFIX_DEBUG_ROOT=/tmp/prefix-integrated-26746c2 python /tmp/run-prefix-debug-integrated.py --public --env HIP_VISIBLE_DEVICES=1 int8_per_token_head",
+    "public_generation": [
+      {
+        "suffix_tokens": 1,
+        "hit_ids": [
+          1379,
+          3110,
+          2528,
+          13,
+          28763,
+          6813,
+          13,
+          3301
+        ],
+        "miss_ids": [
+          1379,
+          3110,
+          2528,
+          13,
+          28763,
+          6813,
+          13,
+          3301
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 1,
+            "reused_pages": 2,
+            "reused_page_bytes": 17039360,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 175898624
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 25165824,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 393216,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 25559040
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 513,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 0,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 0
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 25165824,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 393216,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 25559040
+          }
+        },
+        "same_ids_as_one_shot_miss": true
+      },
+      {
+        "suffix_tokens": 17,
+        "hit_ids": [
+          5070,
+          30863,
+          8,
+          1332,
+          6761,
+          369,
+          264,
+          248046
+        ],
+        "miss_ids": [
+          248046
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 17,
+            "reused_pages": 2,
+            "reused_page_bytes": 17039360,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 175898624
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 25165824,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 393216,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 25559040
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 529,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 0,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 0
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 25165824,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 393216,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 25559040
+          }
+        },
+        "same_ids_as_one_shot_miss": false
+      },
+      {
+        "suffix_tokens": 257,
+        "hit_ids": [
+          1970,
+          13,
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369
+        ],
+        "miss_ids": [
+          248046
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 257,
+            "reused_pages": 2,
+            "reused_page_bytes": 17039360,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 2,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 334757888
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 4,
+            "request_capacity_tokens": 1024,
+            "request_block_ids": [
+              24,
+              25,
+              26,
+              27
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 33554432,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 524288,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 34078720
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 769,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 0,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 0
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "int8_direct",
+            "request_pages": 4,
+            "request_capacity_tokens": 1024,
+            "request_block_ids": [
+              24,
+              25,
+              26,
+              27
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 33554432,
+            "persistent_bf16_payload_bytes": 0,
+            "persistent_scale_bytes": 524288,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 34078720
+          }
+        },
+        "same_ids_as_one_shot_miss": false
+      }
+    ]
+  },
+  "limitations": [
+    "Public checks establish actual default radix hits and no-mirror INT8/FP32 suffix execution, not exact output parity with one-shot full prefill.",
+    "One-shot cold prefill uses a transient BF16 oracle; resumed prefill reads quantized retained KV. Generated tokens across these arithmetic schedules can differ.",
+    "The packet covers the named model, p1024+s200, greedy c1 execution, and active/completed ownership. It is not cN, MTP, sampled, long-context, or throughput certification.",
+    "FP16-scale and non-24/4 geometry fallback choices are CPU-tested separately, not GPU-certified by this FP32 24/4 packet."
+  ],
+  "rows": [
+    {
+      "scope": "category-code-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 13,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.21651921739841315,
+          "kl_p95": 0.5983613840555868,
+          "kl_p99": 5.732086412135871,
+          "kl_max": 10.070509091823983,
+          "top1_agreement": 0.90625,
+          "max_abs_logit_delta": 18.93882656097412
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.21651921739841315,
+          "kl_p95": 0.5983613840555868,
+          "kl_p99": 5.732086412135871,
+          "kl_max": 10.070509091823983,
+          "top1_agreement": 0.90625,
+          "max_abs_logit_delta": 18.93882656097412
+        }
+      },
+      "raw_sha256": "6c8708e66352e6dd3d2524654c22f913b75c267e5ff71b996356a66f8142dc7d",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/category-code-active.json"
+    },
+    {
+      "scope": "category-code-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 13,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.21651921739841315,
+          "kl_p95": 0.5983613840555868,
+          "kl_p99": 5.732086412135871,
+          "kl_max": 10.070509091823983,
+          "top1_agreement": 0.90625,
+          "max_abs_logit_delta": 18.93882656097412
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.21651921739841315,
+          "kl_p95": 0.5983613840555868,
+          "kl_p99": 5.732086412135871,
+          "kl_max": 10.070509091823983,
+          "top1_agreement": 0.90625,
+          "max_abs_logit_delta": 18.93882656097412
+        }
+      },
+      "raw_sha256": "b0005496bc02c26a757fa53761f3b77a940d836eaa0e64a9c53eeb08c1b26466",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/category-code-completed.json"
+    },
+    {
+      "scope": "category-general_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 27413,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.3856739475654155,
+          "kl_p95": 1.8090128088038455,
+          "kl_p99": 8.461399552315646,
+          "kl_max": 9.70202909064068,
+          "top1_agreement": 0.8671875,
+          "max_abs_logit_delta": 18.612889766693115
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.3856739475654155,
+          "kl_p95": 1.8090128088038455,
+          "kl_p99": 8.461399552315646,
+          "kl_max": 9.70202909064068,
+          "top1_agreement": 0.8671875,
+          "max_abs_logit_delta": 18.612889766693115
+        }
+      },
+      "raw_sha256": "a79fcfc6be6d3b02b01d1f33e7bb660ed27f06468b2d73553cfb8d1751db5b0e",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/category-general_en-active.json"
+    },
+    {
+      "scope": "category-general_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 27413,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.3856739475654155,
+          "kl_p95": 1.8090128088038455,
+          "kl_p99": 8.461399552315646,
+          "kl_max": 9.70202909064068,
+          "top1_agreement": 0.8671875,
+          "max_abs_logit_delta": 18.612889766693115
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.3856739475654155,
+          "kl_p95": 1.8090128088038455,
+          "kl_p99": 8.461399552315646,
+          "kl_max": 9.70202909064068,
+          "top1_agreement": 0.8671875,
+          "max_abs_logit_delta": 18.612889766693115
+        }
+      },
+      "raw_sha256": "25799a44325642185ef4985a616d5f874dd53464a233ef4a4abb602acbcec115",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/category-general_en-completed.json"
+    },
+    {
+      "scope": "category-general_ja-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 96026,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.6460584845889314,
+          "kl_p95": 5.765112126855859,
+          "kl_p99": 8.681776485210408,
+          "kl_max": 10.774043586554427,
+          "top1_agreement": 0.875,
+          "max_abs_logit_delta": 18.17410397529602
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.6460584845889314,
+          "kl_p95": 5.765112126855859,
+          "kl_p99": 8.681776485210408,
+          "kl_max": 10.774043586554427,
+          "top1_agreement": 0.875,
+          "max_abs_logit_delta": 18.17410397529602
+        }
+      },
+      "raw_sha256": "62496e96296859cd5ce3f96543d52895b276809947e80a1899236ab5ef2a5f89",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/category-general_ja-active.json"
+    },
+    {
+      "scope": "category-general_ja-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 96026,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.6460584845889314,
+          "kl_p95": 5.765112126855859,
+          "kl_p99": 8.681776485210408,
+          "kl_max": 10.774043586554427,
+          "top1_agreement": 0.875,
+          "max_abs_logit_delta": 18.17410397529602
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.6460584845889314,
+          "kl_p95": 5.765112126855859,
+          "kl_p99": 8.681776485210408,
+          "kl_max": 10.774043586554427,
+          "top1_agreement": 0.875,
+          "max_abs_logit_delta": 18.17410397529602
+        }
+      },
+      "raw_sha256": "f33cd4e732f1324a7b58f335b26ebd1c12a3cbbe587f0f1f5071e193683ab288",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/category-general_ja-completed.json"
+    },
+    {
+      "scope": "category-mixed_ja_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.019603778222648197,
+          "kl_p95": 0.13165571899737805,
+          "kl_p99": 0.2933460233109171,
+          "kl_max": 0.3067597188325235,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 11.46304202079773
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.019603778222648197,
+          "kl_p95": 0.13165571899737805,
+          "kl_p99": 0.2933460233109171,
+          "kl_max": 0.3067597188325235,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 11.46304202079773
+        }
+      },
+      "raw_sha256": "09094d820f48da0546d61fda739fd4b8cdb07f7796d4962b779361a3d394e7e9",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/category-mixed_ja_en-active.json"
+    },
+    {
+      "scope": "category-mixed_ja_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.019603778222648197,
+          "kl_p95": 0.13165571899737805,
+          "kl_p99": 0.2933460233109171,
+          "kl_max": 0.3067597188325235,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 11.46304202079773
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.019603778222648197,
+          "kl_p95": 0.13165571899737805,
+          "kl_p99": 0.2933460233109171,
+          "kl_max": 0.3067597188325235,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 11.46304202079773
+        }
+      },
+      "raw_sha256": "9afa6cd54b16c7101c22fa1151a0824bb254c4b521a409a3a10c2b29a7e5b17c",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/category-mixed_ja_en-completed.json"
+    },
+    {
+      "scope": "heldout-code-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 709,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 2.096158850158943,
+          "kl_p95": 10.74290026061703,
+          "kl_p99": 16.488430960574266,
+          "kl_max": 18.42365676670069,
+          "top1_agreement": 0.703125,
+          "max_abs_logit_delta": 25.430436611175537
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 2.096158850158943,
+          "kl_p95": 10.74290026061703,
+          "kl_p99": 16.488430960574266,
+          "kl_max": 18.42365676670069,
+          "top1_agreement": 0.703125,
+          "max_abs_logit_delta": 25.430436611175537
+        }
+      },
+      "raw_sha256": "a6a7666847eb24547f929b5347be0b13118f4618a2e222590c28acca27af4fca",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/heldout-code-active.json"
+    },
+    {
+      "scope": "heldout-code-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 709,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 2.096158850158943,
+          "kl_p95": 10.74290026061703,
+          "kl_p99": 16.488430960574266,
+          "kl_max": 18.42365676670069,
+          "top1_agreement": 0.703125,
+          "max_abs_logit_delta": 25.430436611175537
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 2.096158850158943,
+          "kl_p95": 10.74290026061703,
+          "kl_p99": 16.488430960574266,
+          "kl_max": 18.42365676670069,
+          "top1_agreement": 0.703125,
+          "max_abs_logit_delta": 25.430436611175537
+        }
+      },
+      "raw_sha256": "542e0ca94539d87473f575e54c0d9ca8841f6084b505c7e8dccaf6dfeed36cc9",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/heldout-code-completed.json"
+    },
+    {
+      "scope": "heldout-general_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 2998,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 1.0458740157828805,
+          "kl_p95": 7.9612671311984995,
+          "kl_p99": 12.899070569488499,
+          "kl_max": 16.777135953652177,
+          "top1_agreement": 0.765625,
+          "max_abs_logit_delta": 26.272542476654053
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 1.0458740157828805,
+          "kl_p95": 7.9612671311984995,
+          "kl_p99": 12.899070569488499,
+          "kl_max": 16.777135953652177,
+          "top1_agreement": 0.765625,
+          "max_abs_logit_delta": 26.272542476654053
+        }
+      },
+      "raw_sha256": "2bf1c5d601307caa2bc2655e3019faa5a82300feb00b5d4f02f0c5f3a7b9e0e8",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/heldout-general_en-active.json"
+    },
+    {
+      "scope": "heldout-general_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 2998,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 1.0458740157828805,
+          "kl_p95": 7.9612671311984995,
+          "kl_p99": 12.899070569488499,
+          "kl_max": 16.777135953652177,
+          "top1_agreement": 0.765625,
+          "max_abs_logit_delta": 26.272542476654053
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 1.0458740157828805,
+          "kl_p95": 7.9612671311984995,
+          "kl_p99": 12.899070569488499,
+          "kl_max": 16.777135953652177,
+          "top1_agreement": 0.765625,
+          "max_abs_logit_delta": 26.272542476654053
+        }
+      },
+      "raw_sha256": "742a62182827d2999e6d14527664ce7f97293226f04d6d403f3a6821a0d85785",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/heldout-general_en-completed.json"
+    },
+    {
+      "scope": "heldout-general_ja-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.03062792869067432,
+          "kl_p95": 0.12967056981393332,
+          "kl_p99": 0.3974696490021674,
+          "kl_max": 1.5189411821075827,
+          "top1_agreement": 0.96875,
+          "max_abs_logit_delta": 9.44961804151535
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.03062792869067432,
+          "kl_p95": 0.12967056981393332,
+          "kl_p99": 0.3974696490021674,
+          "kl_max": 1.5189411821075827,
+          "top1_agreement": 0.96875,
+          "max_abs_logit_delta": 9.44961804151535
+        }
+      },
+      "raw_sha256": "ae3b3fa5164da68b6464e8b116f48b8b51ef7ceccffbf6ac040d17a9a5fa2357",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/heldout-general_ja-active.json"
+    },
+    {
+      "scope": "heldout-general_ja-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.03062792869067432,
+          "kl_p95": 0.12967056981393332,
+          "kl_p99": 0.3974696490021674,
+          "kl_max": 1.5189411821075827,
+          "top1_agreement": 0.96875,
+          "max_abs_logit_delta": 9.44961804151535
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.03062792869067432,
+          "kl_p95": 0.12967056981393332,
+          "kl_p99": 0.3974696490021674,
+          "kl_max": 1.5189411821075827,
+          "top1_agreement": 0.96875,
+          "max_abs_logit_delta": 9.44961804151535
+        }
+      },
+      "raw_sha256": "aff423c5ef711c63d76ca15a162660e391d8d78ae6183056b2bbe34a16c614b6",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/heldout-general_ja-completed.json"
+    },
+    {
+      "scope": "heldout-mixed_ja_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.04987022046714203,
+          "kl_p95": 0.3266430347360239,
+          "kl_p99": 0.6649882727293646,
+          "kl_max": 0.7078214077123446,
+          "top1_agreement": 0.9296875,
+          "max_abs_logit_delta": 13.558493256568909
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.04987022046714203,
+          "kl_p95": 0.3266430347360239,
+          "kl_p99": 0.6649882727293646,
+          "kl_max": 0.7078214077123446,
+          "top1_agreement": 0.9296875,
+          "max_abs_logit_delta": 13.558493256568909
+        }
+      },
+      "raw_sha256": "37f0da0842b883200f54d74a92455aa1e273b5b85c64c642ce4352d6299f0b5e",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle active --json /tmp/prefix-fixed-int8-packet/heldout-mixed_ja_en-active.json"
+    },
+    {
+      "scope": "heldout-mixed_ja_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 24,
+        "final_pinned_pages": 24,
+        "workspace_lease_pages": 24,
+        "final_request_refcounted_pages": 0,
+        "exact": true
+      },
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.04987022046714203,
+          "kl_p95": 0.3266430347360239,
+          "kl_p99": 0.6649882727293646,
+          "kl_max": 0.7078214077123446,
+          "top1_agreement": 0.9296875,
+          "max_abs_logit_delta": 13.558493256568909
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.04987022046714203,
+          "kl_p95": 0.3266430347360239,
+          "kl_p99": 0.6649882727293646,
+          "kl_max": 0.7078214077123446,
+          "top1_agreement": 0.9296875,
+          "max_abs_logit_delta": 13.558493256568909
+        }
+      },
+      "raw_sha256": "d6e72a444e3e1ee261f51d9d9a84ce280376b57957ce756a8525eeb11971da49",
+      "reproduction_command": "HIP_VISIBLE_DEVICES=1 python scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage int8_per_token_head --kv-scale-dtype fp32 --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --teacher-forced-steps 128 --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle completed --json /tmp/prefix-fixed-int8-packet/heldout-mixed_ja_en-completed.json"
+    }
+  ]
+}
