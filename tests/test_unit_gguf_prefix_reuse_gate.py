@@ -196,3 +196,41 @@ def test_per_step_diagnostics_match_the_aggregate_metrics() -> None:
     assert float(np.mean(kl)) == pytest.approx(metrics.kl_mean, abs=1e-12)
     assert float(np.max(kl)) == pytest.approx(metrics.kl_max, abs=1e-12)
     assert float(np.mean(top1)) == pytest.approx(metrics.top1_agreement, abs=1e-12)
+
+
+def test_margin_diagnosis_reports_rank_and_near_tie_margin() -> None:
+    """A flipped argmax on a near-tie must be visible as a tiny margin."""
+
+    import numpy as np
+
+    from scripts.gguf_prefix_reuse_gate import _per_step_margins
+
+    reference = np.array(
+        [
+            [10.0, 9.999, 0.0, -1.0],  # near tie: candidate flips it
+            [1.0, 0.0, -1.0, -2.0],  # agreement
+            [10.0, 0.0, -1.0, -2.0],  # candidate has a different winner
+        ]
+    )
+    candidate = np.array(
+        [
+            [9.998, 10.0, 0.0, -1.0],
+            [1.0, 0.0, -1.0, -2.0],
+            [0.0, 1.0, -1.0, -2.0],
+        ]
+    )
+
+    diagnosis = _per_step_margins(reference, candidate, top_k=2)
+
+    assert diagnosis["reference_top1_rank_in_candidate"] == [1, 0, 1]
+
+    # Captured rows arrive as (batch=1, vocab), so the caller flattens the
+    # stacked (steps, 1, vocab) tensor; the helper must be called on 2-D input
+    # and must not silently index a singleton batch axis instead of the vocab.
+    stacked = np.stack([reference, reference], axis=1)  # (3, 2, 4)
+    flattened = stacked.reshape(-1, stacked.shape[-1])
+    assert flattened.shape == (6, 4)
+    assert len(_per_step_margins(flattened, flattened)["reference_margin"]) == 6
+    assert diagnosis["reference_margin"][0] == pytest.approx(0.001, abs=1e-9)
+    assert diagnosis["top_k_overlap"] == [2, 2, 2]
+    assert diagnosis["top_k"] == 2
