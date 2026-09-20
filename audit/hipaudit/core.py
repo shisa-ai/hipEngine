@@ -32,6 +32,9 @@ TRIAGE_DIR = AUDIT_ROOT / "triage"            # decisions, shared by both
 TAGS = (
     "DEAD-FLAG",       # a flag nothing reads, or whose behaviour is now unconditional
     "LOST-OPT",        # a measured win that was never promoted to the default path
+    "EXACTNESS-REJECT",  # a candidate rejected for not being bit-exact, which
+                         # docs/OPTIMIZATION.md 4.1 says cannot stand alone as a
+                         # reason; it must be re-reviewed under the production gate
     "ORPHAN-KERNEL",   # a kernel with no reachable registry key
     "STALE-LEDGER",    # a ledger entry whose referent is gone or whose condition fired
     "UNREACHABLE",     # a path production never selects
