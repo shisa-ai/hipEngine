@@ -53,7 +53,9 @@ def run_inventory(kinds: list[str] | None) -> dict:
 
     #  A rescan must land on the same audit items, even when their text was
     #  edited. Re-attach any decision whose row id moved, and say so out loud.
-    rows, decisions = core.load_inventory(), core.load_triage()
+    #  Rows come from both stores: a decision recorded against a finding is not
+    #  an orphan just because this command only regenerated the inventory.
+    rows, decisions = core.load_all(), core.load_triage()
     moved = core.rebind(rows, decisions)
     if moved:
         core.save_triage(decisions)

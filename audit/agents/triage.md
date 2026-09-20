@@ -9,7 +9,7 @@ You triage rows in the hipEngine cleanup audit. Read
 
 ## Two halves
 
-**Inventory rows** (`ledger`, `flag`, `kernel`, `candidate`) are debt somebody
+**Inventory rows** (`ledger`, `flag`, `kernel`, `candidate`, `worklog`) are debt somebody
 already wrote down. A row is a **mechanically extracted candidate carrying
 evidence, not a verdict**. The extractor sees what greps see and is routinely
 wrong. Your job is to establish what is true and record a decision.
@@ -75,6 +75,34 @@ python3 audit/audit.py triage <row-id> --tag <TAG> --do <disposition> \
 - `keep` — justified as it stands. The note gives the justification.
 - `document` — the code is right and the docs disagree. Name both sides.
 - `defer` — real, accepted, unscheduled. The note names what unblocks it.
+
+## The worklog rows
+
+A `worklog` row is an entry whose own text declared work unfinished: an open
+`status` (`blocked`, `handoff`, `checkpoint`), a `Next` naming a blocker, gate, or
+approval, or a pre-cutoff `### Next` marker. The row's `open_text` is the text
+that made it a row, and `show` prints the whole evidence.
+
+Entries are immutable, so a row never changes and never comes back as `stale`.
+Decide it once, with the work that finished it named in the note:
+
+```bash
+python3 audit/audit.py open worklog --signal "recorded as blocked"
+python3 audit/audit.py open worklog --signal "no later entry"
+```
+
+- **Finished already.** Name the entry, commit, or file that finished it, then
+  `--resolved`. This is the common case and the cheapest correct answer.
+- **Still open.** Record the real blocker: `qualify` with the exact command,
+  `defer` with `--expires`, or `promote` if the work is a working path that was
+  never turned on.
+- **`NOT-DEBT`.** The status was used loosely, or a "not in the tree" path is one
+  the entry quotes rather than points at.
+
+Check the referent against today's tree: a pre-cutoff row describes the tree as
+of its date. `no later entry by the same worker shares this topic prefix` means
+nobody visibly continued it — the prefix is a hint, not an identity, so confirm
+before calling the work dropped.
 
 ## What not to do
 
