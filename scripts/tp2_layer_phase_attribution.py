@@ -13,11 +13,12 @@ Usage::
 
     python scripts/tp2_layer_phase_attribution.py MODEL.gguf [STEPS]
 """
+import pathlib
 
 import sys
 import time
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from hipengine.core.device import scoped_current_device

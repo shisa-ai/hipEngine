@@ -40,6 +40,7 @@ Usage::
 """
 
 from __future__ import annotations
+import pathlib
 
 import argparse
 import collections
@@ -50,7 +51,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 # A resolution belongs to the prefill only if the stack passes through one of
 # these. They are the bulk-prefill layer helpers; anything else reached from

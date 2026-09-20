@@ -56,6 +56,7 @@ Usage::
 """
 
 from __future__ import annotations
+import pathlib
 
 import argparse
 import json
@@ -65,7 +66,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np  # noqa: E402
 
 # Event slots per layer per rank. Every span is a pair of consecutive slots, so

@@ -59,7 +59,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # The contexts the single-card bulk prefill installs and the TP2 path omits, in
 # the order that route enters them.

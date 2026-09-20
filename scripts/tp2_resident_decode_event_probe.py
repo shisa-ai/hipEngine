@@ -11,6 +11,7 @@ Usage::
 
     python scripts/tp2_resident_decode_event_probe.py
 """
+import pathlib
 
 import faulthandler
 import sys
@@ -18,7 +19,7 @@ import threading
 import time
 
 faulthandler.dump_traceback_later(120, repeat=True, file=sys.stderr)
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
 

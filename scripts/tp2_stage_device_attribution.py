@@ -22,13 +22,14 @@ Usage::
 
     python scripts/tp2_stage_device_attribution.py MODEL.gguf [STEPS]
 """
+import pathlib
 
 import json
 import platform
 import sys
 import time
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import pathlib
 
 import numpy as np

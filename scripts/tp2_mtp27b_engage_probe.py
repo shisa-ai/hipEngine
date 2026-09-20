@@ -10,6 +10,7 @@ Usage::
 
     python scripts/tp2_mtp27b_engage_probe.py [MAX_NEW_TOKENS]
 """
+import pathlib
 
 import faulthandler
 import json
@@ -20,7 +21,7 @@ import time
 # without needing ptrace permissions (entry 08fcef).
 faulthandler.dump_traceback_later(300, repeat=True, file=sys.stderr)
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 MODEL = "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
 MAX_NEW = int(sys.argv[1]) if len(sys.argv) > 1 else 16
