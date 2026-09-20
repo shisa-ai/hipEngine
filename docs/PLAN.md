@@ -556,6 +556,14 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 #### Next campaign: artifact-scoped compact INT8 KV continuous batching
 
+Dense INT8 MTP now has implementation-based C1 admission, separate from
+benchmark evidence and approximate-KV quality decisions. The normal server
+owner uses the native request-local verifier under wider resident capacities;
+multi-request INT8 MTP currently selects a named pre-mutation AR fallback.
+Effective prepared storage/layout/scales determine admission. Public endpoint,
+SSE and lifecycle progress, along with prefix-on and compact-DMS work, is
+tracked in [INT8 MTP server readiness](reference/INT8-MTP-SERVER-READINESS.md).
+
 The approved next INT8 KV campaign is
 [`QWEN38-INT8-KV-CONTINUOUS.md`](campaigns/QWEN38-INT8-KV-CONTINUOUS.md). It starts by
 integrating the divergent gfx1100/gfx1151 Qwen3.8 evidence and locking runtime
