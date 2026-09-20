@@ -119,18 +119,19 @@ Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Maple-Preview | 2-bit | **754.5** | **153.2** | — | — |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 | — |
-| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
+| Model | Quant | Prompt processing | Text generation | With MTP | AR measured |
+| --- | --- | ---: | ---: | ---: | --- |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — | 2026-08-08 |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 | 2026-09-20 |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | 2026-07/08 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | 2026-08-17 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** | 2026-09-20 |
 
-Qwen3.8 `Q4_K_M` speculates by default at one request: **20.0** tok/s against
-a matched 11.90 tok/s AR baseline (1.68x), declining above 1,023 tokens. The
-21.0 cell is the strict/K3 protocol.
-[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
+September 20 rows: Framework Desktop. Qwen3.8 `Q4_K_M` MTP uses three drafts
+and 25 output tokens per request: **1.98x** its matched 11.30 tok/s AR,
+not the 512/128 decode column. It declines above 1,023 tokens.
+35B MTP is the July 19 opt-in result.
+[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
@@ -167,10 +168,8 @@ Direct-INT8 failed 9 of 11 quality prompts and is not a default.
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. On by default; `--prefix-cache off` disables it. Reuse returns the
-same tokens as full recomputation up to 2,048 tokens of context; above that
-attention accumulates in a different order, so a cached turn can differ by one
-BF16 unit in the last place and occasionally pick a different token.
+repeats. Radix is the direct engine default; HTTP serving requires
+`--prefix-cache radix`. Different prefill routes can change generated tokens.
 Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
 three turns, reusing 42,496 of 87,582 prompt tokens:
 

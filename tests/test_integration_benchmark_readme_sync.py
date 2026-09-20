@@ -210,8 +210,6 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     assert artifact_path.name in scoreboard
 
     labels = {
-        "512/128": "512/128",
-        "4K/128": "4K/128",
         "32K/128": "32K/128",
         "64K/128": "64K/128",
     }
@@ -222,6 +220,22 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
             f"**{row['decode_tok_s_median']:.3f} tok/s** | "
             f"{row['tracked_peak_gib']:.3f} GiB | "
             f"{row['whole_gtt_peak_gib']:.3f} GiB |"
+        )
+        assert expected in scoreboard
+
+    refresh = json.loads(
+        (repo_root / "benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json")
+        .read_text(encoding="utf-8")
+    )
+    current = refresh["qwen36_ud_q4_k_m"]
+    assert current["correctness"]["passed"] is True
+    assert current["correctness"]["graph_eager_prompts"] == 18
+    assert current["cross_batch_diagnostic"]["passed"] is False
+    for label, row in current["measurements"].items():
+        expected = (
+            f"| {label} | **{row['prefill_tok_s']['median']:.3f} tok/s** | "
+            f"**{row['decode_tok_s']['median']:.3f} tok/s** | "
+            f"{row['tracked_peak_allocated_gib']['median']:.3f} GiB | Not sampled |"
         )
         assert expected in scoreboard
     assert "| 128K/128 | — | — | — | — |" in scoreboard
