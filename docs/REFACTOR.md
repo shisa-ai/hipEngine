@@ -43,8 +43,22 @@ HIT/MISS state check was preserved separately as instructed.
 Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json`;
 source: `worklog/entries/20260920T054514.573459Z-lhl-prefix-gate-packed-reference-1024rows-40a28f.md`.
 
-Remaining: this qualification is `gfx1151` only. The `gfx1100` half of the gate
-has not been run.
+Remaining: the gfx1151 resolution does not transfer to gfx1100. The September
+20 W7900 packet fails scheduler state-byte comparison in six active-source
+scopes; heldout-code also exceeds production mean/max KL. A parent-run
+completed-source heldout-code control has exact scheduler state and 100%
+top-1, but mean/p99/max KL of 0.00678/0.12955/0.67657 exceed the calibrated
+limits. State-byte differences alone do not establish an ownership defect;
+localize candidate/reference route differences before classifying the cause.
+
+HTTP default-on is blocked by these numerical results and missing INT8/fp32
+prefix-reuse qualification. Keep HTTP `--prefix-cache off` as the default,
+with explicit radix opt-in. Remove this exception only after the full
+category/heldout production gate, active/completed ownership checks, and
+HTTP-default INT8 scale-plane/suffix/reclaim/pressure checks pass. Do not
+weaken the envelope or add prompt-conditioned routing.
+Evidence: `benchmarks/results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json`
+and `benchmarks/results/2026-09-20-w7900-prefix-completed-code-control.json`.
 
 ## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
 
