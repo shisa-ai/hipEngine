@@ -95,7 +95,7 @@ that forwards a hand-written list of variables forwards only those. The server
 then keeps its default and the run measures the default while the report claims
 the raised value. Nothing errors, and the numbers look plausible.
 
-A real instance: a shape sweep exported `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192`
+A real instance: a shape sweep exported a tuning variable
 through a wrapper that forwarded two other variables. The server kept the
 qualified 1,023-token window and the "forced window" arm reproduced the default
 to the digit (11.40 tok/s both arms). The near-miss was publishing "raising the
@@ -117,7 +117,7 @@ mtp2_context_window=env:... resolved:...`) and in
 
 ```bash
 python3 scripts/bench_env_preflight.py --url http://127.0.0.1:8097 \
-    HIPENGINE_MTP2_MAX_CONTEXT_TOKENS=8192
+    HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=1
 ```
 
 The preflight exits non-zero unless every requested value is confirmed in

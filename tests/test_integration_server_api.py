@@ -2083,10 +2083,12 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "source": "unresolved",
         },
         "context_window": {
-            "env": "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
             "exported": None,
-            "resolved": 1023,
-            "qualified_default": 1023,
+            "resolved": None,
+            "qualified_default": None,
             "error": None,
         },
     }
@@ -2197,10 +2199,12 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
             "source": "model_plugin_evidence",
         },
         "context_window": {
-            "env": "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
             "exported": None,
-            "resolved": 1023,
-            "qualified_default": 1023,
+            "resolved": None,
+            "qualified_default": None,
             "error": None,
         },
         "policy": "opt_in",
@@ -22447,6 +22451,15 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "requested": None,
             "resolved": None,
             "source": "unresolved",
+        },
+        "context_window": {
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
+            "exported": None,
+            "resolved": None,
+            "qualified_default": None,
+            "error": None,
         },
     }
     assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_fields"] == list(

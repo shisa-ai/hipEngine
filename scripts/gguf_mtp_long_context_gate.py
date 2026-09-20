@@ -1170,7 +1170,6 @@ def _provenance(model: Path, *, hash_model: bool) -> dict[str, Any]:
         "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE",
         "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
         "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG",
-        "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
         "HIPENGINE_REQUIRE_CACHED_BUILD",
     )
     return {

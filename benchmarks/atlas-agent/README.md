@@ -116,13 +116,14 @@ deepest candidate budget hipEngine's serving evidence qualifies
 ## Long context and what hipEngine actually does there
 
 hipEngine's dense MTP adapter admits only inside a **1,023-token window**
-(`hipengine/generation/qwen35_gguf_mtp2.py`, `_MTP2_QUALIFIED_CONTEXT_WINDOW`).
+(`hipengine/generation/qwen35_gguf_mtp2.py`; the fixed window was removed on
+2026-09-20 and the adapter is now bounded by the target's capacity).
 Above it a row is set to `candidate_budget = 0` with
 `target_context_k0` and decodes autoregressively.
 
 At agentic context lengths this means the hipEngine arm of this comparison is
 **autoregressive**, and that is the qualified behaviour, not a failure. Raising
-the window with `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` is explicitly *not* a
+the long-context route is explicitly *not* a
 promotion: raising it alone measures **0.57×**, because the target and draft
 graphs decline into their eager paths per cycle (`docs/REFACTOR.md`,
 "Long-context MTP window override"). `FORCE_LONG_MTP=1` runs that unqualified

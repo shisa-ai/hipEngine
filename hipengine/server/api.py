@@ -74,9 +74,6 @@ from hipengine.generation import (
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.qwen35_gguf_mtp2 import (
-    _MTP2_MAX_CONTEXT_ENV as _MTP2_MAX_CONTEXT_ENV,
-    _MTP2_QUALIFIED_CONTEXT_WINDOW as _MTP2_QUALIFIED_CONTEXT_WINDOW,
-    _mtp2_context_window as _mtp2_context_window,
     unqualified_mtp_screening_enabled as _mtp_unqualified_screening_enabled,
 )
 from hipengine.generation.registry import normalize_prompt_input
@@ -1514,8 +1511,7 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
         "candidate_budget": _candidate_budget_resolution(config, engine=engine),
-        "context_window": _mtp2_context_window_resolution(),
-    }
+        "context_window": _mtp2_context_window_resolution(),    }
     if serving_plan is not None:
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
     if not serving_route:
@@ -2230,8 +2226,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 # Credentials are reported as present-but-redacted.  Redaction is by exact
 # name on purpose: a substring rule on "KEY"/"TOKEN" would hide the tuning
-# knobs this echo exists to expose (HIPENGINE_MTP2_MAX_CONTEXT_TOKENS,
-# HIPENGINE_GGUF_INT8_KV_KEY_ONLY, HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED).
+# knobs this echo exists to expose (HIPENGINE_GGUF_INT8_KV_KEY_ONLY,
+# HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED).
 _ENV_ECHO_PREFIX = "HIPENGINE_"
 _ENV_ECHO_REDACTED = frozenset({"HIPENGINE_API_KEY", "HIPENGINE_KEY"})
 _ENV_ECHO_REDACTED_VALUE = "<redacted>"
@@ -2261,42 +2257,32 @@ def _effective_hipengine_env(
 
 
 def _mtp2_context_window_resolution() -> dict[str, Any]:
-    """Resolve the exported MTP context window, reporting instead of raising.
+    """Report how the MTP adapter bounds prompt context.
 
-    A launcher that clears or filters the environment can strip the export
-    without failing.  The server then keeps the qualified default, and a
-    benchmark that believed it had raised the window measures the default.
-    Reporting ``exported`` beside ``resolved`` makes that no-op visible.
-
-    Resolution errors are returned rather than raised: an invalid export is
-    already fatal at the adapter's own call sites, and a diagnostic payload
-    must not become a new crash path with a different failure order.
+    The adapter used to carry a fixed 1,023-token window whose only cause was
+    that nothing had been measured past the 1,024 attention transition. Prompt
+    context is not an admission axis (docs/EXECUTION-PROFILES.md section 2.9),
+    so the window is gone and the adapter is bounded by the target's own
+    allocated capacity instead. This block stays machine-readable so a harness
+    can assert which policy is in effect rather than inferring it from rates.
     """
 
-    exported = os.environ.get(_MTP2_MAX_CONTEXT_ENV)
-    resolved: int | None = None
-    error: str | None = None
-    try:
-        resolved = int(_mtp2_context_window())
-    except RuntimeError as exc:
-        error = str(exc)
     return {
-        "env": _MTP2_MAX_CONTEXT_ENV,
-        "exported": None if exported is None else str(exported),
-        "resolved": resolved,
-        "qualified_default": int(_MTP2_QUALIFIED_CONTEXT_WINDOW),
-        "error": error,
+        "policy": "target_capacity",
+        "fixed_cap": None,
+        "env": None,
+        "exported": None,
+        "resolved": None,
+        "qualified_default": None,
+        "error": None,
     }
 
 
 def _mtp2_context_window_log_fields() -> tuple[str, str]:
-    """Render the context-window resolution as the ``env:``/``resolved:`` pair."""
+    """Render the context-window policy as the ``env:``/``resolved:`` pair."""
 
     resolution = _mtp2_context_window_resolution()
-    exported = resolution["exported"]
-    resolved = resolution["resolved"]
-    text = f"invalid({resolution['error']})" if resolved is None else str(resolved)
-    return ("unset" if exported is None else str(exported), text)
+    return ("none", str(resolution["policy"]))
 
 
 def _mtp_unavailable_route_fallback(

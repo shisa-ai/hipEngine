@@ -1592,7 +1592,7 @@ match the AR arm's generated ids token for token over the 32-token probe - at
 **1.42x-2.55x (median 1.864x)** and **1.35x-2.21x (median 1.828x)** respectively,
 with 98.4-99.2% of output tokens from speculative cycles. The adapter's 1,023-token window is a
 separate, still-unpromoted bound: it refuses long-context speculation by
-default, so these long-shape rows need `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` set.
+default. The 1,023-token MTP admission window that used to refuse them was removed on 2026-09-20, so these long-shape rows now reach the speculative route directly.
 [Evidence](results/2026-09-19-gfx1151-qwen38-staged-linear-rows-long-verifier-route.json).
 
 #### ShareGPT serving at one, four and eight concurrent requests

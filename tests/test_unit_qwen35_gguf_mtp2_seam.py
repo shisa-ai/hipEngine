@@ -1164,7 +1164,11 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_requests == 4
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 16
-    assert capability.max_context_tokens == 1023
+    # The advertised bound is the target's allocated capacity, not the retired
+    # 1,023-token evidence window. Admission and per-cycle policy must read the
+    # same value, and prompt context is not an admission axis
+    # (docs/EXECUTION-PROFILES.md section 2.9).
+    assert capability.max_context_tokens == 4096
 
     adapter.register_request(
         7,
@@ -4405,13 +4409,20 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     assert adapter.capability(semantics) is not None
 
 
-def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
+def test_mtp2_prompt_filling_target_capacity_selects_k0_before_provider_streaming() -> None:
+    """Allocated capacity is the remaining bound, and it is a real one.
+
+    A prompt that leaves no room for even one generated token cannot stream, so
+    it is refused before provider acquisition. This is the resource bound that
+    replaced the retired 1,023-token evidence window.
+    """
+
     target = SimpleNamespace(
         target_layout=SimpleNamespace(max_sequence_length=4096),
         runtime=object(),
     )
     row = SimpleNamespace(
-        prompt_ids=tuple(range(1022)),
+        prompt_ids=tuple(range(4096)),
         lease=SimpleNamespace(session=target),
         prefix_reused_tokens=0,
         mtp2_candidate_budget=2,
@@ -4444,76 +4455,49 @@ def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
     assert adapter._states == {}
 
 
-def test_mtp2_context_window_defaults_to_the_qualified_1023(monkeypatch) -> None:
-    monkeypatch.delenv(mtp2_module._MTP2_MAX_CONTEXT_ENV, raising=False)
-    assert mtp2_module._mtp2_context_window() == 1023
+def test_mtp2_prompt_past_the_retired_window_reaches_the_provider() -> None:
+    """A prompt above the retired 1,023 window is admitted, not refused.
 
-
-def test_mtp2_context_window_accepts_an_experimental_raise(monkeypatch) -> None:
-    monkeypatch.setenv(mtp2_module._MTP2_MAX_CONTEXT_ENV, "16384")
-    assert mtp2_module._mtp2_context_window() == 16384
-
-
-@pytest.mark.parametrize("value", ["0", "-1", "", "soon", "1.5"])
-def test_mtp2_context_window_rejects_unusable_values(monkeypatch, value) -> None:
-    monkeypatch.setenv(mtp2_module._MTP2_MAX_CONTEXT_ENV, value)
-    with pytest.raises(RuntimeError):
-        mtp2_module._mtp2_context_window()
-
-
-def test_mtp2_raised_context_window_admits_a_prompt_the_default_refuses(
-    monkeypatch,
-) -> None:
-    """The experimental window is what lets a long prompt reach the provider.
-
-    The default run stops at the context gate with ``target_context_k0`` and
-    never touches the draft provider. The raised run reaches provider
-    acquisition, which this fixture signals with a distinctive error because it
-    does not implement the streaming provider ABI.
+    Prompt context is not an admission axis (docs/EXECUTION-PROFILES.md section
+    2.9). This prompt is 1,022 tokens against a 16,384-token target: the fixed
+    window refused it with ``target_context_k0`` and never touched the draft
+    provider. It now reaches provider acquisition, which this fixture signals
+    with a distinctive error because it does not implement the streaming
+    provider ABI.
     """
 
     class _ReachedProvider(Exception):
         pass
 
-    def build() -> tuple[object, SimpleNamespace]:
-        target = SimpleNamespace(
-            target_layout=SimpleNamespace(max_sequence_length=16384),
-            runtime=object(),
-        )
-        row = SimpleNamespace(
-            prompt_ids=tuple(range(1022)),
-            lease=SimpleNamespace(session=target),
-            prefix_reused_tokens=0,
-            mtp2_candidate_budget=2,
-            mtp2_prompt_fallback_reason=None,
-        )
+    target = SimpleNamespace(
+        target_layout=SimpleNamespace(max_sequence_length=16384),
+        runtime=object(),
+    )
+    row = SimpleNamespace(
+        prompt_ids=tuple(range(1022)),
+        lease=SimpleNamespace(session=target),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=2,
+        mtp2_prompt_fallback_reason=None,
+    )
 
-        def acquire(*args, **kwargs):
-            raise _ReachedProvider
+    def acquire(*args, **kwargs):
+        raise _ReachedProvider
 
-        owner = SimpleNamespace(
-            generator=SimpleNamespace(_acquire_dense_mtp_draft_provider=acquire),
-            capacity=1,
-            _shared_runner=SimpleNamespace(hidden_size=4),
-            _row=lambda request_id: row,
-        )
-        adapter = Qwen35GGUFMTP2Adapter(
-            owner,
-            enabled=True,
-            target_verify_mode="native",
-            candidate_budget=2,
-        )
-        adapter.register_request(7, 2)
-        return adapter, row
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(_acquire_dense_mtp_draft_provider=acquire),
+        capacity=1,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: row,
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    adapter.register_request(7, 2)
 
-    monkeypatch.delenv(mtp2_module._MTP2_MAX_CONTEXT_ENV, raising=False)
-    adapter, row = build()
-    assert adapter.begin_prompt_streaming((7,), checkpoints={}) is None
-    assert row.mtp2_prompt_fallback_reason == "target_context_k0"
-    assert row.mtp2_candidate_budget == 0
-
-    monkeypatch.setenv(mtp2_module._MTP2_MAX_CONTEXT_ENV, "16384")
-    adapter, row = build()
     with pytest.raises(_ReachedProvider):
         adapter.begin_prompt_streaming((7,), checkpoints={})
     assert row.mtp2_prompt_fallback_reason != "target_context_k0"
