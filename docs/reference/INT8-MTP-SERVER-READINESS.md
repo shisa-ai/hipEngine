@@ -71,13 +71,17 @@ Existing direct-runtime results are not HTTP completion evidence.
   Explicit AR multi-choice requests still work. Packed INT8 MTP is not implemented.
 - [ ] Graph reuse after cancellation, pool growth, slot reassignment and scale
   reallocation does not retain stale pointers or another request's state.
-- [ ] Cancellation/deadline/failure/shutdown drain target and provider ownership
+- [x] Cancellation/deadline/failure/shutdown drain target and provider ownership
   exactly once; the next request remains usable.
+  Live deadline/disconnect reuse and final library teardown pass. Allocation
+  tracing after a prefix/MTP cycle reports zero outstanding HIP allocations.
 
 ### Prefix Cache And Memory
 
-- [ ] Prefix reuse copies/shares every INT8 payload and scale plane; append COW
+- [x] Prefix reuse copies/shares every INT8 payload and scale plane; append COW
   preserves the cached source.
+  The independent INT8 prefix-owner gate covers active/completed sources;
+  MTP composition additionally passes the four-category warm-prefix gate.
 - [x] Draft-provider priming/restoration follows prefix reuse, or reports a
   specific supported fallback without corrupting provider position.
   Radix caching now retains four provider checkpoints by default; the live
@@ -94,7 +98,9 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 - [x] `hipengine serve --kv-storage int8_per_token_head` reaches the intended
   route without a test-only admission override on the supported W7900 artifact.
-- [ ] `LLM.generate()` independently reaches the intended route.
+- [x] Public library speculative methods independently resolve typed intent:
+  `generate_speculative_mtp_detailed()` and `stream_speculative_mtp_detailed()`.
+  Ordinary `generate()`/`generate_detailed()` remain the AR baseline.
 - [x] Blocking completions and chat return correct IDs/text, finish reason and
   prompt/completion usage against their own true no-MTP INT8 baseline.
 - [x] SSE streams preserve ordering, usage, terminal events, and cancellation.
@@ -116,9 +122,9 @@ Existing direct-runtime results are not HTTP completion evidence.
   streaming/blocking, short/long prompts, and stop/cancel/refill transitions.
 - [ ] Repeated schedules are deterministic and isolated from neighboring
   requests; quality is evaluated against the applicable profile contract.
-- [ ] No regression to BF16 routes, explicit INT8 AR, CLI overrides, or error
+- [x] No regression to BF16 routes, explicit INT8 AR, CLI overrides, or error
   shapes in targeted unit/integration bundles.
-- [ ] A full user-path run demonstrates the selected route in diagnostics;
+- [x] A full user-path run demonstrates the selected route in diagnostics;
   fake engines alone cannot close this item.
 - [ ] Performance claims, when made, use a same-host true no-MTP AR baseline,
   the full categories plus heldouts, and the benchmark artifact/rollup protocol.
@@ -152,8 +158,9 @@ Existing direct-runtime results are not HTTP completion evidence.
 The public C1/wider-owner run uses production-profile Qwen3.8-27B Q4_K_M on
 gfx1151 with capacity four, FP32 scales, uniform INT8 and prefix caching off.
 All 18 prompts pass on both endpoints against explicit AR: 108 requests across
-blocking AR, blocking MTP and SSE MTP. Separate lifecycle checks pass automatic
-intent, mixed neighbors, n=2 fallback, stop, disconnect, deadline and reuse.
+blocking AR, blocking MTP and SSE MTP. Current lifecycle checks cover automatic
+intent, mixed neighbors, named errors for explicit unsupported packed/text-stop
+requests, disconnect, deadline and reuse.
 
 This host's exact artifact has an existing compact-INT8 quality rejection.
 The run explicitly uses the existing KV diagnostic override and reports it
@@ -166,6 +173,19 @@ categories with actual 512-token cache hits, compact INT8 and AR-matching MTP.
 Pressure/eviction and DMS work remain open. The resumable-prefill repair is
 integrated: public gfx1151 requests at2053/4097/6149 tokens now execute MTP and
 match AR; mid-prefill deadline/reuse also passes.
+
+Checkpoint lifetime now follows target eviction and adapter shutdown. A target
+hit without a usable provider checkpoint is treated as a prefix-cache miss:
+normal prefill reconstructs the provider and preserves MTP intent. The final
+W7900 library probe confirms output parity, a 512-token hit, and zero outstanding
+HIP allocations after close. Dynamic verifier scratch growth belongs to the
+persistent session root, and retained target snapshot arenas are closed.
+
+The C1 serving implementation is available; this checklist is not fully closed.
+Physical packed INT8 MTP, INT8 text-stop MTP, compact-DMS transactions, unified
+provider/target byte budgeting, and the broader pressure/long-context matrix
+remain separate open items. Explicit unsupported implementation requests return
+named errors rather than being advertised as working MTP.
 
 Commands against an already running INT8 server:
 
@@ -182,12 +202,16 @@ Commands against an already running INT8 server:
 ```
 
 For a server deliberately using an existing approximate-KV diagnostic
-override, both commands require `--allow-kv-diagnostic-override`. The category
+override, all three commands require `--allow-kv-diagnostic-override`. The category
 gate rejects BF16 mirrors unless `--allow-mirror` is explicitly requested.
 Neither switch enables MTP or changes server policy.
 
 - [Shared-table primitive](../../worklog/entries/20260920T151032.854230Z-lhl-int8-mtp-shared-attention-f8afc4.md)
 - [Native verifier checkpoint](../../worklog/entries/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7.md)
+- [No-override W7900 HTTP](../../worklog/entries/20260920T182156.489469Z-lhl-int8-mtp-w7900-public-gate-f8951d.md)
+- [Long-prefill priming](../../worklog/entries/20260920T182939.759305Z-lhl-int8-mtp-resumable-priming-2f4990.md)
+- [Provider restoration](../../worklog/entries/20260920T215105.693007Z-lhl-mtp-provider-prefix-default-a4b133.md)
+- [Zero-allocation teardown](../../worklog/entries/20260920T222915.794666Z-lhl-int8-mtp-teardown-owners-3864b7.md)
 - `tests/test_unit_int8_verify_attention.py`
 - `tests/test_unit_gguf_int8_mtp.py`
 - `tests/test_gpu_qwen38_int8_batch_attention_gpu.py`
