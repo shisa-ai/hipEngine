@@ -51,7 +51,7 @@ llama.cpp-oracle-available, likely cheapest: Qwen3-Embedding-8B / bge-m3 (encode
 • Yes, we have benchmarked prefix caching, but that is separate from the MTP qualification in your handoff. We do not yet have evidence there of
   faster end-to-end coding-agent sessions.
 
-  Caveat: the named campaign worktree is absent on this machine. This assessment uses the available /home/lhl/hipEngine checkout and your
+  Caveat: the named campaign worktree is absent on this machine. This assessment uses the available ~/hipEngine checkout and your
   handoff, not the unpushed campaign implementation.
 
   What We Have

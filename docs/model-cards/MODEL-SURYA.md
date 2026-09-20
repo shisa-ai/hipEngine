@@ -208,7 +208,7 @@ decode rate +0.18%, end-to-end latency +0.22%. No whole-request speedup is claim
 for removing the redundant upload synchronization. The correctness fixes and
 new failure checks are qualified by 415 passing Surya tests with zero skips.
 
-Commands (sequential processes, `python3` is `/home/lhl/miniforge3/bin/python3`):
+Commands (sequential processes, `python3` is `~/miniforge3/bin/python3`):
 
 ```bash
 HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu --out /tmp/surya-closeout-after.json

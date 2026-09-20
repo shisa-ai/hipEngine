@@ -19,7 +19,7 @@ their greedy continuations differ (see [Output agreement](#output-agreement)).
 | | hipEngine | Atlas |
 | --- | --- | --- |
 | Revision | `680b6a554ecbbc21f0a000a14f5ccba07c3f6ca2` (2026-09-16) for the original run; `1a0a40cedcae4910e49d190d62125159884c2059` (2026-09-17) for the rerun | `95f674951d6ab8f491f7907804a462c170f9c048` plus local edits to `build-amd.sh`, `serve-amd.sh`, `crates/atlas-kernels/build.rs`, `crates/atlas-kernels/build_target.rs` |
-| Checkout | `/home/lhl/hipEngine-main` | `/home/lhl/atlas` |
+| Checkout | `~/hipEngine-main` | `~/atlas` |
 | Server binary | `python -m hipengine.server` from that checkout | `target/release/spark`, sha256 `c2b457015de71d6fcad3bd86a7e8a1755b2c61b1e0e7312933f993bb200098c6` |
 | Weights | `Qwen3.8-27B-Q4_K_M.gguf`, 17,106,775,008 bytes, sha256 `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` | `nvidia/Qwen3.8-27B-NVFP4`, revision `dbb8f445b3145f8a4c18ddc769f032d57d32867c`, ~22 GB |
 | Weight quant | Q4_K_M (GGUF) | NVFP4 (mixed, requanted at load) |

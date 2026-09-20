@@ -127,7 +127,7 @@ larger rows amortize host/readback/sampler overhead without exploding memory tra
 
 ### llama.cpp Audit — What It Is Doing Differently
 
-Source basis: local read-only `/home/lhl/llama.cpp/llama.cpp-hip` at commit
+Source basis: local read-only `~/llama.cpp/llama.cpp-hip` at commit
 `6e9007ae61f4e994c27484759caac6ef2aa32b30` (`b9637-4-g6e9007ae6`). Use these as
 implementation references, not as code to edit in-place:
 
@@ -211,7 +211,7 @@ Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack
 
 - Hardware: AMD Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`.
 - ROCm platform: stable TheRock `10.0.0` from
-  `/home/lhl/miniforge3/envs/therock` (Python 3.12).
+  `~/miniforge3/envs/therock` (Python 3.12).
 - HIP component/compiler: `7.15.26333-0000000`, AMD clang 23 commit
   `8f497e0992f`; the HIP component version is expected inside ROCm 10.
 - TheRock package lane: `https://stable.repo.amd.com/rocm/whl-next/`, with the
@@ -225,7 +225,7 @@ Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack
 - For hipEngine JIT/profiling, set:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PYSDK=$ENV_PREFIX/bin/python
 ROOT=$("$PYSDK" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages

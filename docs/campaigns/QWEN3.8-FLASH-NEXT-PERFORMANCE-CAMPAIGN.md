@@ -1609,7 +1609,7 @@ contract and reject unchanged prior cache/retile experiments.
 
 ### Current Strix Fork Follow-ups (September 7, 2026)
 
-Read-only source: `/home/lhl/strix-llama.cpp`, clean
+Read-only source: `~/strix-llama.cpp`, clean
 `7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a`. This is a new source lane,
 not the benchmarked halo-box `b212548e0` or the earlier Nathan fork.
 The owner-provided review motivates the queue below; only the explicitly
@@ -4888,7 +4888,7 @@ Goal: make the complete result reproducible, default, and reversible.
       `docs/PLAN.md` now records current manifest/rates and MTP/verifier bounds;
       `docs/REFACTOR.md` records selector closure and retained oracle lifetime.
       The optional lineage audit is currently environment-blocked because
-      `/home/lhl/amd-gpu-tuning/reference/atlas` is absent, but no kernel port or
+      `~/amd-gpu-tuning/reference/atlas` is absent, but no kernel port or
       source-parent claim was made in P11/P12.
 - [~] Remove superseded experiment flags, dead selectors, duplicate fallback
       chains, and stale graph routes only after their replacements are default.

@@ -9,6 +9,9 @@ Every Markdown file under docs/ carries a front-matter block:
     superseded_by: docs/...      # required when status is `superseded`
     ---
 
+Documents must not hard-code a home directory: `~/` for paths outside the
+repository, repo-relative for anything inside it.
+
 `status` makes "is this binding?" greppable without opening the file, and
 `owns` makes the generated index useful. Top-level and reference documents must
 carry a real `owns` line; campaign, model-card, and archive documents may leave
@@ -31,6 +34,14 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = REPO_ROOT / "docs"
 
 STATUSES = ("normative", "current", "closed", "superseded")
+
+#  A hard-coded home directory in a document is wrong for every reader but the
+#  one who wrote it. Use `~/` for paths outside the repo and a repo-relative
+#  path for anything inside it.
+ABSOLUTE_HOME = re.compile(r"(?<![\w~])(/home/[a-z0-9_][a-z0-9_-]*|/Users/[A-Za-z0-9_][A-Za-z0-9_-]*)/")
+#  Dated migration records and published configs quote code as it stood; they
+#  are evidence, not instructions, so they keep whatever path they recorded.
+ABSOLUTE_PATH_EXEMPT = ("docs/testing/", "docs/examples/", "benchmarks/results/")
 #  Directories that carry their own generated index page.
 SECTIONS = {
     "": ("Top level", "Rules and live references every agent should know exist."),
@@ -94,8 +105,35 @@ def section_of(path: pathlib.Path) -> str:
     return rel.parts[0] if len(rel.parts) > 1 else ""
 
 
-def validate() -> tuple[list[str], list[str]]:
+def prose_files() -> list[pathlib.Path]:
+    """Every hand-written prose file the absolute-path rule covers."""
+    out = [REPO_ROOT / "AGENTS.md"]
+    out += sorted(DOCS.rglob("*.md"))
+    out += sorted((REPO_ROOT / "benchmarks").rglob("*.md"))
+    return [
+        path
+        for path in out
+        if path.is_file()
+        and not any(part in path.relative_to(REPO_ROOT).as_posix() for part in ABSOLUTE_PATH_EXEMPT)
+    ]
+
+
+def check_absolute_paths() -> list[str]:
     errors: list[str] = []
+    for path in prose_files():
+        rel = path.relative_to(REPO_ROOT)
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            match = ABSOLUTE_HOME.search(line)
+            if match:
+                errors.append(
+                    f"{rel}:{number}: hard-coded home directory {match.group(1)!r} — "
+                    f"use `~/` outside the repo, or a repo-relative path inside it."
+                )
+    return errors
+
+
+def validate() -> tuple[list[str], list[str]]:
+    errors: list[str] = check_absolute_paths()
     warnings: list[str] = []
     for path in indexed_docs():
         rel = path.relative_to(REPO_ROOT)

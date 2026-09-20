@@ -830,7 +830,7 @@ Work:
 
    ```bash
    python3 scripts/inspect_gguf.py \
-     /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+     ~/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
      --json --check-dequant --smoke-rows 1
    ```
 
@@ -875,7 +875,7 @@ The accepted launch is:
 ```bash
 GPU_MAX_HW_QUEUES=1 \
   build-hip-gfx1151/bin/llama-server \
-  -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  -m ~/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
   --host 127.0.0.1 --port 18081 -c 4096 -ngl 999 \
   -fa off --jinja --parallel 1 --no-warmup --no-repack --no-mmap \
   --cache-ram 0 --metrics -lv 4
@@ -1079,7 +1079,7 @@ The first complete profiled run used:
 ```bash
 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
 uv run python -u scripts/laguna_gguf_load_smoke.py \
-  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  ~/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
   --backend hip_gfx1151 --context-length 4096 --progress-every 25 \
   --profile-tensors --cache-state warm \
   --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
@@ -1207,8 +1207,8 @@ Implemented root primitive slice (2026-07-22):
   zero scratch, 512 B LDS), and argmax stage 1/2 `4.769/1.563 us`.
 
 The broad source-lineage scan is currently blocked before any report because the
-manifest's read-only `/home/lhl/amd-gpu-tuning/reference/atlas` and
-`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkouts are absent. New Laguna work
+manifest's read-only `~/amd-gpu-tuning/reference/atlas` and
+`~/amd-gpu-tuning/nano-vllm-amd` checkouts are absent. New Laguna work
 must use Poolside's pinned commit above as its architecture source, record
 in-tree extensions as new kernels rather than pretending to refresh unavailable
 Qwen parents, and rerun the lineage checker if those checkouts are restored.
@@ -1625,7 +1625,7 @@ Live Poolside-v1 parser/API gate (2026-07-22):
 ```bash
 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
 uv run python -u scripts/laguna_poolside_v1_e2e.py \
-  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  ~/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
   --backend hip_gfx1151 \
   --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
   --output benchmarks/results/2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json
@@ -2256,7 +2256,7 @@ Lineage status is bounded and explicit. Poolside Laguna source/layout is clean
 at `04b2b72c`; llama.cpp HIP `mmq.cuh`, `mma.cuh`, and `quantize.cu` are clean
 at `1ebf790c`. The broad kernel scan is blocked by the absent read-only Atlas
 checkout, and the Qwen/PARO filters are blocked by the absent
-`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout. No external source is being
+`~/amd-gpu-tuning/nano-vllm-amd` checkout. No external source is being
 copied in this phase; restore and inspect those checkouts before any future
 external port.
 

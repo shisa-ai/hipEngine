@@ -1097,7 +1097,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   `MANIFEST.json`, `qualification.json` "qualified_explicit_c1_default_off",
   protected window 8,192, exact-budget prefill selection); the original
   record searched only the path the 2026-08-23 artifact recorded
-  (`/home/lhl/dms-artifacts/…`), which is absent. Two binding gates remain
+  (`~/dms-artifacts/…`), which is absent. Two binding gates remain
   before any XTX measurement: (1) the package binds to
   `unsloth/Qwen3.8-27B-GGUF@4121cb19` — `Qwen3.8-27B-Q4_K_M.gguf`,
   17,106,775,008 bytes, sha `7e78da5d…` — while the local model file is

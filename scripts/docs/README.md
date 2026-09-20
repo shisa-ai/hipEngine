@@ -34,6 +34,21 @@ a 5,000-line file:
 - **closed** — finished work kept as evidence. Not binding.
 - **superseded** — replaced; `superseded_by` names the replacement.
 
+## No hard-coded home directories
+
+A path like `/home/<you>/llama.cpp` is correct for exactly one reader. `check_docs.py`
+fails on `/home/<user>/` and `/Users/<user>/` anywhere in `AGENTS.md`, `docs/`, or
+`benchmarks/` prose:
+
+- **Outside the repository** — use `~/`, which every shell expands and which
+  `scripts/check_lineage.py` resolves with `Path.expanduser()`.
+- **Inside the repository** — use a repo-relative path (`.venv/bin/python`,
+  `scripts/foo.py`), not a path through someone's home directory.
+
+Exempt, because they record what something said rather than instruct:
+`docs/testing/` dated migration records, `docs/examples/` published configs, and
+`benchmarks/results/` evidence artifacts.
+
 ## Adding a document
 
 1. Put it in the right directory: `docs/` root only for something every agent

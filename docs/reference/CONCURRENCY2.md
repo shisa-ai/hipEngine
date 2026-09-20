@@ -1021,10 +1021,10 @@ The review used local read-only source as present on 2026-08-17:
 
 | Reference | Revision | Files reviewed |
 | --- | --- | --- |
-| FastDMS | `/home/lhl/FastDMS` at `c602b0e` | `fastdms/engine/{llm_engine,scheduler,block_manager,compact_kv,sequence}.py`, model runner, compact attention, README |
-| SGLang | `/home/lhl/ai/sglang/sglang` at `00ce7e31` (`v0.4.3.post2-109`; local tree dirty) | `srt/managers/{scheduler,schedule_batch,tokenizer_manager}.py`, `srt/mem_cache/{memory_pool,radix_cache}.py` |
-| vLLM | `/home/lhl/ai/vllm/vllm` at `42d9a2c4c` (`v0.8.4-378`) | V1 scheduler, KV cache manager, block pool/free queue, async LLM, output processor |
-| KV quantization research | `/home/lhl/kvcache-quantization-research` at `31979ce` | `README.md`, `docs/{PLAN-COMPOSE,PLAN-PROD,PLAN-KVTC,OSCAR}.md`, `DMS-to-vLLM.md`, packed/AQUA cache prototypes, FastDMS compact manager/scheduler |
+| FastDMS | `~/FastDMS` at `c602b0e` | `fastdms/engine/{llm_engine,scheduler,block_manager,compact_kv,sequence}.py`, model runner, compact attention, README |
+| SGLang | `~/ai/sglang/sglang` at `00ce7e31` (`v0.4.3.post2-109`; local tree dirty) | `srt/managers/{scheduler,schedule_batch,tokenizer_manager}.py`, `srt/mem_cache/{memory_pool,radix_cache}.py` |
+| vLLM | `~/ai/vllm/vllm` at `42d9a2c4c` (`v0.8.4-378`) | V1 scheduler, KV cache manager, block pool/free queue, async LLM, output processor |
+| KV quantization research | `~/kvcache-quantization-research` at `31979ce` | `README.md`, `docs/{PLAN-COMPOSE,PLAN-PROD,PLAN-KVTC,OSCAR}.md`, `DMS-to-vLLM.md`, packed/AQUA cache prototypes, FastDMS compact manager/scheduler |
 
 These are design references, not claims about every newer upstream release.
 

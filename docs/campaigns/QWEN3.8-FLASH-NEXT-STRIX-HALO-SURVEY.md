@@ -17,10 +17,10 @@ speed measurement. See the [promotion packet](../../benchmarks/results/2026-09-0
 
 | Engine | Backend | Source commit | Release build |
 | --- | --- | --- | --- |
-| Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` |
-| Upstream llama.cpp | Vulkan | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release-4d917609/bin/` |
-| halo-box | HIP | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/` |
-| halo-box | Vulkan | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/` |
+| Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `~/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` |
+| Upstream llama.cpp | Vulkan | `4d9176092d00586775af140581bb0b558ddc4389` | `~/llama.cpp/llama.cpp-vulkan/build-vulkan-release-4d917609/bin/` |
+| halo-box | HIP | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `~/halo-box-strix-llama/build-hip-release-b212548e/bin/` |
+| halo-box | Vulkan | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `~/halo-box-strix-llama/build-vulkan-release-b212548e/bin/` |
 
 The HIP builds use the existing ROCm/HIP 7.15 `therock` environment,
 `AMDGPU_TARGETS=gfx1151`, HIP graphs, MMQ MFMA, and no virtual memory

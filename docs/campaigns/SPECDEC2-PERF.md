@@ -275,9 +275,9 @@ The gfx1151 owner begins from the committed handoff:
 
 ```bash
 git fetch origin main
-git worktree add /home/lhl/hipEngine-specdec2-perf \
+git worktree add ~/hipEngine-specdec2-perf \
   -b specdec2-perf origin/main
-cd /home/lhl/hipEngine-specdec2-perf
+cd ~/hipEngine-specdec2-perf
 git status -sb
 ```
 

@@ -14,7 +14,7 @@ claim. The 2026-08-31 implementation review adds a separately measured in-tree
 follow-up linked to its compact artifact.
 
 All local pins were read at their checked-out commits on 2026-08-30 under
-`/home/lhl/.local/state/hipengine-external-survey/repos/`. vLLM and SGLang are
+`~/.local/state/hipengine-external-survey/repos/`. vLLM and SGLang are
 not pinned locally; they were read from commit-pinned upstream URLs fetched
 the same day.
 

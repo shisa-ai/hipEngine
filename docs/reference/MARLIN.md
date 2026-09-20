@@ -5,7 +5,7 @@ owns: Marlin-K / PARO W4 layout plan and porting context.
 # Marlin-K / Vulkan-Style W4 Layout Port Analysis
 
 Date: 2026-05-16  
-Target repo: `~/hipEngine`
+Target repo: this repository.
 Parent evidence repo: `~/amd-gpu-tuning` / `nano-vllm-amd` branch `gfx1100-qwen3.5`
 
 ## Executive summary
@@ -71,7 +71,7 @@ Constraints that should become hipEngine validation checks:
 
 Current source-of-truth parent checkout observed by `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipEngine:
 
-- Repo: `/home/lhl/amd-gpu-tuning/nano-vllm-amd`
+- Repo: `~/amd-gpu-tuning/nano-vllm-amd`
 - Branch: `gfx1100-qwen3.5`
 - HEAD: `1522293 perf(paroquant): make marlin-k qweight neutral`
 
@@ -92,29 +92,29 @@ Relevant parent commits:
 
 Use these as the direct port anchors:
 
-- `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py`
+- `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py`
   - `_repack_awq_to_marlin_k_v0(...)`
   - `ParoQuantLinear.__init__(...)` Marlin-K buffer materialization
   - `_marlin_k_memory_neutral` branch
   - zero-copy `qweight_pack8 = qweight_mk.view(out_packed, in_features)` registration
   - `ParoQuantLinear.forward(...)` rows==1 `gemv_paro_marlin_k_fma(...)` dispatch
-- `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py`
+- `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py`
   - `_MARLIN_K_FMA_SRC`
   - `gemv_paro_marlin_k_fma_kernel`
   - `gemv_paro_marlin_k_fma(...)` wrapper shape checks and thread selection
   - `gemv_paro_marlin_k_q8_fma(...)` and `gemv_paro_marlin_k_sudot4(...)` are useful negative references but should not be promoted in hipEngine yet.
-- `/home/lhl/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`
+- `~/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`
   - Repack/reference helper to use when writing hipEngine's torch-free NumPy repack tests.
-- `/home/lhl/amd-gpu-tuning/scripts/check_paro_marlin_k_fma_correctness.py`
+- `~/amd-gpu-tuning/scripts/check_paro_marlin_k_fma_correctness.py`
   - Parent micro correctness gate for FMA/Q8/SUDOT4 parity.
-- `/home/lhl/amd-gpu-tuning/scripts/bench_paro_gemv.py`
+- `~/amd-gpu-tuning/scripts/bench_paro_gemv.py`
   - Parent c=1 GEMV shape microbench used throughout the §12 punchlist.
 
 ## Parent docs, worklog, and artifact references
 
 ### Current optimal configuration
 
-- `/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md`
+- `~/amd-gpu-tuning/docs/OPTIMAL.md`
   - Section: **Latest Retained Implementation Update (2026-05-16)**.
   - Adds `NANOVLLM_PARO_MARLIN_K_REPLACE=1` to the optimal flag set.
   - States to leave `NANOVLLM_PARO_MARLIN_K_KEEP_FALLBACK` unset/`0`.
@@ -122,7 +122,7 @@ Use these as the direct port anchors:
 
 ### Design/roadmap evidence
 
-- `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md`
+- `~/amd-gpu-tuning/PLAN-PAROQUANT2.md`
   - Section **11.11 / qweight-neutral replacement evidence**: table with the retained 0.8B and 35B rows.
   - Section **12. Marlin-K Optimization Roadmap (post §11.11)**: live-to-closed punchlist for every follow-up candidate.
   - Lane A:
@@ -133,7 +133,7 @@ Use these as the direct port anchors:
 
 ### Worklog entries
 
-- `/home/lhl/amd-gpu-tuning/WORKLOG.md`
+- `~/amd-gpu-tuning/WORKLOG.md`
   - `2026-05-15 20:10 UTC — Marlin-K qweight-neutral replacement`
     - Code commit: `nano-vllm-amd@1522293`.
     - Correctness command: `scripts/check_paro_marlin_k_fma_correctness.py --rows 2 --include-q8 --include-sudot4 --json`.
@@ -147,7 +147,7 @@ Use these as the direct port anchors:
 
 ### Parent artifacts
 
-Key artifact paths in `/home/lhl/amd-gpu-tuning`:
+Key artifact paths in `~/amd-gpu-tuning`:
 
 - `artifacts/paro_marlink_memory_neutral_20260515_iter1/summary.md`
   - Primary retained E2E evidence for qweight-neutral replacement.
@@ -310,7 +310,7 @@ Wrapper checks should enforce the layout constraints listed above before launch.
 
 1. **Repack reference test**
    - Use small deterministic int32 qweight/qzeros and FP16 scales.
-   - Compare NumPy hipEngine repack against the formula above and, if convenient, against `/home/lhl/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`.
+   - Compare NumPy hipEngine repack against the formula above and, if convenient, against `~/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`.
 
 2. **Kernel plan/build test**
    - `plan_paro_marlin_k_build(...)` returns a `BuildArtifact` with expected family/output.

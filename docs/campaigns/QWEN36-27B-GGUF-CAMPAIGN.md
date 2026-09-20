@@ -47,7 +47,7 @@ Canonical target:
 `gfx1100`.
 
 Comparator: latest tracked-clean llama.cpp Vulkan source at
-`/home/lhl/llama.cpp/llama.cpp-vulkan`, refreshed from `ee0445c99` to
+`~/llama.cpp/llama.cpp-vulkan`, refreshed from `ee0445c99` to
 `c8e03ce81` on 2026-08-06 and built in Release mode with `GGML_VULKAN=ON` and
 `GGML_HIP=OFF`.
 
@@ -1730,7 +1730,7 @@ campaign task remained at that publication. Compact historical checklist:
 
 ### Latest Vulkan refresh and campaign reopen (2026-08-06)
 
-The human refreshed `/home/lhl/llama.cpp/llama.cpp-vulkan` to tracked-clean
+The human refreshed `~/llama.cpp/llama.cpp-vulkan` to tracked-clean
 `c8e03ce81` (build 10290). A new Release Vulkan build on the same W7900, Mesa
 26.1.4, model bytes/hash, full offload, FA, and F16 K/V gives:
 
@@ -2252,7 +2252,7 @@ until the complete-path gate wins.
 ### Latest llama.cpp Vulkan build
 
 ```bash
-cd /home/lhl/llama.cpp/llama.cpp-vulkan
+cd ~/llama.cpp/llama.cpp-vulkan
 git pull --ff-only
 cmake -S . -B build \
   -DGGML_VULKAN=ON -DGGML_HIP=OFF -DCMAKE_BUILD_TYPE=Release
@@ -2262,7 +2262,7 @@ cmake --build build -j 16
 ### llama-bench W7900 AR
 
 ```bash
-/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+~/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
   -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   -dev Vulkan0 -ngl 99 -fa on -ctk f16 -ctv f16 \
   -p 512,4096 -n 128 -r 5 -o json
@@ -2272,7 +2272,7 @@ cmake --build build -j 16
 
 ```bash
 python3 scripts/llamacpp_mtp_bench.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   --ctx-size 8192 --gpu-layers 99 --flash-attn on \
   --cache-type-k f16 --cache-type-v f16 \

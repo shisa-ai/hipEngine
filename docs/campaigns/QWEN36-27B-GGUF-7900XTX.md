@@ -298,7 +298,7 @@ or torch-free runtime contracts.
 
 ### 5.1 Freeze one source revision for both backends
 
-The existing `/home/lhl/llama.cpp/llama.cpp-hip` tree is unsuitable for the
+The existing `~/llama.cpp/llama.cpp-hip` tree is unsuitable for the
 headline: it is ahead/behind upstream, has tracked MTP instrumentation changes,
 and its current `build/` targets `gfx1151`. The Vulkan tree is clean at
 `c8e03ce81` except an untracked `.pi/tasks/` directory.
@@ -308,7 +308,7 @@ clean detached comparison worktree. Build HIP and Vulkan from that **same host
 source revision**:
 
 ```bash
-LLAMA_SOURCE=/home/lhl/llama.cpp/llama.cpp-vulkan
+LLAMA_SOURCE=~/llama.cpp/llama.cpp-vulkan
 LLAMA_COMMIT=$(git -C "$LLAMA_SOURCE" rev-parse HEAD)
 LLAMA_XTX=/tmp/llama-qwen36-27b-xtx-$LLAMA_COMMIT
 

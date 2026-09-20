@@ -293,7 +293,7 @@ the measured comparison. What 5.15.0 does **not** have is any `vibevoice`
 `AutoModelForCausalLM` entry, so the diffusion head and the generation loop exist
 only in the fork.
 
-Working venv: `/home/lhl/venvs/vibevoice-tts-oracle`. Recreate it with
+Working venv: `~/venvs/vibevoice-tts-oracle`. Recreate it with
 `scripts/setup_vibevoice_tts_oracle_env.sh`. It is created with
 `--system-site-packages` so the host's ROCm torch is reused instead of
 reinstalled, then pinned. Resolved versions are recorded in
@@ -311,8 +311,8 @@ non-empty PCM at 24 kHz through `VibeVoiceProcessor` + `model.generate(...)`.
 `tests/fixtures/vibevoice_tts/` and must run under the oracle venv:
 
 ```
-PYTHONPATH=/home/lhl/VibeVoice-community \
-    /home/lhl/venvs/vibevoice-tts-oracle/bin/python \
+PYTHONPATH=~/VibeVoice-community \
+    ~/venvs/vibevoice-tts-oracle/bin/python \
     scripts/vibevoice_tts_oracle_torch.py
 ```
 

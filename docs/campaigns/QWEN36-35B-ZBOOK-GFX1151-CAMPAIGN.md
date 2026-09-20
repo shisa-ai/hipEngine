@@ -40,7 +40,7 @@ Related authorities:
   and true-AR denominator rules.
 - [`QWEN38-27B-GFX1151-CAMPAIGN.md`](QWEN38-27B-GFX1151-CAMPAIGN.md) — the
   nearest current campaign template; its model and speed rows do not transfer.
-- `/home/lhl/ROCmFPX` at the pinned revision below — read-only implementation
+- `~/ROCmFPX` at the pinned revision below — read-only implementation
   reference. Development and retained kernels remain in this repository.
 
 ---
@@ -160,7 +160,7 @@ The read-only reference checkout is:
 
 | Field | Value |
 | --- | --- |
-| Path | `/home/lhl/ROCmFPX` |
+| Path | `~/ROCmFPX` |
 | Current head | `0d313da1849f73c5a7f8c5f7e5b8d7d278fbb69d` |
 | Upstream llama.cpp ancestor | `15586e2d7165570fb3aa7c26e0d442e289ef69de` (b10297 plus one commit) |
 | Code license | MIT |

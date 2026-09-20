@@ -44,8 +44,8 @@ The source manifest pins the audited revisions and license evidence:
 | Conceptual reference | Pinned revision | License | ZBook-local availability | Use in v1 |
 | --- | --- | --- | --- | --- |
 | Berkeley Function Calling Leaderboard | `6ea57973c7a6097fd7c5915698c54c17c5b1b6c8` | Apache-2.0 | absent | Conceptual function-selection shapes only |
-| OpenAI HumanEval | `6d43fb980f9fee3c892a914eda09951f772ad10d` | MIT | read-only copy under `/home/lhl/omlx/` | Conceptual pure-function execution only |
-| Google MBPP | `4bb6404fdc6cacfda99d4ac4205087b89d32030c` | CC-BY-4.0 | read-only copy under `/home/lhl/omlx/` | Conceptual basic-function execution only |
+| OpenAI HumanEval | `6d43fb980f9fee3c892a914eda09951f772ad10d` | MIT | read-only copy under `~/omlx/` | Conceptual pure-function execution only |
+| Google MBPP | `4bb6404fdc6cacfda99d4ac4205087b89d32030c` | CC-BY-4.0 | read-only copy under `~/omlx/` | Conceptual basic-function execution only |
 | Google IFEval | `e6890f85757dd84e27ca6df2dd30651dafad28e0` | Apache-2.0 | absent | Conceptual deterministic instruction checks only |
 
 The campaign deliberately selected **project-original bounded style tasks**.

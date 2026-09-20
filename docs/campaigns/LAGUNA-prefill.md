@@ -3733,7 +3733,7 @@ missing performance mechanism.
 
 ## What the latest Vulkan implementation is doing
 
-The read-only checkout `/home/lhl/llama.cpp/llama.cpp-vulkan` is clean at
+The read-only checkout `~/llama.cpp/llama.cpp-vulkan` is clean at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, build 10107. This is the same
 revision as the retained pp512 profile; its current HEAD contains no newer
 Laguna-specific backend change. The latest Laguna model-support commit in that

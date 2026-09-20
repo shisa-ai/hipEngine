@@ -191,10 +191,10 @@ cycle.
 Source audit:
 
 - Latest llama.cpp source checked:
-  `/home/lhl/llama.cpp/llama.cpp-hip`, commit `e37abd6b5`
+  `~/llama.cpp/llama.cpp-hip`, commit `e37abd6b5`
   (`b9616-1-ge37abd6b5`).
 - Artifacted llama.cpp sweep source:
-  `/home/lhl/llama.cpp/llama.cpp-vulkan`, commit `263cc04a5`
+  `~/llama.cpp/llama.cpp-vulkan`, commit `263cc04a5`
   (`b9596-4-g263cc04a5`).
 - The relevant latest-source behavior is unchanged for acceptance accounting:
   llama-server exports `timings.draft_n` / `timings.draft_n_accepted` from
@@ -263,9 +263,9 @@ Replication commands:
 
 ```bash
 # Artifacted llama.cpp Vulkan sweep on W7900 / Vulkan0.
-cd /home/lhl/hipEngine
+# from the repository root
 python3 scripts/llamacpp_vulkan_mtp_sweep.py \
-  --llama-dir /home/lhl/llama.cpp/llama.cpp-vulkan \
+  --llama-dir ~/llama.cpp/llama.cpp-vulkan \
   --gpu 0 \
   --max-tokens 32 \
   --draft-max-values 1,2,3,4 \
@@ -274,9 +274,9 @@ python3 scripts/llamacpp_vulkan_mtp_sweep.py \
 
 ```bash
 # Artifacted llama.cpp Vulkan sweep on RX 7900 XTX / Vulkan1.
-cd /home/lhl/hipEngine
+# from the repository root
 python3 scripts/llamacpp_vulkan_mtp_sweep.py \
-  --llama-dir /home/lhl/llama.cpp/llama.cpp-vulkan \
+  --llama-dir ~/llama.cpp/llama.cpp-vulkan \
   --gpu 1 \
   --max-tokens 32 \
   --draft-max-values 1,2,3,4 \
@@ -287,9 +287,9 @@ python3 scripts/llamacpp_vulkan_mtp_sweep.py \
 # Latest-source llama.cpp source/perf rerun. The script can point at a different
 # llama-server checkout; confirm backend/device selection before claiming a HIP
 # backend performance row.
-cd /home/lhl/hipEngine
+# from the repository root
 python3 scripts/llamacpp_vulkan_mtp_sweep.py \
-  --llama-dir /home/lhl/llama.cpp/llama.cpp-hip \
+  --llama-dir ~/llama.cpp/llama.cpp-hip \
   --gpu 0 \
   --max-tokens 32 \
   --draft-max-values 1,2,3,4 \
@@ -298,7 +298,7 @@ python3 scripts/llamacpp_vulkan_mtp_sweep.py \
 
 ```bash
 # hipEngine retained raw-prompt B1 comparison.
-cd /home/lhl/hipEngine
+# from the repository root
 env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
   HIP_VISIBLE_DEVICES=0 \
   HIPENGINE_HIP_ARCH=gfx1100 \
@@ -319,7 +319,7 @@ env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
 
 ```bash
 # Apples-to-apples prompt-render check against llama.cpp chat-template thinking-on.
-cd /home/lhl/hipEngine
+# from the repository root
 env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
   HIP_VISIBLE_DEVICES=0 \
   HIPENGINE_HIP_ARCH=gfx1100 \
@@ -2616,7 +2616,7 @@ The question is now sharper: why is llama.cpp's verifier cycle close to ~2
 AR-token equivalents while ours costs 3.2–6.9 AR-token equivalents? Treat M7/M8/M9/M10
 items below as candidate M12 sub-primitives, not as the primary roadmap.
 
-### Architectural lessons from llama.cpp (`/home/lhl/llama.cpp/llama.cpp-hip`)
+### Architectural lessons from llama.cpp (`~/llama.cpp/llama.cpp-hip`)
 
 llama.cpp MTP for Qwen3.5/3.6 has the same model boundary we already model
 ([qwen35moe.cpp `graph_mtp`](../../../llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp)

@@ -1,7 +1,7 @@
 # llama.cpp MTP benchmark patchset
 
 This directory preserves the local llama.cpp instrumentation used by the GGUF
-MTP comparison work. The external checkout under `/home/lhl/llama.cpp/` remains
+MTP comparison work. The external checkout under `~/llama.cpp/` remains
 a read-only reference; these patches are the repository-owned reproduction
 surface.
 

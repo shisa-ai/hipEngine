@@ -79,7 +79,7 @@ The most important conclusions are:
 
 ### 2.1 Sources inspected
 
-The local checkout `/home/lhl/omlx` was treated as a read-only reference.
+The local checkout `~/omlx` was treated as a read-only reference.
 
 | Item | Value |
 | --- | --- |
@@ -98,14 +98,14 @@ needed for this audit.
 
 Primary source surfaces inspected:
 
-- `/home/lhl/omlx/omlx/patches/qwen35_*.py`
-- `/home/lhl/omlx/omlx/patches/mlx_lm_mtp/qwen35_model.py`
-- `/home/lhl/omlx/omlx/patches/mlx_lm_mtp/batch_generator.py`
-- `/home/lhl/omlx/omlx/patches/mlx_lm_mtp/prompt_priming.py`
-- `/home/lhl/omlx/omlx/patches/mlx_lm_mtp/cache_rollback.py`
-- `/home/lhl/omlx/omlx/custom_kernels/qwen35_prefill/`
-- `/home/lhl/omlx/omlx/oq.py`
-- the corresponding local tests under `/home/lhl/omlx/tests/`
+- `~/omlx/omlx/patches/qwen35_*.py`
+- `~/omlx/omlx/patches/mlx_lm_mtp/qwen35_model.py`
+- `~/omlx/omlx/patches/mlx_lm_mtp/batch_generator.py`
+- `~/omlx/omlx/patches/mlx_lm_mtp/prompt_priming.py`
+- `~/omlx/omlx/patches/mlx_lm_mtp/cache_rollback.py`
+- `~/omlx/omlx/custom_kernels/qwen35_prefill/`
+- `~/omlx/omlx/oq.py`
+- the corresponding local tests under `~/omlx/tests/`
 
 No Apple hardware was available. No oMLX benchmark or test was run. Performance
 numbers below are therefore **donor-reported** source comments or commit

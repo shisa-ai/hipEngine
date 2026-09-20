@@ -24,7 +24,7 @@ R3.4 is justified: a WMMA-tiled small-row BF16 dense kernel is the largest curre
 
 ## Model shapes
 
-Drafter config (`/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719/config.json`):
+Drafter config (`~/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719/config.json`):
 
 | Field | Value |
 | --- | ---: |

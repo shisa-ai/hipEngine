@@ -191,9 +191,9 @@ Copy this structure for each reviewed run:
   identifiers to Qwen. The findings below therefore apply to the session and
   commit range, not yet to either model's aggregate score.
 - **Coder session:**
-  `/home/lhl/.local/state/jouzu/sessions/2026-08-30T19-52-46-088Z_01a0543b-4708-73de-a211-b98b93ea65ab.jsonl`.
+  `~/.local/state/jouzu/sessions/2026-08-30T19-52-46-088Z_01a0543b-4708-73de-a211-b98b93ea65ab.jsonl`.
 - **Independent review/correction session:**
-  `/home/lhl/.local/state/jouzu/sessions/2026-08-31T04-03-54-142Z_01a055fc-ec9e-7d30-ba8b-a270913000fc.jsonl`,
+  `~/.local/state/jouzu/sessions/2026-08-31T04-03-54-142Z_01a055fc-ec9e-7d30-ba8b-a270913000fc.jsonl`,
   recorded as `codex/gpt-5.6-sol` at `xhigh`.
 - **Goal:** fully execute
   [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](../campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md),

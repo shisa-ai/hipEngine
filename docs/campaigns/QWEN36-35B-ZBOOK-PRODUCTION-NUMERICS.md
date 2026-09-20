@@ -527,7 +527,7 @@ export GPU_MAX_HW_QUEUES=1
 export HIPENGINE_GGUF_DECODE_REPACK=1
 export HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile
 
-PY=/home/lhl/hipEngine/.venv/bin/python
+PY=.venv/bin/python
 MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 PROMPTS=benchmarks/prompts/mtpbench-code-general-ja.jsonl
 HELDOUTS=benchmarks/prompts/gdn-prefill-category-heldouts.jsonl

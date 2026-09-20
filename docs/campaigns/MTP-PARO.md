@@ -240,5 +240,5 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Fast production economics/default | `benchmarks/results/2026-08-24-w7900-paro-fast-d24-3run-default.json` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
-| nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
-| vLLM reference | `/home/lhl/vllm/vllm-main@470229c37efa`, read-only |
+| nano-vLLM reference | `~/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
+| vLLM reference | `~/vllm/vllm-main@470229c37efa`, read-only |

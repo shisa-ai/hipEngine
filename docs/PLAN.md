@@ -1192,7 +1192,7 @@ Phase-0 targets (driven by the current research focus):
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
-| **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
+| **sansho** (custom) | (your arch; see `~/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
 Qwen3.8-Flash-Next gap-closure priority (review 2026-09-08): R1-R3 committed-source
 QSA provenance and combined-default owner/throughput refresh are retained;

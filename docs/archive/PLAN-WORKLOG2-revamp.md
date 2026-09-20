@@ -10,7 +10,7 @@ Approved: 2026-08-10
 
 Scope: hipEngine worklog storage, validation, rendering, and agent workflow
 
-Source design: `/home/lhl/tenstorrent-testing` at `dc365575553ae061754aea141f7a3aabd091defd`
+Source design: `~/tenstorrent-testing` at `dc365575553ae061754aea141f7a3aabd091defd`
 
 This document is the implementation contract for replacing hipEngine's shared,
 tracked, append-only `WORKLOG.md` with collision-resistant immutable entry
@@ -663,10 +663,10 @@ preserving unrelated work. After activation is committed:
 
 The design review used:
 
-- `/home/lhl/tenstorrent-testing/AGENTS.md`;
-- `/home/lhl/tenstorrent-testing/worklog/README.md`;
-- `/home/lhl/tenstorrent-testing/scripts/worklog.py`;
-- `/home/lhl/tenstorrent-testing/.githooks/*`;
+- `~/tenstorrent-testing/AGENTS.md`;
+- `~/tenstorrent-testing/worklog/README.md`;
+- `~/tenstorrent-testing/scripts/worklog.py`;
+- `~/tenstorrent-testing/.githooks/*`;
 - setup commit `dc365575553ae061754aea141f7a3aabd091defd`;
 - 305 valid live Tenstorrent entries rendered successfully during review;
 - hipEngine `.gitattributes`, `AGENTS.md`,

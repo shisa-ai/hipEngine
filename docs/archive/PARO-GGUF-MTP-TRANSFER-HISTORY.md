@@ -118,7 +118,7 @@ staging or a PARO sidecar path starts using q8_1 activations.
 Hardware and model for the local first pass:
 
 - Hardware: gfx1151 / Radeon 8060S.
-- Model: `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`.
+- Model: `~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`.
 - Quant: `w4_paro`.
 - Target workload: exact token-id prompts, prompt length 512, decode 128,
   concurrency c=1/2/4/8, greedy completions. If the server route rejects

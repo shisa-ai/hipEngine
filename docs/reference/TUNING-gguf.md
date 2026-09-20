@@ -11,7 +11,7 @@ owns: GGUF performance tuning playbook, baseline refresh protocol, and lane back
 > without a fresh production-route profile.
 
 Date: 2026-06-17
-Branch/worktree: `main` / `/home/lhl/hipEngine`
+Branch: `main`
 Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed. The canonical performance target is now `Q4_K_M` to match the local `llama.cpp` rows 1:1; `Q4_K_S` remains a secondary memory/consumer-card diagnostic unless explicitly requested. W7900 rows are comparison references and the 0.8B GGUF fixtures are fast correctness sentinels.
 
 ## Thesis
@@ -1341,8 +1341,8 @@ processes spawn `hipcc`. The active tuning loop uses GPU1
 verify the sysfs card name before llama.cpp peak-memory runs.
 
 ```bash
-# From /home/lhl/hipEngine
-ROOT=/home/lhl/mambaforge/envs/therock
+# From the repository root
+ROOT=~/mambaforge/envs/therock
 PY=$ROOT/bin/python3.12
 $ROOT/bin/hipcc --version > /tmp/hipengine-hipcc-version-713.txt
 ```
@@ -1388,7 +1388,7 @@ actually seeing:
 ```bash
 MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py \
-  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
+  --llama-bench ~/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
   --model "$MODEL" --backend hip \
   --workloads 512/128 4K/128 \
   --repetitions 3 --ngl 99 --flash-attn 1 \
@@ -1397,7 +1397,7 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py \
   --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-hip-q4km.json
 
 python3 scripts/llamacpp_bench_with_peak.py \
-  --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+  --llama-bench ~/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
   --model "$MODEL" --backend vulkan \
   --workloads 512/128 4K/128 \
   --repetitions 3 --ngl 99 --flash-attn 1 \
@@ -1409,7 +1409,7 @@ python3 scripts/llamacpp_bench_with_peak.py \
 ### PARO c=1 reference on the same host
 
 ```bash
-PARO=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+PARO=~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
 HIP_VISIBLE_DEVICES=1 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --engine paro --model "$PARO" --backend hip_gfx1100 \
   --shared-expert-format packed_paro_w4 --token-id 9707 \

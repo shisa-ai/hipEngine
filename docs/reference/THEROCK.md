@@ -11,8 +11,8 @@ processes that use AMD TheRock Python packages. It covers two independent lanes:
 
 | Lane | Package stack | Status |
 | --- | --- | --- |
-| Strix Halo `gfx1151` (Framework Desktop, HP ZBook Ultra G1a) | Stable TheRock ROCm `10.0.0` in `/home/lhl/miniforge3/envs/therock` | Current local development stack; SDK, fresh HIP JIT, PyTorch, graph replay, and profiler smoke validated |
-| Radeon Pro W7900 / RX 7900 XTX (`gfx1100`) | Legacy per-family TheRock ROCm `7.13.0a20260423` in `/home/lhl/mambaforge/envs/therock` | Retained benchmark stack; do not reinterpret old rates as ROCm 10 results |
+| Strix Halo `gfx1151` (Framework Desktop, HP ZBook Ultra G1a) | Stable TheRock ROCm `10.0.0` in `~/miniforge3/envs/therock` | Current local development stack; SDK, fresh HIP JIT, PyTorch, graph replay, and profiler smoke validated |
+| Radeon Pro W7900 / RX 7900 XTX (`gfx1100`) | Legacy per-family TheRock ROCm `7.13.0a20260423` in `~/mambaforge/envs/therock` | Retained benchmark stack; do not reinterpret old rates as ROCm 10 results |
 
 A setup being operational does not promote old performance rows to a new ROCm
 version. Benchmark promotion still requires the same-host, same-suite protocol in
@@ -26,7 +26,7 @@ stable release used here is
 The validated local prefix and interpreter are:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ```
 
@@ -36,7 +36,7 @@ The `staging` label is historical: the installed packages are the **production**
 ROCm `10.0.0` release, not a nightly. Keep the symlink stable and repoint it at
 whichever dated directory is current.
 
-The Miniforge base prefix (`/home/lhl/miniforge3`) is a separate Python 3.13
+The Miniforge base prefix (`~/miniforge3`) is a separate Python 3.13
 environment with no ROCm packages installed. Resolve `PY` through `envs/therock`
 or `rocm_sdk` will not import.
 
@@ -141,7 +141,7 @@ Create a rollback prefix and package manifests before an in-place upgrade. The
 following pattern preserves both conda-managed and pip-installed state:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 STATE=$HOME/.local/state/therock-upgrades/$STAMP-rocm10
@@ -180,7 +180,7 @@ INDEX=https://stable.repo.amd.com/rocm/whl-next/
 The 2026-08-30 host upgrade retained its known-good ROCm 7.15 environment at:
 
 ```text
-/home/lhl/miniforge3/envs/therock-rocm715-backup-20260828
+~/miniforge3/envs/therock-rocm715-backup-20260828
 ```
 
 That prefix is Python 3.12.13 with `rocm` / `rocm-sdk-*` `7.15.0a20260711`; it is
@@ -200,13 +200,13 @@ TheRock installs libraries inside the Python environment rather than
 
 ```bash
 export HIPENGINE_HIP_ARCH=gfx1151
-_ROCM_SITE=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages
+_ROCM_SITE=~/miniforge3/envs/therock/lib/python3.12/site-packages
 _ROCM_LIBS="$_ROCM_SITE/_rocm_sdk_core/lib:$_ROCM_SITE/_rocm_sdk_devel/lib:$_ROCM_SITE/_rocm_sdk_libraries/lib"
 export LD_LIBRARY_PATH="$_ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 unset _ROCM_SITE _ROCM_LIBS
 ```
 
-`/home/lhl/miniforge3/envs/therock/bin` is the canonical prefix for this host.
+`~/miniforge3/envs/therock/bin` is the canonical prefix for this host.
 For another prefix, construct paths from its interpreter rather than copying the
 Python 3.12 path literally:
 
@@ -240,7 +240,7 @@ Use a clean process for benchmarks and profiling so system ROCm libraries cannot
 leak into the run:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages
@@ -272,7 +272,7 @@ matter: without `$ROOT/bin` on `PATH`, `rocm_sdk test` reports a `hipconfig`
 the end fails.
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages
@@ -393,7 +393,7 @@ For the current host, use the preserved ROCm 7.15 clone directly rather than
 mixing its libraries into the ROCm 10 shell:
 
 ```bash
-OLD=/home/lhl/miniforge3/envs/therock-rocm715-backup-20260828
+OLD=~/miniforge3/envs/therock-rocm715-backup-20260828
 OLD_PY=$OLD/bin/python
 OLD_ROOT=$("$OLD_PY" -m rocm_sdk path --root)
 OLD_SITE=$OLD/lib/python3.12/site-packages
@@ -421,7 +421,7 @@ individual wheels in place.
 The W7900 benchmark lane remains separate from the current gfx1151 setup:
 
 ```bash
-PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+PY=~/mambaforge/envs/therock/bin/python3.12
 ```
 
 | Package | Version |
@@ -468,7 +468,7 @@ protocol.
 ### Install Or Repair The Retained W7900 Stack
 
 ```bash
-PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+PY=~/mambaforge/envs/therock/bin/python3.12
 INDEX=https://rocm.nightlies.amd.com/v2/gfx110X-all/
 
 "$PY" -m pip install --upgrade --force-reinstall --no-cache-dir \
@@ -497,8 +497,8 @@ main reinstall and leave this legacy environment internally inconsistent.
 ### Verify And Run The Retained W7900 Stack
 
 ```bash
-PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
-CONDA_PREFIX=/home/lhl/mambaforge/envs/therock
+PY=~/mambaforge/envs/therock/bin/python3.12
+CONDA_PREFIX=~/mambaforge/envs/therock
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$CONDA_PREFIX/lib/python3.12/site-packages
 

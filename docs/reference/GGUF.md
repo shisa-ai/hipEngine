@@ -300,10 +300,10 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
 ```
 
 External oracle: local llama.cpp CPU execution from
-`/home/lhl/llama.cpp/llama.cpp-hip-therock` at commit `59778f019`:
+`~/llama.cpp/llama.cpp-hip-therock` at commit `59778f019`:
 
 ```bash
-/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-simple \
+~/llama.cpp/llama.cpp-hip-therock/build/bin/llama-simple \
   -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
   -n 4 -ngl 0 'The answer is'
 # full text: "The answer is 1.\n\n"
@@ -361,9 +361,9 @@ The parent workspace has already used GGUF/llama.cpp as an external comparator, 
 Local reference checkouts found on this machine:
 
 ```text
-/home/lhl/llama.cpp/llama.cpp-hip-therock/
-/home/lhl/llama.cpp/llama.cpp-vulkan/
-/home/lhl/local.amd-gpu-tuning/reference/lucebox-hub/dflash/deps/llama.cpp/
+~/llama.cpp/llama.cpp-hip-therock/
+~/llama.cpp/llama.cpp-vulkan/
+~/local.amd-gpu-tuning/reference/lucebox-hub/dflash/deps/llama.cpp/
 ```
 
 Key files:
@@ -443,16 +443,16 @@ The retained artifact is
 
 Parent docs that explain why GGUF/Q4_K-like layouts matter:
 
-- `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md`
+- `~/amd-gpu-tuning/PLAN-PAROQUANT2.md`
   - The Marlin/Q4_K source-level analysis: K-contiguous packed int4 + compact metadata was the copyable part from GGML/Vulkan.
   - Important caveat: PARO/AWQ does **not** match GGML Q4_K quant math; only the execution shape was copied.
-- `/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md`
+- `~/amd-gpu-tuning/docs/OPTIMAL.md`
   - Current retained PARO/Marlin-K qweight-neutral implementation and measured speed/memory rows.
-- `/home/lhl/amd-gpu-tuning/PLAN-LONGCONTEXT.md`
+- `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`
   - llama.cpp GGUF Q4_K_M comparison commands/rows for long-context HIP/Vulkan baselines.
-- `/home/lhl/amd-gpu-tuning/PR_COMMENT-llamacpp-hip-unroll600.md`
+- `~/amd-gpu-tuning/PR_COMMENT-llamacpp-hip-unroll600.md`
   - Cross-model GGUF llama.cpp HIP measurements and build-flag observations.
-- `/home/lhl/hipEngine/docs/reference/MARLIN.md`
+- [`MARLIN.md`](MARLIN.md)
   - hipEngine's Marlin-K intake analysis, including the qweight-neutral host-layout work already started here.
 
 ## GGUF file structure hipEngine needs
@@ -728,7 +728,7 @@ Options for GGUF parsing:
    - More maintenance burden, but scanner needs only a subset.
 
 3. **Local dev-only reference**
-   - Tests import `/home/lhl/llama.cpp/.../gguf-py` via path.
+   - Tests import `~/llama.cpp/.../gguf-py` via path.
    - Good for analysis, bad for committed tests unless skipped when absent.
 
 Recommendation: start with a minimal internal scanner for metadata/tensor table, and use `gguf-py` as an optional oracle in tests if available. Add a hard or optional dependency only after we know we need full tokenizer/dequant support.
@@ -1142,8 +1142,8 @@ changelog one-liner.
 Local tiny files include many tokenizer/vocab GGUFs under:
 
 ```text
-/home/lhl/llama.cpp/llama.cpp-hip-therock/models/
-/home/lhl/llama.cpp/llama.cpp-vulkan/models/
+~/llama.cpp/llama.cpp-hip-therock/models/
+~/llama.cpp/llama.cpp-vulkan/models/
 ```
 
 Local Hugging Face cache includes a tiny model GGUF:

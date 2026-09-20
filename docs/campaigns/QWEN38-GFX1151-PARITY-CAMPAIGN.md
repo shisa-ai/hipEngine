@@ -444,6 +444,6 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 - No FP4/ROCmFPX, Unsloth UD-Q4_K_XL/Q5/Q6/Q8, or ngram-replay parity rows
   (decision 1A; separate later tracks).
 - No new external vendoring; external repos stay read-only references under
-  `/home/lhl/.local/state/hipengine-external-survey/repos/`.
+  `~/.local/state/hipengine-external-survey/repos/`.
 - No benchmark gaming: no prompt-conditioned tuning; every acceptance/speed
   claim validates on the full multi-prompt suite plus category heldouts.
