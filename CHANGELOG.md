@@ -8,10 +8,77 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+## v0.6.0 - 2026-09-20
+
+Alpha release adding OCR and speech runtimes, broader dynamic-GGUF support,
+and improvements to speculative decoding, prefix reuse, and serving reliability.
+Model, quantization, hardware, and workload qualifications remain specific to
+the combinations documented below; this is not a blanket production certificate.
+
+### Added
+
+- **Surya OCR 2:** torch-free image preprocessing, vision and text inference,
+  full-page OCR output handling, and OpenAI-compatible HTTP serving. CPU
+  reference and gfx1151 HIP implementations include request isolation,
+  cancellation, and bounded attention scratch. Install `hipengine[surya]`.
+- **VibeVoice-ASR:** native `LLM.transcribe()` with stateful audio encoding,
+  transcription finish reasons, and request isolation. A standalone Q4_K_M
+  GGUF transcription CLI embeds tokenizer and configuration assets for offline
+  inference. Broader production qualification is incomplete.
+- **Experimental VibeVoice TTS:** `LLM.synthesize()`, reference-voice prompting,
+  a HIP acoustic decoder, diffusion head, and device-side solver. Numerical
+  and generated-speech quality qualification remains partial.
+- **Dynamic GGUF quantization:** Qwen3.8-27B UD-Q4_K_M and UD-Q4_K_S execution
+  with compressed IQ/Q3 kernels, compact Q5/Q6 residency, artifact-aware
+  admission, and optimized prefill, decode, and speculative verification.
+- **Sampled speculative decoding:** temperature-based MTP acceptance on
+  qualified served configurations, including device-side acceptance and
+  commit. Direct-generator sampled MTP is not yet supported.
+- **Serving diagnostics:** per-request speculative/AR token attribution,
+  provider readiness, refusal reasons, realized group widths, and
+  proposal/verification/provider-update timings.
+
+### Changed
+
+- Prefix reuse now includes batched suffix prefill, pooled snapshots,
+  placement-aware routing, and draft-provider checkpoint restore for eligible
+  cache hits. The direct engine defaults to radix caching; the HTTP server
+  retains its explicit cache-off default.
+- Qualified gfx1151 dense-Qwen configurations use automatic MTP at one active
+  request. Wider groups and contexts outside the qualified window fall back
+  to autoregressive decoding; requesting MTP does not guarantee engagement.
+- Packed workspace and private KV memory accounting follow serving capacity.
+- Long-context speculative verification uses staged linear-attention kernels
+  on qualified gfx1151 Q4_K_M artifacts; longer MTP contexts remain opt-in.
 - Source archives now omit repository-only benchmark data, surveys, worklogs,
   docs, and test fixtures while retaining all wheel build inputs.
 - CI checks every distribution's size before any upload, preventing a partial
   PyPI release when an artifact exceeds the project limit.
+
+### Fixed
+
+- Contain request-local failures where ownership permits, route unavailable
+  speculative/prefill work to supported fallbacks, and return a typed 503 when
+  the engine is closed.
+- Bound streaming queues by output budgets and defer conflicting MTP prompt
+  activation instead of failing the service.
+- Repair KV-pool growth/binding, host-upload lifetimes, recycled state
+  initialization, and NaN-safe state clearing.
+- Fix softmax synchronization races in EVIE, paged attention, and TimesFM.
+- Withdraw the invalid gfx1151 C8/K3 automatic MTP configuration.
+
+### Known Limitations
+
+- Dense-Qwen prefix reuse has a gfx1151 same-route numerical packet; the
+  corresponding refreshed gfx1100 packet is still pending. This does not
+  establish equality between different prefill arithmetic paths. Disable
+  prefix caching with `prefix_cache="off"` or `--prefix-cache off` when needed.
+- MTP admission depends on model, quantization, execution profile, context,
+  and realized batch shape. Dense gfx1151 Q4_K_M's default qualified window
+  ends at 1,023 tokens; longer requests can complete without speculation.
+- New OCR and speech hardware evidence is primarily gfx1151. VibeVoice ASR
+  and TTS remain early implementations, not fully qualified production ports.
+- APIs and supported combinations may change before 1.0.
 
 ## v0.5.0 - 2026-09-12
 

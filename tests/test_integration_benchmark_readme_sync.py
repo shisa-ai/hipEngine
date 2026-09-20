@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -172,7 +173,8 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "SH14-C1" not in readme
     assert "**93.644 tok/s public**" in readme
     assert "**214.788**" in readme
-    assert "**Current release: v0.5.0.**" in readme
+    project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert f"**Current release: v{project['project']['version']}.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
     assert "Current development is\ntherefore focused on GGUF compatibility" in readme
     for internal_phrase in ("source-pinned", "physical c8", "packet reaches"):

@@ -4,9 +4,10 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.5.0.** In addition to the Qwen 3.6 PARO and GGUF MoE models,
-hipEngine now includes extensive tuning for [Qwen 3.8 27B Q4_K_M](#performance), 
-including long-context modes that hold up to 232K tokens of context on a 24 GB GPU.
+**Current release: v0.6.0.** This alpha adds OCR and speech runtimes, dynamic
+GGUF quantization support, and serving improvements alongside the
+[Qwen 3.8 27B](#performance) and Qwen 3.6 PARO/GGUF models.
+See the [release notes](CHANGELOG.md#v060---2026-09-20) for scope and limitations.
 
 There is also initial support for Qwen 3.8 Flash Next,
 [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1), and [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove). 
@@ -15,6 +16,9 @@ Additional modalities now include:
 - [Moonshine ASR](https://github.com/moonshine-ai/moonshine) (real-time ASR)
 - [TimesFM 2.5](https://huggingface.co/google/timesfm-2.5-200m-pytorch) and [3.0](https://huggingface.co/google/timesfm-3.0-pytorch) (time series)
 - [EVIE 4.5B](https://huggingface.co/tencent/EVIE-4.5B) and [8B](https://huggingface.co/tencent/EVIE-8B) (visual document retrieval)
+- [Surya OCR 2](docs/MODEL-SURYA.md) (full-page OCR, gfx1151)
+- [VibeVoice ASR](docs/MODEL-VIBEVOICE-ASR.md) (transcription, early support)
+- [VibeVoice TTS](docs/MODEL-VIBEVOICE-TTS.md) (experimental speech synthesis)
 
 ## Why use hipEngine?
 
