@@ -11907,16 +11907,21 @@ def _speculation_startup_text(
     if plan is None or not bool(plan.get("admitted")):
         reason = "unresolved" if plan is None else str(plan.get("reason"))
         return f"MTP unavailable ({reason})"
+    status = (
+        "MTP enabled"
+        if bool(plan.get("automatic_eligible"))
+        else f"MTP explicit-only (default AR; {plan.get('reason') or 'automatic_ineligible'})"
+    )
     selected = plan.get("selected_candidate_count")
     depth = budget["resolved"] if selected is None else selected
-    if depth is None:
-        return "MTP enabled, candidate budget unresolved"
-    measured = str(plan.get("reason") or "").startswith("qualified_")
-    return (
-        f"MTP enabled, candidate budget {int(depth)}"
-        if measured
-        else f"MTP enabled, candidate budget {int(depth)} (unmeasured)"
+    measured = bool(
+        plan.get("evidence_key")
+        and plan.get("evidence_fingerprint")
+        and plan.get("evidence_artifacts")
     )
+    depth_text = "unresolved" if depth is None else str(int(depth))
+    suffix = "" if measured else " (unmeasured)"
+    return f"{status}, candidate budget {depth_text}{suffix}"
 
 
 def _log_pretty_startup_summary(

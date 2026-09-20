@@ -1408,6 +1408,7 @@ def test_startup_speculation_line_marks_a_depth_no_measurement_backs() -> None:
         serving_route=True,
         plan={
             "admitted": True,
+            "automatic_eligible": True,
             "reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
             "selected_candidate_count": 3,
         },
@@ -1419,6 +1420,10 @@ def test_startup_speculation_line_marks_a_depth_no_measurement_backs() -> None:
         serving_route=True,
         plan={
             "admitted": True,
+            "automatic_eligible": True,
+            "evidence_key": "measured-cell",
+            "evidence_fingerprint": "sha256:measured-cell",
+            "evidence_artifacts": ["measurements.json"],
             "reason": "qualified_automatic_realized_singleton_c1_b3",
             "selected_candidate_count": 3,
         },
@@ -1435,6 +1440,10 @@ def test_startup_speculation_line_reports_the_resolved_depth_over_the_configured
         serving_route=True,
         plan={
             "admitted": True,
+            "automatic_eligible": True,
+            "evidence_key": "measured-cell",
+            "evidence_fingerprint": "sha256:measured-cell",
+            "evidence_artifacts": ["measurements.json"],
             "reason": "qualified_automatic_realized_singleton_c1_b2",
             "selected_candidate_count": 2,
         },
@@ -1465,10 +1474,58 @@ def test_startup_speculation_line_reports_an_unresolved_depth() -> None:
     text = _banner_text(
         config,
         serving_route=True,
-        plan={"admitted": True, "reason": "implemented_x", "selected_candidate_count": None},
+        plan={
+            "admitted": True, "automatic_eligible": True,
+            "reason": "implemented_x", "selected_candidate_count": None,
+        },
         budget={"requested": None, "resolved": None, "source": "unresolved"},
     )
-    assert text == "MTP enabled, candidate budget unresolved"
+    assert text == "MTP enabled, candidate budget unresolved (unmeasured)"
+
+
+@pytest.mark.parametrize("policy", ["auto", "enabled"])
+def test_startup_speculation_line_reports_explicit_only_evidence(policy) -> None:
+    row = next(
+        row for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if "measured_slower_than_ar" in row.reason
+    )
+    plan = resolve_speculative_mtp_serving_plan((row,), key=_row_key(row)).as_dict()
+    assert plan["admitted"] and not plan["automatic_eligible"]
+    text = _banner_text(
+        _banner_config(speculative_mtp_serving=policy), serving_route=True, plan=plan,
+    )
+    assert text == (
+        f"MTP explicit-only (default AR; {row.reason}), "
+        f"candidate budget {row.candidate_budget}"
+    )
+
+
+@pytest.mark.parametrize("width", [1, 2, 3, 4])
+def test_startup_speculation_line_recognizes_sampled_evidence(width) -> None:
+    row = next(
+        row for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key == f"qwen38-q4km-gfx1151-native-sampled-c{width}-k3"
+    )
+    plan = resolve_speculative_mtp_serving_plan((row,), key=_row_key(row)).as_dict()
+    text = _banner_text(
+        _banner_config(speculative_mtp_serving="auto"), serving_route=True, plan=plan,
+    )
+    assert text == "MTP enabled, candidate budget 3"
+
+
+@pytest.mark.parametrize("reason", ["qualified_but_no_evidence", "implemented_chain"])
+@pytest.mark.parametrize("automatic", [True, False, None])
+def test_startup_speculation_line_does_not_infer_policy_or_evidence_from_reason(
+    reason, automatic,
+) -> None:
+    plan = {"admitted": True, "reason": reason, "selected_candidate_count": 3}
+    if automatic is not None:
+        plan["automatic_eligible"] = automatic
+    text = _banner_text(
+        _banner_config(speculative_mtp_serving="auto"), serving_route=True, plan=plan,
+    )
+    status = "MTP enabled" if automatic else f"MTP explicit-only (default AR; {reason})"
+    assert text == f"{status}, candidate budget 3 (unmeasured)"
 
 
 def test_pretty_startup_summary_reads_the_resolved_speculation_route(monkeypatch) -> None:
