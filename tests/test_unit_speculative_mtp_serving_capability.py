@@ -1458,6 +1458,15 @@ def test_startup_speculation_line_states_the_policy_when_no_route_is_configured(
     )
 
 
+def test_startup_speculation_line_opt_in_policy_requires_explicit_requests() -> None:
+    plan = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key()).as_dict()
+    assert plan["admitted"] and plan["automatic_eligible"]
+    text = _banner_text(
+        _banner_config(speculative_mtp_serving="opt_in"), serving_route=True, plan=plan,
+    )
+    assert text == "MTP explicit-only (default AR; policy opt_in), candidate budget 3"
+
+
 def test_startup_speculation_line_reports_an_unresolved_plan() -> None:
     """An engine that exposes support but resolves no plan is not enabled."""
 

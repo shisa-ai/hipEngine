@@ -11912,6 +11912,8 @@ def _speculation_startup_text(
         if bool(plan.get("automatic_eligible"))
         else f"MTP explicit-only (default AR; {plan.get('reason') or 'automatic_ineligible'})"
     )
+    if config.speculative_mtp_serving == "opt_in":
+        status = "MTP explicit-only (default AR; policy opt_in)"
     selected = plan.get("selected_candidate_count")
     depth = budget["resolved"] if selected is None else selected
     measured = bool(

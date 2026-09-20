@@ -205,7 +205,7 @@ not either decode column.
 
 September 20 rows: Framework Desktop. Qwen3.8 `Q4_K_M` MTP uses three drafts
 and 25 output tokens per request: **1.98x** its matched 11.30 tok/s AR,
-not the 512/128 decode column. It declines above 1,023 tokens.
+not the 512/128 decode column. This is a short-context measurement.
 35B MTP is the July 19 opt-in result.
 [Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
 

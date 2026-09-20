@@ -113,7 +113,7 @@ not either decode column.
 
 September 20 rows: Framework Desktop. Qwen3.8 `Q4_K_M` MTP uses three drafts
 and 25 output tokens per request: **1.98x** its matched 11.30 tok/s AR,
-not the 512/128 decode column. It declines above 1,023 tokens.
+not the 512/128 decode column. This is a short-context measurement.
 35B MTP is the July 19 opt-in result.
 [Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
 
@@ -214,8 +214,9 @@ model, hardware, and workload combinations:
 - Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
   Both can speculate with the model's own multi-token prediction head, as can
   Qwen3.6-35B-A3B.
-- The server turns speculative decoding on only for the model, GPU, and request
-  shapes it has measured, reports why when it skips speculation, and can be
+- The server enables speculative decoding for supported model, GPU, storage,
+  and request shapes, labels unmeasured configurations, reports why when it
+  skips speculation, and can be
   switched off for all new requests by one endpoint call.
 - An optional execution-profile selector (`strict`, `production`,
   `batch_invariant`) that runs a registered kernel plan, checks that its
@@ -239,11 +240,11 @@ Important limits:
   context on a 24 GB card is qualified to 232,448 tokens on the DMS and
   opt-in direct-INT8 routes; concurrent-request shapes on 24 GB are not
   qualified yet, so keep a conservative context limit there.
-- Automatic speculative decoding covers only narrow measured shapes. On
-  gfx1151, Qwen3.8 `Q4_K_M` speculates at one active request with the default
-  candidate budget and bf16 KV, and declines to autoregressive decoding above
-  the speculative head's 1,023-token context window. Requesting speculation
-  does not guarantee engagement. See [Server API](docs/API.md).
+- Automatic speculative decoding is bounded by implementation capability and
+  available memory. Qwen3.8 `Q4_K_M` on gfx1151 supports sampled MTP with BF16
+  KV for one through four active requests. Context is bounded by the target's
+  allocated capacity. Packed INT8 and compact-DMS MTP are not implemented.
+  See [Server API](docs/API.md) for admission and fallback behavior.
 - APIs and supported combinations can still change before 1.0.
 
 ## Hardware detection
