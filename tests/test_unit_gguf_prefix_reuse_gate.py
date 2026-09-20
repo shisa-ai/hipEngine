@@ -171,3 +171,28 @@ def test_only_the_production_shaped_comparison_gates_the_contract() -> None:
     incomplete = {k: v for k, v in terms.items() if k != "scheduler_state_exact"}
     with pytest.raises(KeyError):
         gate_passed(incomplete)
+
+
+def test_per_step_diagnostics_match_the_aggregate_metrics() -> None:
+    """The recorded per-step KL/top-1 must reproduce the aggregate exactly."""
+
+    import numpy as np
+
+    from hipengine.benchmark.correctness import evaluate_logits
+    from scripts.gguf_prefix_reuse_gate import _per_step_softmax
+
+    rng = np.random.default_rng(0)
+    reference = rng.normal(size=(4, 97)).astype(np.float64)
+    candidate = rng.normal(size=(4, 97)).astype(np.float64)
+    metrics = evaluate_logits(reference, candidate)
+
+    reference_p = _per_step_softmax(reference)
+    kl = np.sum(
+        reference_p * (np.log(reference_p) - np.log(_per_step_softmax(candidate))),
+        axis=-1,
+    )
+    top1 = np.argmax(reference, axis=-1) == np.argmax(candidate, axis=-1)
+
+    assert float(np.mean(kl)) == pytest.approx(metrics.kl_mean, abs=1e-12)
+    assert float(np.max(kl)) == pytest.approx(metrics.kl_max, abs=1e-12)
+    assert float(np.mean(top1)) == pytest.approx(metrics.top1_agreement, abs=1e-12)

@@ -406,6 +406,14 @@ def gate_passed(terms: dict[str, bool]) -> bool:
     return all(bool(terms[name]) for name in _PRODUCTION_GATE_TERMS)
 
 
+def _per_step_softmax(logits: Any) -> Any:
+    """Return a row-wise softmax, matching `evaluate_logits`' own math."""
+
+    shifted = logits - np.max(logits, axis=-1, keepdims=True)
+    exponentials = np.exp(shifted)
+    return exponentials / np.sum(exponentials, axis=-1, keepdims=True)
+
+
 def _prefill_work(request_id: int, tokens: tuple[int, ...]) -> Any:
     from hipengine.dispatch import WorkItem, WorkKind
 
@@ -791,9 +799,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             reference_predicted.append(reference_next)
             forced_token = reference_next
 
+        reference_logits_stack = np.stack(reference_logits, axis=0)
+        candidate_logits_stack = np.stack(candidate_logits, axis=0)
         metrics = evaluate_logits(
-            np.stack(reference_logits, axis=0),
-            np.stack(candidate_logits, axis=0),
+            reference_logits_stack,
+            candidate_logits_stack,
+        )
+        # Per-step diagnostics: an aggregate mean cannot say whether a large KL
+        # comes from a broad distributional difference or from a single
+        # teacher-forced step where the two routes chose different tokens and
+        # every later step inherits the disagreement.  Both readings need very
+        # different follow-up, so record the vector.
+        reference_p = _per_step_softmax(reference_logits_stack)
+        reference_log_p = np.log(reference_p)
+        candidate_log_q = np.log(_per_step_softmax(candidate_logits_stack))
+        kl_per_step = np.sum(reference_p * (reference_log_p - candidate_log_q), axis=-1)
+        top1_per_step = (
+            np.argmax(reference_logits_stack, axis=-1)
+            == np.argmax(candidate_logits_stack, axis=-1)
         )
         candidate_final = _capture_state(continuation_session)
         reference_final = _capture_state(oracle_session)
@@ -1015,6 +1038,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "trajectory_exact": trajectory_exact,
                 "kl_mean": metrics.kl_mean,
                 "kl_max": metrics.kl_max,
+                "kl_per_step": [float(value) for value in kl_per_step],
+                "top1_per_step": [bool(value) for value in top1_per_step],
                 "top1_agreement": metrics.top1_agreement,
                 "gate_passed": metrics.passed,
                 "final_state_exact": final_state_exact,
