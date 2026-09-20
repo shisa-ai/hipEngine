@@ -311,24 +311,35 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
 - Removal scope: the pin, once both families are fixed and every shape is
   covered by the bit-exact contract test.
 
-## Strict prefix gate cannot bind a batched candidate (found 2026-09-19)
+## Strict prefix gate cannot bind a batched candidate (found 2026-09-19, fixed 2026-09-20)
 
-- `scripts/gguf_prefix_reuse_gate.py` builds its reference by consuming the
-  suffix through serial `session.step` calls, then compares GDN state bytes
-  (`initial_state_exact` / `final_state_exact`). Only a serial candidate can
-  satisfy that, so the gate reports `failed` for the batched reused-suffix
-  route on every arm while `output_exact`, `trajectory_exact`, top-1 and the
-  lifecycle checks all pass.
+- **Resolved.** `scripts/gguf_prefix_reuse_gate.py` builds its reference by
+  consuming the suffix through serial `session.step` calls, then compared GDN
+  state bytes (`initial_state_exact` / `final_state_exact`). Only a serial
+  candidate could satisfy that, so the gate reported `failed` for the batched
+  reused-suffix route on every arm while `output_exact`, `trajectory_exact`,
+  top-1 and the lifecycle checks all passed.
+- The gate now binds the comparison that reproduces the production shape
+  (`scheduler_chunk_diagnostic`: `prefill_batch_native` over the prefix and then
+  the suffix) through `gate_passed` / `_PRODUCTION_GATE_TERMS`. The serial,
+  one-shot-prefix, and one-shot-bulk comparisons stay in the payload as
+  diagnostics named in `_DIAGNOSTIC_COMPARISONS`, and `metrics_passed` keeps the
+  numerical envelope binding against the teacher-forced reference. The
+  localization and its evidence are in
+  `worklog/entries/20260920T033547.660457Z-lhl-dense27b-oracle-suffix-shape-localized-5e052a.md`.
 - Batched-versus-serial GDN state differs by ~5e-3 relative L2 at
   `start_position == 0` as well, so this is a property of batched prefill, not
-  of reuse. Treat the gate as the strict oracle for the serial fallback
-  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`, which passes it outright) and gate
-  the batched route on HIT == MISS bit-equality instead.
+  of reuse. The serial fallback (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`) still
+  passes the gate outright; the batched route is additionally covered by
+  HIT == MISS bit-equality.
 - The gate now accepts `--prompt-file` / `--prompt-category` so its numerical
   checks can run on real tokenized suite text; its default repeated-token-id
   prompt produces degenerate logits that make KL unrepresentative.
-- Removal scope: this entry, once the gate grows a production arm that builds
-  its reference with the candidate's own route.
+- Removal scope: done, apart from the open accuracy question. Whether the
+  production route's token or the single-call routes' token is closer to the
+  truth needs a higher-precision reference, and the Japanese `kl_mean` 0.68112127
+  is still measured against the serial reference, so the gate continues to flag
+  it. Rebase the numerical reference once that reference exists.
 
 ## Grown KV pool could not serve an allocation spanning two chunks (found and fixed 2026-09-19)
 

@@ -1,0 +1,200 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_prefix_reuse_gate_production_binding",
+ "created_at": "2026-09-20T03:57:40.931888+00:00",
+ "host": "gfx1151",
+ "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S (gfx1151)",
+ "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "workload": {
+  "prefix_tokens": 1024,
+  "suffix_tokens": 200,
+  "teacher_forced_steps": 4,
+  "max_sequence_length": 2048,
+  "sampler_mode": "greedy_fast",
+  "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+ },
+ "change": "scripts/gguf_prefix_reuse_gate.py binds the production-shaped comparison (scheduler_chunk_diagnostic boundary and final state) and records the one-shot-prefix, one-shot-bulk, serial, and scheduler-token comparisons as diagnostics; scheduler_output_exact is not binding because the candidate token can be processor-forced while the native oracle samples freely.",
+ "categories": {
+  "code": {
+   "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle active --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --json /tmp/t30-gate-final/code.json",
+   "lifecycle": "active",
+   "passed": true,
+   "gating_route": "scheduler_chunk_diagnostic",
+   "gating_terms": [
+    "clone_boundary_exact",
+    "scheduler_boundary_exact",
+    "scheduler_state_exact",
+    "source_immutable",
+    "lifecycle_exact",
+    "production_metadata_exact",
+    "sampler_route_exact",
+    "metrics_passed"
+   ],
+   "diagnostic_comparisons": {
+    "semantic_boundary_exact": "one_shot_prefix_prefill",
+    "initial_state_exact": "serial_prefix_then_c1_steps",
+    "final_state_exact": "serial_prefix_then_c1_steps",
+    "output_exact": "serial_prefix_then_c1_steps",
+    "trajectory_exact": "serial_prefix_then_c1_steps",
+    "scheduler_output_exact": "forced_candidate_token_versus_free_oracle_sample",
+    "one_shot_bulk_diagnostic": "one_shot_full_prompt_prefill"
+   },
+   "scheduler_boundary_exact": true,
+   "scheduler_final_state_exact": true,
+   "scheduler_output_exact_diagnostic": true,
+   "scheduler_predicted_token_id": 248046,
+   "candidate_predicted_token_id": 248046,
+   "reference_predicted_token_id": 248046,
+   "semantic_source_predicted_token_id": 248046,
+   "one_shot_bulk_predicted_token_id": 248046,
+   "diagnostic_semantic_boundary_mismatches": 126,
+   "diagnostic_initial_state_mismatches": 128,
+   "kl_mean": 3.88219582871377e-05,
+   "kl_max": 0.0001263163169276493,
+   "top1_agreement": 1.0,
+   "metrics_passed": true,
+   "trajectory_exact_diagnostic": true
+  },
+  "general_en": {
+   "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle active --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --json /tmp/t30-gate-final/general_en.json",
+   "lifecycle": "active",
+   "passed": true,
+   "gating_route": "scheduler_chunk_diagnostic",
+   "gating_terms": [
+    "clone_boundary_exact",
+    "scheduler_boundary_exact",
+    "scheduler_state_exact",
+    "source_immutable",
+    "lifecycle_exact",
+    "production_metadata_exact",
+    "sampler_route_exact",
+    "metrics_passed"
+   ],
+   "diagnostic_comparisons": {
+    "semantic_boundary_exact": "one_shot_prefix_prefill",
+    "initial_state_exact": "serial_prefix_then_c1_steps",
+    "final_state_exact": "serial_prefix_then_c1_steps",
+    "output_exact": "serial_prefix_then_c1_steps",
+    "trajectory_exact": "serial_prefix_then_c1_steps",
+    "scheduler_output_exact": "forced_candidate_token_versus_free_oracle_sample",
+    "one_shot_bulk_diagnostic": "one_shot_full_prompt_prefill"
+   },
+   "scheduler_boundary_exact": true,
+   "scheduler_final_state_exact": true,
+   "scheduler_output_exact_diagnostic": true,
+   "scheduler_predicted_token_id": 271,
+   "candidate_predicted_token_id": 271,
+   "reference_predicted_token_id": 271,
+   "semantic_source_predicted_token_id": 271,
+   "one_shot_bulk_predicted_token_id": 271,
+   "diagnostic_semantic_boundary_mismatches": 126,
+   "diagnostic_initial_state_mismatches": 128,
+   "kl_mean": 0.0071986578985438225,
+   "kl_max": 0.028723569621221398,
+   "top1_agreement": 1.0,
+   "metrics_passed": true,
+   "trajectory_exact_diagnostic": true
+  },
+  "general_ja": {
+   "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle completed --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --json /tmp/t30-gate-final/general_ja.json",
+   "lifecycle": "completed",
+   "passed": false,
+   "gating_route": "scheduler_chunk_diagnostic",
+   "gating_terms": [
+    "clone_boundary_exact",
+    "scheduler_boundary_exact",
+    "scheduler_state_exact",
+    "source_immutable",
+    "lifecycle_exact",
+    "production_metadata_exact",
+    "sampler_route_exact",
+    "metrics_passed"
+   ],
+   "diagnostic_comparisons": {
+    "semantic_boundary_exact": "one_shot_prefix_prefill",
+    "initial_state_exact": "serial_prefix_then_c1_steps",
+    "final_state_exact": "serial_prefix_then_c1_steps",
+    "output_exact": "serial_prefix_then_c1_steps",
+    "trajectory_exact": "serial_prefix_then_c1_steps",
+    "scheduler_output_exact": "forced_candidate_token_versus_free_oracle_sample",
+    "one_shot_bulk_diagnostic": "one_shot_full_prompt_prefill"
+   },
+   "scheduler_boundary_exact": true,
+   "scheduler_final_state_exact": true,
+   "scheduler_output_exact_diagnostic": true,
+   "scheduler_predicted_token_id": 271,
+   "candidate_predicted_token_id": 271,
+   "reference_predicted_token_id": 96026,
+   "semantic_source_predicted_token_id": 174267,
+   "one_shot_bulk_predicted_token_id": 96026,
+   "diagnostic_semantic_boundary_mismatches": 126,
+   "diagnostic_initial_state_mismatches": 128,
+   "kl_mean": 0.6811212740489249,
+   "kl_max": 1.7583460667891433,
+   "top1_agreement": 0.75,
+   "metrics_passed": false,
+   "trajectory_exact_diagnostic": false
+  },
+  "mixed_ja_en": {
+   "command": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --teacher-forced-steps 4 --max-sequence-length 2048 --source-lifecycle completed --sampler-mode processed_argmax --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --json /tmp/t30-gate-final/mixed_ja_en.json",
+   "lifecycle": "completed",
+   "passed": true,
+   "gating_route": "scheduler_chunk_diagnostic",
+   "gating_terms": [
+    "clone_boundary_exact",
+    "scheduler_boundary_exact",
+    "scheduler_state_exact",
+    "source_immutable",
+    "lifecycle_exact",
+    "production_metadata_exact",
+    "sampler_route_exact",
+    "metrics_passed"
+   ],
+   "diagnostic_comparisons": {
+    "semantic_boundary_exact": "one_shot_prefix_prefill",
+    "initial_state_exact": "serial_prefix_then_c1_steps",
+    "final_state_exact": "serial_prefix_then_c1_steps",
+    "output_exact": "serial_prefix_then_c1_steps",
+    "trajectory_exact": "serial_prefix_then_c1_steps",
+    "scheduler_output_exact": "forced_candidate_token_versus_free_oracle_sample",
+    "one_shot_bulk_diagnostic": "one_shot_full_prompt_prefill"
+   },
+   "scheduler_boundary_exact": true,
+   "scheduler_final_state_exact": true,
+   "scheduler_output_exact_diagnostic": false,
+   "scheduler_predicted_token_id": 248046,
+   "candidate_predicted_token_id": 9709,
+   "reference_predicted_token_id": 9709,
+   "semantic_source_predicted_token_id": 271,
+   "one_shot_bulk_predicted_token_id": 248046,
+   "diagnostic_semantic_boundary_mismatches": 126,
+   "diagnostic_initial_state_mismatches": 128,
+   "kl_mean": 0.003394357479231654,
+   "kl_max": 0.005818730884899044,
+   "top1_agreement": 1.0,
+   "metrics_passed": true,
+   "trajectory_exact_diagnostic": true
+  }
+ },
+ "verdict": {
+  "passed": [
+   "code",
+   "general_en",
+   "mixed_ja_en"
+  ],
+  "failed": [
+   "general_ja"
+  ],
+  "only_failing_term": [
+   "metrics_passed"
+  ],
+  "note": "general_ja fails only the KL/top-1 envelope against the teacher-forced reference (kl_mean 0.681121, top1 0.75); the production-shaped state comparison is bit-exact (0/0) in all four categories."
+ },
+ "worklog_entry": "worklog/entries/20260920T034751.940116Z-lhl-prefix-gate-production-binding-a4ba5d.md",
+ "supersedes_attribution": "worklog/entries/20260920T033547.660457Z-lhl-dense27b-oracle-suffix-shape-localized-5e052a.md",
+ "raw_artifacts": "/tmp/t30-gate-final",
+ "reproduction_sources": {
+  "hipengine-merge-qual-env.sh": "#!/usr/bin/env bash\nset -euo pipefail\nROOT=$(/home/lhl/miniforge3/envs/therock/bin/python -m rocm_sdk path --root)\nSITE=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\nexec env -i HOME=\"$HOME\" USER=lhl LOGNAME=lhl SHELL=/bin/bash TERM=xterm \\\n  PATH=\"$ROOT/bin:$ROOT/lib/llvm/bin:/home/lhl/miniforge3/envs/vllm/bin:/usr/local/bin:/usr/bin:/bin\" \\\n  LD_LIBRARY_PATH=\"$ROOT/lib:$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_libraries/lib:$SITE/_rocm_sdk_devel/lib\" \\\n  HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIPENGINE_HIP_ARCH=gfx1151 \\\n  PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 \\\n  \"$@\"\n"
+ }
+}
