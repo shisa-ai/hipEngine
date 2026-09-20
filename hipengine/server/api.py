@@ -4910,7 +4910,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_tokens=max_tokens,
         )
 
-    def chat_context_candidate(
+    async def chat_context_candidate(
         request: ChatCompletionRequest,
         prefix_messages: Sequence[Mapping[str, Any]],
         engine: Any,
@@ -4921,7 +4921,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 request,
                 (*prefix_messages, *request.messages),
             )
-        prompt, thinking, prepared_prompt = _render_prepared_chat_prompt_for_request(
+        # Rendering, tokenizing, and the thinking-budget context checks inside all
+        # issue engine control commands, so the whole candidate runs on a worker
+        # thread: a wait on the event loop thread would stall every other request's
+        # SSE stream for as long as the engine's driver thread is busy.
+        prompt, thinking, prepared_prompt = await asyncio.to_thread(
+            _render_prepared_chat_prompt_for_request,
             render_request,
             chat_default_max_tokens=config.chat_default_max_tokens,
             engine=engine,
@@ -4936,10 +4941,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         apply_context_policy: bool,
     ) -> _ChatContextRender:
         prefix_messages = tuple(await chat_session_prefix_messages(request))
-        render_request, prompt, prepared_prompt, thinking = chat_context_candidate(
-            request,
-            prefix_messages,
-            engine,
+        render_request, prompt, prepared_prompt, thinking = (
+            await chat_context_candidate(
+                request,
+                prefix_messages,
+                engine,
+            )
         )
         effective_prefix = prefix_messages
         session_payload = _diagnostic_session_payload(request, effective_prefix)
@@ -4958,7 +4965,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 and prefix_messages
                 and effective_max_context_tokens(engine) is not None
             ):
-                prefixed_fit = chat_context_fit_payload(
+                prefixed_fit = await asyncio.to_thread(
+                    chat_context_fit_payload,
                     render_request,
                     prepared_prompt,
                     engine,
@@ -4977,14 +4985,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 candidate_prompt,
                                 candidate_prepared_prompt,
                                 candidate_thinking,
-                            ) = chat_context_candidate(
+                            ) = await chat_context_candidate(
                                 request,
                                 candidate_prefix,
                                 engine,
                             )
                         except OpenAIHTTPError:
                             continue
-                        candidate_fit = chat_context_fit_payload(
+                        candidate_fit = await asyncio.to_thread(
+                            chat_context_fit_payload,
                             candidate_request,
                             candidate_prepared_prompt,
                             engine,
@@ -5951,7 +5960,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             async with session_lock:
                 engine = get_llm()
-                prompts = _prepare_prompt_inputs(engine, prompts)
+                prompts = await _prepare_prompt_inputs_async(engine, prompts)
                 admission_started = time.perf_counter()
                 sampling = sampling_params(
                     request,
@@ -6223,7 +6232,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ]:
                 async with session_lock:
                     engine = get_llm()
-                    generation_prompt = _prepare_prompt_input(engine, prompt)
+                    generation_prompt = await _prepare_prompt_input_async(engine, prompt)
                     admission_started = time.perf_counter()
                     sampling = sampling_params(
                         request,
@@ -7926,7 +7935,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompt=continuation_prompt,
                             render_request=request,
                             prefix_messages=(),
-                            prepared_prompt=_prepare_prompt_input(
+                            prepared_prompt=await _prepare_prompt_input_async(
                                 engine,
                                 continuation_prompt,
                             ),
@@ -7949,7 +7958,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             generation_prompt = (
                 prepared_prompt.prepared_prompt
                 if prepared_prompt.prepared_prompt is not None
-                else _prepare_prompt_input(get_llm(), prompt)
+                else await _prepare_prompt_input_async(get_llm(), prompt)
             )
             fit_context_extra = prepared_prompt.fit_context_extra
             resident_session_key = (
@@ -13021,6 +13030,49 @@ def _prepare_prompt_inputs(
         else:
             prepared.append(_prepare_prompt_input(engine, prompt))
     return tuple(prepared)
+
+
+def _engine_call_is_blocking(engine: Any) -> bool:
+    """Whether engine control calls must be moved off the event loop thread.
+
+    ``EngineService`` runs the engine on one driver thread, so a control command
+    (tokenizing, counting tokens, preparing a context, reading a live snapshot)
+    waits behind whatever that thread is doing: a context prepare that grows the
+    KV pool and captures graphs, or one prefill tick of a large prompt. Waiting on
+    the event loop thread stops the server from doing anything else - SSE deltas
+    are no longer flushed, so a client sees its tokens arrive in one burst after
+    the wait, and health checks, cancellation, and other requests queue behind it.
+    """
+
+    return callable(getattr(engine, "tokenize", None)) or callable(
+        getattr(engine, "count_tokens", None)
+    )
+
+
+async def _prepare_prompt_input_async(
+    engine: Any,
+    prompt: PromptInput,
+    *,
+    render_ms: float = 0.0,
+) -> PromptInput:
+    """``_prepare_prompt_input`` with its engine wait on a worker thread."""
+
+    if isinstance(prompt, str) and _engine_call_is_blocking(engine):
+        return await asyncio.to_thread(
+            _prepare_prompt_input, engine, prompt, render_ms=render_ms
+        )
+    return _prepare_prompt_input(engine, prompt, render_ms=render_ms)
+
+
+async def _prepare_prompt_inputs_async(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+) -> tuple[PromptInput, ...]:
+    """``_prepare_prompt_inputs`` with its engine wait on a worker thread."""
+
+    if any(isinstance(prompt, str) for prompt in prompts) and _engine_call_is_blocking(engine):
+        return await asyncio.to_thread(_prepare_prompt_inputs, engine, prompts)
+    return _prepare_prompt_inputs(engine, prompts)
 
 
 def _with_admission_prepare_ms(

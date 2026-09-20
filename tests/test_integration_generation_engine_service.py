@@ -315,6 +315,39 @@ def test_engine_service_does_not_report_a_command_blocking_itself(caplog) -> Non
     assert _warned_messages(caplog) == []
 
 
+def test_activity_snapshot_samples_each_field_once() -> None:
+    """A driver finishing its tick mid-snapshot must not break the diagnostic.
+
+    The snapshot runs on a waiting caller's thread while the driver thread clears
+    its activity, so checking one read and reporting from another raced: a cleared
+    timestamp arrived as ``now - None`` and raised ``TypeError`` inside the very
+    code meant to explain a slow command.
+    """
+
+    class _ClearingService(EngineService):
+        @property
+        def _tick_started_at(self):
+            value = self.__dict__.get("_tick_started_at")
+            # The driver thread finishes its tick between the check and the read.
+            self.__dict__["_tick_started_at"] = None
+            return value
+
+        @_tick_started_at.setter
+        def _tick_started_at(self, value) -> None:
+            self.__dict__["_tick_started_at"] = value
+
+    driver = _FakeSoleDriver()
+    service = _ClearingService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    try:
+        service._tick_started_at = time.monotonic()
+        snapshot = service._activity_snapshot()
+    finally:
+        service.close()
+
+    assert "driver_tick_s=" in snapshot
+    assert "driver_alive=yes" in snapshot
+
+
 def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> None:
     driver = _FakeSoleDriver()
     service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
