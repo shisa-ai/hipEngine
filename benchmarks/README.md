@@ -2,6 +2,21 @@
 
 Last updated: **2026-09-20**
 
+September 20 W7900 C1 refresh on physical host **epyc**, GPU0
+`0xe282895b62c2b295`: BF16 KV, 512/128 and 4096/128, one warmup and
+three measured repetitions. Both GGUF models pass 18-prompt graph/eager
+identity checks; PARO has repetition-stable IDs, not a newly run independent
+arithmetic gate. These are standalone resident-harness snapshots, not HTTP
+throughput or new arithmetic promotions. MTP, INT8 KV, and capacity were not
+re-measured. [Commands and samples](results/2026-09-20-w7900-gfx1100-v060-headline-refresh.json).
+
+HTTP prefix caching stays opt-in: the W7900 BF16 prefix packet exceeds the
+production numerical envelope on held-out code, including a completed-source
+control. INT8 prefix reuse has not been qualified by these runs.
+[Eight scopes](results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json),
+[parent-run control](results/2026-09-20-w7900-prefix-completed-code-control.json).
+
+
 September 20 C1 refresh on **Framework Desktop / Radeon 8060S**, physical
 host `gfx1151`: Qwen3.6-35B-A3B `UD_Q4_K_M` measures 1,418.1 prefill and
 56.7 decode tok/s at 512/128; Qwen3.8-27B `Q4_K_M` measures 404.5 and
@@ -109,10 +124,9 @@ do not replace the published performance rows.
 The root README exports this compact retained summary verbatim.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-Measured tokens/s on each named host. **Prompt processing** measures input;
-**text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Dashes are unmeasured; context limits come from capacity
-tests.
+Tokens/s on each named host: **prompt processing** is input, **text generation**
+is output. **MTP** is speculative decoding in qualified scopes. Dashes are
+unmeasured; context limits are capacity tests.
 
 ### Performance
 
@@ -120,13 +134,16 @@ tests.
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
-| Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
-**1.63x** its matched 24.36 tok/s AR, not the INT8 column.
+BF16 rows: September 20, `epyc`, 512/128 tokens, warmup + three runs.
+INT8: September 13. MTP/capacity not refreshed. Laguna: 4K prompts.
+35B GGUF MTP is opt-in; 27B MTP is **1.63x** its matched 24.36 tok/s AR,
+not either decode column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 

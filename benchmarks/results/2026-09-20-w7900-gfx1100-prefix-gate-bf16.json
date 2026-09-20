@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "kind": "w7900_gfx1100_prefix_reuse_gate_bf16",
+  "created_at": "2026-09-20T10:00:35.933171+00:00",
+  "host": "hip_gfx1100",
+  "hardware": {
+    "host_name": "epyc",
+    "machine_id": "13fc037d426b4f70918af4fc4a17e399",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocm_hip_version": "HIP version: 7.15.0-0000000",
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_fingerprint": {
+    "algorithm": "sha256-sampled-v1",
+    "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984,
+    "sampled_bytes": 3145728,
+    "sample_offsets": [
+      0,
+      8552862704,
+      17105725408
+    ],
+    "exists": true,
+    "path_type": "file"
+  },
+  "quant": "gguf_q4_k_m",
+  "target_arch": "gfx1100",
+  "source_commit": "ad20d6ad2b69a9437aa6d5868cc2824409e9ecb1",
+  "kv_scope": "BF16 KV only. The gate publishes no KV policy and the direct LLM path auto-resolves BF16 (hipengine/llm.py:1246). This does NOT validate the server-default INT8 per-token-head KV path, whose scale-plane clone/share and admission behavior is a separate, un-gated contract.",
+  "workload": {
+    "prompt_sources": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl"
+    ],
+    "prefix_tokens": 1024,
+    "suffix_tokens": 200,
+    "teacher_forced_steps": 128,
+    "max_sequence_length": 2048,
+    "sampler_mode": "greedy_fast",
+    "reference_prefill_mode": "packed (gate default)",
+    "suites": [
+      "heldout-code",
+      "heldout-general_en",
+      "heldout-general_ja",
+      "heldout-mixed_ja_en",
+      "category-code",
+      "category-general_en",
+      "category-general_ja",
+      "category-mixed_ja_en"
+    ]
+  },
+  "envelope": {
+    "kl_mean_max": 0.001,
+    "kl_p95_max": 0.005,
+    "kl_p99_max": 0.02,
+    "kl_max_max": 0.05,
+    "top1_agreement_min_overall": 0.99,
+    "top1_agreement_min_per_scope": 0.97,
+    "source": "docs/EXECUTION-PROFILES.md section 6.1"
+  },
+  "scopes": {
+    "heldout-code": {
+      "prompt_file": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_category": "code",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 0,
+      "top1_agreement": 1.0,
+      "kl_mean": 0.002264413811833883,
+      "kl_p95": 0.0005653298576362431,
+      "kl_p99": 0.003142652567476034,
+      "kl_max": 0.275316898779979,
+      "envelope_failing_terms": [
+        "kl_mean",
+        "kl_max"
+      ],
+      "numerical_envelope_passed": false,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "9b267b07712ba75e0d7a111cbcb63e37"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "c7894fcd06e9dce9ef2b907855499baf"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": [
+        0
+      ]
+    },
+    "heldout-general_en": {
+      "prompt_file": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_category": "general_en",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 0,
+      "top1_agreement": 1.0,
+      "kl_mean": 0.000293194974688425,
+      "kl_p95": 0.0007264429004862905,
+      "kl_p99": 0.0023710690438747406,
+      "kl_max": 0.025290513730671316,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "d37d1defdbe24ee7b38ee8ad82975346"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "24b0e7e3cef0ae88ec63bb0f12f9dfca"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": [
+        0
+      ]
+    },
+    "heldout-general_ja": {
+      "prompt_file": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_category": "general_ja",
+      "source_lifecycle": "completed",
+      "teacher_forced_rows": 128,
+      "top1_flips": 2,
+      "top1_agreement": 0.984375,
+      "kl_mean": 0.00018855428851862746,
+      "kl_p95": 0.0007764497422613204,
+      "kl_p99": 0.0018168743699789047,
+      "kl_max": 0.009053194750696584,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": true,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [],
+      "passed": true,
+      "scheduler_final_state_mismatches": {
+        "count": 0,
+        "component_counts": {},
+        "first": null
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    },
+    "heldout-mixed_ja_en": {
+      "prompt_file": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_category": "mixed_ja_en",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 0,
+      "top1_agreement": 1.0,
+      "kl_mean": 6.114749807650904e-05,
+      "kl_p95": 0.0003653191088233143,
+      "kl_p99": 0.0007922778022475541,
+      "kl_max": 0.0008290912251028591,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "33c3c331f48f0e6a3343d2373e6a8479"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "18babfd95e9bfd66e919ed86a690c18c"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    },
+    "category-code": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_category": "code",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 2,
+      "top1_agreement": 0.984375,
+      "kl_mean": 0.00019181066783461123,
+      "kl_p95": 0.0010542620439082384,
+      "kl_p99": 0.0017847822746261954,
+      "kl_max": 0.0042726161782729285,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "36bf52d6db8e3949babcbca0dd2be946"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "fd45cc6a0d323c3a4407d66d36b37c26"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    },
+    "category-general_en": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_category": "general_en",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 1,
+      "top1_agreement": 0.9921875,
+      "kl_mean": 0.0001563550727266768,
+      "kl_p95": 0.0007582911057397723,
+      "kl_p99": 0.0010999826481565833,
+      "kl_max": 0.005688162961756296,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "a117f2cd67818c641b70c46ccddb9345"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "15e561164ade2e80a7a2c9b8591c6cf9"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    },
+    "category-general_ja": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_category": "general_ja",
+      "source_lifecycle": "completed",
+      "teacher_forced_rows": 128,
+      "top1_flips": 1,
+      "top1_agreement": 0.9921875,
+      "kl_mean": 0.0002015903385335378,
+      "kl_p95": 0.0010492142755538225,
+      "kl_p99": 0.0023613576777279377,
+      "kl_max": 0.0062052347510058465,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": true,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [],
+      "passed": true,
+      "scheduler_final_state_mismatches": {
+        "count": 0,
+        "component_counts": {},
+        "first": null
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    },
+    "category-mixed_ja_en": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_category": "mixed_ja_en",
+      "source_lifecycle": "active",
+      "teacher_forced_rows": 128,
+      "top1_flips": 0,
+      "top1_agreement": 1.0,
+      "kl_mean": 9.26946379080687e-05,
+      "kl_p95": 0.0004989826702512801,
+      "kl_p99": 0.0014514337526634336,
+      "kl_max": 0.002963451331717111,
+      "envelope_failing_terms": [],
+      "numerical_envelope_passed": true,
+      "ownership_gate_terms": {
+        "clone_boundary_exact": true,
+        "scheduler_boundary_exact": true,
+        "scheduler_state_exact": false,
+        "source_immutable": true,
+        "lifecycle_exact": true,
+        "production_metadata_exact": true,
+        "sampler_route_exact": true,
+        "metrics_passed": true
+      },
+      "ownership_failing_terms": [
+        "scheduler_state_exact"
+      ],
+      "passed": false,
+      "scheduler_final_state_mismatches": {
+        "count": 120,
+        "component_counts": {
+          "kv.key": 15,
+          "kv.value": 15,
+          "linear.conv": 45,
+          "linear.recurrent": 45
+        },
+        "first": {
+          "component": "linear",
+          "layer": 4,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 163840,
+            "blake2b_128": "c171f8703df0e5adeb9d3bbf1c350149"
+          },
+          "reference": {
+            "nbytes": 163840,
+            "blake2b_128": "8fb4fbf6793e9e743310f9cc35e4d733"
+          }
+        }
+      },
+      "semantic_boundary_mismatches": [],
+      "final_state_exact_diagnostic": false,
+      "high_kl_rows_above_2e-2": []
+    }
+  },
+  "verdict": {
+    "passed_scopes": [
+      "heldout-general_ja",
+      "category-general_ja"
+    ],
+    "failed_scopes": [
+      "heldout-code",
+      "heldout-general_en",
+      "heldout-mixed_ja_en",
+      "category-code",
+      "category-general_en",
+      "category-mixed_ja_en"
+    ],
+    "ownership_failed_scopes": [
+      "heldout-code",
+      "heldout-general_en",
+      "heldout-mixed_ja_en",
+      "category-code",
+      "category-general_en",
+      "category-mixed_ja_en"
+    ],
+    "numerical_envelope_failed_scopes": [
+      "heldout-code"
+    ],
+    "all_passed": false,
+    "total_rows": 1024,
+    "total_top1_flips": 6,
+    "overall_top1_agreement": 0.994140625,
+    "binding_failing_term": "scheduler_state_exact",
+    "note": "All six active-lifecycle scopes fail the binding scheduler_state_exact term with 120 final-state component mismatches (15 kv.key + 15 kv.value + 45 conv + 45 recurrent); the prefix boundary state is exact in every scope. The two completed-lifecycle general_ja scopes pass all eight terms. heldout-code additionally exceeds the section 6.1 mean-KL (2.26e-3 vs 1e-3) and max-KL (0.275 vs 0.05) ceilings. Numerical top-1 is 1.000 in four scopes and 0.9844 in three, overall 0.9941. This is a W7900/gfx1100 gap versus the all-eight-scope gfx1151 packed-reference qualification."
+  },
+  "commands": [
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/heldout-code.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/heldout-general_en.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/heldout-general_ja.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/heldout-mixed_ja_en.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/category-code.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/category-general_en.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/category-general_ja.json",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --hardware-label 'AMD Radeon Pro W7900 (gfx1100)' --json /tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate/category-mixed_ja_en.json"
+  ],
+  "gfx1151_counterpart": "benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json",
+  "raw_artifacts": "/tmp/hipengine-v060-gfx1100-refresh-results/prefix-gate"
+}

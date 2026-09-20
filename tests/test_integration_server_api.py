@@ -21914,6 +21914,32 @@ def test_streaming_completion_prefers_backend_chunk_finish_details() -> None:
     }
 
 
+@pytest.mark.parametrize("mode", [None, "off", "radix"])
+def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
+    from hipengine.kvcache import PREFIX_CACHE_DEFAULT
+
+    monkeypatch.delenv("HIPENGINE_PREFIX_CACHE", raising=False)
+    assert PREFIX_CACHE_DEFAULT == "radix"
+    # The HTTP default stays off until its KV routes pass production gates.
+    assert ServerConfig(model="fake-path").prefix_cache == "off"
+    assert build_parser().parse_args(["--model", "fake-path"]).prefix_cache == "off"
+    if mode is not None:
+        monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", mode)
+    args = build_parser().parse_args(["--model", "fake-path"])
+    assert args.prefix_cache == (mode or "off")
+    for explicit in ("off", "radix"):
+        assert build_parser().parse_args(
+            ["--model", "fake-path", "--prefix-cache", explicit]
+        ).prefix_cache == explicit
+        app = create_app(
+            ServerConfig(model="fake-path", eager_load=False, prefix_cache=explicit),
+            llm=FakeLLM(),
+        )
+        assert app.state.hipengine_prefix_cache_mode == explicit
+    app = create_app(ServerConfig(model="fake-path", eager_load=False), llm=FakeLLM())
+    assert app.state.hipengine_prefix_cache_mode == "off"
+
+
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)

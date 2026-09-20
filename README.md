@@ -80,10 +80,9 @@ reading the input. Text generation is the speed of producing new tokens.
 The benchmark summary below is synchronized from the [benchmark report](benchmarks/README.md).
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-Measured tokens/s on each named host. **Prompt processing** measures input;
-**text generation** measures output. **MTP** is speculative decoding within
-qualified scopes. Dashes are unmeasured; context limits come from capacity
-tests.
+Tokens/s on each named host: **prompt processing** is input, **text generation**
+is output. **MTP** is speculative decoding in qualified scopes. Dashes are
+unmeasured; context limits are capacity tests.
 
 ### Performance
 
@@ -91,13 +90,16 @@ tests.
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
-| Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **868.6** | **27.9** | 39.7 | **176,128** |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
-**1.63x** its matched 24.36 tok/s AR, not the INT8 column.
+BF16 rows: September 20, `epyc`, 512/128 tokens, warmup + three runs.
+INT8: September 13. MTP/capacity not refreshed. Laguna: 4K prompts.
+35B GGUF MTP is opt-in; 27B MTP is **1.63x** its matched 24.36 tok/s AR,
+not either decode column.
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
