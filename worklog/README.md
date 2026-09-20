@@ -15,6 +15,7 @@ The approved design and migration gates are in
 | `worklog/entries/*.md` | Tracked immutable current entries. |
 | `WORKLOG-LEGACY.md` | Tracked byte-frozen journal through cutoff commit `7c7c18875`. |
 | `worklog/legacy-manifest.json` | Hash, byte, line, heading, and cutoff invariant for the frozen journal. |
+| `worklog/legacy-port-manifest.json` | Entry-to-commit mapping and source line ranges for the ported pre-cutoff entries. |
 | `WORKLOG.md` | Tracked GitHub/navigation page; never generated or appended per unit. |
 | `.worklog/WORKLOG.md` | Ignored local generated chronological view. |
 | `scripts/worklog.py` | Standard-library create/check/render/hook CLI. |
@@ -122,8 +123,8 @@ Rendering is atomic and never overwrites tracked root `WORKLOG.md`. The rendered
 view also includes unstaged entries from the working tree, so local work in
 progress shows up before it is committed; an entry that is not valid yet is
 skipped with a note on stderr. For routine handoff, inspect the latest relevant
-files in `worklog/entries/`; consult `WORKLOG-LEGACY.md` only for pre-cutoff
-evidence.
+files in `worklog/entries/`. Pre-cutoff history is available both as ported
+entries (front-matter `worker: legacy`) and as the frozen journal itself.
 
 ## Historical journal
 
@@ -137,6 +138,35 @@ Historical Git provenance remains available with:
 ```bash
 git log --follow -- WORKLOG-LEGACY.md
 ```
+
+## Ported pre-cutoff entries
+
+All 7,232 pre-cutoff entries from the frozen journal are also imported as
+individual Worklog2 entries under `worklog/entries/` with front-matter
+`worker: legacy`, `branch`/`worktree: pre-cutoff`, and `status: completed`.
+Each ported entry's filename timestamp and `base_commit` come from the first
+Git commit that appended it to the journal, recovered from the full patch
+history of `WORKLOG.md`/`WORKLOG-LEGACY.md`; repeated heading texts bind their
+file occurrences to append events by author date.
+
+Bodies are verbatim. Entries whose bodies contain lines that would break the
+one-title schema rule (for example pasted `# ` shell-output comments) carry
+the verbatim body inside a fenced block one backtick run longer than any fence
+in the body; the manifest flags these as `wrapped`. Timestamps are commit
+author dates in UTC; file order and commit order disagree around old union
+merges, which the manifest records as timestamp inversions.
+
+`worklog/legacy-port-manifest.json` records the full mapping: source line
+ranges, attributed commits and subjects, timestamps, wrapped flags, duplicate
+groups, and the anomaly lists (append-replay re-adds and in-place edit
+commits). Re-run the byte-exact verification with:
+
+```bash
+python3 scripts/worklog_port_legacy.py verify
+```
+
+The frozen journal remains the canonical byte-exact original; ported entries
+must always reconstruct it byte-for-byte.
 
 ## Branches older than Worklog2
 
