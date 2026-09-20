@@ -2,7 +2,7 @@
   "kind": "ledger",
   "meta": {
     "source": "docs/REFACTOR.md",
-    "headings": 399
+    "headings": 400
   },
   "rows": [
     {
@@ -1813,7 +1813,7 @@
         ],
         "flags_unread": [],
         "age_days": 15,
-        "body_chars": 781
+        "body_chars": 1560
       },
       "signals": [
         "states no removal condition"
@@ -1831,7 +1831,7 @@
         ]
       },
       "id": "ledger/2026-09-06-hipengine-mtp2-screen-unqualified-cells-16c84d2cda79",
-      "evidence_hash": "d3215c48bce8"
+      "evidence_hash": "065cda63c20f"
     },
     {
       "kind": "ledger",
@@ -1944,7 +1944,7 @@
       "kind": "ledger",
       "key": "2026-09-07-dual-c1-target-route-dispatch-singleton-e7bf54797b21",
       "title": "2026-09-07 Dual C1 target-route dispatch \u2014 singleton vs packed frontier",
-      "location": "docs/REFACTOR.md:7364",
+      "location": "docs/REFACTOR.md:7375",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json"
@@ -1973,7 +1973,7 @@
         ]
       },
       "id": "ledger/2026-09-07-dual-c1-target-route-dispatch-singleton-e7bf54797b21",
-      "evidence_hash": "ce7b42316327"
+      "evidence_hash": "869e0c6120cc"
     },
     {
       "kind": "ledger",
@@ -2042,7 +2042,7 @@
       "kind": "ledger",
       "key": "2026-09-07-ud-u1-f3-raw-rank-3-q4-k-selected-exper-33ab2743cef5",
       "title": "2026-09-07 UD-U1 F3 \u2014 raw rank-3 Q4_K selected-expert consumer is not registry-mediated",
-      "location": "docs/REFACTOR.md:7780",
+      "location": "docs/REFACTOR.md:7791",
       "evidence": {
         "paths_named": [
           "hipengine/loading/qwen35_gguf_admission.py",
@@ -2079,7 +2079,7 @@
         ]
       },
       "id": "ledger/2026-09-07-ud-u1-f3-raw-rank-3-q4-k-selected-exper-33ab2743cef5",
-      "evidence_hash": "f87a3631a299"
+      "evidence_hash": "edf50db157b3"
     },
     {
       "kind": "ledger",
@@ -2183,7 +2183,7 @@
       "kind": "ledger",
       "key": "2026-09-09-gguf-direct-int8-prefill-attention-spee-7be98833dcc4",
       "title": "2026-09-09 GGUF direct-INT8 prefill attention \u2014 speed fixed, numerics rejected, opt-in capacity lever",
-      "location": "docs/REFACTOR.md:7400",
+      "location": "docs/REFACTOR.md:7411",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2221,13 +2221,13 @@
         ]
       },
       "id": "ledger/2026-09-09-gguf-direct-int8-prefill-attention-spee-7be98833dcc4",
-      "evidence_hash": "34e12f4726a4"
+      "evidence_hash": "7954b3c6285c"
     },
     {
       "kind": "ledger",
       "key": "2026-09-09-int8-layer-outer-hidden-plane-alias-rou-becc1b11f792",
       "title": "2026-09-09 INT8 layer_outer hidden-plane alias \u2014 route-scoped gate pending promotion",
-      "location": "docs/REFACTOR.md:7383",
+      "location": "docs/REFACTOR.md:7394",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2263,7 +2263,7 @@
         ]
       },
       "id": "ledger/2026-09-09-int8-layer-outer-hidden-plane-alias-rou-becc1b11f792",
-      "evidence_hash": "fab3ff8e2c1d"
+      "evidence_hash": "0d43472496d6"
     },
     {
       "kind": "ledger",
@@ -2310,7 +2310,7 @@
       "kind": "ledger",
       "key": "2026-09-10-timesfm-kernel-families-lack-four-axis-4876f364f3e6",
       "title": "2026-09-10 TimesFM kernel families lack four-axis registry entries \u2014 open",
-      "location": "docs/REFACTOR.md:7660",
+      "location": "docs/REFACTOR.md:7671",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2339,13 +2339,13 @@
         ]
       },
       "id": "ledger/2026-09-10-timesfm-kernel-families-lack-four-axis-4876f364f3e6",
-      "evidence_hash": "665c6b23b74b"
+      "evidence_hash": "5b8cdf7bc44a"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-committed-profiler-traces-and-oversized-f322a12d4a0c",
       "title": "2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`",
-      "location": "docs/REFACTOR.md:7875",
+      "location": "docs/REFACTOR.md:7886",
       "evidence": {
         "paths_named": [
           "AGENTS.md",
@@ -2386,13 +2386,13 @@
         ]
       },
       "id": "ledger/2026-09-11-committed-profiler-traces-and-oversized-f322a12d4a0c",
-      "evidence_hash": "c27c8e7c6831"
+      "evidence_hash": "1548880445cf"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-mtp-verify-journal-allocation-cost-on-g-b0456d8a66f2",
       "title": "2026-09-11 MTP verify-journal allocation cost on gfx1100",
-      "location": "docs/REFACTOR.md:7833",
+      "location": "docs/REFACTOR.md:7844",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2419,13 +2419,13 @@
         ]
       },
       "id": "ledger/2026-09-11-mtp-verify-journal-allocation-cost-on-g-b0456d8a66f2",
-      "evidence_hash": "c2f1672be52f"
+      "evidence_hash": "2c9eedabd3bc"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-surya-hip-runtime-direct-backend-import-62f98c9ab2c9",
       "title": "2026-09-11 Surya HIP runtime: direct backend imports \u2014 open",
-      "location": "docs/REFACTOR.md:8073",
+      "location": "docs/REFACTOR.md:8084",
       "evidence": {
         "paths_named": [
           "hipengine/runtime/evie.py",
@@ -2456,13 +2456,13 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-hip-runtime-direct-backend-import-62f98c9ab2c9",
-      "evidence_hash": "771af10cea52"
+      "evidence_hash": "19e6e00ad972"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-surya-kv-write-and-decode-dense-offset-2345037ce2bc",
       "title": "2026-09-11 Surya KV write and decode: dense offset scheme \u2014 closed 2026-09-13",
-      "location": "docs/REFACTOR.md:8086",
+      "location": "docs/REFACTOR.md:8097",
       "evidence": {
         "paths_named": [
           "scripts/surya_gpu_debug_attn.py",
@@ -2495,13 +2495,13 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-kv-write-and-decode-dense-offset-2345037ce2bc",
-      "evidence_hash": "e8283f6b1504"
+      "evidence_hash": "dae5391fc5cb"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-surya-vision-attention-quadratic-score-314f55f7544b",
       "title": "2026-09-11 Surya vision attention: quadratic score scratch \u2014 closed",
-      "location": "docs/REFACTOR.md:8123",
+      "location": "docs/REFACTOR.md:8134",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json",
@@ -2536,13 +2536,13 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-vision-attention-quadratic-score-314f55f7544b",
-      "evidence_hash": "e158b9af91d0"
+      "evidence_hash": "76928bbcd022"
     },
     {
       "kind": "ledger",
       "key": "2026-09-11-u6-ud-mtp-scope-pin-is-withheld-cd506dd65ff9",
       "title": "2026-09-11 U6 \u2014 UD MTP scope pin is withheld",
-      "location": "docs/REFACTOR.md:7852",
+      "location": "docs/REFACTOR.md:7863",
       "evidence": {
         "paths_named": [
           "docs/campaigns/UD-QUANTS.md",
@@ -2570,13 +2570,13 @@
         ]
       },
       "id": "ledger/2026-09-11-u6-ud-mtp-scope-pin-is-withheld-cd506dd65ff9",
-      "evidence_hash": "e8f5ccf81744"
+      "evidence_hash": "dabaa894046d"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-ar-decode-mode-eager-retained-as-a-diag-b172b2d0af2c",
       "title": "2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control",
-      "location": "docs/REFACTOR.md:7912",
+      "location": "docs/REFACTOR.md:7923",
       "evidence": {
         "paths_named": [
           "scripts/gguf_ar_eager_graph_equivalence.py",
@@ -2608,13 +2608,13 @@
         ]
       },
       "id": "ledger/2026-09-12-ar-decode-mode-eager-retained-as-a-diag-b172b2d0af2c",
-      "evidence_hash": "4c1af9b9c7ba"
+      "evidence_hash": "50bff5c4ddb7"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-gguf-automatic-context-sizing-knobs-5dcc0d79e76d",
       "title": "2026-09-12 GGUF automatic context sizing knobs",
-      "location": "docs/REFACTOR.md:7701",
+      "location": "docs/REFACTOR.md:7712",
       "evidence": {
         "paths_named": [
           "hipengine/generation/qwen35_gguf.py"
@@ -2652,13 +2652,13 @@
         ]
       },
       "id": "ledger/2026-09-12-gguf-automatic-context-sizing-knobs-5dcc0d79e76d",
-      "evidence_hash": "161bb282a252"
+      "evidence_hash": "0b1c68a23068"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-gguf-serving-defaults-int8-kv-fp32-scal-eabb179881a5",
       "title": "2026-09-12 GGUF serving defaults: INT8 KV, fp32 scales, one slot",
-      "location": "docs/REFACTOR.md:7743",
+      "location": "docs/REFACTOR.md:7754",
       "evidence": {
         "paths_named": [
           "docs/API.md",
@@ -2704,13 +2704,13 @@
         ]
       },
       "id": "ledger/2026-09-12-gguf-serving-defaults-int8-kv-fp32-scal-eabb179881a5",
-      "evidence_hash": "6b1c711de861"
+      "evidence_hash": "b50aa870e0ea"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-mtp-scope-grant-on-the-c1-c8-server-ben-63209c868220",
       "title": "2026-09-12 `--mtp-scope-grant` on the c1-c8 server bench",
-      "location": "docs/REFACTOR.md:7935",
+      "location": "docs/REFACTOR.md:7946",
       "evidence": {
         "paths_named": [
           "scripts/gguf_mtp_c1c8_server_bench.py"
@@ -2739,13 +2739,13 @@
         ]
       },
       "id": "ledger/2026-09-12-mtp-scope-grant-on-the-c1-c8-server-ben-63209c868220",
-      "evidence_hash": "807068c37057"
+      "evidence_hash": "5a0db8e2f6fe"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-only-surya-reports-generationoutput-pro-413ba5474626",
       "title": "2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` \u2014 open",
-      "location": "docs/REFACTOR.md:8358",
+      "location": "docs/REFACTOR.md:8369",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2771,13 +2771,13 @@
         ]
       },
       "id": "ledger/2026-09-12-only-surya-reports-generationoutput-pro-413ba5474626",
-      "evidence_hash": "68dbaeda4a8a"
+      "evidence_hash": "117da871bf8c"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-paro-paged-attention-backend-pin-remova-f617bf161086",
       "title": "2026-09-12 PARO paged-attention backend pin - removal rejected",
-      "location": "docs/REFACTOR.md:7672",
+      "location": "docs/REFACTOR.md:7683",
       "evidence": {
         "paths_named": [
           "hipengine/kernels/hip_gfx1151/__init__.py",
@@ -2810,13 +2810,13 @@
         ]
       },
       "id": "ledger/2026-09-12-paro-paged-attention-backend-pin-remova-f617bf161086",
-      "evidence_hash": "29ae84f9abb9"
+      "evidence_hash": "8ff71ab4177b"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-surya-a4-page-has-no-torch-fp32-referen-8c1c47a29825",
       "title": "2026-09-12 Surya A4 page has no torch fp32 reference \u2014 open",
-      "location": "docs/REFACTOR.md:8343",
+      "location": "docs/REFACTOR.md:8354",
       "evidence": {
         "paths_named": [
           "tests/fixtures/surya/oracle_fullpage_protocol.json",
@@ -2849,13 +2849,13 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-a4-page-has-no-torch-fp32-referen-8c1c47a29825",
-      "evidence_hash": "878c803ca604"
+      "evidence_hash": "ce84a7de646a"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-surya-bench-suite-pages-clip-their-own-556acefa99d4",
       "title": "2026-09-12 Surya bench-suite pages clip their own text \u2014 closed 2026-09-13",
-      "location": "docs/REFACTOR.md:8151",
+      "location": "docs/REFACTOR.md:8162",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json",
@@ -2897,13 +2897,13 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-bench-suite-pages-clip-their-own-556acefa99d4",
-      "evidence_hash": "eebab0da0ddf"
+      "evidence_hash": "2b1381453086"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-surya-prefill-tiles-still-compute-the-m-4ef8a81679c1",
       "title": "2026-09-12 Surya prefill tiles still compute the masked-away keys \u2014 open",
-      "location": "docs/REFACTOR.md:8329",
+      "location": "docs/REFACTOR.md:8340",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -2932,13 +2932,13 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-prefill-tiles-still-compute-the-m-4ef8a81679c1",
-      "evidence_hash": "e2db6f99a669"
+      "evidence_hash": "08f2ec10a0b1"
     },
     {
       "kind": "ledger",
       "key": "2026-09-12-surya-text-prefill-quadratic-causal-sco-9cb739b9ec93",
       "title": "2026-09-12 Surya text prefill: quadratic causal score scratch \u2014 closed",
-      "location": "docs/REFACTOR.md:8179",
+      "location": "docs/REFACTOR.md:8190",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json",
@@ -2972,13 +2972,13 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-text-prefill-quadratic-causal-sco-9cb739b9ec93",
-      "evidence_hash": "5e0ff7eb03a0"
+      "evidence_hash": "934d26553d29"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-generation-registry-clears-cannot-be-re-2db3a4c3f069",
       "title": "2026-09-13 Generation-registry clears cannot be replayed \u2014 open",
-      "location": "docs/REFACTOR.md:8390",
+      "location": "docs/REFACTOR.md:8401",
       "evidence": {
         "paths_named": [
           "tests/conftest.py"
@@ -3008,13 +3008,13 @@
         ]
       },
       "id": "ledger/2026-09-13-generation-registry-clears-cannot-be-re-2db3a4c3f069",
-      "evidence_hash": "ab2bb723384c"
+      "evidence_hash": "92c167ecc313"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-q5-k-gate-up-wmma-prefill-pair-now-unre-b84b21d39c06",
       "title": "2026-09-13 Q5_K gate/up WMMA prefill pair \u2014 now unreachable in production",
-      "location": "docs/REFACTOR.md:7953",
+      "location": "docs/REFACTOR.md:7964",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -3043,13 +3043,13 @@
         ]
       },
       "id": "ledger/2026-09-13-q5-k-gate-up-wmma-prefill-pair-now-unre-b84b21d39c06",
-      "evidence_hash": "ba54842820e2"
+      "evidence_hash": "d7f941bf0811"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-q5t16-single-wave-verifier-rowtile-env-9e968a5202e2",
       "title": "2026-09-13 Q5T16 single-wave verifier rowtile \u2014 env kill switch",
-      "location": "docs/REFACTOR.md:7993",
+      "location": "docs/REFACTOR.md:8004",
       "evidence": {
         "paths_named": [
           "hipengine/kernels/hip_gfx1100/__init__.py"
@@ -3084,13 +3084,13 @@
         ]
       },
       "id": "ledger/2026-09-13-q5t16-single-wave-verifier-rowtile-env-9e968a5202e2",
-      "evidence_hash": "aaac0b273f15"
+      "evidence_hash": "e9b0f191914e"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-q8t16-shape-explicit-rowtile-admission-4d50d25a660a",
       "title": "2026-09-13 Q8T16 shape-explicit rowtile admission \u2014 env kill switch",
-      "location": "docs/REFACTOR.md:7973",
+      "location": "docs/REFACTOR.md:7984",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -3124,13 +3124,13 @@
         ]
       },
       "id": "ledger/2026-09-13-q8t16-shape-explicit-rowtile-admission-4d50d25a660a",
-      "evidence_hash": "ab5be9fc0f2d"
+      "evidence_hash": "c214b3f021df"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-rounded-add-rmsnorm-fixed-5120-leaf-env-a62be6e95168",
       "title": "2026-09-13 rounded add+rmsnorm fixed-5120 leaf \u2014 env kill switch",
-      "location": "docs/REFACTOR.md:8028",
+      "location": "docs/REFACTOR.md:8039",
       "evidence": {
         "paths_named": [
           "hipengine/kernels/hip_gfx1100/__init__.py"
@@ -3166,13 +3166,13 @@
         ]
       },
       "id": "ledger/2026-09-13-rounded-add-rmsnorm-fixed-5120-leaf-env-a62be6e95168",
-      "evidence_hash": "5b2d0282b0e2"
+      "evidence_hash": "76c8e8da94cc"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-strict-dense-iq-row-slab-covers-the-pro-6b9bf0cc8996",
       "title": "2026-09-13 strict dense IQ row slab covers the prompt rows \u2014 env kill switch",
-      "location": "docs/REFACTOR.md:8011",
+      "location": "docs/REFACTOR.md:8022",
       "evidence": {
         "paths_named": [
           "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py"
@@ -3209,13 +3209,13 @@
         ]
       },
       "id": "ledger/2026-09-13-strict-dense-iq-row-slab-covers-the-pro-6b9bf0cc8996",
-      "evidence_hash": "3fff4e740921"
+      "evidence_hash": "9813f25d9920"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-surya-attention-tile-shape-the-vision-e-12331f020659",
       "title": "2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly \u2014 open",
-      "location": "docs/REFACTOR.md:8266",
+      "location": "docs/REFACTOR.md:8277",
       "evidence": {
         "paths_named": [
           "2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json",
@@ -3263,7 +3263,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-attention-tile-shape-the-vision-e-12331f020659",
-      "evidence_hash": "260baf4bda81"
+      "evidence_hash": "2411a77c2e6c"
     },
     {
       "kind": "ledger",
@@ -3306,7 +3306,7 @@
       "kind": "ledger",
       "key": "2026-09-13-surya-lane-comparison-is-measured-one-p-e8705846b696",
       "title": "2026-09-13 Surya lane comparison is measured one process per lane \u2014 open",
-      "location": "docs/REFACTOR.md:8205",
+      "location": "docs/REFACTOR.md:8216",
       "evidence": {
         "paths_named": [
           "benchmarks/README.md",
@@ -3345,13 +3345,13 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-lane-comparison-is-measured-one-p-e8705846b696",
-      "evidence_hash": "8dedce47f872"
+      "evidence_hash": "c79b39b2b6f1"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-surya-tile-shape-4096-patch-spikes-have-8ef38fc749fa",
       "title": "2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism \u2014 open",
-      "location": "docs/REFACTOR.md:8231",
+      "location": "docs/REFACTOR.md:8242",
       "evidence": {
         "paths_named": [
           "scripts/surya_vision_tiling_cost.py"
@@ -3384,13 +3384,13 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-tile-shape-4096-patch-spikes-have-8ef38fc749fa",
-      "evidence_hash": "99fc12c961a4"
+      "evidence_hash": "e11772eeda74"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-surya-tile-shape-grid-divisibility-was-06a00c6437ff",
       "title": "2026-09-13 Surya tile shape: grid divisibility was tested and rejected",
-      "location": "docs/REFACTOR.md:8221",
+      "location": "docs/REFACTOR.md:8232",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -3418,13 +3418,13 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-tile-shape-grid-divisibility-was-06a00c6437ff",
-      "evidence_hash": "39128f5904f8"
+      "evidence_hash": "36141e447778"
     },
     {
       "kind": "ledger",
       "key": "2026-09-13-surya-vision-admission-is-gpu-only-and-ae3c5257c4ef",
       "title": "2026-09-13 Surya vision admission is GPU-only and reports runner errors \u2014 open",
-      "location": "docs/REFACTOR.md:8371",
+      "location": "docs/REFACTOR.md:8382",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -3453,7 +3453,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-vision-admission-is-gpu-only-and-ae3c5257c4ef",
-      "evidence_hash": "cdd3124f404b"
+      "evidence_hash": "ac4a6f68c4cf"
     },
     {
       "kind": "ledger",
@@ -3835,7 +3835,7 @@
       "kind": "ledger",
       "key": "compact-scoreboard-2-line-headroom-at-498-500-1574446b396b",
       "title": "Compact scoreboard: 2-line headroom at 498/500",
-      "location": "docs/REFACTOR.md:8407",
+      "location": "docs/REFACTOR.md:8418",
       "evidence": {
         "paths_named": [
           "HARNESSES.md",
@@ -3879,13 +3879,13 @@
         ]
       },
       "id": "ledger/compact-scoreboard-2-line-headroom-at-498-500-1574446b396b",
-      "evidence_hash": "73e630a29213"
+      "evidence_hash": "8f9285056234"
     },
     {
       "kind": "ledger",
       "key": "concurrent-prompt-activation-is-refused-instead-of-2e93a5d18f0b",
       "title": "Concurrent prompt activation is refused instead of overlapped (open 2026-09-17)",
-      "location": "docs/REFACTOR.md:8619",
+      "location": "docs/REFACTOR.md:8630",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -3912,7 +3912,7 @@
         ]
       },
       "id": "ledger/concurrent-prompt-activation-is-refused-instead-of-2e93a5d18f0b",
-      "evidence_hash": "48c80b566ff4"
+      "evidence_hash": "7cc3bbaf39f9"
     },
     {
       "kind": "ledger",
@@ -4397,7 +4397,7 @@
       "kind": "ledger",
       "key": "full-vocabulary-native-sampler-fallback-and-gguf-p-3d651e7da2c1",
       "title": "Full-vocabulary native sampler fallback and GGUF placement (2026-09-21)",
-      "location": "docs/REFACTOR.md:8824",
+      "location": "docs/REFACTOR.md:8835",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -4428,7 +4428,7 @@
         ]
       },
       "id": "ledger/full-vocabulary-native-sampler-fallback-and-gguf-p-3d651e7da2c1",
-      "evidence_hash": "6fa86f13f2f2"
+      "evidence_hash": "cd7522f75c8c"
     },
     {
       "kind": "ledger",
@@ -5760,7 +5760,7 @@
       "kind": "ledger",
       "key": "hipengine-gguf-gapped-gather-kill-switch-for-the-g-f70bcb5f7712",
       "title": "`HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)",
-      "location": "docs/REFACTOR.md:8753",
+      "location": "docs/REFACTOR.md:8764",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -5795,7 +5795,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-gapped-gather-kill-switch-for-the-g-f70bcb5f7712",
-      "evidence_hash": "0309b8b36d8e"
+      "evidence_hash": "02c489e72927"
     },
     {
       "kind": "ledger",
@@ -5837,7 +5837,7 @@
       "kind": "ledger",
       "key": "hipengine-gguf-int8-prefill-slot-local-aotriton-pr-1df87bb83715",
       "title": "`HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` \u2014 promoted, remove after soak",
-      "location": "docs/REFACTOR.md:7487",
+      "location": "docs/REFACTOR.md:7498",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json"
@@ -5865,7 +5865,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-int8-prefill-slot-local-aotriton-pr-1df87bb83715",
-      "evidence_hash": "7a6f90a5b18a"
+      "evidence_hash": "53551afa8e32"
     },
     {
       "kind": "ledger",
@@ -6474,7 +6474,7 @@
       "kind": "ledger",
       "key": "iq4-xs-t16-replacement-layout-gguf-iq4-xs-t16-1d1bcfd1e21f",
       "title": "IQ4_XS T16 replacement layout (`GGUF_IQ4_XS_T16_*`)",
-      "location": "docs/REFACTOR.md:8050",
+      "location": "docs/REFACTOR.md:8061",
       "evidence": {
         "paths_named": [
           "docs/campaigns/UD-GFX1151-OPTIMIZE.md",
@@ -6509,7 +6509,7 @@
         ]
       },
       "id": "ledger/iq4-xs-t16-replacement-layout-gguf-iq4-xs-t16-1d1bcfd1e21f",
-      "evidence_hash": "1ef610c1669c"
+      "evidence_hash": "0de492e15882"
     },
     {
       "kind": "ledger",
@@ -10113,7 +10113,7 @@
       "kind": "ledger",
       "key": "packed-execution-workspace-doubles-the-declared-co-22e34bdd6bad",
       "title": "Packed execution workspace doubles the declared-context page budget",
-      "location": "docs/REFACTOR.md:7461",
+      "location": "docs/REFACTOR.md:7472",
       "evidence": {
         "paths_named": [
           "2026-09-07-rx7900xtx-int8-repair-capacity-audit.json",
@@ -10149,7 +10149,7 @@
         ]
       },
       "id": "ledger/packed-execution-workspace-doubles-the-declared-co-22e34bdd6bad",
-      "evidence_hash": "e7bbab013ba4"
+      "evidence_hash": "ef94792ef874"
     },
     {
       "kind": "ledger",
@@ -10270,7 +10270,7 @@
       "kind": "ledger",
       "key": "pf-1d-mmq-tile-template-2026-09-02-f0b62b60bc62",
       "title": "PF-1d MMQ tile template (2026-09-02)",
-      "location": "docs/REFACTOR.md:7502",
+      "location": "docs/REFACTOR.md:7513",
       "evidence": {
         "paths_named": [
           "gguf_q8_0_mmq_prefill.hip",
@@ -10302,13 +10302,13 @@
         ]
       },
       "id": "ledger/pf-1d-mmq-tile-template-2026-09-02-f0b62b60bc62",
-      "evidence_hash": "23187d5e20f0"
+      "evidence_hash": "a7f9a9d50cf9"
     },
     {
       "kind": "ledger",
       "key": "pf-4-lever-2-fused-combine-is-opt-in-pending-valid-9c3025e79ebb",
       "title": "PF-4 lever 2 fused combine is opt-in pending valid A/B (2026-09-04)",
-      "location": "docs/REFACTOR.md:7534",
+      "location": "docs/REFACTOR.md:7545",
       "evidence": {
         "paths_named": [
           "hipengine/runtime/qwen4_exp_runner.py",
@@ -10348,7 +10348,7 @@
         ]
       },
       "id": "ledger/pf-4-lever-2-fused-combine-is-opt-in-pending-valid-9c3025e79ebb",
-      "evidence_hash": "59554e3867ad"
+      "evidence_hash": "96bff6fc2feb"
     },
     {
       "kind": "ledger",
@@ -10639,7 +10639,7 @@
       "kind": "ledger",
       "key": "priming-source-refusals-that-still-zero-the-budget-1ee82413bff2",
       "title": "Priming-source refusals that still zero the budget (open 2026-09-19)",
-      "location": "docs/REFACTOR.md:8657",
+      "location": "docs/REFACTOR.md:8668",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json",
@@ -10688,7 +10688,7 @@
         ]
       },
       "id": "ledger/priming-source-refusals-that-still-zero-the-budget-1ee82413bff2",
-      "evidence_hash": "cd05f3aa5be8"
+      "evidence_hash": "e50dc39bddc4"
     },
     {
       "kind": "ledger",
@@ -10722,9 +10722,45 @@
     },
     {
       "kind": "ledger",
+      "key": "provider-prefix-checkpoint-rollback-c64d0b1836f6",
+      "title": "Provider Prefix Checkpoint Rollback",
+      "location": "docs/REFACTOR.md:8862",
+      "evidence": {
+        "paths_named": [
+          "scripts/int8_mtp_prefix_gate.py"
+        ],
+        "paths_missing": [],
+        "flags_named": [
+          "HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES"
+        ],
+        "flags_unread": [],
+        "age_days": null,
+        "body_chars": 802
+      },
+      "signals": [
+        "no date in entry"
+      ],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES",
+          "scripts/int8_mtp_prefix_gate.py"
+        ],
+        "tokens": [
+          "checkpoint",
+          "prefix",
+          "provider",
+          "rollback"
+        ]
+      },
+      "id": "ledger/provider-prefix-checkpoint-rollback-c64d0b1836f6",
+      "evidence_hash": "7484df862676"
+    },
+    {
+      "kind": "ledger",
       "key": "q8-mmq-policy-planes-is-variant-scoped-2026-09-03-14e393a08b04",
       "title": "Q8 MMQ `policy.planes` is variant-scoped (2026-09-03)",
-      "location": "docs/REFACTOR.md:7512",
+      "location": "docs/REFACTOR.md:7523",
       "evidence": {
         "paths_named": [
           "2026-09-03-...-pf1-admission-suite-reconciliation.json"
@@ -10756,7 +10792,7 @@
         ]
       },
       "id": "ledger/q8-mmq-policy-planes-is-variant-scoped-2026-09-03-14e393a08b04",
-      "evidence_hash": "44d5bd2ca7d0"
+      "evidence_hash": "3a96ca82bffe"
     },
     {
       "kind": "ledger",
@@ -11348,7 +11384,7 @@
       "kind": "ledger",
       "key": "qwen4exp-gr-wave-scale-production-rollback-da2611d08cc3",
       "title": "Qwen4Exp GR wave-scale production rollback",
-      "location": "docs/REFACTOR.md:7646",
+      "location": "docs/REFACTOR.md:7657",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11377,7 +11413,7 @@
         ]
       },
       "id": "ledger/qwen4exp-gr-wave-scale-production-rollback-da2611d08cc3",
-      "evidence_hash": "79b4cc5c4599"
+      "evidence_hash": "f151d6ed59dd"
     },
     {
       "kind": "ledger",
@@ -11418,7 +11454,7 @@
       "kind": "ledger",
       "key": "qwen4exp-h256-wave-sparse-rows-2026-09-05-48ebcc5db47b",
       "title": "Qwen4Exp H256 wave sparse rows (2026-09-05)",
-      "location": "docs/REFACTOR.md:7563",
+      "location": "docs/REFACTOR.md:7574",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11447,7 +11483,7 @@
         ]
       },
       "id": "ledger/qwen4exp-h256-wave-sparse-rows-2026-09-05-48ebcc5db47b",
-      "evidence_hash": "3d06fcd96fe6"
+      "evidence_hash": "6000429ac237"
     },
     {
       "kind": "ledger",
@@ -11657,7 +11693,7 @@
       "kind": "ledger",
       "key": "qwen4exp-q4-bundled-publication-2026-09-05-439fa17844ba",
       "title": "Qwen4Exp Q4 bundled publication (2026-09-05)",
-      "location": "docs/REFACTOR.md:7574",
+      "location": "docs/REFACTOR.md:7585",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11684,13 +11720,13 @@
         ]
       },
       "id": "ledger/qwen4exp-q4-bundled-publication-2026-09-05-439fa17844ba",
-      "evidence_hash": "dd52b25de2ea"
+      "evidence_hash": "c82be5e6fb5d"
     },
     {
       "kind": "ledger",
       "key": "qwen4exp-q4-larger-row-batch-screen-rejected-3e01d4503038",
       "title": "Qwen4Exp Q4 larger row-batch screen rejected",
-      "location": "docs/REFACTOR.md:7619",
+      "location": "docs/REFACTOR.md:7630",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11717,7 +11753,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q4-larger-row-batch-screen-rejected-3e01d4503038",
-      "evidence_hash": "617150d7f66c"
+      "evidence_hash": "aaf88121493e"
     },
     {
       "kind": "ledger",
@@ -11789,7 +11825,7 @@
       "kind": "ledger",
       "key": "qwen4exp-q4-shared-activation-output-pair-admissio-d66f51cbc258",
       "title": "Qwen4Exp Q4 shared-activation output-pair admission",
-      "location": "docs/REFACTOR.md:7606",
+      "location": "docs/REFACTOR.md:7617",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11819,7 +11855,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q4-shared-activation-output-pair-admissio-d66f51cbc258",
-      "evidence_hash": "0449cbb32c40"
+      "evidence_hash": "f5d6c9af1b8b"
     },
     {
       "kind": "ledger",
@@ -11892,7 +11928,7 @@
       "kind": "ledger",
       "key": "qwen4exp-q5-1-output-pair-reuse-2026-09-05-b6df7b091773",
       "title": "Qwen4Exp Q5_1 output-pair reuse (2026-09-05)",
-      "location": "docs/REFACTOR.md:7583",
+      "location": "docs/REFACTOR.md:7594",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -11921,7 +11957,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q5-1-output-pair-reuse-2026-09-05-b6df7b091773",
-      "evidence_hash": "ffeba87bdc42"
+      "evidence_hash": "20eb1814d503"
     },
     {
       "kind": "ledger",
@@ -12069,7 +12105,7 @@
       "kind": "ledger",
       "key": "qwen4exp-q5-k-grouped-row4-candidate-2026-09-05-a5de400077f2",
       "title": "Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)",
-      "location": "docs/REFACTOR.md:7554",
+      "location": "docs/REFACTOR.md:7565",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -12098,7 +12134,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q5-k-grouped-row4-candidate-2026-09-05-a5de400077f2",
-      "evidence_hash": "016567899939"
+      "evidence_hash": "f0301349c95a"
     },
     {
       "kind": "ledger",
@@ -12314,7 +12350,7 @@
       "kind": "ledger",
       "key": "qwen4exp-q8-wave-scale-rollback-46bd4cfe0331",
       "title": "Qwen4Exp Q8 wave-scale rollback",
-      "location": "docs/REFACTOR.md:7630",
+      "location": "docs/REFACTOR.md:7641",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -12342,7 +12378,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q8-wave-scale-rollback-46bd4cfe0331",
-      "evidence_hash": "118874cf0b7d"
+      "evidence_hash": "57fe081e17a1"
     },
     {
       "kind": "ledger",
@@ -12492,7 +12528,7 @@
       "kind": "ledger",
       "key": "qwen4exp-register-state-serial-gdn-rollback-b7f1389e7760",
       "title": "Qwen4Exp register-state serial GDN rollback",
-      "location": "docs/REFACTOR.md:7592",
+      "location": "docs/REFACTOR.md:7603",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -12522,7 +12558,7 @@
         ]
       },
       "id": "ledger/qwen4exp-register-state-serial-gdn-rollback-b7f1389e7760",
-      "evidence_hash": "f7d0fce72703"
+      "evidence_hash": "37e4991e86e7"
     },
     {
       "kind": "ledger",
@@ -13309,7 +13345,7 @@
       "kind": "ledger",
       "key": "slot-local-int8-oracle-prefill-aotriton-admission-c275fb456ec1",
       "title": "Slot-local INT8 oracle prefill AOTriton admission flag",
-      "location": "docs/REFACTOR.md:7443",
+      "location": "docs/REFACTOR.md:7454",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -13340,7 +13376,7 @@
         ]
       },
       "id": "ledger/slot-local-int8-oracle-prefill-aotriton-admission-c275fb456ec1",
-      "evidence_hash": "c0ff0987360d"
+      "evidence_hash": "7e3fff9594c2"
     },
     {
       "kind": "ledger",
@@ -13878,7 +13914,7 @@
       "kind": "ledger",
       "key": "streaming-consumer-pays-one-threadpool-round-trip-9f20f37a012c",
       "title": "Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)",
-      "location": "docs/REFACTOR.md:8601",
+      "location": "docs/REFACTOR.md:8612",
       "evidence": {
         "paths_named": [
           "hipengine/server/api.py",
@@ -13914,7 +13950,7 @@
         ]
       },
       "id": "ledger/streaming-consumer-pays-one-threadpool-round-trip-9f20f37a012c",
-      "evidence_hash": "a329d5fd29a8"
+      "evidence_hash": "1daf9ccebddd"
     },
     {
       "kind": "ledger",
@@ -14162,7 +14198,7 @@
       "kind": "ledger",
       "key": "two-mtp-entry-points-disagree-on-the-sampling-cont-dbe10f87f2e1",
       "title": "Two MTP entry points disagree on the sampling contract (open 2026-09-19)",
-      "location": "docs/REFACTOR.md:8790",
+      "location": "docs/REFACTOR.md:8801",
       "evidence": {
         "paths_named": [
           "qwen35_gguf_mtp2.py"
@@ -14196,13 +14232,13 @@
         ]
       },
       "id": "ledger/two-mtp-entry-points-disagree-on-the-sampling-cont-dbe10f87f2e1",
-      "evidence_hash": "2b0c211c75ea"
+      "evidence_hash": "e08cef2a0af6"
     },
     {
       "kind": "ledger",
       "key": "ud-u1-invocation-ownership-follow-up-5bc2c782077b",
       "title": "UD-U1 invocation ownership follow-up",
-      "location": "docs/REFACTOR.md:7802",
+      "location": "docs/REFACTOR.md:7813",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -14226,7 +14262,7 @@
         ]
       },
       "id": "ledger/ud-u1-invocation-ownership-follow-up-5bc2c782077b",
-      "evidence_hash": "ef85f21b05ad"
+      "evidence_hash": "ecb50dd2844b"
     },
     {
       "kind": "ledger",
@@ -14342,7 +14378,7 @@
       "kind": "ledger",
       "key": "vibevoice-tts-batch-the-cfg-positive-and-negative-f16472f73f18",
       "title": "VibeVoice-TTS: batch the CFG positive and negative LM branches (open, kernel-ABI change)",
-      "location": "docs/REFACTOR.md:8509",
+      "location": "docs/REFACTOR.md:8520",
       "evidence": {
         "paths_named": [
           "docs/EXECUTION-PROFILES.md"
@@ -14377,13 +14413,13 @@
         ]
       },
       "id": "ledger/vibevoice-tts-batch-the-cfg-positive-and-negative-f16472f73f18",
-      "evidence_hash": "0502efd350ac"
+      "evidence_hash": "82b65c61d501"
     },
     {
       "kind": "ledger",
       "key": "vibevoice-tts-lm-decode-gate-up-at-threads-64-reje-f7837bed85c4",
       "title": "VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality, ~1.2x)",
-      "location": "docs/REFACTOR.md:8458",
+      "location": "docs/REFACTOR.md:8469",
       "evidence": {
         "paths_named": [
           "vibevoice_qwen2.py"
@@ -14417,13 +14453,13 @@
         ]
       },
       "id": "ledger/vibevoice-tts-lm-decode-gate-up-at-threads-64-reje-f7837bed85c4",
-      "evidence_hash": "0e8673ef4b40"
+      "evidence_hash": "6c8cda40add1"
     },
     {
       "kind": "ledger",
       "key": "vibevoice-tts-per-step-diffusion-d2h-readback-reso-962eb52cba04",
       "title": "VibeVoice-TTS: per-step diffusion D2H readback (resolved 2026-09-16)",
-      "location": "docs/REFACTOR.md:8583",
+      "location": "docs/REFACTOR.md:8594",
       "evidence": {
         "paths_named": [
           "worklog/entries/20260916T033657.511650Z-lhl-vibevoice-tts-device-solver-loop-bd1697.md",
@@ -14458,13 +14494,13 @@
         ]
       },
       "id": "ledger/vibevoice-tts-per-step-diffusion-d2h-readback-reso-962eb52cba04",
-      "evidence_hash": "1a1bba4f5900"
+      "evidence_hash": "3caad5d5569e"
     },
     {
       "kind": "ledger",
       "key": "vibevoice-tts-semantic-encoder-rows-1-gemv-dispatc-9b95802991fa",
       "title": "VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch (rejected on quality)",
-      "location": "docs/REFACTOR.md:8428",
+      "location": "docs/REFACTOR.md:8439",
       "evidence": {
         "paths_named": [
           "kernels/hip_gfx1100/vibevoice/registered.py"
@@ -14500,13 +14536,13 @@
         ]
       },
       "id": "ledger/vibevoice-tts-semantic-encoder-rows-1-gemv-dispatc-9b95802991fa",
-      "evidence_hash": "593331409beb"
+      "evidence_hash": "73e5dd4677a4"
     },
     {
       "kind": "ledger",
       "key": "vibevoice-tts-the-model-is-bandwidth-bound-and-tha-c036bf078526",
       "title": "VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work",
-      "location": "docs/REFACTOR.md:8551",
+      "location": "docs/REFACTOR.md:8562",
       "evidence": {
         "paths_named": [
           "vibevoice_tts_diffusion.py"
@@ -14541,7 +14577,7 @@
         ]
       },
       "id": "ledger/vibevoice-tts-the-model-is-bandwidth-bound-and-tha-c036bf078526",
-      "evidence_hash": "91c58df7e9c6"
+      "evidence_hash": "e01b2b94f23c"
     },
     {
       "kind": "ledger",

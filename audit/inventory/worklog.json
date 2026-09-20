@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10590,
-    "current": 3358,
+    "entries": 10602,
+    "current": 3370,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1076,
+    "rows": 1077,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 931
+      "status": 932
     }
   },
   "rows": [
@@ -40286,14 +40286,14 @@
         "written": "2026-09-20",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- Wire public serving admission without representing a BF16 evidence row as\n  INT8 evidence. Existing approximate-KV qualification remains independent:\n  the local gfx1151 artifact has a historical BF16-relative INT8 quality\n  rejection, which same-INT8 AR parity does not overturn.\n- Packed multi-request target verification is still BF16-only. Do not advertise\n  dense C1 target support as physical INT8 c>N support.\n- Compact DMS requires integration of its own transactional snapshots,\n  eviction/compaction state, and per-head spans with target journal commit and\n  rollback; cursor reset alone ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7.md",
@@ -40309,7 +40309,7 @@
         ]
       },
       "id": "worklog/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7",
-      "evidence_hash": "1ccdfaaa6300"
+      "evidence_hash": "c03d0bdeec08"
     },
     {
       "kind": "worklog",
@@ -40398,14 +40398,14 @@
         "written": "2026-09-20",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- Finish prefix-on INT8 validation in coordination with the prefix worker's\n  newly discovered cached-prefix/oracle repair; do not mutate the same runner\n  concurrently.\n- Packed INT8 MTP and compact-DMS transactions are still separate\n  implementations. Current multi-choice behavior is a supported AR fallback,\n  not a claim of physical packed INT8 verification.\n- Run no-override public validation on a storage-supported artifact/host and\n  assess current approximate-KV quality separately from MTP correctness.\n- Continue the checklist's long natural prompts, resource pressure, provider\n  restor",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T175640.564502Z-lhl-int8-mtp-public-serving-df9489.md",
@@ -40423,7 +40423,7 @@
         ]
       },
       "id": "worklog/20260920T175640.564502Z-lhl-int8-mtp-public-serving-df9489",
-      "evidence_hash": "de177795e253"
+      "evidence_hash": "17aff7a8c965"
     },
     {
       "kind": "worklog",
@@ -40437,14 +40437,14 @@
         "written": "2026-09-20",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- Repair resumable INT8 provider priming. Development is isolated in\n  `/tmp/hipengine-int8-priming` while the prefix worker owns the shared runner.\n- Complete prefix-on and resource-pressure validation after that worker's\n  INT8 prefix repair is committed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T182156.489469Z-lhl-int8-mtp-w7900-public-gate-f8951d.md",
@@ -40462,7 +40462,7 @@
         ]
       },
       "id": "worklog/20260920T182156.489469Z-lhl-int8-mtp-w7900-public-gate-f8951d",
-      "evidence_hash": "cc537670f579"
+      "evidence_hash": "27074ab167b9"
     },
     {
       "kind": "worklog",
@@ -40501,6 +40501,44 @@
       },
       "id": "worklog/20260920T205715.337515Z-lhl-size-the-deferred-mtp-startup-check-at-28-gib-fr-8ca75c",
       "evidence_hash": "66fc4bd99cdd"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260920T221926.100328Z-lhl-mtp-prefix-checkpoint-reclamation-12e3b8",
+      "title": "Tie provider checkpoint lifetime to target eviction and adapter close",
+      "location": "worklog/entries/20260920T221926.100328Z-lhl-mtp-prefix-checkpoint-reclamation-12e3b8.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "mtp-prefix-checkpoint-reclamation",
+        "written": "2026-09-20",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Locate and repair the remaining non-checkpoint model-lifetime allocations.\n- Shared byte-budget enforcement for provider snapshots remains separate from\n  their now-bounded count and correctly coupled eviction/release.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260920T221926.100328Z-lhl-mtp-prefix-checkpoint-reclamation-12e3b8.md",
+        "refs": [],
+        "tokens": [
+          "adapter",
+          "checkpoint",
+          "close",
+          "eviction",
+          "lifetime",
+          "provider",
+          "target",
+          "tie"
+        ]
+      },
+      "id": "worklog/20260920T221926.100328Z-lhl-mtp-prefix-checkpoint-reclamation-12e3b8",
+      "evidence_hash": "c42854bee52c"
     }
   ]
 }
