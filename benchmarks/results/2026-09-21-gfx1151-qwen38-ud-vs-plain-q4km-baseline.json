@@ -1,0 +1,566 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_qwen38_ud_vs_plain_q4km_same_session_baseline",
+  "created_at": "2026-09-21T08:30:00+09:00",
+  "status": "measured_diagnostic",
+  "performance_claim": false,
+  "claim_limitation": "Throughput numbers are measured with full provenance, but the public sweep marks publication as requiring separately linked profile quality and serving gates. No benchmark rollup row is added and no promotion follows from this artifact.",
+  "question": "No current Qwen3.8-27B UD row existed for the zbook host. Measure the UD-vs-plain Q4_K_M gap for this host in one thermal window, because the published plain row was recorded on a different physical machine and cannot serve as a baseline here.",
+  "host": {
+    "host_name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "system": "Framework Desktop / laptop chassis, AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "gpu_max_hw_queues": 2,
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_installed_dir": [
+      "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    ],
+    "power_dpm_force_performance_level": "auto",
+    "cpu_scaling_governor": "performance",
+    "tuned_profile": "accelerator-performance",
+    "gpu_processes_during_run": 0,
+    "lane_note": "This is the zbook lane, not the desktop gfx1151 lane. The two are separate physical machines with the same GPU architecture (see host_lane below); docs/OPTIMIZATION.md section 2 makes them independent lanes and forbids reporting their absolute rates as an old-to-new comparison."
+  },
+  "protocol": {
+    "harness": "scripts/qwen38_gfx1151_readme_sweep.py",
+    "prompt_lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "decode_tokens": 128,
+    "max_sequence_length": 8192,
+    "warmups": 1,
+    "repetitions": 3,
+    "session": "one resident production/BF16 C1 session per shape, capacity 8192",
+    "prefill": "use_bulk_prefill=True, bulk_attention_mode=bulk, use_wmma_prefill=True, prefill_chunk_size=0",
+    "decode": "graph replay, one step per replay, graph_steps_per_replay=1",
+    "workload": "repeated token 9707",
+    "environment_note": "Both arms ran back to back under one /tmp/ud-baseline/run_pair.sh invocation. Protocol defaults of the harness are identical to the recorded 2026-09-20 row (512 1024 4096 / d128 / warmups 1 / reps 3 / capacity 8192), verified against argparse defaults.",
+    "runner": "/tmp/ud-baseline/run_pair.sh"
+  },
+  "arms": {
+    "plain": {
+      "name": "plain_q4_k_m",
+      "artifact": "/tmp/ud-baseline/plain_q4_k_m.json",
+      "artifact_sha256": "76a885358953454e2c967d1dc142ae014497ba4845798fdc566b464153a5b170",
+      "provenance": {
+        "hipengine_commit": "d3a5ccf0254af397abb172311d10394127b94273",
+        "collected_at": "2026-09-20T23:04:07.473995+00:00",
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+          "size_bytes": 17106775008,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8552863216,
+            17105726432
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/bin/python3",
+          "scripts/qwen38_gfx1151_readme_sweep.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--output",
+          "/tmp/ud-baseline/plain_q4_k_m.json"
+        ],
+        "environment": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+          "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+          "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+          "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+          "GPU_MAX_HW_QUEUES": "2"
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_installed_dir": [
+          "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+        ],
+        "build_profile": "public_profile_readme_sweep",
+        "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+        "warmups": 1,
+        "repetitions": 3,
+        "dirty": false
+      },
+      "profile": {
+        "requested": null,
+        "resolved": "production",
+        "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+      },
+      "graph_eager_gate": {
+        "prompts": 18,
+        "all_passed": true,
+        "all_ids_exact": true,
+        "all_final_logits_exact": true,
+        "all_state_exact": true
+      },
+      "summaries": {
+        "512": {
+          "prefill_tok_s": {
+            "samples": [
+              312.5395338469305,
+              311.9547820962634,
+              311.8491802385222
+            ],
+            "median": 311.9547820962634,
+            "stdev_pct_of_median": 0.11920283648869848
+          },
+          "decode_tok_s": {
+            "samples": [
+              11.632430918737418,
+              11.63671403475087,
+              11.634770707218141
+            ],
+            "median": 11.634770707218141,
+            "stdev_pct_of_median": 0.018432799726385077
+          },
+          "tracked_peak_allocated_gib": 37.42757194489241,
+          "owned_session_peak_gib": 19.809751085937023,
+          "hip_used_peak_sampled_gib": 28.793338775634766,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "1024": {
+          "prefill_tok_s": {
+            "samples": [
+              311.82248524005735,
+              310.72789467347036,
+              309.8126109286019
+            ],
+            "median": 310.72789467347036,
+            "stdev_pct_of_median": 0.323842606643974
+          },
+          "decode_tok_s": {
+            "samples": [
+              11.376475647612667,
+              11.373886506313728,
+              11.377501506758701
+            ],
+            "median": 11.376475647612667,
+            "stdev_pct_of_median": 0.01637576148379565
+          },
+          "tracked_peak_allocated_gib": 37.42757194489241,
+          "owned_session_peak_gib": 19.809751085937023,
+          "hip_used_peak_sampled_gib": 28.793338775634766,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "4096": {
+          "prefill_tok_s": {
+            "samples": [
+              297.230080414633,
+              297.0766427328784,
+              297.0182267916621
+            ],
+            "median": 297.0766427328784,
+            "stdev_pct_of_median": 0.03683252382357209
+          },
+          "decode_tok_s": {
+            "samples": [
+              11.560478112622521,
+              11.565571033660957,
+              11.428909756957964
+            ],
+            "median": 11.560478112622521,
+            "stdev_pct_of_median": 0.6701546903803884
+          },
+          "tracked_peak_allocated_gib": 37.42757194489241,
+          "owned_session_peak_gib": 19.809751085937023,
+          "hip_used_peak_sampled_gib": 28.85329818725586,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        }
+      }
+    },
+    "ud": {
+      "name": "ud_q4_k_m",
+      "artifact": "/tmp/ud-baseline/ud_q4_k_m.json",
+      "artifact_sha256": "d3c0824dc0e6dccad7a681c4d3c56f4b7fa1abb1113e18c384c74c20825cfd22",
+      "provenance": {
+        "hipengine_commit": "d3a5ccf0254af397abb172311d10394127b94273",
+        "collected_at": "2026-09-20T23:13:05.459129+00:00",
+        "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+          "size_bytes": 16464440224,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8231695824,
+            16463391648
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/bin/python3",
+          "scripts/qwen38_gfx1151_readme_sweep.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "--output",
+          "/tmp/ud-baseline/ud_q4_k_m.json"
+        ],
+        "environment": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+          "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+          "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+          "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+          "GPU_MAX_HW_QUEUES": "2"
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_installed_dir": [
+          "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+        ],
+        "build_profile": "public_profile_readme_sweep",
+        "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+        "warmups": 1,
+        "repetitions": 3,
+        "dirty": false
+      },
+      "profile": {
+        "requested": null,
+        "resolved": "production",
+        "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+      },
+      "graph_eager_gate": {
+        "prompts": 18,
+        "all_passed": true,
+        "all_ids_exact": true,
+        "all_final_logits_exact": true,
+        "all_state_exact": true
+      },
+      "summaries": {
+        "512": {
+          "prefill_tok_s": {
+            "samples": [
+              194.6839865173288,
+              194.8502803252689,
+              193.8879474619379
+            ],
+            "median": 194.6839865173288,
+            "stdev_pct_of_median": 0.26420410949846557
+          },
+          "decode_tok_s": {
+            "samples": [
+              7.907779104463705,
+              7.875826304377026,
+              7.8764583057798525
+            ],
+            "median": 7.8764583057798525,
+            "stdev_pct_of_median": 0.23193480111066467
+          },
+          "tracked_peak_allocated_gib": 36.60760276764631,
+          "owned_session_peak_gib": 18.98978190869093,
+          "hip_used_peak_sampled_gib": 27.879615783691406,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "1024": {
+          "prefill_tok_s": {
+            "samples": [
+              181.64415378584957,
+              179.9827525093615,
+              179.08641635224618
+            ],
+            "median": 179.9827525093615,
+            "stdev_pct_of_median": 0.7210685375398419
+          },
+          "decode_tok_s": {
+            "samples": [
+              7.718440961340183,
+              7.711584330851667,
+              7.720943943989733
+            ],
+            "median": 7.718440961340183,
+            "stdev_pct_of_median": 0.06277987981164497
+          },
+          "tracked_peak_allocated_gib": 36.60760276764631,
+          "owned_session_peak_gib": 18.98978190869093,
+          "hip_used_peak_sampled_gib": 27.879615783691406,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "4096": {
+          "prefill_tok_s": {
+            "samples": [
+              168.97257991749692,
+              167.97070818234565,
+              166.69222346171097
+            ],
+            "median": 167.97070818234565,
+            "stdev_pct_of_median": 0.6804585004027519
+          },
+          "decode_tok_s": {
+            "samples": [
+              7.751301120188089,
+              7.728541414878047,
+              7.706285116988595
+            ],
+            "median": 7.728541414878047,
+            "stdev_pct_of_median": 0.2912382752998526
+          },
+          "tracked_peak_allocated_gib": 36.60760276764631,
+          "owned_session_peak_gib": 18.98978190869093,
+          "hip_used_peak_sampled_gib": 27.9395751953125,
+          "finite_final_logits_all": true,
+          "final_token_ids": [
+            9707,
+            9707,
+            9707
+          ]
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "shape": "512/128",
+      "plain_prefill_tok_s": 311.9547820962634,
+      "ud_prefill_tok_s": 194.6839865173288,
+      "prefill_delta_pct": -37.59224166749494,
+      "plain_decode_tok_s": 11.634770707218141,
+      "ud_decode_tok_s": 7.8764583057798525,
+      "decode_delta_pct": -32.302419153878596,
+      "tracked_peak_saved_gib": 0.8199691772460938,
+      "owned_session_peak_saved_gib": 0.8199691772460938
+    },
+    {
+      "shape": "1024/128",
+      "plain_prefill_tok_s": 310.72789467347036,
+      "ud_prefill_tok_s": 179.9827525093615,
+      "prefill_delta_pct": -42.077053397958665,
+      "plain_decode_tok_s": 11.376475647612667,
+      "ud_decode_tok_s": 7.718440961340183,
+      "decode_delta_pct": -32.15437539340328,
+      "tracked_peak_saved_gib": 0.8199691772460938,
+      "owned_session_peak_saved_gib": 0.8199691772460938
+    },
+    {
+      "shape": "4096/128",
+      "plain_prefill_tok_s": 297.0766427328784,
+      "ud_prefill_tok_s": 167.97070818234565,
+      "prefill_delta_pct": -43.458796815143955,
+      "plain_decode_tok_s": 11.560478112622521,
+      "ud_decode_tok_s": 7.728541414878047,
+      "decode_delta_pct": -33.14687040115152,
+      "tracked_peak_saved_gib": 0.8199691772460938,
+      "owned_session_peak_saved_gib": 0.8199691772460938
+    }
+  ],
+  "memory": {
+    "plain_file_bytes": 17106775008,
+    "ud_file_bytes": 16464440224,
+    "file_bytes_saved": 642334784,
+    "note": "Tracked peak includes public session pools and the graph preflight, not only live model storage; the session-owned peak is recorded separately in each arm."
+  },
+  "execution_profile": {
+    "both_arms_resolved": "production",
+    "both_arms_manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+    "selections_compared": 10,
+    "selection_diffs_between_arms": 0,
+    "note": "Both arms resolved the identical production manifest with zero variant-selection differences, so the measured gap is not a variant-policy difference."
+  },
+  "route_diagnostic": {
+    "method": "scripts/gguf_quant_route_audit.py on both files; reads GGUF metadata and the tensor-info table only. No model was run, no device memory was allocated, no weights were read. The audit calls the same preflight the loader calls, so its route table describes the runtime plan rather than a guess; the call chain is recorded under \"runtime_call_chain\" below. This is still header/planner inspection, not a measurement.",
+    "artifact": "/tmp/ud-baseline/route_audit.json",
+    "plain": {
+      "artifact_preset_key": null,
+      "decode_repack_requested": true,
+      "decode_repack_enabled": true,
+      "routes_hip_gfx1151": {
+        "Q4_K": {
+          "gguf_q4_k_t16_v1": 288,
+          "raw-gguf-kernel": 1
+        },
+        "Q5_K": {
+          "gguf_q5_k_t16_v1": 48
+        },
+        "Q6_K": {
+          "gguf_q6_k_t16_qmicro_planar_v1": 41,
+          "gguf_q6_k_t16_v1": 24
+        },
+        "Q8_0": {
+          "raw-gguf-kernel": 1
+        },
+        "F32": {
+          "f32-resident": 449
+        }
+      },
+      "ar_slots": "851/851",
+      "sources_rejected": 0
+    },
+    "ud": {
+      "artifact_preset_key": "gguf_ud_q4_k_m",
+      "artifact_preset_fingerprint": "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f",
+      "artifact_preset_scopes": [
+        "ar",
+        "mtp"
+      ],
+      "decode_repack_requested": true,
+      "decode_repack_enabled": false,
+      "routes_hip_gfx1151": {
+        "Q4_K": {
+          "kernel:gguf_q4_k": 103,
+          "raw-gguf-kernel": 1
+        },
+        "Q5_K": {
+          "raw-gguf-kernel": 131
+        },
+        "Q6_K": {
+          "raw-gguf-kernel": 24
+        },
+        "Q8_0": {
+          "raw-gguf-kernel": 104
+        },
+        "Q3_K": {
+          "raw-gguf-kernel": 7
+        },
+        "IQ4_XS": {
+          "raw-gguf-kernel": 117
+        },
+        "IQ4_NL": {
+          "raw-gguf-kernel": 7
+        },
+        "IQ3_S": {
+          "raw-gguf-kernel": 4
+        },
+        "F32": {
+          "f32-resident": 353
+        }
+      },
+      "ar_slots": "851/851",
+      "sources_rejected": 0,
+      "identical_on_hip_gfx1100": true
+    },
+    "finding": "Every UD tensor except 103 Q4_K leaves routes to the generic raw-gguf-kernel path. The plain file keeps the tuned T16/planar layouts (gguf_q4_k_t16_v1, gguf_q5_k_t16_v1, gguf_q6_k_t16_qmicro_planar_v1); the UD file keeps none. The measured UD gap is downstream of this routing, not a property of the quantisation. This is the same routing shape the 2026-09-08 zbook route-gap diagnostic found at a much larger ratio; the campaign that closed most of that gap is docs/campaigns/UD-OPTIMIZED-ROUTE-PLAN.md (status: closed).",
+    "mechanism": {
+      "summary": "The model-wide raw-IQ decode-repack veto is applied before the planner runs, so the per-tensor eligibility mode never reaches the planner on the production AR path.",
+      "runtime_call_chain": [
+        "hipengine/loading/qwen35_gguf_materialize.py:885 - the loader calls preflight_qwen35_gguf_artifact() without repack_veto, so it is None",
+        "hipengine/loading/qwen35_gguf_admission.py:2393-2400 - repack_veto is None, so plan_flags[\"decode_repack\"] = decode_repack and not gguf_ar_decode_repack_veto(ar_types); UD carries IQ4_XS/IQ3_XXS-class raw-IQ AR tensors, so this is forced False",
+        "hipengine/loading/qwen35_gguf_materialize.py:444-452 - repack_eligibility resolves to the documented default \"per-tensor\", but use_decode_repack is already False because the caller passed decode_repack=False",
+        "hipengine/loading/qwen35_gguf_materialize.py:1298 - the per-tensor branch only clears decode_repack further; it can never restore it"
+      ],
+      "policy_promise": "hipengine/loading/qwen35_gguf_policy.py:94-104 documents HIPENGINE_UD_REPACK_ELIGIBILITY, whose default \"per-tensor\" is described as: \"a dense model carrying raw-IQ tensors no longer loses the T16/x8/planar layouts for its Q4/Q5/Q6/Q8 tensors\". On the production AR path that promise does not hold, because the veto is decided upstream of the planner.",
+      "env_ab_result": "Running the audit with HIPENGINE_UD_REPACK_ELIGIBILITY=per-tensor and =model-wide produces byte-identical route tables for this artifact. That is consistent with the call chain above and is the direct evidence that the knob is inert here, not merely that it was not set.",
+      "intent_status": "The model-wide behaviour is deliberate for raw-IQ rank-3 expert models (see the comment at qwen35_gguf_materialize.py:439-445: one compatible resident plan instead of mixing compressed rank-3 layouts with Q4-oriented T16 residents). Whether pre-applying it for a dense UD file is also intended is not stated anywhere in the code; the policy docstring says the opposite. Recorded as an open question, not a defect finding.",
+      "not_established": "Whether granting per-tensor eligibility to this artifact would recover any of the measured gap. That needs a layout change, its execution-profile correctness gate, and a measurement; none of it was done here."
+    },
+    "nextn_draft_block": {
+      "note": "Corrected: the route audit prints \"nextn map: validation=FAILED\", but that is the audit validating the UD draft block against the plain-file expectation because it calls build_qwen35_gguf_nextn_tensor_map(info, strict=False) without the artifact pin. It is not a runtime refusal and the UD draft block is not defective.",
+      "verified": [
+        "UD-Q4_K_M resolves preset gguf_ud_q4_k_m (fingerprint 5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f) with scopes (\"ar\", \"mtp\")",
+        "resolve_qwen35_gguf_nextn_draft_qtypes(preset) returns a pin, and build_qwen35_gguf_nextn_tensor_map(info, pinned_qtypes=pin) PASSES the strict build",
+        "the pinned UD draft types (eh_proj Q6_K, attn_q Q6_K, attn_k/attn_v Q8_0, attn_output Q6_K, ffn_gate/up/down Q6_K) are exactly the types the audit reported as mismatches"
+      ],
+      "open": "The minted U6 MTP certificate declares backend=hip_gfx1100, profile=production, context_max=1023, widths=c1, and its evidence artifacts are gfx1100 runs, yet resolve_qwen35_gguf_artifact_preset grants the MTP scope on any backend. No UD MTP arm was run on gfx1151 in this unit, so nothing is claimed about whether UD MTP works there."
+    }
+  },
+  "correctness": {
+    "graph_eager_gate_plain": {
+      "prompts": 18,
+      "all_passed": true,
+      "all_ids_exact": true,
+      "all_final_logits_exact": true,
+      "all_state_exact": true
+    },
+    "graph_eager_gate_ud": {
+      "prompts": 18,
+      "all_passed": true,
+      "all_ids_exact": true,
+      "all_final_logits_exact": true,
+      "all_state_exact": true
+    },
+    "note": "The harness refuses to emit timings unless all 18 category/heldout prompts match between the eager trajectory and the captured graph on generated ids, final full logits, and state fingerprint. Both arms passed. This is the harness self-check, not an independent numerical or serving gate."
+  },
+  "not_measured": [
+    "Numerical quality (KL / top-1) and serving gates: neither arm carries them, which is why performance_claim is false.",
+    "UD MTP: no UD speculative arm was run. The UD preset carries the MTP scope and its pinned draft map passes the strict build, but no gfx1151 UD MTP rate, exactness result, or speedup is claimed here.",
+    "Capacity above 8192 tokens and concurrency above 1.",
+    "Whether granting per-tensor repack eligibility to the UD artifact changes the measured gap.",
+    "The desktop gfx1151 lane: nothing here is a measurement of it, and its published plain row is not comparable to these rates."
+  ],
+  "source": {
+    "plain_sweep": "/tmp/ud-baseline/plain_q4_k_m.json",
+    "ud_sweep": "/tmp/ud-baseline/ud_q4_k_m.json",
+    "plain_log": "/tmp/ud-baseline/plain_q4_k_m.log",
+    "ud_log": "/tmp/ud-baseline/ud_q4_k_m.log",
+    "route_audit": "/tmp/ud-baseline/route_audit.json"
+  },
+  "host_lane": {
+    "note": "Both arms of this artifact ran on zbook, so the UD-vs-plain delta is a valid same-host comparison. The absolute rates are NOT comparable to the published Qwen3.8-27B plain Q4_K_M row, which was measured on a different physical machine.",
+    "published_plain_row": {
+      "artifact": "benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json",
+      "host_name": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "system": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+      "commit": "3e24311306b69e1b28eb147c2a33419ec1eff8fd",
+      "prefill_tok_s_512": 404.47369164654464,
+      "decode_tok_s_512": 12.150184451114498
+    },
+    "this_session_plain_arm": {
+      "host_name": "zbook",
+      "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+      "prefill_tok_s_512": 311.9547820962634,
+      "decode_tok_s_512": 11.634770707218141
+    },
+    "cross_host_difference_pct": {
+      "prefill": -22.87,
+      "decode": -4.24
+    },
+    "already_documented": "This is not an unexplained regression. docs/campaigns/UD-OPTIMIZED-ROUTE-PLAN.md item 0 records \"zbook floor for the plain file is 294.8 tok/s against the desktop-published 396.1\", and benchmarks/results/2026-09-08-zbook-ud-prefill-route-gap.json records zbook as \"AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; power- and thermal-limited)\" with plain decode 12.56 against a published 13.1. This session's 311.955 prefill sits just above the recorded zbook floor, which is the expected direction.",
+    "identically_configured_across_the_two_hosts": [
+      "harness and protocol (script byte-identical across 3e2431130..HEAD; argparse defaults match the published command)",
+      "execution profile, manifest sha256 c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc, and all 10 variant selections",
+      "model fingerprint e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5 and size 17106775008",
+      "HIP version 7.15.26333-0000000 and clang commit 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+      "every HIPENGINE_* and GPU_MAX_HW_QUEUES variable except HIPENGINE_COMPILER_VERSION_FILE / HIPENGINE_HIPCC_VERSION_FILE"
+    ],
+    "so_the_difference_is": "the physical host, not the configuration"
+  },
+  "prior_zbook_ud_context": {
+    "note": "Indicative only, and NOT a measured delta against this artifact: the protocols differ. Recorded because it shows how far the closed UD route campaign moved this file on this host.",
+    "artifact": "benchmarks/results/2026-09-08-zbook-ud-prefill-route-gap.json",
+    "protocol": "scratchpad/ud_e2e_ab.py, one resident session, 512-token prompt, bulk prefill, greedy, best of 2 rounds after a warm round",
+    "plain_control": "Qwen3.8-27B-Q4_K_S.gguf at 160.5 prefill / 12.56 decode tok/s",
+    "ud_q4_k_m_then": "13.77 prefill / 4.22 decode tok/s",
+    "ud_q4_k_m_now": "194.684 prefill / 7.8765 decode tok/s at 512/128",
+    "ratio_then": 11.7,
+    "ratio_now": 1.6,
+    "reading": "The same-host plain-to-UD prefill ratio on zbook has moved from about 11.7x to about 1.60x, consistent with the campaign items 1-12 landing (per-tensor repack eligibility, Q5/Q6/Q4 dense role coverage, the IQ4_XS dense GEMM, the W4A16 prefill route, and the decode-parity levers). The controls differ between the two measurements, so this is context, not a claim."
+  }
+}
