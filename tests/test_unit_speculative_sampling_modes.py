@@ -343,7 +343,7 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
     adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
     assert adapter._sampled_route_request(1) is True
 
-    # A device-sampler row cannot use the host accept rule.
+    # A device-sampler row uses target draws from the shared native sampler.
     device_row = SimpleNamespace(
         native_greedy=False,
         native_sampler=True,
@@ -351,7 +351,7 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
         request=params,
         sampling_state=None,
     )
-    assert _adapter(plugin_evidence=(_evidence_row(),), row=device_row)._sampled_route_request(1) is False
+    assert _adapter(plugin_evidence=(_evidence_row(),), row=device_row)._sampled_route_request(1) is True
     # No evidence row: the route stays closed even for a temperature row.
     assert _adapter(plugin_evidence=(), row=row)._sampled_route_request(1) is False
     # Greedy rows keep their own route.
@@ -450,23 +450,8 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
 
-def test_only_the_measured_evidence_row_advertises_the_sampled_mode() -> None:
-    """The sampled route's switch is an evidence row, and exactly one sets it.
-
-    Serving that route used to be measured and rejected: with the row in place
-    the route engaged and decoded at 0.47x of its in-load true-AR control,
-    because the accept decision was computed on the host from one
-    full-vocabulary logits row per verified prefix. The route now commits the
-    coupled accept on the device from the verifier's own logits, and the same
-    protocol measures 26.05 tok/s against its 13.73 tok/s in-load control
-    (1.90x), so the production cap4 c1 row advertises the mode and a temperature
-    request at that key is served by it by default.
-
-    A second row that re-advertises the mode without its own measurement is a
-    regression in the shipped default, not a tuning choice: the sampled accept
-    needs a captured graph variant, the warm predicate and the plan's stream
-    alignment, and each of those was qualified on this key.
-    """
+def test_sampled_policy_names_the_singleton_native_route() -> None:
+    """Automatic sampled intent must not inherit the old greedy C2 policy."""
 
     from hipengine.models import qwen35
 
@@ -485,7 +470,7 @@ def test_only_the_measured_evidence_row_advertises_the_sampled_mode() -> None:
     assert advertising == [
         (
             "_QWEN38_Q4KM_MTP_SERVING_EVIDENCE",
-            "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
+            "qwen38-q4km-gfx1151-native-sampled-c1-k3",
         )
     ], advertising
 

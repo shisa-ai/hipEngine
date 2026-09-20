@@ -91,6 +91,30 @@ without row splitting and native support for dynamic response shapes.
 
 ## Native sampler promotion scope
 
+### Sampled MTP
+
+The Qwen3.8 Q4_K_M gfx1151 singleton sampled-MTP route uses the same native
+sampler as autoregressive decoding. Its capacity-four/BF16/K3 policy is
+automatic for supported requests, independently of the older greedy policy.
+The target graph samples each verified prefix with temperature/top-p/min-p,
+then accepts the deterministic draft while its tokens match those draws.
+The first mismatch is the correction; full acceptance uses the final draw as
+the bonus. This has the target distribution without a separate rejection
+sampler. The native RNG is keyed to absolute token positions, so discarded
+lookahead and rolled-back cycles do not consume the request's future draws.
+
+Bounded top-k, history-dependent processors, and the explicit strict native
+sampler use eager per-prefix selection with private history clones. Host
+sampling keeps its CPU acceptance oracle. Eager native verification also
+consumes resident GPU logits; only the serial debugging oracle needs a
+full-logit readback, which is reported in telemetry. The
+standalone coupled-accept kernels remain numerical test oracles, not the
+default native serving implementation. Logprob responses, token-stop
+constraints, and other unsupported sampled-MTP fields fall back to ordinary
+decoding before speculative execution.
+
+### Original PARO Promotion
+
 The 2026-06-16 promotion makes native GPU sampling the default only where the
 guarded implementation already exists:
 

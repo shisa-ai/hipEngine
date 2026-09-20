@@ -145,7 +145,18 @@ it under `certified_default_scopes`, and report
 appears in automatic/explicit route decisions and rollback. Wrong artifact,
 backend, quant, profile/manifest, KV, resident capacity, group, B, sampler,
 context, horizon, or memory fit selects K0 before backend mutation with a stable
-reason. Q4_K_S and all other evidence rows remain K0 automatically.
+reason. Other scopes are selected from their own model-plugin policies.
+
+Qwen3.8-27B Q4_K_M on gfx1151 additionally enables automatic sampled MTP for
+one active request in a capacity-four server with BF16 KV and draft depth three.
+Leave native GPU sampling enabled (the default). Temperature, top-p and min-p
+use the same native sampler as ordinary decoding inside the target graph; only
+committed outputs advance the request's sampler counter. Bounded top-k and
+history-dependent processors use eager native selection. This sampled policy
+does not enable sampled physical c2 groups or change greedy MTP policy.
+Logprob responses, explicit token stops, forced tokens and dynamic constraints
+retain their ordinary-decoding fallback. `"speculative_mtp": false` always
+disables MTP for a request.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
