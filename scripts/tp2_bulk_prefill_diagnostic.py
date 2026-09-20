@@ -232,7 +232,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.t16_f16_rocblas_prefill is not None:
-        args.t16_f16_rocblas_prefill = args.t16_f16_rocblas_prefill != "off"
+        # ``default`` must mean "omit the flag" - mapping it to True would make
+        # an explicit `--t16-f16-rocblas-prefill default` silently override the
+        # session's default-off decision, which is the opposite of its name.
+        args.t16_f16_rocblas_prefill = {
+            "default": None,
+            "on": True,
+            "off": False,
+        }[args.t16_f16_rocblas_prefill]
 
     reference, arrays = _load_reference(Path(args.reference))
     ids = list(reference["suite"]["ids"])

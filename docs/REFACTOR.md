@@ -8047,35 +8047,41 @@ Two consequences, both confirmed the hard way:
 Landing it also changes arithmetic on the attention path from int8 WMMA to
 source-F16 rocBLAS, so it needs the applicable production-profile gate and a
 
-**Gate result (2026-09-19): it fails, and the owner is therefore opt-in.** The
-owner is now integrated - rank-owned three-plane scratch (**48 MiB/rank** at
-rows=512 against 461 MiB/rank for a whole resident session), per-rank rocBLAS
-handle, entered inside the per-device loop, released on close, with the exact T16
-owner as the registered fallback - and measured at **+3.97%** on the 512-token
-prefill (490.0 -> 471.3 ms, four paired same-session deltas all the same sign).
-It is kept **default-off** (`use_t16_f16_rocblas_prefill=False`) because on the
-heldout prompt it moves the wrong way:
+**Status (2026-09-19): integrated, unqualified, opt-in.** The owner is
+integrated - rank-owned three-plane scratch (**48 MiB/rank** at rows=512 against
+461 MiB/rank for a whole resident session), per-rank rocBLAS handle entered
+inside the per-device loop and closed on teardown, with the exact T16 owner as
+the registered fallback - and measured at **+3.97%** on the 512-token prefill
+(490.0 -> 471.3 ms, four paired same-session deltas all the same sign). It stays
+**default-off** (`use_t16_f16_rocblas_prefill=False`) because it changes the
+attention path's arithmetic from int8 WMMA to source-F16 rocBLAS and has not
+passed the production numerical gate.
 
-| metric (512-token prompt) | owner off | owner on |
-| --- | ---: | ---: |
-| translate mean_kl | 0.03659 | 0.03331 |
-| translate max_kl | 2.0210 | 1.7743 |
-| heldout mean_kl | 0.06998 | **0.09288** |
-| heldout max_kl | 3.7705 | **4.2241** |
-| heldout top-1 | 0.9375 | **0.921875** |
+**A first gate attempt is retracted, and it did not qualify or disqualify
+either arm.** The suite's prompts are 52-64 tokens against a policy whose
+smallest admitted row count is 512, so the run was repeated with the prompt
+padded to 512 tokens. That reached an admitted row count - the flag-on and
+flag-off runs then differed, where before they had been bit-identical - but the
+**strict teacher still held logits captured for the original 52-64 token
+prompt**, and the forced trajectory differed as well. The resulting KL and top-1
+numbers therefore compare different contexts, not implementation drift. The
+reading that the owner "regresses the heldout envelope" is **retracted**, and so
+is the companion claim that the 512-row baseline is numerically broken: that
+baseline's status is likewise unestablished rather than proven failing.
 
-Both arms fail (`all_passed: false`), so this is not a regression against a
-passing baseline; it is a candidate that does not repair one. **Do not promote it
-on speed alone, and do not add its +3.97% to any plan total.** The route's own
-numerical blocker is the open problem - at 512 rows the exact T16 baseline
-already shows mean_kl 0.03659 and max_kl 2.021, far outside the envelope.
+What the attempt does establish is narrower and still useful: repeated-token
+padding reaches an admitted row count, and at that row count the owner does
+change the logits (the two arms' `logits_sha256` differ), so the owner does
+execute. Qualifying it needs a strict teacher regenerated for the identical
+extended prompt and forced trajectory, with prompt-token and trajectory identity
+asserted before scoring, and representative long category/heldout prompts rather
+than repeated-token padding.
 
-Two silent failures were found while integrating this, both worth remembering:
-planes cached on device alone made the first pass's row count permanent (a
-session warmed at 64 rows silently kept the exact T16 owner for later 512-row
-passes); and the gate's own prompts are 52-64 tokens against a policy whose
-smallest admitted row count is 512, so the flag-on and flag-off runs returned
-**bit-identical logits** and that was briefly read as "numerically safe" when it
-meant "the owner did not run". `--pad-prompt-tokens` now exists so the gate can
-reach an admitted row count.
+Two silent ownership bugs were found while integrating this, both worth
+remembering: planes cached on device alone made the first pass's row count
+permanent (a session warmed at 64 rows silently kept the exact T16 owner for
+later 512-row passes); and with the owner disabled the route still allocated its
+48 MiB/rank scratch, because the allocator never consulted the enable flag. A
+third, the per-rank rocBLAS handles were cleared without `Rocblas.close()`,
+leaked a `rocblas_create_handle` per rank per session.
 registered strict fallback, not just the timing A/B.

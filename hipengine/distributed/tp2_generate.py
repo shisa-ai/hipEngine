@@ -309,16 +309,24 @@ class MlpTP2GenerationSession:
         self.use_gemv_decode = True if use_gemv_decode is None else bool(use_gemv_decode)
         # The source-F16 rocBLAS prefill owner, built over per-rank planes.
         #
-        # **Default off, and this is a gate failure, not caution.** The owner is
-        # a real +3.97% on the 512-token prefill (490.0 -> 471.3 ms, four paired
-        # same-session deltas all the same sign), but it changes the attention
-        # path's arithmetic from int8 WMMA to source-F16 rocBLAS, and on the
-        # heldout prompt it moves the wrong way: mean_kl 0.06998 -> 0.09288,
-        # max_kl 3.7705 -> 4.2241, top-1 0.9375 -> 0.921875. Both arms fail the
-        # gate, so this is not a regression against a passing baseline - it is a
-        # candidate that does not repair one. Do not promote it on speed alone;
-        # the route's own numerical blocker has to clear first, and this owner
-        # must then re-pass against whatever fixes it.
+        # **Default off: the candidate is UNQUALIFIED, not rejected.** It is a
+        # real +3.97% on the 512-token prefill (490.0 -> 471.3 ms, four paired
+        # same-session deltas all the same sign), and it changes the attention
+        # path's arithmetic from int8 WMMA to source-F16 rocBLAS, so it needs the
+        # production numerical gate before it can be promoted.
+        #
+        # A first attempt to run that gate produced KL/top-1 numbers that do not
+        # measure what they claim: the prompt was padded to 512 tokens to reach
+        # the policy's admitted row count, but the strict teacher still held
+        # logits captured for the original 52-64 token prompt, and the forced
+        # trajectory differed too. Those numbers compared different contexts, not
+        # implementation drift, and the "heldout regresses" reading drawn from
+        # them is retracted. See docs/REFACTOR.md.
+        #
+        # The owner therefore stays off until a matching teacher exists for an
+        # admitted length. Do not promote it on speed alone, and do not read the
+        # retracted numbers as a failure of the 512-row baseline either - that
+        # baseline's own status is likewise unestablished, not proven broken.
         self.use_t16_f16_rocblas_prefill = (
             False
             if use_t16_f16_rocblas_prefill is None
@@ -854,8 +862,14 @@ class MlpTP2GenerationSession:
         count permanent: a session warmed at 64 rows would silently keep the
         exact T16 owner for every later 512-row pass, losing the route with no
         error to notice.
+
+        Allocation is skipped entirely when the owner is disabled. The owner is
+        default-off, so allocating here regardless would make the default path
+        pay the scratch for a feature it never enters.
         """
 
+        if not self.use_t16_f16_rocblas_prefill:
+            return
         rows = int(rows)
         for device in self.devices:
             cached = self._rank_f16_rocblas_planes.get(device)
@@ -880,11 +894,31 @@ class MlpTP2GenerationSession:
             self._rank_f16_rocblas_ready[device] = planes is not None
 
     def _release_rank_f16_rocblas_planes(self) -> None:
+        """Release each rank's planes and destroy its rocBLAS handle.
+
+        The handle needs an explicit ``Rocblas.close()`` - it wraps
+        ``rocblas_create_handle``, and dropping the reference does not destroy it.
+        Each handle is closed under the device scope it was created in, and the
+        dictionaries are cleared only after every close attempt has run, so a
+        failure on one rank cannot strand the others.
+        """
+
         for device, planes in self._rank_f16_rocblas_planes.items():
             if planes is None:
                 continue
             with scoped_current_device(self.runtime, device):
-                planes.release(runtime=self.runtime)
+                try:
+                    planes.release(runtime=self.runtime)
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
+        for device, handle in self._rank_f16_rocblas.items():
+            if handle is None:
+                continue
+            with scoped_current_device(self.runtime, device):
+                try:
+                    handle.close()
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
         self._rank_f16_rocblas_planes.clear()
         self._rank_f16_rocblas_library.clear()
         self._rank_f16_rocblas.clear()
