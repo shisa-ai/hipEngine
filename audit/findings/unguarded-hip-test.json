@@ -1,0 +1,1719 @@
+{
+  "kind": "unguarded-hip-test",
+  "meta": {
+    "scanned": "tests/**/*.py"
+  },
+  "rows": [
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_gpu_maple_attention_kernels.py",
+      "title": "test_gpu_maple_attention_kernels.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_gpu_maple_attention_kernels.py:107",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_gpu_maple_attention_kernels.py",
+        "refs": [
+          "tests/test_gpu_maple_attention_kernels.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_gpu_maple_attention_kernels",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_gpu_maple_attention_kernels.py",
+      "evidence_hash": "711744d89c88"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_gpu_maple_moe_kernels.py",
+      "title": "test_gpu_maple_moe_kernels.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_gpu_maple_moe_kernels.py:73",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_gpu_maple_moe_kernels.py",
+        "refs": [
+          "tests/test_gpu_maple_moe_kernels.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_gpu_maple_moe_kernels",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_gpu_maple_moe_kernels.py",
+      "evidence_hash": "9416e7f74611"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_gpu_maple_ternary_kernels.py",
+      "title": "test_gpu_maple_ternary_kernels.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_gpu_maple_ternary_kernels.py:100",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_gpu_maple_ternary_kernels.py",
+        "refs": [
+          "tests/test_gpu_maple_ternary_kernels.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_gpu_maple_ternary_kernels",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_gpu_maple_ternary_kernels.py",
+      "evidence_hash": "3973350b401a"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_gpu_qwen4exp_gr_iu8.py",
+      "title": "test_gpu_qwen4exp_gr_iu8.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_gpu_qwen4exp_gr_iu8.py:29",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_gpu_qwen4exp_gr_iu8.py",
+        "refs": [
+          "tests/test_gpu_qwen4exp_gr_iu8.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_gpu_qwen4exp_gr_iu8",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_gpu_qwen4exp_gr_iu8.py",
+      "evidence_hash": "4d98175a29c0"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_benchmark_provenance.py",
+      "title": "test_integration_benchmark_provenance.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_benchmark_provenance.py:86",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_benchmark_provenance.py",
+        "refs": [
+          "tests/test_integration_benchmark_provenance.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_benchmark_provenance",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_benchmark_provenance.py",
+      "evidence_hash": "fcf331d25cfe"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_generation_batch_scheduler.py",
+      "title": "test_integration_generation_batch_scheduler.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_generation_batch_scheduler.py:197",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_generation_batch_scheduler.py",
+        "refs": [
+          "tests/test_integration_generation_batch_scheduler.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_generation_batch_scheduler",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_generation_batch_scheduler.py",
+      "evidence_hash": "69c04401f7ac"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_gfx1151_readme_refresh.py",
+      "title": "test_integration_gfx1151_readme_refresh.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_gfx1151_readme_refresh.py:244",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_gfx1151_readme_refresh.py",
+        "refs": [
+          "tests/test_integration_gfx1151_readme_refresh.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_gfx1151_readme_refresh",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_gfx1151_readme_refresh.py",
+      "evidence_hash": "fe89a9340bf6"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_gguf_continuous_owner_rocprof.py",
+      "title": "test_integration_gguf_continuous_owner_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_gguf_continuous_owner_rocprof.py:83",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_gguf_continuous_owner_rocprof.py",
+        "refs": [
+          "tests/test_integration_gguf_continuous_owner_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_gguf_continuous_owner_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_gguf_continuous_owner_rocprof.py",
+      "evidence_hash": "b61ecb5d7a83"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_llamacpp_mtp_run_build.py",
+      "title": "test_integration_llamacpp_mtp_run_build.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_llamacpp_mtp_run_build.py:63",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_llamacpp_mtp_run_build.py",
+        "refs": [
+          "tests/test_integration_llamacpp_mtp_run_build.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_llamacpp_mtp_run_build",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_llamacpp_mtp_run_build.py",
+      "evidence_hash": "aad2faf2f746"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_micro_collect_env.py",
+      "title": "test_integration_micro_collect_env.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_micro_collect_env.py:47",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_micro_collect_env.py",
+        "refs": [
+          "tests/test_integration_micro_collect_env.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_micro_collect_env",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_micro_collect_env.py",
+      "evidence_hash": "85bf5482b55d"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_integration_server_api.py",
+      "title": "test_integration_server_api.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_integration_server_api.py:4305",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_integration_server_api.py",
+        "refs": [
+          "tests/test_integration_server_api.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_integration_server_api",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_integration_server_api.py",
+      "evidence_hash": "96fa74be5a89"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_agentic_a5_pressure_soak_artifact.py",
+      "title": "test_unit_agentic_a5_pressure_soak_artifact.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_agentic_a5_pressure_soak_artifact.py:49",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_agentic_a5_pressure_soak_artifact.py",
+        "refs": [
+          "tests/test_unit_agentic_a5_pressure_soak_artifact.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_agentic_a5_pressure_soak_artifact",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_agentic_a5_pressure_soak_artifact.py",
+      "evidence_hash": "b14616411d56"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_agentic_a6_broad_quality_artifact.py",
+      "title": "test_unit_agentic_a6_broad_quality_artifact.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_agentic_a6_broad_quality_artifact.py:57",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_agentic_a6_broad_quality_artifact.py",
+        "refs": [
+          "tests/test_unit_agentic_a6_broad_quality_artifact.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_agentic_a6_broad_quality_artifact",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_agentic_a6_broad_quality_artifact.py",
+      "evidence_hash": "b035882f835f"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_aotriton_discovery.py",
+      "title": "test_unit_aotriton_discovery.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_aotriton_discovery.py:160",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_aotriton_discovery.py",
+        "refs": [
+          "tests/test_unit_aotriton_discovery.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_aotriton_discovery",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_aotriton_discovery.py",
+      "evidence_hash": "e886fa8ca1f7"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_benchmark_matrix.py",
+      "title": "test_unit_benchmark_matrix.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_benchmark_matrix.py:53",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_benchmark_matrix.py",
+        "refs": [
+          "tests/test_unit_benchmark_matrix.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_benchmark_matrix",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_benchmark_matrix.py",
+      "evidence_hash": "324d8c3d90c9"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_build.py",
+      "title": "test_unit_build.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_build.py:24",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_build.py",
+        "refs": [
+          "tests/test_unit_build.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_build",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_build.py",
+      "evidence_hash": "87c47575f81f"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_dflash_accept_kernels.py",
+      "title": "test_unit_dflash_accept_kernels.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_dflash_accept_kernels.py:50",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_dflash_accept_kernels.py",
+        "refs": [
+          "tests/test_unit_dflash_accept_kernels.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_dflash_accept_kernels",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_dflash_accept_kernels.py",
+      "evidence_hash": "d6c6edbc5f6c"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gfx1151_backend.py",
+      "title": "test_unit_gfx1151_backend.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gfx1151_backend.py:3186",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gfx1151_backend.py",
+        "refs": [
+          "tests/test_unit_gfx1151_backend.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gfx1151_backend",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gfx1151_backend.py",
+      "evidence_hash": "58e153590487"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_c1_decode_attribution.py",
+      "title": "test_unit_gguf_c1_decode_attribution.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_c1_decode_attribution.py:536",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_c1_decode_attribution.py",
+        "refs": [
+          "tests/test_unit_gguf_c1_decode_attribution.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_c1_decode_attribution",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_c1_decode_attribution.py",
+      "evidence_hash": "acbeefbd8617"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_continuous_owner_profile_child.py",
+      "title": "test_unit_gguf_continuous_owner_profile_child.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_continuous_owner_profile_child.py:38",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_continuous_owner_profile_child.py",
+        "refs": [
+          "tests/test_unit_gguf_continuous_owner_profile_child.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_continuous_owner_profile_child",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_continuous_owner_profile_child.py",
+      "evidence_hash": "7ce0ba799927"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_decode_rocprof.py",
+      "title": "test_unit_gguf_decode_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_decode_rocprof.py:91",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_decode_rocprof.py",
+        "refs": [
+          "tests/test_unit_gguf_decode_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_decode_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_decode_rocprof.py",
+      "evidence_hash": "461361f0cd15"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_packed_ar_bench.py",
+      "title": "test_unit_gguf_packed_ar_bench.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_packed_ar_bench.py:60",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_packed_ar_bench.py",
+        "refs": [
+          "tests/test_unit_gguf_packed_ar_bench.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_packed_ar_bench",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_packed_ar_bench.py",
+      "evidence_hash": "72cd479d79ab"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_packed_ar_category_oracle.py",
+      "title": "test_unit_gguf_packed_ar_category_oracle.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_packed_ar_category_oracle.py:65",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_packed_ar_category_oracle.py",
+        "refs": [
+          "tests/test_unit_gguf_packed_ar_category_oracle.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_packed_ar_category_oracle",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_packed_ar_category_oracle.py",
+      "evidence_hash": "ca5a8d2ed639"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_packed_ar_state_oracle.py",
+      "title": "test_unit_gguf_packed_ar_state_oracle.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_packed_ar_state_oracle.py:76",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_packed_ar_state_oracle.py",
+        "refs": [
+          "tests/test_unit_gguf_packed_ar_state_oracle.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_packed_ar_state_oracle",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_packed_ar_state_oracle.py",
+      "evidence_hash": "e9d1b62e8c6d"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_gguf_sh_m1_screen.py",
+      "title": "test_unit_gguf_sh_m1_screen.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_gguf_sh_m1_screen.py:129",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_gguf_sh_m1_screen.py",
+        "refs": [
+          "tests/test_unit_gguf_sh_m1_screen.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_gguf_sh_m1_screen",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_gguf_sh_m1_screen.py",
+      "evidence_hash": "a2e69f5dbe80"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_laguna_matrix_chunk_bench.py",
+      "title": "test_unit_laguna_matrix_chunk_bench.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_laguna_matrix_chunk_bench.py:192",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_laguna_matrix_chunk_bench.py",
+        "refs": [
+          "tests/test_unit_laguna_matrix_chunk_bench.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_laguna_matrix_chunk_bench",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_laguna_matrix_chunk_bench.py",
+      "evidence_hash": "0b6d7ef993ec"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_llamacpp_c8_k3_rocprof.py",
+      "title": "test_unit_llamacpp_c8_k3_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_llamacpp_c8_k3_rocprof.py:35",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_llamacpp_c8_k3_rocprof.py",
+        "refs": [
+          "tests/test_unit_llamacpp_c8_k3_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_llamacpp_c8_k3_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_llamacpp_c8_k3_rocprof.py",
+      "evidence_hash": "f41a660013e4"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_llamacpp_mtp_build_plan.py",
+      "title": "test_unit_llamacpp_mtp_build_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_llamacpp_mtp_build_plan.py:18",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_llamacpp_mtp_build_plan.py",
+        "refs": [
+          "tests/test_unit_llamacpp_mtp_build_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_llamacpp_mtp_build_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_llamacpp_mtp_build_plan.py",
+      "evidence_hash": "412753116456"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_llamacpp_mtp_rocprof.py",
+      "title": "test_unit_llamacpp_mtp_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_llamacpp_mtp_rocprof.py:35",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_llamacpp_mtp_rocprof.py",
+        "refs": [
+          "tests/test_unit_llamacpp_mtp_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_llamacpp_mtp_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_llamacpp_mtp_rocprof.py",
+      "evidence_hash": "7ee7e7550f94"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_micro_geometry_sweep.py",
+      "title": "test_unit_micro_geometry_sweep.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_micro_geometry_sweep.py:207",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_micro_geometry_sweep.py",
+        "refs": [
+          "tests/test_unit_micro_geometry_sweep.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_micro_geometry_sweep",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_micro_geometry_sweep.py",
+      "evidence_hash": "50a9b697e4ef"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_micro_hip_dispatch_floor.py",
+      "title": "test_unit_micro_hip_dispatch_floor.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_micro_hip_dispatch_floor.py:68",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_micro_hip_dispatch_floor.py",
+        "refs": [
+          "tests/test_unit_micro_hip_dispatch_floor.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_micro_hip_dispatch_floor",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_micro_hip_dispatch_floor.py",
+      "evidence_hash": "5f19bc84e22c"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_moonshine_lm_head_route_gate.py",
+      "title": "test_unit_moonshine_lm_head_route_gate.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_moonshine_lm_head_route_gate.py:160",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_moonshine_lm_head_route_gate.py",
+        "refs": [
+          "tests/test_unit_moonshine_lm_head_route_gate.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_moonshine_lm_head_route_gate",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_moonshine_lm_head_route_gate.py",
+      "evidence_hash": "d1e15ff2f2b6"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_mtp_verifier_rocprof.py",
+      "title": "test_unit_mtp_verifier_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_mtp_verifier_rocprof.py:25",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_mtp_verifier_rocprof.py",
+        "refs": [
+          "tests/test_unit_mtp_verifier_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_mtp_verifier_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_mtp_verifier_rocprof.py",
+      "evidence_hash": "f1872cebcfbe"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_paro_awq_gemv_plan.py",
+      "title": "test_unit_paro_awq_gemv_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_paro_awq_gemv_plan.py:229",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_paro_awq_gemv_plan.py",
+        "refs": [
+          "tests/test_unit_paro_awq_gemv_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_paro_awq_gemv_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_paro_awq_gemv_plan.py",
+      "evidence_hash": "82ffcd4465a0"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_paro_awq_wmma_plan.py",
+      "title": "test_unit_paro_awq_wmma_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_paro_awq_wmma_plan.py:45",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_paro_awq_wmma_plan.py",
+        "refs": [
+          "tests/test_unit_paro_awq_wmma_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_paro_awq_wmma_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_paro_awq_wmma_plan.py",
+      "evidence_hash": "e7d83d108bcb"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_paro_rotate_plan.py",
+      "title": "test_unit_paro_rotate_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_paro_rotate_plan.py:64",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_paro_rotate_plan.py",
+        "refs": [
+          "tests/test_unit_paro_rotate_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_paro_rotate_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_paro_rotate_plan.py",
+      "evidence_hash": "75a9f26bf0d5"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_pm4_lifecycle_issue_capture.py",
+      "title": "test_unit_pm4_lifecycle_issue_capture.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_pm4_lifecycle_issue_capture.py:71",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_pm4_lifecycle_issue_capture.py",
+        "refs": [
+          "tests/test_unit_pm4_lifecycle_issue_capture.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_pm4_lifecycle_issue_capture",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_pm4_lifecycle_issue_capture.py",
+      "evidence_hash": "0eadac90b9d9"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_pm4_native_build.py",
+      "title": "test_unit_pm4_native_build.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_pm4_native_build.py:9",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_pm4_native_build.py",
+        "refs": [
+          "tests/test_unit_pm4_native_build.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_pm4_native_build",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_pm4_native_build.py",
+      "evidence_hash": "97d8362595a3"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_batch_partition_bench.py",
+      "title": "test_unit_qwen35_batch_partition_bench.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_batch_partition_bench.py:170",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_batch_partition_bench.py",
+        "refs": [
+          "tests/test_unit_qwen35_batch_partition_bench.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_batch_partition_bench",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_batch_partition_bench.py",
+      "evidence_hash": "16d6f3d15360"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_gguf_bench_metadata.py",
+      "title": "test_unit_qwen35_gguf_bench_metadata.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_gguf_bench_metadata.py:100",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_gguf_bench_metadata.py",
+        "refs": [
+          "tests/test_unit_qwen35_gguf_bench_metadata.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_gguf_bench_metadata",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_gguf_bench_metadata.py",
+      "evidence_hash": "505098345530"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_gguf_linear_state_snapshot.py",
+      "title": "test_unit_qwen35_gguf_linear_state_snapshot.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_gguf_linear_state_snapshot.py:56",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_gguf_linear_state_snapshot.py",
+        "refs": [
+          "tests/test_unit_qwen35_gguf_linear_state_snapshot.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_gguf_linear_state_snapshot",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_gguf_linear_state_snapshot.py",
+      "evidence_hash": "7ae4ed3a73a4"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_gguf_rocprof_summary.py",
+      "title": "test_unit_qwen35_gguf_rocprof_summary.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_gguf_rocprof_summary.py:60",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_gguf_rocprof_summary.py",
+        "refs": [
+          "tests/test_unit_qwen35_gguf_rocprof_summary.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_gguf_rocprof_summary",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_gguf_rocprof_summary.py",
+      "evidence_hash": "0b064a44fb36"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_linear_attn_conv_plan.py",
+      "title": "test_unit_qwen35_linear_attn_conv_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_linear_attn_conv_plan.py:115",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_linear_attn_conv_plan.py",
+        "refs": [
+          "tests/test_unit_qwen35_linear_attn_conv_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_linear_attn_conv_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_linear_attn_conv_plan.py",
+      "evidence_hash": "7e76a9a13173"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_linear_attn_gdn_plan.py",
+      "title": "test_unit_qwen35_linear_attn_gdn_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_linear_attn_gdn_plan.py:199",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_linear_attn_gdn_plan.py",
+        "refs": [
+          "tests/test_unit_qwen35_linear_attn_gdn_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_linear_attn_gdn_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_linear_attn_gdn_plan.py",
+      "evidence_hash": "0119acd5f37b"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_paged_kv_write_plan.py",
+      "title": "test_unit_qwen35_paged_kv_write_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_paged_kv_write_plan.py:201",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_paged_kv_write_plan.py",
+        "refs": [
+          "tests/test_unit_qwen35_paged_kv_write_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_paged_kv_write_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_paged_kv_write_plan.py",
+      "evidence_hash": "1f2be3ccd78b"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_paro_marlin_k.py",
+      "title": "test_unit_qwen35_paro_marlin_k.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_paro_marlin_k.py:123",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_paro_marlin_k.py",
+        "refs": [
+          "tests/test_unit_qwen35_paro_marlin_k.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_paro_marlin_k",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_paro_marlin_k.py",
+      "evidence_hash": "d2a84f77e06a"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_rmsnorm_plan.py",
+      "title": "test_unit_qwen35_rmsnorm_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_rmsnorm_plan.py:80",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_rmsnorm_plan.py",
+        "refs": [
+          "tests/test_unit_qwen35_rmsnorm_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_rmsnorm_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_rmsnorm_plan.py",
+      "evidence_hash": "d6418456db54"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_rotary_plan.py",
+      "title": "test_unit_qwen35_rotary_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_rotary_plan.py:89",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_rotary_plan.py",
+        "refs": [
+          "tests/test_unit_qwen35_rotary_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_rotary_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_rotary_plan.py",
+      "evidence_hash": "fd06b805366a"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen35_teacher_forced_kl.py",
+      "title": "test_unit_qwen35_teacher_forced_kl.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen35_teacher_forced_kl.py:5",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen35_teacher_forced_kl.py",
+        "refs": [
+          "tests/test_unit_qwen35_teacher_forced_kl.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen35_teacher_forced_kl",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen35_teacher_forced_kl.py",
+      "evidence_hash": "1bae8ba6693d"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen38_int8_batch_decode_ownership_trace.py",
+      "title": "test_unit_qwen38_int8_batch_decode_ownership_trace.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen38_int8_batch_decode_ownership_trace.py:4",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen38_int8_batch_decode_ownership_trace.py",
+        "refs": [
+          "tests/test_unit_qwen38_int8_batch_decode_ownership_trace.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen38_int8_batch_decode_ownership_trace",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen38_int8_batch_decode_ownership_trace.py",
+      "evidence_hash": "d1485bf0c3fb"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen4exp_canonical_ar_bench.py",
+      "title": "test_unit_qwen4exp_canonical_ar_bench.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen4exp_canonical_ar_bench.py:16",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen4exp_canonical_ar_bench.py",
+        "refs": [
+          "tests/test_unit_qwen4exp_canonical_ar_bench.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen4exp_canonical_ar_bench",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen4exp_canonical_ar_bench.py",
+      "evidence_hash": "fcb16a7b7be3"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_qwen4exp_llamacpp_exact_profile.py",
+      "title": "test_unit_qwen4exp_llamacpp_exact_profile.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_qwen4exp_llamacpp_exact_profile.py:73",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_qwen4exp_llamacpp_exact_profile.py",
+        "refs": [
+          "tests/test_unit_qwen4exp_llamacpp_exact_profile.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_qwen4exp_llamacpp_exact_profile",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_qwen4exp_llamacpp_exact_profile.py",
+      "evidence_hash": "87c6fcf20c2b"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py",
+      "title": "test_unit_scripts_gguf_mtp_verifier_rocprof.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py:210",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py",
+        "refs": [
+          "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_scripts_gguf_mtp_verifier_rocprof",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py",
+      "evidence_hash": "f891f7bdeb44"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_scripts_gguf_packed_ar_rocprof_roctx.py",
+      "title": "test_unit_scripts_gguf_packed_ar_rocprof_roctx.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_scripts_gguf_packed_ar_rocprof_roctx.py:8",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_scripts_gguf_packed_ar_rocprof_roctx.py",
+        "refs": [
+          "tests/test_unit_scripts_gguf_packed_ar_rocprof_roctx.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_scripts_gguf_packed_ar_rocprof_roctx",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_scripts_gguf_packed_ar_rocprof_roctx.py",
+      "evidence_hash": "4b9b67ff5c7c"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_server_f1_concurrency_bench.py",
+      "title": "test_unit_server_f1_concurrency_bench.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_server_f1_concurrency_bench.py:713",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_server_f1_concurrency_bench.py",
+        "refs": [
+          "tests/test_unit_server_f1_concurrency_bench.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_server_f1_concurrency_bench",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_server_f1_concurrency_bench.py",
+      "evidence_hash": "08a1c78ba3f8"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_smoke_add_plan.py",
+      "title": "test_unit_smoke_add_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_smoke_add_plan.py:22",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_smoke_add_plan.py",
+        "refs": [
+          "tests/test_unit_smoke_add_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_smoke_add_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_smoke_add_plan.py",
+      "evidence_hash": "c8bd0806ff81"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_speculative_benchmark.py",
+      "title": "test_unit_speculative_benchmark.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_speculative_benchmark.py:223",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_speculative_benchmark.py",
+        "refs": [
+          "tests/test_unit_speculative_benchmark.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_speculative_benchmark",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_speculative_benchmark.py",
+      "evidence_hash": "8af0aa1d0a8f"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_summarize_native_context_gates.py",
+      "title": "test_unit_summarize_native_context_gates.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_summarize_native_context_gates.py:50",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_summarize_native_context_gates.py",
+        "refs": [
+          "tests/test_unit_summarize_native_context_gates.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_summarize_native_context_gates",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_summarize_native_context_gates.py",
+      "evidence_hash": "471ca220d528"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_w8a16_linear_plan.py",
+      "title": "test_unit_w8a16_linear_plan.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_w8a16_linear_plan.py:95",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_w8a16_linear_plan.py",
+        "refs": [
+          "tests/test_unit_w8a16_linear_plan.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_w8a16_linear_plan",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_w8a16_linear_plan.py",
+      "evidence_hash": "29fe8566932b"
+    }
+  ]
+}

@@ -30,6 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from hipaudit import core, report                     # noqa: E402
 from hipaudit.core import Row, Triage                 # noqa: E402
 from hipaudit.inventory import EXTRACTORS             # noqa: E402
+from hipaudit.checks import CHECKS                    # noqa: E402
 
 
 def run_inventory(kinds: list[str] | None) -> dict:
@@ -49,7 +50,69 @@ def run_inventory(kinds: list[str] | None) -> dict:
         ["git", "rev-parse", "--short", "HEAD"], cwd=core.REPO_ROOT,
         capture_output=True, text=True).stdout.strip()
     meta_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+
+    #  A rescan must land on the same audit items, even when their text was
+    #  edited. Re-attach any decision whose row id moved, and say so out loud.
+    rows, decisions = core.load_inventory(), core.load_triage()
+    moved = core.rebind(rows, decisions)
+    if moved:
+        core.save_triage(decisions)
+        print(f"\nre-matched {len(moved)} decision(s) to their renamed row:")
+        for old, new, score in moved:
+            print(f"  {old}\n    -> {new}  (similarity {score})")
+    lost = core.orphaned(rows, decisions)
+    if lost:
+        print(f"\n{len(lost)} decision(s) no longer match any row — "
+              f"`audit.py orphans` to review")
     return existing
+
+
+def run_scan(names: list[str] | None) -> dict:
+    """Run the code checks and queue what they found."""
+    meta: dict = {}
+    for name, check in sorted(CHECKS.items()):
+        if names and name not in names:
+            continue
+        rows, info = check()
+        path = core.save_findings(name, rows, info)
+        meta[name] = info
+        print(f"{name:24} {len(rows):5} findings -> {path.relative_to(core.REPO_ROOT)}")
+    rows, decisions = core.load_all(), core.load_triage()
+    moved = core.rebind(rows, decisions)
+    if moved:
+        core.save_triage(decisions)
+        print(f"\nre-matched {len(moved)} decision(s) after the rescan")
+    return meta
+
+
+def cmd_scan(args) -> int:
+    run_scan(args.check or None)
+    return 0
+
+
+def cmd_queue(args) -> int:
+    """What can actually be fixed, ranked by how many findings share one cause."""
+    findings, decisions = core.load_findings(), core.load_triage()
+    state = core.reconcile(findings, decisions)
+    todo = state["open"] + state["expired"] + state["stale"]
+    if args.check:
+        todo = [r for r in todo if r.kind == args.check]
+    import collections
+    groups = collections.defaultdict(list)
+    for row in todo:
+        groups[(row.kind, row.evidence.get("fix", ""))].append(row)
+    print(f"{len(todo)} open finding(s) in {len(groups)} group(s); "
+          f"{len(state['triaged'])} already decided\n")
+    for (kind, fix), rows in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:args.number]:
+        print(f"[{kind}] {len(rows)} finding(s)")
+        print(f"  why: {rows[0].signals[0] if rows[0].signals else '-'}")
+        print(f"  fix: {fix[:200]}")
+        for row in rows[:args.examples]:
+            print(f"    {row.location}  {row.title[:88]}")
+        if len(rows) > args.examples:
+            print(f"    ... {len(rows) - args.examples} more")
+        print()
+    return 0
 
 
 def load_meta() -> dict:
@@ -63,7 +126,7 @@ def cmd_inventory(args) -> int:
 
 
 def cmd_status(args) -> int:
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     if not rows:
         print("no inventory yet — run `python3 audit/audit.py inventory`", file=sys.stderr)
         return 1
@@ -79,10 +142,16 @@ def cmd_status(args) -> int:
         over = {k: (current.get(k, 0), v) for k, v in budget.items() if current.get(k, 0) > v}
         print("\nbudget: " + ("over in " + ", ".join(f"{k} {a}>{b}" for k, (a, b) in over.items())
                               if over else "within budget"))
-    stale = core.reconcile(rows, decisions)["stale"]
-    if stale:
-        print(f"\n{len(stale)} triaged row(s) have changed since the decision was made — "
-              f"`audit.py open --stale` to review")
+    state = core.reconcile(rows, decisions)
+    if state["stale"]:
+        print(f"\n{len(state['stale'])} triaged row(s) changed since the decision — "
+              f"`audit.py open --stale`")
+    due = core.expired(decisions)
+    if due:
+        print(f"{len(due)} decision(s) past their review date — `audit.py expiring`")
+    lost = core.orphaned(rows, decisions)
+    if lost:
+        print(f"{len(lost)} decision(s) match no row — `audit.py orphans`")
     return 0
 
 
@@ -91,7 +160,7 @@ def _rank(row: Row) -> tuple:
 
 
 def cmd_open(args) -> int:
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     if args.kind:                     # accept either the row kind or the extractor name
         want = args.kind.rstrip("s")
         rows = [r for r in rows if r.kind == want]
@@ -111,8 +180,36 @@ def cmd_open(args) -> int:
     return 0
 
 
+def cmd_orphans(args) -> int:
+    """Decisions with no row: the debt went away, or an item changed past recognition."""
+    rows, decisions = core.load_all(), core.load_triage()
+    lost = core.orphaned(rows, decisions)
+    if not lost:
+        print("every decision still matches a row")
+        return 0
+    print(f"{len(lost)} decision(s) match no current row:\n")
+    for decision in lost:
+        print(f"{decision.id}\n  {decision.tag}/{decision.disposition} — {decision.note[:110]}")
+        print(f"  decided {decision.decided} by {decision.by or 'unknown'}")
+        print("  either the debt is gone (mark --resolved) or the item moved beyond matching")
+    return 0
+
+
+def cmd_expiring(args) -> int:
+    rows, decisions = core.load_all(), core.load_triage()
+    due = core.expired(decisions)
+    if not due:
+        print("no decision has expired")
+        return 0
+    print(f"{len(due)} decision(s) past their review date:\n")
+    for decision in due:
+        print(f"{decision.id}\n  expired {decision.expires}  ({decision.tag}/{decision.disposition})")
+        print(f"  {decision.note[:110]}")
+    return 0
+
+
 def cmd_show(args) -> int:
-    rows = {r.id: r for r in core.load_inventory()}
+    rows = {r.id: r for r in core.load_all()}
     row = rows.get(args.id)
     if row is None:
         print(f"no such row: {args.id}", file=sys.stderr)
@@ -126,10 +223,10 @@ def cmd_show(args) -> int:
 
 
 def cmd_triage(args) -> int:
-    rows = {r.id: r for r in core.load_inventory()}
+    rows = {r.id: r for r in core.load_all()}
     row = rows.get(args.id)
     if row is None:
-        print(f"no such row: {args.id} — run `inventory` first, or check `open`", file=sys.stderr)
+        print(f"no such row: {args.id} — run `inventory`/`scan` first, or check `open`", file=sys.stderr)
         return 1
     decisions = core.load_triage()
     decision = Triage(
@@ -138,6 +235,7 @@ def cmd_triage(args) -> int:
         by=args.by or subprocess.run(["git", "config", "user.name"], capture_output=True,
                                      text=True).stdout.strip() or "unknown",
         evidence_hash=row.evidence_hash, resolved=args.resolved,
+        expires=args.expires, last_reviewed=dt.date.today().isoformat(), hints=row.hints,
     )
     problems = decision.problems()
     if problems:
@@ -152,7 +250,7 @@ def cmd_triage(args) -> int:
 
 def cmd_check(args) -> int:
     errors: list[str] = []
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     if not rows:
         print("error: no inventory — run `python3 audit/audit.py inventory`", file=sys.stderr)
         return 1
@@ -162,16 +260,25 @@ def cmd_check(args) -> int:
             errors.append(f"{decision.id}: {problem}")
 
     #  The inventory must reflect the tree, or every count below is fiction.
-    before = {p.name: p.read_bytes() for p in core.INVENTORY_DIR.glob("*.json") if p.name != "meta.json"}
+    def fingerprint() -> dict[str, bytes]:
+        out = {}
+        for directory in (core.INVENTORY_DIR, core.FINDINGS_DIR):
+            for candidate in directory.glob("*.json"):
+                if candidate.name != "meta.json":
+                    out[f"{directory.name}/{candidate.name}"] = candidate.read_bytes()
+        return out
+
+    before = fingerprint()
     run_inventory(None)
-    after = {p.name: p.read_bytes() for p in core.INVENTORY_DIR.glob("*.json") if p.name != "meta.json"}
+    run_scan(None)
+    after = fingerprint()
     drifted = sorted(k for k in after if before.get(k) != after[k])
     if drifted and not args.refresh:
         errors.append(
             "inventory was stale and has been regenerated: " + ", ".join(drifted)
             + " — review the new rows and commit them")
 
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     state = core.reconcile(rows, decisions)
     budget = report.load_budget().get("open", {})
     current: dict[str, int] = {}
@@ -196,7 +303,7 @@ def cmd_check(args) -> int:
 
 
 def cmd_report(args) -> int:
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     if not rows:
         print("no inventory — run `inventory` first", file=sys.stderr)
         return 1
@@ -206,7 +313,7 @@ def cmd_report(args) -> int:
 
 
 def cmd_budget(args) -> int:
-    rows, decisions = core.load_inventory(), core.load_triage()
+    rows, decisions = core.load_all(), core.load_triage()
     payload = report.save_budget(rows, decisions)
     print(json.dumps(payload, indent=2))
     return 0
@@ -219,6 +326,16 @@ def main() -> int:
     p = sub.add_parser("inventory", help="re-extract the inventories")
     p.add_argument("kind", nargs="*", choices=sorted(EXTRACTORS) or None)
     p.set_defaults(fn=cmd_inventory)
+
+    p = sub.add_parser("scan", help="run the code checks and queue what they find")
+    p.add_argument("check", nargs="*", choices=sorted(CHECKS) or None)
+    p.set_defaults(fn=cmd_scan)
+
+    p = sub.add_parser("queue", help="findings that can be fixed, grouped by cause")
+    p.add_argument("--check", help="only this check")
+    p.add_argument("-n", "--number", type=int, default=8, help="groups to show")
+    p.add_argument("-e", "--examples", type=int, default=3, help="examples per group")
+    p.set_defaults(fn=cmd_queue)
 
     p = sub.add_parser("status", help="where the cleanup stands")
     p.set_defaults(fn=cmd_status)
@@ -242,7 +359,15 @@ def main() -> int:
     p.add_argument("--note", required=True, help="why this disposition is right")
     p.add_argument("--by", default="")
     p.add_argument("--resolved", action="store_true", help="the work is already done")
+    p.add_argument("--expires", default="",
+                   help="ISO date after which this decision must be re-confirmed (e.g. a defer)")
     p.set_defaults(fn=cmd_triage)
+
+    p = sub.add_parser("orphans", help="decisions that no longer match any row")
+    p.set_defaults(fn=cmd_orphans)
+
+    p = sub.add_parser("expiring", help="decisions past their review date")
+    p.set_defaults(fn=cmd_expiring)
 
     p = sub.add_parser("check", help="the gate")
     p.add_argument("--refresh", action="store_true",

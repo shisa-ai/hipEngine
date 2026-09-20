@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from ..core import REPO_ROOT, Row
-from . import corpus, doc_corpus, register
+from . import corpus, doc_corpus, register, tokens
 
 NAME = re.compile(r"\bHIPENGINE_[A-Z0-9_]+\b")
 #  Best-effort default detection at the read site.
@@ -101,6 +101,7 @@ def extract() -> tuple[list[Row], dict]:
                 "in_envs_doc": documented,
             },
             signals=signals,
+            hints={"anchor": "env", "refs": [name], "tokens": tokens(name.replace("_", " "))},
         ))
 
     return rows, {"names": len(rows), "roots": "hipengine, scripts, tests, benchmarks"}

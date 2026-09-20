@@ -21,6 +21,21 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/CONCURRENCY2-GFX1151-MTP-TUNING.md",
+        "refs": [
+          "0.66x",
+          "8.85 tok/s"
+        ],
+        "tokens": [
+          "66x",
+          "closed",
+          "dflash2",
+          "measured",
+          "parked",
+          "tok"
+        ]
+      },
       "id": "candidate/concurrency2-gfx1151-mtp-tuning-x-t4-3-dflash2-closed-pa-93d3d0babce8",
       "evidence_hash": "354490b62b81"
     },
@@ -41,6 +56,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "11.45%",
+          "2210.729 tok/s",
+          "8.36%"
+        ],
+        "tokens": [
+          "512",
+          "chain_peer_wave32",
+          "cpp",
+          "gpf",
+          "hip",
+          "llama",
+          "normalized",
+          "one",
+          "rejected",
+          "reproduces",
+          "schedule",
+          "semantics",
+          "speed",
+          "wave32"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-16-d677afeac4e1",
       "evidence_hash": "c7476879885a"
     },
@@ -59,6 +98,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "0.001286%"
+        ],
+        "tokens": [
+          "128",
+          "chain_peer_cluster8",
+          "clustered",
+          "cpp",
+          "decode",
+          "eight",
+          "gpf",
+          "lane",
+          "llama",
+          "rejected",
+          "reproduces",
+          "s_v",
+          "strict",
+          "vulkan"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-17-3ccca420e302",
       "evidence_hash": "6661e05aeaf1"
     },
@@ -80,6 +141,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "0.3 ms",
+          "2.24%",
+          "8.87%"
+        ],
+        "tokens": [
+          "activation",
+          "column",
+          "exact",
+          "four",
+          "fp16",
+          "lcp",
+          "one",
+          "q8t16",
+          "rejected",
+          "removed",
+          "share",
+          "tile",
+          "waves",
+          "wmma"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-18-032a0cb23066",
       "evidence_hash": "9d86775162a3"
     },
@@ -101,6 +186,29 @@
         "same row also mentions promotion \u2014 may already be resolved",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "25.11%",
+          "46.10%"
+        ],
+        "tokens": [
+          "128k",
+          "64k",
+          "blocked",
+          "clean",
+          "final",
+          "five",
+          "lcp",
+          "production",
+          "pub",
+          "refresh",
+          "retained",
+          "selector",
+          "through",
+          "unset"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-19-2bce65bced74",
       "evidence_hash": "072718b7ae0b"
     },
@@ -120,6 +228,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "0.016 ms",
+          "44.66%"
+        ],
+        "tokens": [
+          "body",
+          "direct",
+          "integer",
+          "lcp",
+          "numerics",
+          "pass",
+          "prequantized",
+          "primitive",
+          "q8_1",
+          "q8t16",
+          "quality",
+          "rejected",
+          "removed",
+          "wmma"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-19-491da14408dd",
       "evidence_hash": "7ff254026aca"
     },
@@ -138,6 +269,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "118.81%"
+        ],
+        "tokens": [
+          "128",
+          "audit",
+          "backed",
+          "complete",
+          "cpp",
+          "lcp",
+          "llama",
+          "mmq128",
+          "output",
+          "rejected",
+          "removed",
+          "reproduce",
+          "t16",
+          "x128"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-20-926d90a259c7",
       "evidence_hash": "d68f92489524"
     },
@@ -157,6 +310,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "3.95%",
+          "5.32%"
+        ],
+        "tokens": [
+          "block_q8_0",
+          "compatible",
+          "correctness",
+          "directly",
+          "lcp",
+          "major",
+          "mmq128",
+          "output",
+          "over",
+          "passes",
+          "rejected",
+          "removed",
+          "rows",
+          "source"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-21-d1ed6ea8287b",
       "evidence_hash": "951c406cfc12"
     },
@@ -176,6 +352,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "2.058x",
+          "2.266x"
+        ],
+        "tokens": [
+          "058x",
+          "266x",
+          "contract",
+          "exact",
+          "gpf",
+          "historical",
+          "register",
+          "rejected",
+          "resident",
+          "trajectory",
+          "tree",
+          "under",
+          "wall",
+          "wins"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-3-8602b0bc5444",
       "evidence_hash": "5e1974a9647b"
     },
@@ -197,6 +396,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "12.98%",
+          "14.58%",
+          "16.86%"
+        ],
+        "tokens": [
+          "512",
+          "but",
+          "byte",
+          "exact",
+          "focused",
+          "gpf",
+          "loses",
+          "ordered",
+          "prefill",
+          "recurrence",
+          "register",
+          "rejected",
+          "resident",
+          "wave"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-4-fcbb83df9924",
       "evidence_hash": "5440634a6da0"
     },
@@ -216,6 +439,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "1.44x",
+          "3.74x"
+        ],
+        "tokens": [
+          "44x",
+          "74x",
+          "across",
+          "cpp",
+          "faster",
+          "file",
+          "gguf",
+          "hip",
+          "inherently",
+          "llama",
+          "q4_k_m",
+          "same",
+          "slow",
+          "uses"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-gguf-q4-k-m-is-inherentl-91eeff385f3b",
       "evidence_hash": "bf0dd67e2f29"
     },
@@ -238,6 +484,31 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "11.68%",
+          "374.206 tok/s",
+          "8.36%",
+          "862.281 ms"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "diagnostic",
+          "gfx1151",
+          "gguf",
+          "gpf",
+          "gpf1",
+          "prefill",
+          "rejected",
+          "results",
+          "tile32",
+          "tile64",
+          "tiling",
+          "value"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-gpf-1-tile64-tile32-6b3e5ce24b72",
       "evidence_hash": "38dfb822163a"
     },
@@ -259,6 +530,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "128.879 tok/s",
+          "129.785 tok/s",
+          "3516.665 ms"
+        ],
+        "tokens": [
+          "128",
+          "129",
+          "785",
+          "879",
+          "exact",
+          "gpf",
+          "non",
+          "ordered",
+          "recurrence",
+          "reduced",
+          "resident",
+          "tok",
+          "tree",
+          "wave32"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-gpf-2a-non-resident-wave-d7edd207b333",
       "evidence_hash": "1d174d2b402c"
     },
@@ -279,6 +574,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "2.058x",
+          "2.266x",
+          "847.981 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "candidate",
+          "diagnostic",
+          "gfx1151",
+          "gguf",
+          "gpf",
+          "gpf2",
+          "prefill",
+          "register",
+          "resident",
+          "results",
+          "tree",
+          "wave32"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-gpf-2b-register-resident-10548dfd569e",
       "evidence_hash": "f83a533e1ed7"
     },
@@ -303,6 +622,34 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "0.24%",
+          "0.31%",
+          "12.98%",
+          "13.50%",
+          "14.58%",
+          "354.672 tok/s",
+          "928.006 ms"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "diagnostic",
+          "gfx1151",
+          "gguf",
+          "gpf",
+          "gpf2c",
+          "ordered",
+          "prefill",
+          "register",
+          "rejected",
+          "resident",
+          "results",
+          "wave32"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-gpf-2c-register-resident-e7c33aeee0f9",
       "evidence_hash": "de9e216913ed"
     },
@@ -321,6 +668,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "971.1 tok/s"
+        ],
+        "tokens": [
+          "128k",
+          "2109",
+          "2331",
+          "2332",
+          "32k",
+          "512",
+          "64k",
+          "june",
+          "normalized",
+          "prefi",
+          "prefill",
+          "recurrence",
+          "split",
+          "w7900"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-june-normalized-q-k-spli-912f24dab50a",
       "evidence_hash": "ecef5b5c5758"
     },
@@ -340,6 +709,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-PREFILL-OPTIMIZATION.md",
+        "refs": [
+          "5.19%",
+          "6.70%"
+        ],
+        "tokens": [
+          "512",
+          "balanced",
+          "chain",
+          "exact",
+          "existing",
+          "fallback",
+          "full",
+          "keep",
+          "loses",
+          "oracle",
+          "rejected",
+          "select",
+          "unchanged",
+          "wall"
+        ]
+      },
       "id": "candidate/gguf-prefill-optimization-select-the-existing-exac-f9d8e58f94c2",
       "evidence_hash": "86c22298886d"
     },
@@ -359,6 +751,29 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/GGUF-Q3-OPT.md",
+        "refs": [
+          "8.82493 ms",
+          "80%"
+        ],
+        "tokens": [
+          "671",
+          "82493",
+          "completed",
+          "decode",
+          "dense",
+          "final",
+          "hold",
+          "launches",
+          "reprofile",
+          "residual",
+          "shaped",
+          "source",
+          "token",
+          "tree"
+        ]
+      },
       "id": "candidate/gguf-q3-opt-32-daba2ac8291b",
       "evidence_hash": "c31b9e90d429"
     },
@@ -377,6 +792,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA.md",
+        "refs": [
+          "0.8843x"
+        ],
+        "tokens": [
+          "already",
+          "arithmetic",
+          "bound",
+          "compact",
+          "exact",
+          "layout",
+          "lpf",
+          "match",
+          "padding",
+          "pair",
+          "rejected",
+          "reuse",
+          "rewire",
+          "stronger"
+        ]
+      },
       "id": "candidate/laguna-compact-exact-pair-reuse-67d497507cb4",
       "evidence_hash": "826122c72194"
     },
@@ -396,6 +833,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.238 ms",
+          "1.492 ms"
+        ],
+        "tokens": [
+          "238",
+          "492",
+          "context",
+          "cooperative",
+          "growing",
+          "new",
+          "plus",
+          "producer",
+          "reducer",
+          "score",
+          "sharply",
+          "short",
+          "swa",
+          "token"
+        ]
+      },
       "id": "candidate/laguna-decode-2-8ee90e38bfb4",
       "evidence_hash": "482a86934a6b"
     },
@@ -416,6 +876,29 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.366%",
+          "2.742%"
+        ],
+        "tokens": [
+          "accelerate",
+          "benchmarks",
+          "body",
+          "design",
+          "dpp",
+          "exa",
+          "exactly",
+          "fixed",
+          "grid64",
+          "iq2",
+          "reduction",
+          "retained",
+          "two",
+          "wave"
+        ]
+      },
       "id": "candidate/laguna-decode-can-a-fixed-two-wave-dpp-08d9c84cfc5d",
       "evidence_hash": "1c83e4dd676d"
     },
@@ -434,6 +917,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.758%"
+        ],
+        "tokens": [
+          "2026",
+          "aql",
+          "benchmarks",
+          "doorbell",
+          "gap",
+          "json",
+          "native",
+          "one",
+          "owner",
+          "queue",
+          "rejected",
+          "remove",
+          "results",
+          "submission"
+        ]
+      },
       "id": "candidate/laguna-decode-can-a-one-doorbell-nativ-68854e14a6e8",
       "evidence_hash": "3bdc398e9400"
     },
@@ -455,6 +960,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.340%",
+          "0.528%",
+          "2.501%",
+          "2.549%"
+        ],
+        "tokens": [
+          "2026",
+          "accelerate",
+          "add",
+          "benchmarks",
+          "design",
+          "exactly",
+          "f32",
+          "laguna",
+          "lds",
+          "results",
+          "rmsnorm",
+          "staged",
+          "sums",
+          "unrounded"
+        ]
+      },
       "id": "candidate/laguna-decode-can-lds-staged-unrounded-430bef47eb42",
       "evidence_hash": "a1242ef2e77f"
     },
@@ -474,6 +1004,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.681%",
+          "1.265%"
+        ],
+        "tokens": [
+          "across",
+          "activation",
+          "benchmarks",
+          "design",
+          "exact",
+          "local32",
+          "one",
+          "outpu",
+          "output",
+          "pairs",
+          "register",
+          "results",
+          "reuse",
+          "wave"
+        ]
+      },
       "id": "candidate/laguna-decode-can-one-local32-wave-reu-fc52977f264f",
       "evidence_hash": "9088d535ac8e"
     },
@@ -497,6 +1050,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.075%",
+          "0.077%",
+          "0.280%",
+          "0.457%",
+          "0.592%",
+          "0.723%"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "contract",
+          "design",
+          "exact",
+          "gfx1100",
+          "json",
+          "laguna",
+          "output",
+          "pair",
+          "paired",
+          "reconstruction",
+          "results",
+          "swar"
+        ]
+      },
       "id": "candidate/laguna-decode-can-paired-output-swar-c-3dd336b960dc",
       "evidence_hash": "cf463164f61b"
     },
@@ -516,6 +1096,28 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "10.15%"
+        ],
+        "tokens": [
+          "benchmarks",
+          "exact",
+          "fixed",
+          "json",
+          "local64",
+          "metadata",
+          "one",
+          "output",
+          "rejected",
+          "share",
+          "two",
+          "wave32x4",
+          "waves",
+          "workgroup"
+        ]
+      },
       "id": "candidate/laguna-decode-can-two-exact-fixed-meta-6493e97d0f8a",
       "evidence_hash": "b279acf498b8"
     },
@@ -537,6 +1139,23 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.307998 ms",
+          "0.574117 ms",
+          "2.289356 ms",
+          "4.331359 ms"
+        ],
+        "tokens": [
+          "289356",
+          "307998",
+          "331359",
+          "574117",
+          "compensated",
+          "deferred"
+        ]
+      },
       "id": "candidate/laguna-decode-compensated-deferred-91520aa8ed08",
       "evidence_hash": "77d7f403b1f6"
     },
@@ -556,6 +1175,28 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "89.95%"
+        ],
+        "tokens": [
+          "2026",
+          "accelerate",
+          "benchmarks",
+          "does",
+          "exact",
+          "gqa3",
+          "json",
+          "reduce",
+          "reducer",
+          "rejected",
+          "results",
+          "reuse",
+          "swa",
+          "value"
+        ]
+      },
       "id": "candidate/laguna-decode-does-exact-gqa3-value-re-d77737944a7d",
       "evidence_hash": "f92e0b7a5e0d"
     },
@@ -577,6 +1218,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.060%",
+          "0.073%",
+          "0.244%",
+          "0.247%"
+        ],
+        "tokens": [
+          "benchmarks",
+          "clean",
+          "complete",
+          "dim2",
+          "does",
+          "exact",
+          "improve",
+          "json",
+          "local64",
+          "ownership",
+          "path",
+          "reducer",
+          "rejected",
+          "swa"
+        ]
+      },
       "id": "candidate/laguna-decode-does-exact-local64-dim2-1a279dc1266d",
       "evidence_hash": "4fc72efa74f6"
     },
@@ -598,6 +1264,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.5%",
+          "0.571%",
+          "1.124%",
+          "1.931%"
+        ],
+        "tokens": [
+          "bit",
+          "clean",
+          "complete",
+          "decode",
+          "does",
+          "free",
+          "improve",
+          "insertion",
+          "iq3",
+          "json",
+          "load",
+          "rejected",
+          "sign",
+          "signbit"
+        ]
+      },
       "id": "candidate/laguna-decode-does-load-free-iq3-sign-c910fb39d7fb",
       "evidence_hash": "366d40bffa11"
     },
@@ -617,6 +1308,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.68%"
+        ],
+        "tokens": [
+          "benchmarks",
+          "body",
+          "does",
+          "iq2",
+          "json",
+          "launch",
+          "local64",
+          "make",
+          "mixed",
+          "one",
+          "rejected",
+          "shared",
+          "viable",
+          "wave"
+        ]
+      },
       "id": "candidate/laguna-decode-does-that-one-wave-q5-bo-7905e2652ff2",
       "evidence_hash": "8b4f50df60a4"
     },
@@ -640,6 +1353,35 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.736%",
+          "1.422%",
+          "13.69%",
+          "14.42%",
+          "23.23%",
+          "23.26%",
+          "4.83%",
+          "4.84%"
+        ],
+        "tokens": [
+          "benchmarks",
+          "bit",
+          "clean",
+          "decode",
+          "design",
+          "does",
+          "full",
+          "improve",
+          "model",
+          "post",
+          "router",
+          "sign",
+          "top10",
+          "wave"
+        ]
+      },
       "id": "candidate/laguna-decode-does-the-post-sign-bit-w-5995e66dc997",
       "evidence_hash": "5875ebb6d345"
     },
@@ -658,6 +1400,27 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "13.26%"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "implemented",
+          "json",
+          "laguna",
+          "local32",
+          "post",
+          "primitive",
+          "resu",
+          "results",
+          "standalone"
+        ]
+      },
       "id": "candidate/laguna-decode-is-the-post-q4-q6-local3-b6f3a81ca348",
       "evidence_hash": "2e70d77fecd7"
     },
@@ -677,6 +1440,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "2.25%",
+          "7.15%"
+        ],
+        "tokens": [
+          "capture",
+          "graph",
+          "hip",
+          "inclusive",
+          "laguna",
+          "one",
+          "qwen",
+          "regressed",
+          "replay",
+          "state",
+          "steady",
+          "step",
+          "successfully",
+          "uses"
+        ]
+      },
       "id": "candidate/laguna-decode-one-step-hip-graph-repla-5e6c7d1dfc01",
       "evidence_hash": "c64af7c91e6c"
     },
@@ -698,6 +1484,23 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.284682 ms",
+          "0.560716 ms",
+          "2.252598 ms",
+          "4.278564 ms"
+        ],
+        "tokens": [
+          "252598",
+          "278564",
+          "284682",
+          "560716",
+          "deferred",
+          "ordinary"
+        ]
+      },
       "id": "candidate/laguna-decode-ordinary-deferred-4c4d23a829af",
       "evidence_hash": "a38751427c84"
     },
@@ -718,6 +1521,30 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.046%",
+          "1.07%",
+          "1.65%"
+        ],
+        "tokens": [
+          "but",
+          "cooperative",
+          "d11",
+          "dispatches",
+          "gained",
+          "kernel",
+          "laguna",
+          "persistent",
+          "qwen",
+          "removed",
+          "reset",
+          "router",
+          "self",
+          "then"
+        ]
+      },
       "id": "candidate/laguna-decode-persistent-cooperative-r-299adb4d5582",
       "evidence_hash": "7948a6ef3d01"
     },
@@ -736,6 +1563,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "4.29%"
+        ],
+        "tokens": [
+          "activation",
+          "cargo",
+          "cult",
+          "dot",
+          "ggml_vk_disable_mmvq",
+          "inclusive",
+          "integer",
+          "iq2",
+          "laguna",
+          "path",
+          "q8_1",
+          "regressed",
+          "rejected",
+          "vulkan"
+        ]
+      },
       "id": "candidate/laguna-decode-q8-1-activation-integer-7f67cc18f333",
       "evidence_hash": "82af4c88e2d3"
     },
@@ -757,6 +1606,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.5%",
+          "0.736%",
+          "0.862%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "closing",
+          "design",
+          "gfx1100",
+          "happened",
+          "iq3",
+          "laguna",
+          "ownership",
+          "resu",
+          "results",
+          "swar",
+          "wave10",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-clos-fc719391fab8",
       "evidence_hash": "788b714e5821"
     },
@@ -781,6 +1655,33 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.612%",
+          "0.619%",
+          "4.211%",
+          "6.307%",
+          "63.270 tok/s",
+          "7.527%"
+        ],
+        "tokens": [
+          "2026",
+          "benchmark",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "global",
+          "happened",
+          "head",
+          "laguna",
+          "rejection",
+          "results",
+          "router",
+          "wave",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-glob-870e3d1a9d0c",
       "evidence_hash": "9caa90eb3887"
     },
@@ -803,6 +1704,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.0949%",
+          "1.3203%",
+          "10.97%",
+          "12.12%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "global",
+          "happened",
+          "iq4",
+          "laguna",
+          "ownership",
+          "rejection",
+          "res",
+          "results",
+          "single",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-iq4-8fba78d0883c",
       "evidence_hash": "4a884ca67631"
     },
@@ -826,6 +1753,34 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.126%",
+          "0.503%",
+          "0.618%",
+          "100%",
+          "37.472%",
+          "51.353 us",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "async",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "happened",
+          "laguna",
+          "mapped",
+          "output",
+          "pinned",
+          "rejection",
+          "res",
+          "results",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-mapp-98a41842cab9",
       "evidence_hash": "7f38a03820e6"
     },
@@ -848,6 +1803,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.021%",
+          "0.523%",
+          "0.790%",
+          "1.301%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "argmax",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "happened",
+          "host",
+          "laguna",
+          "mapped",
+          "paired",
+          "readback",
+          "rejection",
+          "results",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-pair-d3537f9c6bf2",
       "evidence_hash": "a2b74d047fa5"
     },
@@ -871,6 +1852,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.315%",
+          "0.336%",
+          "0.700%",
+          "0.706%",
+          "100%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "control",
+          "design",
+          "gfx1100",
+          "happened",
+          "laguna",
+          "ownership",
+          "projection",
+          "publication",
+          "rejection",
+          "results",
+          "router",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-rout-fe5e3138f54c",
       "evidence_hash": "6d18c81d4415"
     },
@@ -891,6 +1899,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "1.184%",
+          "1.306%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "argmax",
+          "benchmarks",
+          "control",
+          "design",
+          "gfx1100",
+          "happened",
+          "json",
+          "laguna",
+          "readback",
+          "rejection",
+          "results",
+          "shared",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-shar-18e12efc7448",
       "evidence_hash": "bed6783c778b"
     },
@@ -914,6 +1946,34 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.202%",
+          "0.303%",
+          "0.681%",
+          "2.198%",
+          "25.191%",
+          "25.515%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmark",
+          "benchmarks",
+          "bit",
+          "design",
+          "gfx1100",
+          "happened",
+          "iq4",
+          "laguna",
+          "ownership",
+          "rejection",
+          "results",
+          "sign",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-sign-edfa2934c26d",
       "evidence_hash": "7f7b3c8d8444"
     },
@@ -934,6 +1994,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.5%",
+          "1.035%",
+          "1.061%"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "happened",
+          "json",
+          "laguna",
+          "output",
+          "results",
+          "retention",
+          "runtime",
+          "swar",
+          "wave10",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-after-wave-08ab770fa967",
       "evidence_hash": "be7248a752e0"
     },
@@ -956,6 +2040,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.5%",
+          "0.780%",
+          "0.809%",
+          "63.270 tok/s",
+          "63.853 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "composite",
+          "design",
+          "gated",
+          "gfx1100",
+          "global",
+          "happened",
+          "laguna",
+          "one",
+          "page",
+          "results",
+          "single",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-to-the-gat-36b4d98a9c35",
       "evidence_hash": "eb9f7ed3ec61"
     },
@@ -979,6 +2089,37 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.591%",
+          "1.587%",
+          "1.619%",
+          "1.787%",
+          "14.08%",
+          "16.89%",
+          "25.77%",
+          "25.78%",
+          "27.60%",
+          "30.58%"
+        ],
+        "tokens": [
+          "2026",
+          "bench",
+          "benchmarks",
+          "compact",
+          "design",
+          "gfx1100",
+          "happened",
+          "laguna",
+          "post",
+          "results",
+          "router",
+          "selector",
+          "wave32",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-to-the-pos-af553e073ac0",
       "evidence_hash": "ab23591cf6ba"
     },
@@ -1001,6 +2142,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.320%",
+          "12.390%",
+          "12.664%",
+          "19.883%",
+          "6.342%"
+        ],
+        "tokens": [
+          "2026",
+          "benchmarks",
+          "compact",
+          "design",
+          "gfx1100",
+          "happened",
+          "hidden",
+          "json",
+          "laguna",
+          "post",
+          "results",
+          "split",
+          "weighted",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-happened-to-the-pos-f9ceb175a12a",
       "evidence_hash": "5efe36f78eda"
     },
@@ -1025,6 +2192,34 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-decode.md",
+        "refs": [
+          "0.013%",
+          "0.273%",
+          "0.810%",
+          "0.859%",
+          "26.407%",
+          "28.728%",
+          "63.270 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "benchmark",
+          "benchmarks",
+          "design",
+          "gfx1100",
+          "global",
+          "laguna",
+          "moe",
+          "rejection",
+          "results",
+          "selected",
+          "tail",
+          "wave",
+          "what"
+        ]
+      },
       "id": "candidate/laguna-decode-what-is-selected-after-w-1dca909467a8",
       "evidence_hash": "1853c9512d40"
     },
@@ -1043,6 +2238,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA.md",
+        "refs": [
+          "0.129%"
+        ],
+        "tokens": [
+          "abi",
+          "bf16",
+          "direct",
+          "dual",
+          "exact",
+          "fused",
+          "k3072",
+          "n1024",
+          "output",
+          "q4t16",
+          "resident",
+          "selected",
+          "silu",
+          "tiles"
+        ]
+      },
       "id": "candidate/laguna-direct-q4t16-dual-fused-f3f16905ca88",
       "evidence_hash": "743f9a3e575f"
     },
@@ -1062,6 +2279,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "44.594%"
+        ],
+        "tokens": [
+          "048",
+          "103",
+          "149",
+          "2026",
+          "520",
+          "594",
+          "684",
+          "global",
+          "query",
+          "rejected",
+          "retained",
+          "reuse",
+          "swa",
+          "wider"
+        ]
+      },
       "id": "candidate/laguna-prefill-2026-07-28-03-50-8c99bbfffe8e",
       "evidence_hash": "efd0ada2a7b3"
     },
@@ -1080,6 +2319,27 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.166%"
+        ],
+        "tokens": [
+          "096",
+          "147",
+          "149",
+          "166",
+          "192",
+          "2026",
+          "268",
+          "684",
+          "756",
+          "939",
+          "chunks",
+          "matrix",
+          "rejected"
+        ]
+      },
       "id": "candidate/laguna-prefill-2026-07-28-05-12-2fe1d15f6e78",
       "evidence_hash": "c10f5abab577"
     },
@@ -1100,6 +2360,29 @@
         "recorded as 'removed' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.177%",
+          "14.555265 tok/s"
+        ],
+        "tokens": [
+          "177",
+          "525706",
+          "529573",
+          "555265",
+          "control",
+          "launches",
+          "moe",
+          "next",
+          "retained",
+          "reverse",
+          "rmsnorm",
+          "scalar",
+          "tail",
+          "tok"
+        ]
+      },
       "id": "candidate/laguna-prefill-d9-scalar-moe-tail-next-3634a8cc9a67",
       "evidence_hash": "21cba8d892b8"
     },
@@ -1120,6 +2403,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "2.615x",
+          "355.721 tok/s",
+          "356.473 tok/s"
+        ],
+        "tokens": [
+          "273",
+          "355",
+          "721",
+          "admitted",
+          "calibration",
+          "defaults",
+          "down",
+          "gate",
+          "gfx1151",
+          "lap",
+          "original",
+          "reached",
+          "route",
+          "tok"
+        ]
+      },
       "id": "candidate/laguna-prefill-lap-2-calibration-lap-3-4f7dc26d3fcd",
       "evidence_hash": "5af750d8198f"
     },
@@ -1139,6 +2446,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.691%",
+          "1.703%"
+        ],
+        "tokens": [
+          "attention",
+          "broad",
+          "bundle",
+          "capacity",
+          "chunk",
+          "isolated",
+          "m2048",
+          "m256",
+          "m512",
+          "matrix",
+          "measured",
+          "quality",
+          "rejected",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-matrix-chunk-capacity-6452c3fa7d1e",
       "evidence_hash": "e3d79a3ba2c9"
     },
@@ -1162,6 +2492,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "110.761 tok/s",
+          "20.972%",
+          "23.082%",
+          "3.336x",
+          "85.946%",
+          "99.496%"
+        ],
+        "tokens": [
+          "336x",
+          "actual",
+          "existing",
+          "faster",
+          "gate",
+          "iq2",
+          "layers",
+          "m512",
+          "mmq",
+          "over",
+          "reaches",
+          "rejected",
+          "repair",
+          "screen"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-p6-p6-repair-sc-c9753ee9b8a6",
       "evidence_hash": "12447f14d40c"
     },
@@ -1180,6 +2537,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "116.116 tok/s"
+        ],
+        "tokens": [
+          "083",
+          "115",
+          "116",
+          "129",
+          "400292",
+          "572",
+          "624304",
+          "802",
+          "d8r8",
+          "max",
+          "rejected",
+          "screens",
+          "tok",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-wpf-1b-screens-c847df2aaaf0",
       "evidence_hash": "03723975f030"
     },
@@ -1201,6 +2580,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.686x",
+          "100%",
+          "29.894x",
+          "93.418%"
+        ],
+        "tokens": [
+          "333",
+          "381",
+          "all",
+          "captured",
+          "d8r8",
+          "eligible",
+          "m512",
+          "narrow",
+          "projection",
+          "raw",
+          "rejected",
+          "repair",
+          "tensors",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-wpf-1r-raw-q5-q-957f48607bb0",
       "evidence_hash": "1988cd159aed"
     },
@@ -1223,6 +2627,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.609%",
+          "0.764%",
+          "0.995%",
+          "118.335 tok/s",
+          "97.917%"
+        ],
+        "tokens": [
+          "576",
+          "complete",
+          "improves",
+          "lane",
+          "m512",
+          "natural",
+          "online",
+          "prefill",
+          "prompt",
+          "qrow4",
+          "rejected",
+          "step",
+          "swa",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-wpf-3-online-qr-11bf97843193",
       "evidence_hash": "e9bccb1586c1"
     },
@@ -1244,6 +2674,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.348x",
+          "16.094x",
+          "562.932 ms",
+          "97.110 ms"
+        ],
+        "tokens": [
+          "235",
+          "actual",
+          "all",
+          "calls",
+          "coltile",
+          "eight",
+          "exact",
+          "m512",
+          "mmq",
+          "rejected",
+          "roles",
+          "runtime",
+          "source",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-wpf-h1-q5-sourc-c81d573ec1eb",
       "evidence_hash": "dd55f5d24f73"
     },
@@ -1265,6 +2720,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.192x",
+          "115.951 ms",
+          "181.556 tok/s",
+          "4.877x"
+        ],
+        "tokens": [
+          "actual",
+          "all",
+          "down",
+          "iq3",
+          "iq4",
+          "layers",
+          "m51",
+          "m512",
+          "mmq",
+          "rejected",
+          "runtime",
+          "selected",
+          "source",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-rejected-wpf-h3-iq3-iq4-7fdb4d94d300",
       "evidence_hash": "c0a05a0c0824"
     },
@@ -1284,6 +2764,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.023%",
+          "0.426 ms"
+        ],
+        "tokens": [
+          "426",
+          "add",
+          "closed",
+          "current",
+          "f32",
+          "family",
+          "gain",
+          "gfx1100",
+          "leaf",
+          "measured",
+          "rejected",
+          "rmsnorm",
+          "staged",
+          "token"
+        ]
+      },
       "id": "candidate/laguna-prefill-staged-f32-add-rmsnorm-903ef9a7475e",
       "evidence_hash": "65bec0548547"
     },
@@ -1302,6 +2805,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "111.324 tok/s"
+        ],
+        "tokens": [
+          "129",
+          "572",
+          "approximate",
+          "candidates",
+          "clean",
+          "d8r8",
+          "dense",
+          "fastest",
+          "mmq",
+          "q8_1",
+          "reach",
+          "rejected",
+          "shared",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-1b-approximate-dense-8bf496b634bb",
       "evidence_hash": "c9426f1b8bfa"
     },
@@ -1321,6 +2846,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.686x",
+          "100%"
+        ],
+        "tokens": [
+          "333",
+          "381",
+          "all",
+          "before",
+          "captured",
+          "exact",
+          "guarded",
+          "implementation",
+          "m512",
+          "raw",
+          "rejected",
+          "repair",
+          "tensors",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-1r-guarded-exact-rep-a726c091d46d",
       "evidence_hash": "891e435192b2"
     },
@@ -1346,6 +2894,43 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.242%",
+          "0.382%",
+          "0.459%",
+          "0.545%",
+          "1.476x",
+          "123.084 tok/s",
+          "159.229 tok/s",
+          "1791.936 ms",
+          "1828.710 ms",
+          "2.011%",
+          "26.412%",
+          "28.301%",
+          "32.249%",
+          "36.773 ms",
+          "38.546%",
+          "38.875%"
+        ],
+        "tokens": [
+          "accumulators",
+          "complete",
+          "dense",
+          "exact",
+          "gfx1100",
+          "output",
+          "preserve",
+          "production",
+          "rb32",
+          "retained",
+          "thread",
+          "through",
+          "tiling",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-1t-exact-dense-outpu-cb42b613c5a9",
       "evidence_hash": "ad2b2bb4e3ec"
     },
@@ -1365,6 +2950,28 @@
         "recorded as 'removed' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "91.559 tok/s"
+        ],
+        "tokens": [
+          "complete",
+          "exact",
+          "explicit",
+          "first",
+          "grouped",
+          "iq2",
+          "iq3",
+          "preceding",
+          "primitives",
+          "reuse",
+          "rollback",
+          "routed",
+          "rowbatch8",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-2-exact-first-routed-09b9a83b1f1b",
       "evidence_hash": "00ed0f4fe784"
     },
@@ -1386,6 +2993,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "110.761 tok/s",
+          "3.336x",
+          "85.946%",
+          "99.496%"
+        ],
+        "tokens": [
+          "actual",
+          "added",
+          "all",
+          "byte",
+          "gate",
+          "iq2",
+          "leaves",
+          "m512",
+          "mmq",
+          "owner",
+          "rejected",
+          "runtime",
+          "signed",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-2p-p6-iq2-signed-byt-e6e6ac83e17e",
       "evidence_hash": "5356b7f805d3"
     },
@@ -1410,6 +3042,36 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.995%",
+          "11.131%",
+          "14.228%",
+          "16.842%",
+          "2.243x",
+          "55.411%",
+          "59.449%",
+          "9.389 ms",
+          "9.643%"
+        ],
+        "tokens": [
+          "attention",
+          "complete",
+          "exact",
+          "head",
+          "keeps",
+          "one",
+          "online",
+          "qrow4",
+          "rejected",
+          "retained",
+          "short",
+          "swa",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-3-short-swa-attentio-34384061faf3",
       "evidence_hash": "7652b1543209"
     },
@@ -1431,6 +3093,30 @@
         "recorded as 'deferred' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.461%",
+          "26.726 ms",
+          "5%"
+        ],
+        "tokens": [
+          "461",
+          "726",
+          "cpp",
+          "deferred",
+          "fresh",
+          "fusion",
+          "h5w",
+          "launch",
+          "llama",
+          "m512",
+          "minus",
+          "span",
+          "sum",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-4-launch-fusion-48f90da41bb6",
       "evidence_hash": "3a0d745dbb77"
     },
@@ -1451,6 +3137,30 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "188.858 tok/s",
+          "387.571 tok/s",
+          "696.342 tok/s"
+        ],
+        "tokens": [
+          "16k",
+          "complete",
+          "context",
+          "deferred",
+          "h5y",
+          "h6c",
+          "h6e",
+          "h6i",
+          "h6l",
+          "h6n",
+          "hard",
+          "long",
+          "selector",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-5-long-context-b5de2ae360d9",
       "evidence_hash": "148a9da7e4b1"
     },
@@ -1472,6 +3182,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.348x",
+          "16.094x",
+          "203.862 tok/s",
+          "97.110 ms"
+        ],
+        "tokens": [
+          "ds4",
+          "faithful",
+          "isolated",
+          "mmq",
+          "owner",
+          "plus",
+          "producer",
+          "q5_k",
+          "rejected",
+          "removed",
+          "runtime",
+          "source",
+          "strict",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h1-source-faithful-q-fbe8126f2520",
       "evidence_hash": "6e51df57c4a6"
     },
@@ -1494,6 +3229,31 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.027x",
+          "156.219 tok/s",
+          "21.719 ms",
+          "22.603x"
+        ],
+        "tokens": [
+          "bf16",
+          "faithful",
+          "flashattention",
+          "full",
+          "m512",
+          "owne",
+          "owner",
+          "rejected",
+          "removed",
+          "retained",
+          "runtime",
+          "source",
+          "standalone",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h2-source-faithful-f-6d6f3fca5932",
       "evidence_hash": "be822eb3ec39"
     },
@@ -1515,6 +3275,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.192x",
+          "115.951 ms",
+          "27.145%",
+          "4.877x"
+        ],
+        "tokens": [
+          "down",
+          "faithful",
+          "iq3",
+          "iq4",
+          "mmq",
+          "own",
+          "owner",
+          "rejected",
+          "removed",
+          "runtime",
+          "selected",
+          "source",
+          "standalone",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h3-source-faithful-i-33f89a69f063",
       "evidence_hash": "983be20281c9"
     },
@@ -1537,6 +3322,32 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.042x",
+          "12.151x",
+          "14.349 ms",
+          "158.205 tok/s",
+          "3.825%"
+        ],
+        "tokens": [
+          "compute",
+          "f16",
+          "faithful",
+          "local64",
+          "owner",
+          "q6_k",
+          "rejected",
+          "remove",
+          "removed",
+          "rocblas",
+          "runtime",
+          "source",
+          "standalone",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h4-source-faithful-q-a5f62e1b9bed",
       "evidence_hash": "83e67534df0a"
     },
@@ -1560,6 +3371,36 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.330x",
+          "100%",
+          "169.516 tok/s",
+          "221.137 ms",
+          "270.458 ms",
+          "4.095x",
+          "42.325%",
+          "5.273x",
+          "5.684x"
+        ],
+        "tokens": [
+          "169",
+          "516",
+          "clean",
+          "exact",
+          "f32",
+          "h5a",
+          "m512",
+          "owner",
+          "rejected",
+          "removed",
+          "runtime",
+          "sgemm",
+          "value",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5a-exact-value-q5-f-7b5b3a1a03f8",
       "evidence_hash": "b78c3107dd84"
     },
@@ -1583,6 +3424,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.148x",
+          "1.754x",
+          "190.103 tok/s",
+          "60.669 ms",
+          "62.655 ms",
+          "8.049x"
+        ],
+        "tokens": [
+          "attention",
+          "dense",
+          "f32",
+          "h5b",
+          "initial",
+          "map",
+          "owner",
+          "packed",
+          "rejected",
+          "removed",
+          "reuses",
+          "runtime",
+          "transfer",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5b-packed-f32-dense-0ccf69392b3f",
       "evidence_hash": "64481a2467df"
     },
@@ -1606,6 +3474,32 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "10.770%",
+          "492.542 ms",
+          "5.771%",
+          "6.893%",
+          "9.870%"
+        ],
+        "tokens": [
+          "all",
+          "batches",
+          "exact",
+          "h5k",
+          "iq3",
+          "larger",
+          "rejected",
+          "removed",
+          "resident",
+          "row",
+          "rowbatch12",
+          "surfaces",
+          "temporary",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5k-larger-exact-res-3011e4b1ec5d",
       "evidence_hash": "3b5652991370"
     },
@@ -1630,6 +3524,37 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.202%",
+          "0.217%",
+          "0.351%",
+          "1.156x",
+          "1.158x",
+          "1.435%",
+          "1.687%",
+          "13.918%",
+          "157.832 tok/s",
+          "8.087%"
+        ],
+        "tokens": [
+          "dense",
+          "exact",
+          "fill",
+          "first",
+          "h5n",
+          "leaf",
+          "qrow4",
+          "rejected",
+          "retained",
+          "runtime",
+          "stan",
+          "standalone",
+          "visibility",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5n-exact-dense-firs-f638e3e2570b",
       "evidence_hash": "3b287476d37b"
     },
@@ -1650,6 +3575,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "27.202%",
+          "29.903%",
+          "614.512 ms"
+        ],
+        "tokens": [
+          "320",
+          "all",
+          "byte",
+          "candidate",
+          "coefficient",
+          "exact",
+          "factorized",
+          "h5o",
+          "plane",
+          "quant",
+          "rejected",
+          "removed",
+          "surfaces",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5o-exact-factorized-17da3d5edc47",
       "evidence_hash": "ff9e9afa1786"
     },
@@ -1674,6 +3623,38 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.014%",
+          "0.019%",
+          "0.030%",
+          "0.054%",
+          "0.093%",
+          "0.176%",
+          "0.187%",
+          "0.572%",
+          "3.211%",
+          "5.800%",
+          "6.315%"
+        ],
+        "tokens": [
+          "cross",
+          "exact",
+          "h5p",
+          "leaf",
+          "major",
+          "occupancy",
+          "rejected",
+          "retained",
+          "retune",
+          "runtime",
+          "standalo",
+          "standalone",
+          "weight",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5p-exact-weight-maj-904863c342ad",
       "evidence_hash": "4808d8807917"
     },
@@ -1698,6 +3679,39 @@
         "recorded as 'default-off' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.267%",
+          "0.278%",
+          "0.355%",
+          "0.370%",
+          "0.491%",
+          "0.663%",
+          "0.702%",
+          "1.565%",
+          "158.693 tok/s",
+          "2.387%",
+          "3.255%",
+          "483.823 ms"
+        ],
+        "tokens": [
+          "active",
+          "complete",
+          "exact",
+          "expert",
+          "gfx1100",
+          "h5q",
+          "iq3",
+          "persistent",
+          "production",
+          "retaine",
+          "retained",
+          "through",
+          "traversal",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5q-exact-iq3-active-71ae8b5e4fa0",
       "evidence_hash": "9ccd06f8d559"
     },
@@ -1718,6 +3732,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "19.714%",
+          "23.277%",
+          "566.290 ms"
+        ],
+        "tokens": [
+          "all",
+          "candidat",
+          "candidate",
+          "exact",
+          "group",
+          "h5s",
+          "p16",
+          "persistent",
+          "rejected",
+          "removed",
+          "row",
+          "surfaces",
+          "traversal",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5s-exact-persistent-f0748bfd2210",
       "evidence_hash": "ef75f9188471"
     },
@@ -1738,6 +3776,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.388%",
+          "3.219%",
+          "469.677 ms"
+        ],
+        "tokens": [
+          "all",
+          "candidat",
+          "candidate",
+          "collapse",
+          "exact",
+          "h5t",
+          "iq3",
+          "one",
+          "partition",
+          "rejected",
+          "removed",
+          "surfaces",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5t-exact-iq3-one-wa-ecab3bfc4bd0",
       "evidence_hash": "69f305573e67"
     },
@@ -1762,6 +3824,33 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.00257%",
+          "0.073%",
+          "0.849%",
+          "15.494%",
+          "16.955%",
+          "17.148%"
+        ],
+        "tokens": [
+          "cached",
+          "exact",
+          "global",
+          "h5u",
+          "leaf",
+          "local256",
+          "preappend",
+          "rejected",
+          "retained",
+          "runtime",
+          "source",
+          "standalone",
+          "starts",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5u-exact-global-pre-456c494bbc8a",
       "evidence_hash": "c9f13083577b"
     },
@@ -1783,6 +3872,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "493.754 ms",
+          "5.895%",
+          "5.905%"
+        ],
+        "tokens": [
+          "all",
+          "candidate",
+          "exact",
+          "h5v",
+          "one",
+          "partition",
+          "rejected",
+          "removed",
+          "replay",
+          "sequential",
+          "six",
+          "surfaces",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5v-exact-q5-one-wav-1a927442ccee",
       "evidence_hash": "d8f990943dad"
     },
@@ -1808,6 +3921,36 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "1.061%",
+          "1.100%",
+          "1.492%",
+          "1.532%",
+          "1.785%",
+          "1.830%",
+          "161.853 tok/s",
+          "2.628%",
+          "23.635%"
+        ],
+        "tokens": [
+          "complete",
+          "composite",
+          "exact",
+          "exactly",
+          "gfx11",
+          "gfx1100",
+          "h5w",
+          "major",
+          "production",
+          "retained",
+          "reuse",
+          "through",
+          "weight",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5w-exact-q6-weight-60c65b1ed8fd",
       "evidence_hash": "95fb297d6e2c"
     },
@@ -1833,6 +3976,37 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.310%",
+          "0.327%",
+          "0.439%",
+          "0.468%",
+          "0.518%",
+          "0.531%",
+          "0.657%",
+          "0.886%",
+          "1.911%",
+          "162.533 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "aosoa",
+          "col",
+          "complete",
+          "exact",
+          "f32",
+          "gfx1100",
+          "h5x",
+          "plane",
+          "production",
+          "retained",
+          "through",
+          "tile",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h5x-exact-tile-k-col-15e0730dc7ec",
       "evidence_hash": "aded31481016"
     },
@@ -1854,6 +4028,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "24.552%",
+          "30.461%",
+          "587.342 ms"
+        ],
+        "tokens": [
+          "active",
+          "all",
+          "candidate",
+          "exact",
+          "h6b",
+          "iq3",
+          "magnitude",
+          "plane",
+          "rejected",
+          "removed",
+          "segment",
+          "signed",
+          "surfaces",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6b-exact-active-iq3-7168307745e7",
       "evidence_hash": "2b6bb520f666"
     },
@@ -1877,6 +4075,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "204.091 ms",
+          "3.774%",
+          "353.798 tok/s",
+          "4.095%",
+          "4.443%",
+          "4.906%"
+        ],
+        "tokens": [
+          "all",
+          "both",
+          "candidate",
+          "dominant",
+          "exact",
+          "h6g",
+          "one",
+          "prefetch",
+          "record",
+          "rejected",
+          "removed",
+          "step",
+          "surfaces",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6g-exact-q5-one-ste-ab8c40643966",
       "evidence_hash": "234744d3b25f"
     },
@@ -1897,6 +4122,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "100%",
+          "353.798 tok/s",
+          "98.09%"
+        ],
+        "tokens": [
+          "allocation",
+          "bounded",
+          "complete",
+          "f16",
+          "fallbacks",
+          "h6h",
+          "quali",
+          "quality",
+          "raw",
+          "rejected",
+          "removed",
+          "runtime",
+          "source",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6h-bounded-source-f-9f540f4b26ed",
       "evidence_hash": "2a8dc7527b10"
     },
@@ -1920,6 +4169,34 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.699x",
+          "0.718x",
+          "133.542 ms",
+          "139.600 ms",
+          "359.963 tok/s",
+          "42.91%",
+          "48.44%"
+        ],
+        "tokens": [
+          "all",
+          "candidate",
+          "dense",
+          "dot",
+          "exact",
+          "h6j",
+          "initial",
+          "qrow4",
+          "rejected",
+          "replay",
+          "surfaces",
+          "swa",
+          "unscaled",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6j-exact-dense-init-04409d58ff1a",
       "evidence_hash": "b55f4f699c63"
     },
@@ -1943,6 +4220,34 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.969x",
+          "0.984x",
+          "1.660%",
+          "3.175%",
+          "337.538 ms",
+          "339.509 ms",
+          "359.963 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "amortization",
+          "candidate",
+          "exact",
+          "frozen",
+          "h6k",
+          "iq3",
+          "output",
+          "quadruple",
+          "reduction",
+          "rejected",
+          "removed",
+          "surfaces",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6k-exact-iq3-quadru-44248eda8a72",
       "evidence_hash": "aab20b486467"
     },
@@ -1967,6 +4272,33 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "205.331 ms",
+          "381.977 tok/s",
+          "4.836%",
+          "5.164%",
+          "5.523%",
+          "5.697%"
+        ],
+        "tokens": [
+          "all",
+          "candidate",
+          "exact",
+          "explicit",
+          "frozen",
+          "h6m",
+          "pipeline",
+          "record",
+          "rejected",
+          "removed",
+          "split",
+          "surfaces",
+          "wait",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6m-exact-explicit-w-44878786f923",
       "evidence_hash": "baa58150a081"
     },
@@ -1992,6 +4324,35 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.141%",
+          "0.242%",
+          "0.291%",
+          "0.416%",
+          "0.645%",
+          "0.764%",
+          "2.757%",
+          "386.959 tok/s"
+        ],
+        "tokens": [
+          "bound",
+          "bounded",
+          "default",
+          "exact",
+          "h6p",
+          "iq3",
+          "off",
+          "output",
+          "publication",
+          "retained",
+          "staged",
+          "triple",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6p-exact-staged-wav-ce8f6916a1e8",
       "evidence_hash": "fdbdea068f99"
     },
@@ -2016,6 +4377,41 @@
         "recorded as 'default-off' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.366%",
+          "0.373%",
+          "0.486%",
+          "0.487%",
+          "0.586%",
+          "1.016x",
+          "1.025x",
+          "1.038x",
+          "1.050x",
+          "1.076%",
+          "2.481%",
+          "313.405 ms",
+          "4.725%",
+          "4.776%"
+        ],
+        "tokens": [
+          "bounded",
+          "compact",
+          "default",
+          "exact",
+          "gfx1100",
+          "h6q",
+          "iq3",
+          "loop",
+          "off",
+          "qualified",
+          "shuffle",
+          "staged",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6q-exact-compact-sh-34f54909f1cf",
       "evidence_hash": "b518718bbad1"
     },
@@ -2040,6 +4436,33 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.858x",
+          "0.870x",
+          "112.761 ms",
+          "14.946%",
+          "16.601%",
+          "407.091 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "candidate",
+          "dense",
+          "dpp",
+          "exact",
+          "exchange",
+          "h6s",
+          "initial",
+          "peer",
+          "qrow4",
+          "rejected",
+          "surfaces",
+          "swa",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6s-exact-dpp-peer-e-8746277a625e",
       "evidence_hash": "df5686588558"
     },
@@ -2061,6 +4484,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.724%",
+          "1.679%",
+          "267.342 ms"
+        ],
+        "tokens": [
+          "add",
+          "all",
+          "candidate",
+          "complete",
+          "dpp",
+          "exact",
+          "h6v",
+          "reduction",
+          "rejected",
+          "removed",
+          "surfac",
+          "surfaces",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6v-exact-dpp-add-q5-5f52c3857b07",
       "evidence_hash": "6bd86f804643"
     },
@@ -2079,6 +4526,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "416.891 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "candidate",
+          "exact",
+          "frozen",
+          "gate",
+          "grid",
+          "h6x",
+          "iq3_xxs",
+          "physical",
+          "rejected",
+          "resident",
+          "table",
+          "workgroup",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6x-exact-workgroup-2905f76da754",
       "evidence_hash": "44d70494536d"
     },
@@ -2097,6 +4566,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "416.891 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "b32",
+          "candidate",
+          "exact",
+          "frozen",
+          "gate",
+          "h6y",
+          "iq3",
+          "load",
+          "packed",
+          "physical",
+          "prefix",
+          "rejected",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h6y-exact-iq3-packed-76351ac6c3e1",
       "evidence_hash": "5549a9b0cd97"
     },
@@ -2115,6 +4606,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "423.233 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "byte",
+          "complete",
+          "exact",
+          "gate",
+          "h7a",
+          "late",
+          "rejected",
+          "replay",
+          "scaled",
+          "score",
+          "start",
+          "swa",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7a-exact-late-start-52aac4a5fde3",
       "evidence_hash": "c3f9a2be2897"
     },
@@ -2133,6 +4646,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "422.602 tok/s"
+        ],
+        "tokens": [
+          "exact",
+          "final",
+          "froz",
+          "frozen",
+          "h7b",
+          "iq3",
+          "lane",
+          "metadata",
+          "parallel",
+          "publication",
+          "rejected",
+          "row",
+          "vgpr",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7b-exact-lane-paral-20b6c72e3705",
       "evidence_hash": "5a59b1f4858f"
     },
@@ -2154,6 +4689,30 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.99127x",
+          "0.99954x",
+          "431.310 tok/s"
+        ],
+        "tokens": [
+          "all",
+          "bounds",
+          "exact",
+          "frozen",
+          "full",
+          "gate",
+          "grid",
+          "h7j",
+          "rejected",
+          "repository",
+          "role",
+          "specialization",
+          "timing",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7j-exact-q5-full-gr-6ae5ba52a520",
       "evidence_hash": "45593b2c9409"
     },
@@ -2172,6 +4731,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "431.310 tok/s"
+        ],
+        "tokens": [
+          "aligned",
+          "all",
+          "first",
+          "frozen",
+          "gate",
+          "h7k",
+          "load",
+          "object",
+          "publication",
+          "record",
+          "rejected",
+          "score",
+          "weight",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7k-first-object-sco-207135b7862b",
       "evidence_hash": "d46e0e096ef4"
     },
@@ -2190,6 +4771,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "431.310 tok/s"
+        ],
+        "tokens": [
+          "batch",
+          "first",
+          "four",
+          "frozen",
+          "full",
+          "h7l",
+          "iq3",
+          "live",
+          "object",
+          "physical",
+          "rejected",
+          "split",
+          "tail",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7l-first-object-iq3-ca7ba396ed9b",
       "evidence_hash": "b607582ecdf0"
     },
@@ -2214,6 +4817,34 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.629x",
+          "0.693x",
+          "377.358 ms",
+          "392.180 ms",
+          "431.310 tok/s",
+          "44.277%",
+          "58.929%"
+        ],
+        "tokens": [
+          "exact",
+          "h7m",
+          "iq3",
+          "k256",
+          "out",
+          "partition",
+          "rejected",
+          "replay",
+          "repository",
+          "surface",
+          "tree",
+          "two",
+          "wave",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7m-exact-iq3-two-wa-7e96c699a6a2",
       "evidence_hash": "5e42b55b5f7b"
     },
@@ -2238,6 +4869,35 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.206x",
+          "0.210x",
+          "231.238 ms",
+          "233.861 ms",
+          "376.583%",
+          "384.516%",
+          "431.310 tok/s",
+          "5.46x"
+        ],
+        "tokens": [
+          "added",
+          "c16r4",
+          "consumption",
+          "direct",
+          "exact",
+          "h7n",
+          "ordered",
+          "out",
+          "raw",
+          "rejected",
+          "repository",
+          "surface",
+          "tree",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7n-exact-raw-q6-c16-6b59853110b3",
       "evidence_hash": "f275a02fce40"
     },
@@ -2262,6 +4922,35 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.912x",
+          "0.913x",
+          "1.063x",
+          "1.077x",
+          "1.080x",
+          "1.093x",
+          "21.488 ms",
+          "431.310 tok/s"
+        ],
+        "tokens": [
+          "crossover",
+          "exact",
+          "full",
+          "geometry",
+          "group",
+          "h7o",
+          "out",
+          "raw",
+          "rejected",
+          "repository",
+          "surface",
+          "tre",
+          "tree",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7o-exact-raw-q6-ful-b6fb0db1c5dd",
       "evidence_hash": "111f01b3b104"
     },
@@ -2285,6 +4974,35 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LAGUNA-prefill.md",
+        "refs": [
+          "0.592x",
+          "2.30384%",
+          "24.931%",
+          "43.799%",
+          "431.310 tok/s",
+          "6.234%",
+          "68.070%",
+          "99.719%"
+        ],
+        "tokens": [
+          "audit",
+          "boundary",
+          "candidate",
+          "code",
+          "d4x2",
+          "distance",
+          "h7p",
+          "iq3",
+          "rejected",
+          "repair",
+          "repository",
+          "timing",
+          "without",
+          "wpf"
+        ]
+      },
       "id": "candidate/laguna-prefill-wpf-h7p-candidate-distan-36ed07b90376",
       "evidence_hash": "a53ef13ec816"
     },
@@ -2307,6 +5025,30 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LLAMACPP-HIP-PARITY.md",
+        "refs": [
+          "1.73%",
+          "22.91%",
+          "49.790 ms"
+        ],
+        "tokens": [
+          "512",
+          "byte",
+          "clean",
+          "convolution",
+          "exact",
+          "focus",
+          "lcp",
+          "long",
+          "memory",
+          "parts",
+          "retained",
+          "shared",
+          "state",
+          "token"
+        ]
+      },
       "id": "candidate/llamacpp-hip-parity-1-e83d49e463a8",
       "evidence_hash": "9a7714e5e609"
     },
@@ -2326,6 +5068,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LLAMACPP-HIP-PARITY.md",
+        "refs": [
+          "13.87%"
+        ],
+        "tokens": [
+          "candidate",
+          "closed",
+          "decode",
+          "final",
+          "lcp",
+          "parallel",
+          "pass",
+          "persistent",
+          "pressure",
+          "reducer",
+          "rejected",
+          "retained",
+          "router",
+          "selected"
+        ]
+      },
       "id": "candidate/llamacpp-hip-parity-2-bfb9dd22d676",
       "evidence_hash": "d6449ee4938c"
     },
@@ -2345,6 +5109,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LLAMACPP-HIP-PARITY.md",
+        "refs": [
+          "1.002 GiB",
+          "18.75%"
+        ],
+        "tokens": [
+          "128k",
+          "but",
+          "default",
+          "explicit",
+          "keep",
+          "pass",
+          "persistent",
+          "quality",
+          "regresses",
+          "rejected",
+          "saving",
+          "speed",
+          "storage",
+          "tail4_hadamard_group32"
+        ]
+      },
       "id": "candidate/llamacpp-hip-parity-4-d536898dd0db",
       "evidence_hash": "fb35e42c783f"
     },
@@ -2366,6 +5153,30 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/LLAMACPP-HIP-PARITY.md",
+        "refs": [
+          "0.34%",
+          "0.36%",
+          "70.17%"
+        ],
+        "tokens": [
+          "512",
+          "clean",
+          "exact",
+          "existing",
+          "full",
+          "launch",
+          "lcp",
+          "model",
+          "prefill",
+          "retained",
+          "right",
+          "router",
+          "select",
+          "size"
+        ]
+      },
       "id": "candidate/llamacpp-hip-parity-6-514a908ec7f6",
       "evidence_hash": "84eafcbf8245"
     },
@@ -2385,6 +5196,28 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/MAPLE.md",
+        "refs": [
+          "571.923 tok/s"
+        ],
+        "tokens": [
+          "bf16",
+          "bit",
+          "dense",
+          "done",
+          "exact",
+          "native",
+          "rejected",
+          "retune",
+          "row",
+          "ternary",
+          "test",
+          "tile",
+          "tiles",
+          "wmma"
+        ]
+      },
       "id": "candidate/maple-p3-done-rejected-efcc1eba0e35",
       "evidence_hash": "2974100697c5"
     },
@@ -2403,6 +5236,27 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/MAPLE-PERF.md",
+        "refs": [
+          "0.96x"
+        ],
+        "tokens": [
+          "96x",
+          "affine4",
+          "bandwidth",
+          "different",
+          "layout",
+          "m3b",
+          "materially",
+          "rejected",
+          "revive",
+          "same",
+          "schedule",
+          "tile",
+          "use"
+        ]
+      },
       "id": "candidate/maple-perf-m3b-c1-affine4-tile-592ccdceaf9f",
       "evidence_hash": "9bc0191b810b"
     },
@@ -2421,6 +5275,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/MAPLE-PERF.md",
+        "refs": [
+          "0.69x"
+        ],
+        "tokens": [
+          "69x",
+          "activation",
+          "eight",
+          "expert",
+          "grouping",
+          "m3c",
+          "major",
+          "one",
+          "rejected",
+          "reuse",
+          "route",
+          "tested",
+          "token",
+          "within"
+        ]
+      },
       "id": "candidate/maple-perf-m3c-c1-eight-route-group-81d70e525c22",
       "evidence_hash": "49add8c746f7"
     },
@@ -2439,6 +5315,25 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/MAPLE-PERF.md",
+        "refs": [
+          "3.5%"
+        ],
+        "tokens": [
+          "down",
+          "expert",
+          "fused",
+          "gemv",
+          "grid",
+          "rejected",
+          "residual",
+          "reverted",
+          "serial",
+          "slower",
+          "weighted"
+        ]
+      },
       "id": "candidate/maple-perf-rejected-reverted-fused-1c7eeebaa843",
       "evidence_hash": "8fa39075f2b4"
     },
@@ -2457,6 +5352,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/MTP-PARO.md",
+        "refs": [
+          "0.9495x"
+        ],
+        "tokens": [
+          "720",
+          "control",
+          "correctness",
+          "d24",
+          "economics",
+          "exact",
+          "ids",
+          "passed",
+          "prompt",
+          "rejected",
+          "repeat",
+          "runs",
+          "strict",
+          "three"
+        ]
+      },
       "id": "candidate/mtp-paro-strict-d24-three-repeat-fc8a0973a6a4",
       "evidence_hash": "f9d6eb29c17a"
     },
@@ -2477,6 +5394,23 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "1.9%",
+          "30.2%",
+          "5.7%"
+        ],
+        "tokens": [
+          "already",
+          "aotriton",
+          "attention",
+          "deferred",
+          "mostly",
+          "prefill",
+          "settled"
+        ]
+      },
       "id": "candidate/optimize-aotriton-prefill-attenti-746ec96a82d8",
       "evidence_hash": "5917db8b3b93"
     },
@@ -2498,6 +5432,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "110.457 tok/s",
+          "3%",
+          "4%",
+          "4.32%"
+        ],
+        "tokens": [
+          "attention",
+          "fuse",
+          "gemv",
+          "gemv_awq_selected_dual_pack8_strided_rotate_out",
+          "input",
+          "into",
+          "paired",
+          "parent",
+          "precedent",
+          "producer",
+          "projections",
+          "rotation",
+          "same",
+          "stacked"
+        ]
+      },
       "id": "candidate/optimize-d1-1-7f830052b664",
       "evidence_hash": "837d1d82ac3b"
     },
@@ -2520,6 +5479,31 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.04%",
+          "2.97%",
+          "3.30%",
+          "3.37%"
+        ],
+        "tokens": [
+          "add_rmsnorm",
+          "following",
+          "fuse",
+          "into",
+          "linear",
+          "normalized",
+          "parent",
+          "paro_rmsnorm",
+          "producer",
+          "projection",
+          "single",
+          "use",
+          "vector",
+          "where"
+        ]
+      },
       "id": "candidate/optimize-d1-2-10caf5fdd22a",
       "evidence_hash": "40b4ea4ab003"
     },
@@ -2541,6 +5525,30 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.41%",
+          "0.74%",
+          "1%"
+        ],
+        "tokens": [
+          "adjacent",
+          "buckets",
+          "consult",
+          "fused",
+          "fusion",
+          "gemv",
+          "input",
+          "ordering",
+          "pairs",
+          "parent",
+          "projection",
+          "remaining",
+          "same",
+          "yet"
+        ]
+      },
       "id": "candidate/optimize-d1-3-d19d89e9a00e",
       "evidence_hash": "2e3e6b7598e1"
     },
@@ -2564,6 +5572,33 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.81x",
+          "1%",
+          "16.52 us",
+          "18.176 GiB",
+          "2%",
+          "2.44 us"
+        ],
+        "tokens": [
+          "add",
+          "combine",
+          "expert",
+          "fold",
+          "into",
+          "kernel",
+          "moe",
+          "one",
+          "post",
+          "residual",
+          "selected",
+          "sigmoid",
+          "sum",
+          "weighted"
+        ]
+      },
       "id": "candidate/optimize-d1-4-2e06392a877c",
       "evidence_hash": "6b54b1a6b835"
     },
@@ -2587,6 +5622,35 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.67%",
+          "0.93%",
+          "1.5%",
+          "114.856 tok/s",
+          "116.106 tok/s",
+          "3.08 us",
+          "5.08 us",
+          "7.08 us"
+        ],
+        "tokens": [
+          "currently",
+          "fold",
+          "llamacpp",
+          "mul_mat_id_mul",
+          "neutral",
+          "parent",
+          "paroquant2",
+          "plan",
+          "router",
+          "scatter",
+          "shape",
+          "softmax",
+          "top",
+          "vulkan"
+        ]
+      },
       "id": "candidate/optimize-d1-5-569727af80d5",
       "evidence_hash": "fcebdc197ce3"
     },
@@ -2608,6 +5672,30 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.11%",
+          "0.21%",
+          "115.627 tok/s"
+        ],
+        "tokens": [
+          "decode",
+          "extend",
+          "fused",
+          "gemv_awq_dual_pack8",
+          "k_proj",
+          "launch",
+          "learned",
+          "lessons",
+          "parent",
+          "projections",
+          "qkv",
+          "stacked",
+          "tiny",
+          "v_proj"
+        ]
+      },
       "id": "candidate/optimize-d1-6-7402168e5e82",
       "evidence_hash": "171128ce823b"
     },
@@ -2628,6 +5716,30 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0 GiB",
+          "0.02 GiB",
+          "24 GiB"
+        ],
+        "tokens": [
+          "because",
+          "every",
+          "gib",
+          "marlin",
+          "metadata",
+          "parked",
+          "paroquant2",
+          "plan",
+          "polish",
+          "qzeros_mk",
+          "residency",
+          "residual",
+          "scales_mk",
+          "upstream"
+        ]
+      },
       "id": "candidate/optimize-d2-2-59081208ef43",
       "evidence_hash": "06061716a281"
     },
@@ -2647,6 +5759,28 @@
         "recorded as 'parked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.05 GiB"
+        ],
+        "tokens": [
+          "activation",
+          "block",
+          "directly",
+          "downstream",
+          "gemv",
+          "needs",
+          "parked",
+          "paroquant2",
+          "per",
+          "plan",
+          "pre",
+          "quantize",
+          "reads",
+          "residual"
+        ]
+      },
       "id": "candidate/optimize-d2-3-bdc4d82c996f",
       "evidence_hash": "9c4f70e30192"
     },
@@ -2670,6 +5804,32 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.034 GiB",
+          "1.14%",
+          "12%",
+          "12.4%",
+          "62.647 tok/s"
+        ],
+        "tokens": [
+          "512",
+          "cap",
+          "follow",
+          "gqa",
+          "grouped",
+          "learned",
+          "lessons",
+          "nanovllm_amd_paged_attn_max_splits",
+          "parent",
+          "post",
+          "producer",
+          "retune",
+          "split",
+          "tune"
+        ]
+      },
       "id": "candidate/optimize-d3-2-188faff8af1b",
       "evidence_hash": "d2dc5ed1ea70"
     },
@@ -2690,6 +5850,28 @@
         "same row also mentions promotion \u2014 may already be resolved",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "20%"
+        ],
+        "tokens": [
+          "flashattention",
+          "gqa",
+          "grouped",
+          "learned",
+          "lessons",
+          "needs",
+          "one",
+          "online",
+          "pass",
+          "producer",
+          "rewrite",
+          "softmax",
+          "streaming",
+          "style"
+        ]
+      },
       "id": "candidate/optimize-d3-4-53e24698cdee",
       "evidence_hash": "d24172c699d4"
     },
@@ -2710,6 +5892,30 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "10%",
+          "3%",
+          "50%"
+        ],
+        "tokens": [
+          "decode",
+          "device",
+          "docs",
+          "focused",
+          "int8",
+          "kvcache",
+          "longcontext",
+          "paged",
+          "parent",
+          "path",
+          "plan",
+          "reference",
+          "staged",
+          "status"
+        ]
+      },
       "id": "candidate/optimize-d3-5-c67ada8ac40b",
       "evidence_hash": "58d2d2382061"
     },
@@ -2728,6 +5934,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "1%"
+        ],
+        "tokens": [
+          "700",
+          "batched",
+          "below",
+          "cap",
+          "dispatches",
+          "fusion",
+          "fusions",
+          "graph",
+          "level",
+          "llamacpp",
+          "style",
+          "token",
+          "via",
+          "vulkan"
+        ]
+      },
       "id": "candidate/optimize-d4-2-d34655778fc5",
       "evidence_hash": "c019b04199ff"
     },
@@ -2746,6 +5974,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "1%"
+        ],
+        "tokens": [
+          "all",
+          "avoid",
+          "collapses",
+          "cooperative",
+          "experts",
+          "fusion",
+          "logits",
+          "naive",
+          "occupancy",
+          "one",
+          "producer",
+          "router",
+          "top",
+          "workgroup"
+        ]
+      },
       "id": "candidate/optimize-d5-3-40fa12582eb5",
       "evidence_hash": "905b843c164a"
     },
@@ -2765,6 +6015,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "1%"
+        ],
+        "tokens": [
+          "attention",
+          "decode",
+          "fusion",
+          "input",
+          "learned",
+          "lessons",
+          "linear",
+          "measured",
+          "neutral",
+          "parent",
+          "precedent",
+          "retained",
+          "same",
+          "win"
+        ]
+      },
       "id": "candidate/optimize-d5-4-ccf633f47899",
       "evidence_hash": "24e15b6de51c"
     },
@@ -2786,6 +6058,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "2 GiB",
+          "3%",
+          "50%"
+        ],
+        "tokens": [
+          "accept",
+          "aware",
+          "compact",
+          "dflash",
+          "docs",
+          "gpu",
+          "native",
+          "parent",
+          "python",
+          "reference",
+          "summaries",
+          "target",
+          "task",
+          "verifier"
+        ]
+      },
       "id": "candidate/optimize-d6-1-98444354abaf",
       "evidence_hash": "6f357f01ab36"
     },
@@ -2808,6 +6104,32 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.5 GiB",
+          "120.04 tok/s",
+          "20%",
+          "30%",
+          "83.88 tok/s"
+        ],
+        "tokens": [
+          "120",
+          "699",
+          "dflash",
+          "docs",
+          "draft",
+          "mtp",
+          "native",
+          "parent",
+          "plugin",
+          "reference",
+          "row",
+          "shared",
+          "tok",
+          "verifier"
+        ]
+      },
       "id": "candidate/optimize-d6-2-0db1a0476727",
       "evidence_hash": "6c54093f58b5"
     },
@@ -2830,6 +6152,31 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "10%",
+          "15%",
+          "25%",
+          "90%"
+        ],
+        "tokens": [
+          "algorithm",
+          "chunkwise",
+          "existing",
+          "family",
+          "gdn",
+          "kernel",
+          "new",
+          "pass",
+          "port",
+          "prefill",
+          "preserve",
+          "q36d",
+          "query",
+          "qwen35_gdn_prefill_chunkwise_"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p1-1-bad2e8abc4ad",
       "evidence_hash": "58e5931010c8"
     },
@@ -2850,6 +6197,29 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "0.5 GiB",
+          "3%"
+        ],
+        "tokens": [
+          "_prefill_linear_chunk",
+          "autotune",
+          "ceiling",
+          "chunks",
+          "context",
+          "increase",
+          "instead",
+          "lands",
+          "layer",
+          "linear_chunk_size",
+          "prefillconfig",
+          "q36d",
+          "runs",
+          "tune"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p1-2-5359c8280ea8",
       "evidence_hash": "93d2e495f671"
     },
@@ -2871,6 +6241,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "0.10 GiB",
+          "15%",
+          "5%"
+        ],
+        "tokens": [
+          "apply",
+          "awq_fusedw4_prefill_dual_fp16_kernel",
+          "b_reg",
+          "being",
+          "fuse",
+          "head",
+          "into",
+          "krot",
+          "pairs",
+          "paro_rotate2_fp16",
+          "q36d",
+          "rotation",
+          "scale",
+          "while"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p2-1-86cc0de2cebc",
       "evidence_hash": "db35337cb82c"
     },
@@ -2892,6 +6286,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "0.20 GiB",
+          "10%",
+          "3%"
+        ],
+        "tokens": [
+          "awq_fusedw4_prefill_fp16_kernel",
+          "down",
+          "fuse",
+          "fusion",
+          "head",
+          "into",
+          "paro_rotate1_fp16",
+          "pattern",
+          "per",
+          "projection",
+          "q36d",
+          "rotation",
+          "same",
+          "single"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p2-2-7659d866a25c",
       "evidence_hash": "8f68fc09f680"
     },
@@ -2911,6 +6329,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "3%"
+        ],
+        "tokens": [
+          "applicable",
+          "attention",
+          "full",
+          "fuse",
+          "into",
+          "linear",
+          "mirroring",
+          "pack8",
+          "paro_rotate2_fp16",
+          "paths",
+          "prefill",
+          "q36d",
+          "qkv",
+          "where"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p2-3-44bcf58512ea",
       "evidence_hash": "e31fee3afbc6"
     },
@@ -2932,6 +6372,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "0.10 GiB",
+          "1%",
+          "3%"
+        ],
+        "tokens": [
+          "down",
+          "fuse",
+          "gate",
+          "input",
+          "into",
+          "kernel",
+          "one",
+          "outputs",
+          "paro_rotate1_fp16",
+          "q36d",
+          "reads",
+          "rotated",
+          "silu_mul_separate_out_fp16",
+          "writes"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p3-1-7278fd4908b1",
       "evidence_hash": "93f21171d116"
     },
@@ -2951,6 +6415,29 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "3%",
+          "8%"
+        ],
+        "tokens": [
+          "awq_fusedw4_prefill",
+          "awq_fusedw4_prefill_dual",
+          "consumer",
+          "dense",
+          "fused",
+          "gate",
+          "mlp",
+          "multiply",
+          "producer",
+          "q36d",
+          "register",
+          "resident",
+          "rotate1",
+          "silu"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p3-2-48ef57963990",
       "evidence_hash": "8580c18ab970"
     },
@@ -2970,6 +6457,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "3%"
+        ],
+        "tokens": [
+          "128",
+          "512",
+          "actually",
+          "aotriton",
+          "attn_aotriton_min_tokens",
+          "compact",
+          "confirm",
+          "diagnostic",
+          "path",
+          "prefill",
+          "q36d",
+          "routes",
+          "through",
+          "varlen"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p4-1-f12d1c13f461",
       "evidence_hash": "f8c2f908b513"
     },
@@ -2989,6 +6498,29 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-DENSE.md",
+        "refs": [
+          "10%",
+          "3%"
+        ],
+        "tokens": [
+          "17408",
+          "27b",
+          "5120",
+          "bounds",
+          "confirm",
+          "dense",
+          "gemm",
+          "kernel",
+          "launch",
+          "prefill",
+          "q36d",
+          "shapes",
+          "sweep",
+          "tile"
+        ]
+      },
       "id": "candidate/optimize-dense-q36d-p4-2-9c1588af18dc",
       "evidence_hash": "4a3f91778060"
     },
@@ -3008,6 +6540,29 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.1 GiB",
+          "15%"
+        ],
+        "tokens": [
+          "aotriton",
+          "fixed",
+          "forward",
+          "gfx1100",
+          "hip",
+          "kernel",
+          "key",
+          "native",
+          "per",
+          "registered",
+          "replaces",
+          "shape",
+          "under",
+          "variant"
+        ]
+      },
       "id": "candidate/optimize-k-2-f5444c6bdc48",
       "evidence_hash": "b0a401ec0c15"
     },
@@ -3026,6 +6581,23 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ-DENSE.md",
+        "refs": [
+          "10.7 us"
+        ],
+        "tokens": [
+          "0de4d22da",
+          "call",
+          "cdll",
+          "every",
+          "launch",
+          "loaded",
+          "memoize",
+          "projection",
+          "removed"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq-dense-a7-f4d7a623c82c",
       "evidence_hash": "e29d60003007"
     },
@@ -3045,6 +6617,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "1.47%",
+          "4.83%"
+        ],
+        "tokens": [
+          "activation",
+          "batch",
+          "decode",
+          "inclusive",
+          "iq2",
+          "measured",
+          "plus",
+          "prequantized",
+          "q8_1",
+          "raw",
+          "regressive",
+          "routes",
+          "small",
+          "sudot4"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-2-4d8351cd119f",
       "evidence_hash": "2d84a95040ea"
     },
@@ -3063,6 +6658,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "10.90%"
+        ],
+        "tokens": [
+          "actual",
+          "backed",
+          "code",
+          "exact",
+          "mixed",
+          "neutral",
+          "output",
+          "regressed",
+          "rejected",
+          "removed",
+          "row4",
+          "source",
+          "tile4",
+          "vulkan"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-output-row4-3131b0543f78",
       "evidence_hash": "9bd491e6a271"
     },
@@ -3082,6 +6699,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "2.12%",
+          "4.83%"
+        ],
+        "tokens": [
+          "but",
+          "decode",
+          "fused",
+          "hot",
+          "improved",
+          "inclusive",
+          "iq2",
+          "prequantized",
+          "q8_1",
+          "quantizer",
+          "raw",
+          "repeated",
+          "rotating",
+          "sudot4"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-p2-c336f33c85c0",
       "evidence_hash": "5fd0b4883f49"
     },
@@ -3107,6 +6747,33 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "13.50%",
+          "27.75%",
+          "31.20%",
+          "5.25%",
+          "56.922 us",
+          "8.86%"
+        ],
+        "tokens": [
+          "decode",
+          "dual",
+          "geometry",
+          "group8",
+          "improved",
+          "including",
+          "local",
+          "local256",
+          "local64",
+          "matched",
+          "pair16",
+          "scale",
+          "shared",
+          "single"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-p3-034d3b7ecb0e",
       "evidence_hash": "be1ce7e3c98c"
     },
@@ -3130,6 +6797,31 @@
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "10.90%",
+          "2.12%",
+          "55.964 us",
+          "8.82%"
+        ],
+        "tokens": [
+          "176",
+          "569",
+          "955",
+          "964",
+          "decode",
+          "dual",
+          "improved",
+          "output",
+          "rotating",
+          "selected",
+          "single",
+          "tile1",
+          "tile2",
+          "tiles"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-p5-4b26bbe7dc2f",
       "evidence_hash": "f3ce49789ec9"
     },
@@ -3148,6 +6840,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "0.06 ms"
+        ],
+        "tokens": [
+          "256",
+          "512",
+          "already",
+          "attempted",
+          "decode",
+          "fuse",
+          "inclusive",
+          "into",
+          "producer",
+          "quantization",
+          "quantizer",
+          "rejected",
+          "token",
+          "winning"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-p8-33e102a2d282",
       "evidence_hash": "8d621f2e2c9e"
     },
@@ -3166,6 +6880,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE-KERNEL-IQ2_XS.md",
+        "refs": [
+          "2.12%"
+        ],
+        "tokens": [
+          "but",
+          "code",
+          "decode",
+          "gates",
+          "inclusive",
+          "isa",
+          "passed",
+          "primitive",
+          "q8_1",
+          "rejected",
+          "removed",
+          "repeated",
+          "rotating",
+          "sudot4"
+        ]
+      },
       "id": "candidate/optimize-kernel-iq2-xs-q8-1-sudot4-4fe7e4253921",
       "evidence_hash": "2d941b7808fc"
     },
@@ -3184,6 +6920,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "2%"
+        ],
+        "tokens": [
+          "bracket",
+          "build",
+          "hip",
+          "hot",
+          "kernels",
+          "llamacpp",
+          "mcumode",
+          "pr_comment",
+          "prefill",
+          "profile",
+          "selective",
+          "table",
+          "threshold",
+          "unroll600"
+        ]
+      },
       "id": "candidate/optimize-p1-6-e5b6a372b87b",
       "evidence_hash": "333c294f490c"
     },
@@ -3203,6 +6961,27 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.5%"
+        ],
+        "tokens": [
+          "awq_fusedw4_prefill_strided_fp16",
+          "before",
+          "directly",
+          "docs",
+          "fuse",
+          "group_size",
+          "head_v_dim",
+          "out_rot",
+          "paro_rotate1_fp16",
+          "qwen35_gdn_prefill_rmsnorm_gate_fp16",
+          "reference",
+          "tail",
+          "writes"
+        ]
+      },
       "id": "candidate/optimize-p3-1-c2f2077ae76b",
       "evidence_hash": "fae922133f00"
     },
@@ -3222,6 +7001,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.21%",
+          "0.23%"
+        ],
+        "tokens": [
+          "docs",
+          "fused",
+          "gate",
+          "grouped",
+          "into",
+          "path",
+          "prefill",
+          "reference",
+          "router",
+          "shared",
+          "sigmoid",
+          "skips",
+          "top",
+          "w8a16_shared_gate_sigmoid_fp32"
+        ]
+      },
       "id": "candidate/optimize-p3-2-74a5dd24d799",
       "evidence_hash": "cc754833f491"
     },
@@ -3242,6 +7044,30 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.12%",
+          "0.27%",
+          "0.85%"
+        ],
+        "tokens": [
+          "collapse",
+          "combine",
+          "docs",
+          "fanout",
+          "initialize",
+          "kernel",
+          "metadata",
+          "moe",
+          "moe_group_prefix",
+          "moe_wmma_tile_map",
+          "same",
+          "scatter_offsets",
+          "small",
+          "tile_expert"
+        ]
+      },
       "id": "candidate/optimize-p3-3-809d0cca722b",
       "evidence_hash": "567a9bddd58e"
     },
@@ -3261,6 +7087,29 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.05 GiB",
+          "1%"
+        ],
+        "tokens": [
+          "attention",
+          "cast",
+          "conv",
+          "fp16",
+          "fp16_to_f32",
+          "input",
+          "linear",
+          "packed",
+          "path",
+          "qkv_f32",
+          "remove",
+          "segment",
+          "templated",
+          "wrapper"
+        ]
+      },
       "id": "candidate/optimize-p3-4-bd5e40b0020a",
       "evidence_hash": "b38b1232b916"
     },
@@ -3280,6 +7129,29 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "0.1 GiB",
+          "15%"
+        ],
+        "tokens": [
+          "attention",
+          "flash",
+          "forward",
+          "fused",
+          "gqa",
+          "hand",
+          "hip",
+          "kernel",
+          "online",
+          "reuse",
+          "rolled",
+          "softmax",
+          "tile",
+          "wmma"
+        ]
+      },
       "id": "candidate/optimize-p4-1-44d9a20481f1",
       "evidence_hash": "c1ce368ff1a3"
     },
@@ -3300,6 +7172,29 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "1 GiB",
+          "100%"
+        ],
+        "tokens": [
+          "active",
+          "aware",
+          "benchmarks",
+          "buckets",
+          "decode",
+          "fixed",
+          "graph",
+          "lane",
+          "metadata",
+          "prefill",
+          "replace",
+          "results",
+          "scheduler_serial_slot_bridge",
+          "slot"
+        ]
+      },
       "id": "candidate/optimize-s-1-f3932f0398ea",
       "evidence_hash": "e87a120c4996"
     },
@@ -3319,6 +7214,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/OPTIMIZE.md",
+        "refs": [
+          "2%"
+        ],
+        "tokens": [
+          "__attribute__",
+          "amdgpu_waves_per_eu",
+          "but",
+          "fusion",
+          "kernel",
+          "landed",
+          "lands",
+          "marlin",
+          "parent",
+          "per",
+          "rejected",
+          "retune",
+          "rmsnorm",
+          "rotation"
+        ]
+      },
       "id": "candidate/optimize-w-3-23e2ae2e5ade",
       "evidence_hash": "c0eba3a4e480"
     },
@@ -3337,6 +7254,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/PARO-GGUF-MTP-TRANSFER.md",
+        "refs": [
+          "5.16%"
+        ],
+        "tokens": [
+          "exact",
+          "fused",
+          "fusion",
+          "graph",
+          "head",
+          "immaterial",
+          "parked",
+          "readbacks",
+          "rejected",
+          "revisit",
+          "sample",
+          "shapes",
+          "slower",
+          "target"
+        ]
+      },
       "id": "candidate/paro-gguf-mtp-transfer-6-eb9b0fac1987",
       "evidence_hash": "e5b6406387de"
     },
@@ -3355,6 +7294,28 @@
       "signals": [
         "recorded as 'default-off' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/PARO-GGUF-MTP-TRANSFER.md",
+        "refs": [
+          "0.14825x"
+        ],
+        "tokens": [
+          "buckets",
+          "clean",
+          "coarse",
+          "covers",
+          "curated",
+          "dflash",
+          "evidence",
+          "gfx1151",
+          "graph",
+          "mtp",
+          "now",
+          "paro",
+          "shape",
+          "synchronized"
+        ]
+      },
       "id": "candidate/paro-gguf-mtp-transfer-paro-mtp-dflash-d4615fefc06d",
       "evidence_hash": "b00aa88aae77"
     },
@@ -3374,6 +7335,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "634 ms"
+        ],
+        "tokens": [
+          "188",
+          "below",
+          "compaction",
+          "decode",
+          "launches",
+          "mm_ids",
+          "p1024",
+          "p4096",
+          "p512",
+          "parallel",
+          "prefill",
+          "stays",
+          "top",
+          "yes"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-m2-a6a231d396e7",
       "evidence_hash": "5ad4d4f87ed3"
     },
@@ -3395,6 +7378,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "2.670 ms",
+          "647.976 ms",
+          "655 ms"
+        ],
+        "tokens": [
+          "changes",
+          "core",
+          "gdn",
+          "kda",
+          "kernel",
+          "non",
+          "p4096",
+          "partial",
+          "prefill",
+          "separate",
+          "sum",
+          "tile",
+          "warp",
+          "workgroup"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-m6-851fcd416555",
       "evidence_hash": "f9b5994288ca"
     },
@@ -3415,6 +7422,29 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "11.1%",
+          "98.67%"
+        ],
+        "tokens": [
+          "admitted",
+          "blocked",
+          "canonical",
+          "chain",
+          "coltile",
+          "extend",
+          "lever",
+          "mmq128",
+          "policy",
+          "rejected",
+          "rows",
+          "served",
+          "shapes",
+          "via"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-pf-1c-3ff9ede5b68e",
       "evidence_hash": "22c7a2d007c3"
     },
@@ -3437,6 +7467,31 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "0.35x",
+          "0.89x",
+          "1.38x",
+          "99.6%"
+        ],
+        "tokens": [
+          "128",
+          "a7ad7b7f",
+          "dense",
+          "down",
+          "geometry",
+          "mmq",
+          "port",
+          "q8_0",
+          "quantize",
+          "rdna3",
+          "shape",
+          "specializations",
+          "tile",
+          "wide"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-pf-1d-d6c14dfedf6e",
       "evidence_hash": "848bc260afd7"
     },
@@ -3461,6 +7516,35 @@
         "recorded as 'removed' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "0.083%",
+          "0.095%",
+          "0.152%",
+          "10.6%",
+          "123%",
+          "425.6 \u00b5s",
+          "57%",
+          "6.99%"
+        ],
+        "tokens": [
+          "123",
+          "2026",
+          "512",
+          "bit",
+          "closed",
+          "done",
+          "exact",
+          "fused",
+          "gate",
+          "loss",
+          "measured",
+          "q4_k",
+          "remains",
+          "rows"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-pf-3-39eb3daa7252",
       "evidence_hash": "fa1f15282339"
     },
@@ -3483,6 +7567,31 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "0.37%",
+          "0.47%",
+          "0.49%",
+          "72.929 tok/s"
+        ],
+        "tokens": [
+          "2026",
+          "3574a1bd2",
+          "617038db9",
+          "binding",
+          "covered",
+          "done",
+          "exact",
+          "extended",
+          "promoted",
+          "rejected",
+          "remains",
+          "tile",
+          "variant",
+          "w32"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-pf-5-a248c29fb1c7",
       "evidence_hash": "d9869d64a45d"
     },
@@ -3501,6 +7610,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md",
+        "refs": [
+          "2.40x"
+        ],
+        "tokens": [
+          "acceptance",
+          "activation",
+          "admissible",
+          "algorithm",
+          "approximate",
+          "change",
+          "changed",
+          "decision",
+          "policy",
+          "quantization",
+          "representation",
+          "routing",
+          "sampling",
+          "weight"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-halo-box-campaign-t3-c13496f3dff5",
       "evidence_hash": "ecbc314d1abf"
     },
@@ -3521,6 +7652,29 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "1.0008x",
+          "95%"
+        ],
+        "tokens": [
+          "307",
+          "398",
+          "408",
+          "blocked",
+          "chunks",
+          "complete",
+          "exact",
+          "moe",
+          "operation",
+          "owns",
+          "p1024",
+          "p4096",
+          "p512",
+          "prefill"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-blocked-9ba8ff51e2d6",
       "evidence_hash": "ebbcf696274b"
     },
@@ -3544,6 +7698,31 @@
         "same row also mentions promotion \u2014 may already be resolved",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "13.851 ms",
+          "20.913 ms",
+          "35.4%",
+          "80.061 ms"
+        ],
+        "tokens": [
+          "blocked",
+          "category",
+          "complete",
+          "decode",
+          "exact",
+          "four",
+          "ordered",
+          "p4096",
+          "pass",
+          "qsa",
+          "reduces",
+          "retained",
+          "route",
+          "three"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-blocked-ae8166994443",
       "evidence_hash": "48baa657af50"
     },
@@ -3566,6 +7745,31 @@
         "recorded as 'rejected' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "13.5%",
+          "15.3%",
+          "25.6%",
+          "44.8%"
+        ],
+        "tokens": [
+          "6c84c7d5",
+          "a7ad7b7f",
+          "base",
+          "box",
+          "com",
+          "cpp",
+          "github",
+          "halo",
+          "head",
+          "https",
+          "llama",
+          "pull",
+          "source",
+          "strix"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-halo-box-strix-llama-cpp-6629674b2275",
       "evidence_hash": "815289367f18"
     },
@@ -3587,6 +7791,30 @@
         "recorded as 'default-off' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "0.964x",
+          "3.153 ms",
+          "41.3%"
+        ],
+        "tokens": [
+          "400",
+          "430",
+          "675",
+          "byte",
+          "currently",
+          "draft",
+          "full",
+          "head",
+          "mtp",
+          "q8_0",
+          "qwen4exp",
+          "runs",
+          "selected",
+          "vocabulary"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-mtp-selected-vocabulary-09cffb932e81",
       "evidence_hash": "a61a18d69055"
     },
@@ -3605,6 +7833,28 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "1%"
+        ],
+        "tokens": [
+          "a8631dfbf0aeb6a4004866fce1fd7e5c10370049",
+          "ad914eb6587d3da8b2b",
+          "com",
+          "github",
+          "halo",
+          "head",
+          "https",
+          "llamacpp",
+          "nathanw1014",
+          "releases",
+          "source",
+          "strix",
+          "tag",
+          "toolbox"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-nathanw1014-strix-halo-l-cfa2b239a4a1",
       "evidence_hash": "973d25a30d4f"
     },
@@ -3623,6 +7873,28 @@
       "signals": [
         "recorded as 'deferred' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md",
+        "refs": [
+          "1.43ms"
+        ],
+        "tokens": [
+          "aware",
+          "external",
+          "gfx1151",
+          "hip",
+          "leases",
+          "lists",
+          "pm4",
+          "prepared",
+          "queue",
+          "scratch",
+          "through",
+          "tracked",
+          "use",
+          "wil"
+        ]
+      },
       "id": "candidate/qwen3-8-flash-next-performance-campaign-wil-1-gfx1151-pm4-throug-63f1bf6bba11",
       "evidence_hash": "0bef9d8f0b29"
     },
@@ -3643,6 +7915,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "1%",
+          "2.71 ms",
+          "99.46%"
+        ],
+        "tokens": [
+          "changed",
+          "complete",
+          "completed",
+          "mandatory",
+          "owner",
+          "physical",
+          "post",
+          "pre",
+          "profile",
+          "projection",
+          "six",
+          "stages",
+          "their",
+          "weights"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-11-307e682ad308",
       "evidence_hash": "9f15ae775e89"
     },
@@ -3662,6 +7958,29 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "2.28%",
+          "8.29%"
+        ],
+        "tokens": [
+          "accepted",
+          "d08",
+          "decode",
+          "dense",
+          "eager",
+          "fused",
+          "graph",
+          "model",
+          "nodes",
+          "projections",
+          "qualified",
+          "removed",
+          "shape",
+          "tg128"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-13-7ee057724e55",
       "evidence_hash": "c4e0d76426d0"
     },
@@ -3685,6 +8004,35 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.00394 ms",
+          "0.11224 ms",
+          "0.56181 ms",
+          "0.596x",
+          "0.709x",
+          "117.18 tok/s",
+          "97.23%",
+          "97.31%"
+        ],
+        "tokens": [
+          "117",
+          "119",
+          "286",
+          "288",
+          "completed",
+          "current",
+          "exact",
+          "graph",
+          "m12",
+          "mandatory",
+          "nodes",
+          "post",
+          "rerank",
+          "tok"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-20-819e00bca28a",
       "evidence_hash": "491670a3c1b5"
     },
@@ -3705,6 +8053,29 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.82%",
+          "1%"
+        ],
+        "tokens": [
+          "bound",
+          "budget",
+          "current",
+          "every",
+          "exhausted",
+          "frozen",
+          "low",
+          "medium",
+          "named",
+          "package",
+          "parked",
+          "prefill",
+          "tail",
+          "under"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-21-4dd76adcc257",
       "evidence_hash": "9c631a81dfb4"
     },
@@ -3728,6 +8099,32 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.424x",
+          "0.463x",
+          "0.734x",
+          "0.942x",
+          "1.028x"
+        ],
+        "tokens": [
+          "424x",
+          "463x",
+          "734x",
+          "942x",
+          "blocked",
+          "closure",
+          "core",
+          "cross",
+          "d08",
+          "engine",
+          "exact",
+          "pass",
+          "public",
+          "top"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-22-48a2b8223b05",
       "evidence_hash": "b8fe04912807"
     },
@@ -3750,6 +8147,31 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.818x",
+          "0.880x",
+          "0.976x",
+          "1.047x"
+        ],
+        "tokens": [
+          "047x",
+          "818x",
+          "880x",
+          "976x",
+          "completed",
+          "core",
+          "exact",
+          "hip",
+          "public",
+          "six",
+          "synchronized",
+          "three",
+          "vulkan",
+          "way"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-33-1f93ac4581ea",
       "evidence_hash": "da3e7bdff9f3"
     },
@@ -3772,6 +8194,31 @@
         "recorded as 'rejected' while citing a measurement",
         "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.11%",
+          "0.114 ms",
+          "1.0059x",
+          "1.10x"
+        ],
+        "tokens": [
+          "0059x",
+          "128",
+          "change",
+          "d08",
+          "gate",
+          "heterogeneous",
+          "leaf",
+          "one",
+          "production",
+          "qkv",
+          "rejected",
+          "schedule",
+          "screen",
+          "thread"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-37-c991e6374baf",
       "evidence_hash": "42385d586d7f"
     },
@@ -3791,6 +8238,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.6483x",
+          "1.19467 ms"
+        ],
+        "tokens": [
+          "6483x",
+          "beta",
+          "broadcast",
+          "change",
+          "cluster8",
+          "d08",
+          "decay",
+          "gdn",
+          "leaf",
+          "production",
+          "rejected",
+          "sharing",
+          "value",
+          "wave"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-38-d52c0455499d",
       "evidence_hash": "99c176fb866c"
     },
@@ -3811,6 +8281,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "34.75%",
+          "47.70%"
+        ],
+        "tokens": [
+          "blocked",
+          "census",
+          "d08",
+          "deltas",
+          "direct",
+          "eager",
+          "gaps",
+          "gpu",
+          "graph",
+          "marker",
+          "production",
+          "projection",
+          "time"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-4-8d131a759e84",
       "evidence_hash": "18d54f5696ff"
     },
@@ -3830,6 +8322,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.9520x",
+          "0.9578x"
+        ],
+        "tokens": [
+          "9520x",
+          "9578x",
+          "core",
+          "d08",
+          "down",
+          "exact",
+          "pack8",
+          "pp512",
+          "public",
+          "rejected",
+          "residual",
+          "rounded",
+          "store",
+          "wmma"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-40-0800016501fa",
       "evidence_hash": "dbf2968c43cc"
     },
@@ -3849,6 +8364,25 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "1.31%",
+          "1.86%"
+        ],
+        "tokens": [
+          "census",
+          "changes",
+          "d08",
+          "eager",
+          "graph",
+          "head",
+          "ownership",
+          "parked",
+          "reopen",
+          "saving"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-6-77b2b3984f40",
       "evidence_hash": "229d66e2f0ac"
     },
@@ -3869,6 +8403,30 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.883x",
+          "1.390x",
+          "2.006x"
+        ],
+        "tokens": [
+          "attention",
+          "bound",
+          "closed",
+          "d08",
+          "gate",
+          "linear",
+          "native",
+          "pp512",
+          "projections",
+          "q4t16",
+          "rejected",
+          "residual",
+          "unrealized",
+          "wins"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-9-5bf6bdef71dd",
       "evidence_hash": "7b39ac873b05"
     },
@@ -3887,6 +8445,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "1%"
+        ],
+        "tokens": [
+          "blanket",
+          "cold",
+          "family",
+          "gfx1151",
+          "improvement",
+          "leaf",
+          "loads",
+          "low",
+          "non",
+          "prior",
+          "regressed",
+          "rejected",
+          "temporal",
+          "weight"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-blanket-non-temporal-wei-13f13653cdfc",
       "evidence_hash": "87ebdf5b833d"
     },
@@ -3906,6 +8486,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.20%",
+          "1%"
+        ],
+        "tokens": [
+          "buffers",
+          "copy",
+          "d08",
+          "finds",
+          "graph",
+          "host",
+          "measured",
+          "persistent",
+          "production",
+          "redundant",
+          "removal",
+          "replay",
+          "share",
+          "sync"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-d1-0dc160bd48a0",
       "evidence_hash": "bb4e2f7ba120"
     },
@@ -3928,6 +8531,31 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.424x",
+          "0.463x",
+          "0.734x",
+          "0.942x"
+        ],
+        "tokens": [
+          "424x",
+          "463x",
+          "734x",
+          "942x",
+          "comparison",
+          "core",
+          "d08",
+          "exact",
+          "failed",
+          "final",
+          "interleaved",
+          "public",
+          "same",
+          "session"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-g2-45d523b9912b",
       "evidence_hash": "57da04bc4104"
     },
@@ -3949,6 +8577,31 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.82%",
+          "1%",
+          "64.05%",
+          "99.46%"
+        ],
+        "tokens": [
+          "capture",
+          "complete",
+          "d08",
+          "direct",
+          "every",
+          "fall",
+          "mandatory",
+          "markers",
+          "post",
+          "prefill",
+          "reconciliation",
+          "replacement",
+          "rerank",
+          "semantic"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-m8-771242c55fc7",
       "evidence_hash": "ccff653818e1"
     },
@@ -3967,6 +8620,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "29.60%"
+        ],
+        "tokens": [
+          "activation",
+          "bound",
+          "d08",
+          "dense",
+          "down",
+          "fusion",
+          "gate",
+          "kernels",
+          "layout",
+          "merged",
+          "projection",
+          "reuse",
+          "tile",
+          "unrealized"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-p3-d6b2c03bf9ac",
       "evidence_hash": "250befc8dc1e"
     },
@@ -3986,6 +8661,29 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.82%",
+          "1%"
+        ],
+        "tokens": [
+          "activation",
+          "below",
+          "bound",
+          "coalescing",
+          "combined",
+          "copy",
+          "d08",
+          "launch",
+          "low",
+          "measured",
+          "norm",
+          "package",
+          "remains",
+          "residual"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-p5-ff2d09b6c1fc",
       "evidence_hash": "563002c40263"
     },
@@ -4005,6 +8703,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.883x",
+          "3.58%"
+        ],
+        "tokens": [
+          "accepted",
+          "alpha",
+          "attention",
+          "beta",
+          "conversion",
+          "d08",
+          "gate",
+          "linear",
+          "out",
+          "q5t16",
+          "qkv",
+          "residual",
+          "selected",
+          "ssm"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-d08-p7-62bb8cbf2870",
       "evidence_hash": "0c09015e3e86"
     },
@@ -4023,6 +8744,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "29.60%"
+        ],
+        "tokens": [
+          "bound",
+          "dense",
+          "every",
+          "ffn",
+          "merged",
+          "operational",
+          "package",
+          "projection",
+          "q4t16",
+          "raw",
+          "regresses",
+          "rejected",
+          "unrealized",
+          "width"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-dense-ffn-projection-pac-53c6a7cda294",
       "evidence_hash": "8e281a0c42db"
     },
@@ -4041,6 +8784,28 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "10%"
+        ],
+        "tokens": [
+          "backend",
+          "combined",
+          "cost",
+          "current",
+          "hand",
+          "high",
+          "hip",
+          "isa",
+          "kernels",
+          "parked",
+          "production",
+          "shaped",
+          "unknown",
+          "vulkan"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-hand-isa-or-production-v-68522f298d08",
       "evidence_hash": "9e1a8951bc0d"
     },
@@ -4063,6 +8828,30 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.5 ms",
+          "1%",
+          "1.10x"
+        ],
+        "tokens": [
+          "algorithm",
+          "audit",
+          "current",
+          "dimension",
+          "first",
+          "kernel",
+          "leaf",
+          "lineage",
+          "most",
+          "one",
+          "predeclared",
+          "test",
+          "tuning",
+          "variants"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-kernel-algorithm-leaf-46b1baae7a4d",
       "evidence_hash": "bd1ddb192ce3"
     },
@@ -4083,6 +8872,30 @@
       "signals": [
         "recorded as 'parked' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "1%",
+          "1.31%",
+          "1.86%"
+        ],
+        "tokens": [
+          "bound",
+          "eager",
+          "graph",
+          "head",
+          "joined",
+          "leading",
+          "low",
+          "node",
+          "owner",
+          "parked",
+          "shows",
+          "specialization",
+          "upper",
+          "vocab"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-lm-head-specialization-f9adb6f0c504",
       "evidence_hash": "49975af9bcff"
     },
@@ -4104,6 +8917,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "0.6483x",
+          "16.70%",
+          "4.33%",
+          "5.83%"
+        ],
+        "tokens": [
+          "16k",
+          "16v",
+          "accepted",
+          "cluster8",
+          "complete",
+          "core",
+          "exact",
+          "follow",
+          "gates",
+          "gdn",
+          "independent",
+          "paired",
+          "pp512",
+          "rejected"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-q4-q8-16k-16v-cluster8-g-f0b30d801532",
       "evidence_hash": "d082ab3e75dd"
     },
@@ -4123,6 +8961,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md",
+        "refs": [
+          "11.73%",
+          "3.58%"
+        ],
+        "tokens": [
+          "attention",
+          "bound",
+          "every",
+          "gate",
+          "linear",
+          "native",
+          "projections",
+          "q4t16",
+          "raw",
+          "regresses",
+          "rejected",
+          "residual",
+          "selected",
+          "unrealized"
+        ]
+      },
       "id": "candidate/qwen35-08b-gfx1151-vulkan-parity-residual-linear-attentio-17050b10a1c3",
       "evidence_hash": "63c139f18434"
     },
@@ -4141,6 +9002,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md",
+        "refs": [
+          "60.262 tok/s"
+        ],
+        "tokens": [
+          "bucket",
+          "commit",
+          "cycle",
+          "d27",
+          "draft",
+          "full",
+          "heldout",
+          "host",
+          "largest",
+          "measured",
+          "mtp",
+          "optimize",
+          "residual",
+          "target"
+        ]
+      },
       "id": "candidate/qwen36-27b-gguf-campaign-1-03cf62d3711d",
       "evidence_hash": "6069e1a00ff9"
     },
@@ -4163,6 +9046,31 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md",
+        "refs": [
+          "2.05%",
+          "20.467 ms",
+          "3.762 ms",
+          "74.099 ms"
+        ],
+        "tokens": [
+          "behavior",
+          "close",
+          "d27",
+          "deficits",
+          "dispatch",
+          "exact",
+          "generated",
+          "module",
+          "profiler",
+          "ranked",
+          "sequentially",
+          "shader",
+          "using",
+          "vulkan"
+        ]
+      },
       "id": "candidate/qwen36-27b-gguf-campaign-1-a5d23aec4cb1",
       "evidence_hash": "afa9652d3d38"
     },
@@ -4184,6 +9092,30 @@
         "recorded as 'removed' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md",
+        "refs": [
+          "1.8161x",
+          "2.2914x",
+          "2.4991x"
+        ],
+        "tokens": [
+          "01291b066",
+          "128",
+          "2026",
+          "234",
+          "512",
+          "hipengine",
+          "inherited",
+          "launch",
+          "natural25",
+          "one",
+          "rollback",
+          "snapshots",
+          "unchanged",
+          "w7900"
+        ]
+      },
       "id": "candidate/qwen36-27b-gguf-campaign-2026-08-05-0552dfa98d38",
       "evidence_hash": "1af3965a8a4c"
     },
@@ -4205,6 +9137,30 @@
         "recorded as 'removed' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md",
+        "refs": [
+          "1.8256x",
+          "2.3023x",
+          "2.5175x"
+        ],
+        "tokens": [
+          "128",
+          "2026",
+          "215",
+          "234",
+          "512",
+          "580",
+          "a5f25c9ad",
+          "bf16",
+          "exact",
+          "gdn",
+          "handoff",
+          "hipengine",
+          "natural25",
+          "w7900"
+        ]
+      },
       "id": "candidate/qwen36-27b-gguf-campaign-2026-08-05-d8688eb9d73c",
       "evidence_hash": "0bd488a197a3"
     },
@@ -4229,6 +9185,30 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md",
+        "refs": [
+          "11.49%",
+          "14.858 tok/s",
+          "305.59%",
+          "4.056x",
+          "60.262 tok/s",
+          "68.082 tok/s",
+          "7.821 tok/s"
+        ],
+        "tokens": [
+          "056x",
+          "082",
+          "262",
+          "305",
+          "821",
+          "858",
+          "blocked",
+          "natural",
+          "parity",
+          "tok"
+        ]
+      },
       "id": "candidate/qwen36-27b-gguf-campaign-natural-b3-e48c66b6bc13",
       "evidence_hash": "2dfe0f8d4955"
     },
@@ -4247,6 +9227,28 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-27B-DFLASH2-CAMPAIGN.md",
+        "refs": [
+          "7%"
+        ],
+        "tokens": [
+          "acceptance",
+          "block",
+          "dow",
+          "down",
+          "drafter",
+          "flat",
+          "forward",
+          "path",
+          "recall",
+          "rejected",
+          "removed",
+          "smaller",
+          "throughput",
+          "variable"
+        ]
+      },
       "id": "candidate/qwen38-27b-dflash2-campaign-variable-block-forward-s-8a366355fa0e",
       "evidence_hash": "599e1f56d058"
     },
@@ -4267,6 +9269,29 @@
         "recorded as 'default-off' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1100-C8-K3-CAMPAIGN.md",
+        "refs": [
+          "0.606 ms",
+          "1.724 ms"
+        ],
+        "tokens": [
+          "adaptive",
+          "all",
+          "candidate",
+          "default",
+          "i64",
+          "j16",
+          "j32",
+          "off",
+          "owner",
+          "retained",
+          "saves",
+          "screen",
+          "source",
+          "staging"
+        ]
+      },
       "id": "candidate/qwen38-gfx1100-c8-k3-campaign-adaptive-source-q5-i64-j-807f6fdafb47",
       "evidence_hash": "83f59e6f4c7c"
     },
@@ -4286,6 +9311,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1151-BUILD-CAMPAIGN.md",
+        "refs": [
+          "41.76%"
+        ],
+        "tokens": [
+          "built",
+          "complete",
+          "lane",
+          "lifecycle",
+          "measured",
+          "owned",
+          "physical",
+          "prerequisites",
+          "public",
+          "request",
+          "screen",
+          "session",
+          "shadow",
+          "suite"
+        ]
+      },
       "id": "candidate/qwen38-gfx1151-build-campaign-b3-6211dff74718",
       "evidence_hash": "8a4a0d3872a4"
     },
@@ -4306,6 +9353,21 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1151-BUILD-CAMPAIGN.md",
+        "refs": [
+          "3.36%",
+          "48.91%"
+        ],
+        "tokens": [
+          "depth",
+          "draft",
+          "measured",
+          "rejected",
+          "retained",
+          "wall"
+        ]
+      },
       "id": "candidate/qwen38-gfx1151-build-campaign-b4-32e1a50c4745",
       "evidence_hash": "9fed86058b09"
     },
@@ -4329,6 +9391,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+        "refs": [
+          "1.4316x",
+          "20.48%",
+          "60.38%",
+          "740 ms",
+          "95.38%"
+        ],
+        "tokens": [
+          "4316x",
+          "740",
+          "749",
+          "986",
+          "blocked",
+          "bound",
+          "child",
+          "kernel",
+          "target",
+          "wall"
+        ]
+      },
       "id": "candidate/qwen38-gfx1151-parity-campaign-2-c0b4d83b79e2",
       "evidence_hash": "f6abc47f409d"
     },
@@ -4349,6 +9433,28 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+        "refs": [
+          "0.9737x",
+          "9.17%"
+        ],
+        "tokens": [
+          "291",
+          "493",
+          "9737x",
+          "automatic",
+          "blocked",
+          "category",
+          "closed",
+          "exactness",
+          "external",
+          "overall",
+          "prompt",
+          "replay",
+          "win"
+        ]
+      },
       "id": "candidate/qwen38-gfx1151-parity-campaign-4-511679fe7d72",
       "evidence_hash": "54f6b375cc0d"
     },
@@ -4374,6 +9480,34 @@
         "same row also mentions promotion \u2014 may already be resolved",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-GFX1151-SCALING-CAMPAIGN.md",
+        "refs": [
+          "1.15x",
+          "19.2%",
+          "20.1%",
+          "3.78%",
+          "3.99%",
+          "37.074 tok/s",
+          "4.56%"
+        ],
+        "tokens": [
+          "01t04",
+          "2026",
+          "be72258c12af255a992e083fca1c0990c9877d05",
+          "before",
+          "closeout",
+          "documentation",
+          "exact",
+          "final",
+          "four",
+          "iteration",
+          "retained",
+          "source",
+          "ten",
+          "unit"
+        ]
+      },
       "id": "candidate/qwen38-gfx1151-scaling-campaign-c6-c8-k1-ten-iteration-c-0b52fe8371af",
       "evidence_hash": "0bd9652d5f39"
     },
@@ -4392,6 +9526,22 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-INT8-KV-CONTINUOUS.md",
+        "refs": [
+          "77.78%"
+        ],
+        "tokens": [
+          "complete",
+          "int8",
+          "minimum",
+          "prompt",
+          "pure",
+          "rejected",
+          "result",
+          "top"
+        ]
+      },
       "id": "candidate/qwen38-int8-kv-continuous-result-c1bac58f8ff2",
       "evidence_hash": "01774fa411a0"
     },
@@ -4412,6 +9562,28 @@
         "recorded as 'rejected' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "12.98 ms",
+          "190.12 ms"
+        ],
+        "tokens": [
+          "102",
+          "190",
+          "closed",
+          "cycle",
+          "owner",
+          "planar",
+          "post",
+          "r12",
+          "rejected",
+          "retained",
+          "standard",
+          "target",
+          "true"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-1-d2e06ac6a43b",
       "evidence_hash": "9be6fca55d44"
     },
@@ -4432,6 +9604,29 @@
         "recorded as 'removed' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "17.89%",
+          "39.41%"
+        ],
+        "tokens": [
+          "carryover",
+          "closed",
+          "keys",
+          "logical",
+          "partitions",
+          "physical",
+          "provider",
+          "r12",
+          "r16",
+          "r20",
+          "r32",
+          "retained",
+          "targets",
+          "unengaged"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-1c-2cac8f4000fd",
       "evidence_hash": "b37eba16c521"
     },
@@ -4451,6 +9646,29 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "55.31%",
+          "6.39%"
+        ],
+        "tokens": [
+          "count",
+          "launch",
+          "leaf",
+          "material",
+          "one",
+          "physical",
+          "prior",
+          "proved",
+          "r16",
+          "rejected",
+          "reopening",
+          "revisit",
+          "stop",
+          "sweep"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-1e-c3478430b056",
       "evidence_hash": "c480b93e0afe"
     },
@@ -4471,6 +9689,29 @@
         "recorded as 'blocked' while citing a measurement",
         "recorded as blocked \u2014 check whether the blocker still holds"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "2.63%",
+          "9.08%"
+        ],
+        "tokens": [
+          "624",
+          "628",
+          "796",
+          "800",
+          "blocked",
+          "changes",
+          "child",
+          "exactness",
+          "gap",
+          "overall",
+          "prime",
+          "prompt",
+          "streaming",
+          "versus"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-1f-6204dde6dfae",
       "evidence_hash": "728d8ab5b55a"
     },
@@ -4492,6 +9733,31 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "12.70%",
+          "2.81%",
+          "4.53%",
+          "9.82%"
+        ],
+        "tokens": [
+          "adaptive",
+          "cycle",
+          "english",
+          "exact",
+          "fixed",
+          "full",
+          "general",
+          "heldout",
+          "native",
+          "opened",
+          "raw",
+          "rejected",
+          "reopen",
+          "visible"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-2-61eea9fbe6fc",
       "evidence_hash": "b64575c3533b"
     },
@@ -4510,6 +9776,22 @@
       "signals": [
         "recorded as 'removed' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "90.16%"
+        ],
+        "tokens": [
+          "all",
+          "explicitly",
+          "gap",
+          "marked",
+          "prose",
+          "removed",
+          "stale",
+          "superseded"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-all-stale-90-16-gap-pros-78fc6ad0a6ef",
       "evidence_hash": "afe780434eea"
     },
@@ -4528,6 +9810,20 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "4.604 ms"
+        ],
+        "tokens": [
+          "591",
+          "604",
+          "owned",
+          "producer",
+          "rejected",
+          "top"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-c1-producer-owned-q6-top-b6720acd703b",
       "evidence_hash": "bb36177bac89"
     },
@@ -4547,6 +9843,19 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "0.58%",
+          "1.72%"
+        ],
+        "tokens": [
+          "adaptive",
+          "agnostic",
+          "content",
+          "rejected"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-oi-2-content-agnostic-ad-9e59c6de17af",
       "evidence_hash": "bcbf848f0c8f"
     },
@@ -4565,6 +9874,20 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+        "refs": [
+          "1.62%"
+        ],
+        "tokens": [
+          "draft",
+          "hidden",
+          "norm",
+          "output",
+          "post",
+          "rejected"
+        ]
+      },
       "id": "candidate/qwen38-q4km-mtp-acceptance-oi-4-post-output-norm-dr-2d3ae0a0f708",
       "evidence_hash": "eb952ad396d7"
     },
@@ -4583,6 +9906,27 @@
       "signals": [
         "recorded as 'rejected' while citing a measurement"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md",
+        "refs": [
+          "0.250 GiB"
+        ],
+        "tokens": [
+          "250",
+          "cpu",
+          "dense",
+          "exist",
+          "expert",
+          "gib",
+          "kernels",
+          "oracle",
+          "q3_k",
+          "rank",
+          "rejected",
+          "route",
+          "selected"
+        ]
+      },
       "id": "candidate/qwen38-ud-q4km-gfx11-campaign-q3-k-15281ee00882",
       "evidence_hash": "6e1343031e61"
     },
@@ -4602,6 +9946,20 @@
         "recorded as 'not promoted' while citing a measurement",
         "same row also mentions promotion \u2014 may already be resolved"
       ],
+      "hints": {
+        "anchor": "docs/campaigns/SPECDEC2-PERF.md",
+        "refs": [
+          "1.022x"
+        ],
+        "tokens": [
+          "022x",
+          "025",
+          "876",
+          "approximately",
+          "parity",
+          "promoted"
+        ]
+      },
       "id": "candidate/specdec2-perf-1-45284be8c949",
       "evidence_hash": "cdb69cdf3a51"
     }

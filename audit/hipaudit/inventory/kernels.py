@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from ..core import REPO_ROOT, Row
-from . import corpus, register
+from . import corpus, register, tokens
 
 KERNEL_ROOT = REPO_ROOT / "hipengine" / "kernels"
 KERNEL_KEY = re.compile(r"""KernelKey\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']""")
@@ -80,6 +80,7 @@ def extract() -> tuple[list[Row], dict]:
                 "test_referrers": test_referrers[:4],
             },
             signals=signals,
+            hints={"anchor": backend, "refs": [stem], "tokens": tokens(rel.replace("/", " "))},
         ))
 
     return rows, {

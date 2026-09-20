@@ -63,6 +63,24 @@ def grep(needle: str, texts: dict[str, str]) -> list[str]:
     return hits
 
 
+STOPWORDS = frozenset(
+    "the a an and or of to for in on at is are was were be by with from that this it its "
+    "not no still only when after once until should must can may".split())
+
+
+def tokens(text: str, limit: int = 14) -> list[str]:
+    """Content words, for matching an item across rewordings."""
+    words = re.findall(r"[a-z0-9_]{3,}", text.lower())
+    seen: list[str] = []
+    for word in words:
+        if word in STOPWORDS or word in seen:
+            continue
+        seen.append(word)
+        if len(seen) >= limit:
+            break
+    return sorted(seen)
+
+
 EXTRACTORS: dict[str, Callable[[], tuple[list[Row], dict]]] = {}
 
 

@@ -1,0 +1,7 @@
+{
+  "kind": "torch-hot-path",
+  "meta": {
+    "scanned": "hipengine/**/*.py"
+  },
+  "rows": []
+}

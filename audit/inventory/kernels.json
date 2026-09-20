@@ -34,6 +34,17 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "unknown",
+        "refs": [
+          "activation_pack"
+        ],
+        "tokens": [
+          "activation_pack",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/activation_pack.py",
       "evidence_hash": "1ee6da4145bf"
     },
@@ -63,6 +74,17 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "unknown",
+        "refs": [
+          "backends"
+        ],
+        "tokens": [
+          "backends",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/backends.py",
       "evidence_hash": "4a794886b133"
     },
@@ -90,6 +112,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "dflash2"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "dflash2",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/cpu_reference/dflash2.py",
       "evidence_hash": "12303ef73d56"
     },
@@ -119,6 +153,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "dms"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "dms",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/cpu_reference/dms.py",
       "evidence_hash": "05379d39d0ed"
     },
@@ -148,6 +194,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "evie"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "evie",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/cpu_reference/evie.py",
       "evidence_hash": "a92333aa688f"
     },
@@ -177,6 +235,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "fixtures"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "fixtures",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/cpu_reference/fixtures.py",
       "evidence_hash": "c60268e893c2"
     },
@@ -206,6 +276,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "laguna"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "laguna"
+        ]
+      },
       "id": "kernel/cpu_reference/laguna.py",
       "evidence_hash": "ea7f14eead64"
     },
@@ -235,6 +317,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "maple"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "maple"
+        ]
+      },
       "id": "kernel/cpu_reference/maple.py",
       "evidence_hash": "229c33ff5ac8"
     },
@@ -264,6 +358,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "moonshine"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "moonshine"
+        ]
+      },
       "id": "kernel/cpu_reference/moonshine.py",
       "evidence_hash": "3c5048ca0db9"
     },
@@ -289,6 +395,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "moonshine_encoder"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "moonshine_encoder"
+        ]
+      },
       "id": "kernel/cpu_reference/moonshine_encoder.py",
       "evidence_hash": "08f201ed0c73"
     },
@@ -318,6 +436,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "ops"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "ops"
+        ]
+      },
       "id": "kernel/cpu_reference/ops.py",
       "evidence_hash": "50c22bff67a2"
     },
@@ -347,6 +477,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "qwen2"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "qwen2"
+        ]
+      },
       "id": "kernel/cpu_reference/qwen2.py",
       "evidence_hash": "5823f7a1d1ae"
     },
@@ -376,6 +518,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "qwen4_exp"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "qwen4_exp"
+        ]
+      },
       "id": "kernel/cpu_reference/qwen4_exp.py",
       "evidence_hash": "d210f95aafb8"
     },
@@ -407,6 +561,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "surya"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "surya"
+        ]
+      },
       "id": "kernel/cpu_reference/surya.py",
       "evidence_hash": "fc3cc8f5d94c"
     },
@@ -438,6 +604,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "timesfm"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "timesfm"
+        ]
+      },
       "id": "kernel/cpu_reference/timesfm.py",
       "evidence_hash": "7285dbdb0d9a"
     },
@@ -467,6 +645,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "timesfm3"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "timesfm3"
+        ]
+      },
       "id": "kernel/cpu_reference/timesfm3.py",
       "evidence_hash": "5b3d9360317a"
     },
@@ -496,6 +686,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "vibevoice_asr"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "vibevoice_asr"
+        ]
+      },
       "id": "kernel/cpu_reference/vibevoice_asr.py",
       "evidence_hash": "f51b76064f78"
     },
@@ -527,6 +729,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "vibevoice_tts"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "vibevoice_tts"
+        ]
+      },
       "id": "kernel/cpu_reference/vibevoice_tts.py",
       "evidence_hash": "d709680978af"
     },
@@ -556,6 +770,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "cpu_reference",
+        "refs": [
+          "vibevoice_tts_diffusion"
+        ],
+        "tokens": [
+          "cpu_reference",
+          "hipengine",
+          "kernels",
+          "vibevoice_tts_diffusion"
+        ]
+      },
       "id": "kernel/cpu_reference/vibevoice_tts_diffusion.py",
       "evidence_hash": "0e9624526e9f"
     },
@@ -580,6 +806,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "maple_attention"
+        ],
+        "tokens": [
+          "attention",
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "maple_attention"
+        ]
+      },
       "id": "kernel/cuda_sm120a/attention/maple_attention.py",
       "evidence_hash": "ecd0fd52f27e"
     },
@@ -608,6 +847,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_attention"
+        ],
+        "tokens": [
+          "attention",
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "moonshine_attention"
+        ]
+      },
       "id": "kernel/cuda_sm120a/attention/moonshine_attention.py",
       "evidence_hash": "a31758d5edd4"
     },
@@ -630,6 +882,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_attention_cutlass"
+        ],
+        "tokens": [
+          "attention",
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "moonshine_attention_cutlass"
+        ]
+      },
       "id": "kernel/cuda_sm120a/attention/moonshine_attention_cutlass.py",
       "evidence_hash": "c9ec0f6917ad"
     },
@@ -655,6 +920,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_encoder"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "encoder",
+          "hipengine",
+          "kernels",
+          "moonshine_encoder"
+        ]
+      },
       "id": "kernel/cuda_sm120a/encoder/moonshine_encoder.py",
       "evidence_hash": "588f4d54b855"
     },
@@ -677,6 +955,19 @@
       "signals": [
         "no test file names it"
       ],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_encoder_cudnn"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "encoder",
+          "hipengine",
+          "kernels",
+          "moonshine_encoder_cudnn"
+        ]
+      },
       "id": "kernel/cuda_sm120a/encoder/moonshine_encoder_cudnn.py",
       "evidence_hash": "0a3c7dcb78d6"
     },
@@ -698,6 +989,19 @@
       "signals": [
         "no test file names it"
       ],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_encoder_lt"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "encoder",
+          "hipengine",
+          "kernels",
+          "moonshine_encoder_lt"
+        ]
+      },
       "id": "kernel/cuda_sm120a/encoder/moonshine_encoder_lt.py",
       "evidence_hash": "d112a646ae1d"
     },
@@ -724,6 +1028,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_glue"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "fused",
+          "hipengine",
+          "kernels",
+          "moonshine_glue"
+        ]
+      },
       "id": "kernel/cuda_sm120a/fused/moonshine_glue.py",
       "evidence_hash": "21e35deb6200"
     },
@@ -747,6 +1064,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_mlp"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "fused",
+          "hipengine",
+          "kernels",
+          "moonshine_mlp"
+        ]
+      },
       "id": "kernel/cuda_sm120a/fused/moonshine_mlp.py",
       "evidence_hash": "ba2234cda07e"
     },
@@ -776,6 +1106,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "lm_head"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "linear",
+          "lm_head"
+        ]
+      },
       "id": "kernel/cuda_sm120a/linear/lm_head.py",
       "evidence_hash": "3dd052e68488"
     },
@@ -797,6 +1140,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "maple_lm_head"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "linear",
+          "maple_lm_head"
+        ]
+      },
       "id": "kernel/cuda_sm120a/linear/maple_lm_head.py",
       "evidence_hash": "d7073b00fb76"
     },
@@ -826,6 +1182,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_projection"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "linear",
+          "moonshine_projection"
+        ]
+      },
       "id": "kernel/cuda_sm120a/linear/moonshine_projection.py",
       "evidence_hash": "5646a350fb07"
     },
@@ -855,6 +1224,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "group_scatter"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "group_scatter",
+          "hipengine",
+          "kernels",
+          "moe"
+        ]
+      },
       "id": "kernel/cuda_sm120a/moe/group_scatter.py",
       "evidence_hash": "9292c7c1939d"
     },
@@ -879,6 +1261,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "maple_moe"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "maple_moe",
+          "moe"
+        ]
+      },
       "id": "kernel/cuda_sm120a/moe/maple_moe.py",
       "evidence_hash": "d40cb61d901d"
     },
@@ -900,6 +1295,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "maple_rmsnorm"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "maple_rmsnorm",
+          "norm"
+        ]
+      },
       "id": "kernel/cuda_sm120a/norm/maple_rmsnorm.py",
       "evidence_hash": "09de640473c6"
     },
@@ -929,6 +1337,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "moonshine_layernorm"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "moonshine_layernorm",
+          "norm"
+        ]
+      },
       "id": "kernel/cuda_sm120a/norm/moonshine_layernorm.py",
       "evidence_hash": "f3cc93c80041"
     },
@@ -958,6 +1379,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "maple_ternary"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "maple_ternary",
+          "quant"
+        ]
+      },
       "id": "kernel/cuda_sm120a/quant/maple_ternary.py",
       "evidence_hash": "5d9db3401601"
     },
@@ -982,6 +1416,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "cuda_sm120a",
+        "refs": [
+          "smoke_add"
+        ],
+        "tokens": [
+          "cuda_sm120a",
+          "hipengine",
+          "kernels",
+          "smoke",
+          "smoke_add"
+        ]
+      },
       "id": "kernel/cuda_sm120a/smoke/smoke_add.py",
       "evidence_hash": "a5df79ea9bd7"
     },
@@ -1010,6 +1457,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "aotriton"
+        ],
+        "tokens": [
+          "aotriton",
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/aotriton.py",
       "evidence_hash": "07d318f2a1fe"
     },
@@ -1034,6 +1494,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "aotriton_wrap"
+        ],
+        "tokens": [
+          "aotriton_wrap",
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/aotriton_wrap.py",
       "evidence_hash": "df4a2dcb14e3"
     },
@@ -1063,6 +1536,20 @@
       "signals": [
         "9 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dms_compact"
+        ],
+        "tokens": [
+          "attention",
+          "dms_compact",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/dms_compact.hip",
       "evidence_hash": "71980dcb138a"
     },
@@ -1090,6 +1577,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dms_compact"
+        ],
+        "tokens": [
+          "attention",
+          "dms_compact",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/dms_compact.py",
       "evidence_hash": "11ab2a6afa63"
     },
@@ -1112,6 +1612,20 @@
         "no test file names it",
         "4 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dms_compact_int8"
+        ],
+        "tokens": [
+          "attention",
+          "dms_compact_int8",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/dms_compact_int8.hip",
       "evidence_hash": "8569b6ba22e4"
     },
@@ -1133,6 +1647,19 @@
       "signals": [
         "no test file names it"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dms_compact_int8"
+        ],
+        "tokens": [
+          "attention",
+          "dms_compact_int8",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/dms_compact_int8.py",
       "evidence_hash": "a121156563d9"
     },
@@ -1155,6 +1682,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_flash_attention_prefill"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_flash_attention_prefill"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/laguna_flash_attention_prefill.hip",
       "evidence_hash": "1fc66f6585f8"
     },
@@ -1176,6 +1717,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_flash_attention_prefill"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_flash_attention_prefill"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/laguna_flash_attention_prefill.py",
       "evidence_hash": "6884c66364b8"
     },
@@ -1203,6 +1757,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_kv"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_kv"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/laguna_kv.py",
       "evidence_hash": "2aa0d257616e"
     },
@@ -1228,6 +1795,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_kv_attention"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_kv_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/laguna_kv_attention.hip",
       "evidence_hash": "520aba9efc58"
     },
@@ -1254,6 +1835,20 @@
       "signals": [
         "10 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_attention"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/maple_attention.hip",
       "evidence_hash": "81dcdc358511"
     },
@@ -1278,6 +1873,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_attention"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/maple_attention.py",
       "evidence_hash": "0fb167c0b729"
     },
@@ -1308,6 +1916,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_attention"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/moonshine_attention.hip",
       "evidence_hash": "46d2520cabc9"
     },
@@ -1336,6 +1958,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_attention"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/moonshine_attention.py",
       "evidence_hash": "30f6b36a4d50"
     },
@@ -1365,6 +2000,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paged_attn_decode"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paged_attn_decode"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/paged_attn_decode.hip",
       "evidence_hash": "e024b4d91702"
     },
@@ -1394,6 +2043,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paged_attn_decode"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paged_attn_decode"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/paged_attn_decode.py",
       "evidence_hash": "6fa62d81883b"
     },
@@ -1423,6 +2085,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paged_kv_write"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paged_kv_write"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/paged_kv_write.hip",
       "evidence_hash": "c2aa5f6d7467"
     },
@@ -1452,6 +2128,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paged_kv_write"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paged_kv_write"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/paged_kv_write.py",
       "evidence_hash": "2e12ac6b39cb"
     },
@@ -1479,6 +2168,20 @@
       "signals": [
         "21 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_qsa"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_qsa"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/qwen4_exp_qsa.hip",
       "evidence_hash": "5512702876cd"
     },
@@ -1504,6 +2207,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_qsa"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_qsa"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/qwen4_exp_qsa.py",
       "evidence_hash": "579a3d35c590"
     },
@@ -1525,6 +2241,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_qsa_flash"
+        ],
+        "tokens": [
+          "attention",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_qsa_flash"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/qwen4_exp_qsa_flash.hip",
       "evidence_hash": "1edef6f0bbd2"
     },
@@ -1546,6 +2276,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_qsa_flash"
+        ],
+        "tokens": [
+          "attention",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_qsa_flash"
+        ]
+      },
       "id": "kernel/hip_gfx1100/attention/qwen4_exp_qsa_flash.py",
       "evidence_hash": "7fe9eec54161"
     },
@@ -1575,6 +2318,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "cast"
+        ],
+        "tokens": [
+          "cast",
+          "convert",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/convert/cast.hip",
       "evidence_hash": "31b4af24686e"
     },
@@ -1604,6 +2361,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "cast"
+        ],
+        "tokens": [
+          "cast",
+          "convert",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/convert/cast.py",
       "evidence_hash": "ba5fdf9142bb"
     },
@@ -1635,6 +2405,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gather"
+        ],
+        "tokens": [
+          "convert",
+          "gather",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/convert/gather.hip",
       "evidence_hash": "38f7bab09f7d"
     },
@@ -1664,6 +2448,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gather"
+        ],
+        "tokens": [
+          "convert",
+          "gather",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/convert/gather.py",
       "evidence_hash": "cb12459cfa81"
     },
@@ -1693,6 +2490,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moe_c1"
+        ],
+        "tokens": [
+          "dispatch",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe_c1"
+        ]
+      },
       "id": "kernel/hip_gfx1100/dispatch/moe_c1.py",
       "evidence_hash": "f343e1384d81"
     },
@@ -1719,6 +2529,20 @@
         "no __global__ entry point found",
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moe_c1_dispatch"
+        ],
+        "tokens": [
+          "dispatch",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe_c1_dispatch"
+        ]
+      },
       "id": "kernel/hip_gfx1100/dispatch/moe_c1_dispatch.hip",
       "evidence_hash": "82a9eefab9c7"
     },
@@ -1741,6 +2565,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "evie_ops"
+        ],
+        "tokens": [
+          "evie",
+          "evie_ops",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/evie/evie_ops.hip",
       "evidence_hash": "4cb23939d057"
     },
@@ -1763,6 +2601,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "evie_ops"
+        ],
+        "tokens": [
+          "evie",
+          "evie_ops",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/evie/evie_ops.py",
       "evidence_hash": "0f061af970ac"
     },
@@ -1792,6 +2643,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_ops"
+        ],
+        "tokens": [
+          "fused",
+          "gguf_ops",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/gguf_ops.hip",
       "evidence_hash": "76be8eaccf2e"
     },
@@ -1821,6 +2686,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_ops"
+        ],
+        "tokens": [
+          "fused",
+          "gguf_ops",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/gguf_ops.py",
       "evidence_hash": "85f5efe68de1"
     },
@@ -1844,6 +2722,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_q4_pair"
+        ],
+        "tokens": [
+          "fused",
+          "gguf_q6_q4_pair",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/gguf_q6_q4_pair.hip",
       "evidence_hash": "9c9d6f7d10c7"
     },
@@ -1866,6 +2758,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_q4_pair"
+        ],
+        "tokens": [
+          "fused",
+          "gguf_q6_q4_pair",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/gguf_q6_q4_pair.py",
       "evidence_hash": "d81f44cb5615"
     },
@@ -1892,6 +2797,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_attention"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/laguna_attention.hip",
       "evidence_hash": "923f55d974f9"
     },
@@ -1918,6 +2837,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_attention"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_attention"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/laguna_attention.py",
       "evidence_hash": "40d1a70545d4"
     },
@@ -1944,6 +2876,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_glue"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_glue"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/moonshine_glue.hip",
       "evidence_hash": "519d82614aa5"
     },
@@ -1970,6 +2916,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_glue"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_glue"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/moonshine_glue.py",
       "evidence_hash": "72324f446ce2"
     },
@@ -1993,6 +2952,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_mlp"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_mlp"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/moonshine_mlp.hip",
       "evidence_hash": "94a3319a0fc6"
     },
@@ -2016,6 +2989,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_mlp"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_mlp"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/moonshine_mlp.py",
       "evidence_hash": "4157a3fdc8e1"
     },
@@ -2045,6 +3031,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_combine"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_combine"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/paro_combine.hip",
       "evidence_hash": "61dec01dfccb"
     },
@@ -2074,6 +3074,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_combine"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_combine"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/paro_combine.py",
       "evidence_hash": "fb1f4e6571c3"
     },
@@ -2103,6 +3116,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_silu"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_silu"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/paro_silu.hip",
       "evidence_hash": "107e37a97d1d"
     },
@@ -2132,6 +3159,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_silu"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_silu"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/paro_silu.py",
       "evidence_hash": "fea18eb825d7"
     },
@@ -2158,6 +3198,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_gr"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_gr"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/qwen4_exp_gr.hip",
       "evidence_hash": "b6d8f4812252"
     },
@@ -2184,6 +3238,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_gr"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_gr"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/qwen4_exp_gr.py",
       "evidence_hash": "b3bbaa24ef5b"
     },
@@ -2210,6 +3277,20 @@
       "signals": [
         "4 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_ple"
+        ],
+        "tokens": [
+          "fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_ple"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/qwen4_exp_ple.hip",
       "evidence_hash": "ebcccb2d86de"
     },
@@ -2234,6 +3315,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_ple"
+        ],
+        "tokens": [
+          "fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_ple"
+        ]
+      },
       "id": "kernel/hip_gfx1100/fused/qwen4_exp_ple.py",
       "evidence_hash": "03e12e612af4"
     },
@@ -2263,6 +3357,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dense_gemv"
+        ],
+        "tokens": [
+          "dense_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/dense_gemv.hip",
       "evidence_hash": "c228e332dc04"
     },
@@ -2292,6 +3400,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dense_gemv"
+        ],
+        "tokens": [
+          "dense_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/dense_gemv.py",
       "evidence_hash": "bae575c30861"
     },
@@ -2317,6 +3438,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_f16_projection"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_f16_projection",
+          "linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/laguna_f16_projection.hip",
       "evidence_hash": "1720aed0a117"
     },
@@ -2342,6 +3477,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_f16_projection"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_f16_projection",
+          "linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/laguna_f16_projection.py",
       "evidence_hash": "ce55cb859535"
     },
@@ -2371,6 +3519,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "lm_head"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "lm_head"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/lm_head.hip",
       "evidence_hash": "8e05706b5a33"
     },
@@ -2400,6 +3562,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "lm_head"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "lm_head"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/lm_head.py",
       "evidence_hash": "422acfcf573d"
     },
@@ -2429,6 +3604,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_projection"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "moonshine_projection"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/moonshine_projection.hip",
       "evidence_hash": "544ce422fd81"
     },
@@ -2458,6 +3647,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_projection"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "moonshine_projection"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/moonshine_projection.py",
       "evidence_hash": "470c750b1d5b"
     },
@@ -2484,6 +3686,20 @@
       "signals": [
         "5 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_w8a16"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "moonshine_w8a16"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/moonshine_w8a16.hip",
       "evidence_hash": "c5e6485b5a52"
     },
@@ -2508,6 +3724,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_w8a16"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "moonshine_w8a16"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear/moonshine_w8a16.py",
       "evidence_hash": "59e278efeb43"
     },
@@ -2537,6 +3766,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "conv"
+        ],
+        "tokens": [
+          "conv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/conv.hip",
       "evidence_hash": "0abec7ef39f2"
     },
@@ -2566,6 +3809,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "conv"
+        ],
+        "tokens": [
+          "conv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/conv.py",
       "evidence_hash": "cb45ab9f219c"
     },
@@ -2595,6 +3851,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gdn"
+        ],
+        "tokens": [
+          "gdn",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/gdn.hip",
       "evidence_hash": "600b10b09003"
     },
@@ -2624,6 +3894,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gdn"
+        ],
+        "tokens": [
+          "gdn",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/gdn.py",
       "evidence_hash": "a3954400eb11"
     },
@@ -2649,6 +3932,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_gdn"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn",
+          "qwen4_exp_gdn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip",
       "evidence_hash": "0601c87df015"
     },
@@ -2674,6 +3971,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_gdn"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear_attn",
+          "qwen4_exp_gdn"
+        ]
+      },
       "id": "kernel/hip_gfx1100/linear_attn/qwen4_exp_gdn.py",
       "evidence_hash": "6c1cbade201f"
     },
@@ -2703,6 +4013,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "group_scatter"
+        ],
+        "tokens": [
+          "group_scatter",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/group_scatter.hip",
       "evidence_hash": "bcd760c2ccd6"
     },
@@ -2732,6 +4056,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "group_scatter"
+        ],
+        "tokens": [
+          "group_scatter",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/group_scatter.py",
       "evidence_hash": "619e64e4446d"
     },
@@ -2759,6 +4096,20 @@
       "signals": [
         "3 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_router"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_router",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/laguna_router.hip",
       "evidence_hash": "6169edf6d769"
     },
@@ -2784,6 +4135,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_router"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_router",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/laguna_router.py",
       "evidence_hash": "6e435665696b"
     },
@@ -2808,6 +4172,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_moe"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_moe",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/maple_moe.hip",
       "evidence_hash": "06fbfe080efe"
     },
@@ -2832,6 +4210,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_moe"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_moe",
+          "moe"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/maple_moe.py",
       "evidence_hash": "f4c8f2e132e4"
     },
@@ -2861,6 +4252,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "prefill"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe",
+          "prefill"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/prefill.py",
       "evidence_hash": "51b7b3c799aa"
     },
@@ -2890,6 +4294,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "router"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe",
+          "router"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/router.hip",
       "evidence_hash": "d554e177c9fc"
     },
@@ -2919,6 +4337,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "router"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moe",
+          "router"
+        ]
+      },
       "id": "kernel/hip_gfx1100/moe/router.py",
       "evidence_hash": "b688af1aaa6b"
     },
@@ -2948,6 +4379,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_layernorm"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_layernorm",
+          "norm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/norm/moonshine_layernorm.hip",
       "evidence_hash": "ac6e521a1388"
     },
@@ -2977,6 +4422,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "moonshine_layernorm"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "moonshine_layernorm",
+          "norm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/norm/moonshine_layernorm.py",
       "evidence_hash": "e38348ad9a2c"
     },
@@ -3006,6 +4464,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "rmsnorm"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "norm",
+          "rmsnorm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/norm/rmsnorm.hip",
       "evidence_hash": "6526011456ba"
     },
@@ -3035,6 +4507,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "rmsnorm"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "norm",
+          "rmsnorm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/norm/rmsnorm.py",
       "evidence_hash": "437708288b51"
     },
@@ -3056,6 +4541,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_expert_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_expert_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_expert_pack8_gemv.hip",
       "evidence_hash": "43a7d181f8ed"
     },
@@ -3077,6 +4576,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_expert_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_expert_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_expert_pack8_gemv.py",
       "evidence_hash": "02b8f97fbd63"
     },
@@ -3099,6 +4611,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq2_xs_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_iq2_xs_mmq_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq2_xs_mmq_prefill.hip",
       "evidence_hash": "0a70180afe2e"
     },
@@ -3120,6 +4646,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq2_xs_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_iq2_xs_mmq_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq2_xs_mmq_prefill.py",
       "evidence_hash": "882039ee9b1b"
     },
@@ -3142,6 +4681,19 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq4_xs_t16_local32"
+        ],
+        "tokens": [
+          "gguf_iq4_xs_t16_local32",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq4_xs_t16_local32.py",
       "evidence_hash": "239f5a4be3ae"
     },
@@ -3166,6 +4718,20 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_dense"
+        ],
+        "tokens": [
+          "gguf_iq_dense",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_dense.hip",
       "evidence_hash": "43af39189ebb"
     },
@@ -3190,6 +4756,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_dense"
+        ],
+        "tokens": [
+          "gguf_iq_dense",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_dense.py",
       "evidence_hash": "b8c5e142789d"
     },
@@ -3215,6 +4794,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_gemv"
+        ],
+        "tokens": [
+          "gguf_iq_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_gemv.hip",
       "evidence_hash": "59fcc6d24417"
     },
@@ -3240,6 +4833,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_gemv"
+        ],
+        "tokens": [
+          "gguf_iq_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_gemv.py",
       "evidence_hash": "d068638723b4"
     },
@@ -3265,6 +4871,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_selected_prefill.hip",
       "evidence_hash": "68bfbb9afc64"
     },
@@ -3290,6 +4910,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_selected_prefill.py",
       "evidence_hash": "2e38ab4db506"
     },
@@ -3315,6 +4948,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_source_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_source_mmq_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.hip",
       "evidence_hash": "e1c5b07d79af"
     },
@@ -3340,6 +4987,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_source_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_source_mmq_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.py",
       "evidence_hash": "85a3b5983782"
     },
@@ -3362,6 +5022,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "3 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_wmma_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_wmma_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_wmma_prefill.hip",
       "evidence_hash": "eff383163a9c"
     },
@@ -3383,6 +5057,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_iq_wmma_prefill"
+        ],
+        "tokens": [
+          "gguf_iq_wmma_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_wmma_prefill.py",
       "evidence_hash": "2615d468c9c5"
     },
@@ -3412,6 +5099,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_gemv"
+        ],
+        "tokens": [
+          "gguf_k_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_gemv.hip",
       "evidence_hash": "992e9deacbc2"
     },
@@ -3441,6 +5142,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_gemv"
+        ],
+        "tokens": [
+          "gguf_k_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_gemv.py",
       "evidence_hash": "957fbed62281"
     },
@@ -3466,6 +5180,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_k_mmq_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_mmq_prefill.hip",
       "evidence_hash": "31e1ed81eb60"
     },
@@ -3491,6 +5219,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_k_mmq_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_mmq_prefill.py",
       "evidence_hash": "cdcb1a47b28d"
     },
@@ -3513,6 +5254,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_selected_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_k_selected_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_selected_pack8_gemv.hip",
       "evidence_hash": "e014534f681c"
     },
@@ -3535,6 +5290,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_selected_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_k_selected_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_selected_pack8_gemv.py",
       "evidence_hash": "cb4971c9684e"
     },
@@ -3559,6 +5327,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_k_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_selected_prefill.hip",
       "evidence_hash": "d19f26064fcb"
     },
@@ -3583,6 +5365,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_k_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_selected_prefill.py",
       "evidence_hash": "0c1e0ade0d5f"
     },
@@ -3608,6 +5403,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_t16_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_k_t16_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
       "evidence_hash": "5f859b863e72"
     },
@@ -3633,6 +5442,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_k_t16_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_k_t16_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py",
       "evidence_hash": "d7b3ad27c35b"
     },
@@ -3658,6 +5480,20 @@
       "signals": [
         "2 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q3_k_gemv"
+        ],
+        "tokens": [
+          "gguf_q3_k_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q3_k_gemv.hip",
       "evidence_hash": "90a21ca740d0"
     },
@@ -3681,6 +5517,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q3_k_gemv"
+        ],
+        "tokens": [
+          "gguf_q3_k_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q3_k_gemv.py",
       "evidence_hash": "9fb6e7dd3fd3"
     },
@@ -3710,6 +5559,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_gemv.hip",
       "evidence_hash": "8544bb7403de"
     },
@@ -3739,6 +5602,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_gemv.py",
       "evidence_hash": "7af8dd251c9b"
     },
@@ -3762,6 +5638,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_moe_ffn_fused"
+        ],
+        "tokens": [
+          "gguf_q4_k_moe_ffn_fused",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_moe_ffn_fused.hip",
       "evidence_hash": "bb4e2d6262d3"
     },
@@ -3783,6 +5673,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_moe_ffn_fused"
+        ],
+        "tokens": [
+          "gguf_q4_k_moe_ffn_fused",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_moe_ffn_fused.py",
       "evidence_hash": "a0ca1b32ecb4"
     },
@@ -3808,6 +5711,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.hip",
       "evidence_hash": "d5133a0f9387"
     },
@@ -3833,6 +5750,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.py",
       "evidence_hash": "7d7a1b9a1909"
     },
@@ -3858,6 +5788,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_prefill.hip",
       "evidence_hash": "2a59e4b1c737"
     },
@@ -3883,6 +5827,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_prefill.py",
       "evidence_hash": "c4043f3dfcdf"
     },
@@ -3904,6 +5861,20 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_dp4a_vdr_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_dp4a_vdr_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.hip",
       "evidence_hash": "d9da947b06ad"
     },
@@ -3925,6 +5896,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_dp4a_vdr_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_dp4a_vdr_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.py",
       "evidence_hash": "eb29994c968e"
     },
@@ -3947,6 +5931,20 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_mmq_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_mmq_prefill.hip",
       "evidence_hash": "b7f62bf9598b"
     },
@@ -3969,6 +5967,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_mmq_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_mmq_prefill.py",
       "evidence_hash": "44a47d9d578f"
     },
@@ -3996,6 +6007,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
       "evidence_hash": "4adbf906fca3"
     },
@@ -4023,6 +6048,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_q8_1_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_q8_1_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
       "evidence_hash": "8948ee84a521"
     },
@@ -4045,6 +6083,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_qmicro_dp4a_grouped"
+        ],
+        "tokens": [
+          "gguf_q4_k_qmicro_dp4a_grouped",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_qmicro_dp4a_grouped.hip",
       "evidence_hash": "1d3fd0b2c6d5"
     },
@@ -4066,6 +6118,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_qmicro_dp4a_grouped"
+        ],
+        "tokens": [
+          "gguf_q4_k_qmicro_dp4a_grouped",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_qmicro_dp4a_grouped.py",
       "evidence_hash": "ac22b99a5e0a"
     },
@@ -4089,6 +6154,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_selected_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_selected_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_selected_pack8_gemv.hip",
       "evidence_hash": "7e4014b7bb2a"
     },
@@ -4110,6 +6189,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_selected_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q4_k_selected_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_selected_pack8_gemv.py",
       "evidence_hash": "ed2f320f5b1b"
     },
@@ -4135,6 +6227,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
       "evidence_hash": "5897da1ddd69"
     },
@@ -4160,6 +6266,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py",
       "evidence_hash": "b11f4841a7a9"
     },
@@ -4182,6 +6301,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_t16_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_t16_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip",
       "evidence_hash": "320b29202563"
     },
@@ -4204,6 +6337,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q4_k_t16_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q4_k_t16_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py",
       "evidence_hash": "d3c8add71836"
     },
@@ -4227,6 +6373,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_1_mmq_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_1_mmq_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_1_mmq_selected_prefill.hip",
       "evidence_hash": "0c792fb547e8"
     },
@@ -4248,6 +6408,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_1_mmq_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_1_mmq_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_1_mmq_selected_prefill.py",
       "evidence_hash": "8ae2f9bfc23e"
     },
@@ -4273,6 +6446,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_f32_rocblas_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_k_f32_rocblas_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip",
       "evidence_hash": "f949cb03648f"
     },
@@ -4298,6 +6485,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_f32_rocblas_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_k_f32_rocblas_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py",
       "evidence_hash": "37bab0404350"
     },
@@ -4322,6 +6522,20 @@
       "signals": [
         "2 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_q8_1_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_k_q8_1_selected_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.hip",
       "evidence_hash": "7c518eb2c9d6"
     },
@@ -4344,6 +6558,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_q8_1_selected_prefill"
+        ],
+        "tokens": [
+          "gguf_q5_k_q8_1_selected_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.py",
       "evidence_hash": "fd52cb3ff0b5"
     },
@@ -4369,6 +6596,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_qmicro_planar_gemv"
+        ],
+        "tokens": [
+          "gguf_q5_k_qmicro_planar_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.hip",
       "evidence_hash": "052b2090d0c5"
     },
@@ -4392,6 +6633,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q5_k_qmicro_planar_gemv"
+        ],
+        "tokens": [
+          "gguf_q5_k_qmicro_planar_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.py",
       "evidence_hash": "a70a4c6e12cd"
     },
@@ -4417,6 +6671,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_embedding"
+        ],
+        "tokens": [
+          "gguf_q6_k_embedding",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_embedding.hip",
       "evidence_hash": "3fc14f7ad745"
     },
@@ -4442,6 +6710,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_embedding"
+        ],
+        "tokens": [
+          "gguf_q6_k_embedding",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_embedding.py",
       "evidence_hash": "7961e62db4e4"
     },
@@ -4464,6 +6745,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_f16_rocblas_prefill"
+        ],
+        "tokens": [
+          "gguf_q6_k_f16_rocblas_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip",
       "evidence_hash": "6d328a07bdb1"
     },
@@ -4486,6 +6781,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_f16_rocblas_prefill"
+        ],
+        "tokens": [
+          "gguf_q6_k_f16_rocblas_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py",
       "evidence_hash": "9e9a4af064d4"
     },
@@ -4514,6 +6822,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q6_k_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.hip",
       "evidence_hash": "74be3ded0901"
     },
@@ -4542,6 +6864,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q6_k_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py",
       "evidence_hash": "8f225961b27c"
     },
@@ -4571,6 +6906,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_t16_gemv"
+        ],
+        "tokens": [
+          "gguf_q6_k_t16_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip",
       "evidence_hash": "2789084bfffe"
     },
@@ -4598,6 +6947,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q6_k_t16_gemv"
+        ],
+        "tokens": [
+          "gguf_q6_k_t16_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_t16_gemv.py",
       "evidence_hash": "504b11dcbdb1"
     },
@@ -4623,6 +6985,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_dp4a_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_dp4a_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_dp4a_gemv.hip",
       "evidence_hash": "9b091130487e"
     },
@@ -4646,6 +7022,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_dp4a_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_dp4a_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_dp4a_gemv.py",
       "evidence_hash": "b304bf175bd5"
     },
@@ -4673,6 +7062,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_mmq_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip",
       "evidence_hash": "028ae9b5ff9c"
     },
@@ -4700,6 +7103,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_mmq_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_mmq_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
       "evidence_hash": "7e0c321b0e37"
     },
@@ -4725,6 +7141,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_pack8_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.hip",
       "evidence_hash": "9ee98268a939"
     },
@@ -4750,6 +7180,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_pack8_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_pack8_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.py",
       "evidence_hash": "af98a7775bc2"
     },
@@ -4775,6 +7218,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_prefill.hip",
       "evidence_hash": "06b395120263"
     },
@@ -4800,6 +7257,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_prefill.py",
       "evidence_hash": "c9d7aa56b6dd"
     },
@@ -4822,6 +7292,20 @@
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_raw_to_t16"
+        ],
+        "tokens": [
+          "gguf_q8_0_raw_to_t16",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_raw_to_t16.hip",
       "evidence_hash": "869dd0fae8ca"
     },
@@ -4843,6 +7327,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_raw_to_t16"
+        ],
+        "tokens": [
+          "gguf_q8_0_raw_to_t16",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_raw_to_t16.py",
       "evidence_hash": "ec4799fe172c"
     },
@@ -4870,6 +7367,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_t16_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_t16_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
       "evidence_hash": "27e4e8096483"
     },
@@ -4895,6 +7406,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_t16_gemv"
+        ],
+        "tokens": [
+          "gguf_q8_0_t16_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py",
       "evidence_hash": "8a282023fc21"
     },
@@ -4919,6 +7443,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_t16_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_t16_prefill",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip",
       "evidence_hash": "b906486adf1e"
     },
@@ -4943,6 +7481,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_q8_0_t16_prefill"
+        ],
+        "tokens": [
+          "gguf_q8_0_t16_prefill",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py",
       "evidence_hash": "fa349380e707"
     },
@@ -4971,6 +7522,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_t16_selected_gemv"
+        ],
+        "tokens": [
+          "gguf_t16_selected_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_t16_selected_gemv.hip",
       "evidence_hash": "428ae89dbe89"
     },
@@ -4997,6 +7562,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_t16_selected_gemv"
+        ],
+        "tokens": [
+          "gguf_t16_selected_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_t16_selected_gemv.py",
       "evidence_hash": "45568c6815d0"
     },
@@ -5023,6 +7601,20 @@
       "signals": [
         "3 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_x8_selected_gemv"
+        ],
+        "tokens": [
+          "gguf_x8_selected_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_x8_selected_gemv.hip",
       "evidence_hash": "847bfe55f59a"
     },
@@ -5047,6 +7639,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gguf_x8_selected_gemv"
+        ],
+        "tokens": [
+          "gguf_x8_selected_gemv",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/gguf_x8_selected_gemv.py",
       "evidence_hash": "7a27f8858222"
     },
@@ -5078,6 +7683,20 @@
       "signals": [
         "15 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_ternary"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_ternary",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/maple_ternary.hip",
       "evidence_hash": "7e845d201e00"
     },
@@ -5107,6 +7726,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "maple_ternary"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "maple_ternary",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/maple_ternary.py",
       "evidence_hash": "cea7da6ef79a"
     },
@@ -5133,6 +7765,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_awq_gemv"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_awq_gemv",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_awq_gemv.hip",
       "evidence_hash": "b955145fb242"
     },
@@ -5159,6 +7805,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_awq_gemv"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_awq_gemv",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_awq_gemv.py",
       "evidence_hash": "10b7dba04886"
     },
@@ -5187,6 +7846,20 @@
       "signals": [
         "2 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_marlin_k"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_marlin_k",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_marlin_k.hip",
       "evidence_hash": "c710f4aa6f5e"
     },
@@ -5213,6 +7886,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_marlin_k"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_marlin_k",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_marlin_k.py",
       "evidence_hash": "06df505a604a"
     },
@@ -5236,6 +7922,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_moe_ffn_fused"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_moe_ffn_fused",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_moe_ffn_fused.hip",
       "evidence_hash": "44740d39721f"
     },
@@ -5257,6 +7957,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_moe_ffn_fused"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_moe_ffn_fused",
+          "quant"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/paro_moe_ffn_fused.py",
       "evidence_hash": "0fdf13ec7013"
     },
@@ -5281,6 +7994,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_q5_1"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant",
+          "qwen4_exp_q5_1"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
       "evidence_hash": "cb469a349ec8"
     },
@@ -5305,6 +8032,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_q5_1"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant",
+          "qwen4_exp_q5_1"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.py",
       "evidence_hash": "f9a59582b1a2"
     },
@@ -5334,6 +8074,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "w8a16_linear"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant",
+          "w8a16_linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/w8a16_linear.hip",
       "evidence_hash": "650e73d98ba4"
     },
@@ -5363,6 +8117,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "w8a16_linear"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "quant",
+          "w8a16_linear"
+        ]
+      },
       "id": "kernel/hip_gfx1100/quant/w8a16_linear.py",
       "evidence_hash": "43b1e21a1dbb"
     },
@@ -5391,6 +8158,20 @@
       "signals": [
         "6 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_rotate"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_rotate",
+          "rotary"
+        ]
+      },
       "id": "kernel/hip_gfx1100/rotary/paro_rotate.hip",
       "evidence_hash": "2ed031110eb3"
     },
@@ -5417,6 +8198,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_rotate"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_rotate",
+          "rotary"
+        ]
+      },
       "id": "kernel/hip_gfx1100/rotary/paro_rotate.py",
       "evidence_hash": "fd11162cc614"
     },
@@ -5444,6 +8238,20 @@
       "signals": [
         "8 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen35_rotary"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen35_rotary",
+          "rotary"
+        ]
+      },
       "id": "kernel/hip_gfx1100/rotary/qwen35_rotary.hip",
       "evidence_hash": "1e4b2f48bd90"
     },
@@ -5469,6 +8277,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen35_rotary"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen35_rotary",
+          "rotary"
+        ]
+      },
       "id": "kernel/hip_gfx1100/rotary/qwen35_rotary.py",
       "evidence_hash": "2c03c56f263a"
     },
@@ -5493,6 +8314,20 @@
       "signals": [
         "no __global__ entry point found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_launch_batch"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_launch_batch",
+          "runtime"
+        ]
+      },
       "id": "kernel/hip_gfx1100/runtime/laguna_launch_batch.hip",
       "evidence_hash": "fd9657b40564"
     },
@@ -5515,6 +8350,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "laguna_launch_batch"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "laguna_launch_batch",
+          "runtime"
+        ]
+      },
       "id": "kernel/hip_gfx1100/runtime/laguna_launch_batch.py",
       "evidence_hash": "d2aa3255c4e2"
     },
@@ -5544,6 +8392,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "state"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "runtime",
+          "state"
+        ]
+      },
       "id": "kernel/hip_gfx1100/runtime/state.hip",
       "evidence_hash": "9c6da5ff06c1"
     },
@@ -5573,6 +8435,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "state"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "runtime",
+          "state"
+        ]
+      },
       "id": "kernel/hip_gfx1100/runtime/state.py",
       "evidence_hash": "7f43522c7fc6"
     },
@@ -5604,6 +8479,20 @@
       "signals": [
         "5 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "sampler"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "sampler",
+          "sampling"
+        ]
+      },
       "id": "kernel/hip_gfx1100/sampling/sampler.hip",
       "evidence_hash": "e6cd923aa382"
     },
@@ -5633,6 +8522,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "sampler"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "sampler",
+          "sampling"
+        ]
+      },
       "id": "kernel/hip_gfx1100/sampling/sampler.py",
       "evidence_hash": "91008e552319"
     },
@@ -5657,6 +8559,20 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "smoke_add"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "smoke",
+          "smoke_add"
+        ]
+      },
       "id": "kernel/hip_gfx1100/smoke/smoke_add.hip",
       "evidence_hash": "39626f6ab192"
     },
@@ -5681,6 +8597,19 @@
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "smoke_add"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "smoke",
+          "smoke_add"
+        ]
+      },
       "id": "kernel/hip_gfx1100/smoke/smoke_add.py",
       "evidence_hash": "11281e1c1e32"
     },
@@ -5710,6 +8639,20 @@
       "signals": [
         "5 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash2"
+        ],
+        "tokens": [
+          "dflash2",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash2.hip",
       "evidence_hash": "9851ef1eb7eb"
     },
@@ -5737,6 +8680,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash2"
+        ],
+        "tokens": [
+          "dflash2",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash2.py",
       "evidence_hash": "cf01e1a2a6d6"
     },
@@ -5768,6 +8724,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_accept"
+        ],
+        "tokens": [
+          "dflash_accept",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_accept.hip",
       "evidence_hash": "75efe6b0dabf"
     },
@@ -5797,6 +8767,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_accept"
+        ],
+        "tokens": [
+          "dflash_accept",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_accept.py",
       "evidence_hash": "175fc27db3ae"
     },
@@ -5826,6 +8809,20 @@
       "signals": [
         "3 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_commit"
+        ],
+        "tokens": [
+          "dflash_commit",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_commit.hip",
       "evidence_hash": "1cfb1391839d"
     },
@@ -5853,6 +8850,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_commit"
+        ],
+        "tokens": [
+          "dflash_commit",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_commit.py",
       "evidence_hash": "32449990fcb0"
     },
@@ -5884,6 +8894,20 @@
       "signals": [
         "21 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_drafter"
+        ],
+        "tokens": [
+          "dflash_drafter",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_drafter.hip",
       "evidence_hash": "f2348e3b7c32"
     },
@@ -5913,6 +8937,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "dflash_drafter"
+        ],
+        "tokens": [
+          "dflash_drafter",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/dflash_drafter.py",
       "evidence_hash": "f57b6a369088"
     },
@@ -5944,6 +8981,20 @@
       "signals": [
         "10 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "mtp"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "mtp",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/mtp.hip",
       "evidence_hash": "68a70cc7dcc9"
     },
@@ -5973,6 +9024,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "mtp"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "mtp",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/mtp.py",
       "evidence_hash": "d02c24683340"
     },
@@ -6002,6 +9066,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "mtp_nextn"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "mtp_nextn",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/mtp_nextn.hip",
       "evidence_hash": "d1647a03d543"
     },
@@ -6031,6 +9109,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "mtp_nextn"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "mtp_nextn",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/mtp_nextn.py",
       "evidence_hash": "acedb7d40bac"
     },
@@ -6062,6 +9153,20 @@
       "signals": [
         "2 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "sampled_accept"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "sampled_accept",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/sampled_accept.hip",
       "evidence_hash": "ea2cc455a17b"
     },
@@ -6091,6 +9196,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "sampled_accept"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "sampled_accept",
+          "speculative"
+        ]
+      },
       "id": "kernel/hip_gfx1100/speculative/sampled_accept.py",
       "evidence_hash": "4ddf789cd05c"
     },
@@ -6115,6 +9233,20 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "surya_ops"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "surya",
+          "surya_ops"
+        ]
+      },
       "id": "kernel/hip_gfx1100/surya/surya_ops.hip",
       "evidence_hash": "c88a7be1e711"
     },
@@ -6139,6 +9271,19 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "surya_ops"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "surya",
+          "surya_ops"
+        ]
+      },
       "id": "kernel/hip_gfx1100/surya/surya_ops.py",
       "evidence_hash": "a0c464e502e2"
     },
@@ -6170,6 +9315,19 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "timesfm"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "timesfm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/timesfm/timesfm.hip",
       "evidence_hash": "ddd180c99798"
     },
@@ -6201,6 +9359,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "timesfm"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "timesfm"
+        ]
+      },
       "id": "kernel/hip_gfx1100/timesfm/timesfm.py",
       "evidence_hash": "da6a264abef9"
     },
@@ -6231,6 +9401,19 @@
         "3 __global__ entry point(s), none named elsewhere",
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "timesfm3"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "timesfm3"
+        ]
+      },
       "id": "kernel/hip_gfx1100/timesfm3/timesfm3.hip",
       "evidence_hash": "80e205bcfd66"
     },
@@ -6260,6 +9443,18 @@
       "signals": [
         "neither it nor its referrers mention KernelKey"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "timesfm3"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "timesfm3"
+        ]
+      },
       "id": "kernel/hip_gfx1100/timesfm3/timesfm3.py",
       "evidence_hash": "8a3838b834a5"
     },
@@ -6291,6 +9486,20 @@
       "signals": [
         "1 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "decoder"
+        ],
+        "tokens": [
+          "decoder",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/decoder.hip",
       "evidence_hash": "a451f2c50250"
     },
@@ -6320,6 +9529,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "decoder"
+        ],
+        "tokens": [
+          "decoder",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/decoder.py",
       "evidence_hash": "ac9961790437"
     },
@@ -6351,6 +9573,20 @@
       "signals": [
         "8 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "diffusion"
+        ],
+        "tokens": [
+          "diffusion",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/diffusion.hip",
       "evidence_hash": "00e62cd606fb"
     },
@@ -6380,6 +9616,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "diffusion"
+        ],
+        "tokens": [
+          "diffusion",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/diffusion.py",
       "evidence_hash": "adbb9baffb8d"
     },
@@ -6411,6 +9660,20 @@
       "signals": [
         "13 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "encoder"
+        ],
+        "tokens": [
+          "encoder",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/encoder.hip",
       "evidence_hash": "c4dfd784e492"
     },
@@ -6440,6 +9703,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "encoder"
+        ],
+        "tokens": [
+          "encoder",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/encoder.py",
       "evidence_hash": "e44e300a0424"
     },
@@ -6469,6 +9745,18 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "q4"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/q4.py",
       "evidence_hash": "5d6919a71f04"
     },
@@ -6498,6 +9786,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "registered"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "registered",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
       "evidence_hash": "7f8ded096c3e"
     },
@@ -6529,6 +9830,20 @@
       "signals": [
         "4 __global__ entry point(s), none named elsewhere"
       ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_vision"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_vision",
+          "vision"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vision/qwen4_exp_vision.hip",
       "evidence_hash": "577a9f10a0aa"
     },
@@ -6558,6 +9873,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "qwen4_exp_vision"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "qwen4_exp_vision",
+          "vision"
+        ]
+      },
       "id": "kernel/hip_gfx1100/vision/qwen4_exp_vision.py",
       "evidence_hash": "33fe6ca879ab"
     },
@@ -6579,6 +9907,20 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_awq_wmma"
+        ],
+        "tokens": [
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_awq_wmma",
+          "wmma"
+        ]
+      },
       "id": "kernel/hip_gfx1100/wmma/paro_awq_wmma.hip",
       "evidence_hash": "5038b23e49df"
     },
@@ -6600,6 +9942,19 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "paro_awq_wmma"
+        ],
+        "tokens": [
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "paro_awq_wmma",
+          "wmma"
+        ]
+      },
       "id": "kernel/hip_gfx1100/wmma/paro_awq_wmma.py",
       "evidence_hash": "7cd8cd423b8b"
     },
@@ -6629,6 +9984,17 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "unknown",
+        "refs": [
+          "policy"
+        ],
+        "tokens": [
+          "hipengine",
+          "kernels",
+          "policy"
+        ]
+      },
       "id": "kernel/policy.py",
       "evidence_hash": "9f36818243c8"
     },
@@ -6658,6 +10024,17 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "unknown",
+        "refs": [
+          "registry"
+        ],
+        "tokens": [
+          "hipengine",
+          "kernels",
+          "registry"
+        ]
+      },
       "id": "kernel/registry.py",
       "evidence_hash": "530bc5be24f8"
     },
@@ -6687,6 +10064,17 @@
         ]
       },
       "signals": [],
+      "hints": {
+        "anchor": "unknown",
+        "refs": [
+          "vibevoice"
+        ],
+        "tokens": [
+          "hipengine",
+          "kernels",
+          "vibevoice"
+        ]
+      },
       "id": "kernel/vibevoice.py",
       "evidence_hash": "c8ddb5c28f99"
     }

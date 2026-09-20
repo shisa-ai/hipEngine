@@ -1,0 +1,448 @@
+{
+  "kind": "axis-branch",
+  "meta": {
+    "scanned": "hipengine/**/*.py"
+  },
+  "rows": [
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/core/pm4/transport.py:542",
+      "title": "branches on a registry axis: if backend != \"hip_gfx1100\" or gfx_arch != \"gfx1100\":",
+      "location": "hipengine/core/pm4/transport.py:542",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/core/pm4/transport.py",
+        "refs": [
+          "hipengine/core/pm4/transport.py:542"
+        ],
+        "tokens": [
+          "axis",
+          "backend",
+          "branches",
+          "gfx1100",
+          "gfx_arch",
+          "hip_gfx1100",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/core/pm4/transport.py:542",
+      "evidence_hash": "4401fafa6980"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/core/pm4/transport.py:572",
+      "title": "branches on a registry axis: if request.backend != \"hip_gfx1100\" or request.gfx_arch != \"gfx1100\":",
+      "location": "hipengine/core/pm4/transport.py:572",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/core/pm4/transport.py",
+        "refs": [
+          "hipengine/core/pm4/transport.py:572"
+        ],
+        "tokens": [
+          "axis",
+          "backend",
+          "branches",
+          "gfx1100",
+          "gfx_arch",
+          "hip_gfx1100",
+          "registry",
+          "request"
+        ]
+      },
+      "id": "axis-branch/hipengine/core/pm4/transport.py:572",
+      "evidence_hash": "4edf226e41e6"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/generation/laguna_gguf.py:110",
+      "title": "branches on a registry axis: if self.backend != \"hip_gfx1151\":",
+      "location": "hipengine/generation/laguna_gguf.py:110",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/laguna_gguf.py",
+        "refs": [
+          "hipengine/generation/laguna_gguf.py:110"
+        ],
+        "tokens": [
+          "axis",
+          "backend",
+          "branches",
+          "hip_gfx1151",
+          "registry",
+          "self"
+        ]
+      },
+      "id": "axis-branch/hipengine/generation/laguna_gguf.py:110",
+      "evidence_hash": "908e54ea7668"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:147",
+      "title": "branches on a registry axis: if quant == 'gguf_iq4_xs'",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:147",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:147"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "gguf_iq4_xs",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:147",
+      "evidence_hash": "131d1c6cbeed"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:182",
+      "title": "branches on a registry axis: if quant != 'gguf_iq4_xs':",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:182",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:182"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "gguf_iq4_xs",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:182",
+      "evidence_hash": "eaca364a3dd4"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:281",
+      "title": "branches on a registry axis: block = 32 if quant == 'gguf_iq4_nl' else 256",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:281",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:281"
+        ],
+        "tokens": [
+          "256",
+          "axis",
+          "block",
+          "branches",
+          "else",
+          "gguf_iq4_nl",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:281",
+      "evidence_hash": "a3ddc9e6245e"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:88",
+      "title": "branches on a registry axis: if quant == 'gguf_iq4_xs'",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:88",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:88"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "gguf_iq4_xs",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:88",
+      "evidence_hash": "c8b3337e1e48"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py:249",
+      "title": "branches on a registry axis: block_size = 32 if quant == \"gguf_q8_0\" else 256",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py:249",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py:249"
+        ],
+        "tokens": [
+          "256",
+          "axis",
+          "block_size",
+          "branches",
+          "else",
+          "gguf_q8_0",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py:249",
+      "evidence_hash": "9b098720ad39"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/hip_gfx1151/__init__.py:3001",
+      "title": "branches on a registry axis: if quant != \"gguf_q6_k\"",
+      "location": "hipengine/kernels/hip_gfx1151/__init__.py:3001",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1151/__init__.py:3001"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "gguf_q6_k",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/hip_gfx1151/__init__.py:3001",
+      "evidence_hash": "5c3a6d1a11ea"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/vibevoice.py:36",
+      "title": "branches on a registry axis: if quant=='q4_k_m':",
+      "location": "hipengine/kernels/vibevoice.py:36",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/vibevoice.py",
+        "refs": [
+          "hipengine/kernels/vibevoice.py:36"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "q4_k_m",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:36",
+      "evidence_hash": "cdae62ac3a2f"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/vibevoice.py:44",
+      "title": "branches on a registry axis: if quant=='q4_k_m' and name in linear_q4:",
+      "location": "hipengine/kernels/vibevoice.py:44",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/vibevoice.py",
+        "refs": [
+          "hipengine/kernels/vibevoice.py:44"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "linear_q4",
+          "name",
+          "q4_k_m",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:44",
+      "evidence_hash": "57d43d7a1520"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/kernels/vibevoice.py:58",
+      "title": "branches on a registry axis: if quant=='q4_k_m':",
+      "location": "hipengine/kernels/vibevoice.py:58",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/vibevoice.py",
+        "refs": [
+          "hipengine/kernels/vibevoice.py:58"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "q4_k_m",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:58",
+      "evidence_hash": "ec67199ab1cb"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/runtime/gguf_linear.py:2638",
+      "title": "branches on a registry axis: if dispatch.key.quant == \"gguf_q8_0\"",
+      "location": "hipengine/runtime/gguf_linear.py:2638",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/runtime/gguf_linear.py",
+        "refs": [
+          "hipengine/runtime/gguf_linear.py:2638"
+        ],
+        "tokens": [
+          "axis",
+          "branches",
+          "dispatch",
+          "gguf_q8_0",
+          "key",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2638",
+      "evidence_hash": "b9abed09e480"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/runtime/gguf_linear.py:2652",
+      "title": "branches on a registry axis: % (32 if dispatch.key.quant == \"gguf_q8_0\" else 256)",
+      "location": "hipengine/runtime/gguf_linear.py:2652",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/runtime/gguf_linear.py",
+        "refs": [
+          "hipengine/runtime/gguf_linear.py:2652"
+        ],
+        "tokens": [
+          "256",
+          "axis",
+          "branches",
+          "dispatch",
+          "else",
+          "gguf_q8_0",
+          "key",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2652",
+      "evidence_hash": "7e9cfa0ddaae"
+    },
+    {
+      "kind": "axis-branch",
+      "key": "hipengine/server/api.py:565",
+      "title": "branches on a registry axis: if quant != \"auto\":",
+      "location": "hipengine/server/api.py:565",
+      "evidence": {
+        "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
+        "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      },
+      "signals": [
+        "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/api.py",
+        "refs": [
+          "hipengine/server/api.py:565"
+        ],
+        "tokens": [
+          "auto",
+          "axis",
+          "branches",
+          "quant",
+          "registry"
+        ]
+      },
+      "id": "axis-branch/hipengine/server/api.py:565",
+      "evidence_hash": "4f5997b9a30a"
+    }
+  ]
+}

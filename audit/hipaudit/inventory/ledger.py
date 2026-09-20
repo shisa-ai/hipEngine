@@ -14,7 +14,7 @@ import datetime as dt
 import re
 
 from ..core import REPO_ROOT, Row, digest, slug
-from . import corpus, grep, register
+from . import corpus, grep, register, tokens
 
 LEDGER = REPO_ROOT / "docs" / "REFACTOR.md"
 
@@ -94,6 +94,11 @@ def extract() -> tuple[list[Row], dict]:
                 "age_days": age_days, "body_chars": len(body.strip()),
             },
             signals=signals,
+            hints={
+                "anchor": "docs/REFACTOR.md",
+                "refs": sorted(set(paths) | set(flags)),
+                "tokens": tokens(heading),
+            },
         ))
 
     return rows, {"source": "docs/REFACTOR.md", "headings": len(rows)}

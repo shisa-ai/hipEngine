@@ -22,6 +22,13 @@ def row(key="X", **evidence):
                     evidence=evidence or {"default": "off"}, signals=["s"])
 
 
+def ledger_row(key, title, refs, anchor="docs/REFACTOR.md"):
+    from hipaudit.inventory import tokens
+    return core.Row(kind="ledger", key=key, title=title, location=f"{anchor}:1",
+                    evidence={}, signals=[],
+                    hints={"anchor": anchor, "refs": sorted(refs), "tokens": tokens(title)})
+
+
 def decide(target, **kw):
     fields = dict(id=target.id, tag="DEAD-FLAG", disposition="remove",
                   severity="low", note="because", evidence_hash=target.evidence_hash)
@@ -75,6 +82,70 @@ class Reconciliation(unittest.TestCase):
         self.assertEqual(lost, [])
 
 
+class Rebinding(unittest.TestCase):
+    """A rescan must land on the same audit item after ordinary editing."""
+
+    def test_reworded_heading_keeps_its_decision(self):
+        before = ledger_row("a-1111", "Packed workspace lease reserves a full session context",
+                            ["hipengine/runtime/pool.py", "HIPENGINE_POOL_LEASE"])
+        decisions = {before.id: decide(before, tag="STALE-LEDGER", disposition="remove")}
+        decisions[before.id].hints = before.hints
+        #  Same entry, reworded and re-hashed by the extractor.
+        after = ledger_row("a-2222", "The packed workspace lease still reserves one full session context",
+                           ["hipengine/runtime/pool.py", "HIPENGINE_POOL_LEASE"])
+        moved = core.rebind([after], decisions)
+        self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
+        self.assertIn(after.id, decisions)
+        self.assertEqual(decisions[after.id].rebound_from, before.id)
+        self.assertEqual(decisions[after.id].note, "because")
+
+    def test_unrelated_row_is_not_claimed(self):
+        before = ledger_row("a-1111", "Packed workspace lease reserves a session context",
+                            ["hipengine/runtime/pool.py"])
+        decisions = {before.id: decide(before)}
+        decisions[before.id].hints = before.hints
+        other = ledger_row("b-3333", "Prefix snapshot eviction destroys the retained entry",
+                           ["hipengine/runtime/prefix.py"])
+        self.assertEqual(core.rebind([other], decisions), [])
+        self.assertNotIn(other.id, decisions)
+
+    def test_a_row_that_already_has_a_decision_is_never_stolen(self):
+        old = ledger_row("a-1111", "Workspace lease reserves a full session context", ["p.py"])
+        twin = ledger_row("a-2222", "Workspace lease reserves a full session context", ["p.py"])
+        decisions = {old.id: decide(old, note="first"), twin.id: decide(twin, note="second")}
+        decisions[old.id].hints, decisions[twin.id].hints = old.hints, twin.hints
+        core.rebind([twin], decisions)
+        self.assertEqual(decisions[twin.id].note, "second")
+
+    def test_a_decision_without_hints_is_not_rebound(self):
+        before = ledger_row("a-1111", "Some entry", ["p.py"])
+        decisions = {before.id: decide(before)}          # hints left empty
+        after = ledger_row("a-2222", "Some entry", ["p.py"])
+        self.assertEqual(core.rebind([after], decisions), [])
+
+
+class Expiry(unittest.TestCase):
+    def test_a_decision_past_its_date_is_reported(self):
+        target = row()
+        decisions = {target.id: decide(target, disposition="defer", expires="2020-01-01")}
+        self.assertEqual([d.id for d in core.expired(decisions, today="2026-09-21")], [target.id])
+
+    def test_an_unexpired_decision_is_not_reported(self):
+        target = row()
+        decisions = {target.id: decide(target, disposition="defer", expires="2099-01-01")}
+        self.assertEqual(core.expired(decisions, today="2026-09-21"), [])
+
+    def test_reconcile_separates_expired_from_triaged(self):
+        target = row()
+        decisions = {target.id: decide(target, expires="2020-01-01")}
+        state = core.reconcile([target], decisions)
+        self.assertEqual(len(state["expired"]), 1)
+        self.assertEqual(state["triaged"], [])
+
+    def test_wontfix_is_a_valid_disposition(self):
+        self.assertEqual(decide(row(), disposition="wontfix").problems(), [])
+
+
 class TriageValidation(unittest.TestCase):
     def test_unknown_tag_and_disposition_are_rejected(self):
         problems = core.Triage(id="flag/X", tag="NONSENSE", disposition="ponder",
@@ -108,3 +179,29 @@ class Store(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Checks(unittest.TestCase):
+    """A finding must name the edit that closes it, or it is not actionable."""
+
+    def test_every_check_is_registered_with_a_callable(self):
+        from hipaudit.checks import CHECKS
+        self.assertTrue(CHECKS)
+        for name, fn in CHECKS.items():
+            self.assertTrue(callable(fn), name)
+
+    def test_a_finding_carries_a_fix_and_a_reason(self):
+        from hipaudit.checks import finding
+        made = finding("demo", "k", "title", "a.py:1", fix="do this", why="because")
+        self.assertEqual(made.evidence["fix"], "do this")
+        self.assertEqual(made.signals, ["because"])
+        self.assertTrue(made.hints["anchor"], "a finding must be re-matchable across rescans")
+
+    def test_findings_and_inventory_share_one_triage_store(self):
+        from hipaudit.checks import finding
+        row = finding("demo", "k", "title", "a.py:1", fix="f", why="w")
+        decisions = {row.id: core.Triage(id=row.id, tag="NOT-DEBT", disposition="wontfix",
+                                         note="deliberate", evidence_hash=row.evidence_hash)}
+        state = core.reconcile([row], decisions)
+        self.assertEqual(len(state["triaged"]), 1,
+                         "a wontfix recorded on a finding must suppress it like any other row")
